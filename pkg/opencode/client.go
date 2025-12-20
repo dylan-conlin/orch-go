@@ -156,3 +156,23 @@ func (c *Client) ListSessions() ([]Session, error) {
 
 	return sessions, nil
 }
+
+// GetSession fetches a single session by ID from the OpenCode API.
+func (c *Client) GetSession(sessionID string) (*Session, error) {
+	resp, err := http.Get(c.ServerURL + "/session/" + sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch session: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var session Session
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		return nil, fmt.Errorf("failed to decode session: %w", err)
+	}
+
+	return &session, nil
+}

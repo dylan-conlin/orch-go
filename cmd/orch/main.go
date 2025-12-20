@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/gen2brain/beeep"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -50,6 +51,7 @@ func init() {
 	rootCmd.AddCommand(sendCmd)
 	rootCmd.AddCommand(monitorCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(completeCmd)
 }
 
 var (
@@ -135,6 +137,36 @@ Shows session ID, workspace/title, directory, and last update time.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStatus(serverURL)
 	},
+}
+
+var (
+	// Complete command flags
+	completeForce  bool
+	completeReason string
+)
+
+var completeCmd = &cobra.Command{
+	Use:   "complete [beads-id]",
+	Short: "Complete an agent and close the beads issue",
+	Long: `Complete an agent's work by verifying Phase: Complete and closing the beads issue.
+
+Checks that the agent has reported "Phase: Complete" via beads comments before
+closing the issue. Use --force to skip phase verification.
+
+Examples:
+  orch-go complete proj-123
+  orch-go complete proj-123 --reason "All tests passing"
+  orch-go complete proj-123 --force  # Skip phase verification`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		return runComplete(beadsID)
+	},
+}
+
+func init() {
+	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase verification")
+	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string) error {
@@ -349,9 +381,90 @@ func runStatus(serverURL string) error {
 	return nil
 }
 
+func runComplete(beadsID string) error {
+	// Get issue to verify it exists
+	issue, err := verify.GetIssue(beadsID)
+	if err != nil {
+		return fmt.Errorf("failed to get beads issue: %w", err)
+	}
+
+	// Check if already closed
+	if issue.Status == "closed" {
+		fmt.Printf("Issue %s is already closed\n", beadsID)
+		return nil
+	}
+
+	// Verify phase status unless force flag is set
+	if !completeForce {
+		result, err := verify.VerifyCompletion(beadsID)
+		if err != nil {
+			return fmt.Errorf("verification failed: %w", err)
+		}
+
+		if !result.Passed {
+			fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n")
+			for _, e := range result.Errors {
+				fmt.Fprintf(os.Stderr, "  - %s\n", e)
+			}
+			fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
+			fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
+			return fmt.Errorf("verification failed")
+		}
+
+		// Print phase info
+		if result.Phase.Found {
+			fmt.Printf("Phase: %s\n", result.Phase.Phase)
+			if result.Phase.Summary != "" {
+				fmt.Printf("Summary: %s\n", result.Phase.Summary)
+			}
+		}
+	} else {
+		fmt.Println("Skipping phase verification (--force)")
+	}
+
+	// Determine close reason
+	reason := completeReason
+	if reason == "" {
+		// Try to get summary from phase status
+		status, _ := verify.GetPhaseStatus(beadsID)
+		if status.Summary != "" {
+			reason = status.Summary
+		} else {
+			reason = "Completed via orch complete"
+		}
+	}
+
+	// Close the beads issue
+	if err := verify.CloseIssue(beadsID, reason); err != nil {
+		return fmt.Errorf("failed to close issue: %w", err)
+	}
+
+	fmt.Printf("Closed beads issue: %s\n", beadsID)
+	fmt.Printf("Reason: %s\n", reason)
+
+	// Log the completion
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "agent.completed",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"beads_id": beadsID,
+			"reason":   reason,
+			"forced":   completeForce,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	return nil
+}
+
 func runMonitor(serverURL string) error {
 	sseURL := serverURL + "/event"
-	client := opencode.NewSSEClient(sseURL)
+	sseClient := opencode.NewSSEClient(sseURL)
+	apiClient := opencode.NewClient(serverURL)
+	notifier := notify.Default()
 
 	fmt.Printf("Monitoring SSE events at %s...\n", sseURL)
 
@@ -359,7 +472,7 @@ func runMonitor(serverURL string) error {
 	errChan := make(chan error, 1)
 
 	go func() {
-		if err := client.Connect(sseEvents); err != nil {
+		if err := sseClient.Connect(sseEvents); err != nil {
 			errChan <- err
 		}
 		close(sseEvents)
@@ -403,9 +516,13 @@ func runMonitor(serverURL string) error {
 			// Check for completion
 			sessionID, completed := opencode.DetectCompletion(sessionEvents)
 			if completed {
-				title := "OpenCode Session Update"
-				body := fmt.Sprintf("Session %s: completed", sessionID)
-				if err := beeep.Notify(title, body, ""); err != nil {
+				// Try to get session title for notification
+				workspace := ""
+				if session, err := apiClient.GetSession(sessionID); err == nil && session != nil {
+					workspace = session.Title
+				}
+
+				if err := notifier.SessionComplete(sessionID, workspace); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to send notification: %v\n", err)
 				}
 				fmt.Printf("\nSession %s completed!\n", sessionID)
