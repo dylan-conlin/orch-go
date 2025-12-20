@@ -12,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/question"
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -55,6 +56,10 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(completeCmd)
 	rootCmd.AddCommand(workCmd)
+	rootCmd.AddCommand(daemonCmd)
+	rootCmd.AddCommand(tailCmd)
+	rootCmd.AddCommand(questionCmd)
+	rootCmd.AddCommand(abandonCmd)
 }
 
 var (
@@ -236,6 +241,184 @@ Examples:
 
 func init() {
 	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
+}
+
+func runTail(beadsID string, lines int) error {
+	// Get current directory to determine project name
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+	projectName := filepath.Base(projectDir)
+
+	// Get workers session name for this project
+	sessionName := tmux.GetWorkersSessionName(projectName)
+
+	// Check if session exists
+	if !tmux.SessionExists(sessionName) {
+		return fmt.Errorf("no workers session found for project %s (expected: %s)", projectName, sessionName)
+	}
+
+	// Find window by beads ID
+	window, err := tmux.FindWindowByBeadsID(sessionName, beadsID)
+	if err != nil {
+		return fmt.Errorf("failed to find window: %w", err)
+	}
+	if window == nil {
+		return fmt.Errorf("no window found for beads ID: %s", beadsID)
+	}
+
+	// Capture lines from the window
+	output, err := tmux.CaptureLines(window.Target, lines)
+	if err != nil {
+		return fmt.Errorf("failed to capture output: %w", err)
+	}
+
+	// Print the captured output
+	fmt.Printf("=== Output from %s (last %d lines) ===\n", window.Name, lines)
+	for _, line := range output {
+		fmt.Println(line)
+	}
+	fmt.Printf("=== End of output ===\n")
+
+	return nil
+}
+
+var questionCmd = &cobra.Command{
+	Use:   "question [beads-id]",
+	Short: "Extract pending question from an agent's tmux window",
+	Long: `Extract pending question from an agent's tmux window.
+
+Finds the tmux window associated with the beads issue ID and extracts
+any pending question the agent is asking. Useful for monitoring agents
+that are blocked waiting for user input.
+
+Examples:
+  orch-go question proj-123  # Extract question from agent's window`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		return runQuestion(beadsID)
+	},
+}
+
+func runQuestion(beadsID string) error {
+	// Get current directory to determine project name
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+	projectName := filepath.Base(projectDir)
+
+	// Get workers session name for this project
+	sessionName := tmux.GetWorkersSessionName(projectName)
+
+	// Check if session exists
+	if !tmux.SessionExists(sessionName) {
+		return fmt.Errorf("no workers session found for project %s (expected: %s)", projectName, sessionName)
+	}
+
+	// Find window by beads ID
+	window, err := tmux.FindWindowByBeadsID(sessionName, beadsID)
+	if err != nil {
+		return fmt.Errorf("failed to find window: %w", err)
+	}
+	if window == nil {
+		return fmt.Errorf("no window found for beads ID: %s", beadsID)
+	}
+
+	// Capture pane content (full visible content)
+	content, err := tmux.GetPaneContent(window.Target)
+	if err != nil {
+		return fmt.Errorf("failed to capture pane content: %w", err)
+	}
+
+	// Extract question from content
+	q := question.Extract(content)
+	if q == "" {
+		fmt.Println("No pending question found")
+		return nil
+	}
+
+	fmt.Printf("Pending question:\n%s\n", q)
+	return nil
+}
+
+var abandonCmd = &cobra.Command{
+	Use:   "abandon [beads-id]",
+	Short: "Abandon a stuck or frozen agent",
+	Long: `Abandon an agent by killing its tmux window and marking it abandoned in the registry.
+
+Use this command for stuck or frozen agents that are not responding.
+The agent's beads issue is NOT closed - you can restart work with 'orch work'.
+
+Examples:
+  orch-go abandon proj-123           # Abandon agent for issue proj-123`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		return runAbandon(beadsID)
+	},
+}
+
+func runAbandon(beadsID string) error {
+	// Open the registry
+	reg, err := registry.New("")
+	if err != nil {
+		return fmt.Errorf("failed to open registry: %w", err)
+	}
+
+	// Find agent by beads ID
+	agent := reg.Find(beadsID)
+	if agent == nil {
+		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
+	}
+
+	// Check if already abandoned or completed
+	if agent.Status != registry.StateActive {
+		return fmt.Errorf("agent %s is not active (status: %s)", agent.ID, agent.Status)
+	}
+
+	// Kill the tmux window if it has one
+	if agent.WindowID != "" {
+		if err := tmux.KillWindowByID(agent.WindowID); err != nil {
+			// Window might already be gone, just warn
+			fmt.Fprintf(os.Stderr, "Warning: could not kill window %s: %v\n", agent.WindowID, err)
+		} else {
+			fmt.Printf("Killed tmux window: %s\n", agent.Window)
+		}
+	}
+
+	// Mark agent as abandoned in registry
+	if !reg.Abandon(agent.ID) {
+		return fmt.Errorf("failed to mark agent as abandoned")
+	}
+
+	// Save the registry
+	if err := reg.Save(); err != nil {
+		return fmt.Errorf("failed to save registry: %w", err)
+	}
+
+	// Log the abandonment
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "agent.abandoned",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"beads_id":  beadsID,
+			"agent_id":  agent.ID,
+			"window_id": agent.WindowID,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	fmt.Printf("Abandoned agent: %s\n", agent.ID)
+	fmt.Printf("  Beads ID: %s\n", beadsID)
+	fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
+
+	return nil
 }
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
