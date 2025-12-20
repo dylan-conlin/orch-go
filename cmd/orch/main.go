@@ -14,6 +14,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -61,6 +62,7 @@ var (
 	spawnPhases     string
 	spawnMode       string
 	spawnValidation string
+	spawnInline     bool // Run inline (blocking) instead of in tmux
 )
 
 var spawnCmd = &cobra.Command{
@@ -68,16 +70,20 @@ var spawnCmd = &cobra.Command{
 	Short: "Spawn a new OpenCode session with skill context",
 	Long: `Spawn a new OpenCode session with skill context.
 
+By default, spawns the agent in a tmux window and returns immediately.
+Use --inline to run in the current terminal (blocking).
+
 Examples:
   orch-go spawn investigation "explore the codebase"
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
-  orch-go spawn --issue proj-123 feature-impl "implement the feature"`,
+  orch-go spawn --issue proj-123 feature-impl "implement the feature"
+  orch-go spawn --inline investigation "explore codebase"  # Run inline (blocking)`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task)
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline)
 	},
 }
 
@@ -86,6 +92,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
+	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) instead of in tmux")
 }
 
 var askCmd = &cobra.Command{
@@ -169,7 +176,7 @@ func init() {
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -223,11 +230,89 @@ func runSpawnWithSkill(serverURL, skillName, task string) error {
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
+	// Decide spawn mode: tmux (default) or inline
+	useTmux := !inline && tmux.IsAvailable()
+
+	if useTmux {
+		return runSpawnInTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
+	// Inline mode (blocking) - original behavior
+	return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+}
+
+// runSpawnInTmux spawns the agent in a tmux window and returns immediately.
+func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+	// Ensure workers session exists
+	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("failed to ensure workers session: %w", err)
+	}
+
+	// Build window name
+	windowName := tmux.BuildWindowName(cfg.WorkspaceName, skillName, beadsID)
+
+	// Create window
+	windowTarget, windowID, err := tmux.CreateWindow(sessionName, windowName, cfg.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("failed to create window: %w", err)
+	}
+
+	// Build opencode command
+	// Using 'opencode run --attach' with the prompt
+	client := opencode.NewClient(serverURL)
+	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName)
+	opencodeCmd := strings.Join(cmd.Args, " ")
+
+	// Send the command to the tmux window
+	if err := tmux.SendKeysLiteral(windowTarget, opencodeCmd); err != nil {
+		return fmt.Errorf("failed to send command: %w", err)
+	}
+
+	// Send Enter to execute
+	if err := tmux.SendEnter(windowTarget); err != nil {
+		return fmt.Errorf("failed to send enter: %w", err)
+	}
+
+	// Select the window to focus it
+	_ = tmux.SelectWindow(windowTarget)
+
+	// Log the session creation
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "session.spawned",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"skill":      skillName,
+			"task":       task,
+			"workspace":  cfg.WorkspaceName,
+			"beads_id":   beadsID,
+			"window":     windowTarget,
+			"window_id":  windowID,
+			"spawn_mode": "tmux",
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Print spawn summary
+	fmt.Printf("Spawned agent:\n")
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
+	fmt.Printf("  Window:     %s\n", windowTarget)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+
+	return nil
+}
+
+// runSpawnInline spawns the agent inline (blocking) - original behavior.
+func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Spawn opencode session
 	client := opencode.NewClient(serverURL)
-	cmd := client.BuildSpawnCommand(minimalPrompt, workspaceName)
+	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName)
 	cmd.Stderr = os.Stderr
-	cmd.Dir = projectDir
+	cmd.Dir = cfg.ProjectDir
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -254,10 +339,11 @@ func runSpawnWithSkill(serverURL, skillName, task string) error {
 		SessionID: result.SessionID,
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"skill":     skillName,
-			"task":      task,
-			"workspace": workspaceName,
-			"beads_id":  beadsID,
+			"skill":      skillName,
+			"task":       task,
+			"workspace":  cfg.WorkspaceName,
+			"beads_id":   beadsID,
+			"spawn_mode": "inline",
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -267,7 +353,7 @@ func runSpawnWithSkill(serverURL, skillName, task string) error {
 	// Print spawn summary
 	fmt.Printf("Spawned agent:\n")
 	fmt.Printf("  Session ID: %s\n", result.SessionID)
-	fmt.Printf("  Workspace:  %s\n", workspaceName)
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
 	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
 
