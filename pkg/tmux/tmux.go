@@ -73,11 +73,12 @@ func BuildWindowName(workspaceName, skillName, beadsID string) string {
 }
 
 // BuildSpawnCommand creates the opencode command for spawning.
+// Note: Does NOT include --format json because tmux spawn should show the TUI.
+// Inline spawn uses --format json separately to parse session ID.
 func BuildSpawnCommand(cfg *SpawnConfig) *exec.Cmd {
 	args := []string{
 		"run",
 		"--attach", cfg.ServerURL,
-		"--format", "json",
 		"--title", cfg.Title,
 		cfg.Prompt,
 	}

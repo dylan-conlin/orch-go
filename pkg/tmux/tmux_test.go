@@ -93,8 +93,10 @@ func TestBuildSpawnCommand(t *testing.T) {
 	if !strings.Contains(args, "--attach") {
 		t.Error("Expected --attach flag")
 	}
-	if !strings.Contains(args, "--format json") {
-		t.Error("Expected --format json flag")
+	// Note: --format json should NOT be included for tmux spawn
+	// (tmux spawn should show TUI, not JSON output)
+	if strings.Contains(args, "--format json") {
+		t.Error("--format json should NOT be included for tmux spawn (TUI needed)")
 	}
 	if !strings.Contains(args, "--title") {
 		t.Error("Expected --title flag")
