@@ -19,6 +19,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -65,17 +66,24 @@ func init() {
 	rootCmd.AddCommand(cleanCmd)
 	rootCmd.AddCommand(accountCmd)
 	rootCmd.AddCommand(waitCmd)
+	rootCmd.AddCommand(focusCmd)
+	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(nextCmd)
+	rootCmd.AddCommand(reviewCmd)
 }
 
 var (
 	// Spawn command flags
-	spawnSkill      string
-	spawnIssue      string
-	spawnPhases     string
-	spawnMode       string
-	spawnValidation string
-	spawnInline     bool   // Run inline (blocking) instead of in tmux
-	spawnModel      string // Model to use for standalone spawns
+	spawnSkill             string
+	spawnIssue             string
+	spawnPhases            string
+	spawnMode              string
+	spawnValidation        string
+	spawnInline            bool   // Run inline (blocking) instead of in tmux
+	spawnModel             string // Model to use for standalone spawns
+	spawnNoTrack           bool   // Opt-out of beads tracking
+	spawnMCP               string // MCP server config (e.g., "playwright")
+	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
 )
 
 var spawnCmd = &cobra.Command{
@@ -95,7 +103,10 @@ Examples:
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
   orch-go spawn --inline investigation "explore codebase"  # Run inline (blocking)
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
-  orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash`,
+  orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
+  orch-go spawn --no-track investigation "exploratory work"  # Skip beads tracking
+  orch-go spawn --mcp playwright feature-impl "add UI feature"  # With Playwright MCP
+  orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -112,6 +123,9 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) instead of in tmux")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
+	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
+	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
+	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 }
 
 var askCmd = &cobra.Command{
@@ -502,21 +516,27 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 		skillContent = "" // Continue without skill content
 	}
 
-	// Determine beads ID - either from flag or create new issue
+	// Determine beads ID - either from flag, create new issue, or skip if --no-track
 	beadsID := spawnIssue
-	if beadsID == "" {
-		// Create a new beads issue
+	if beadsID == "" && !spawnNoTrack {
+		// Create a new beads issue (default behavior)
 		beadsID, err = createBeadsIssue(projectName, skillName, task)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to create beads issue: %v\n", err)
 			beadsID = fmt.Sprintf("%s-%d", projectName, time.Now().Unix()) // Fallback ID
 		}
+	} else if spawnNoTrack {
+		// Generate a local-only ID for untracked work
+		beadsID = fmt.Sprintf("%s-untracked-%d", projectName, time.Now().Unix())
+		fmt.Println("Skipping beads tracking (--no-track)")
 	}
 
-	// Update beads issue status to in_progress
-	if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
-		// Continue anyway
+	// Update beads issue status to in_progress (only if tracking a real issue)
+	if !spawnNoTrack && spawnIssue != "" {
+		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
+			// Continue anyway
+		}
 	}
 
 	// Resolve model - convert aliases to full format
@@ -524,17 +544,20 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 
 	// Build spawn config
 	cfg := &spawn.Config{
-		Task:          task,
-		SkillName:     skillName,
-		Project:       projectName,
-		ProjectDir:    projectDir,
-		WorkspaceName: workspaceName,
-		SkillContent:  skillContent,
-		BeadsID:       beadsID,
-		Phases:        spawnPhases,
-		Mode:          spawnMode,
-		Validation:    spawnValidation,
-		Model:         resolvedModel.Format(),
+		Task:              task,
+		SkillName:         skillName,
+		Project:           projectName,
+		ProjectDir:        projectDir,
+		WorkspaceName:     workspaceName,
+		SkillContent:      skillContent,
+		BeadsID:           beadsID,
+		Phases:            spawnPhases,
+		Mode:              spawnMode,
+		Validation:        spawnValidation,
+		Model:             resolvedModel.Format(),
+		MCP:               spawnMCP,
+		NoTrack:           spawnNoTrack,
+		SkipArtifactCheck: spawnSkipArtifactCheck,
 	}
 
 	// Write SPAWN_CONTEXT.md
@@ -1265,32 +1288,12 @@ func runAccountList() error {
 }
 
 func runAccountSwitch(name string) error {
-	cfg, err := account.LoadConfig()
+	email, err := account.SwitchAccount(name)
 	if err != nil {
-		return fmt.Errorf("failed to load accounts: %w", err)
+		return err
 	}
 
-	acc, err := cfg.Get(name)
-	if err != nil {
-		return fmt.Errorf("account '%s' not found", name)
-	}
-
-	if acc.Source != "saved" {
-		return fmt.Errorf("account '%s' is not a saved account (source: %s)", name, acc.Source)
-	}
-
-	if acc.RefreshToken == "" {
-		return fmt.Errorf("account '%s' has no refresh token", name)
-	}
-
-	// TODO: Implement token refresh using Anthropic OAuth API
-	// For now, just print instructions
-	fmt.Printf("Account switching not yet implemented in Go.\n")
-	fmt.Printf("Use Python orch for now: orch account switch %s\n", name)
-	fmt.Printf("\nAccount info:\n")
-	fmt.Printf("  Name:  %s\n", name)
-	fmt.Printf("  Email: %s\n", acc.Email)
-
+	fmt.Printf("Switched to account: %s (%s)\n", name, email)
 	return nil
 }
 
@@ -1318,11 +1321,11 @@ func runAccountRemove(name string) error {
 
 var usageCmd = &cobra.Command{
 	Use:   "usage",
-	Short: "Show Claude Max usage (delegates to Python orch)",
+	Short: "Show Claude Max usage limits",
 	Long: `Show Claude Max weekly usage limits.
 
-NOTE: Usage API is not yet implemented in Go. This command delegates to Python orch.
-Run 'orch usage' directly for full functionality.`,
+Reads OAuth token from OpenCode's auth.json and fetches usage data
+from the Anthropic API.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runUsage()
 	},
@@ -1333,14 +1336,7 @@ func init() {
 }
 
 func runUsage() error {
-	// TODO: Port usage.py to Go
-	// For now, delegate to Python orch
-	fmt.Println("Usage tracking not yet implemented in Go.")
-	fmt.Println("Use Python orch for now: orch usage")
-	fmt.Println("")
-	fmt.Println("To implement:")
-	fmt.Println("  1. HTTP client for https://api.anthropic.com/api/oauth/usage")
-	fmt.Println("  2. OAuth token handling (from OpenCode auth.json)")
-	fmt.Println("  3. Parse and display usage limits")
+	info := usage.FetchUsage()
+	fmt.Println(usage.FormatDisplay(info))
 	return nil
 }
