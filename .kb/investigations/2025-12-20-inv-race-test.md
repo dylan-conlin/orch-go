@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-75n
+---
 **TLDR:** Question: Can multiple investigation agents be spawned concurrently without race conditions? Answer: Yes, 7+ concurrent investigation agents successfully created workspace directories and checkin files without conflicts. Very High confidence (95%+) based on filesystem evidence showing successful concurrent file creation across multiple workspaces.
 
 ---
