@@ -122,63 +122,6 @@ func TestSpawnResult(t *testing.T) {
 	}
 }
 
-func TestBuildStandaloneCommand(t *testing.T) {
-	cfg := &StandaloneConfig{
-		ProjectDir: "/test/project",
-		Model:      "anthropic/claude-sonnet-4-20250514",
-	}
-
-	cmd := BuildStandaloneCommand(cfg)
-
-	// Verify command structure
-	if cmd.Path == "" {
-		t.Error("Expected command path to be set")
-	}
-
-	// Check args - should be: opencode {dir} --model {model}
-	args := strings.Join(cmd.Args, " ")
-
-	// Should include project dir
-	if !strings.Contains(args, "/test/project") {
-		t.Errorf("Expected project dir in args, got: %s", args)
-	}
-
-	// Should include --model flag
-	if !strings.Contains(args, "--model") {
-		t.Errorf("Expected --model flag, got: %s", args)
-	}
-
-	// Should include model value
-	if !strings.Contains(args, "anthropic/claude-sonnet-4-20250514") {
-		t.Errorf("Expected model value, got: %s", args)
-	}
-
-	// Should NOT include --attach (that's attach mode)
-	if strings.Contains(args, "--attach") {
-		t.Error("--attach should NOT be in standalone mode")
-	}
-
-	// Should NOT include run subcommand
-	if strings.Contains(args, " run ") {
-		t.Error("'run' subcommand should NOT be in standalone mode")
-	}
-}
-
-func TestStandaloneConfigWithEnvVars(t *testing.T) {
-	cfg := &StandaloneConfig{
-		ProjectDir: "/test/project",
-		Model:      "anthropic/claude-sonnet-4-20250514",
-		EnvVars: map[string]string{
-			"ORCH_WORKER": "true",
-		},
-	}
-
-	// EnvVars should be set on the config
-	if cfg.EnvVars["ORCH_WORKER"] != "true" {
-		t.Error("Expected ORCH_WORKER env var to be set")
-	}
-}
-
 func TestIsOpenCodeReady(t *testing.T) {
 	tests := []struct {
 		name     string

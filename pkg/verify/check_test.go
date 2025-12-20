@@ -18,22 +18,22 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "no phase comments",
 			comments: []Comment{
-				{Content: "Just a regular comment"},
-				{Content: "Another comment without phase"},
+				{Text: "Just a regular comment"},
+				{Text: "Another comment without phase"},
 			},
 			want: PhaseStatus{Found: false},
 		},
 		{
 			name: "simple phase complete",
 			comments: []Comment{
-				{Content: "Phase: Complete"},
+				{Text: "Phase: Complete"},
 			},
 			want: PhaseStatus{Phase: "Complete", Found: true},
 		},
 		{
 			name: "phase with summary",
 			comments: []Comment{
-				{Content: "Phase: Complete - All tests passing, ready for review"},
+				{Text: "Phase: Complete - All tests passing, ready for review"},
 			},
 			want: PhaseStatus{
 				Phase:   "Complete",
@@ -44,7 +44,7 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "phase with en-dash",
 			comments: []Comment{
-				{Content: "Phase: Complete – Implementation finished"},
+				{Text: "Phase: Complete – Implementation finished"},
 			},
 			want: PhaseStatus{
 				Phase:   "Complete",
@@ -55,7 +55,7 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "phase with em-dash",
 			comments: []Comment{
-				{Content: "Phase: Complete — Done"},
+				{Text: "Phase: Complete — Done"},
 			},
 			want: PhaseStatus{
 				Phase:   "Complete",
@@ -66,10 +66,10 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "multiple phases - returns latest",
 			comments: []Comment{
-				{Content: "Phase: Planning - Starting work"},
-				{Content: "Some progress comment"},
-				{Content: "Phase: Implementing - Adding tests"},
-				{Content: "Phase: Complete - All done"},
+				{Text: "Phase: Planning - Starting work"},
+				{Text: "Some progress comment"},
+				{Text: "Phase: Implementing - Adding tests"},
+				{Text: "Phase: Complete - All done"},
 			},
 			want: PhaseStatus{
 				Phase:   "Complete",
@@ -80,7 +80,7 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "case insensitive",
 			comments: []Comment{
-				{Content: "phase: complete - done"},
+				{Text: "phase: complete - done"},
 			},
 			want: PhaseStatus{
 				Phase:   "complete",
@@ -91,7 +91,7 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "phase in middle of comment",
 			comments: []Comment{
-				{Content: "Update: Phase: Implementing - Working on feature"},
+				{Text: "Update: Phase: Implementing - Working on feature"},
 			},
 			want: PhaseStatus{
 				Phase:   "Implementing",
@@ -102,7 +102,7 @@ func TestParsePhaseFromComments(t *testing.T) {
 		{
 			name: "planning phase",
 			comments: []Comment{
-				{Content: "Phase: Planning - Analyzing codebase structure"},
+				{Text: "Phase: Planning - Analyzing codebase structure"},
 			},
 			want: PhaseStatus{
 				Phase:   "Planning",
