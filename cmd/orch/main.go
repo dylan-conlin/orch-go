@@ -53,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(monitorCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(completeCmd)
+	rootCmd.AddCommand(workCmd)
 }
 
 var (
@@ -174,6 +175,86 @@ Examples:
 func init() {
 	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase verification")
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
+}
+
+var (
+	// Work command flags
+	workInline bool // Run inline (blocking) instead of in tmux
+)
+
+var workCmd = &cobra.Command{
+	Use:   "work [beads-id]",
+	Short: "Start work on a beads issue with skill inference",
+	Long: `Start work on a beads issue by inferring the skill from the issue type.
+
+The skill is automatically determined from the issue type:
+  - bug         → systematic-debugging
+  - feature     → feature-impl
+  - task        → feature-impl
+  - investigation → investigation
+
+The issue description becomes the task prompt for the spawned agent.
+
+Examples:
+  orch-go work proj-123           # Start work on issue proj-123 in tmux
+  orch-go work proj-123 --inline  # Start work inline (blocking)`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		return runWork(serverURL, beadsID, workInline)
+	},
+}
+
+func init() {
+	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) instead of in tmux")
+}
+
+// InferSkillFromIssueType maps issue types to appropriate skills.
+// Returns an error for types that cannot be spawned (e.g., epic) or unknown types.
+func InferSkillFromIssueType(issueType string) (string, error) {
+	switch issueType {
+	case "bug":
+		return "systematic-debugging", nil
+	case "feature":
+		return "feature-impl", nil
+	case "task":
+		return "feature-impl", nil
+	case "investigation":
+		return "investigation", nil
+	case "epic":
+		return "", fmt.Errorf("cannot spawn work on epic issues - epics are decomposed into sub-issues")
+	case "":
+		return "", fmt.Errorf("issue type is empty")
+	default:
+		return "", fmt.Errorf("unknown issue type: %s", issueType)
+	}
+}
+
+func runWork(serverURL, beadsID string, inline bool) error {
+	// Get issue details
+	issue, err := verify.GetIssue(beadsID)
+	if err != nil {
+		return fmt.Errorf("failed to get beads issue: %w", err)
+	}
+
+	// Infer skill from issue type
+	skillName, err := InferSkillFromIssueType(issue.IssueType)
+	if err != nil {
+		return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
+	}
+
+	// Use issue title as the task (description is often longer form context)
+	task := issue.Title
+
+	// Set the spawnIssue flag so runSpawnWithSkill uses the existing issue
+	spawnIssue = beadsID
+
+	fmt.Printf("Starting work on: %s\n", beadsID)
+	fmt.Printf("  Title:  %s\n", issue.Title)
+	fmt.Printf("  Type:   %s\n", issue.IssueType)
+	fmt.Printf("  Skill:  %s\n", skillName)
+
+	return runSpawnWithSkill(serverURL, skillName, task, inline)
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {

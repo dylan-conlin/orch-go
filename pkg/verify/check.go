@@ -19,10 +19,12 @@ type Comment struct {
 
 // Issue represents a beads issue with comments.
 type Issue struct {
-	ID       string    `json:"id"`
-	Title    string    `json:"title"`
-	Status   string    `json:"status"`
-	Comments []Comment `json:"comments"`
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	IssueType   string    `json:"issue_type"`
+	Comments    []Comment `json:"comments"`
 }
 
 // PhaseStatus represents the current phase of an agent.
