@@ -383,12 +383,26 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 		return "", fmt.Errorf("bd create failed: %w", err)
 	}
 
-	// Parse issue ID from output (expected format: "Created issue: proj-123")
+	// Parse issue ID from output (multi-line format with first line: "✓ Created issue: proj-123")
 	outputStr := strings.TrimSpace(string(output))
-	parts := strings.Split(outputStr, " ")
-	if len(parts) > 0 {
-		// Take the last word which should be the issue ID
-		return parts[len(parts)-1], nil
+
+	// Split by newline and parse first line only
+	lines := strings.Split(outputStr, "\n")
+	if len(lines) == 0 {
+		return "", fmt.Errorf("empty output from bd create")
+	}
+
+	firstLine := strings.TrimSpace(lines[0])
+
+	// Look for "issue:" in the first line and extract the ID after it
+	parts := strings.Fields(firstLine)
+	for i, part := range parts {
+		if strings.Contains(part, "issue:") {
+			// Issue ID should be the next word after "issue:"
+			if i+1 < len(parts) {
+				return parts[i+1], nil
+			}
+		}
 	}
 
 	return "", fmt.Errorf("could not parse issue ID from: %s", outputStr)
