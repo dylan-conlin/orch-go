@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-a73
+---
 **TLDR:** Question: What does 'Say exactly: integration test passed' mean and does the integration test pass? Answer: The phrase is the exact task string passed to the agent; the integration test passes because spawning succeeds (session ID returned). High confidence (80%) - direct evidence from spawn command and context file.
 
 <!--

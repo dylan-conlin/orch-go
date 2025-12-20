@@ -1,6 +1,8 @@
 ---
 date: "2025-12-19"
 status: "Complete"
+linked_issues:
+  - orch-go-dde
 ---
 
 # Test spawn integration with real OpenCode server

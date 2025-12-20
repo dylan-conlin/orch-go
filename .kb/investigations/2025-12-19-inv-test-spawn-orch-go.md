@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-71d
+---
 **TLDR:** Question: Does the orch-go spawn command correctly create OpenCode sessions with skill context and tracking? Answer: Yes - spawn command successfully creates sessions, writes SPAWN_CONTEXT.md, extracts session ID, and tracks via beads. High confidence (80%) - tested with mock opencode but real integration not tested.
 
 <!--

@@ -258,10 +258,15 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		return fmt.Errorf("failed to create window: %w", err)
 	}
 
-	// Build opencode command
-	// Using 'opencode run --attach' with the prompt
-	client := opencode.NewClient(serverURL)
-	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName)
+	// Build opencode command (without --format json so TUI shows)
+	tmuxCfg := &tmux.SpawnConfig{
+		ServerURL:     serverURL,
+		Prompt:        minimalPrompt,
+		Title:         cfg.WorkspaceName,
+		ProjectDir:    cfg.ProjectDir,
+		WorkspaceName: cfg.WorkspaceName,
+	}
+	cmd := tmux.BuildSpawnCommand(tmuxCfg)
 	opencodeCmd := strings.Join(cmd.Args, " ")
 
 	// Send the command to the tmux window

@@ -20,8 +20,8 @@ Guidelines:
 **Updated:** 2025-12-19
 **Owner:** worker agent
 **Phase:** Investigating
-**Next Step:** None
-**Status:** Complete
+**Next Step:** Run tests to observe spawn timeout behavior
+**Status:** In Progress
 **Confidence:** Very Low (<40%)
 
 ---
@@ -76,35 +76,35 @@ Guidelines:
 
 **Answer to Investigation Question:**
 
-orch-go currently has no timeout handling for spawn integration, relying on the opencode CLI's own timeout behavior. When the OpenCode server is unreachable, the command fails quickly (Finding 3). However, there is still risk of indefinite hangs if the server accepts connections but doesn't respond (Finding 1). The codebase shows no explicit timeout mechanisms for exec.Command (Finding 1), but tests demonstrate timeout patterns for SSE events (Finding 2). Recommendation: add timeout context to spawn command execution.
+[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** Low (40-59%)
+**Current Confidence:** [Level] ([Percentage])
 
 **Why this level?**
 
-Confidence is low because we have only tested one failure scenario (unreachable server). We haven't tested partial failure scenarios where server accepts connections but hangs. The code analysis is thorough but actual behavior under hanging conditions is unknown. The test performed validates network timeout but not command execution timeout.
+[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
 
 **What's certain:**
 
-- ✅ orch-go's spawn command uses exec.Command without timeout contexts (Finding 1)
-- ✅ Existing tests show timeout patterns for SSE events but not for spawn (Finding 2)
-- ✅ OpenCode CLI fails quickly when server is unreachable (Finding 3)
+- ✅ [Thing you're confident about with supporting evidence]
+- ✅ [Thing you're confident about with supporting evidence]
+- ✅ [Thing you're confident about with supporting evidence]
 
 **What's uncertain:**
 
-- ⚠️ Whether opencode CLI can hang indefinitely if server accepts connections but doesn't respond
-- ⚠️ Whether orch-go should implement timeouts for spawn command execution
-- ⚠️ What timeout duration would be appropriate for spawn integration
+- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ [Area of uncertainty or limitation]
 
-**What would increase confidence to Medium (60-79%):**
+**What would increase confidence to [next level]:**
 
-- Test spawn command with a server that accepts connections but doesn't respond (e.g., using a mock TCP server)
-- Review opencode CLI source code to understand its timeout behavior
-- Implement a prototype timeout mechanism and test it
+- [Specific additional investigation or evidence needed]
+- [Specific additional investigation or evidence needed]
+- [Specific additional investigation or evidence needed]
 
 **Confidence levels guide:**
 - **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
@@ -112,15 +112,6 @@ Confidence is low because we have only tested one failure scenario (unreachable 
 - **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
 - **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
 - **Very Low (<40%):** Highly speculative, more investigation needed
-
-## Self-Review
-
-- [x] Real test performed (not code review)
-- [x] Conclusion from evidence (not speculation)
-- [x] Question answered
-- [x] File complete
-
-**Self-Review Status:** PASSED
 
 ---
 

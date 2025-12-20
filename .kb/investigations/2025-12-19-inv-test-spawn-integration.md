@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-dde
+---
 **TLDR:** Question: Does the orch-go spawn command correctly create OpenCode sessions with skill context and tracking when using the actual OpenCode server (not mock)? Answer: No - spawn command hangs waiting for opencode process to exit, preventing it from returning session ID and workspace info. Medium confidence (70%) - observed timeout in real test, but need to verify if session ID extraction works before hang.
 
 ---
