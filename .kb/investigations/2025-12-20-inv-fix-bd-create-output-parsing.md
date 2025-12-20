@@ -81,29 +81,28 @@ The parser captures 'open' instead of the issue ID because it splits the entire 
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** Very High (99%)
 
 **Why this level?**
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+Root cause clearly identified through reproduction, fix tested via both unit tests and smoke test. Only tiny uncertainty around edge cases in unusual bd create output formats.
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ Root cause identified: parser splits entire multi-line output, captures "open" from last line
+- ✅ Fix verified with unit tests covering multiple output formats  
+- ✅ Smoke test passed: real bd create command correctly parsed
+- ✅ No regressions introduced (existing code paths preserved)
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ Future bd create output format changes (mitigated by robust first-line parsing)
+- ⚠️ Edge case: bd create failing with different error format (handled with meaningful error message)
 
-**What would increase confidence to [next level]:**
+**What would increase confidence to 100%:**
 
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
+- Long-term monitoring in production usage
+- Testing with bd CLI from different versions (if applicable)
 
 **Confidence levels guide:**
 - **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
@@ -177,38 +176,52 @@ The parser captures 'open' instead of the issue ID because it splits the entire 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- cmd/orch/main.go:375-395 - createBeadsIssue function with broken parsing logic
+- cmd/orch/main_test.go - Created unit tests for parsing logic
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test actual bd create output format
+bd create "test issue for parsing"
 
-# [Command description]
-[command]
+# Run unit tests
+go test -v ./cmd/orch/
+
+# Build binary
+make build
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- None
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Workspace:** .orch/workspace/og-debug-fix-bd-create-20dec/SPAWN_CONTEXT.md
+- **Beads Issue:** orch-go-c4r
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-20 10:00:** Investigation started
+- Initial question: Why does bd create output parsing capture 'open' instead of the issue ID?
+- Context: Spawned via systematic-debugging skill to fix parsing bug
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-20 10:05:** Root cause identified
+- Ran actual bd create command and observed multi-line output format
+- Confirmed parser splits entire output by spaces and takes last word "open"
+- Issue ID is on first line in format "✓ Created issue: <id>"
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-20 10:15:** Fix implemented and tested
+- Updated parsing logic to parse only first line
+- Created unit tests covering multiple output formats
+- All tests passing
+
+**2025-12-20 10:20:** Smoke test completed
+- Verified fix works end-to-end with real bd create command
+- Successfully parsed "orch-go-1ld" from multi-line output
+- Confirmed no regression
+
+**2025-12-20 10:25:** Investigation completed
+- Final confidence: Very High (99%)
+- Status: Complete
+- Key outcome: Parser now correctly extracts issue ID from first line, fixing bug where "open" was captured instead
