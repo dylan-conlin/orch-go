@@ -1,4 +1,4 @@
-**TLDR:** [One sentence restating the investigation question.] [One-two sentences summarizing the answer/conclusion.] [Confidence level and key limitation.]
+**TLDR:** Question: Does tmux spawn v2 (without --format json) work correctly? Answer: Yes, tmux spawn v2 correctly excludes --format json from opencode command, while inline spawn includes it. High confidence (90%) - validated via unit tests and manual verification.
 
 <!--
 Example TLDR:
@@ -14,47 +14,47 @@ Guidelines:
 
 # Investigation: [Investigation Title]
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Does tmux spawn v2 (without --format json) work correctly for spawning agents in tmux windows?
 
-**Started:** [YYYY-MM-DD]
-**Updated:** [YYYY-MM-DD]
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
+**Started:** 2025-12-19
+**Updated:** 2025-12-19
+**Owner:** opencode
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** Low (40-59%)
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Tmux spawn v2 removes --format json flag
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The `tmux.BuildSpawnCommand` function explicitly omits `--format json` from the opencode command arguments, as confirmed by running a test program that prints the command args. The test output shows: `opencode run --attach http://127.0.0.1:4096 --title test title test prompt` (no `--format json`). In contrast, inline spawn command includes `--format json`.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `pkg/tmux/tmux.go:76-88` (BuildSpawnCommand), test program `test_tmux_spawn.go` and `test_inline_spawn.go`.
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This confirms the core behavior of tmux spawn v2: tmux spawns should show the TUI, not JSON output, so the flag is omitted. The fix addresses the issue where tmux spawn incorrectly included `--format json`.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: All unit tests pass, including specific test for --format json exclusion
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Running `go test ./...` shows all tests pass. The tmux package test `TestBuildSpawnCommand` explicitly checks that `--format json` is NOT included in the command arguments for tmux spawn.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `pkg/tmux/tmux_test.go:96-100`, output of `go test ./...`.
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The test suite validates the correct behavior and ensures no regression. The existing test coverage provides confidence that the fix works as intended.
+
+---
+
+### Finding 3: Manual verification confirms tmux spawn command excludes --format json
+
+**Evidence:** Created and ran Go programs that call `tmux.BuildSpawnCommand` and `opencode.Client.BuildSpawnCommand`. Observed that tmux spawn command does not contain `--format json` while inline spawn command does. Output captured.
+
+**Source:** Test programs `test_tmux_spawn.go` and `test_inline_spawn.go` (see commands run). Output lines: `Command args: opencode run --attach http://127.0.0.1:4096 --title test title test prompt` and `Inline spawn command args: opencode run --attach http://127.0.0.1:4096 --format json --title test title test prompt`.
+
+**Significance:** Direct validation that the implementation works as intended, providing concrete evidence beyond unit tests.
 
 ---
 
@@ -62,150 +62,96 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Tmux spawn v2 successfully removes --format json flag** - The fix ensures tmux spawn shows TUI instead of JSON output, aligning with the design goal of fire-and-forget agent spawning in tmux windows.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Test coverage validates the behavior** - Existing unit tests explicitly check for absence of --format json in tmux spawn commands, providing regression protection.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Manual verification confirms implementation** - Direct testing of the command-building functions shows the expected difference between tmux and inline spawn modes.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Yes, tmux spawn v2 works correctly: it excludes --format json from opencode commands when spawning in tmux windows, while inline spawn continues to include --format json for JSON parsing. This is validated by unit tests and manual verification. Limitation: integration test with real tmux and opencode server was not performed, but the command-building logic is fully tested.
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** High (90%)
 
 **Why this level?**
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+The evidence includes: (1) code inspection showing explicit omission of `--format json` in tmux spawn command builder, (2) passing unit tests that validate this omission, (3) manual verification via test programs that confirm the command arguments are correct. Minor uncertainty remains about integration with real tmux and opencode server, but the command-building logic is fully tested.
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ Tmux spawn v2 excludes `--format json` from opencode command (code evidence)
+- ✅ Unit tests pass and include specific check for `--format json` absence
+- ✅ Manual test programs produce expected outputs
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ Integration with real tmux session and opencode server not tested (could be edge cases with tmux command execution)
+- ⚠️ Behavior when tmux is not available (fallback to inline spawn) not tested
+- ⚠️ Edge cases like special characters in prompt/title not validated
 
-**What would increase confidence to [next level]:**
+**What would increase confidence to Very High (95%+):**
 
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-
-**Confidence levels guide:**
-- **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
-- **High (80-94%):** Solid evidence, minor uncertainties, confident to act
-- **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
-- **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
-- **Very Low (<40%):** Highly speculative, more investigation needed
+- Integration test with mocked tmux and opencode that validates full spawn flow
+- Test of fallback behavior when tmux is unavailable
+- Edge case testing for unusual prompts and titles
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
-
----
+No implementation recommendations needed - the fix (tmux spawn v2) is already implemented and validated. The investigation confirms the behavior is correct.
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `pkg/tmux/tmux.go` - Tmux spawn command building logic
+- `pkg/tmux/tmux_test.go` - Unit tests for tmux spawn
+- `cmd/orch/main.go` - Spawn command implementation
+- `pkg/spawn/config.go` - Spawn configuration
+- `pkg/spawn/context.go` - Spawn context generation
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Run all tests
+go test ./...
 
-# [Command description]
-[command]
+# Verify tmux spawn command excludes --format json
+go run test_tmux_spawn.go
+
+# Verify inline spawn command includes --format json
+go run test_inline_spawn.go
+
+# Beads issue tracking
+bd comment orch-go-2ap "Phase: Planning - Starting investigation of tmux spawn v2"
+bd comment orch-go-2ap "investigation_path: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-19-inv-test-tmux-spawn-v2.md"
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- None
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Beads issue:** `orch-go-2ap` - This investigation task
+- **Investigation:** `.kb/investigations/2025-12-19-inv-test-tmux-spawn-v2.md` (this file)
+- **Workspace:** `.orch/workspace/og-inv-test-tmux-spawn-19dec/` (spawn context location)
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**[2025-12-19 21:30]:** Investigation started
+- Initial question: Does tmux spawn v2 (without --format json) work correctly for spawning agents in tmux windows?
+- Context: Spawned from beads issue orch-go-2ap to test tmux spawn v2.
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**[2025-12-19 21:45]:** Codebase analysis and test execution
+- Reviewed tmux spawn implementation and unit tests
+- Ran test programs to verify command building behavior
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**[2025-12-19 21:50]:** Investigation completed
+- Final confidence: High (90%)
+- Status: Complete
+- Key outcome: Tmux spawn v2 correctly excludes --format json flag, validated by unit tests and manual verification.
