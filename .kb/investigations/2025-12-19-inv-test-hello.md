@@ -3,6 +3,7 @@ date: "2025-12-19"
 status: "Complete"
 linked_issues:
   - orch-go-oml
+  - orch-go-e79
 ---
 
 # test hello
@@ -19,6 +20,7 @@ Does the orch-go spawn command successfully spawn an agent that can complete a s
 - Created investigation file using `kb create investigation test-hello`.
 - Analyzed the orch-go source code and previous investigations about similar tasks.
 - Performed test of orch-go spawn command with `--inline` flag (timeout 30 seconds).
+- Verified previous test by running `./orch-go spawn investigation "test hello" --inline` with 10 second timeout and observed same hanging behavior.
 
 ## What I observed
 
@@ -26,6 +28,7 @@ Does the orch-go spawn command successfully spawn an agent that can complete a s
 - The `kb create investigation` command created a file with a complex template, not the simple template expected (same issue as previous investigation).
 - The orch-go spawn command with `--inline` flag hung indefinitely without output (confirmed by test). The OpenCode server was running (port 4096). No error messages.
 - The agent's own spawn (via tmux mode) succeeded, as evidenced by the workspace creation and this agent's existence.
+- Verification test with 10 second timeout reproduced the hanging behavior, confirming the issue.
 
 ## Test performed
 
