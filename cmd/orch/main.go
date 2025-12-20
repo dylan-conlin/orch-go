@@ -4,10 +4,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/skills"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/gen2brain/beeep"
 	"github.com/spf13/cobra"
 )
@@ -43,22 +48,41 @@ func init() {
 	rootCmd.AddCommand(spawnCmd)
 	rootCmd.AddCommand(askCmd)
 	rootCmd.AddCommand(monitorCmd)
+	rootCmd.AddCommand(statusCmd)
 }
 
-var spawnCmd = &cobra.Command{
-	Use:   "spawn [prompt]",
-	Short: "Spawn a new OpenCode session",
-	Long:  "Spawn a new OpenCode session with the given prompt.",
-	Args:  cobra.MinimumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		prompt := args[0]
-		for i := 1; i < len(args); i++ {
-			prompt += " " + args[i]
-		}
+var (
+	// Spawn command flags
+	spawnSkill      string
+	spawnIssue      string
+	spawnPhases     string
+	spawnMode       string
+	spawnValidation string
+)
 
-		title := fmt.Sprintf("orch-go-%d", time.Now().Unix())
-		return runSpawn(serverURL, prompt, title)
+var spawnCmd = &cobra.Command{
+	Use:   "spawn [skill] [task]",
+	Short: "Spawn a new OpenCode session with skill context",
+	Long: `Spawn a new OpenCode session with skill context.
+
+Examples:
+  orch-go spawn investigation "explore the codebase"
+  orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
+  orch-go spawn --issue proj-123 feature-impl "implement the feature"`,
+	Args: cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		skillName := args[0]
+		task := strings.Join(args[1:], " ")
+
+		return runSpawnWithSkill(serverURL, skillName, task)
 	},
+}
+
+func init() {
+	spawnCmd.Flags().StringVar(&spawnIssue, "issue", "", "Beads issue ID for tracking")
+	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
+	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
+	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 }
 
 var askCmd = &cobra.Command{
@@ -86,10 +110,76 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
-func runSpawn(serverURL, prompt, title string) error {
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "List active OpenCode sessions",
+	Long: `List all active OpenCode sessions with their status.
+
+Shows session ID, workspace/title, directory, and last update time.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runStatus(serverURL)
+	},
+}
+
+func runSpawnWithSkill(serverURL, skillName, task string) error {
+	// Get current directory as project dir
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Get project name from directory
+	projectName := filepath.Base(projectDir)
+
+	// Generate workspace name
+	workspaceName := spawn.GenerateWorkspaceName(skillName, task)
+
+	// Load skill content
+	loader := skills.DefaultLoader()
+	skillContent, err := loader.LoadSkillContent(skillName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load skill '%s': %v\n", skillName, err)
+		skillContent = "" // Continue without skill content
+	}
+
+	// Determine beads ID - either from flag or create new issue
+	beadsID := spawnIssue
+	if beadsID == "" {
+		// Create a new beads issue
+		beadsID, err = createBeadsIssue(projectName, skillName, task)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create beads issue: %v\n", err)
+			beadsID = fmt.Sprintf("%s-%d", projectName, time.Now().Unix()) // Fallback ID
+		}
+	}
+
+	// Build spawn config
+	cfg := &spawn.Config{
+		Task:          task,
+		SkillName:     skillName,
+		Project:       projectName,
+		ProjectDir:    projectDir,
+		WorkspaceName: workspaceName,
+		SkillContent:  skillContent,
+		BeadsID:       beadsID,
+		Phases:        spawnPhases,
+		Mode:          spawnMode,
+		Validation:    spawnValidation,
+	}
+
+	// Write SPAWN_CONTEXT.md
+	if err := spawn.WriteContext(cfg); err != nil {
+		return fmt.Errorf("failed to write spawn context: %w", err)
+	}
+
+	// Generate minimal prompt
+	minimalPrompt := spawn.MinimalPrompt(cfg)
+
+	// Spawn opencode session
 	client := opencode.NewClient(serverURL)
-	cmd := client.BuildSpawnCommand(prompt, title)
+	cmd := client.BuildSpawnCommand(minimalPrompt, workspaceName)
 	cmd.Stderr = os.Stderr
+	cmd.Dir = projectDir
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -116,16 +206,55 @@ func runSpawn(serverURL, prompt, title string) error {
 		SessionID: result.SessionID,
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"prompt": prompt,
-			"title":  title,
+			"skill":     skillName,
+			"task":      task,
+			"workspace": workspaceName,
+			"beads_id":  beadsID,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("Session ID: %s\n", result.SessionID)
+	// Print spawn summary
+	fmt.Printf("Spawned agent:\n")
+	fmt.Printf("  Session ID: %s\n", result.SessionID)
+	fmt.Printf("  Workspace:  %s\n", workspaceName)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+
 	return nil
+}
+
+// createBeadsIssue creates a new beads issue for tracking the agent.
+func createBeadsIssue(projectName, skillName, task string) (string, error) {
+	// Build issue title
+	title := fmt.Sprintf("[%s] %s: %s", projectName, skillName, truncate(task, 50))
+
+	// Run bd create command
+	cmd := exec.Command("bd", "create", title)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("bd create failed: %w", err)
+	}
+
+	// Parse issue ID from output (expected format: "Created issue: proj-123")
+	outputStr := strings.TrimSpace(string(output))
+	parts := strings.Split(outputStr, " ")
+	if len(parts) > 0 {
+		// Take the last word which should be the issue ID
+		return parts[len(parts)-1], nil
+	}
+
+	return "", fmt.Errorf("could not parse issue ID from: %s", outputStr)
+}
+
+// truncate truncates a string to maxLen characters.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func runAsk(serverURL, sessionID, prompt string) error {
@@ -167,6 +296,38 @@ func runAsk(serverURL, sessionID, prompt string) error {
 	}
 
 	fmt.Printf("Q&A complete for session: %s\n", sessionID)
+	return nil
+}
+
+func runStatus(serverURL string) error {
+	client := opencode.NewClient(serverURL)
+	sessions, err := client.ListSessions()
+	if err != nil {
+		return fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	if len(sessions) == 0 {
+		fmt.Println("No active sessions")
+		return nil
+	}
+
+	// Print table header
+	fmt.Printf("%-35s %-30s %-40s %s\n", "SESSION ID", "TITLE", "DIRECTORY", "UPDATED")
+	fmt.Printf("%s\n", strings.Repeat("-", 130))
+
+	// Print each session
+	for _, s := range sessions {
+		// Format updated time
+		updated := time.Unix(s.Time.Updated/1000, 0).Format("2006-01-02 15:04:05")
+
+		// Truncate long fields
+		title := truncate(s.Title, 28)
+		dir := truncate(s.Directory, 38)
+
+		fmt.Printf("%-35s %-30s %-40s %s\n", s.ID, title, dir, updated)
+	}
+
+	fmt.Printf("\nTotal: %d sessions\n", len(sessions))
 	return nil
 }
 
