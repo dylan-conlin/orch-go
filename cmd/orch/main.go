@@ -12,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -209,6 +210,34 @@ func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) instead of in tmux")
 }
 
+var (
+	// Tail command flags
+	tailLines int
+)
+
+var tailCmd = &cobra.Command{
+	Use:   "tail [beads-id]",
+	Short: "Capture recent output from an agent's tmux window",
+	Long: `Capture recent output from an agent's tmux window for debugging stuck agents.
+
+Finds the tmux window associated with the beads issue ID and captures
+the last N lines of output.
+
+Examples:
+  orch-go tail proj-123              # Capture last 50 lines (default)
+  orch-go tail proj-123 --lines 100  # Capture last 100 lines
+  orch-go tail proj-123 -n 20        # Capture last 20 lines`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		beadsID := args[0]
+		return runTail(beadsID, tailLines)
+	},
+}
+
+func init() {
+	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
+}
+
 // InferSkillFromIssueType maps issue types to appropriate skills.
 // Returns an error for types that cannot be spawned (e.g., epic) or unknown types.
 func InferSkillFromIssueType(issueType string) (string, error) {
@@ -369,6 +398,26 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	// Select the window to focus it
 	_ = tmux.SelectWindow(windowTarget)
 
+	// Register agent in persistent registry
+	reg, err := registry.New("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to open registry: %v\n", err)
+	} else {
+		agent := &registry.Agent{
+			ID:         cfg.WorkspaceName,
+			BeadsID:    beadsID,
+			WindowID:   windowID,
+			Window:     windowTarget,
+			ProjectDir: cfg.ProjectDir,
+			Skill:      skillName,
+		}
+		if err := reg.Register(agent); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to register agent: %v\n", err)
+		} else if err := reg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+		}
+	}
+
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -422,6 +471,24 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("opencode exited with error: %w", err)
+	}
+
+	// Register agent in persistent registry (inline agents have no window_id)
+	reg, err := registry.New("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to open registry: %v\n", err)
+	} else {
+		agent := &registry.Agent{
+			ID:         cfg.WorkspaceName,
+			BeadsID:    beadsID,
+			ProjectDir: cfg.ProjectDir,
+			Skill:      skillName,
+		}
+		if err := reg.Register(agent); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to register agent: %v\n", err)
+		} else if err := reg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+		}
 	}
 
 	// Log the session creation
