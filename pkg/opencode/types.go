@@ -48,3 +48,28 @@ type Result struct {
 	SessionID string
 	Events    []Event
 }
+
+// Session represents a session from the OpenCode /session API.
+type Session struct {
+	ID        string         `json:"id"`
+	Version   string         `json:"version,omitempty"`
+	ProjectID string         `json:"projectID,omitempty"`
+	Directory string         `json:"directory"`
+	Title     string         `json:"title"`
+	ParentID  string         `json:"parentID,omitempty"`
+	Time      SessionTime    `json:"time"`
+	Summary   SessionSummary `json:"summary,omitempty"`
+}
+
+// SessionTime contains session timing information.
+type SessionTime struct {
+	Created int64 `json:"created"`
+	Updated int64 `json:"updated"`
+}
+
+// SessionSummary contains session change summary.
+type SessionSummary struct {
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
+	Files     int `json:"files"`
+}

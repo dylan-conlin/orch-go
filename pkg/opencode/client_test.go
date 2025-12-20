@@ -2,6 +2,8 @@ package opencode
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -177,5 +179,91 @@ func TestBuildAskCommand(t *testing.T) {
 
 	if found < len(expectedArgs) {
 		t.Errorf("BuildAskCommand() missing expected args, found %v of %v", found, len(expectedArgs))
+	}
+}
+
+// TestListSessions tests the ListSessions API call.
+func TestListSessions(t *testing.T) {
+	// Create mock server with session list response
+	mockSessions := `[
+		{"id":"ses_abc123","title":"Test Session 1","directory":"/home/user/project1","time":{"created":1766200000000,"updated":1766200010000},"summary":{"additions":10,"deletions":5,"files":2}},
+		{"id":"ses_xyz789","title":"Test Session 2","directory":"/home/user/project2","time":{"created":1766199000000,"updated":1766199010000},"summary":{"additions":20,"deletions":10,"files":4}}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/session" {
+			t.Errorf("Expected path /session, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockSessions))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	sessions, err := client.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+
+	if len(sessions) != 2 {
+		t.Fatalf("Expected 2 sessions, got %d", len(sessions))
+	}
+
+	// Verify first session
+	if sessions[0].ID != "ses_abc123" {
+		t.Errorf("sessions[0].ID = %s, want ses_abc123", sessions[0].ID)
+	}
+	if sessions[0].Title != "Test Session 1" {
+		t.Errorf("sessions[0].Title = %s, want Test Session 1", sessions[0].Title)
+	}
+	if sessions[0].Directory != "/home/user/project1" {
+		t.Errorf("sessions[0].Directory = %s, want /home/user/project1", sessions[0].Directory)
+	}
+
+	// Verify second session
+	if sessions[1].ID != "ses_xyz789" {
+		t.Errorf("sessions[1].ID = %s, want ses_xyz789", sessions[1].ID)
+	}
+}
+
+// TestListSessionsEmpty tests ListSessions with empty response.
+func TestListSessionsEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	sessions, err := client.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Errorf("Expected 0 sessions, got %d", len(sessions))
+	}
+}
+
+// TestListSessionsError tests ListSessions with server error.
+func TestListSessionsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListSessions()
+	if err == nil {
+		t.Error("Expected error for server error response")
+	}
+}
+
+// TestListSessionsConnectionError tests ListSessions with connection error.
+func TestListSessionsConnectionError(t *testing.T) {
+	client := NewClient("http://127.0.0.1:99999") // Invalid port
+	_, err := client.ListSessions()
+	if err == nil {
+		t.Error("Expected error for connection failure")
 	}
 }

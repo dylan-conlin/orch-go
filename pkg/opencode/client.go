@@ -3,7 +3,9 @@ package opencode
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"os/exec"
 )
 
@@ -95,4 +97,24 @@ func (c *Client) BuildAskCommand(sessionID, prompt string) *exec.Cmd {
 		prompt,
 	}
 	return exec.Command("opencode", args...)
+}
+
+// ListSessions fetches all sessions from the OpenCode API.
+func (c *Client) ListSessions() ([]Session, error) {
+	resp, err := http.Get(c.ServerURL + "/session")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch sessions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var sessions []Session
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		return nil, fmt.Errorf("failed to decode sessions: %w", err)
+	}
+
+	return sessions, nil
 }
