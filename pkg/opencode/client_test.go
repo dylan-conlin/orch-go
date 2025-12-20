@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -265,5 +266,73 @@ func TestListSessionsConnectionError(t *testing.T) {
 	_, err := client.ListSessions()
 	if err == nil {
 		t.Error("Expected error for connection failure")
+	}
+}
+
+// TestProcessOutputWithStreaming tests ProcessOutputWithStreaming extracts text content.
+func TestProcessOutputWithStreaming(t *testing.T) {
+	events := []string{
+		`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_xyz","step":{"id":"step_1"}}`,
+		`{"type":"text","sessionID":"ses_xyz","content":"Hello, "}`,
+		`{"type":"text","sessionID":"ses_xyz","content":"world!"}`,
+		`{"type":"step_finish","sessionID":"ses_xyz","step":{"id":"step_1"}}`,
+	}
+
+	var output bytes.Buffer
+	for _, e := range events {
+		output.WriteString(e + "\n")
+	}
+
+	var streamedContent bytes.Buffer
+	result, err := ProcessOutputWithStreaming(&output, &streamedContent)
+	if err != nil {
+		t.Fatalf("ProcessOutputWithStreaming() error = %v", err)
+	}
+
+	if result.SessionID != "ses_xyz" {
+		t.Errorf("SessionID = %v, want ses_xyz", result.SessionID)
+	}
+	if len(result.Events) != 4 {
+		t.Errorf("Events count = %d, want 4", len(result.Events))
+	}
+
+	// Verify streamed content contains the text
+	streamed := streamedContent.String()
+	if !strings.Contains(streamed, "Hello, ") {
+		t.Errorf("Streamed content missing 'Hello, ', got: %s", streamed)
+	}
+	if !strings.Contains(streamed, "world!") {
+		t.Errorf("Streamed content missing 'world!', got: %s", streamed)
+	}
+}
+
+// TestProcessOutputWithStreamingEmpty tests streaming with no text events.
+func TestProcessOutputWithStreamingEmpty(t *testing.T) {
+	events := []string{
+		`{"type":"step_start","sessionID":"ses_xyz","step":{"id":"step_1"}}`,
+		`{"type":"step_finish","sessionID":"ses_xyz","step":{"id":"step_1"}}`,
+	}
+
+	var output bytes.Buffer
+	for _, e := range events {
+		output.WriteString(e + "\n")
+	}
+
+	var streamedContent bytes.Buffer
+	result, err := ProcessOutputWithStreaming(&output, &streamedContent)
+	if err != nil {
+		t.Fatalf("ProcessOutputWithStreaming() error = %v", err)
+	}
+
+	if result.SessionID != "ses_xyz" {
+		t.Errorf("SessionID = %v, want ses_xyz", result.SessionID)
+	}
+	if len(result.Events) != 2 {
+		t.Errorf("Events count = %d, want 2", len(result.Events))
+	}
+
+	// Streamed content should be empty (no text events)
+	if streamedContent.String() != "" {
+		t.Errorf("Expected empty streamed content, got: %s", streamedContent.String())
 	}
 }

@@ -75,6 +75,44 @@ func ProcessOutput(r io.Reader) (*Result, error) {
 	return result, nil
 }
 
+// ProcessOutputWithStreaming processes the output from opencode command
+// and streams text content to the provided writer.
+func ProcessOutputWithStreaming(r io.Reader, streamTo io.Writer) (*Result, error) {
+	result := &Result{}
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		event, err := ParseEvent(line)
+		if err != nil {
+			// Skip non-JSON lines
+			continue
+		}
+
+		result.Events = append(result.Events, event)
+
+		// sessionID is at top level of each event - grab from first event that has it
+		if result.SessionID == "" && event.SessionID != "" {
+			result.SessionID = event.SessionID
+		}
+
+		// Stream text content to output
+		if event.Type == "text" && event.Content != "" {
+			streamTo.Write([]byte(event.Content))
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
 // BuildSpawnCommand builds the opencode spawn command.
 func (c *Client) BuildSpawnCommand(prompt, title string) *exec.Cmd {
 	args := []string{

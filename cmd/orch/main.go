@@ -47,6 +47,7 @@ func init() {
 
 	rootCmd.AddCommand(spawnCmd)
 	rootCmd.AddCommand(askCmd)
+	rootCmd.AddCommand(sendCmd)
 	rootCmd.AddCommand(monitorCmd)
 	rootCmd.AddCommand(statusCmd)
 }
@@ -87,17 +88,32 @@ func init() {
 
 var askCmd = &cobra.Command{
 	Use:   "ask [session-id] [prompt]",
-	Short: "Send a message to an existing session",
-	Long:  "Send a message to an existing OpenCode session.",
+	Short: "Send a message to an existing session (alias for send)",
+	Long:  "Send a message to an existing OpenCode session. This is an alias for the 'send' command.",
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sessionID := args[0]
-		prompt := args[1]
-		for i := 2; i < len(args); i++ {
-			prompt += " " + args[i]
-		}
+		prompt := strings.Join(args[1:], " ")
+		return runSend(serverURL, sessionID, prompt)
+	},
+}
 
-		return runAsk(serverURL, sessionID, prompt)
+var sendCmd = &cobra.Command{
+	Use:   "send [session-id] [message]",
+	Short: "Send a message to an existing session",
+	Long: `Send a message to an existing OpenCode session.
+
+The session can be running or completed. Response text is streamed to stdout
+as it's received from the agent.
+
+Examples:
+  orch-go send ses_abc123 "what files did you modify?"
+  orch-go send ses_xyz789 "can you explain the changes?"`,
+	Args: cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sessionID := args[0]
+		message := strings.Join(args[1:], " ")
+		return runSend(serverURL, sessionID, message)
 	},
 }
 
@@ -257,9 +273,9 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-func runAsk(serverURL, sessionID, prompt string) error {
+func runSend(serverURL, sessionID, message string) error {
 	client := opencode.NewClient(serverURL)
-	cmd := client.BuildAskCommand(sessionID, prompt)
+	cmd := client.BuildAskCommand(sessionID, message)
 	cmd.Stderr = os.Stderr
 
 	stdout, err := cmd.StdoutPipe()
@@ -271,7 +287,8 @@ func runAsk(serverURL, sessionID, prompt string) error {
 		return fmt.Errorf("failed to start opencode: %w", err)
 	}
 
-	result, err := opencode.ProcessOutput(stdout)
+	// Stream text content to stdout as it arrives
+	result, err := opencode.ProcessOutputWithStreaming(stdout, os.Stdout)
 	if err != nil {
 		return fmt.Errorf("failed to process output: %w", err)
 	}
@@ -280,14 +297,14 @@ func runAsk(serverURL, sessionID, prompt string) error {
 		return fmt.Errorf("opencode exited with error: %w", err)
 	}
 
-	// Log the Q&A
+	// Log the send
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
-		Type:      "session.ask",
+		Type:      "session.send",
 		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"prompt":      prompt,
+			"message":     message,
 			"event_count": len(result.Events),
 		},
 	}
@@ -295,7 +312,8 @@ func runAsk(serverURL, sessionID, prompt string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("Q&A complete for session: %s\n", sessionID)
+	// Print newline after streamed content for cleaner output
+	fmt.Println()
 	return nil
 }
 
