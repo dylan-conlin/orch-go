@@ -659,19 +659,25 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"window":              windowTarget,
+		"window_id":           windowID,
+		"spawn_mode":          "tmux",
+		"model":               cfg.Model,
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	if cfg.MCP != "" {
+		eventData["mcp"] = cfg.MCP
+	}
 	event := events.Event{
 		Type:      "session.spawned",
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"skill":      skillName,
-			"task":       task,
-			"workspace":  cfg.WorkspaceName,
-			"beads_id":   beadsID,
-			"window":     windowTarget,
-			"window_id":  windowID,
-			"spawn_mode": "tmux",
-			"model":      cfg.Model,
-		},
+		Data:      eventData,
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
@@ -683,6 +689,12 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	fmt.Printf("  Window:     %s\n", windowTarget)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
 	fmt.Printf("  Model:      %s\n", cfg.Model)
+	if cfg.MCP != "" {
+		fmt.Printf("  MCP:        %s\n", cfg.MCP)
+	}
+	if cfg.NoTrack {
+		fmt.Printf("  Tracking:   disabled (--no-track)\n")
+	}
 	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
 
 	return nil
@@ -733,20 +745,26 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	}
 
 	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	event := events.Event{
+	inlineLogger := events.NewLogger(events.DefaultLogPath())
+	inlineEventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"spawn_mode":          "inline",
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	if cfg.MCP != "" {
+		inlineEventData["mcp"] = cfg.MCP
+	}
+	inlineEvent := events.Event{
 		Type:      "session.spawned",
 		SessionID: result.SessionID,
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"skill":      skillName,
-			"task":       task,
-			"workspace":  cfg.WorkspaceName,
-			"beads_id":   beadsID,
-			"spawn_mode": "inline",
-		},
+		Data:      inlineEventData,
 	}
-	if err := logger.Log(event); err != nil {
+	if err := inlineLogger.Log(inlineEvent); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
@@ -755,6 +773,12 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	fmt.Printf("  Session ID: %s\n", result.SessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	if cfg.MCP != "" {
+		fmt.Printf("  MCP:        %s\n", cfg.MCP)
+	}
+	if cfg.NoTrack {
+		fmt.Printf("  Tracking:   disabled (--no-track)\n")
+	}
 	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
 
 	return nil

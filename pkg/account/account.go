@@ -17,13 +17,38 @@
 package account
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// OAuth constants for Anthropic API
+const (
+	TokenEndpoint = "https://console.anthropic.com/v1/oauth/token"
+	OAuthClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e" // OpenCode's public client ID
+)
+
+// TokenInfo holds OAuth token information from refresh exchange.
+type TokenInfo struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    int64 // Unix timestamp in milliseconds
+}
+
+// TokenRefreshError is returned when token refresh fails.
+type TokenRefreshError struct {
+	Message string
+}
+
+func (e *TokenRefreshError) Error() string {
+	return e.Message
+}
 
 // Account represents a saved account configuration.
 type Account struct {
@@ -232,4 +257,134 @@ func ListAccountInfo() ([]AccountInfo, error) {
 	}
 
 	return result, nil
+}
+
+// tokenRequest represents the OAuth token refresh request body.
+type tokenRequest struct {
+	GrantType    string `json:"grant_type"`
+	RefreshToken string `json:"refresh_token"`
+	ClientID     string `json:"client_id"`
+}
+
+// tokenResponse represents the OAuth token refresh response.
+type tokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
+// RefreshOAuthToken exchanges a refresh token for new access and refresh tokens.
+func RefreshOAuthToken(refreshToken string) (*TokenInfo, error) {
+	reqBody := tokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: refreshToken,
+		ClientID:     OAuthClientID,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, &TokenRefreshError{Message: fmt.Sprintf("failed to marshal request: %v", err)}
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("POST", TokenEndpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, &TokenRefreshError{Message: fmt.Sprintf("failed to create request: %v", err)}
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, &TokenRefreshError{Message: fmt.Sprintf("token refresh request failed: %v", err)}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var respBody bytes.Buffer
+		respBody.ReadFrom(resp.Body)
+		errMsg := respBody.String()
+		if len(errMsg) > 200 {
+			errMsg = errMsg[:200]
+		}
+		return nil, &TokenRefreshError{
+			Message: fmt.Sprintf("token refresh failed with status %d: %s", resp.StatusCode, errMsg),
+		}
+	}
+
+	var tokenResp tokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, &TokenRefreshError{Message: fmt.Sprintf("failed to decode response: %v", err)}
+	}
+
+	if tokenResp.AccessToken == "" || tokenResp.RefreshToken == "" {
+		return nil, &TokenRefreshError{Message: "invalid token response: missing tokens"}
+	}
+
+	// expires_in is in seconds, convert to milliseconds timestamp
+	expiresIn := tokenResp.ExpiresIn
+	if expiresIn == 0 {
+		expiresIn = 28800 // Default 8 hours
+	}
+	expiresAt := (time.Now().Unix() + int64(expiresIn)) * 1000
+
+	return &TokenInfo{
+		AccessToken:  tokenResp.AccessToken,
+		RefreshToken: tokenResp.RefreshToken,
+		ExpiresAt:    expiresAt,
+	}, nil
+}
+
+// SwitchAccount switches to a saved account by refreshing its OAuth tokens.
+// It updates the OpenCode auth file and saves the new refresh token back to accounts.yaml.
+func SwitchAccount(name string) (email string, err error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to load accounts: %w", err)
+	}
+
+	acc, ok := cfg.Accounts[name]
+	if !ok {
+		available := cfg.List()
+		if len(available) == 0 {
+			return "", fmt.Errorf("account '%s' not found, no accounts configured", name)
+		}
+		return "", fmt.Errorf("account '%s' not found, available: %v", name, available)
+	}
+
+	if acc.Source != "saved" {
+		return "", fmt.Errorf("account '%s' is not a saved account (source: %s), only saved accounts can be switched to", name, acc.Source)
+	}
+
+	if acc.RefreshToken == "" {
+		return "", fmt.Errorf("account '%s' has no refresh token", name)
+	}
+
+	// Exchange refresh token for new tokens
+	tokenInfo, err := RefreshOAuthToken(acc.RefreshToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to refresh token for '%s': %w", name, err)
+	}
+
+	// Update the saved account with new refresh token
+	acc.RefreshToken = tokenInfo.RefreshToken
+	cfg.Accounts[name] = acc
+	if err := SaveConfig(cfg); err != nil {
+		return "", fmt.Errorf("failed to save updated config: %w", err)
+	}
+
+	// Write to OpenCode auth file
+	auth := &OpenCodeAuth{}
+	auth.Anthropic.Type = "oauth"
+	auth.Anthropic.Refresh = tokenInfo.RefreshToken
+	auth.Anthropic.Access = tokenInfo.AccessToken
+	auth.Anthropic.Expires = tokenInfo.ExpiresAt
+
+	if err := SaveOpenCodeAuth(auth); err != nil {
+		return "", fmt.Errorf("failed to update OpenCode auth: %w", err)
+	}
+
+	if acc.Email != "" {
+		return acc.Email, nil
+	}
+	return name, nil
 }
