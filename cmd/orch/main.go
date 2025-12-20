@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/question"
@@ -60,6 +62,9 @@ func init() {
 	rootCmd.AddCommand(tailCmd)
 	rootCmd.AddCommand(questionCmd)
 	rootCmd.AddCommand(abandonCmd)
+	rootCmd.AddCommand(cleanCmd)
+	rootCmd.AddCommand(accountCmd)
+	rootCmd.AddCommand(waitCmd)
 }
 
 var (
@@ -69,7 +74,8 @@ var (
 	spawnPhases     string
 	spawnMode       string
 	spawnValidation string
-	spawnInline     bool // Run inline (blocking) instead of in tmux
+	spawnInline     bool   // Run inline (blocking) instead of in tmux
+	spawnModel      string // Model to use for standalone spawns
 )
 
 var spawnCmd = &cobra.Command{
@@ -80,11 +86,16 @@ var spawnCmd = &cobra.Command{
 By default, spawns the agent in a tmux window and returns immediately.
 Use --inline to run in the current terminal (blocking).
 
+Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
+Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
+
 Examples:
   orch-go spawn investigation "explore the codebase"
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
-  orch-go spawn --inline investigation "explore codebase"  # Run inline (blocking)`,
+  orch-go spawn --inline investigation "explore codebase"  # Run inline (blocking)
+  orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
+  orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -100,6 +111,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) instead of in tmux")
+	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 }
 
 var askCmd = &cobra.Command{
@@ -507,6 +519,9 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 		// Continue anyway
 	}
 
+	// Resolve model - convert aliases to full format
+	resolvedModel := model.Resolve(spawnModel)
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:          task,
@@ -519,6 +534,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 		Phases:        spawnPhases,
 		Mode:          spawnMode,
 		Validation:    spawnValidation,
+		Model:         resolvedModel.Format(),
 	}
 
 	// Write SPAWN_CONTEXT.md
@@ -557,16 +573,32 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		return fmt.Errorf("failed to create window: %w", err)
 	}
 
-	// Build opencode command (without --format json so TUI shows)
-	tmuxCfg := &tmux.SpawnConfig{
-		ServerURL:     serverURL,
-		Prompt:        minimalPrompt,
-		Title:         cfg.WorkspaceName,
-		ProjectDir:    cfg.ProjectDir,
-		WorkspaceName: cfg.WorkspaceName,
+	// Build opencode command using 'run' mode
+	// This is more robust as it handles model selection and initial prompt directly
+	runCfg := &tmux.RunConfig{
+		ProjectDir: cfg.ProjectDir,
+		Model:      cfg.Model,
+		Title:      cfg.WorkspaceName,
+		Prompt:     minimalPrompt,
 	}
-	cmd := tmux.BuildSpawnCommand(tmuxCfg)
-	opencodeCmd := strings.Join(cmd.Args, " ")
+
+	cmd := tmux.BuildRunCommand(runCfg)
+
+	// Ensure the command is properly quoted for tmux send-keys
+	var args []string
+	for _, arg := range cmd.Args {
+		if strings.Contains(arg, " ") {
+			args = append(args, fmt.Sprintf("\"%s\"", arg))
+		} else {
+			args = append(args, arg)
+		}
+	}
+	opencodeCmd := strings.Join(args, " ")
+
+	// If using Gemini, ensure we don't have a stale Anthropic key in the window
+	if strings.Contains(cfg.Model, "gemini") {
+		opencodeCmd = "unset ANTHROPIC_API_KEY && " + opencodeCmd
+	}
 
 	// Send the command to the tmux window
 	if err := tmux.SendKeysLiteral(windowTarget, opencodeCmd); err != nil {
@@ -582,6 +614,7 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	_ = tmux.SelectWindow(windowTarget)
 
 	// Register agent in persistent registry
+
 	reg, err := registry.New("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to open registry: %v\n", err)
@@ -614,6 +647,7 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 			"window":     windowTarget,
 			"window_id":  windowID,
 			"spawn_mode": "tmux",
+			"model":      cfg.Model,
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -625,6 +659,7 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Window:     %s\n", windowTarget)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Model:      %s\n", cfg.Model)
 	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
 
 	return nil
@@ -714,24 +749,20 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 		return "", fmt.Errorf("bd create failed: %w", err)
 	}
 
-	// Parse issue ID from output (multi-line format with first line: "✓ Created issue: proj-123")
+	// Parse issue ID from output (search all lines for "issue: <id>")
 	outputStr := strings.TrimSpace(string(output))
-
-	// Split by newline and parse first line only
 	lines := strings.Split(outputStr, "\n")
-	if len(lines) == 0 {
-		return "", fmt.Errorf("empty output from bd create")
-	}
 
-	firstLine := strings.TrimSpace(lines[0])
-
-	// Look for "issue:" in the first line and extract the ID after it
-	parts := strings.Fields(firstLine)
-	for i, part := range parts {
-		if strings.Contains(part, "issue:") {
-			// Issue ID should be the next word after "issue:"
-			if i+1 < len(parts) {
-				return parts[i+1], nil
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Look for "issue:" in the line and extract the ID after it
+		parts := strings.Fields(line)
+		for i, part := range parts {
+			if strings.Contains(part, "issue:") {
+				// Issue ID should be the next word after "issue:"
+				if i+1 < len(parts) {
+					return parts[i+1], nil
+				}
 			}
 		}
 	}
@@ -884,6 +915,29 @@ func runComplete(beadsID string) error {
 	fmt.Printf("Closed beads issue: %s\n", beadsID)
 	fmt.Printf("Reason: %s\n", reason)
 
+	// Clean up tmux window and registry
+	reg, err := registry.New("")
+	if err == nil {
+		agent := reg.Find(beadsID)
+		if agent != nil {
+			// Kill the tmux window if it has one
+			if agent.WindowID != "" {
+				if err := tmux.KillWindowByID(agent.WindowID); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: could not kill window %s: %v\n", agent.WindowID, err)
+				} else {
+					fmt.Printf("Closed tmux window: %s\n", agent.Window)
+				}
+			}
+
+			// Mark agent as completed in registry
+			if reg.Complete(agent.ID) {
+				if err := reg.Save(); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+				}
+			}
+		}
+	}
+
 	// Log the completion
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -987,4 +1041,306 @@ func runMonitor(serverURL string) error {
 			return fmt.Errorf("SSE connection error: %w", err)
 		}
 	}
+}
+
+var (
+	// Clean command flags
+	cleanDryRun bool
+	cleanAll    bool
+)
+
+var cleanCmd = &cobra.Command{
+	Use:   "clean",
+	Short: "Remove completed agents and close their tmux windows",
+	Long: `Remove completed and abandoned agents from the registry and close their tmux windows.
+
+By default, only cleans agents that are marked as completed or abandoned in the registry.
+Use --all to also reconcile the registry with active tmux windows first (marking agents
+whose windows have closed as completed).
+
+Examples:
+  orch-go clean              # Clean completed/abandoned agents
+  orch-go clean --dry-run    # Show what would be cleaned
+  orch-go clean --all        # Reconcile with tmux first, then clean`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runClean(cleanDryRun, cleanAll)
+	},
+}
+
+func init() {
+	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Reconcile with active tmux windows first")
+}
+
+func runClean(dryRun, reconcileFirst bool) error {
+	// Get current directory to determine project name
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+	projectName := filepath.Base(projectDir)
+
+	// Open registry
+	reg, err := registry.New("")
+	if err != nil {
+		return fmt.Errorf("failed to open registry: %w", err)
+	}
+
+	// Optionally reconcile with tmux first
+	if reconcileFirst {
+		sessionName := tmux.GetWorkersSessionName(projectName)
+		if tmux.SessionExists(sessionName) {
+			activeIDs, err := tmux.ListWindowIDs(sessionName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to list tmux windows: %v\n", err)
+			} else {
+				completedCount := reg.Reconcile(activeIDs)
+				if completedCount > 0 {
+					fmt.Printf("Reconciled: %d agents marked as completed (windows closed)\n", completedCount)
+					if err := reg.Save(); err != nil {
+						return fmt.Errorf("failed to save registry after reconcile: %w", err)
+					}
+				}
+			}
+		}
+	}
+
+	// Get cleanable agents (completed or abandoned)
+	agents := reg.ListCleanable()
+
+	if len(agents) == 0 {
+		fmt.Println("No agents to clean")
+		return nil
+	}
+
+	// Get workers session name for this project
+	sessionName := tmux.GetWorkersSessionName(projectName)
+	sessionExists := tmux.SessionExists(sessionName)
+
+	// Track cleanup stats
+	windowsClosed := 0
+	agentsCleaned := 0
+
+	fmt.Printf("Found %d agents to clean:\n", len(agents))
+
+	for _, agent := range agents {
+		status := string(agent.Status)
+		windowInfo := ""
+		if agent.WindowID != "" {
+			windowInfo = fmt.Sprintf(" (window: %s)", agent.WindowID)
+		}
+
+		if dryRun {
+			fmt.Printf("  [DRY-RUN] Would clean: %s [%s]%s\n", agent.ID, status, windowInfo)
+			continue
+		}
+
+		fmt.Printf("  Cleaning: %s [%s]%s\n", agent.ID, status, windowInfo)
+
+		// Try to close tmux window if it exists
+		if agent.WindowID != "" && sessionExists {
+			if err := tmux.KillWindowByID(agent.WindowID); err != nil {
+				// Window may already be closed, just log warning
+				fmt.Fprintf(os.Stderr, "    Warning: failed to close window %s: %v\n", agent.WindowID, err)
+			} else {
+				windowsClosed++
+			}
+		}
+
+		// Mark agent as deleted in registry
+		if reg.Remove(agent.ID) {
+			agentsCleaned++
+		}
+	}
+
+	if dryRun {
+		fmt.Printf("\nDry run complete. Would clean %d agents.\n", len(agents))
+		return nil
+	}
+
+	// Save registry
+	if err := reg.SaveSkipMerge(); err != nil {
+		return fmt.Errorf("failed to save registry: %w", err)
+	}
+
+	// Log the cleanup
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "agents.cleaned",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"agents_cleaned":  agentsCleaned,
+			"windows_closed":  windowsClosed,
+			"project":         projectName,
+			"reconcile_first": reconcileFirst,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	fmt.Printf("\nCleaned %d agents, closed %d windows\n", agentsCleaned, windowsClosed)
+	return nil
+}
+
+// ============================================================================
+// Account Management
+// ============================================================================
+
+var accountCmd = &cobra.Command{
+	Use:   "account",
+	Short: "Manage Claude Max accounts",
+	Long: `Manage multiple Claude Max accounts for usage tracking and rate limit arbitrage.
+
+Accounts are stored in ~/.orch/accounts.yaml with refresh tokens for switching.
+
+Examples:
+  orch-go account list              # List all saved accounts
+  orch-go account switch personal   # Switch to 'personal' account
+  orch-go account remove work       # Remove 'work' account`,
+}
+
+var accountListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List saved accounts",
+	Long:  "List all saved accounts with their email and default status.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAccountList()
+	},
+}
+
+var accountSwitchCmd = &cobra.Command{
+	Use:   "switch [name]",
+	Short: "Switch to a saved account",
+	Long: `Switch to a saved account by refreshing its OAuth tokens.
+
+This updates the OpenCode auth file with new tokens from the saved refresh token.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAccountSwitch(args[0])
+	},
+}
+
+var accountRemoveCmd = &cobra.Command{
+	Use:   "remove [name]",
+	Short: "Remove a saved account",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAccountRemove(args[0])
+	},
+}
+
+func init() {
+	accountCmd.AddCommand(accountListCmd)
+	accountCmd.AddCommand(accountSwitchCmd)
+	accountCmd.AddCommand(accountRemoveCmd)
+}
+
+func runAccountList() error {
+	accounts, err := account.ListAccountInfo()
+	if err != nil {
+		return fmt.Errorf("failed to list accounts: %w", err)
+	}
+
+	if len(accounts) == 0 {
+		fmt.Println("No saved accounts")
+		fmt.Println("\nTo save the current account:")
+		fmt.Println("  1. Login via OpenCode first")
+		fmt.Println("  2. Use Python orch: orch account save <name>")
+		return nil
+	}
+
+	fmt.Printf("%-15s %-35s %-10s\n", "NAME", "EMAIL", "DEFAULT")
+	fmt.Printf("%s\n", strings.Repeat("-", 65))
+
+	for _, acc := range accounts {
+		def := ""
+		if acc.IsDefault {
+			def = "✓"
+		}
+		fmt.Printf("%-15s %-35s %-10s\n", acc.Name, acc.Email, def)
+	}
+
+	return nil
+}
+
+func runAccountSwitch(name string) error {
+	cfg, err := account.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load accounts: %w", err)
+	}
+
+	acc, err := cfg.Get(name)
+	if err != nil {
+		return fmt.Errorf("account '%s' not found", name)
+	}
+
+	if acc.Source != "saved" {
+		return fmt.Errorf("account '%s' is not a saved account (source: %s)", name, acc.Source)
+	}
+
+	if acc.RefreshToken == "" {
+		return fmt.Errorf("account '%s' has no refresh token", name)
+	}
+
+	// TODO: Implement token refresh using Anthropic OAuth API
+	// For now, just print instructions
+	fmt.Printf("Account switching not yet implemented in Go.\n")
+	fmt.Printf("Use Python orch for now: orch account switch %s\n", name)
+	fmt.Printf("\nAccount info:\n")
+	fmt.Printf("  Name:  %s\n", name)
+	fmt.Printf("  Email: %s\n", acc.Email)
+
+	return nil
+}
+
+func runAccountRemove(name string) error {
+	cfg, err := account.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load accounts: %w", err)
+	}
+
+	if err := cfg.Remove(name); err != nil {
+		return fmt.Errorf("failed to remove account: %w", err)
+	}
+
+	if err := account.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Printf("Removed account: %s\n", name)
+	return nil
+}
+
+// ============================================================================
+// Usage Tracking (Placeholder - defers to Python for now)
+// ============================================================================
+
+var usageCmd = &cobra.Command{
+	Use:   "usage",
+	Short: "Show Claude Max usage (delegates to Python orch)",
+	Long: `Show Claude Max weekly usage limits.
+
+NOTE: Usage API is not yet implemented in Go. This command delegates to Python orch.
+Run 'orch usage' directly for full functionality.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runUsage()
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(usageCmd)
+}
+
+func runUsage() error {
+	// TODO: Port usage.py to Go
+	// For now, delegate to Python orch
+	fmt.Println("Usage tracking not yet implemented in Go.")
+	fmt.Println("Use Python orch for now: orch usage")
+	fmt.Println("")
+	fmt.Println("To implement:")
+	fmt.Println("  1. HTTP client for https://api.anthropic.com/api/oauth/usage")
+	fmt.Println("  2. OAuth token handling (from OpenCode auth.json)")
+	fmt.Println("  3. Parse and display usage limits")
+	return nil
 }
