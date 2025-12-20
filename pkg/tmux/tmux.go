@@ -28,13 +28,59 @@ type SpawnConfig struct {
 	WorkspaceName string
 }
 
+// RunConfig holds configuration for spawning an agent using 'opencode run'.
+// DEPRECATED: Use StandaloneConfig instead for TUI spawning.
+type RunConfig struct {
+	ProjectDir string
+	Model      string
+	Title      string
+	Prompt     string
+}
+
+// BuildRunCommand creates the opencode run command.
+// DEPRECATED: Use BuildStandaloneCommand instead for TUI spawning.
+func BuildRunCommand(cfg *RunConfig) *exec.Cmd {
+	opencodeBin := "opencode"
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		opencodeBin = bin
+	}
+
+	args := []string{
+		"run",
+		"--model", cfg.Model,
+		"--title", cfg.Title,
+		cfg.Prompt,
+	}
+	cmd := exec.Command(opencodeBin, args...)
+	cmd.Dir = cfg.ProjectDir
+	return cmd
+}
+
 // StandaloneConfig holds configuration for spawning an agent in standalone mode.
-// Standalone mode launches opencode without attaching to a server - each agent
-// gets its own independent opencode instance.
+// This is the preferred approach for TUI spawning - the prompt is sent via
+// tmux send-keys AFTER the TUI is ready, not as a CLI argument.
 type StandaloneConfig struct {
-	ProjectDir string            // Working directory for the agent
-	Model      string            // Model to use (e.g., "anthropic/claude-sonnet-4-20250514")
-	EnvVars    map[string]string // Environment variables to set (e.g., ORCH_WORKER=true)
+	ProjectDir string // Project directory (passed as first arg to opencode)
+	Model      string // Model in format "provider/model"
+}
+
+// BuildStandaloneCommand creates the opencode standalone mode command string.
+// This does NOT include the prompt - prompt is sent via send-keys after TUI ready.
+// Returns the command string (not exec.Cmd) because it needs to be sent via tmux send-keys.
+//
+// Standalone mode: opencode {project_dir} --model {model}
+// - Each agent gets its own opencode instance
+// - Prompt is typed into TUI after it's ready (more reliable than CLI arg)
+// - Matches Python orch-cli's approach (spawn.py:959-963)
+func BuildStandaloneCommand(cfg *StandaloneConfig) string {
+	opencodeBin := "opencode"
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		opencodeBin = bin
+	}
+
+	// Build command: opencode {project_dir} --model {model}
+	// Quote project dir in case it has spaces
+	return fmt.Sprintf("%s %q --model %q", opencodeBin, cfg.ProjectDir, cfg.Model)
 }
 
 // WaitConfig holds configuration for waiting for OpenCode to be ready.
@@ -122,25 +168,6 @@ func BuildSpawnCommand(cfg *SpawnConfig) *exec.Cmd {
 		cfg.Prompt,
 	}
 	cmd := exec.Command("opencode", args...)
-	cmd.Dir = cfg.ProjectDir
-	return cmd
-}
-
-// BuildStandaloneCommand creates the opencode command for standalone mode.
-// Standalone mode: opencode {dir} --model {model}
-// This launches a TUI that needs prompt typed after it's ready.
-func BuildStandaloneCommand(cfg *StandaloneConfig) *exec.Cmd {
-	// Get opencode binary path - allow override for dev builds
-	opencodeBin := "opencode"
-	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
-		opencodeBin = bin
-	}
-
-	args := []string{
-		cfg.ProjectDir,
-		"--model", cfg.Model,
-	}
-	cmd := exec.Command(opencodeBin, args...)
 	cmd.Dir = cfg.ProjectDir
 	return cmd
 }

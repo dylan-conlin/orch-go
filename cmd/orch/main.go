@@ -579,7 +579,12 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 	return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 }
 
-// runSpawnInTmux spawns the agent in a tmux window and returns immediately.
+// runSpawnInTmux spawns the agent in a tmux window using standalone mode.
+// This matches Python orch-cli's approach (spawn.py:959-1032):
+// 1. Start opencode in standalone mode (no prompt arg)
+// 2. Wait for TUI to be ready
+// 3. Type prompt via send-keys
+// 4. Send Enter to submit
 func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Ensure workers session exists
 	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
@@ -596,41 +601,51 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		return fmt.Errorf("failed to create window: %w", err)
 	}
 
-	// Build opencode command using 'run' mode
-	// This is more robust as it handles model selection and initial prompt directly
-	runCfg := &tmux.RunConfig{
+	// Build opencode command using standalone mode
+	// Standalone mode: opencode {project_dir} --model {model}
+	// Prompt is typed into TUI after it's ready (more reliable than CLI arg)
+	standaloneCfg := &tmux.StandaloneConfig{
 		ProjectDir: cfg.ProjectDir,
 		Model:      cfg.Model,
-		Title:      cfg.WorkspaceName,
-		Prompt:     minimalPrompt,
 	}
+	opencodeCmd := tmux.BuildStandaloneCommand(standaloneCfg)
 
-	cmd := tmux.BuildRunCommand(runCfg)
-
-	// Ensure the command is properly quoted for tmux send-keys
-	var args []string
-	for _, arg := range cmd.Args {
-		if strings.Contains(arg, " ") {
-			args = append(args, fmt.Sprintf("\"%s\"", arg))
-		} else {
-			args = append(args, arg)
-		}
-	}
-	opencodeCmd := strings.Join(args, " ")
+	// Set ORCH_WORKER env var to signal hooks this is a worker session
+	// This prevents the orchestrator skill from being injected
+	envExport := "export ORCH_WORKER=true && "
 
 	// If using Gemini, ensure we don't have a stale Anthropic key in the window
 	if strings.Contains(cfg.Model, "gemini") {
-		opencodeCmd = "unset ANTHROPIC_API_KEY && " + opencodeCmd
+		envExport += "unset ANTHROPIC_API_KEY && "
 	}
 
+	fullCmd := envExport + opencodeCmd
+
 	// Send the command to the tmux window
-	if err := tmux.SendKeysLiteral(windowTarget, opencodeCmd); err != nil {
+	if err := tmux.SendKeysLiteral(windowTarget, fullCmd); err != nil {
 		return fmt.Errorf("failed to send command: %w", err)
 	}
 
-	// Send Enter to execute
+	// Send Enter to execute the command
 	if err := tmux.SendEnter(windowTarget); err != nil {
 		return fmt.Errorf("failed to send enter: %w", err)
+	}
+
+	// Wait for OpenCode TUI to be ready, then send the prompt
+	// This is the key difference from the old approach - we wait for TUI
+	// and then type the prompt, rather than passing it as a CLI arg
+	waitCfg := tmux.DefaultWaitConfig()
+	sendCfg := tmux.DefaultSendPromptConfig()
+
+	if err := tmux.SendPromptAfterReady(windowTarget, minimalPrompt, waitCfg, sendCfg); err != nil {
+		// Log warning but don't fail - agent may still work
+		fmt.Fprintf(os.Stderr, "Warning: failed to send prompt after TUI ready: %v\n", err)
+		fmt.Fprintf(os.Stderr, "You may need to manually enter the prompt in the tmux window\n")
+	}
+
+	// Verify window still exists after waiting (it may have crashed)
+	if !tmux.WindowExists(windowTarget) {
+		return fmt.Errorf("window %s closed unexpectedly - OpenCode may have crashed", windowTarget)
 	}
 
 	// Select the window to focus it
