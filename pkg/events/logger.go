@@ -1,4 +1,5 @@
-// Package events provides event logging functionality.
+// Package events provides event logging functionality for agent lifecycle events.
+// Events are appended to ~/.orch/events.jsonl in JSONL format.
 package events
 
 import (
@@ -6,6 +7,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+)
+
+// Event types for agent lifecycle tracking.
+const (
+	// EventTypeSessionSpawned indicates a new session was created.
+	EventTypeSessionSpawned = "session.spawned"
+	// EventTypeSessionCompleted indicates a session finished successfully.
+	EventTypeSessionCompleted = "session.completed"
+	// EventTypeSessionError indicates a session encountered an error.
+	EventTypeSessionError = "session.error"
+	// EventTypeSessionStatus indicates a session status change (busy/idle).
+	EventTypeSessionStatus = "session.status"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -21,9 +35,14 @@ type Logger struct {
 	Path string
 }
 
-// NewLogger creates a new event logger.
+// NewLogger creates a new event logger with a custom path.
 func NewLogger(path string) *Logger {
 	return &Logger{Path: path}
+}
+
+// NewDefaultLogger creates a new event logger with the default path (~/.orch/events.jsonl).
+func NewDefaultLogger() *Logger {
+	return &Logger{Path: DefaultLogPath()}
 }
 
 // DefaultLogPath returns the default path to events.jsonl.
@@ -61,4 +80,50 @@ func (l *Logger) Log(event Event) error {
 	}
 
 	return nil
+}
+
+// LogSpawn logs a session spawn event with prompt and title metadata.
+func (l *Logger) LogSpawn(sessionID, prompt, title string) error {
+	return l.Log(Event{
+		Type:      EventTypeSessionSpawned,
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"prompt": prompt,
+			"title":  title,
+		},
+	})
+}
+
+// LogCompleted logs a session completion event.
+func (l *Logger) LogCompleted(sessionID string) error {
+	return l.Log(Event{
+		Type:      EventTypeSessionCompleted,
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+	})
+}
+
+// LogError logs a session error event with error message.
+func (l *Logger) LogError(sessionID, errMsg string) error {
+	return l.Log(Event{
+		Type:      EventTypeSessionError,
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"error": errMsg,
+		},
+	})
+}
+
+// LogStatusChange logs a session status change event.
+func (l *Logger) LogStatusChange(sessionID, status string) error {
+	return l.Log(Event{
+		Type:      EventTypeSessionStatus,
+		SessionID: sessionID,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"status": status,
+		},
+	})
 }
