@@ -71,16 +71,67 @@ func ParseSSEEvent(raw string) (eventType string, data string) {
 			data = strings.TrimPrefix(line, "data: ")
 		}
 	}
+	// If event type not in SSE prefix, try to extract from JSON data
+	if eventType == "" && data != "" {
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &result); err == nil {
+			if typ, ok := result["type"].(string); ok {
+				eventType = typ
+			}
+		}
+	}
 	return eventType, data
 }
 
 // ParseSessionStatus extracts status and session ID from SSE data.
 func ParseSessionStatus(data string) (status string, sessionID string) {
-	var parsed SessionStatus
-	if err := json.Unmarshal([]byte(data), &parsed); err != nil {
-		return "", ""
+	// Try old format: {"status":"idle","session_id":"..."}
+	var old struct {
+		Status    string `json:"status"`
+		SessionID string `json:"session_id"`
 	}
-	return parsed.Status, parsed.SessionID
+	if err := json.Unmarshal([]byte(data), &old); err == nil && old.Status != "" && old.SessionID != "" {
+		return old.Status, old.SessionID
+	}
+	// Try new format: {"type":"session.status","properties":{"sessionID":"...","status":{"type":"..."}}}
+	var new struct {
+		Type       string `json:"type"`
+		Properties struct {
+			SessionID string `json:"sessionID"`
+			Status    struct {
+				Type string `json:"type"`
+			} `json:"status"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(data), &new); err == nil && new.Type == "session.status" && new.Properties.SessionID != "" && new.Properties.Status.Type != "" {
+		return new.Properties.Status.Type, new.Properties.SessionID
+	}
+	// Fallback: parse as map to extract any known fields
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &m); err == nil {
+		// Old format fields
+		if s, ok := m["status"].(string); ok && s != "" {
+			status = s
+		}
+		if sid, ok := m["session_id"].(string); ok && sid != "" {
+			sessionID = sid
+		}
+		if status != "" && sessionID != "" {
+			return status, sessionID
+		}
+		// New format fields
+		if props, ok := m["properties"].(map[string]interface{}); ok {
+			if sid, ok := props["sessionID"].(string); ok && sid != "" {
+				sessionID = sid
+			}
+			if statusObj, ok := props["status"].(map[string]interface{}); ok {
+				if s, ok := statusObj["type"].(string); ok && s != "" {
+					status = s
+				}
+			}
+		}
+	}
+	return status, sessionID
 }
 
 // DetectCompletion checks if events indicate session completion.

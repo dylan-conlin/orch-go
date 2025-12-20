@@ -11,7 +11,7 @@ import (
 
 // Comment represents a beads issue comment.
 type Comment struct {
-	ID        string `json:"id"`
+	ID        int64  `json:"id"`
 	Content   string `json:"content"`
 	Author    string `json:"author"`
 	CreatedAt string `json:"created_at"`
