@@ -298,6 +298,193 @@ func TestWaitForOpenCodeReady_Integration(t *testing.T) {
 	}
 }
 
+func TestCaptureLines(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session and window
+	project := "orch-go-test-capture"
+	projectDir := "/tmp/orch-go-test-capture"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	windowTarget, _, err := CreateWindow(sessionName, "test-capture", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Send some content to the window
+	_ = SendKeysLiteral(windowTarget, "echo 'line1'")
+	_ = SendEnter(windowTarget)
+
+	// Give tmux time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Capture with different line counts
+	lines, err := CaptureLines(windowTarget, 10)
+	if err != nil {
+		t.Fatalf("CaptureLines failed: %v", err)
+	}
+
+	// Should have some content
+	if len(lines) == 0 {
+		t.Error("Expected some captured lines")
+	}
+}
+
+func TestCaptureLinesDefault(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session and window
+	project := "orch-go-test-capture-default"
+	projectDir := "/tmp/orch-go-test-capture-default"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	windowTarget, _, err := CreateWindow(sessionName, "test-capture-default", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Capture with default (0 means all visible)
+	lines, err := CaptureLines(windowTarget, 0)
+	if err != nil {
+		t.Fatalf("CaptureLines failed: %v", err)
+	}
+
+	// Should return some lines (pane is visible)
+	// Even empty pane has some lines
+	if lines == nil {
+		t.Error("Expected non-nil result")
+	}
+}
+
+func TestListWindows(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-list-win"
+	projectDir := "/tmp/orch-go-test-list-win"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a window with known name
+	windowName := "🔬 og-test [test-abc123]"
+	_, _, err = CreateWindow(sessionName, windowName, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// List windows
+	windows, err := ListWindows(sessionName)
+	if err != nil {
+		t.Fatalf("ListWindows failed: %v", err)
+	}
+
+	// Should have at least 2 windows (servers + test window)
+	if len(windows) < 2 {
+		t.Errorf("Expected at least 2 windows, got %d", len(windows))
+	}
+
+	// Find our test window
+	found := false
+	for _, w := range windows {
+		if strings.Contains(w.Name, "og-test") {
+			found = true
+			if w.Index == "" {
+				t.Error("Window index should not be empty")
+			}
+			if w.Target == "" {
+				t.Error("Window target should not be empty")
+			}
+		}
+	}
+	if !found {
+		t.Error("Expected to find test window")
+	}
+}
+
+func TestFindWindowByBeadsID(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-find"
+	projectDir := "/tmp/orch-go-test-find"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a window with beads ID in name
+	beadsID := "find-xyz789"
+	windowName := BuildWindowName("og-test-find", "investigation", beadsID)
+	_, _, err = CreateWindow(sessionName, windowName, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Find window by beads ID
+	window, err := FindWindowByBeadsID(sessionName, beadsID)
+	if err != nil {
+		t.Fatalf("FindWindowByBeadsID failed: %v", err)
+	}
+
+	if window == nil {
+		t.Fatal("Expected to find window")
+	}
+
+	if !strings.Contains(window.Name, beadsID) {
+		t.Errorf("Window name %q should contain beads ID %q", window.Name, beadsID)
+	}
+}
+
+func TestFindWindowByBeadsIDNotFound(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-find-notfound"
+	projectDir := "/tmp/orch-go-test-find-notfound"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Try to find window that doesn't exist
+	window, err := FindWindowByBeadsID(sessionName, "nonexistent-abc123")
+	if err != nil {
+		t.Fatalf("FindWindowByBeadsID should not error: %v", err)
+	}
+
+	if window != nil {
+		t.Error("Expected nil when window not found")
+	}
+}
+
 // Integration test - only runs if tmux is available
 func TestEnsureWorkersSession(t *testing.T) {
 	if !IsAvailable() {
@@ -321,4 +508,135 @@ func TestEnsureWorkersSession(t *testing.T) {
 
 	// Clean up test session if we created it
 	_ = KillSession(sessionName)
+}
+
+// TestKillWindow verifies KillWindow closes a tmux window.
+func TestKillWindow(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session and window
+	project := "orch-go-test-kill"
+	projectDir := "/tmp/orch-go-test-kill"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a window
+	windowTarget, _, err := CreateWindow(sessionName, "test-kill-window", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Verify window exists
+	if !WindowExists(windowTarget) {
+		t.Fatal("Expected window to exist after creation")
+	}
+
+	// Kill the window
+	err = KillWindow(windowTarget)
+	if err != nil {
+		t.Fatalf("KillWindow failed: %v", err)
+	}
+
+	// Verify window no longer exists
+	if WindowExists(windowTarget) {
+		t.Error("Expected window to not exist after kill")
+	}
+}
+
+// TestKillWindowByID verifies KillWindowByID closes a tmux window by ID.
+func TestKillWindowByID(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session and window
+	project := "orch-go-test-kill-id"
+	projectDir := "/tmp/orch-go-test-kill-id"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a window and capture its ID
+	windowTarget, windowID, err := CreateWindow(sessionName, "test-kill-by-id", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Verify window exists
+	if !WindowExists(windowTarget) {
+		t.Fatal("Expected window to exist after creation")
+	}
+
+	// Kill the window by ID
+	err = KillWindowByID(windowID)
+	if err != nil {
+		t.Fatalf("KillWindowByID failed: %v", err)
+	}
+
+	// Verify window no longer exists
+	if WindowExists(windowTarget) {
+		t.Error("Expected window to not exist after kill by ID")
+	}
+}
+
+// TestListWindowIDs verifies ListWindowIDs returns active window IDs.
+func TestListWindowIDs(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-list"
+	projectDir := "/tmp/orch-go-test-list"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a few windows
+	_, windowID1, err := CreateWindow(sessionName, "test-list-1", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window 1: %v", err)
+	}
+
+	_, windowID2, err := CreateWindow(sessionName, "test-list-2", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window 2: %v", err)
+	}
+
+	// List windows for the session
+	ids, err := ListWindowIDs(sessionName)
+	if err != nil {
+		t.Fatalf("ListWindowIDs failed: %v", err)
+	}
+
+	// Should contain both window IDs
+	hasID1 := false
+	hasID2 := false
+	for _, id := range ids {
+		if id == windowID1 {
+			hasID1 = true
+		}
+		if id == windowID2 {
+			hasID2 = true
+		}
+	}
+
+	if !hasID1 {
+		t.Errorf("Expected window ID %s to be in list %v", windowID1, ids)
+	}
+	if !hasID2 {
+		t.Errorf("Expected window ID %s to be in list %v", windowID2, ids)
+	}
 }

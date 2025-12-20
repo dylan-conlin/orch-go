@@ -332,3 +332,114 @@ func WindowExists(windowTarget string) bool {
 	}
 	return false
 }
+
+// KillWindow closes a tmux window by target (session:window format).
+func KillWindow(windowTarget string) error {
+	cmd := exec.Command("tmux", "kill-window", "-t", windowTarget)
+	return cmd.Run()
+}
+
+// KillWindowByID closes a tmux window by its unique ID (e.g., "@1234").
+func KillWindowByID(windowID string) error {
+	cmd := exec.Command("tmux", "kill-window", "-t", windowID)
+	return cmd.Run()
+}
+
+// ListWindowIDs returns all window IDs in a session.
+func ListWindowIDs(sessionName string) ([]string, error) {
+	cmd := exec.Command("tmux", "list-windows", "-t", sessionName, "-F", "#{window_id}")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list windows: %w", err)
+	}
+
+	var ids []string
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			ids = append(ids, line)
+		}
+	}
+	return ids, nil
+}
+
+// WindowInfo holds information about a tmux window.
+type WindowInfo struct {
+	Index  string // Window index (e.g., "5")
+	ID     string // Window ID (e.g., "@1234")
+	Name   string // Window name
+	Target string // session:index format
+}
+
+// ListWindows returns all windows in a session with their details.
+func ListWindows(sessionName string) ([]WindowInfo, error) {
+	// Format: index:id:name
+	cmd := exec.Command("tmux", "list-windows", "-t", sessionName, "-F", "#{window_index}:#{window_id}:#{window_name}")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list windows: %w", err)
+	}
+
+	var windows []WindowInfo
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Parse "index:id:name"
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		windows = append(windows, WindowInfo{
+			Index:  parts[0],
+			ID:     parts[1],
+			Name:   parts[2],
+			Target: fmt.Sprintf("%s:%s", sessionName, parts[0]),
+		})
+	}
+	return windows, nil
+}
+
+// FindWindowByBeadsID finds a window by searching for beads ID in window name.
+// Returns nil if not found (no error).
+func FindWindowByBeadsID(sessionName, beadsID string) (*WindowInfo, error) {
+	windows, err := ListWindows(sessionName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Look for window with beads ID in name (format: "[beadsID]")
+	searchPattern := fmt.Sprintf("[%s]", beadsID)
+	for i := range windows {
+		if strings.Contains(windows[i].Name, searchPattern) {
+			return &windows[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// CaptureLines captures the last N lines from a tmux pane.
+// If lines is 0, captures all visible content.
+func CaptureLines(windowTarget string, lines int) ([]string, error) {
+	var cmd *exec.Cmd
+	if lines > 0 {
+		// Capture last N lines using negative start offset
+		startLine := fmt.Sprintf("-%d", lines)
+		cmd = exec.Command("tmux", "capture-pane", "-t", windowTarget, "-p", "-S", startLine)
+	} else {
+		// Capture visible pane
+		cmd = exec.Command("tmux", "capture-pane", "-t", windowTarget, "-p")
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to capture pane: %w", err)
+	}
+
+	var result []string
+	for _, line := range strings.Split(string(output), "\n") {
+		result = append(result, line)
+	}
+	return result, nil
+}
