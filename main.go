@@ -17,11 +17,13 @@ import (
 
 // OpenCodeEvent represents an event from opencode's JSON output
 type OpenCodeEvent struct {
-	Type    string          `json:"type"`
-	Session *SessionInfo    `json:"session,omitempty"`
-	Step    *StepInfo       `json:"step,omitempty"`
-	Content string          `json:"content,omitempty"`
-	Raw     json.RawMessage `json:"-"`
+	Type      string          `json:"type"`
+	SessionID string          `json:"sessionID,omitempty"` // Top-level sessionID in actual opencode output
+	Session   *SessionInfo    `json:"session,omitempty"`
+	Step      *StepInfo       `json:"step,omitempty"`
+	Content   string          `json:"content,omitempty"`
+	Timestamp int64           `json:"timestamp,omitempty"`
+	Raw       json.RawMessage `json:"-"`
 }
 
 // SessionInfo contains session details
@@ -132,14 +134,16 @@ func LogEvent(path string, event Event) error {
 }
 
 // ExtractSessionID extracts session ID from opencode events
+// OpenCode includes sessionID at the top level of each event
 func ExtractSessionID(events []string) (string, error) {
 	for _, line := range events {
 		event, err := ParseOpenCodeEvent(line)
 		if err != nil {
 			continue
 		}
-		if event.Type == "session" && event.Session != nil {
-			return event.Session.ID, nil
+		// sessionID is at top level of each event in actual opencode output
+		if event.SessionID != "" {
+			return event.SessionID, nil
 		}
 	}
 	return "", fmt.Errorf("no session ID found in output")
@@ -296,8 +300,9 @@ func ProcessOpenCodeOutput(r io.Reader) (*OpenCodeResult, error) {
 
 		result.Events = append(result.Events, event)
 
-		if event.Type == "session" && event.Session != nil {
-			result.SessionID = event.Session.ID
+		// sessionID is at top level of each event - grab from first event that has it
+		if result.SessionID == "" && event.SessionID != "" {
+			result.SessionID = event.SessionID
 		}
 	}
 

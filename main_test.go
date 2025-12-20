@@ -149,20 +149,29 @@ func TestExtractSessionID(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "session created in output",
+			name: "sessionID at top level (actual opencode format)",
 			events: []string{
-				`{"type":"session","session":{"id":"ses_abc123"}}`,
+				`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_abc123"}`,
 			},
 			wantID:  "ses_abc123",
 			wantErr: false,
 		},
 		{
-			name: "no session in output",
+			name: "no sessionID in output",
 			events: []string{
 				`{"type":"text","content":"hello"}`,
 			},
 			wantID:  "",
 			wantErr: true,
+		},
+		{
+			name: "sessionID in second event",
+			events: []string{
+				`{"type":"init"}`,
+				`{"type":"step_start","sessionID":"ses_xyz789"}`,
+			},
+			wantID:  "ses_xyz789",
+			wantErr: false,
 		},
 	}
 
@@ -411,11 +420,11 @@ func (m *mockOpenCodeOutput) Read(p []byte) (n int, err error) {
 }
 
 func TestProcessOpenCodeOutput(t *testing.T) {
+	// Use actual opencode format with sessionID at top level
 	events := []string{
-		`{"type":"session","session":{"id":"ses_xyz"}}`,
-		`{"type":"step_start","step":{"id":"step_1"}}`,
-		`{"type":"text","content":"Hello!"}`,
-		`{"type":"step_finish","step":{"id":"step_1"}}`,
+		`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_xyz","step":{"id":"step_1"}}`,
+		`{"type":"text","sessionID":"ses_xyz","content":"Hello!"}`,
+		`{"type":"step_finish","sessionID":"ses_xyz","step":{"id":"step_1"}}`,
 	}
 
 	var output bytes.Buffer
@@ -431,7 +440,7 @@ func TestProcessOpenCodeOutput(t *testing.T) {
 	if result.SessionID != "ses_xyz" {
 		t.Errorf("SessionID = %v, want ses_xyz", result.SessionID)
 	}
-	if len(result.Events) != 4 {
-		t.Errorf("Events count = %d, want 4", len(result.Events))
+	if len(result.Events) != 3 {
+		t.Errorf("Events count = %d, want 3", len(result.Events))
 	}
 }
