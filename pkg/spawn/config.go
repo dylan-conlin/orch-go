@@ -35,6 +35,18 @@ type Config struct {
 
 	// Investigation configuration
 	InvestigationType string // Investigation type: "simple", "systems", "feasibility", etc.
+
+	// Model to use for standalone spawns
+	Model string
+
+	// MCP server configuration (e.g., "playwright" for browser automation)
+	MCP string
+
+	// NoTrack opts out of beads issue tracking (ad-hoc work)
+	NoTrack bool
+
+	// SkipArtifactCheck bypasses pre-spawn kb context check
+	SkipArtifactCheck bool
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.
