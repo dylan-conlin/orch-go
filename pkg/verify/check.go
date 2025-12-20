@@ -160,6 +160,17 @@ func CloseIssue(beadsID, reason string) error {
 	return nil
 }
 
+// UpdateIssueStatus updates the status of a beads issue.
+func UpdateIssueStatus(beadsID, status string) error {
+	args := []string{"update", beadsID, "--status", status}
+	cmd := exec.Command("bd", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to update issue status: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // GetIssue retrieves issue details from beads.
 func GetIssue(beadsID string) (*Issue, error) {
 	cmd := exec.Command("bd", "show", beadsID, "--json")

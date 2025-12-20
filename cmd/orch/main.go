@@ -208,6 +208,12 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 		}
 	}
 
+	// Update beads issue status to in_progress
+	if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
+		// Continue anyway
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:          task,
