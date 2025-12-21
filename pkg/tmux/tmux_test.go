@@ -531,7 +531,7 @@ func TestKillWindowByID(t *testing.T) {
 	}
 }
 
-// TestListWindowIDs verifies ListWindowIDs returns active window IDs.
+// TestBuildStandaloneCommand verifies the opencode standalone command construction.
 func TestBuildStandaloneCommand(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -629,6 +629,135 @@ func TestListWindowIDs(t *testing.T) {
 	}
 	if !hasID2 {
 		t.Errorf("Expected window ID %s to be in list %v", windowID2, ids)
+	}
+}
+
+func TestSelectWindow(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session and window
+	project := "orch-go-test-select"
+	projectDir := "/tmp/orch-go-test-select"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	windowTarget, _, err := CreateWindow(sessionName, "test-select", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Select window
+	err = SelectWindow(windowTarget)
+	if err != nil {
+		t.Errorf("SelectWindow failed: %v", err)
+	}
+}
+
+func TestKillSession(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-kill-session"
+	projectDir := "/tmp/orch-go-test-kill-session"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+
+	// Kill session
+	err = KillSession(sessionName)
+	if err != nil {
+		t.Errorf("KillSession failed: %v", err)
+	}
+
+	// Verify session no longer exists
+	if SessionExists(sessionName) {
+		t.Error("Expected session to not exist after kill")
+	}
+}
+
+func TestListWorkersSessions(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-list-sessions"
+	projectDir := "/tmp/orch-go-test-list-sessions"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// List workers sessions
+	sessions, err := ListWorkersSessions()
+	if err != nil {
+		t.Fatalf("ListWorkersSessions failed: %v", err)
+	}
+
+	// Should contain our test session
+	found := false
+	for _, s := range sessions {
+		if s == sessionName {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("Expected to find session %s in %v", sessionName, sessions)
+	}
+}
+
+func TestBuildAttachCommand(t *testing.T) {
+	tests := []struct {
+		name         string
+		windowTarget string
+		insideTmux   bool
+		wantArgs     []string
+	}{
+		{
+			name:         "inside tmux",
+			windowTarget: "session:1",
+			insideTmux:   true,
+			wantArgs:     []string{"tmux", "switch-client", "-t", "session:1"},
+		},
+		{
+			name:         "outside tmux",
+			windowTarget: "session:1",
+			insideTmux:   false,
+			wantArgs:     []string{"tmux", "attach-session", "-t", "session:1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
+			if cmd.Path == "" {
+				t.Error("Expected command path to be set")
+			}
+			// Check args
+			for i, arg := range tt.wantArgs {
+				if i >= len(cmd.Args) {
+					t.Errorf("Missing arg at index %d: want %s", i, arg)
+					continue
+				}
+				if cmd.Args[i] != arg {
+					t.Errorf("Arg at index %d = %q, want %q", i, cmd.Args[i], arg)
+				}
+			}
+		})
 	}
 }
 
