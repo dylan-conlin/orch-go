@@ -158,17 +158,7 @@ export function connectSSE(): void {
 	eventSource.onmessage = (event) => {
 		try {
 			const data = JSON.parse(event.data);
-			const sseEvent: SSEEvent = {
-				type: data.type || 'unknown',
-				properties: data.properties,
-				timestamp: Date.now()
-			};
-			sseEvents.addEvent(sseEvent);
-
-			// Handle session status changes - refresh agent list
-			if (data.type === 'session.status') {
-				agents.fetch().catch(console.error);
-			}
+			handleSSEEvent(data);
 		} catch (e) {
 			// Non-JSON data, create simple event
 			sseEvents.addEvent({
@@ -177,6 +167,19 @@ export function connectSSE(): void {
 			});
 		}
 	};
+
+	// Handle specific event types if sent with event: prefix
+	const eventTypes = ['session.status', 'session.created', 'session.deleted', 'agent.completed', 'agent.abandoned'];
+	eventTypes.forEach((type) => {
+		eventSource?.addEventListener(type, (event) => {
+			try {
+				const data = JSON.parse((event as MessageEvent).data);
+				handleSSEEvent({ ...data, type });
+			} catch (e) {
+				console.error(`Failed to parse ${type} event:`, e);
+			}
+		});
+	});
 
 	// Handle custom events from our proxy
 	eventSource.addEventListener('connected', (event) => {
@@ -212,6 +215,27 @@ export function connectSSE(): void {
 			// Ignore parse errors for error events
 		}
 	});
+}
+
+function handleSSEEvent(data: any) {
+	const sseEvent: SSEEvent = {
+		type: data.type || 'unknown',
+		properties: data.properties,
+		timestamp: Date.now()
+	};
+	sseEvents.addEvent(sseEvent);
+
+	// Handle session status changes - refresh agent list
+	const refreshEvents = [
+		'session.status',
+		'session.created',
+		'session.deleted',
+		'agent.completed',
+		'agent.abandoned'
+	];
+	if (refreshEvents.includes(data.type)) {
+		agents.fetch().catch(console.error);
+	}
 }
 
 export function disconnectSSE(): void {

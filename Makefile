@@ -1,7 +1,7 @@
 # Makefile for orch-go
 
 # Binary name
-BINARY_NAME=orch-go
+BINARY_NAME=orch
 
 # Build directory
 BUILD_DIR=build
@@ -11,9 +11,10 @@ INSTALL_DIR=$(HOME)/bin
 
 # Go build flags
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS=-ldflags "-X main.version=$(VERSION)"
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
 
-.PHONY: all build clean test install fmt lint docs
+.PHONY: all build clean test install fmt lint docs version
 
 # Default target
 all: build
@@ -67,6 +68,10 @@ docs:
 	@echo "Generating CLI documentation..."
 	go run ./cmd/gendoc
 	@echo "Documentation generated in docs/cli/"
+
+# Show version
+version: build
+	@./$(BUILD_DIR)/$(BINARY_NAME) version
 
 # Show help
 help:

@@ -1,0 +1,16 @@
+#+title: Dylans Thoughts
+
+
+* DONE the number one pain point today is related to rate-limiting. when building orch-go, workers spawned a ton of concurrent agents while testing the spawn command. this resulted in maxing out both of my claude max accounts session limits. so then i setup opencode to use my gemini api key so i could use gemini 3 flash. using this model as orchestrator, we couldn't spawn because spawns were trying to use an anthropic api key. i also realized that the gemini 3 flash model is actually on par with opus 4.5 and even faster, which led me to investigations into model arbitrage. 
+
+all of this has made me realize that i really need to prioritize model accessibility and flexibility, usage monitoring, etc
+
+
+BUT!!! i'm also in the middle of transitioning from orch-cli to orch-go. should i complete that and then look into the rate-limiting pains?
+
+
+
+* DONE our work today where we made it easier to switch between claude max plan accounts is helpful
+* TODO now that we have the synthesis procotol, what should we do about all the earlier investigations/decisions littered throughout the orch ecosystem? they likely have varying structures and outdated decisions as well as valuable information.
+* TODO i'm concerned about the quality of the kb search command. often i notice that agents end up finding results better by grepping
+* TODO i'm noticing the orch tail command is still using tmux

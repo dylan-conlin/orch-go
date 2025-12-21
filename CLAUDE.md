@@ -109,10 +109,9 @@ pkg/
 3. Creates workspace: `.orch/workspace/{name}/`
 4. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
 5. **Default (headless):** Creates session via HTTP API, sends prompt
-6. **With --tmux:** Creates tmux window, runs OpenCode TUI
-7. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
-8. Registers agent in `~/.orch/agent-registry.json`
-9. Returns immediately (unless --inline)
+6. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
+7. Registers agent in `~/.orch/agent-registry.json`
+8. Returns immediately (unless --inline)
 
 ## Commands
 
@@ -145,13 +144,16 @@ pkg/
 
 ```bash
 # Build
-go build -o orch ./cmd/orch
+make build
 
 # Test
-go test ./...
+make test
 
-# Install
-go build -o ~/bin/orch ./cmd/orch
+# Install to ~/bin/orch
+make install
+
+# Verify version
+orch version
 ```
 
 ### Adding New Commands
@@ -181,8 +183,8 @@ go build -o ~/bin/orch ./cmd/orch
 # Spawn with specific model (headless by default)
 orch spawn --model flash investigation "explore X"
 
-# Spawn in tmux window (opt-in)
-orch spawn --tmux investigation "explore X"
+# Run inline with TUI (blocking)
+orch spawn --inline investigation "explore X"
 
 # Switch accounts when rate-limited
 orch account switch work

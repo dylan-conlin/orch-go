@@ -108,6 +108,11 @@ export function connectAgentlogSSE(): void {
 		try {
 			const data = JSON.parse((event as MessageEvent).data);
 			agentlogEvents.addEvent(data);
+
+			// Trigger agent list refresh on relevant events
+			import('./agents').then(({ agents }) => {
+				agents.fetch().catch(console.error);
+			});
 		} catch (e) {
 			console.error('Failed to parse agentlog event:', e);
 		}

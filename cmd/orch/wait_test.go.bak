@@ -1,0 +1,180 @@
+package main
+
+import (
+	"testing"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/verify"
+)
+
+func TestWaitForPhase(t *testing.T) {
+	tests := []struct {
+		name        string
+		comments    []verify.Comment
+		targetPhase string
+		wantReached bool
+		wantPhase   string
+	}{
+		{
+			name:        "phase already complete",
+			targetPhase: "Complete",
+			comments: []verify.Comment{
+				{Content: "Phase: Complete - All done"},
+			},
+			wantReached: true,
+			wantPhase:   "Complete",
+		},
+		{
+			name:        "waiting for complete, at implementing",
+			targetPhase: "Complete",
+			comments: []verify.Comment{
+				{Content: "Phase: Implementing - Working"},
+			},
+			wantReached: false,
+			wantPhase:   "Implementing",
+		},
+		{
+			name:        "no phase yet",
+			targetPhase: "Complete",
+			comments: []verify.Comment{
+				{Content: "Just started"},
+			},
+			wantReached: false,
+			wantPhase:   "",
+		},
+		{
+			name:        "case insensitive match",
+			targetPhase: "complete",
+			comments: []verify.Comment{
+				{Content: "Phase: Complete - Done"},
+			},
+			wantReached: true,
+			wantPhase:   "Complete",
+		},
+		{
+			name:        "waiting for implementing",
+			targetPhase: "Implementing",
+			comments: []verify.Comment{
+				{Content: "Phase: Implementing - Starting work"},
+			},
+			wantReached: true,
+			wantPhase:   "Implementing",
+		},
+		{
+			name:        "multiple phases - latest matches",
+			targetPhase: "Complete",
+			comments: []verify.Comment{
+				{Content: "Phase: Planning - Start"},
+				{Content: "Phase: Implementing - Middle"},
+				{Content: "Phase: Complete - End"},
+			},
+			wantReached: true,
+			wantPhase:   "Complete",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status := verify.ParsePhaseFromComments(tt.comments)
+			reached := isPhaseReached(status, tt.targetPhase)
+
+			if reached != tt.wantReached {
+				t.Errorf("isPhaseReached() = %v, want %v", reached, tt.wantReached)
+			}
+			if status.Phase != tt.wantPhase {
+				t.Errorf("Phase = %q, want %q", status.Phase, tt.wantPhase)
+			}
+		})
+	}
+}
+
+func TestWaitConfigDefaults(t *testing.T) {
+	cfg := WaitConfig{
+		BeadsID:     "test-123",
+		TargetPhase: "",
+	}
+
+	// Default target phase should be Complete
+	if cfg.TargetPhase == "" {
+		cfg.TargetPhase = "Complete"
+	}
+
+	if cfg.TargetPhase != "Complete" {
+		t.Errorf("Default target phase = %q, want %q", cfg.TargetPhase, "Complete")
+	}
+
+	// Default poll interval
+	if cfg.PollInterval == 0 {
+		cfg.PollInterval = 5 * time.Second
+	}
+
+	if cfg.PollInterval != 5*time.Second {
+		t.Errorf("Default poll interval = %v, want %v", cfg.PollInterval, 5*time.Second)
+	}
+}
+
+func TestParseWaitArgs(t *testing.T) {
+	tests := []struct {
+		name        string
+		beadsID     string
+		targetPhase string
+		timeout     time.Duration
+		wantCfg     WaitConfig
+	}{
+		{
+			name:        "basic with defaults",
+			beadsID:     "proj-123",
+			targetPhase: "",
+			timeout:     0,
+			wantCfg: WaitConfig{
+				BeadsID:      "proj-123",
+				TargetPhase:  "Complete",
+				PollInterval: 5 * time.Second,
+				Timeout:      0, // no timeout
+			},
+		},
+		{
+			name:        "custom target phase",
+			beadsID:     "proj-456",
+			targetPhase: "Implementing",
+			timeout:     0,
+			wantCfg: WaitConfig{
+				BeadsID:      "proj-456",
+				TargetPhase:  "Implementing",
+				PollInterval: 5 * time.Second,
+				Timeout:      0,
+			},
+		},
+		{
+			name:        "with timeout",
+			beadsID:     "proj-789",
+			targetPhase: "Complete",
+			timeout:     5 * time.Minute,
+			wantCfg: WaitConfig{
+				BeadsID:      "proj-789",
+				TargetPhase:  "Complete",
+				PollInterval: 5 * time.Second,
+				Timeout:      5 * time.Minute,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := buildWaitConfig(tt.beadsID, tt.targetPhase, tt.timeout)
+
+			if cfg.BeadsID != tt.wantCfg.BeadsID {
+				t.Errorf("BeadsID = %q, want %q", cfg.BeadsID, tt.wantCfg.BeadsID)
+			}
+			if cfg.TargetPhase != tt.wantCfg.TargetPhase {
+				t.Errorf("TargetPhase = %q, want %q", cfg.TargetPhase, tt.wantCfg.TargetPhase)
+			}
+			if cfg.PollInterval != tt.wantCfg.PollInterval {
+				t.Errorf("PollInterval = %v, want %v", cfg.PollInterval, tt.wantCfg.PollInterval)
+			}
+			if cfg.Timeout != tt.wantCfg.Timeout {
+				t.Errorf("Timeout = %v, want %v", cfg.Timeout, tt.wantCfg.Timeout)
+			}
+		})
+	}
+}

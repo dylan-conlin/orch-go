@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -104,7 +105,8 @@ func runServe(port int) error {
 // AgentWithSynthesis extends the registry Agent with parsed synthesis data for the API.
 type AgentWithSynthesis struct {
 	*registry.Agent
-	Synthesis *SynthesisResponse `json:"synthesis,omitempty"`
+	BeadsTitle string             `json:"beads_title,omitempty"`
+	Synthesis  *SynthesisResponse `json:"synthesis,omitempty"`
 }
 
 // SynthesisResponse is a condensed version of verify.Synthesis for the API.
@@ -140,6 +142,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	response := make([]*AgentWithSynthesis, len(agents))
 	for i, agent := range agents {
 		aws := &AgentWithSynthesis{Agent: agent}
+
+		// Fetch beads issue title if agent has a beads_id
+		if agent.BeadsID != "" {
+			aws.BeadsTitle = getBeadsTitle(agent.BeadsID, agent.BeadsDBPath)
+		}
 
 		// Parse synthesis for completed agents with a project directory
 		if agent.Status == registry.StateCompleted && agent.ProjectDir != "" {
@@ -233,6 +240,9 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Forward the line as-is (preserves SSE format)
+			if strings.HasPrefix(line, "data:") {
+				fmt.Printf("Forwarding SSE event: %s", line)
+			}
 			fmt.Fprint(w, line)
 			flusher.Flush()
 		}
@@ -405,4 +415,41 @@ func readLastNEvents(path string, n int) ([]events.Event, error) {
 		return allEvents[len(allEvents)-n:], nil
 	}
 	return allEvents, nil
+}
+
+// beadsIssue represents the JSON structure from `bd show --json`
+type beadsIssue struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
+
+// getBeadsTitle fetches the title for a beads issue using the bd CLI.
+// Returns empty string if the issue cannot be found or bd CLI fails.
+func getBeadsTitle(beadsID, beadsDBPath string) string {
+	if beadsID == "" {
+		return ""
+	}
+
+	args := []string{"show", beadsID, "--json"}
+	if beadsDBPath != "" {
+		args = append(args, "--db", beadsDBPath)
+	}
+
+	cmd := exec.Command("bd", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	var issues []beadsIssue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return ""
+	}
+
+	if len(issues) > 0 {
+		return issues[0].Title
+	}
+	return ""
 }

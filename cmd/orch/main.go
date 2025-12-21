@@ -91,6 +91,7 @@ var (
 	spawnMode              string
 	spawnValidation        string
 	spawnInline            bool   // Run inline (blocking) instead of headless
+	spawnTmux              bool   // Run in tmux window (interactive)
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright")
@@ -104,6 +105,7 @@ var spawnCmd = &cobra.Command{
 
 By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
 Use --inline to run in the current terminal (blocking with TUI).
+Use --tmux to run in a tmux window (interactive, returns immediately).
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
@@ -113,6 +115,7 @@ Examples:
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
   orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
+  orch-go spawn --tmux investigation "explore codebase"        # Run in tmux window
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
@@ -123,7 +126,7 @@ Examples:
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline)
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnTmux)
 	},
 }
 
@@ -133,6 +136,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
+	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (interactive, returns immediately)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
@@ -512,10 +516,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline)
+	return runSpawnWithSkill(serverURL, skillName, task, inline, false) // work command doesn't use tmux
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -588,7 +592,12 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Spawn mode: inline (blocking with TUI) or headless (HTTP API, no TUI)
+	// Spawn mode: tmux (interactive window), inline (blocking with TUI), or headless (HTTP API, no TUI)
+	if tmux {
+		// Tmux mode - create tmux window and run opencode there
+		return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
 	if inline {
 		// Inline mode (blocking) - run in current terminal with TUI
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
@@ -760,6 +769,29 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
 
 	return nil
+}
+
+// runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
+// Creates a tmux window in workers-{project} session, runs opencode there, and returns.
+func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+	// Determine tmux session name (workers-{project})
+	sessionName := fmt.Sprintf("workers-%s", cfg.Project)
+
+	// Check if tmux is available
+	if _, err := exec.LookPath("tmux"); err != nil {
+		return fmt.Errorf("tmux not found: %w (install tmux or use --inline/--headless)", err)
+	}
+
+	// TODO: Ensure workers session exists (tmuxinator start if needed)
+	// TODO: Create tmux window
+	// TODO: Send opencode command to window
+	// TODO: Wait for TUI ready
+	// TODO: Send prompt
+	// TODO: Register agent in registry with window ID
+	// TODO: Log spawn event
+	// TODO: Focus window
+
+	return fmt.Errorf("--tmux mode for session %s not yet implemented (in progress)", sessionName)
 }
 
 // createBeadsIssue creates a new beads issue for tracking the agent.
