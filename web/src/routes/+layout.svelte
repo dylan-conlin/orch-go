@@ -1,6 +1,9 @@
 <script lang="ts">
 	import '../app.css';
+	import { onMount } from 'svelte';
 	import { connectionStatus } from '$lib/stores/agents';
+	import { theme } from '$lib/stores/theme';
+	import { ThemeToggle } from '$lib/components/theme-toggle';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -14,6 +17,10 @@
 			default:
 				return 'bg-red-500';
 		}
+	});
+
+	onMount(() => {
+		theme.init();
 	});
 </script>
 
@@ -34,6 +41,7 @@
 						{$connectionStatus}
 					</span>
 				</div>
+				<ThemeToggle />
 			</div>
 		</div>
 	</header>
