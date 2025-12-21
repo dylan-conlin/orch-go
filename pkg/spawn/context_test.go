@@ -103,6 +103,8 @@ Test skill content.
 		"Phases: implementation,validation",
 		"Mode: tdd",
 		"Validation: tests",
+		"CREATE SYNTHESIS.md",
+		"SYNTHESIS.md is created and committed",
 	}
 
 	for _, check := range checks {

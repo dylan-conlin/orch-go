@@ -24,8 +24,9 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
 After your final commit, BEFORE typing anything else:
-1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-2. Run: ` + "`/exit`" + ` to close the agent session
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
+3. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
@@ -73,6 +74,9 @@ DELIVERABLES (REQUIRED):
    - Only fill Conclusion if you actually tested (this is the key discipline)
 4. Update Status: field when done (Active → Complete)
 5. [Task-specific deliverables]
+6. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
+   - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
+   - This is CRITICAL for the orchestrator to review your work.
 
 STATUS UPDATES:
 Update Status: field in your investigation file:
@@ -149,8 +153,9 @@ CONTEXT AVAILABLE:
 
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
-1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-2. ` + "`/exit`" + `
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
+3. ` + "`/exit`" + `
 
 ⚠️ Your work is NOT complete until you run both commands.
 `
@@ -160,6 +165,7 @@ type contextData struct {
 	Task              string
 	BeadsID           string
 	ProjectDir        string
+	WorkspaceName     string
 	SkillName         string
 	SkillContent      string
 	InvestigationSlug string
@@ -183,6 +189,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		Task:              cfg.Task,
 		BeadsID:           cfg.BeadsID,
 		ProjectDir:        cfg.ProjectDir,
+		WorkspaceName:     cfg.WorkspaceName,
 		SkillName:         cfg.SkillName,
 		SkillContent:      cfg.SkillContent,
 		InvestigationSlug: slug,
