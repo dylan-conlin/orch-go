@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-pfih
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** The installed `orch` binary is fully functional and correctly configured.

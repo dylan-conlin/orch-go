@@ -12,7 +12,9 @@ INSTALL_DIR=$(HOME)/bin
 # Go build flags
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
-LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
+SOURCE_DIR ?= $(shell pwd)
+GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
 .PHONY: all build clean test install fmt lint docs version
 

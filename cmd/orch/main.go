@@ -28,9 +28,11 @@ var (
 	// Global flags
 	serverURL string
 
-	// Version information (set at build time)
+	// Version information (set at build time via ldflags)
 	version   = "dev"
 	buildTime = "unknown"
+	sourceDir = "unknown" // Absolute path to source directory
+	gitHash   = "unknown" // Full git commit hash at build time
 )
 
 func main() {
@@ -75,13 +77,71 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 }
 
+var (
+	versionSource bool // Show source info and staleness check
+)
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version information",
+	Long: `Print version information.
+
+Use --source to see where the binary was built from and check if it's stale.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if versionSource {
+			runVersionSource()
+			return
+		}
 		fmt.Printf("orch version %s\n", version)
 		fmt.Printf("build time: %s\n", buildTime)
 	},
+}
+
+func init() {
+	versionCmd.Flags().BoolVar(&versionSource, "source", false, "Show source location and staleness check")
+}
+
+// runVersionSource shows where the binary was built from and checks staleness.
+func runVersionSource() {
+	fmt.Printf("orch version %s\n", version)
+	fmt.Printf("build time:  %s\n", buildTime)
+	fmt.Printf("source dir:  %s\n", sourceDir)
+	fmt.Printf("git hash:    %s\n", gitHash)
+
+	// Check if source directory exists
+	if sourceDir == "unknown" {
+		fmt.Println("\n⚠️  Source directory not embedded (dev build)")
+		return
+	}
+
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		fmt.Printf("\n⚠️  Source directory not found: %s\n", sourceDir)
+		return
+	}
+
+	// Check current git hash in source directory
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = sourceDir
+	output, err := cmd.Output()
+	if err != nil {
+		fmt.Printf("\n⚠️  Could not get current git hash: %v\n", err)
+		return
+	}
+
+	currentHash := strings.TrimSpace(string(output))
+
+	// Compare hashes
+	if gitHash == "unknown" {
+		fmt.Println("\n⚠️  Git hash not embedded (dev build)")
+		fmt.Printf("current HEAD: %s\n", currentHash[:12])
+	} else if currentHash == gitHash {
+		fmt.Println("\nstatus: ✓ UP TO DATE")
+	} else {
+		fmt.Println("\nstatus: ⚠️  STALE")
+		fmt.Printf("binary hash:  %s\n", gitHash[:12])
+		fmt.Printf("current HEAD: %s\n", currentHash[:12])
+		fmt.Printf("\nrebuild: cd %s && make install\n", sourceDir)
+	}
 }
 
 var (
