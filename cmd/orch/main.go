@@ -12,7 +12,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
-	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/question"
 	"github.com/dylan-conlin/orch-go/pkg/registry"
@@ -614,9 +613,23 @@ func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	// This prevents the orchestrator skill from being injected
 	envExport := "export ORCH_WORKER=true && "
 
+	// Pass through common API keys if set in environment
+	keys := []string{"GOOGLE_GENERATIVE_AI_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GOOGLE_GEMINI_API_SCS", "GOOGLE_GEMINI_SCS_DEV"}
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			envExport += fmt.Sprintf("export %s='%s' && ", k, v)
+			// Map aliases to expected names for OpenCode
+			if (k == "GOOGLE_GEMINI_API_SCS" || k == "GOOGLE_GEMINI_SCS_DEV") && os.Getenv("GOOGLE_GENERATIVE_AI_API_KEY") == "" {
+				envExport += fmt.Sprintf("export GOOGLE_GENERATIVE_AI_API_KEY='%s' && ", v)
+			}
+		}
+	}
+
 	// If using Gemini, ensure we don't have a stale Anthropic key in the window
 	if strings.Contains(cfg.Model, "gemini") {
 		envExport += "unset ANTHROPIC_API_KEY && "
+	} else if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
+		envExport += fmt.Sprintf("export ANTHROPIC_API_KEY='%s' && ", v)
 	}
 
 	fullCmd := envExport + opencodeCmd
@@ -842,27 +855,13 @@ func truncate(s string, maxLen int) string {
 
 func runSend(serverURL, sessionID, message string) error {
 	client := opencode.NewClient(serverURL)
-	cmd := client.BuildAskCommand(sessionID, message)
-	cmd.Stderr = os.Stderr
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdout: %w", err)
+	// Use async API to avoid hang
+	if err := client.SendMessageAsync(sessionID, message); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start opencode: %w", err)
-	}
-
-	// Stream text content to stdout as it arrives
-	result, err := opencode.ProcessOutputWithStreaming(stdout, os.Stdout)
-	if err != nil {
-		return fmt.Errorf("failed to process output: %w", err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("opencode exited with error: %w", err)
-	}
+	fmt.Printf("✓ Message sent to session %s\n", sessionID)
 
 	// Log the send
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -871,16 +870,13 @@ func runSend(serverURL, sessionID, message string) error {
 		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"message":     message,
-			"event_count": len(result.Events),
+			"message": message,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Print newline after streamed content for cleaner output
-	fmt.Println()
 	return nil
 }
 
@@ -924,14 +920,24 @@ func runComplete(beadsID string) error {
 	}
 
 	// Check if already closed
-	if issue.Status == "closed" {
-		fmt.Printf("Issue %s is already closed\n", beadsID)
-		return nil
+	isClosed := issue.Status == "closed"
+	if isClosed {
+		fmt.Printf("Issue %s is already closed in beads\n", beadsID)
 	}
 
 	// Verify phase status unless force flag is set
 	if !completeForce {
-		result, err := verify.VerifyCompletion(beadsID)
+		// Find agent in registry to get workspace path for SYNTHESIS.md verification
+		var workspacePath string
+		reg, err := registry.New("")
+		if err == nil {
+			agent := reg.Find(beadsID)
+			if agent != nil && agent.ProjectDir != "" {
+				workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+			}
+		}
+
+		result, err := verify.VerifyCompletion(beadsID, workspacePath)
 		if err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}
@@ -969,12 +975,13 @@ func runComplete(beadsID string) error {
 		}
 	}
 
-	// Close the beads issue
-	if err := verify.CloseIssue(beadsID, reason); err != nil {
-		return fmt.Errorf("failed to close issue: %w", err)
+	// Close the beads issue if not already closed
+	if !isClosed {
+		if err := verify.CloseIssue(beadsID, reason); err != nil {
+			return fmt.Errorf("failed to close issue: %w", err)
+		}
+		fmt.Printf("Closed beads issue: %s\n", beadsID)
 	}
-
-	fmt.Printf("Closed beads issue: %s\n", beadsID)
 	fmt.Printf("Reason: %s\n", reason)
 
 	// Clean up tmux window and registry
@@ -1019,90 +1026,27 @@ func runComplete(beadsID string) error {
 }
 
 func runMonitor(serverURL string) error {
-	sseURL := serverURL + "/event"
-	sseClient := opencode.NewSSEClient(sseURL)
-	apiClient := opencode.NewClient(serverURL)
-	notifier := notify.Default()
-
-	fmt.Printf("Monitoring SSE events at %s...\n", sseURL)
-
-	sseEvents := make(chan opencode.SSEEvent, 100)
-	errChan := make(chan error, 1)
-
-	go func() {
-		if err := sseClient.Connect(sseEvents); err != nil {
-			errChan <- err
-		}
-		close(sseEvents)
-	}()
-
-	logger := events.NewLogger(events.DefaultLogPath())
-	var sessionEvents []opencode.SSEEvent
-
-	for {
-		select {
-		case event, ok := <-sseEvents:
-			if !ok {
-				return nil
-			}
-
-			// Log every event
-			logEvent := events.Event{
-				Type:      event.Event,
-				Timestamp: time.Now().Unix(),
-				Data:      map[string]interface{}{"raw_data": event.Data},
-			}
-
-			// Parse session info if available
-			if event.Event == "session.status" || event.Event == "session.created" {
-				status, sid := opencode.ParseSessionStatus(event.Data)
-				if sid != "" {
-					logEvent.SessionID = sid
-				}
-				if status != "" {
-					logEvent.Data["status"] = status
-				}
-			}
-
-			if err := logger.Log(logEvent); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-			}
-
-			fmt.Printf("[%s] %s\n", event.Event, event.Data)
-			sessionEvents = append(sessionEvents, event)
-
-			// Check for completion
-			sessionID, completed := opencode.DetectCompletion(sessionEvents)
-			if completed {
-				// Try to get session title for notification
-				workspace := ""
-				if session, err := apiClient.GetSession(sessionID); err == nil && session != nil {
-					workspace = session.Title
-				}
-
-				if err := notifier.SessionComplete(sessionID, workspace); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to send notification: %v\n", err)
-				}
-				fmt.Printf("\nSession %s completed!\n", sessionID)
-
-				// Log completion
-				completionEvent := events.Event{
-					Type:      "session.completed",
-					SessionID: sessionID,
-					Timestamp: time.Now().Unix(),
-				}
-				if err := logger.Log(completionEvent); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to log completion: %v\n", err)
-				}
-
-				// Reset for next session
-				sessionEvents = nil
-			}
-
-		case err := <-errChan:
-			return fmt.Errorf("SSE connection error: %w", err)
-		}
+	// Use the new CompletionService which handles:
+	// - SSE monitoring with automatic reconnection
+	// - Desktop notifications
+	// - Registry updates
+	// - Beads phase updates
+	service, err := opencode.NewCompletionService(serverURL)
+	if err != nil {
+		return fmt.Errorf("failed to create completion service: %w", err)
 	}
+
+	fmt.Printf("Monitoring SSE events at %s/event...\n", serverURL)
+	fmt.Println("On session completion:")
+	fmt.Println("  - Desktop notification sent")
+	fmt.Println("  - Registry updated")
+	fmt.Println("  - Beads phase updated (if applicable)")
+	fmt.Println("Press Ctrl+C to stop")
+
+	service.Start()
+
+	// Block forever - the user will Ctrl+C to stop
+	select {}
 }
 
 var (
