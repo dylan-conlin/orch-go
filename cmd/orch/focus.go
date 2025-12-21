@@ -366,6 +366,12 @@ func runNext() error {
 
 // getReadyIssues returns beads issues that are ready for work.
 // Calls `bd ready` to get the list.
+// Output format from bd ready:
+//
+//	📋 Ready work (3 issues with no blockers):
+//
+//	1. [P0] orch-go-o7x: Full HTTP API integration...
+//	2. [P2] orch-go-e0u: [orch-go] investigation...
 func getReadyIssues() []string {
 	// Get current directory for project context
 	projectDir, err := os.Getwd()
@@ -384,11 +390,24 @@ func getReadyIssues() []string {
 	var issues []string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "No ") {
-			// Extract issue ID from beginning of line
+		// Skip empty lines, headers (start with emoji), and "No" messages
+		if line == "" || strings.HasPrefix(line, "📋") || strings.HasPrefix(line, "No ") {
+			continue
+		}
+		// Look for lines starting with "N. " (numbered list)
+		// Format: "1. [P0] issue-id: title..."
+		if len(line) >= 3 && line[0] >= '0' && line[0] <= '9' && line[1] == '.' {
+			// Extract issue ID after the priority marker
+			// Format after number: " [P0] issue-id: title"
 			parts := strings.Fields(line)
-			if len(parts) > 0 {
-				issues = append(issues, parts[0])
+			// parts[0] = "1.", parts[1] = "[P0]", parts[2] = "issue-id:"
+			if len(parts) >= 3 {
+				issueWithColon := parts[2]
+				// Remove trailing colon if present
+				issueID := strings.TrimSuffix(issueWithColon, ":")
+				if issueID != "" {
+					issues = append(issues, issueID)
+				}
 			}
 		}
 	}
