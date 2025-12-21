@@ -15,6 +15,13 @@
 		disconnectSSE,
 		type Agent
 	} from '$lib/stores/agents';
+	import {
+		agentlogEvents,
+		agentlogConnectionStatus,
+		connectAgentlogSSE,
+		disconnectAgentlogSSE,
+		type AgentLogEvent
+	} from '$lib/stores/agentlog';
 
 	onMount(() => {
 		// Fetch initial agents
@@ -22,12 +29,19 @@
 			console.error('Initial fetch failed:', err);
 		});
 
+		// Fetch initial agentlog
+		agentlogEvents.fetch().catch((err) => {
+			console.error('Initial agentlog fetch failed:', err);
+		});
+
 		// Connect to SSE for real-time updates
 		connectSSE();
+		connectAgentlogSSE();
 	});
 
 	onDestroy(() => {
 		disconnectSSE();
+		disconnectAgentlogSSE();
 	});
 
 	function handleConnectClick() {
@@ -65,11 +79,53 @@
 		if (!timestamp) return '';
 		return new Date(timestamp).toLocaleTimeString();
 	}
+
+	function formatUnixTime(timestamp: number): string {
+		return new Date(timestamp * 1000).toLocaleTimeString();
+	}
+
+	function getEventIcon(type: string): string {
+		switch (type) {
+			case 'session.spawned':
+				return '🚀';
+			case 'session.completed':
+				return '✅';
+			case 'session.error':
+				return '❌';
+			case 'session.status':
+				return '📊';
+			default:
+				return '📝';
+		}
+	}
+
+	function getEventLabel(type: string): string {
+		switch (type) {
+			case 'session.spawned':
+				return 'Spawned';
+			case 'session.completed':
+				return 'Completed';
+			case 'session.error':
+				return 'Error';
+			case 'session.status':
+				return 'Status';
+			default:
+				return type;
+		}
+	}
+
+	function handleAgentlogConnectClick() {
+		if ($agentlogConnectionStatus === 'disconnected') {
+			connectAgentlogSSE();
+		} else {
+			disconnectAgentlogSSE();
+		}
+	}
 </script>
 
 <div class="space-y-8">
 	<!-- Stats Overview -->
-	<div class="grid gap-4 md:grid-cols-4">
+	<div class="grid gap-4 md:grid-cols-5">
 		<Card>
 			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
 				<CardTitle class="text-sm font-medium">Active Agents</CardTitle>
@@ -98,6 +154,16 @@
 			<CardContent>
 				<div class="text-2xl font-bold">{$abandonedAgents.length}</div>
 				<p class="text-xs text-muted-foreground">Stuck or failed</p>
+			</CardContent>
+		</Card>
+		<Card>
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Agent Log</CardTitle>
+				<span class="text-2xl">📋</span>
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold">{$agentlogEvents.length}</div>
+				<p class="text-xs text-muted-foreground">Lifecycle events</p>
 			</CardContent>
 		</Card>
 		<Card>
@@ -181,6 +247,66 @@
 							Agents will appear here when spawned via <code class="rounded bg-muted px-1">orch spawn</code>
 						</p>
 					</div>
+				{/each}
+			</div>
+		</CardContent>
+	</Card>
+
+	<!-- Agent Lifecycle Events -->
+	<Card>
+		<CardHeader>
+			<div class="flex items-center justify-between">
+				<div>
+					<CardTitle>Agent Lifecycle</CardTitle>
+					<CardDescription>Events from ~/.orch/events.jsonl</CardDescription>
+				</div>
+				<Button
+					variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'outline'}
+					size="sm"
+					onclick={handleAgentlogConnectClick}
+				>
+					{#if $agentlogConnectionStatus === 'connecting'}
+						Connecting...
+					{:else if $agentlogConnectionStatus === 'connected'}
+						Disconnect
+					{:else}
+						Follow Live
+					{/if}
+				</Button>
+			</div>
+		</CardHeader>
+		<CardContent>
+			<div class="max-h-80 overflow-y-auto rounded-lg bg-muted/50 p-4 font-mono text-xs">
+				{#each $agentlogEvents.slice().reverse() as event, i (i)}
+					<div class="border-b border-border py-2 last:border-0">
+						<span class="mr-2">{getEventIcon(event.type)}</span>
+						<span class="text-muted-foreground">[{formatUnixTime(event.timestamp)}]</span>
+						<Badge variant="outline" class="ml-2 text-xs">
+							{getEventLabel(event.type)}
+						</Badge>
+						{#if event.session_id}
+							<span class="ml-2 font-medium">{event.session_id.slice(0, 12)}...</span>
+						{/if}
+						{#if event.data?.title}
+							<span class="ml-2 text-muted-foreground">"{event.data.title}"</span>
+						{/if}
+						{#if event.data?.error}
+							<span class="ml-2 text-red-500">{event.data.error}</span>
+						{/if}
+						{#if event.data?.status}
+							<span class="ml-2 text-muted-foreground">→ {event.data.status}</span>
+						{/if}
+					</div>
+				{:else}
+					<p class="text-muted-foreground">
+						{#if $agentlogConnectionStatus === 'connected'}
+							Waiting for agent events...
+						{:else if $agentlogConnectionStatus === 'connecting'}
+							Connecting to agentlog stream...
+						{:else}
+							No agent lifecycle events yet. Spawn agents with <code class="rounded bg-muted px-1">orch spawn</code>
+						{/if}
+					</p>
 				{/each}
 			</div>
 		</CardContent>
