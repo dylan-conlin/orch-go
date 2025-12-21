@@ -316,6 +316,207 @@ func TestAbandonValidatesAgentStatus(t *testing.T) {
 	// For now, we rely on the unit tests in pkg/registry.
 }
 
+// TestExtractBeadsIDFromTitle tests extracting beads ID from session titles.
+func TestExtractBeadsIDFromTitle(t *testing.T) {
+	tests := []struct {
+		name   string
+		title  string
+		wantID string
+	}{
+		{
+			name:   "beads ID in brackets at end",
+			title:  "og-feat-add-feature-19dec [orch-go-abc12]",
+			wantID: "orch-go-abc12",
+		},
+		{
+			name:   "beads ID in brackets with extra spaces",
+			title:  "og-inv-something [ proj-xyz ]",
+			wantID: "proj-xyz",
+		},
+		{
+			name:   "no brackets",
+			title:  "og-feat-add-feature-19dec",
+			wantID: "",
+		},
+		{
+			name:   "empty title",
+			title:  "",
+			wantID: "",
+		},
+		{
+			name:   "unclosed bracket",
+			title:  "og-feat-test [incomplete",
+			wantID: "",
+		},
+		{
+			name:   "nested brackets - takes innermost",
+			title:  "outer [inner [orch-go-xyz]]",
+			wantID: "orch-go-xyz]", // This is an edge case but acceptable
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractBeadsIDFromTitle(tt.title)
+			if got != tt.wantID {
+				t.Errorf("extractBeadsIDFromTitle(%q) = %q, want %q", tt.title, got, tt.wantID)
+			}
+		})
+	}
+}
+
+// TestExtractSkillFromTitle tests extracting skill from session titles/workspace names.
+func TestExtractSkillFromTitle(t *testing.T) {
+	tests := []struct {
+		name      string
+		title     string
+		wantSkill string
+	}{
+		{
+			name:      "feature-impl from -feat-",
+			title:     "og-feat-add-feature-19dec",
+			wantSkill: "feature-impl",
+		},
+		{
+			name:      "investigation from -inv-",
+			title:     "og-inv-explore-codebase-19dec",
+			wantSkill: "investigation",
+		},
+		{
+			name:      "systematic-debugging from -debug-",
+			title:     "og-debug-fix-bug-19dec",
+			wantSkill: "systematic-debugging",
+		},
+		{
+			name:      "architect from -arch-",
+			title:     "og-arch-design-system-19dec",
+			wantSkill: "architect",
+		},
+		{
+			name:      "codebase-audit from -audit-",
+			title:     "og-audit-security-19dec",
+			wantSkill: "codebase-audit",
+		},
+		{
+			name:      "research from -research-",
+			title:     "og-research-compare-libs-19dec",
+			wantSkill: "research",
+		},
+		{
+			name:      "no matching pattern",
+			title:     "random-session-name",
+			wantSkill: "",
+		},
+		{
+			name:      "empty title",
+			title:     "",
+			wantSkill: "",
+		},
+		{
+			name:      "case insensitive",
+			title:     "OG-FEAT-UPPERCASE-19DEC",
+			wantSkill: "feature-impl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractSkillFromTitle(tt.title)
+			if got != tt.wantSkill {
+				t.Errorf("extractSkillFromTitle(%q) = %q, want %q", tt.title, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+// TestExtractBeadsIDFromWindowName tests extracting beads ID from tmux window names.
+func TestExtractBeadsIDFromWindowName(t *testing.T) {
+	tests := []struct {
+		name       string
+		windowName string
+		wantID     string
+	}{
+		{
+			name:       "standard window name with emoji and beads ID",
+			windowName: "🔬 og-inv-test-19dec [proj-abc]",
+			wantID:     "proj-abc",
+		},
+		{
+			name:       "feature-impl window",
+			windowName: "🏗️ og-feat-add-button-19dec [snap-xyz]",
+			wantID:     "snap-xyz",
+		},
+		{
+			name:       "no beads ID",
+			windowName: "🐛 og-debug-fix-19dec",
+			wantID:     "",
+		},
+		{
+			name:       "servers window",
+			windowName: "servers",
+			wantID:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractBeadsIDFromWindowName(tt.windowName)
+			if got != tt.wantID {
+				t.Errorf("extractBeadsIDFromWindowName(%q) = %q, want %q", tt.windowName, got, tt.wantID)
+			}
+		})
+	}
+}
+
+// TestExtractSkillFromWindowName tests extracting skill from tmux window names.
+func TestExtractSkillFromWindowName(t *testing.T) {
+	tests := []struct {
+		name       string
+		windowName string
+		wantSkill  string
+	}{
+		{
+			name:       "investigation emoji",
+			windowName: "🔬 og-inv-test-19dec [proj-abc]",
+			wantSkill:  "investigation",
+		},
+		{
+			name:       "feature-impl emoji",
+			windowName: "🏗️ og-feat-add-button-19dec",
+			wantSkill:  "feature-impl",
+		},
+		{
+			name:       "debugging emoji",
+			windowName: "🐛 og-debug-fix-19dec",
+			wantSkill:  "systematic-debugging",
+		},
+		{
+			name:       "architect emoji",
+			windowName: "📐 og-arch-design-19dec",
+			wantSkill:  "architect",
+		},
+		{
+			name:       "fallback to title pattern when no emoji",
+			windowName: "og-feat-add-button-19dec",
+			wantSkill:  "feature-impl",
+		},
+		{
+			name:       "unknown window",
+			windowName: "random-window",
+			wantSkill:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractSkillFromWindowName(tt.windowName)
+			if got != tt.wantSkill {
+				t.Errorf("extractSkillFromWindowName(%q) = %q, want %q", tt.windowName, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
 // TestDetermineBeadsID tests the beads ID determination logic.
 func TestDetermineBeadsID(t *testing.T) {
 	// Mock createBeadsIssue function that always returns an error

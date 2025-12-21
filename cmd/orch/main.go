@@ -381,61 +381,49 @@ func init() {
 }
 
 func runTail(beadsID string, lines int) error {
-	// Find the agent in the registry
-	reg, err := registry.New("")
-	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
+	client := opencode.NewClient(serverURL)
+	projectDir, _ := os.Getwd()
+
+	// Strategy: Derived lookups first, registry as optional optimization
+	//
+	// 1. Try to find session ID via registry (fast path if available)
+	// 2. If registry has session ID, fetch messages from OpenCode API
+	// 3. If no registry or API fails, find tmux window by beadsID and capture pane
+	// 4. If tmux window found, also try to find matching OpenCode session
+
+	// Optional registry lookup for session ID (optimization, not required)
+	var sessionID string
+	var agentID string = beadsID
+	reg, _ := registry.New("")
+	if reg != nil {
+		if agent := reg.Find(beadsID); agent != nil {
+			sessionID = agent.SessionID
+			if agent.ID != "" {
+				agentID = agent.ID
+			}
+		}
 	}
 
-	agent := reg.Find(beadsID)
-	if agent != nil && agent.SessionID != "" {
-		client := opencode.NewClient(serverURL)
-
-		// Fetch messages from the session
-		messages, err := client.GetMessages(agent.SessionID)
-		if err == nil {
-			if len(messages) == 0 {
-				fmt.Println("No messages found in session")
-				return nil
-			}
-
-			// Extract recent text from messages
+	// If we have a session ID (from registry), try OpenCode API first
+	if sessionID != "" {
+		messages, err := client.GetMessages(sessionID)
+		if err == nil && len(messages) > 0 {
 			textLines := opencode.ExtractRecentText(messages, lines)
-
-			// Print the captured output
-			fmt.Printf("=== Output from %s (via API, last %d lines) ===\n", agent.ID, lines)
+			fmt.Printf("=== Output from %s (via API, last %d lines) ===\n", agentID, lines)
 			for _, line := range textLines {
 				fmt.Println(line)
 			}
 			fmt.Printf("=== End of output ===\n")
 			return nil
 		}
-		// If API fails, fall through to tmux fallback
-		fmt.Fprintf(os.Stderr, "Warning: failed to fetch messages via API: %v. Falling back to tmux...\n", err)
+		// If API fails, fall through to derived lookups
 	}
 
-	// Tmux fallback
-	fmt.Println("Searching tmux for agent output...")
-
-	// 1. If we have a window target in the registry, try it first
-	if agent != nil {
-		targets := []string{agent.Window, agent.WindowID}
-		for _, target := range targets {
-			if target == "" || target == registry.HeadlessWindowID {
-				continue
-			}
-			output, err := tmux.CaptureLines(target, lines)
-			if err == nil {
-				printTmuxOutput(agent.ID, target, lines, output)
-				return nil
-			}
-		}
-	}
-
-	// 2. Search all workers sessions
+	// Derived lookup: Find tmux window by beadsID
 	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
-		return fmt.Errorf("failed to list tmux sessions: %w", err)
+		// tmux not available, and no API session found
+		return fmt.Errorf("no agent found for beads ID: %s (no tmux sessions, no API session)", beadsID)
 	}
 
 	for _, session := range sessions {
@@ -444,21 +432,36 @@ func runTail(beadsID string, lines int) error {
 			continue
 		}
 
+		// Found tmux window - try to find matching OpenCode session first
+		// This gives us richer output than just pane capture
+		allSessions, err := client.ListSessions(projectDir)
+		if err == nil {
+			for _, s := range allSessions {
+				// Match session by title containing beadsID or workspace name
+				if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
+					messages, err := client.GetMessages(s.ID)
+					if err == nil && len(messages) > 0 {
+						textLines := opencode.ExtractRecentText(messages, lines)
+						fmt.Printf("=== Output from %s (via API, last %d lines) ===\n", agentID, lines)
+						for _, line := range textLines {
+							fmt.Println(line)
+						}
+						fmt.Printf("=== End of output ===\n")
+						return nil
+					}
+				}
+			}
+		}
+
+		// Fallback: capture tmux pane directly
 		output, err := tmux.CaptureLines(window.Target, lines)
 		if err == nil {
-			agentID := beadsID
-			if agent != nil {
-				agentID = agent.ID
-			}
 			printTmuxOutput(agentID, window.Target, lines, output)
 			return nil
 		}
 	}
 
-	if agent == nil {
-		return fmt.Errorf("no agent found for beads ID: %s (checked registry and tmux)", beadsID)
-	}
-	return fmt.Errorf("agent %s found but could not capture output (checked API and tmux)", agent.ID)
+	return fmt.Errorf("no agent found for beads ID: %s (checked tmux and API)", beadsID)
 }
 
 func printTmuxOutput(agentID, target string, lines int, output []string) {
@@ -488,63 +491,45 @@ Examples:
 }
 
 func runQuestion(beadsID string) error {
-	// Find agent in registry
-	reg, err := registry.New("")
-	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
+	client := opencode.NewClient(serverURL)
+	projectDir, _ := os.Getwd()
+
+	// Strategy: Derived lookups first, registry as optional optimization
+	//
+	// 1. Try to find session ID via registry (fast path if available)
+	// 2. If registry has session ID, fetch messages from OpenCode API
+	// 3. If no registry or API fails, find tmux window by beadsID and check pane
+	// 4. If tmux window found, also try to find matching OpenCode session
+
+	// Optional registry lookup for session ID (optimization, not required)
+	var sessionID string
+	reg, _ := registry.New("")
+	if reg != nil {
+		if agent := reg.Find(beadsID); agent != nil {
+			sessionID = agent.SessionID
+		}
 	}
 
-	agent := reg.Find(beadsID)
-	if agent != nil && agent.SessionID != "" {
-		// Fetch recent messages from the session
-		client := opencode.NewClient(serverURL)
-		messages, err := client.GetMessages(agent.SessionID)
-		if err == nil {
-			if len(messages) == 0 {
-				fmt.Println("No messages found in session")
-				return nil
-			}
-
-			// Extract recent text content from messages to search for questions
+	// If we have a session ID (from registry), try OpenCode API first
+	if sessionID != "" {
+		messages, err := client.GetMessages(sessionID)
+		if err == nil && len(messages) > 0 {
 			textLines := opencode.ExtractRecentText(messages, 100)
 			content := strings.Join(textLines, "\n")
-
-			// Extract question from content
 			q := question.Extract(content)
 			if q != "" {
 				fmt.Printf("Pending question (via API):\n%s\n", q)
 				return nil
 			}
-			// If no question found via API, fall through to tmux fallback
+			// No question in API - might still be pending in terminal, continue to tmux
 		}
 	}
 
-	// Tmux fallback
-	fmt.Println("Searching tmux for pending question...")
-
-	// 1. If we have a window target in the registry, try it first
-	if agent != nil {
-		targets := []string{agent.Window, agent.WindowID}
-		for _, target := range targets {
-			if target == "" || target == registry.HeadlessWindowID {
-				continue
-			}
-			lines, err := tmux.CaptureLines(target, 100)
-			if err == nil {
-				content := strings.Join(lines, "\n")
-				q := question.Extract(content)
-				if q != "" {
-					fmt.Printf("Pending question (via tmux %s):\n%s\n", target, q)
-					return nil
-				}
-			}
-		}
-	}
-
-	// 2. Search all workers sessions
+	// Derived lookup: Find tmux window by beadsID
 	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
-		return fmt.Errorf("failed to list tmux sessions: %w", err)
+		fmt.Println("No pending question found (no tmux sessions)")
+		return nil
 	}
 
 	for _, session := range sessions {
@@ -553,6 +538,30 @@ func runQuestion(beadsID string) error {
 			continue
 		}
 
+		// Found tmux window - try to find matching OpenCode session first
+		// This gives us richer message history than just pane capture
+		if sessionID == "" {
+			allSessions, err := client.ListSessions(projectDir)
+			if err == nil {
+				for _, s := range allSessions {
+					// Match session by title containing beadsID or workspace name
+					if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
+						messages, err := client.GetMessages(s.ID)
+						if err == nil && len(messages) > 0 {
+							textLines := opencode.ExtractRecentText(messages, 100)
+							content := strings.Join(textLines, "\n")
+							q := question.Extract(content)
+							if q != "" {
+								fmt.Printf("Pending question (via API):\n%s\n", q)
+								return nil
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Fallback: check tmux pane directly
 		lines, err := tmux.CaptureLines(window.Target, 100)
 		if err == nil {
 			content := strings.Join(lines, "\n")
@@ -1178,6 +1187,69 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
+// extractBeadsIDFromTitle extracts beads ID from an OpenCode session title.
+// Looks for patterns like "[beads-id]" at the end of the title.
+func extractBeadsIDFromTitle(title string) string {
+	// Look for "[beads-id]" pattern
+	if start := strings.LastIndex(title, "["); start != -1 {
+		if end := strings.LastIndex(title, "]"); end != -1 && end > start {
+			return strings.TrimSpace(title[start+1 : end])
+		}
+	}
+	return ""
+}
+
+// extractSkillFromTitle extracts skill from an OpenCode session title.
+// Infers skill from common workspace name prefixes (og-feat-, og-inv-, og-debug-, etc.)
+func extractSkillFromTitle(title string) string {
+	titleLower := strings.ToLower(title)
+	// Check for workspace name patterns
+	if strings.Contains(titleLower, "-feat-") {
+		return "feature-impl"
+	}
+	if strings.Contains(titleLower, "-inv-") {
+		return "investigation"
+	}
+	if strings.Contains(titleLower, "-debug-") {
+		return "systematic-debugging"
+	}
+	if strings.Contains(titleLower, "-arch-") {
+		return "architect"
+	}
+	if strings.Contains(titleLower, "-audit-") {
+		return "codebase-audit"
+	}
+	if strings.Contains(titleLower, "-research-") {
+		return "research"
+	}
+	return ""
+}
+
+// extractBeadsIDFromWindowName extracts beads ID from a tmux window name.
+// Window names follow format: "emoji workspace-name [beads-id]"
+func extractBeadsIDFromWindowName(name string) string {
+	// Look for "[beads-id]" pattern
+	if start := strings.LastIndex(name, "["); start != -1 {
+		if end := strings.LastIndex(name, "]"); end != -1 && end > start {
+			return strings.TrimSpace(name[start+1 : end])
+		}
+	}
+	return ""
+}
+
+// extractSkillFromWindowName extracts skill from a tmux window name.
+// First tries to match skill emoji, then falls back to workspace name patterns.
+func extractSkillFromWindowName(name string) string {
+	// Try emoji matching first (most reliable)
+	for skill, emoji := range tmux.SKILL_EMOJIS {
+		if strings.Contains(name, emoji) {
+			return skill
+		}
+	}
+	// Fall back to workspace name patterns
+	return extractSkillFromTitle(name)
+}
+
 func runSend(serverURL, sessionID, message string) error {
 	client := opencode.NewClient(serverURL)
 
@@ -1256,33 +1328,31 @@ func runStatus(serverURL string) error {
 	// Get current directory for filtering
 	projectDir, _ := os.Getwd()
 
-	// Fetch sessions from OpenCode
+	// Fetch sessions from OpenCode (primary source)
 	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
-	// Open registry to get agent metadata
-	reg, regErr := registry.New("")
-	if regErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not open registry: %v\n", regErr)
-	}
+	// Registry is OPTIONAL enrichment - not required for core functionality
+	// If registry fails, we still show sessions from OpenCode + tmux
+	reg, _ := registry.New("")
 
-	// Get active agents from registry for metadata
-	var regAgents []*registry.Agent
-	if reg != nil {
-		regAgents = reg.ListActive()
-	}
-
-	// Build agent lookup by session ID
+	// Build agent lookup by session ID (for optional enrichment)
 	agentBySession := make(map[string]*registry.Agent)
-	for _, a := range regAgents {
-		if a.SessionID != "" {
-			agentBySession[a.SessionID] = a
+	agentByBeadsID := make(map[string]*registry.Agent)
+	if reg != nil {
+		for _, a := range reg.ListActive() {
+			if a.SessionID != "" {
+				agentBySession[a.SessionID] = a
+			}
+			if a.BeadsID != "" {
+				agentByBeadsID[a.BeadsID] = a
+			}
 		}
 	}
 
-	// Build agents list
+	// Build agents list from OpenCode sessions (primary source)
 	now := time.Now()
 	agents := make([]AgentInfo, 0)
 	for _, s := range sessions {
@@ -1293,13 +1363,7 @@ func runStatus(serverURL string) error {
 		idleTime := now.Sub(updatedAt)
 
 		// Filter: only show sessions updated in the last 4 hours
-		// OR sessions that are active in the registry
-		isActiveInRegistry := false
-		if regAgent, ok := agentBySession[s.ID]; ok && regAgent.Status == registry.StateActive {
-			isActiveInRegistry = true
-		}
-
-		if idleTime > 4*time.Hour && !isActiveInRegistry {
+		if idleTime > 4*time.Hour {
 			continue
 		}
 
@@ -1309,10 +1373,22 @@ func runStatus(serverURL string) error {
 			Runtime:   formatDuration(runtime),
 		}
 
-		// Enrich with registry metadata if available
+		// Try to derive beadsID and skill from session title
+		// Format expected: "og-feat-description-19dec" or similar workspace names
+		// Skill can be inferred from common prefixes in workspace names
+		if s.Title != "" {
+			agent.BeadsID = extractBeadsIDFromTitle(s.Title)
+			agent.Skill = extractSkillFromTitle(s.Title)
+		}
+
+		// Enrich with registry metadata if available (optional)
 		if regAgent, ok := agentBySession[s.ID]; ok {
-			agent.BeadsID = regAgent.BeadsID
-			agent.Skill = regAgent.Skill
+			if agent.BeadsID == "" {
+				agent.BeadsID = regAgent.BeadsID
+			}
+			if agent.Skill == "" {
+				agent.Skill = regAgent.Skill
+			}
 			agent.Window = regAgent.Window
 			if agent.Window == "" && regAgent.WindowID != "" {
 				agent.Window = regAgent.WindowID
@@ -1322,7 +1398,7 @@ func runStatus(serverURL string) error {
 		agents = append(agents, agent)
 	}
 
-	// Add tmux-only agents
+	// Add tmux-only agents (derived from tmux window names)
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
 		windows, _ := tmux.ListWindows(sessionName)
@@ -1332,13 +1408,11 @@ func runStatus(serverURL string) error {
 				continue
 			}
 
-			// Parse beads ID from window name (format: "... [beads-id]")
-			beadsID := ""
-			if start := strings.LastIndex(w.Name, "["); start != -1 {
-				if end := strings.LastIndex(w.Name, "]"); end != -1 && end > start {
-					beadsID = strings.TrimSpace(w.Name[start+1 : end])
-				}
-			}
+			// Derive beads ID from window name (format: "... [beads-id]")
+			beadsID := extractBeadsIDFromWindowName(w.Name)
+
+			// Derive skill from window emoji (primary) or workspace prefix
+			skill := extractSkillFromWindowName(w.Name)
 
 			// Check if already in agents list
 			alreadyIn := false
@@ -1351,41 +1425,25 @@ func runStatus(serverURL string) error {
 			}
 
 			if !alreadyIn {
-				// Add as tmux agent
+				// Add as tmux agent with derived metadata
 				agent := AgentInfo{
 					SessionID: "tmux",
 					BeadsID:   beadsID,
+					Skill:     skill,
 					Title:     w.Name,
 					Runtime:   "unknown",
 					Window:    w.Target,
 				}
 
-				// Try to enrich from registry
-				if reg != nil {
-					for _, ra := range regAgents {
-						// Match by workspace name, window ID, window target, or beads ID
-						if strings.Contains(w.Name, ra.ID) || ra.WindowID == w.ID || ra.Window == w.Target || (beadsID != "" && ra.BeadsID == beadsID) {
-							if agent.BeadsID == "" {
-								agent.BeadsID = ra.BeadsID
-							}
+				// Optional: enrich with registry if available
+				if reg != nil && beadsID != "" {
+					if ra, ok := agentByBeadsID[beadsID]; ok {
+						if agent.Skill == "" {
 							agent.Skill = ra.Skill
-							if agent.Window == "" {
-								agent.Window = ra.Window
-							}
-							break
 						}
 					}
 				}
 
-				// Try to find skill from emoji if still missing
-				if agent.Skill == "" {
-					for skill, emoji := range tmux.SKILL_EMOJIS {
-						if strings.Contains(w.Name, emoji) {
-							agent.Skill = skill
-							break
-						}
-					}
-				}
 				agents = append(agents, agent)
 			}
 		}
