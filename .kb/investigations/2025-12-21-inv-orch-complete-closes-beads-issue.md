@@ -41,9 +41,9 @@ Guidelines:
 **Started:** 2025-12-21
 **Updated:** 2025-12-21
 **Owner:** Agent og-debug-orch-complete-closes-21dec
-**Phase:** Investigating
-**Next Step:** Write test to reproduce, then implement fix
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 **Confidence:** High (85%)
 
 ---
@@ -236,28 +236,28 @@ The runComplete function (cmd/orch/main.go:1091-1192) closes the beads issue fir
 
 **Files Examined:**
 
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- cmd/orch/main.go:1090-1192 - runComplete function with silent failure modes
+- pkg/registry/registry.go:463-479 - Complete() method that only works on active agents
+- cmd/orch/clean_test.go:130-168 - TestCompleteMarksForClean showing expected behavior
+- cmd/orch/review.go - Review command that depends on completed agents in registry
 
 **Commands Run:**
 
 ```bash
-# [Command description]
-[command]
+# Run tests to verify fix doesn't break existing functionality
+go test ./cmd/orch/... -v
 
-# [Command description]
-[command]
+# Build to verify compilation
+go build -o orch-go ./cmd/orch
+
+# Commit the fix
+git commit -m "fix: update registry before closing beads issue in orch complete"
 ```
-
-**External Documentation:**
-
-- [Link or reference] - [What it is and relevance]
 
 **Related Artifacts:**
 
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Beads Issue:** orch-go-s2t - Bug report that triggered this investigation
+- **Commit:** dc717c8 - Fix implementation
 
 ---
 
