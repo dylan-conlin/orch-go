@@ -227,6 +227,38 @@ func TestListSessions(t *testing.T) {
 	}
 }
 
+// TestFindRecentSession tests the FindRecentSession method.
+func TestFindRecentSession(t *testing.T) {
+	projectDir := "/home/user/project1"
+	mockSessions := `[
+		{"id":"ses_old","directory":"/home/user/project1","time":{"created":1000}},
+		{"id":"ses_new","directory":"/home/user/project1","time":{"created":2000}},
+		{"id":"ses_other","directory":"/home/user/other","time":{"created":3000}}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/session" {
+			t.Errorf("Expected path /session, got %s", r.URL.Path)
+		}
+		if r.Header.Get("x-opencode-directory") != projectDir {
+			t.Errorf("Expected header x-opencode-directory: %s, got %s", projectDir, r.Header.Get("x-opencode-directory"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockSessions))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	sessionID, err := client.FindRecentSession(projectDir)
+	if err != nil {
+		t.Fatalf("FindRecentSession() error = %v", err)
+	}
+
+	if sessionID != "ses_new" {
+		t.Errorf("sessionID = %s, want ses_new", sessionID)
+	}
+}
+
 // TestListSessionsEmpty tests ListSessions with empty response.
 func TestListSessionsEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -931,7 +931,8 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	}
 
 	// Build opencode command using tmux package
-	opencodeCmd := tmux.BuildStandaloneCommand(&tmux.StandaloneConfig{
+	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
+		ServerURL:  serverURL,
 		ProjectDir: cfg.ProjectDir,
 		Model:      cfg.Model,
 	})
@@ -951,6 +952,14 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to send prompt: %w", err)
 	}
 
+	// Capture session ID from API
+	client := opencode.NewClient(serverURL)
+	sessionID, err := client.FindRecentSession(cfg.ProjectDir)
+	if err != nil {
+		// Log warning but don't fail - tmux fallback still works
+		fmt.Fprintf(os.Stderr, "Warning: could not capture session_id: %v\n", err)
+	}
+
 	// Register agent in persistent registry with window ID
 	reg, err := registry.New("")
 	if err != nil {
@@ -959,7 +968,8 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		agent := &registry.Agent{
 			ID:         cfg.WorkspaceName,
 			BeadsID:    beadsID,
-			WindowID:   windowID, // Track tmux window ID
+			SessionID:  sessionID, // Track OpenCode session ID
+			WindowID:   windowID,  // Track tmux window ID
 			ProjectDir: cfg.ProjectDir,
 			Skill:      skillName,
 		}
@@ -977,6 +987,7 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		"task":                task,
 		"workspace":           cfg.WorkspaceName,
 		"beads_id":            beadsID,
+		"session_id":          sessionID,
 		"window":              windowTarget,
 		"window_id":           windowID,
 		"session_name":        sessionName,
@@ -990,6 +1001,7 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	}
 	event := events.Event{
 		Type:      "session.spawned",
+		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	}
@@ -1007,6 +1019,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	// Print spawn summary
 	fmt.Printf("Spawned agent in tmux:\n")
 	fmt.Printf("  Session:    %s\n", sessionName)
+	if sessionID != "" {
+		fmt.Printf("  Session ID: %s\n", sessionID)
+	}
 	fmt.Printf("  Window:     %s\n", windowTarget)
 	fmt.Printf("  Window ID:  %s\n", windowID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)

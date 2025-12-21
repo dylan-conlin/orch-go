@@ -34,14 +34,14 @@ Guidelines:
 
 ---
 
-# Investigation: Implement Attach Mode for Tmux Spawn
+# Investigation: Implement OpenCode Attach Mode for Tmux Spawn
 
-**Question:** How to implement an "attach" mode for `orch spawn --tmux` that automatically attaches the user's terminal to the newly created tmux window?
+**Question:** How to implement OpenCode "attach" mode for `orch spawn --tmux` to enable dual TUI and API access?
 
 **Started:** 2025-12-21
 **Updated:** 2025-12-21
 **Owner:** opencode
-**Phase:** Investigating
+**Phase:** Complete
 **Next Step:** None
 **Status:** Complete
 **Confidence:** Very High (95%)
@@ -51,31 +51,29 @@ Guidelines:
 ## Findings
 
 ### Finding 1: Current Tmux Spawn Behavior
-**Evidence:** `runSpawnTmux` in `cmd/orch/main.go` creates a new tmux window, sends the `opencode` command, waits for it to be ready, sends the prompt, and then calls `tmux select-window -t windowTarget`.
+**Evidence:** `runSpawnTmux` in `cmd/orch/main.go` used `tmux.BuildStandaloneCommand` which runs `opencode {project_dir} --model {model}`. This starts an ephemeral server, making the session invisible to the main OpenCode server.
 
-**Source:** `cmd/orch/main.go:837-922`
+**Source:** `cmd/orch/main.go` and `pkg/tmux/tmux.go`
 
-**Significance:** The window is already focused within the tmux session, but the user's terminal is not attached to that session/window if they are outside of it.
-
----
-
-### Finding 2: Attaching to Tmux
-**Evidence:** Standard tmux commands for attaching/switching are `attach-session` and `switch-client`.
-- Outside tmux: `tmux attach-session -t target`
-- Inside tmux: `tmux switch-client -t target`
-
-**Source:** Tmux documentation and common usage.
-
-**Significance:** We can use these commands to implement the "attach" behavior. We need to detect if we are already inside a tmux session using the `TMUX` environment variable.
+**Significance:** Tmux spawns were "human-friendly" (TUI visible) but NOT "AI-friendly" (no API access).
 
 ---
 
-### Finding 3: Successful Implementation and Validation
-**Evidence:** Added `Attach` function to `pkg/tmux` and `--attach` flag to `orch spawn`. Running `./build/orch spawn --attach ...` successfully switched the current tmux window to the newly created one.
+### Finding 2: OpenCode Attach Mode
+**Evidence:** OpenCode supports an `attach` command: `opencode attach {server_url} --dir {project_dir} --model {model}`. This connects the TUI to a shared server, making sessions visible via API.
 
-**Source:** Manual validation and unit tests.
+**Source:** Issue `orch-go-559o` description.
 
-**Significance:** The feature is fully implemented and verified.
+**Significance:** Using `attach` mode allows `orch-go` to capture the `session_id` and interact with the agent via HTTP API while still providing the interactive TUI in tmux.
+
+---
+
+### Finding 3: Session ID Capture
+**Evidence:** Sessions can be discovered via the `/session` API by filtering with the `x-opencode-directory` header. The most recent session for the project directory is the one just spawned.
+
+**Source:** `pkg/opencode/client.go` implementation and tests.
+
+**Significance:** We can automatically capture the `session_id` after spawning in tmux and store it in the registry.
 
 ---
 
@@ -83,44 +81,44 @@ Guidelines:
 
 **Key Insights:**
 
-1. **Attach vs Switch** - The implementation correctly distinguishes between being inside or outside of tmux to use the correct command (`switch-client` vs `attach-session`).
+1. **Dual Access** - By switching to `opencode attach`, we achieve both interactive TUI access (via tmux) and programmatic API access (via `session_id`).
 
-2. **Integration Point** - The attachment logic is integrated at the end of `runSpawnTmux`, ensuring the agent is fully spawned and the prompt sent before the user is attached.
+2. **Registry Integration** - Capturing the `session_id` allows subsequent commands like `orch tail`, `orch send`, and `orch question` to use the HTTP API instead of falling back to tmux scraping.
 
 **Answer to Investigation Question:**
-Attach mode was implemented by adding a `pkg/tmux.Attach` function that uses `switch-client` or `attach-session` based on the `TMUX` environment variable. A new `--attach` flag was added to `orch spawn` which triggers this logic after a successful tmux spawn.
+OpenCode attach mode was implemented by adding `OpencodeAttachConfig` and `BuildOpencodeAttachCommand` to `pkg/tmux`. `runSpawnTmux` was updated to use this command and then call `client.FindRecentSession` to capture the `session_id`, which is then stored in the agent registry.
 
 ---
 
 ## Implementation Recommendations
 
 ### Recommended Approach ⭐
-
-**Add --attach flag and use tmux attach-session/switch-client** - This approach was chosen and implemented.
+**Use opencode attach and capture session ID** - This approach was implemented.
 
 **Why this approach:**
-- It provides a seamless experience for users who want to immediately interact with the spawned agent.
-- It handles both inside-tmux and outside-tmux scenarios.
+- Provides full API access for tmux-spawned agents.
+- Maintains the interactive TUI experience.
+- Enables better monitoring and Q&A.
 
 **Implementation sequence:**
-1. Added `Attach(windowTarget string) error` to `pkg/tmux/tmux.go`.
-2. Added `spawnAttach` flag to `cmd/orch/main.go`.
-3. Updated `runSpawnWithSkill` and `runSpawnTmux` to handle the new flag.
-4. Called `tmux.Attach(windowTarget)` at the end of `runSpawnTmux`.
+1. Added `OpencodeAttachConfig` and `BuildOpencodeAttachCommand` to `pkg/tmux/tmux.go`.
+2. Added `FindRecentSession` to `pkg/opencode/client.go`.
+3. Updated `runSpawnTmux` in `cmd/orch/main.go` to use the new command and capture the session ID.
+4. Updated the registry and event logging to include the session ID.
 
 ---
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Implemented `--attach` mode for `orch spawn` to automatically attach/switch to the new tmux window.
+**Delta:** Implemented OpenCode `attach` mode for tmux spawns and automated `session_id` capture.
 
-**Evidence:** Manual validation showed successful window switching; unit tests verified command construction.
+**Evidence:** Unit tests for command building and session discovery passed; build succeeded.
 
-**Knowledge:** Tmux attachment requires different commands (`attach-session` vs `switch-client`) depending on whether the caller is already inside tmux.
+**Knowledge:** `opencode attach` enables dual TUI/API access by connecting to a shared server; `x-opencode-directory` header is required for session discovery.
 
 **Next:** None - implementation complete.
 
-**Confidence:** Very High (95%) - verified in real tmux environment.
+**Confidence:** Very High (95%) - verified with unit tests and code review.
 
 
 

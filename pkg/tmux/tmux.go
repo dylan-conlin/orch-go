@@ -57,21 +57,14 @@ func BuildRunCommand(cfg *RunConfig) *exec.Cmd {
 }
 
 // StandaloneConfig holds configuration for spawning an agent in standalone mode.
-// This is the preferred approach for TUI spawning - the prompt is sent via
-// tmux send-keys AFTER the TUI is ready, not as a CLI argument.
+// DEPRECATED: Use OpencodeAttachConfig instead for dual TUI+API access.
 type StandaloneConfig struct {
 	ProjectDir string // Project directory (passed as first arg to opencode)
 	Model      string // Model in format "provider/model"
 }
 
 // BuildStandaloneCommand creates the opencode standalone mode command string.
-// This does NOT include the prompt - prompt is sent via send-keys after TUI ready.
-// Returns the command string (not exec.Cmd) because it needs to be sent via tmux send-keys.
-//
-// Standalone mode: opencode {project_dir} --model {model}
-// - Each agent gets its own opencode instance
-// - Prompt is typed into TUI after it's ready (more reliable than CLI arg)
-// - Matches Python orch-cli's approach (spawn.py:959-963)
+// DEPRECATED: Use BuildOpencodeAttachCommand instead for dual TUI+API access.
 func BuildStandaloneCommand(cfg *StandaloneConfig) string {
 	opencodeBin := "opencode"
 	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
@@ -81,6 +74,34 @@ func BuildStandaloneCommand(cfg *StandaloneConfig) string {
 	// Build command: opencode {project_dir} --model {model}
 	// Quote project dir in case it has spaces
 	return fmt.Sprintf("%s %q --model %q", opencodeBin, cfg.ProjectDir, cfg.Model)
+}
+
+// OpencodeAttachConfig holds configuration for spawning an agent in attach mode.
+// This is the preferred approach for TUI spawning - it connects to a shared
+// server, making sessions visible via API while still showing the TUI.
+type OpencodeAttachConfig struct {
+	ServerURL  string // http://127.0.0.1:4096
+	ProjectDir string
+	Model      string
+	SessionID  string // optional: continue existing session
+}
+
+// BuildOpencodeAttachCommand creates the opencode attach mode command string.
+// Attach mode: opencode attach {server_url} --dir {project_dir} --model {model}
+func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
+	opencodeBin := "opencode"
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		opencodeBin = bin
+	}
+
+	cmd := fmt.Sprintf("%s attach %s --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
+	if cfg.Model != "" {
+		cmd += fmt.Sprintf(" --model %q", cfg.Model)
+	}
+	if cfg.SessionID != "" {
+		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
+	}
+	return cmd
 }
 
 // WaitConfig holds configuration for waiting for OpenCode to be ready.

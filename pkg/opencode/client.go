@@ -280,6 +280,48 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	return messages, nil
 }
 
+// FindRecentSession finds the most recent session for a given project directory.
+func (c *Client) FindRecentSession(projectDir string) (string, error) {
+	req, err := http.NewRequest("GET", c.ServerURL+"/session", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("x-opencode-directory", projectDir)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var sessions []Session
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		return "", err
+	}
+
+	// Find the most recent session for this directory
+	var mostRecent *Session
+	for i := range sessions {
+		s := &sessions[i]
+		if s.Directory != projectDir {
+			continue
+		}
+		if mostRecent == nil || s.Time.Created > mostRecent.Time.Created {
+			mostRecent = s
+		}
+	}
+
+	if mostRecent == nil {
+		return "", fmt.Errorf("no sessions found for directory: %s", projectDir)
+	}
+
+	return mostRecent.ID, nil
+}
+
 // ExtractRecentText extracts the most recent text content from messages.
 // It returns up to `lines` worth of text from the most recent messages.
 // The text is extracted from message parts of type "text".
