@@ -692,17 +692,11 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool
 	}
 
 	// Determine beads ID - either from flag, create new issue, or skip if --no-track
-	beadsID := spawnIssue
-	if beadsID == "" && !spawnNoTrack {
-		// Create a new beads issue (default behavior)
-		beadsID, err = createBeadsIssue(projectName, skillName, task)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to create beads issue: %v\n", err)
-			beadsID = fmt.Sprintf("%s-%d", projectName, time.Now().Unix()) // Fallback ID
-		}
-	} else if spawnNoTrack {
-		// Generate a local-only ID for untracked work
-		beadsID = fmt.Sprintf("%s-untracked-%d", projectName, time.Now().Unix())
+	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnNoTrack, createBeadsIssue)
+	if err != nil {
+		return fmt.Errorf("failed to determine beads ID: %w", err)
+	}
+	if spawnNoTrack {
 		fmt.Println("Skipping beads tracking (--no-track)")
 	}
 
