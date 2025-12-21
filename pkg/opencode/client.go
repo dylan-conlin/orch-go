@@ -394,6 +394,63 @@ func ExtractRecentText(messages []Message, lines int) []string {
 	return result
 }
 
+// ListDiskSessions lists all sessions stored on disk for a given directory.
+// This differs from ListSessions in that it returns ALL sessions for the directory,
+// not just in-memory sessions. The x-opencode-directory header is required.
+// Returns the list of sessions and the total count.
+func (c *Client) ListDiskSessions(directory string) ([]Session, error) {
+	if directory == "" {
+		return nil, fmt.Errorf("directory is required for ListDiskSessions")
+	}
+
+	req, err := http.NewRequest("GET", c.ServerURL+"/session", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("x-opencode-directory", directory)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch disk sessions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var sessions []Session
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		return nil, fmt.Errorf("failed to decode sessions: %w", err)
+	}
+
+	return sessions, nil
+}
+
+// DeleteSession deletes an OpenCode session by ID.
+// Returns nil on success, error on failure.
+func (c *Client) DeleteSession(sessionID string) error {
+	req, err := http.NewRequest("DELETE", c.ServerURL+"/session/"+sessionID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Accept 200 OK or 204 No Content as success
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete session: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // SendMessageWithStreaming sends a message to a session and streams the response.
 // It sends the message via the async API, then connects to SSE to stream text events
 // until the session becomes idle. Text content is written to the provided writer.

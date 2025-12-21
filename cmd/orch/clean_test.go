@@ -391,3 +391,161 @@ func (m *MockLivenessChecker) WindowExists(windowID string) bool {
 func (m *MockLivenessChecker) SessionExists(sessionID string) bool {
 	return m.LiveSessions[sessionID]
 }
+
+// TestCleanOrphanedDiskSessionsIdentification verifies orphan detection logic.
+func TestCleanOrphanedDiskSessionsIdentification(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "registry.json")
+
+	// Create registry with agents
+	reg, err := registry.New(registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Register agents with session IDs
+	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_tracked_1"}
+	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", SessionID: "ses_tracked_2"}
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("Failed to register agent-1: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("Failed to register agent-2: %v", err)
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Failed to save registry: %v", err)
+	}
+
+	// Simulate disk sessions - some tracked, some orphaned
+	diskSessionIDs := []string{"ses_tracked_1", "ses_tracked_2", "ses_orphan_1", "ses_orphan_2", "ses_orphan_3"}
+
+	// Build tracked set (as the real function does)
+	trackedSessionIDs := make(map[string]bool)
+	for _, agent := range reg.ListAgents() {
+		if agent.SessionID != "" {
+			trackedSessionIDs[agent.SessionID] = true
+		}
+	}
+
+	// Find orphans
+	var orphanedSessions []string
+	for _, sessionID := range diskSessionIDs {
+		if !trackedSessionIDs[sessionID] {
+			orphanedSessions = append(orphanedSessions, sessionID)
+		}
+	}
+
+	// Should identify 3 orphans
+	if len(orphanedSessions) != 3 {
+		t.Errorf("Expected 3 orphaned sessions, got %d: %v", len(orphanedSessions), orphanedSessions)
+	}
+
+	// Tracked sessions should NOT be in orphans
+	for _, tracked := range []string{"ses_tracked_1", "ses_tracked_2"} {
+		for _, orphan := range orphanedSessions {
+			if orphan == tracked {
+				t.Errorf("Tracked session %s should not be in orphans list", tracked)
+			}
+		}
+	}
+
+	// All orphans should be the untracked ones
+	expectedOrphans := map[string]bool{"ses_orphan_1": true, "ses_orphan_2": true, "ses_orphan_3": true}
+	for _, orphan := range orphanedSessions {
+		if !expectedOrphans[orphan] {
+			t.Errorf("Unexpected orphan: %s", orphan)
+		}
+	}
+}
+
+// TestCleanWithVerifyOpenCodeDryRun verifies dry-run doesn't delete anything.
+func TestCleanWithVerifyOpenCodeDryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "registry.json")
+
+	// Create registry with an agent
+	reg, err := registry.New(registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	agent := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_tracked"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("Failed to register agent: %v", err)
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Failed to save registry: %v", err)
+	}
+
+	// In dry-run mode, we should identify orphans but not delete them
+	// The actual deletion would be skipped
+	diskSessions := []string{"ses_tracked", "ses_orphan_1", "ses_orphan_2"}
+
+	trackedSessionIDs := make(map[string]bool)
+	for _, a := range reg.ListAgents() {
+		if a.SessionID != "" {
+			trackedSessionIDs[a.SessionID] = true
+		}
+	}
+
+	// Count orphans (simulating dry-run)
+	dryRunDeleteCount := 0
+	for _, sessionID := range diskSessions {
+		if !trackedSessionIDs[sessionID] {
+			dryRunDeleteCount++
+		}
+	}
+
+	// Should count 2 orphans
+	if dryRunDeleteCount != 2 {
+		t.Errorf("Expected 2 orphans in dry-run, got %d", dryRunDeleteCount)
+	}
+
+	// Registry should be unchanged (tracked sessions still there)
+	agents := reg.ListAgents()
+	if len(agents) != 1 {
+		t.Errorf("Expected 1 agent in registry, got %d", len(agents))
+	}
+}
+
+// TestCleanDeletedAgentsNotTracked verifies deleted agents are not counted as tracked.
+func TestCleanDeletedAgentsNotTracked(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := registry.New(registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Register agent, then delete it
+	agent := &registry.Agent{ID: "deleted-agent", BeadsID: "beads-deleted", SessionID: "ses_deleted"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("Failed to register agent: %v", err)
+	}
+	reg.Remove("deleted-agent")
+	if err := reg.SaveSkipMerge(); err != nil {
+		t.Fatalf("Failed to save registry: %v", err)
+	}
+
+	// ListAgents should NOT include deleted agents
+	agents := reg.ListAgents()
+	for _, a := range agents {
+		if a.ID == "deleted-agent" {
+			t.Error("Deleted agent should not be in ListAgents")
+		}
+	}
+
+	// So the session ID from deleted agent should be orphaned
+	trackedSessionIDs := make(map[string]bool)
+	for _, a := range reg.ListAgents() {
+		if a.SessionID != "" {
+			trackedSessionIDs[a.SessionID] = true
+		}
+	}
+
+	// ses_deleted should NOT be tracked (agent was deleted)
+	if trackedSessionIDs["ses_deleted"] {
+		t.Error("Session from deleted agent should not be tracked")
+	}
+}

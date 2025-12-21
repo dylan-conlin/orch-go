@@ -718,6 +718,171 @@ func TestExtractRecentTextEmpty(t *testing.T) {
 	}
 }
 
+// TestListDiskSessions tests the ListDiskSessions API call.
+func TestListDiskSessions(t *testing.T) {
+	projectDir := "/Users/dylan/project"
+	mockSessions := `[
+		{"id":"ses_abc123","title":"Session 1","directory":"/Users/dylan/project","time":{"created":1766200000000,"updated":1766200010000}},
+		{"id":"ses_xyz789","title":"Session 2","directory":"/Users/dylan/project","time":{"created":1766199000000,"updated":1766199010000}}
+	]`
+
+	var receivedHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/session" {
+			t.Errorf("Expected path /session, got %s", r.URL.Path)
+		}
+		receivedHeader = r.Header.Get("x-opencode-directory")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockSessions))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	sessions, err := client.ListDiskSessions(projectDir)
+	if err != nil {
+		t.Fatalf("ListDiskSessions() error = %v", err)
+	}
+
+	// Verify header was sent
+	if receivedHeader != projectDir {
+		t.Errorf("Expected x-opencode-directory header %q, got %q", projectDir, receivedHeader)
+	}
+
+	// Verify sessions returned
+	if len(sessions) != 2 {
+		t.Fatalf("Expected 2 sessions, got %d", len(sessions))
+	}
+	if sessions[0].ID != "ses_abc123" {
+		t.Errorf("sessions[0].ID = %s, want ses_abc123", sessions[0].ID)
+	}
+}
+
+// TestListDiskSessionsRequiresDirectory tests that ListDiskSessions fails without directory.
+func TestListDiskSessionsRequiresDirectory(t *testing.T) {
+	client := NewClient("http://127.0.0.1:4096")
+	_, err := client.ListDiskSessions("")
+	if err == nil {
+		t.Error("Expected error when directory is empty")
+	}
+	if !strings.Contains(err.Error(), "directory is required") {
+		t.Errorf("Expected 'directory is required' error, got: %v", err)
+	}
+}
+
+// TestListDiskSessionsEmpty tests ListDiskSessions with no sessions.
+func TestListDiskSessionsEmpty(t *testing.T) {
+	projectDir := "/Users/dylan/empty-project"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	sessions, err := client.ListDiskSessions(projectDir)
+	if err != nil {
+		t.Fatalf("ListDiskSessions() error = %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Errorf("Expected 0 sessions, got %d", len(sessions))
+	}
+}
+
+// TestListDiskSessionsServerError tests ListDiskSessions with server error.
+func TestListDiskSessionsServerError(t *testing.T) {
+	projectDir := "/Users/dylan/project"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListDiskSessions(projectDir)
+	if err == nil {
+		t.Error("Expected error for server error response")
+	}
+}
+
+// TestDeleteSession tests the DeleteSession API call.
+func TestDeleteSession(t *testing.T) {
+	sessionID := "ses_to_delete"
+	deleted := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("Expected DELETE method, got %s", r.Method)
+		}
+		if r.URL.Path != "/session/"+sessionID {
+			t.Errorf("Expected path /session/%s, got %s", sessionID, r.URL.Path)
+		}
+		deleted = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.DeleteSession(sessionID)
+	if err != nil {
+		t.Fatalf("DeleteSession() error = %v", err)
+	}
+
+	if !deleted {
+		t.Error("Expected DELETE request to be made")
+	}
+}
+
+// TestDeleteSessionOK tests DeleteSession with 200 OK response.
+func TestDeleteSessionOK(t *testing.T) {
+	sessionID := "ses_ok"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.DeleteSession(sessionID)
+	if err != nil {
+		t.Fatalf("DeleteSession() should accept 200 OK, got error: %v", err)
+	}
+}
+
+// TestDeleteSessionNotFound tests DeleteSession when session doesn't exist.
+func TestDeleteSessionNotFound(t *testing.T) {
+	sessionID := "ses_notfound"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"session not found"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.DeleteSession(sessionID)
+	if err == nil {
+		t.Error("Expected error for 404 response")
+	}
+}
+
+// TestDeleteSessionServerError tests DeleteSession with server error.
+func TestDeleteSessionServerError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.DeleteSession(sessionID)
+	if err == nil {
+		t.Error("Expected error for server error response")
+	}
+}
+
 // TestSendMessageWithStreamingIgnoresOtherSessions tests that we only stream from target session.
 func TestSendMessageWithStreamingIgnoresOtherSessions(t *testing.T) {
 	sessionID := "ses_target"

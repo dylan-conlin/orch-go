@@ -1724,7 +1724,7 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 	// Step 2: Get cleanable agents (completed or abandoned, including newly abandoned)
 	agents := reg.ListCleanable()
 
-	if len(agents) == 0 && reconcileResult.Abandoned == 0 {
+	if len(agents) == 0 && reconcileResult.Abandoned == 0 && !verifyOpenCode {
 		fmt.Println("\nNo agents to clean")
 		return nil
 	}
@@ -1752,9 +1752,22 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 		}
 	}
 
+	// Step 3: Verify and clean OpenCode disk sessions (optional)
+	var diskSessionsDeleted int
+	if verifyOpenCode {
+		diskSessionsDeleted, err = cleanOrphanedDiskSessions(serverURL, reg, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean disk sessions: %v\n", err)
+		}
+	}
+
 	if dryRun {
 		total := len(agents)
-		fmt.Printf("\nDry run complete. Would clean %d agents.\n", total)
+		fmt.Printf("\nDry run complete. Would clean %d agents", total)
+		if verifyOpenCode {
+			fmt.Printf(", %d orphaned disk sessions", diskSessionsDeleted)
+		}
+		fmt.Println(".")
 		return nil
 	}
 
@@ -1773,10 +1786,11 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 		Type:      "agents.cleaned",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"agents_cleaned":    agentsCleaned,
-			"agents_reconciled": reconcileResult.Abandoned,
-			"project":           projectName,
-			"verify_opencode":   verifyOpenCode,
+			"agents_cleaned":        agentsCleaned,
+			"agents_reconciled":     reconcileResult.Abandoned,
+			"disk_sessions_deleted": diskSessionsDeleted,
+			"project":               projectName,
+			"verify_opencode":       verifyOpenCode,
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -1787,8 +1801,83 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 	if reconcileResult.Abandoned > 0 {
 		fmt.Printf(", reconciled %d abandoned", reconcileResult.Abandoned)
 	}
+	if verifyOpenCode && diskSessionsDeleted > 0 {
+		fmt.Printf(", deleted %d orphaned disk sessions", diskSessionsDeleted)
+	}
 	fmt.Println()
 	return nil
+}
+
+// cleanOrphanedDiskSessions finds and deletes OpenCode disk sessions that aren't tracked in the registry.
+// Returns the number of sessions deleted and any error encountered.
+func cleanOrphanedDiskSessions(serverURL string, reg *registry.Registry, dryRun bool) (int, error) {
+	// Get current project directory
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	fmt.Printf("\nVerifying OpenCode disk sessions for %s...\n", projectDir)
+
+	client := opencode.NewClient(serverURL)
+
+	// Fetch all disk sessions for this directory
+	diskSessions, err := client.ListDiskSessions(projectDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list disk sessions: %w", err)
+	}
+
+	fmt.Printf("  Found %d disk sessions\n", len(diskSessions))
+
+	// Build a set of session IDs that are tracked in the registry
+	trackedSessionIDs := make(map[string]bool)
+	for _, agent := range reg.ListAgents() {
+		if agent.SessionID != "" {
+			trackedSessionIDs[agent.SessionID] = true
+		}
+	}
+
+	fmt.Printf("  Registry tracks %d session IDs\n", len(trackedSessionIDs))
+
+	// Find orphaned sessions (disk sessions not in registry)
+	var orphanedSessions []opencode.Session
+	for _, session := range diskSessions {
+		if !trackedSessionIDs[session.ID] {
+			orphanedSessions = append(orphanedSessions, session)
+		}
+	}
+
+	if len(orphanedSessions) == 0 {
+		fmt.Println("  No orphaned disk sessions found")
+		return 0, nil
+	}
+
+	fmt.Printf("  Found %d orphaned disk sessions:\n", len(orphanedSessions))
+
+	// Delete orphaned sessions
+	deleted := 0
+	for _, session := range orphanedSessions {
+		title := session.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would delete: %s (%s)\n", session.ID[:12], title)
+			deleted++
+			continue
+		}
+
+		if err := client.DeleteSession(session.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to delete %s: %v\n", session.ID[:12], err)
+			continue
+		}
+
+		fmt.Printf("    Deleted: %s (%s)\n", session.ID[:12], title)
+		deleted++
+	}
+
+	return deleted, nil
 }
 
 // ============================================================================
