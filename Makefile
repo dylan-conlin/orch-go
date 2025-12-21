@@ -13,7 +13,7 @@ INSTALL_DIR=$(HOME)/bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build clean test install fmt lint
+.PHONY: all build clean test install fmt lint docs
 
 # Default target
 all: build
@@ -62,6 +62,12 @@ tidy:
 run: build
 	./$(BUILD_DIR)/$(BINARY_NAME)
 
+# Generate CLI documentation
+docs:
+	@echo "Generating CLI documentation..."
+	go run ./cmd/gendoc
+	@echo "Documentation generated in docs/cli/"
+
 # Show help
 help:
 	@echo "Available targets:"
@@ -74,3 +80,4 @@ help:
 	@echo "  vet      - Run go vet"
 	@echo "  tidy     - Tidy modules"
 	@echo "  run      - Build and run"
+	@echo "  docs     - Generate CLI documentation"
