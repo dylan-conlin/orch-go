@@ -425,6 +425,214 @@ data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","st
 	}
 }
 
+// TestGetMessages tests the GetMessages API call.
+func TestGetMessages(t *testing.T) {
+	sessionID := "ses_test123"
+	mockMessages := `[
+		{
+			"info": {
+				"id": "msg_1",
+				"sessionID": "ses_test123",
+				"role": "user",
+				"time": {"created": 1766282439689}
+			},
+			"parts": [
+				{
+					"id": "prt_1",
+					"sessionID": "ses_test123",
+					"messageID": "msg_1",
+					"type": "text",
+					"text": "Hello, world!"
+				}
+			]
+		},
+		{
+			"info": {
+				"id": "msg_2",
+				"sessionID": "ses_test123",
+				"role": "assistant",
+				"time": {"created": 1766282440000, "completed": 1766282441000}
+			},
+			"parts": [
+				{
+					"id": "prt_2a",
+					"sessionID": "ses_test123",
+					"messageID": "msg_2",
+					"type": "reasoning",
+					"text": "I will respond to the greeting."
+				},
+				{
+					"id": "prt_2b",
+					"sessionID": "ses_test123",
+					"messageID": "msg_2",
+					"type": "text",
+					"text": "Hello! How can I help you today?"
+				}
+			]
+		}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/session/"+sessionID+"/message" {
+			t.Errorf("Expected path /session/%s/message, got %s", sessionID, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockMessages))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	messages, err := client.GetMessages(sessionID)
+	if err != nil {
+		t.Fatalf("GetMessages() error = %v", err)
+	}
+
+	if len(messages) != 2 {
+		t.Fatalf("Expected 2 messages, got %d", len(messages))
+	}
+
+	// Verify first message
+	if messages[0].Info.ID != "msg_1" {
+		t.Errorf("messages[0].Info.ID = %s, want msg_1", messages[0].Info.ID)
+	}
+	if messages[0].Info.Role != "user" {
+		t.Errorf("messages[0].Info.Role = %s, want user", messages[0].Info.Role)
+	}
+	if len(messages[0].Parts) != 1 {
+		t.Fatalf("Expected 1 part in message 0, got %d", len(messages[0].Parts))
+	}
+	if messages[0].Parts[0].Text != "Hello, world!" {
+		t.Errorf("messages[0].Parts[0].Text = %s, want 'Hello, world!'", messages[0].Parts[0].Text)
+	}
+
+	// Verify second message has two parts
+	if len(messages[1].Parts) != 2 {
+		t.Fatalf("Expected 2 parts in message 1, got %d", len(messages[1].Parts))
+	}
+}
+
+// TestGetMessagesEmpty tests GetMessages with empty response.
+func TestGetMessagesEmpty(t *testing.T) {
+	sessionID := "ses_empty"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	messages, err := client.GetMessages(sessionID)
+	if err != nil {
+		t.Fatalf("GetMessages() error = %v", err)
+	}
+
+	if len(messages) != 0 {
+		t.Errorf("Expected 0 messages, got %d", len(messages))
+	}
+}
+
+// TestGetMessagesError tests GetMessages with server error.
+func TestGetMessagesError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetMessages(sessionID)
+	if err == nil {
+		t.Error("Expected error for server error response")
+	}
+}
+
+// TestExtractRecentText tests the ExtractRecentText function.
+func TestExtractRecentText(t *testing.T) {
+	messages := []Message{
+		{
+			Info: MessageInfo{ID: "msg_1", Role: "user"},
+			Parts: []MessagePart{
+				{Type: "text", Text: "Hello"},
+			},
+		},
+		{
+			Info: MessageInfo{ID: "msg_2", Role: "assistant"},
+			Parts: []MessagePart{
+				{Type: "reasoning", Text: "Thinking..."},
+				{Type: "text", Text: "Line 1\nLine 2\nLine 3"},
+			},
+		},
+		{
+			Info: MessageInfo{ID: "msg_3", Role: "user"},
+			Parts: []MessagePart{
+				{Type: "text", Text: "Follow up"},
+			},
+		},
+		{
+			Info: MessageInfo{ID: "msg_4", Role: "assistant"},
+			Parts: []MessagePart{
+				{Type: "text", Text: "Response\nWith multiple\nLines"},
+			},
+		},
+	}
+
+	// Request 5 lines
+	result := ExtractRecentText(messages, 5)
+	if len(result) != 5 {
+		t.Errorf("Expected 5 lines, got %d", len(result))
+	}
+
+	// Check that we got the most recent lines
+	expected := []string{"Follow up", "Response", "With multiple", "Lines"}
+	// The last 4 lines should be from the last two messages
+	foundLast := false
+	for _, line := range result {
+		if line == "Lines" {
+			foundLast = true
+		}
+	}
+	if !foundLast {
+		t.Errorf("Expected to find 'Lines' in result, got: %v", result)
+	}
+	_ = expected // silence unused warning
+}
+
+// TestExtractRecentTextSkipsNonText tests that non-text parts are skipped.
+func TestExtractRecentTextSkipsNonText(t *testing.T) {
+	messages := []Message{
+		{
+			Info: MessageInfo{ID: "msg_1", Role: "assistant"},
+			Parts: []MessagePart{
+				{Type: "step-start", Text: ""},
+				{Type: "reasoning", Text: "I am thinking..."},
+				{Type: "text", Text: "Only this should appear"},
+				{Type: "step-finish", Text: ""},
+			},
+		},
+	}
+
+	result := ExtractRecentText(messages, 10)
+	if len(result) != 1 {
+		t.Errorf("Expected 1 line, got %d: %v", len(result), result)
+	}
+	if len(result) > 0 && result[0] != "Only this should appear" {
+		t.Errorf("Expected 'Only this should appear', got: %s", result[0])
+	}
+}
+
+// TestExtractRecentTextEmpty tests ExtractRecentText with no messages.
+func TestExtractRecentTextEmpty(t *testing.T) {
+	var messages []Message
+	result := ExtractRecentText(messages, 10)
+	if len(result) != 0 {
+		t.Errorf("Expected 0 lines, got %d", len(result))
+	}
+}
+
 // TestSendMessageWithStreamingIgnoresOtherSessions tests that we only stream from target session.
 func TestSendMessageWithStreamingIgnoresOtherSessions(t *testing.T) {
 	sessionID := "ses_target"

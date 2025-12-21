@@ -68,9 +68,10 @@ pkg/
 
 ### pkg/opencode/ (OpenCode Client)
 - `Client` struct with HTTP methods for OpenCode REST API
-- `ListSessions()`, `GetSession()`, `CreateSession()`
+- `ListSessions()`, `GetSession()`, `CreateSession()`, `GetMessages()`
 - `SSEClient` for real-time event streaming
 - Session status polling for completion detection
+- `ExtractRecentText()` for extracting text from message history
 
 ### pkg/model/ (Model Resolution)
 - `Resolve(spec)` maps aliases to full provider/model format

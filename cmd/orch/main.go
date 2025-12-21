@@ -262,11 +262,14 @@ var (
 
 var tailCmd = &cobra.Command{
 	Use:   "tail [beads-id]",
-	Short: "Capture recent output from an agent's tmux window",
-	Long: `Capture recent output from an agent's tmux window for debugging stuck agents.
+	Short: "Capture recent output from an agent",
+	Long: `Capture recent output from an agent for debugging.
 
-Finds the tmux window associated with the beads issue ID and captures
-the last N lines of output.
+For headless agents (default spawn mode), fetches messages via OpenCode API.
+For tmux agents (--tmux spawn mode), captures from the tmux window.
+
+The command automatically detects which mode the agent is running in
+and uses the appropriate method.
 
 Examples:
   orch-go tail proj-123              # Capture last 50 lines (default)
@@ -284,6 +287,62 @@ func init() {
 }
 
 func runTail(beadsID string, lines int) error {
+	// First, try to find the agent in the registry
+	reg, err := registry.New("")
+	if err != nil {
+		return fmt.Errorf("failed to open registry: %w", err)
+	}
+
+	agent := reg.Find(beadsID)
+
+	// If agent is found and is headless, use OpenCode API
+	if agent != nil && agent.WindowID == registry.HeadlessWindowID {
+		return runTailFromAPI(agent, lines)
+	}
+
+	// If agent has a session ID but no window, try API first
+	if agent != nil && agent.SessionID != "" && agent.WindowID == "" {
+		return runTailFromAPI(agent, lines)
+	}
+
+	// Fall back to tmux for agents with windows
+	return runTailFromTmux(beadsID, lines)
+}
+
+// runTailFromAPI fetches recent output from an agent via OpenCode API.
+func runTailFromAPI(agent *registry.Agent, lines int) error {
+	if agent.SessionID == "" {
+		return fmt.Errorf("agent %s has no session ID - cannot fetch via API", agent.ID)
+	}
+
+	client := opencode.NewClient(serverURL)
+
+	// Fetch messages from the session
+	messages, err := client.GetMessages(agent.SessionID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch messages: %w", err)
+	}
+
+	if len(messages) == 0 {
+		fmt.Println("No messages found in session")
+		return nil
+	}
+
+	// Extract recent text from messages
+	textLines := opencode.ExtractRecentText(messages, lines)
+
+	// Print the captured output
+	fmt.Printf("=== Output from %s (last %d lines, via API) ===\n", agent.ID, lines)
+	for _, line := range textLines {
+		fmt.Println(line)
+	}
+	fmt.Printf("=== End of output ===\n")
+
+	return nil
+}
+
+// runTailFromTmux fetches recent output from an agent's tmux window.
+func runTailFromTmux(beadsID string, lines int) error {
 	// Get current directory to determine project name
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -848,7 +907,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		return fmt.Errorf("failed to send prompt: %w", err)
 	}
 
-	// Register agent in persistent registry with window_id='headless'
+	// Register agent in persistent registry with window_id='headless' and session_id
 	reg, err := registry.New("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to open registry: %v\n", err)
@@ -856,6 +915,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		agent := &registry.Agent{
 			ID:         cfg.WorkspaceName,
 			BeadsID:    beadsID,
+			SessionID:  sessionResp.ID,            // Track OpenCode session ID for headless agents
 			WindowID:   registry.HeadlessWindowID, // Special marker for headless spawns
 			ProjectDir: cfg.ProjectDir,
 			Skill:      skillName,

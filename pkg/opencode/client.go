@@ -260,6 +260,60 @@ func (c *Client) SendPrompt(sessionID, prompt string) error {
 	return c.SendMessageAsync(sessionID, prompt)
 }
 
+// GetMessages fetches all messages for a session from the OpenCode API.
+func (c *Client) GetMessages(sessionID string) ([]Message, error) {
+	resp, err := http.Get(c.ServerURL + "/session/" + sessionID + "/message")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch messages: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var messages []Message
+	if err := json.NewDecoder(resp.Body).Decode(&messages); err != nil {
+		return nil, fmt.Errorf("failed to decode messages: %w", err)
+	}
+
+	return messages, nil
+}
+
+// ExtractRecentText extracts the most recent text content from messages.
+// It returns up to `lines` worth of text from the most recent messages.
+// The text is extracted from message parts of type "text".
+func ExtractRecentText(messages []Message, lines int) []string {
+	var result []string
+
+	// Process messages in reverse order (most recent first)
+	for i := len(messages) - 1; i >= 0 && len(result) < lines; i-- {
+		msg := messages[i]
+
+		// Extract text from parts
+		for j := len(msg.Parts) - 1; j >= 0 && len(result) < lines; j-- {
+			part := msg.Parts[j]
+			if part.Type == "text" && part.Text != "" {
+				// Split text into lines and add in reverse
+				textLines := strings.Split(part.Text, "\n")
+				for k := len(textLines) - 1; k >= 0 && len(result) < lines; k-- {
+					line := textLines[k]
+					if line != "" || len(result) > 0 { // Skip leading empty lines
+						result = append([]string{line}, result...)
+					}
+				}
+			}
+		}
+	}
+
+	// Trim to requested line count
+	if len(result) > lines {
+		result = result[len(result)-lines:]
+	}
+
+	return result
+}
+
 // SendMessageWithStreaming sends a message to a session and streams the response.
 // It sends the message via the async API, then connects to SSE to stream text events
 // until the session becomes idle. Text content is written to the provided writer.

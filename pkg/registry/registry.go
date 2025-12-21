@@ -36,10 +36,11 @@ const TimeFormat = time.RFC3339Nano
 // Agent represents a tracked agent in the registry.
 type Agent struct {
 	// Core identification
-	ID       string `json:"id"`                  // Unique identifier (workspace name)
-	BeadsID  string `json:"beads_id,omitempty"`  // Foreign key to beads issue
-	WindowID string `json:"window_id,omitempty"` // Tmux window ID for operations
-	Window   string `json:"window,omitempty"`    // Tmux window name (session:window format)
+	ID        string `json:"id"`                   // Unique identifier (workspace name)
+	BeadsID   string `json:"beads_id,omitempty"`   // Foreign key to beads issue
+	SessionID string `json:"session_id,omitempty"` // OpenCode session ID (for headless agents)
+	WindowID  string `json:"window_id,omitempty"`  // Tmux window ID for operations
+	Window    string `json:"window,omitempty"`     // Tmux window name (session:window format)
 
 	// State
 	Status AgentState `json:"status"`

@@ -73,3 +73,37 @@ type SessionSummary struct {
 	Deletions int `json:"deletions"`
 	Files     int `json:"files"`
 }
+
+// Message represents a message from the OpenCode /session/{id}/message API.
+type Message struct {
+	Info  MessageInfo   `json:"info"`
+	Parts []MessagePart `json:"parts"`
+}
+
+// MessageInfo contains message metadata.
+type MessageInfo struct {
+	ID         string      `json:"id"`
+	SessionID  string      `json:"sessionID"`
+	Role       string      `json:"role"` // "user" or "assistant"
+	Time       MessageTime `json:"time"`
+	ParentID   string      `json:"parentID,omitempty"`
+	ModelID    string      `json:"modelID,omitempty"`
+	ProviderID string      `json:"providerID,omitempty"`
+	Mode       string      `json:"mode,omitempty"`
+	Finish     string      `json:"finish,omitempty"` // "stop", "error", etc.
+}
+
+// MessageTime contains message timing.
+type MessageTime struct {
+	Created   int64 `json:"created"`
+	Completed int64 `json:"completed,omitempty"`
+}
+
+// MessagePart represents a part of a message (text, reasoning, tool call, etc.).
+type MessagePart struct {
+	ID        string `json:"id"`
+	SessionID string `json:"sessionID"`
+	MessageID string `json:"messageID"`
+	Type      string `json:"type"` // "text", "reasoning", "step-start", "step-finish", "tool-invocation", etc.
+	Text      string `json:"text,omitempty"`
+}
