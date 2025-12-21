@@ -30,7 +30,11 @@ export interface SSEEvent {
 		};
 		message?: unknown;
 	};
+	timestamp?: number;
 }
+
+// API configuration
+const API_BASE = 'http://127.0.0.1:3333';
 
 // Agent store
 function createAgentStore() {
@@ -50,6 +54,20 @@ function createAgentStore() {
 		},
 		removeAgent: (id: string) => {
 			update((agents) => agents.filter((a) => a.id !== id));
+		},
+		// Fetch agents from orch-go API
+		async fetch(): Promise<void> {
+			try {
+				const response = await fetch(`${API_BASE}/api/agents`);
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				}
+				const data = await response.json();
+				set(data || []);
+			} catch (error) {
+				console.error('Failed to fetch agents:', error);
+				throw error;
+			}
 		}
 	};
 }
@@ -92,3 +110,108 @@ export const sseEvents = createSSEStore();
 
 // Connection status
 export const connectionStatus = writable<'connected' | 'disconnected' | 'connecting'>('disconnected');
+
+// SSE connection manager
+let eventSource: EventSource | null = null;
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function connectSSE(): void {
+	if (eventSource) {
+		eventSource.close();
+	}
+
+	connectionStatus.set('connecting');
+
+	eventSource = new EventSource(`${API_BASE}/api/events`);
+
+	eventSource.onopen = () => {
+		connectionStatus.set('connected');
+		// Fetch agents on connection to get current state
+		agents.fetch().catch(console.error);
+	};
+
+	eventSource.onerror = (error) => {
+		console.error('SSE error:', error);
+		connectionStatus.set('disconnected');
+		eventSource?.close();
+		eventSource = null;
+
+		// Auto-reconnect after 5 seconds
+		if (reconnectTimeout) {
+			clearTimeout(reconnectTimeout);
+		}
+		reconnectTimeout = setTimeout(() => {
+			connectSSE();
+		}, 5000);
+	};
+
+	eventSource.onmessage = (event) => {
+		try {
+			const data = JSON.parse(event.data);
+			const sseEvent: SSEEvent = {
+				type: data.type || 'unknown',
+				properties: data.properties,
+				timestamp: Date.now()
+			};
+			sseEvents.addEvent(sseEvent);
+
+			// Handle session status changes - refresh agent list
+			if (data.type === 'session.status') {
+				agents.fetch().catch(console.error);
+			}
+		} catch (e) {
+			// Non-JSON data, create simple event
+			sseEvents.addEvent({
+				type: 'raw',
+				timestamp: Date.now()
+			});
+		}
+	};
+
+	// Handle custom events from our proxy
+	eventSource.addEventListener('connected', (event) => {
+		try {
+			const data = JSON.parse((event as MessageEvent).data);
+			sseEvents.addEvent({
+				type: 'proxy.connected',
+				timestamp: Date.now()
+			});
+			console.log('SSE proxy connected to:', data.source);
+		} catch (e) {
+			console.log('SSE connected');
+		}
+	});
+
+	eventSource.addEventListener('disconnected', () => {
+		connectionStatus.set('disconnected');
+		sseEvents.addEvent({
+			type: 'proxy.disconnected',
+			timestamp: Date.now()
+		});
+	});
+
+	eventSource.addEventListener('error', (event) => {
+		try {
+			const data = JSON.parse((event as MessageEvent).data);
+			console.error('SSE proxy error:', data.error);
+			sseEvents.addEvent({
+				type: 'proxy.error',
+				timestamp: Date.now()
+			});
+		} catch (e) {
+			// Ignore parse errors for error events
+		}
+	});
+}
+
+export function disconnectSSE(): void {
+	if (reconnectTimeout) {
+		clearTimeout(reconnectTimeout);
+		reconnectTimeout = null;
+	}
+	if (eventSource) {
+		eventSource.close();
+		eventSource = null;
+	}
+	connectionStatus.set('disconnected');
+}

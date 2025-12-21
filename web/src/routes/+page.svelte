@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -10,46 +10,32 @@
 		abandonedAgents,
 		sseEvents,
 		connectionStatus,
-		type Agent,
-		type SSEEvent
+		connectSSE,
+		disconnectSSE,
+		type Agent
 	} from '$lib/stores/agents';
 
-	// Mock data for development - will be replaced with SSE stream
 	onMount(() => {
-		// Simulate some agents
-		agents.set([
-			{
-				id: 'og-feat-add-cli-20dec',
-				beads_id: 'orch-go-abc',
-				status: 'active',
-				skill: 'feature-impl',
-				spawned_at: new Date(Date.now() - 3600000).toISOString(),
-				updated_at: new Date().toISOString()
-			},
-			{
-				id: 'og-inv-explore-20dec',
-				beads_id: 'orch-go-def',
-				status: 'active',
-				skill: 'investigation',
-				spawned_at: new Date(Date.now() - 1800000).toISOString(),
-				updated_at: new Date().toISOString()
-			},
-			{
-				id: 'og-debug-fix-sse-19dec',
-				beads_id: 'orch-go-ghi',
-				status: 'completed',
-				skill: 'systematic-debugging',
-				spawned_at: new Date(Date.now() - 7200000).toISOString(),
-				updated_at: new Date(Date.now() - 3600000).toISOString(),
-				completed_at: new Date(Date.now() - 3600000).toISOString()
-			}
-		]);
-		connectionStatus.set('disconnected');
+		// Fetch initial agents
+		agents.fetch().catch((err) => {
+			console.error('Initial fetch failed:', err);
+		});
 
-		// TODO: Connect to SSE stream
-		// const eventSource = new EventSource('/api/events');
-		// eventSource.onmessage = (event) => { ... };
+		// Connect to SSE for real-time updates
+		connectSSE();
 	});
+
+	onDestroy(() => {
+		disconnectSSE();
+	});
+
+	function handleConnectClick() {
+		if ($connectionStatus === 'disconnected') {
+			connectSSE();
+		} else {
+			disconnectSSE();
+		}
+	}
 
 	function getStatusVariant(status: Agent['status']) {
 		switch (status) {
@@ -72,6 +58,11 @@
 			return `${hours}h ${minutes % 60}m`;
 		}
 		return `${minutes}m`;
+	}
+
+	function formatTime(timestamp?: number): string {
+		if (!timestamp) return '';
+		return new Date(timestamp).toLocaleTimeString();
 	}
 </script>
 
@@ -128,8 +119,18 @@
 					<CardTitle>Swarm Map</CardTitle>
 					<CardDescription>Real-time view of all agent activity</CardDescription>
 				</div>
-				<Button variant="outline" size="sm" disabled>
-					Connect SSE
+				<Button
+					variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
+					size="sm"
+					onclick={handleConnectClick}
+				>
+					{#if $connectionStatus === 'connecting'}
+						Connecting...
+					{:else if $connectionStatus === 'connected'}
+						Disconnect
+					{:else}
+						Connect SSE
+					{/if}
 				</Button>
 			</div>
 		</CardHeader>
@@ -189,11 +190,21 @@
 			<div class="max-h-64 overflow-y-auto rounded-lg bg-muted/50 p-4 font-mono text-xs">
 				{#each $sseEvents.slice().reverse() as event, i (i)}
 					<div class="border-b border-border py-2 last:border-0">
-						<span class="text-muted-foreground">{event.type}</span>
+						<span class="text-muted-foreground">[{formatTime(event.timestamp)}]</span>
+						<span class="ml-2">{event.type}</span>
+						{#if event.properties?.sessionID}
+							<span class="ml-2 text-muted-foreground">session: {event.properties.sessionID.slice(0, 8)}...</span>
+						{/if}
 					</div>
 				{:else}
 					<p class="text-muted-foreground">
-						Waiting for SSE connection...
+						{#if $connectionStatus === 'connected'}
+							Waiting for events...
+						{:else if $connectionStatus === 'connecting'}
+							Connecting to SSE...
+						{:else}
+							Click "Connect SSE" to start receiving events
+						{/if}
 					</p>
 				{/each}
 			</div>
