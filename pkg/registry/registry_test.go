@@ -672,6 +672,54 @@ func TestListCleanable(t *testing.T) {
 	}
 }
 
+// TestAbandonedAgentCanBeRespawned verifies that abandoned agents can be re-registered.
+// This reproduces the bug where 'orch abandon' doesn't allow respawning with same ID.
+func TestAbandonedAgentCanBeRespawned(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register an agent
+	agent1 := &Agent{ID: "agent-1", WindowID: "@100"}
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register agent-1: %v", err)
+	}
+
+	// Abandon it
+	if !reg.Abandon("agent-1") {
+		t.Fatal("failed to abandon agent-1")
+	}
+
+	// Save the registry
+	if err := reg.Save(); err != nil {
+		t.Fatalf("failed to save registry: %v", err)
+	}
+
+	// Try to register a new agent with the same ID (respawn)
+	// This should succeed because the old agent is abandoned
+	agent2 := &Agent{ID: "agent-1", WindowID: "@200"}
+	err = reg.Register(agent2)
+	if err != nil {
+		t.Errorf("expected to allow re-registration of abandoned agent, got error: %v", err)
+	}
+
+	// Verify the new agent is active
+	found := reg.Find("agent-1")
+	if found == nil {
+		t.Fatal("expected to find agent-1")
+	}
+	if found.Status != StateActive {
+		t.Errorf("expected status active, got %s", found.Status)
+	}
+	if found.WindowID != "@200" {
+		t.Errorf("expected window_id @200, got %s", found.WindowID)
+	}
+}
+
 // TestHeadlessWindowIDConstant verifies the headless window ID marker.
 func TestHeadlessWindowIDConstant(t *testing.T) {
 	if HeadlessWindowID != "headless" {
@@ -719,3 +767,6 @@ func TestSaveCreatesParentDirectory(t *testing.T) {
 		t.Error("expected registry file to be created")
 	}
 }
+
+// TestAbandonedAgentCanBeRespawned verifies that abandoned agents can be re-registered.
+// This reproduces the bug where 'orch abandon' doesn't allow respawning with same ID.

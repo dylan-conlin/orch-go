@@ -299,21 +299,50 @@ func (r *Registry) mergeAgents(current, ours []*Agent) []*Agent {
 }
 
 // Register adds a new agent to the registry.
-// Returns error if agent ID already exists.
+// Returns error if agent ID already exists and is active.
+// Abandoned, completed, or deleted agents can be re-registered (respawned).
 func (r *Registry) Register(agent *Agent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	now := time.Now().Format(TimeFormat)
+
 	// Check for duplicate by agent ID
+	var existingAgent *Agent
 	for _, a := range r.agents {
 		if a.ID == agent.ID {
+			existingAgent = a
+			break
+		}
+	}
+
+	if existingAgent != nil {
+		// If the existing agent is active, reject the registration
+		if existingAgent.Status == StateActive {
 			return fmt.Errorf("agent '%s' already registered", agent.ID)
 		}
+		// If the existing agent is abandoned, completed, or deleted, reuse the slot
+		// This allows respawning with the same agent ID
+		existingAgent.BeadsID = agent.BeadsID
+		existingAgent.SessionID = agent.SessionID
+		existingAgent.WindowID = agent.WindowID
+		existingAgent.Window = agent.Window
+		existingAgent.Status = StateActive
+		existingAgent.SpawnedAt = now
+		existingAgent.UpdatedAt = now
+		existingAgent.CompletedAt = ""
+		existingAgent.AbandonedAt = ""
+		existingAgent.DeletedAt = ""
+		existingAgent.ProjectDir = agent.ProjectDir
+		existingAgent.Skill = agent.Skill
+		existingAgent.PrimaryArtifact = agent.PrimaryArtifact
+		existingAgent.IsInteractive = agent.IsInteractive
+		existingAgent.BeadsDBPath = agent.BeadsDBPath
+		return nil
 	}
 
 	// Check for window_id reuse - abandon existing agent
 	if agent.WindowID != "" {
-		now := time.Now().Format(TimeFormat)
 		for _, a := range r.agents {
 			if a.Status == StateActive && a.WindowID == agent.WindowID {
 				a.Status = StateAbandoned
@@ -324,7 +353,6 @@ func (r *Registry) Register(agent *Agent) error {
 	}
 
 	// Set timestamps
-	now := time.Now().Format(TimeFormat)
 	agent.SpawnedAt = now
 	agent.UpdatedAt = now
 	if agent.Status == "" {
