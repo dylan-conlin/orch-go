@@ -7,13 +7,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Delta:** Tmux fallback works for all three commands but has edge case where stale registry window IDs + missing beads ID in window name causes fallback failure.
 
-**Evidence:** Iteration 5 confirmed `orch tail orch-go-smjj` successfully used tmux fallback (output showed "via tmux workers-orch-go:6"); `orch tail orch-go-559o` failed because registry had stale window ID (@227 vs @391) and window name lacked beads ID format.
+**Evidence:** Iterations 5 and 9 confirmed `orch tail orch-go-smjj` and `orch tail orch-go-bo6h` successfully used tmux fallback (output showed "via tmux workers-orch-go:6/7"); `orch tail orch-go-559o` failed because registry had stale window ID and window name lacked beads ID format.
 
 **Knowledge:** Fallback depends on either (1) current registry window ID OR (2) beads ID in window name `[beads-id]` format; if both are stale/missing, fallback fails despite window existing.
 
 **Next:** Consider registry reconciliation on startup or enforcing beads ID in all window names to prevent fallback failures.
 
-**Confidence:** High (90%) - Confirmed fallback works AND discovered specific failure condition through iteration 5 testing.
+**Confidence:** High (90%) - Confirmed fallback works across iterations 4, 5, and 9; discovered specific failure condition; regression testing confirms stability.
 
 <!--
 Example D.E.K.N.:
@@ -250,11 +250,11 @@ The fallback provides resilience - agents remain visible and debuggable even if 
 
 ## Confidence Assessment
 
-**Current Confidence:** High (85%)
+**Current Confidence:** High (90%)
 
 **Why this level?**
 
-Successfully verified all three commands work with tmux agents. The mechanisms are in place and functional. Confidence not "Very High" because I didn't test the failure scenario (API down) that would force tail to use pure tmux fallback.
+Successfully verified all three commands work with tmux agents across three test iterations (4, 5, and 9). The mechanisms are in place, functional, and stable over time. Iteration 9 regression testing confirms no degradation. Confidence not "Very High" because full edge case coverage (e.g., API completely down forcing pure tmux path) hasn't been exhaustively tested.
 
 **What's certain:**
 
