@@ -78,8 +78,9 @@ var (
 	spawnPhases            string
 	spawnMode              string
 	spawnValidation        string
-	spawnInline            bool   // Run inline (blocking) instead of in tmux
-	spawnHeadless          bool   // Run headless (via HTTP API, no TUI)
+	spawnInline            bool   // Run inline (blocking) instead of headless
+	spawnTmux              bool   // Run in tmux window (opt-in, deprecated default)
+	spawnHeadless          bool   // DEPRECATED: Run headless (now the default)
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright")
@@ -91,30 +92,30 @@ var spawnCmd = &cobra.Command{
 	Short: "Spawn a new OpenCode session with skill context",
 	Long: `Spawn a new OpenCode session with skill context.
 
-By default, spawns the agent in a tmux window and returns immediately.
-Use --inline to run in the current terminal (blocking).
-Use --headless to spawn via HTTP API without a TUI (for automation).
+By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
+Use --inline to run in the current terminal (blocking with TUI).
+Use --tmux to spawn in a tmux window (deprecated, was previous default).
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
 Examples:
-  orch-go spawn investigation "explore the codebase"
+  orch-go spawn investigation "explore the codebase"           # Default: headless
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
-  orch-go spawn --inline investigation "explore codebase"  # Run inline (blocking)
-  orch-go spawn --headless investigation "explore codebase"  # Run headless (HTTP API)
+  orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
+  orch-go spawn --tmux investigation "explore codebase"        # Run in tmux window
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
-  orch-go spawn --no-track investigation "exploratory work"  # Skip beads tracking
-  orch-go spawn --mcp playwright feature-impl "add UI feature"  # With Playwright MCP
+  orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
+  orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnHeadless)
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnTmux)
 	},
 }
 
@@ -123,12 +124,15 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
-	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) instead of in tmux")
-	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (no TUI, for automation)")
+	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
+	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in, was previous default)")
+	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "DEPRECATED: Headless is now the default; this flag is a no-op")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
+	// Mark --headless as deprecated
+	spawnCmd.Flags().MarkDeprecated("headless", "headless is now the default spawn mode; this flag is a no-op")
 }
 
 var askCmd = &cobra.Command{
@@ -214,7 +218,8 @@ func init() {
 
 var (
 	// Work command flags
-	workInline bool // Run inline (blocking) instead of in tmux
+	workInline bool // Run inline (blocking) with TUI
+	workTmux   bool // Run in tmux window (opt-in)
 )
 
 var workCmd = &cobra.Command{
@@ -230,18 +235,24 @@ The skill is automatically determined from the issue type:
 
 The issue description becomes the task prompt for the spawned agent.
 
+By default, spawns headlessly via HTTP API (no TUI).
+Use --inline to run in the current terminal (blocking with TUI).
+Use --tmux to spawn in a tmux window.
+
 Examples:
-  orch-go work proj-123           # Start work on issue proj-123 in tmux
-  orch-go work proj-123 --inline  # Start work inline (blocking)`,
+  orch-go work proj-123           # Start work headlessly (default)
+  orch-go work proj-123 --inline  # Start work inline (blocking TUI)
+  orch-go work proj-123 --tmux    # Start work in tmux window`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runWork(serverURL, beadsID, workInline)
+		return runWork(serverURL, beadsID, workInline, workTmux)
 	},
 }
 
 func init() {
-	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) instead of in tmux")
+	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
+	workCmd.Flags().BoolVar(&workTmux, "tmux", false, "Run in tmux window (opt-in)")
 }
 
 var (
@@ -471,7 +482,7 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 	}
 }
 
-func runWork(serverURL, beadsID string, inline bool) error {
+func runWork(serverURL, beadsID string, inline, useTmux bool) error {
 	// Get issue details
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
@@ -495,10 +506,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline, false)
+	return runSpawnWithSkill(serverURL, skillName, task, inline, useTmux)
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string, inline, headless bool) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline, useTmux bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -571,18 +582,19 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline, headless bool)
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Decide spawn mode: headless > inline > tmux (default)
-	if headless {
-		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	// Decide spawn mode: inline > tmux (opt-in) > headless (default)
+	if inline {
+		// Inline mode (blocking) - run in current terminal with TUI
+		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
-	useTmux := !inline && tmux.IsAvailable()
-	if useTmux {
+	if useTmux && tmux.IsAvailable() {
+		// Tmux mode (opt-in) - spawn in tmux window
 		return runSpawnInTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
-	// Inline mode (blocking) - original behavior
-	return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	// Default: Headless mode - spawn via HTTP API (no TUI)
+	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 }
 
 // runSpawnInTmux spawns the agent in a tmux window using standalone mode.
