@@ -226,6 +226,19 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 	return &session, nil
 }
 
+// SessionExists checks if a session exists in OpenCode (in-memory).
+// Returns true if the session is accessible via the API, false otherwise.
+func (c *Client) SessionExists(sessionID string) bool {
+	resp, err := http.Get(c.ServerURL + "/session/" + sessionID)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Session exists if we get 200 OK
+	return resp.StatusCode == http.StatusOK
+}
+
 // CreateSessionRequest represents the request body for creating a new session.
 type CreateSessionRequest struct {
 	Title     string `json:"title,omitempty"`

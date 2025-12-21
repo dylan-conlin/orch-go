@@ -512,6 +512,26 @@ func FindWindowByBeadsID(sessionName, beadsID string) (*WindowInfo, error) {
 	return nil, nil
 }
 
+// WindowExistsByID checks if a tmux window exists by its unique ID (e.g., "@1234").
+// Returns true if the window is still present in any tmux session.
+func WindowExistsByID(windowID string) bool {
+	// Query all tmux windows to find this ID
+	cmd := exec.Command("tmux", "list-windows", "-a", "-F", "#{window_id}")
+	output, err := cmd.Output()
+	if err != nil {
+		// If tmux isn't running or no sessions exist, window doesn't exist
+		return false
+	}
+
+	// Check if this window ID is in the output
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.TrimSpace(line) == windowID {
+			return true
+		}
+	}
+	return false
+}
+
 // CaptureLines captures the last N lines from a tmux pane.
 // If lines is 0, captures all visible content.
 func CaptureLines(windowTarget string, lines int) ([]string, error) {

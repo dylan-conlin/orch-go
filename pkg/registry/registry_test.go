@@ -768,5 +768,291 @@ func TestSaveCreatesParentDirectory(t *testing.T) {
 	}
 }
 
-// TestAbandonedAgentCanBeRespawned verifies that abandoned agents can be re-registered.
-// This reproduces the bug where 'orch abandon' doesn't allow respawning with same ID.
+// MockLivenessChecker is a mock implementation of LivenessChecker for testing.
+type MockLivenessChecker struct {
+	LiveWindows  map[string]bool // window IDs that are "alive"
+	LiveSessions map[string]bool // session IDs that are "alive"
+}
+
+func NewMockLivenessChecker() *MockLivenessChecker {
+	return &MockLivenessChecker{
+		LiveWindows:  make(map[string]bool),
+		LiveSessions: make(map[string]bool),
+	}
+}
+
+func (m *MockLivenessChecker) WindowExists(windowID string) bool {
+	return m.LiveWindows[windowID]
+}
+
+func (m *MockLivenessChecker) SessionExists(sessionID string) bool {
+	return m.LiveSessions[sessionID]
+}
+
+// TestReconcileActiveMarksDeadTmuxWindowsAbandoned verifies that agents with dead tmux windows are abandoned.
+func TestReconcileActiveMarksDeadTmuxWindowsAbandoned(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agents with window IDs
+	agent1 := &Agent{ID: "agent-1", WindowID: "@100"} // window exists
+	agent2 := &Agent{ID: "agent-2", WindowID: "@200"} // window dead
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register agent-1: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register agent-2: %v", err)
+	}
+
+	// Mock liveness: only @100 is alive
+	checker := NewMockLivenessChecker()
+	checker.LiveWindows["@100"] = true
+
+	// Reconcile (not dry-run)
+	result := reg.ReconcileActive(checker, false)
+
+	// Should have checked 2 agents
+	if result.Checked != 2 {
+		t.Errorf("expected 2 checked, got %d", result.Checked)
+	}
+
+	// Should have abandoned 1 agent (agent-2)
+	if result.Abandoned != 1 {
+		t.Errorf("expected 1 abandoned, got %d", result.Abandoned)
+	}
+
+	// agent-1 should still be active
+	found1 := reg.Find("agent-1")
+	if found1.Status != StateActive {
+		t.Errorf("expected agent-1 to be active, got %s", found1.Status)
+	}
+
+	// agent-2 should be abandoned
+	found2 := reg.Find("agent-2")
+	if found2.Status != StateAbandoned {
+		t.Errorf("expected agent-2 to be abandoned, got %s", found2.Status)
+	}
+}
+
+// TestReconcileActiveMarksDeadOpenCodeSessionsAbandoned verifies that headless agents with dead sessions are abandoned.
+func TestReconcileActiveMarksDeadOpenCodeSessionsAbandoned(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register headless agents (no window ID, but have session ID)
+	agent1 := &Agent{ID: "agent-1", WindowID: HeadlessWindowID, SessionID: "ses_alive"}
+	agent2 := &Agent{ID: "agent-2", WindowID: HeadlessWindowID, SessionID: "ses_dead"}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register agent-1: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register agent-2: %v", err)
+	}
+
+	// Mock liveness: only ses_alive is alive
+	checker := NewMockLivenessChecker()
+	checker.LiveSessions["ses_alive"] = true
+
+	// Reconcile
+	result := reg.ReconcileActive(checker, false)
+
+	// Should have checked 2 agents
+	if result.Checked != 2 {
+		t.Errorf("expected 2 checked, got %d", result.Checked)
+	}
+
+	// Should have abandoned 1 agent (agent-2)
+	if result.Abandoned != 1 {
+		t.Errorf("expected 1 abandoned, got %d", result.Abandoned)
+	}
+
+	// agent-2 should be abandoned
+	found2 := reg.Find("agent-2")
+	if found2.Status != StateAbandoned {
+		t.Errorf("expected agent-2 to be abandoned, got %s", found2.Status)
+	}
+}
+
+// TestReconcileActiveDryRunDoesNotModify verifies dry-run mode doesn't modify the registry.
+func TestReconcileActiveDryRunDoesNotModify(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with dead window
+	agent := &Agent{ID: "agent-1", WindowID: "@dead"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// Empty checker = all windows are dead
+	checker := NewMockLivenessChecker()
+
+	// Reconcile with dry-run
+	result := reg.ReconcileActive(checker, true)
+
+	// Should report 1 abandoned
+	if result.Abandoned != 1 {
+		t.Errorf("expected 1 abandoned, got %d", result.Abandoned)
+	}
+
+	// But agent should still be active (dry-run doesn't modify)
+	found := reg.Find("agent-1")
+	if found.Status != StateActive {
+		t.Errorf("expected agent-1 to still be active after dry-run, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveSkipsCompletedAndAbandoned verifies reconciliation only checks active agents.
+func TestReconcileActiveSkipsCompletedAndAbandoned(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agents
+	agent1 := &Agent{ID: "agent-1", WindowID: "@100"}
+	agent2 := &Agent{ID: "agent-2", WindowID: "@200"}
+	agent3 := &Agent{ID: "agent-3", WindowID: "@300"}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register agent-1: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register agent-2: %v", err)
+	}
+	if err := reg.Register(agent3); err != nil {
+		t.Fatalf("failed to register agent-3: %v", err)
+	}
+
+	// Mark agent-1 as completed, agent-2 as abandoned
+	reg.Complete("agent-1")
+	reg.Abandon("agent-2")
+
+	// All windows are dead
+	checker := NewMockLivenessChecker()
+
+	// Reconcile
+	result := reg.ReconcileActive(checker, false)
+
+	// Should only check agent-3 (the only active one)
+	if result.Checked != 1 {
+		t.Errorf("expected 1 checked (only active agent), got %d", result.Checked)
+	}
+}
+
+// TestReconcileActiveWithBothChecks verifies that both tmux and OpenCode are checked.
+func TestReconcileActiveWithBothChecks(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Agent with both window and session - window exists but session is dead
+	agent := &Agent{ID: "agent-1", WindowID: "@100", SessionID: "ses_dead"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	checker := NewMockLivenessChecker()
+	checker.LiveWindows["@100"] = true // Window is alive
+	// Session is NOT alive
+
+	// Reconcile
+	result := reg.ReconcileActive(checker, false)
+
+	// Should mark as abandoned because session is dead (even though window is alive)
+	if result.Abandoned != 1 {
+		t.Errorf("expected 1 abandoned (dead session), got %d", result.Abandoned)
+	}
+
+	found := reg.Find("agent-1")
+	if found.Status != StateAbandoned {
+		t.Errorf("expected agent-1 to be abandoned, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveAgentWithNoWindowOrSession verifies agents without IDs are not abandoned.
+func TestReconcileActiveAgentWithNoWindowOrSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Agent with no window or session ID (inline agent)
+	agent := &Agent{ID: "inline-agent", WindowID: "", SessionID: ""}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	checker := NewMockLivenessChecker()
+
+	// Reconcile
+	result := reg.ReconcileActive(checker, false)
+
+	// Should check the agent but not abandon it (no way to verify liveness)
+	if result.Checked != 1 {
+		t.Errorf("expected 1 checked, got %d", result.Checked)
+	}
+	if result.Abandoned != 0 {
+		t.Errorf("expected 0 abandoned (no IDs to check), got %d", result.Abandoned)
+	}
+
+	found := reg.Find("inline-agent")
+	if found.Status != StateActive {
+		t.Errorf("expected inline-agent to remain active, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveReturnsDetails verifies the result includes human-readable details.
+func TestReconcileActiveReturnsDetails(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	agent := &Agent{ID: "agent-1", WindowID: "@dead"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	checker := NewMockLivenessChecker()
+	result := reg.ReconcileActive(checker, false)
+
+	if len(result.AgentIDs) != 1 || result.AgentIDs[0] != "agent-1" {
+		t.Errorf("expected AgentIDs=['agent-1'], got %v", result.AgentIDs)
+	}
+	if len(result.Details) != 1 {
+		t.Errorf("expected 1 detail, got %d", len(result.Details))
+	}
+}
+
+// Duplicate comment removed - TestAbandonedAgentCanBeRespawned is already defined above

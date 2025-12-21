@@ -151,8 +151,8 @@ var (
 	spawnPhases            string
 	spawnMode              string
 	spawnValidation        string
-	spawnInline            bool   // Run inline (blocking) instead of headless
-	spawnTmux              bool   // Run in tmux window (interactive)
+	spawnInline            bool   // Run inline (blocking) with TUI
+	spawnHeadless          bool   // Run headless via HTTP API (automation/scripting)
 	spawnAttach            bool   // Attach to tmux window after spawning
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
@@ -165,21 +165,21 @@ var spawnCmd = &cobra.Command{
 	Short: "Spawn a new OpenCode session with skill context",
 	Long: `Spawn a new OpenCode session with skill context.
 
-By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
+By default, spawns the agent in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
-Use --tmux to run in a tmux window (interactive, returns immediately).
-Use --attach to run in a tmux window and attach to it immediately.
+Use --headless for automation/scripting (no TUI, fire-and-forget).
+Use --attach to spawn in tmux and attach immediately.
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
 Examples:
-  orch-go spawn investigation "explore the codebase"           # Default: headless
+  orch-go spawn investigation "explore the codebase"           # Default: tmux window
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
   orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
-  orch-go spawn --tmux investigation "explore codebase"        # Run in tmux window
-  orch-go spawn --attach investigation "explore codebase"      # Run in tmux and attach
+  orch-go spawn --headless investigation "explore codebase"    # Fire-and-forget (automation)
+  orch-go spawn --attach investigation "explore codebase"      # Tmux + attach immediately
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
@@ -190,8 +190,7 @@ Examples:
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		useTmux := spawnTmux || spawnAttach
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, useTmux, spawnAttach)
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnHeadless, spawnAttach)
 	},
 }
 
@@ -201,7 +200,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
-	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (interactive, returns immediately)")
+	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (for automation/scripting)")
 	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
@@ -320,11 +319,11 @@ The skill is automatically determined from the issue type:
 
 The issue description becomes the task prompt for the spawned agent.
 
-By default, spawns headlessly via HTTP API (no TUI).
+By default, spawns in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
 
 Examples:
-  orch-go work proj-123           # Start work headlessly (default)
+  orch-go work proj-123           # Start work in tmux window (default)
   orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -667,10 +666,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline, false, false) // work command doesn't use tmux
+	return runSpawnWithSkill(serverURL, skillName, task, inline, false, false) // headless=false means tmux (default)
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool, attach bool) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, attach bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -737,19 +736,19 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Spawn mode: tmux (interactive window), inline (blocking with TUI), or headless (HTTP API, no TUI)
-	if tmux {
-		// Tmux mode - create tmux window and run opencode there
-		return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task, attach)
-	}
-
+	// Spawn mode: inline (blocking TUI), headless (HTTP API), or tmux (default)
 	if inline {
 		// Inline mode (blocking) - run in current terminal with TUI
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
-	// Default: Headless mode - spawn via HTTP API (no TUI)
-	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	if headless {
+		// Headless mode - spawn via HTTP API (for automation/scripting)
+		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
+	// Default: Tmux mode - visible, interruptible, prevents runaway spawns
+	return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task, attach)
 }
 
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
@@ -1639,7 +1638,8 @@ func runMonitor(serverURL string) error {
 
 var (
 	// Clean command flags
-	cleanDryRun bool
+	cleanDryRun         bool
+	cleanVerifyOpenCode bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -1647,62 +1647,118 @@ var cleanCmd = &cobra.Command{
 	Short: "Remove completed agents from the registry",
 	Long: `Remove completed and abandoned agents from the registry.
 
-By default, only cleans agents that are marked as completed or abandoned in the registry.
+By default, performs four-layer reconciliation before cleaning:
+1. Checks registry for completed/abandoned agents
+2. Verifies active agents against tmux windows (marks as abandoned if window missing)
+3. Verifies active agents against OpenCode sessions (marks as abandoned if session missing)
+
+This prevents ghost agents (registry entries pointing to dead tmux windows or sessions).
 
 Examples:
-  orch-go clean              # Clean completed/abandoned agents
-  orch-go clean --dry-run    # Show what would be cleaned`,
+  orch-go clean                   # Reconcile + clean completed/abandoned
+  orch-go clean --dry-run         # Show what would be cleaned (no changes)
+  orch-go clean --verify-opencode # Also check OpenCode disk sessions`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun)
+		return runClean(cleanDryRun, cleanVerifyOpenCode)
 	},
 }
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
+	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 }
 
-func runClean(dryRun bool) error {
+// DefaultLivenessChecker implements registry.LivenessChecker using tmux and opencode packages.
+type DefaultLivenessChecker struct {
+	client *opencode.Client
+}
+
+// NewDefaultLivenessChecker creates a new liveness checker.
+func NewDefaultLivenessChecker(serverURL string) *DefaultLivenessChecker {
+	return &DefaultLivenessChecker{
+		client: opencode.NewClient(serverURL),
+	}
+}
+
+// WindowExists checks if a tmux window ID exists.
+func (c *DefaultLivenessChecker) WindowExists(windowID string) bool {
+	return tmux.WindowExistsByID(windowID)
+}
+
+// SessionExists checks if an OpenCode session ID exists.
+func (c *DefaultLivenessChecker) SessionExists(sessionID string) bool {
+	return c.client.SessionExists(sessionID)
+}
+
+func runClean(dryRun bool, verifyOpenCode bool) error {
 	// Open registry
 	reg, err := registry.New("")
 	if err != nil {
 		return fmt.Errorf("failed to open registry: %w", err)
 	}
 
-	// Get cleanable agents (completed or abandoned)
+	// Step 1: Reconcile active agents against tmux and OpenCode
+	// This implements the four-layer reconciliation pattern
+	fmt.Println("Reconciling active agents...")
+	checker := NewDefaultLivenessChecker(serverURL)
+	reconcileResult := reg.ReconcileActive(checker, dryRun)
+
+	if reconcileResult.Checked > 0 {
+		fmt.Printf("  Checked %d active agents\n", reconcileResult.Checked)
+		if reconcileResult.Abandoned > 0 {
+			prefix := "Marked"
+			if dryRun {
+				prefix = "Would mark"
+			}
+			fmt.Printf("  %s %d as abandoned:\n", prefix, reconcileResult.Abandoned)
+			for _, detail := range reconcileResult.Details {
+				fmt.Printf("    - %s\n", detail)
+			}
+		} else {
+			fmt.Println("  All active agents are alive")
+		}
+	} else {
+		fmt.Println("  No active agents to check")
+	}
+
+	// Step 2: Get cleanable agents (completed or abandoned, including newly abandoned)
 	agents := reg.ListCleanable()
 
-	if len(agents) == 0 {
-		fmt.Println("No agents to clean")
+	if len(agents) == 0 && reconcileResult.Abandoned == 0 {
+		fmt.Println("\nNo agents to clean")
 		return nil
 	}
 
 	// Track cleanup stats
 	agentsCleaned := 0
 
-	fmt.Printf("Found %d agents to clean:\n", len(agents))
+	if len(agents) > 0 {
+		fmt.Printf("\nFound %d agents to clean:\n", len(agents))
 
-	for _, agent := range agents {
-		status := string(agent.Status)
+		for _, agent := range agents {
+			status := string(agent.Status)
 
-		if dryRun {
-			fmt.Printf("  [DRY-RUN] Would clean: %s [%s]\n", agent.ID, status)
-			continue
-		}
+			if dryRun {
+				fmt.Printf("  [DRY-RUN] Would clean: %s [%s]\n", agent.ID, status)
+				continue
+			}
 
-		fmt.Printf("  Cleaning: %s [%s]\n", agent.ID, status)
+			fmt.Printf("  Cleaning: %s [%s]\n", agent.ID, status)
 
-		// Mark agent as deleted in registry
-		if reg.Remove(agent.ID) {
-			agentsCleaned++
+			// Mark agent as deleted in registry
+			if reg.Remove(agent.ID) {
+				agentsCleaned++
+			}
 		}
 	}
 
 	if dryRun {
-		fmt.Printf("\nDry run complete. Would clean %d agents.\n", len(agents))
+		total := len(agents)
+		fmt.Printf("\nDry run complete. Would clean %d agents.\n", total)
 		return nil
 	}
 
-	// Save registry
+	// Save registry (including reconciliation changes)
 	if err := reg.SaveSkipMerge(); err != nil {
 		return fmt.Errorf("failed to save registry: %w", err)
 	}
@@ -1717,15 +1773,21 @@ func runClean(dryRun bool) error {
 		Type:      "agents.cleaned",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"agents_cleaned": agentsCleaned,
-			"project":        projectName,
+			"agents_cleaned":    agentsCleaned,
+			"agents_reconciled": reconcileResult.Abandoned,
+			"project":           projectName,
+			"verify_opencode":   verifyOpenCode,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("\nCleaned %d agents\n", agentsCleaned)
+	fmt.Printf("\nCleaned %d agents", agentsCleaned)
+	if reconcileResult.Abandoned > 0 {
+		fmt.Printf(", reconciled %d abandoned", reconcileResult.Abandoned)
+	}
+	fmt.Println()
 	return nil
 }
 

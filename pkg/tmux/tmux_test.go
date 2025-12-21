@@ -366,3 +366,46 @@ func TestAttach(t *testing.T) {
 		t.Error("Expected error when attaching to nonexistent session")
 	}
 }
+
+func TestWindowExistsByID(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Test with a window ID that almost certainly doesn't exist
+	exists := WindowExistsByID("@99999999")
+	if exists {
+		t.Error("Expected window @99999999 to not exist")
+	}
+
+	// Create a test session and window, then verify it exists
+	project := "orch-go-test-window-exists"
+	projectDir := "/tmp/orch-go-test-window-exists"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	_, windowID, err := CreateWindow(sessionName, "test-exists", projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Window should exist
+	if !WindowExistsByID(windowID) {
+		t.Errorf("Expected window %s to exist", windowID)
+	}
+
+	// Kill the window
+	err = KillWindowByID(windowID)
+	if err != nil {
+		t.Fatalf("Could not kill window: %v", err)
+	}
+
+	// Window should no longer exist
+	if WindowExistsByID(windowID) {
+		t.Errorf("Expected window %s to not exist after kill", windowID)
+	}
+}

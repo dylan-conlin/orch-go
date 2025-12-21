@@ -304,3 +304,90 @@ func TestCleanCommandIntegration(t *testing.T) {
 	// that would actually run the clean command against a real registry.
 	t.Skip("Integration test not implemented - requires agent setup")
 }
+
+// TestReconcileIntegrationWithClean verifies that reconciliation works with the clean flow.
+func TestReconcileIntegrationWithClean(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "registry.json")
+
+	// Create registry with agents
+	reg, err := registry.New(registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Register agents with different states
+	// Agent 1: Active with dead window (should be reconciled to abandoned)
+	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", WindowID: "@dead-window"}
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("Failed to register agent-1: %v", err)
+	}
+
+	// Agent 2: Active with dead session (should be reconciled to abandoned)
+	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", WindowID: registry.HeadlessWindowID, SessionID: "ses_dead"}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("Failed to register agent-2: %v", err)
+	}
+
+	// Agent 3: Already completed (should be cleaned)
+	agent3 := &registry.Agent{ID: "agent-3", BeadsID: "beads-3", WindowID: "@100"}
+	if err := reg.Register(agent3); err != nil {
+		t.Fatalf("Failed to register agent-3: %v", err)
+	}
+	reg.Complete("agent-3")
+
+	// Save the registry
+	if err := reg.Save(); err != nil {
+		t.Fatalf("Failed to save registry: %v", err)
+	}
+
+	// Create a mock liveness checker where nothing is alive
+	mockChecker := &MockLivenessChecker{
+		LiveWindows:  make(map[string]bool),
+		LiveSessions: make(map[string]bool),
+	}
+
+	// Reconcile - should mark agent-1 and agent-2 as abandoned
+	result := reg.ReconcileActive(mockChecker, false)
+
+	// Should have checked 2 active agents (agent-1 and agent-2)
+	if result.Checked != 2 {
+		t.Errorf("Expected 2 checked, got %d", result.Checked)
+	}
+
+	// Should have marked 2 as abandoned
+	if result.Abandoned != 2 {
+		t.Errorf("Expected 2 abandoned, got %d", result.Abandoned)
+	}
+
+	// Now there should be 3 cleanable agents (agent-1, agent-2, agent-3)
+	cleanable := reg.ListCleanable()
+	if len(cleanable) != 3 {
+		t.Errorf("Expected 3 cleanable after reconciliation, got %d", len(cleanable))
+	}
+
+	// Clean them
+	for _, a := range cleanable {
+		reg.Remove(a.ID)
+	}
+
+	// No more cleanable agents
+	cleanable = reg.ListCleanable()
+	if len(cleanable) != 0 {
+		t.Errorf("Expected 0 cleanable after clean, got %d", len(cleanable))
+	}
+}
+
+// MockLivenessChecker for testing (matches the one in registry_test.go)
+type MockLivenessChecker struct {
+	LiveWindows  map[string]bool
+	LiveSessions map[string]bool
+}
+
+func (m *MockLivenessChecker) WindowExists(windowID string) bool {
+	return m.LiveWindows[windowID]
+}
+
+func (m *MockLivenessChecker) SessionExists(sessionID string) bool {
+	return m.LiveSessions[sessionID]
+}

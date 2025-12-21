@@ -342,7 +342,8 @@ func (r *Registry) Register(agent *Agent) error {
 	}
 
 	// Check for window_id reuse - abandon existing agent
-	if agent.WindowID != "" {
+	// Skip HeadlessWindowID since it's a marker, not an actual tmux window
+	if agent.WindowID != "" && agent.WindowID != HeadlessWindowID {
 		for _, a := range r.agents {
 			if a.Status == StateActive && a.WindowID == agent.WindowID {
 				a.Status = StateAbandoned
@@ -503,4 +504,83 @@ const HeadlessWindowID = "headless"
 // SaveSkipMerge saves without merging (used for delete operations).
 func (r *Registry) SaveSkipMerge() error {
 	return r.save(true)
+}
+
+// LivenessChecker is an interface for checking if tmux windows and OpenCode sessions exist.
+// This allows for dependency injection in tests.
+type LivenessChecker interface {
+	// WindowExists checks if a tmux window ID exists
+	WindowExists(windowID string) bool
+	// SessionExists checks if an OpenCode session ID exists
+	SessionExists(sessionID string) bool
+}
+
+// ReconcileResult holds the results of a reconciliation operation.
+type ReconcileResult struct {
+	Checked   int      // Number of agents checked
+	Abandoned int      // Number of agents marked as abandoned
+	AgentIDs  []string // IDs of agents that were marked as abandoned
+	Details   []string // Human-readable details for each abandonment
+}
+
+// ReconcileActive checks all active agents against tmux and OpenCode for liveness.
+// Agents are marked as abandoned if:
+// - They have a WindowID (non-headless) and the tmux window no longer exists
+// - They have a SessionID and the OpenCode session no longer exists
+// This implements the "four-layer reconciliation" pattern:
+// Layer 1: Registry (source of truth for agent tracking)
+// Layer 2: Tmux windows (for non-headless agents)
+// Layer 3: OpenCode in-memory sessions
+// Layer 4: OpenCode disk sessions (optional, via verifyOpenCode flag)
+func (r *Registry) ReconcileActive(checker LivenessChecker, dryRun bool) *ReconcileResult {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result := &ReconcileResult{
+		AgentIDs: make([]string, 0),
+		Details:  make([]string, 0),
+	}
+
+	now := time.Now().Format(TimeFormat)
+
+	for _, agent := range r.agents {
+		if agent.Status != StateActive {
+			continue
+		}
+
+		result.Checked++
+		shouldAbandon := false
+		reason := ""
+
+		// Check tmux window liveness (for non-headless agents)
+		if agent.WindowID != "" && agent.WindowID != HeadlessWindowID {
+			if !checker.WindowExists(agent.WindowID) {
+				shouldAbandon = true
+				reason = fmt.Sprintf("tmux window %s no longer exists", agent.WindowID)
+			}
+		}
+
+		// Check OpenCode session liveness (for agents with session IDs)
+		// This catches headless agents and provides additional verification for tmux agents
+		if !shouldAbandon && agent.SessionID != "" {
+			if !checker.SessionExists(agent.SessionID) {
+				shouldAbandon = true
+				reason = fmt.Sprintf("OpenCode session %s no longer exists", agent.SessionID)
+			}
+		}
+
+		if shouldAbandon {
+			result.Abandoned++
+			result.AgentIDs = append(result.AgentIDs, agent.ID)
+			result.Details = append(result.Details, fmt.Sprintf("%s: %s", agent.ID, reason))
+
+			if !dryRun {
+				agent.Status = StateAbandoned
+				agent.AbandonedAt = now
+				agent.UpdatedAt = now
+			}
+		}
+	}
+
+	return result
 }
