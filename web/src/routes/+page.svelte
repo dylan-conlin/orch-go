@@ -3,7 +3,7 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { SynthesisCard } from '$lib/components/synthesis-card';
+	import { AgentCard } from '$lib/components/agent-card';
 	import {
 		agents,
 		activeAgents,
@@ -13,15 +13,56 @@
 		connectionStatus,
 		connectSSE,
 		disconnectSSE,
-		type Agent
+		type Agent,
+		type AgentState
 	} from '$lib/stores/agents';
 	import {
 		agentlogEvents,
 		agentlogConnectionStatus,
 		connectAgentlogSSE,
-		disconnectAgentlogSSE,
-		type AgentLogEvent
+		disconnectAgentlogSSE
 	} from '$lib/stores/agentlog';
+
+	// Filter and sort state
+	let statusFilter: AgentState | 'all' = $state('all');
+	let skillFilter: string = $state('all');
+	let sortBy: 'newest' | 'oldest' | 'alphabetical' = $state('newest');
+
+	// Get unique skills from agents
+	let uniqueSkills = $derived(
+		[...new Set($agents.map(a => a.skill).filter(Boolean))] as string[]
+	);
+
+	// Filtered and sorted agents
+	let filteredAgents = $derived.by(() => {
+		let result = $agents.filter(a => a.status !== 'deleted');
+
+		// Apply status filter
+		if (statusFilter !== 'all') {
+			result = result.filter(a => a.status === statusFilter);
+		}
+
+		// Apply skill filter
+		if (skillFilter !== 'all') {
+			result = result.filter(a => a.skill === skillFilter);
+		}
+
+		// Apply sorting
+		result = [...result].sort((a, b) => {
+			switch (sortBy) {
+				case 'newest':
+					return new Date(b.spawned_at).getTime() - new Date(a.spawned_at).getTime();
+				case 'oldest':
+					return new Date(a.spawned_at).getTime() - new Date(b.spawned_at).getTime();
+				case 'alphabetical':
+					return a.id.localeCompare(b.id);
+				default:
+					return 0;
+			}
+		});
+
+		return result;
+	});
 
 	onMount(() => {
 		// Fetch initial agents
@@ -50,29 +91,6 @@
 		} else {
 			disconnectSSE();
 		}
-	}
-
-	function getStatusVariant(status: Agent['status']) {
-		switch (status) {
-			case 'active':
-				return 'active';
-			case 'completed':
-				return 'completed';
-			case 'abandoned':
-				return 'abandoned';
-			default:
-				return 'default';
-		}
-	}
-
-	function formatDuration(isoDate: string): string {
-		const ms = Date.now() - new Date(isoDate).getTime();
-		const minutes = Math.floor(ms / 60000);
-		const hours = Math.floor(minutes / 60);
-		if (hours > 0) {
-			return `${hours}h ${minutes % 60}m`;
-		}
-		return `${minutes}m`;
 	}
 
 	function formatTime(timestamp?: number): string {
@@ -121,6 +139,16 @@
 			disconnectAgentlogSSE();
 		}
 	}
+
+	function clearFilters() {
+		statusFilter = 'all';
+		skillFilter = 'all';
+		sortBy = 'newest';
+	}
+
+	let hasActiveFilters = $derived(
+		statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'newest'
+	);
 </script>
 
 <div class="space-y-8">
@@ -202,50 +230,87 @@
 			</div>
 		</CardHeader>
 		<CardContent>
-			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-				{#each $agents.filter(a => a.status !== 'deleted') as agent (agent.id)}
-					<div class="rounded-lg border p-4 transition-all hover:border-primary/50 hover:shadow-md">
-						<div class="flex items-start justify-between">
-							<div class="space-y-1">
-								<div class="flex items-center gap-2">
-									<Badge variant={getStatusVariant(agent.status)}>
-										{agent.status}
-									</Badge>
-									{#if agent.skill}
-										<Badge variant="outline" class="text-xs">
-											{agent.skill}
-										</Badge>
-									{/if}
-								</div>
-								<p class="font-mono text-sm font-medium">{agent.id}</p>
-								{#if agent.beads_id}
-									<p class="text-xs text-muted-foreground">
-										{agent.beads_id}
-									</p>
-								{/if}
-							</div>
-						</div>
-						<div class="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-							<span>Duration: {formatDuration(agent.spawned_at)}</span>
-							{#if agent.status === 'active'}
-								<span class="flex items-center gap-1">
-									<span class="h-2 w-2 animate-pulse rounded-full bg-green-500"></span>
-									Running
-								</span>
-							{/if}
-						</div>
+			<!-- Filter Bar -->
+			<div class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3" data-testid="filter-bar">
+				<!-- Status Filter -->
+				<div class="flex items-center gap-2">
+					<label for="status-filter" class="text-sm font-medium text-muted-foreground">Status:</label>
+					<select
+						id="status-filter"
+						bind:value={statusFilter}
+						class="h-8 rounded-md border border-input bg-background px-2 text-sm"
+						data-testid="status-filter"
+					>
+						<option value="all">All</option>
+						<option value="active">Active</option>
+						<option value="completed">Completed</option>
+						<option value="abandoned">Abandoned</option>
+					</select>
+				</div>
 
-						<!-- Synthesis Card for completed agents -->
-						{#if agent.status === 'completed' && agent.synthesis}
-							<SynthesisCard synthesis={agent.synthesis} />
-						{/if}
+				<!-- Skill Filter -->
+				{#if uniqueSkills.length > 0}
+					<div class="flex items-center gap-2">
+						<label for="skill-filter" class="text-sm font-medium text-muted-foreground">Skill:</label>
+						<select
+							id="skill-filter"
+							bind:value={skillFilter}
+							class="h-8 rounded-md border border-input bg-background px-2 text-sm"
+							data-testid="skill-filter"
+						>
+							<option value="all">All</option>
+							{#each uniqueSkills as skill}
+								<option value={skill}>{skill}</option>
+							{/each}
+						</select>
 					</div>
+				{/if}
+
+				<!-- Sort -->
+				<div class="flex items-center gap-2">
+					<label for="sort-by" class="text-sm font-medium text-muted-foreground">Sort:</label>
+					<select
+						id="sort-by"
+						bind:value={sortBy}
+						class="h-8 rounded-md border border-input bg-background px-2 text-sm"
+						data-testid="sort-select"
+					>
+						<option value="newest">Newest first</option>
+						<option value="oldest">Oldest first</option>
+						<option value="alphabetical">A-Z</option>
+					</select>
+				</div>
+
+				<!-- Clear Filters -->
+				{#if hasActiveFilters}
+					<Button variant="ghost" size="sm" onclick={clearFilters} class="ml-auto text-xs">
+						Clear filters
+					</Button>
+				{/if}
+
+				<!-- Result count -->
+				<span class="ml-auto text-xs text-muted-foreground" data-testid="filter-count">
+					{filteredAgents.length} agent{filteredAgents.length === 1 ? '' : 's'}
+				</span>
+			</div>
+
+			<!-- Agent Grid -->
+			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="agent-grid">
+				{#each filteredAgents as agent (agent.id)}
+					<AgentCard {agent} />
 				{:else}
 					<div class="col-span-full rounded-lg border border-dashed p-8 text-center">
-						<p class="text-muted-foreground">No agents in the swarm</p>
-						<p class="mt-1 text-sm text-muted-foreground">
-							Agents will appear here when spawned via <code class="rounded bg-muted px-1">orch spawn</code>
-						</p>
+						{#if hasActiveFilters}
+							<p class="text-muted-foreground">No agents match the current filters</p>
+							<Button variant="link" onclick={clearFilters} class="mt-2">
+								Clear filters
+							</Button>
+						{:else}
+							<p class="text-muted-foreground">No agents in the swarm</p>
+							<p class="mt-1 text-sm text-muted-foreground">
+								Agents will appear here when spawned via <code class="rounded bg-muted px-1">orch spawn</code>
+							</p>
+						{/if}
 					</div>
 				{/each}
 			</div>
