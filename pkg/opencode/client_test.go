@@ -141,7 +141,7 @@ func TestNewClient(t *testing.T) {
 
 func TestBuildSpawnCommand(t *testing.T) {
 	client := NewClient("http://127.0.0.1:4096")
-	cmd := client.BuildSpawnCommand("say hello", "test-title")
+	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
 
 	expectedArgs := []string{
 		"run",

@@ -762,7 +762,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Spawn opencode session
 	client := opencode.NewClient(serverURL)
-	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName)
+	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName, cfg.Model)
 	cmd.Stderr = os.Stderr
 	cmd.Dir = cfg.ProjectDir
 

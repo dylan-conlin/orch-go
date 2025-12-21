@@ -15,9 +15,10 @@ func (m ModelSpec) Format() string {
 }
 
 // DefaultModel is used when no model is specified.
+// Opus is the default (covered by Max subscription, best quality).
 var DefaultModel = ModelSpec{
-	Provider: "google",
-	ModelID:  "gemini-3-flash-preview",
+	Provider: "anthropic",
+	ModelID:  "claude-opus-4-5-20251101",
 }
 
 // Aliases maps short names to full model specs.

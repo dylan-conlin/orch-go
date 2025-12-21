@@ -14,3 +14,22 @@ BUT!!! i'm also in the middle of transitioning from orch-cli to orch-go. should 
 * TODO now that we have the synthesis procotol, what should we do about all the earlier investigations/decisions littered throughout the orch ecosystem? they likely have varying structures and outdated decisions as well as valuable information.
 * TODO i'm concerned about the quality of the kb search command. often i notice that agents end up finding results better by grepping
 * TODO i'm noticing the orch tail command is still using tmux
+* TODO auth and model issues
+
+
+ok, so i recently started testing out gemini 3 flash as an orchestrator, but it has led to various issues. the system is not ready for the model flexibility i'm looking for. the problems i'm seeing seem to be related to the fact that orch has ways of handling models and opencode has its own way of handling models. i think they're fighting with eachother, so now i'm seeing spawns like this: /Users/dylanconlin/Screenshots/screenshot_2025-12-21_09-39-52.png
+
+first things first, i think we need an investigation into how both system handle model defaults and model selection and how they should play together
+
+because i'm starting to think that i might want more model flexibility than opencode is currently designed for.
+
+
+i just ran this "
+orch-go on  master [$!?] via 🐹 v1.23.5 on ☁️  dylan.conlin@sendcutsend.com
+❯ oc --model anthropic/claude-opus-4-5-20251101
+" which confusingly starts the session here: 
+
+  ~/Documents/personal/opencode/packages/opencode:dev                          local
+
+
+ i don't want two opencode installs on my machine. i just want the from src install: /Users/dylanconlin/Documents/personal/opencode 

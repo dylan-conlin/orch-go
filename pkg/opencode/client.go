@@ -125,14 +125,19 @@ func ProcessOutputWithStreaming(r io.Reader, streamTo io.Writer) (*Result, error
 }
 
 // BuildSpawnCommand builds the opencode spawn command.
-func (c *Client) BuildSpawnCommand(prompt, title string) *exec.Cmd {
+func (c *Client) BuildSpawnCommand(prompt, title, model string) *exec.Cmd {
 	args := []string{
 		"run",
 		"--attach", c.ServerURL,
 		"--format", "json",
-		"--title", title,
-		prompt,
 	}
+
+	// Add --model flag only if model is provided
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+
+	args = append(args, "--title", title, prompt)
 	return exec.Command(c.getOpencodeBin(), args...)
 }
 
