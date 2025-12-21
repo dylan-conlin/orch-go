@@ -18,6 +18,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -774,91 +775,38 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 // runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
 // Creates a tmux window in workers-{project} session, runs opencode there, and returns.
 func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	// Determine tmux session name (workers-{project})
-	sessionName := fmt.Sprintf("workers-%s", cfg.Project)
-
-	// Check if tmux is available
-	if _, err := exec.LookPath("tmux"); err != nil {
-		return fmt.Errorf("tmux not found: %w (install tmux or use --inline/--headless)", err)
+	// Ensure workers tmux session exists
+	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("failed to ensure tmux session: %w", err)
 	}
 
-	// Check if tmux session exists, create if not
-	checkCmd := exec.Command("tmux", "has-session", "-t", sessionName)
-	if err := checkCmd.Run(); err != nil {
-		// Session doesn't exist, create it
-		createCmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName, "-c", cfg.ProjectDir)
-		if err := createCmd.Run(); err != nil {
-			return fmt.Errorf("failed to create tmux session %s: %w", sessionName, err)
-		}
-		fmt.Printf("Created tmux session: %s\n", sessionName)
-	}
-
-	// Build window name (workspace name)
-	windowName := cfg.WorkspaceName
-
-	// Create new tmux window in the session
-	// -d: detached (don't switch to it yet)
-	// -P: print window info
-	// -F: format string to get window index and ID
-	createWindowCmd := exec.Command(
-		"tmux", "new-window",
-		"-t", fmt.Sprintf("%s:", sessionName), // Trailing colon = auto-pick next index
-		"-n", windowName,
-		"-c", cfg.ProjectDir,
-		"-d", "-P", "-F", "#{window_index}:#{window_id}",
-	)
-	output, err := createWindowCmd.Output()
+	// Create new tmux window
+	windowTarget, windowID, err := tmux.CreateWindow(sessionName, cfg.WorkspaceName, cfg.ProjectDir)
 	if err != nil {
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
-	// Parse window index and ID from output
-	parts := strings.Split(strings.TrimSpace(string(output)), ":")
-	if len(parts) != 2 {
-		return fmt.Errorf("unexpected tmux window output: %s", output)
+	// Build opencode command using tmux package
+	opencodeCmd := tmux.BuildStandaloneCommand(&tmux.StandaloneConfig{
+		ProjectDir: cfg.ProjectDir,
+		Model:      cfg.Model,
+	})
+
+	// Send command and execute
+	if err := tmux.SendKeys(windowTarget, opencodeCmd); err != nil {
+		return fmt.Errorf("failed to send opencode command: %w", err)
 	}
-	windowIndex := parts[0]
-	windowID := parts[1]
-	windowTarget := fmt.Sprintf("%s:%s", sessionName, windowIndex)
-
-	// Build opencode command
-	opencodeCmd := fmt.Sprintf("opencode %s --model %s", cfg.ProjectDir, cfg.Model)
-
-	// Set environment variables for the spawn
-	envVars := fmt.Sprintf("export ORCH_WORKER=true && ")
-	fullCmd := envVars + opencodeCmd
-
-	// Send command to tmux window
-	sendCmd := exec.Command("tmux", "send-keys", "-t", windowTarget, fullCmd)
-	if err := sendCmd.Run(); err != nil {
-		return fmt.Errorf("failed to send command to tmux: %w", err)
+	if err := tmux.SendEnter(windowTarget); err != nil {
+		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
-	// Send Enter to execute
-	enterCmd := exec.Command("tmux", "send-keys", "-t", windowTarget, "Enter")
-	if err := enterCmd.Run(); err != nil {
-		return fmt.Errorf("failed to send Enter to tmux: %w", err)
+	// Wait for OpenCode TUI to be ready (proper detection, not just sleep)
+	waitCfg := tmux.DefaultWaitConfig()
+	sendCfg := tmux.DefaultSendPromptConfig()
+	if err := tmux.SendPromptAfterReady(windowTarget, minimalPrompt, waitCfg, sendCfg); err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
 	}
-
-	// Wait for OpenCode TUI to be ready (simple delay for now)
-	// TODO: Implement proper TUI readiness detection like Python version
-	time.Sleep(2 * time.Second)
-
-	// Send the prompt to OpenCode
-	// Use -l flag for literal mode to handle special characters
-	promptCmd := exec.Command("tmux", "send-keys", "-t", windowTarget, "-l", minimalPrompt)
-	if err := promptCmd.Run(); err != nil {
-		return fmt.Errorf("failed to send prompt to tmux: %w", err)
-	}
-
-	// Send Enter to submit the prompt
-	submitCmd := exec.Command("tmux", "send-keys", "-t", windowTarget, "Enter")
-	if err := submitCmd.Run(); err != nil {
-		return fmt.Errorf("failed to submit prompt in tmux: %w", err)
-	}
-
-	// Wait a bit for the agent to start processing
-	time.Sleep(500 * time.Millisecond)
 
 	// Register agent in persistent registry with window ID
 	reg, err := registry.New("")
