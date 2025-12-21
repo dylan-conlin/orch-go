@@ -1060,6 +1060,29 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	return nil
 }
 
+// determineBeadsID determines the beads ID to use for an agent.
+// It returns an error if beads issue creation fails and --no-track is not set.
+// The createBeadsFn parameter allows for dependency injection in tests.
+func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+	// If explicit issue ID provided via --issue flag, use it
+	if spawnIssue != "" {
+		return spawnIssue, nil
+	}
+
+	// If --no-track flag is set, generate a local-only ID
+	if spawnNoTrack {
+		return fmt.Sprintf("%s-untracked-%d", projectName, time.Now().Unix()), nil
+	}
+
+	// Create a new beads issue (default behavior)
+	beadsID, err := createBeadsFn(projectName, skillName, task)
+	if err != nil {
+		return "", fmt.Errorf("failed to create beads issue: %w", err)
+	}
+
+	return beadsID, nil
+}
+
 // createBeadsIssue creates a new beads issue for tracking the agent.
 func createBeadsIssue(projectName, skillName, task string) (string, error) {
 	// Build issue title
