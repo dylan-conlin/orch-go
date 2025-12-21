@@ -372,6 +372,46 @@ func KillWindowByID(windowID string) error {
 	return cmd.Run()
 }
 
+// Attach attaches the current terminal to a tmux window.
+// If already inside tmux, it switches the client to the target window.
+// If outside tmux, it attaches to the session/window.
+func Attach(windowTarget string) error {
+	var cmd *exec.Cmd
+	if os.Getenv("TMUX") != "" {
+		// Inside tmux: switch client to the new window
+		cmd = exec.Command("tmux", "switch-client", "-t", windowTarget)
+	} else {
+		// Outside tmux: attach to the session/window
+		cmd = exec.Command("tmux", "attach-session", "-t", windowTarget)
+	}
+
+	// Connect stdin/stdout/stderr so tmux can take over the terminal
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
+// ListWorkersSessions returns all tmux sessions starting with "workers-".
+func ListWorkersSessions() ([]string, error) {
+	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+	output, err := cmd.Output()
+	if err != nil {
+		// If no sessions exist, tmux returns error 1
+		return nil, nil
+	}
+
+	var sessions []string
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "workers-") {
+			sessions = append(sessions, line)
+		}
+	}
+	return sessions, nil
+}
+
 // ListWindowIDs returns all window IDs in a session.
 func ListWindowIDs(sessionName string) ([]string, error) {
 	cmd := exec.Command("tmux", "list-windows", "-t", sessionName, "-F", "#{window_id}")

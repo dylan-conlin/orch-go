@@ -153,6 +153,7 @@ var (
 	spawnValidation        string
 	spawnInline            bool   // Run inline (blocking) instead of headless
 	spawnTmux              bool   // Run in tmux window (interactive)
+	spawnAttach            bool   // Attach to tmux window after spawning
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright")
@@ -167,6 +168,7 @@ var spawnCmd = &cobra.Command{
 By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
 Use --inline to run in the current terminal (blocking with TUI).
 Use --tmux to run in a tmux window (interactive, returns immediately).
+Use --attach to run in a tmux window and attach to it immediately.
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
@@ -177,6 +179,7 @@ Examples:
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
   orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
   orch-go spawn --tmux investigation "explore codebase"        # Run in tmux window
+  orch-go spawn --attach investigation "explore codebase"      # Run in tmux and attach
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
@@ -187,7 +190,8 @@ Examples:
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnTmux)
+		useTmux := spawnTmux || spawnAttach
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, useTmux, spawnAttach)
 	},
 }
 
@@ -198,6 +202,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (interactive, returns immediately)")
+	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
@@ -370,38 +375,85 @@ func runTail(beadsID string, lines int) error {
 	}
 
 	agent := reg.Find(beadsID)
-	if agent == nil {
-		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
+	if agent != nil && agent.SessionID != "" {
+		client := opencode.NewClient(serverURL)
+
+		// Fetch messages from the session
+		messages, err := client.GetMessages(agent.SessionID)
+		if err == nil {
+			if len(messages) == 0 {
+				fmt.Println("No messages found in session")
+				return nil
+			}
+
+			// Extract recent text from messages
+			textLines := opencode.ExtractRecentText(messages, lines)
+
+			// Print the captured output
+			fmt.Printf("=== Output from %s (via API, last %d lines) ===\n", agent.ID, lines)
+			for _, line := range textLines {
+				fmt.Println(line)
+			}
+			fmt.Printf("=== End of output ===\n")
+			return nil
+		}
+		// If API fails, fall through to tmux fallback
+		fmt.Fprintf(os.Stderr, "Warning: failed to fetch messages via API: %v. Falling back to tmux...\n", err)
 	}
 
-	if agent.SessionID == "" {
-		return fmt.Errorf("agent %s has no session ID - cannot fetch via API", agent.ID)
+	// Tmux fallback
+	fmt.Println("Searching tmux for agent output...")
+
+	// 1. If we have a window target in the registry, try it first
+	if agent != nil {
+		targets := []string{agent.Window, agent.WindowID}
+		for _, target := range targets {
+			if target == "" || target == registry.HeadlessWindowID {
+				continue
+			}
+			output, err := tmux.CaptureLines(target, lines)
+			if err == nil {
+				printTmuxOutput(agent.ID, target, lines, output)
+				return nil
+			}
+		}
 	}
 
-	client := opencode.NewClient(serverURL)
-
-	// Fetch messages from the session
-	messages, err := client.GetMessages(agent.SessionID)
+	// 2. Search all workers sessions
+	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
-		return fmt.Errorf("failed to fetch messages: %w", err)
+		return fmt.Errorf("failed to list tmux sessions: %w", err)
 	}
 
-	if len(messages) == 0 {
-		fmt.Println("No messages found in session")
-		return nil
+	for _, session := range sessions {
+		window, err := tmux.FindWindowByBeadsID(session, beadsID)
+		if err != nil || window == nil {
+			continue
+		}
+
+		output, err := tmux.CaptureLines(window.Target, lines)
+		if err == nil {
+			agentID := beadsID
+			if agent != nil {
+				agentID = agent.ID
+			}
+			printTmuxOutput(agentID, window.Target, lines, output)
+			return nil
+		}
 	}
 
-	// Extract recent text from messages
-	textLines := opencode.ExtractRecentText(messages, lines)
+	if agent == nil {
+		return fmt.Errorf("no agent found for beads ID: %s (checked registry and tmux)", beadsID)
+	}
+	return fmt.Errorf("agent %s found but could not capture output (checked API and tmux)", agent.ID)
+}
 
-	// Print the captured output
-	fmt.Printf("=== Output from %s (last %d lines) ===\n", agent.ID, lines)
-	for _, line := range textLines {
+func printTmuxOutput(agentID, target string, lines int, output []string) {
+	fmt.Printf("=== Output from %s (via tmux %s, last %d lines) ===\n", agentID, target, lines)
+	for _, line := range output {
 		fmt.Println(line)
 	}
 	fmt.Printf("=== End of output ===\n")
-
-	return nil
 }
 
 var questionCmd = &cobra.Command{
@@ -577,10 +629,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline, false) // work command doesn't use tmux
+	return runSpawnWithSkill(serverURL, skillName, task, inline, false, false) // work command doesn't use tmux
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool, attach bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -656,7 +708,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, tmux bool
 	// Spawn mode: tmux (interactive window), inline (blocking with TUI), or headless (HTTP API, no TUI)
 	if tmux {
 		// Tmux mode - create tmux window and run opencode there
-		return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+		return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task, attach)
 	}
 
 	if inline {
@@ -741,13 +793,6 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	fmt.Printf("  Session ID: %s\n", result.SessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	if cfg.MCP != "" {
-		fmt.Printf("  MCP:        %s\n", cfg.MCP)
-	}
-	if cfg.NoTrack {
-		fmt.Printf("  Tracking:   disabled (--no-track)\n")
-	}
-	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
 
 	return nil
 }
@@ -834,7 +879,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 // runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
 // Creates a tmux window in workers-{project} session, runs opencode there, and returns.
-func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, attach bool) error {
 	// Ensure workers tmux session exists
 	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
 	if err != nil {
@@ -936,6 +981,13 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		fmt.Printf("  Tracking:   disabled (--no-track)\n")
 	}
 	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+
+	// Attach if requested
+	if attach {
+		if err := tmux.Attach(windowTarget); err != nil {
+			return fmt.Errorf("failed to attach to tmux: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -1104,6 +1156,70 @@ func runStatus(serverURL string) error {
 		agents = append(agents, agent)
 	}
 
+	// Add tmux-only agents
+	workersSessions, _ := tmux.ListWorkersSessions()
+	for _, sessionName := range workersSessions {
+		windows, _ := tmux.ListWindows(sessionName)
+		for _, w := range windows {
+			// Skip "servers" and "zsh" windows
+			if w.Name == "servers" || w.Name == "zsh" {
+				continue
+			}
+
+			// Parse beads ID from window name (format: "... [beads-id]")
+			beadsID := ""
+			if start := strings.LastIndex(w.Name, "["); start != -1 {
+				if end := strings.LastIndex(w.Name, "]"); end != -1 && end > start {
+					beadsID = w.Name[start+1 : end]
+				}
+			}
+
+			// Check if already in agents list
+			alreadyIn := false
+			for _, a := range agents {
+				// Match by beads ID or title
+				if (beadsID != "" && a.BeadsID == beadsID) || (a.Title != "" && strings.Contains(w.Name, a.Title)) {
+					alreadyIn = true
+					break
+				}
+			}
+
+			if !alreadyIn {
+				// Add as tmux agent
+				agent := AgentInfo{
+					SessionID: "tmux",
+					BeadsID:   beadsID,
+					Title:     w.Name,
+					Runtime:   "unknown",
+				}
+
+				// Try to enrich from registry
+				if reg != nil {
+					for _, ra := range regAgents {
+						if ra.WindowID == w.ID || ra.Window == w.Target || (beadsID != "" && ra.BeadsID == beadsID) {
+							if agent.BeadsID == "" {
+								agent.BeadsID = ra.BeadsID
+							}
+							agent.Skill = ra.Skill
+							break
+						}
+					}
+				}
+
+				// Try to find skill from emoji if still missing
+				if agent.Skill == "" {
+					for skill, emoji := range tmux.SKILL_EMOJIS {
+						if strings.Contains(w.Name, emoji) {
+							agent.Skill = skill
+							break
+						}
+					}
+				}
+				agents = append(agents, agent)
+			}
+		}
+	}
+
 	// Count completed today from registry
 	completedToday := 0
 	if reg != nil {
@@ -1120,7 +1236,7 @@ func runStatus(serverURL string) error {
 
 	// Build swarm status
 	swarm := SwarmStatus{
-		Active:    len(sessions),
+		Active:    len(agents),
 		Queued:    0, // TODO: implement queuing system
 		Completed: completedToday,
 	}

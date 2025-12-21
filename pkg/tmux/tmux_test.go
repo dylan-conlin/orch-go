@@ -631,3 +631,18 @@ func TestListWindowIDs(t *testing.T) {
 		t.Errorf("Expected window ID %s to be in list %v", windowID2, ids)
 	}
 }
+
+func TestAttach(t *testing.T) {
+	// This test is mostly to ensure it doesn't crash and handles the TMUX env var
+	// We can't easily test the actual attachment in a unit test
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// We'll just test that it doesn't error out when given a nonexistent target
+	// (it will error because tmux will fail, but we want to see it try)
+	err := Attach("nonexistent-session:0")
+	if err == nil {
+		t.Error("Expected error when attaching to nonexistent session")
+	}
+}
