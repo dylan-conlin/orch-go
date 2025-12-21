@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Client handles OpenCode CLI interactions.
@@ -171,8 +172,18 @@ func (c *Client) SendMessageAsync(sessionID, content string) error {
 }
 
 // ListSessions fetches all sessions from the OpenCode API.
-func (c *Client) ListSessions() ([]Session, error) {
-	resp, err := http.Get(c.ServerURL + "/session")
+// If directory is provided, it passes it via x-opencode-directory header.
+func (c *Client) ListSessions(directory string) ([]Session, error) {
+	req, err := http.NewRequest("GET", c.ServerURL+"/session", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if directory != "" {
+		req.Header.Set("x-opencode-directory", directory)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch sessions: %w", err)
 	}
@@ -280,8 +291,8 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	return messages, nil
 }
 
-// FindRecentSession finds the most recent session for a given project directory.
-func (c *Client) FindRecentSession(projectDir string) (string, error) {
+// FindRecentSession finds the most recent session for a given project directory and title.
+func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
 	req, err := http.NewRequest("GET", c.ServerURL+"/session", nil)
 	if err != nil {
 		return "", err
@@ -303,11 +314,20 @@ func (c *Client) FindRecentSession(projectDir string) (string, error) {
 		return "", err
 	}
 
-	// Find the most recent session for this directory
+	// Find the most recent session for this directory and title
 	var mostRecent *Session
+	now := time.Now().UnixMilli()
 	for i := range sessions {
 		s := &sessions[i]
 		if s.Directory != projectDir {
+			continue
+		}
+		// If title is provided, match it
+		if title != "" && s.Title != title {
+			continue
+		}
+		// Only match sessions created in the last 30 seconds
+		if now-s.Time.Created > 30*1000 {
 			continue
 		}
 		if mostRecent == nil || s.Time.Created > mostRecent.Time.Created {
@@ -316,7 +336,7 @@ func (c *Client) FindRecentSession(projectDir string) (string, error) {
 	}
 
 	if mostRecent == nil {
-		return "", fmt.Errorf("no sessions found for directory: %s", projectDir)
+		return "", fmt.Errorf("no sessions found for directory: %s (title: %s)", projectDir, title)
 	}
 
 	return mostRecent.ID, nil

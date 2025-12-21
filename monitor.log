@@ -1,0 +1,6 @@
+Monitoring SSE events at http://127.0.0.1:4096/event...
+On session completion:
+  - Desktop notification sent
+  - Registry updated
+  - Beads phase updated (if applicable)
+Press Ctrl+C to stop

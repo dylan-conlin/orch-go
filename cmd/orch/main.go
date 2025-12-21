@@ -924,8 +924,11 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to ensure tmux session: %w", err)
 	}
 
+	// Build window name with emoji and beads ID
+	windowName := tmux.BuildWindowName(cfg.WorkspaceName, cfg.SkillName, beadsID)
+
 	// Create new tmux window
-	windowTarget, windowID, err := tmux.CreateWindow(sessionName, cfg.WorkspaceName, cfg.ProjectDir)
+	windowTarget, windowID, err := tmux.CreateWindow(sessionName, windowName, cfg.ProjectDir)
 	if err != nil {
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
@@ -945,19 +948,31 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to execute command: %w", err)
 	}
 
-	// Wait for OpenCode TUI to be ready (proper detection, not just sleep)
+	// Wait for OpenCode TUI to be ready
 	waitCfg := tmux.DefaultWaitConfig()
-	sendCfg := tmux.DefaultSendPromptConfig()
-	if err := tmux.SendPromptAfterReady(windowTarget, minimalPrompt, waitCfg, sendCfg); err != nil {
-		return fmt.Errorf("failed to send prompt: %w", err)
+	if err := tmux.WaitForOpenCodeReady(windowTarget, waitCfg); err != nil {
+		return fmt.Errorf("failed to start opencode: %w", err)
 	}
 
-	// Capture session ID from API
+	// Give OpenCode a moment to register the session in the API
+	time.Sleep(2 * time.Second)
+
+	// Capture session ID from API (it should be the most recent session in this directory)
 	client := opencode.NewClient(serverURL)
-	sessionID, err := client.FindRecentSession(cfg.ProjectDir)
+	sessionID, err := client.FindRecentSession(cfg.ProjectDir, "")
 	if err != nil {
 		// Log warning but don't fail - tmux fallback still works
 		fmt.Fprintf(os.Stderr, "Warning: could not capture session_id: %v\n", err)
+	}
+
+	// Send prompt
+	sendCfg := tmux.DefaultSendPromptConfig()
+	time.Sleep(sendCfg.PostReadyDelay)
+	if err := tmux.SendKeysLiteral(windowTarget, minimalPrompt); err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
+	}
+	if err := tmux.SendEnter(windowTarget); err != nil {
+		return fmt.Errorf("failed to send enter: %w", err)
 	}
 
 	// Register agent in persistent registry with window ID
@@ -1148,6 +1163,7 @@ type AgentInfo struct {
 	Account   string `json:"account,omitempty"`
 	Runtime   string `json:"runtime"`
 	Title     string `json:"title,omitempty"`
+	Window    string `json:"window,omitempty"`
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -1160,8 +1176,11 @@ type StatusOutput struct {
 func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 
+	// Get current directory for filtering
+	projectDir, _ := os.Getwd()
+
 	// Fetch sessions from OpenCode
-	sessions, err := client.ListSessions()
+	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
@@ -1188,22 +1207,39 @@ func runStatus(serverURL string) error {
 
 	// Build agents list
 	now := time.Now()
-	agents := make([]AgentInfo, 0, len(sessions))
+	agents := make([]AgentInfo, 0)
 	for _, s := range sessions {
+		// Calculate runtime from session creation
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		runtime := now.Sub(createdAt)
+		idleTime := now.Sub(updatedAt)
+
+		// Filter: only show sessions updated in the last 4 hours
+		// OR sessions that are active in the registry
+		isActiveInRegistry := false
+		if regAgent, ok := agentBySession[s.ID]; ok && regAgent.Status == registry.StateActive {
+			isActiveInRegistry = true
+		}
+
+		if idleTime > 4*time.Hour && !isActiveInRegistry {
+			continue
+		}
+
 		agent := AgentInfo{
 			SessionID: s.ID,
 			Title:     s.Title,
+			Runtime:   formatDuration(runtime),
 		}
-
-		// Calculate runtime from session creation
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		runtime := now.Sub(createdAt)
-		agent.Runtime = formatDuration(runtime)
 
 		// Enrich with registry metadata if available
 		if regAgent, ok := agentBySession[s.ID]; ok {
 			agent.BeadsID = regAgent.BeadsID
 			agent.Skill = regAgent.Skill
+			agent.Window = regAgent.Window
+			if agent.Window == "" && regAgent.WindowID != "" {
+				agent.Window = regAgent.WindowID
+			}
 		}
 
 		agents = append(agents, agent)
@@ -1223,15 +1259,15 @@ func runStatus(serverURL string) error {
 			beadsID := ""
 			if start := strings.LastIndex(w.Name, "["); start != -1 {
 				if end := strings.LastIndex(w.Name, "]"); end != -1 && end > start {
-					beadsID = w.Name[start+1 : end]
+					beadsID = strings.TrimSpace(w.Name[start+1 : end])
 				}
 			}
 
 			// Check if already in agents list
 			alreadyIn := false
 			for _, a := range agents {
-				// Match by beads ID or title
-				if (beadsID != "" && a.BeadsID == beadsID) || (a.Title != "" && strings.Contains(w.Name, a.Title)) {
+				// Match by beads ID, window ID/target, or title
+				if (beadsID != "" && a.BeadsID == beadsID) || (a.Window != "" && (a.Window == w.ID || a.Window == w.Target)) || (a.Title != "" && strings.Contains(w.Name, a.Title)) {
 					alreadyIn = true
 					break
 				}
@@ -1244,16 +1280,21 @@ func runStatus(serverURL string) error {
 					BeadsID:   beadsID,
 					Title:     w.Name,
 					Runtime:   "unknown",
+					Window:    w.Target,
 				}
 
 				// Try to enrich from registry
 				if reg != nil {
 					for _, ra := range regAgents {
-						if ra.WindowID == w.ID || ra.Window == w.Target || (beadsID != "" && ra.BeadsID == beadsID) {
+						// Match by workspace name, window ID, window target, or beads ID
+						if strings.Contains(w.Name, ra.ID) || ra.WindowID == w.ID || ra.Window == w.Target || (beadsID != "" && ra.BeadsID == beadsID) {
 							if agent.BeadsID == "" {
 								agent.BeadsID = ra.BeadsID
 							}
 							agent.Skill = ra.Skill
+							if agent.Window == "" {
+								agent.Window = ra.Window
+							}
 							break
 						}
 					}
@@ -1405,8 +1446,8 @@ func printSwarmStatus(output StatusOutput) {
 	// Print active agents table
 	if len(output.Agents) > 0 {
 		fmt.Println("ACTIVE AGENTS")
-		fmt.Printf("  %-35s %-20s %-20s %-10s %s\n", "SESSION ID", "BEADS ID", "SKILL", "ACCOUNT", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 100))
+		fmt.Printf("  %-35s %-20s %-20s %-15s %-10s %s\n", "SESSION ID", "BEADS ID", "SKILL", "WINDOW", "ACCOUNT", "RUNTIME")
+		fmt.Printf("  %s\n", strings.Repeat("-", 120))
 
 		for _, agent := range output.Agents {
 			beadsID := agent.BeadsID
@@ -1417,15 +1458,20 @@ func printSwarmStatus(output StatusOutput) {
 			if skill == "" {
 				skill = "-"
 			}
+			window := agent.Window
+			if window == "" {
+				window = "-"
+			}
 			accountName := agent.Account
 			if accountName == "" {
 				accountName = "-"
 			}
 
-			fmt.Printf("  %-35s %-20s %-20s %-10s %s\n",
+			fmt.Printf("  %-35s %-20s %-20s %-15s %-10s %s\n",
 				truncate(agent.SessionID, 33),
 				truncate(beadsID, 18),
 				truncate(skill, 18),
+				truncate(window, 13),
 				truncate(accountName, 8),
 				agent.Runtime)
 		}

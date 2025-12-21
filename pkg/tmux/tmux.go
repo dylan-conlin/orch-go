@@ -26,6 +26,7 @@ type SpawnConfig struct {
 	Title         string
 	ProjectDir    string
 	WorkspaceName string
+	Model         string
 }
 
 // RunConfig holds configuration for spawning an agent using 'opencode run'.

@@ -201,7 +201,7 @@ func TestListSessions(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	sessions, err := client.ListSessions()
+	sessions, err := client.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
@@ -249,7 +249,7 @@ func TestFindRecentSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	sessionID, err := client.FindRecentSession(projectDir)
+	sessionID, err := client.FindRecentSession(projectDir, "")
 	if err != nil {
 		t.Fatalf("FindRecentSession() error = %v", err)
 	}
@@ -268,7 +268,7 @@ func TestListSessionsEmpty(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	sessions, err := client.ListSessions()
+	sessions, err := client.ListSessions("")
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
@@ -286,7 +286,7 @@ func TestListSessionsError(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.ListSessions()
+	_, err := client.ListSessions("")
 	if err == nil {
 		t.Error("Expected error for server error response")
 	}
@@ -295,7 +295,7 @@ func TestListSessionsError(t *testing.T) {
 // TestListSessionsConnectionError tests ListSessions with connection error.
 func TestListSessionsConnectionError(t *testing.T) {
 	client := NewClient("http://127.0.0.1:99999") // Invalid port
-	_, err := client.ListSessions()
+	_, err := client.ListSessions("")
 	if err == nil {
 		t.Error("Expected error for connection failure")
 	}
