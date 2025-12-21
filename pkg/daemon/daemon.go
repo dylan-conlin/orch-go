@@ -4,18 +4,65 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
+	"strings"
+	"time"
 )
+
+// Config holds configuration for the daemon.
+type Config struct {
+	// PollInterval is the time between polling cycles (0 = run once).
+	PollInterval time.Duration
+
+	// MaxAgents is the maximum number of concurrent agents (0 = no limit).
+	MaxAgents int
+
+	// Label filters issues to only those with this label (empty = no filter).
+	Label string
+
+	// SpawnDelay is the delay between spawns to avoid rate limits.
+	SpawnDelay time.Duration
+
+	// DryRun shows what would be processed without spawning.
+	DryRun bool
+
+	// Verbose enables detailed output.
+	Verbose bool
+}
+
+// DefaultConfig returns sensible defaults for daemon configuration.
+func DefaultConfig() Config {
+	return Config{
+		PollInterval: time.Minute,
+		MaxAgents:    3,
+		Label:        "triage:ready",
+		SpawnDelay:   10 * time.Second,
+		DryRun:       false,
+		Verbose:      false,
+	}
+}
 
 // Issue represents a beads issue for processing.
 type Issue struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Priority    int    `json:"priority"`
-	Status      string `json:"status"`
-	IssueType   string `json:"issue_type"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Priority    int      `json:"priority"`
+	Status      string   `json:"status"`
+	IssueType   string   `json:"issue_type"`
+	Labels      []string `json:"labels"`
+}
+
+// HasLabel checks if an issue has a specific label.
+func (i *Issue) HasLabel(label string) bool {
+	for _, l := range i.Labels {
+		if strings.EqualFold(l, label) {
+			return true
+		}
+	}
+	return false
 }
 
 // PreviewResult contains the result of a preview operation.
@@ -36,23 +83,36 @@ type OnceResult struct {
 
 // Daemon manages autonomous issue processing.
 type Daemon struct {
+	// Config holds the daemon configuration.
+	Config Config
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
 	spawnFunc func(beadsID string) error
+	// activeCountFunc is used for testing - allows mocking active agent count
+	activeCountFunc func() int
 }
 
-// New creates a new Daemon instance.
+// New creates a new Daemon instance with default configuration.
 func New() *Daemon {
+	return NewWithConfig(DefaultConfig())
+}
+
+// NewWithConfig creates a new Daemon instance with the given configuration.
+func NewWithConfig(config Config) *Daemon {
 	return &Daemon{
-		listIssuesFunc: ListOpenIssues,
-		spawnFunc:      SpawnWork,
+		Config:          config,
+		listIssuesFunc:  ListOpenIssues,
+		spawnFunc:       SpawnWork,
+		activeCountFunc: DefaultActiveCount,
 	}
 }
 
 // NextIssue returns the next spawnable issue from the queue.
 // Returns nil if no spawnable issues are available.
 // Issues are sorted by priority (0 = highest priority).
+// If a label filter is configured, only issues with that label are considered.
 func (d *Daemon) NextIssue() (*Issue, error) {
 	issues, err := d.listIssuesFunc()
 	if err != nil {
@@ -73,10 +133,36 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 		if issue.Status == "blocked" {
 			continue
 		}
+		// Skip issues without required label (if filter is set)
+		if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+			continue
+		}
 		return &issue, nil
 	}
 
 	return nil, nil
+}
+
+// AvailableSlots returns the number of agent slots available for spawning.
+// Returns a high number if no limit is set.
+func (d *Daemon) AvailableSlots() int {
+	if d.Config.MaxAgents <= 0 {
+		return 100 // No limit
+	}
+	active := d.activeCountFunc()
+	available := d.Config.MaxAgents - active
+	if available < 0 {
+		return 0
+	}
+	return available
+}
+
+// AtCapacity returns true if the daemon cannot spawn more agents.
+func (d *Daemon) AtCapacity() bool {
+	if d.Config.MaxAgents <= 0 {
+		return false // No limit
+	}
+	return d.activeCountFunc() >= d.Config.MaxAgents
 }
 
 // Preview shows what would be processed next without actually processing.
@@ -180,6 +266,38 @@ func SpawnWork(beadsID string) error {
 		return fmt.Errorf("failed to spawn work: %w: %s", err, string(output))
 	}
 	return nil
+}
+
+// DefaultActiveCount returns the number of active agents from the registry.
+// This reads the registry file directly to avoid circular imports.
+func DefaultActiveCount() int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0
+	}
+	registryPath := fmt.Sprintf("%s/.orch/agent-registry.json", home)
+
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		return 0 // Registry doesn't exist or can't be read
+	}
+
+	var registry struct {
+		Agents []struct {
+			Status string `json:"status"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return 0
+	}
+
+	count := 0
+	for _, a := range registry.Agents {
+		if a.Status == "active" {
+			count++
+		}
+	}
+	return count
 }
 
 // Once processes a single issue from the queue and returns.

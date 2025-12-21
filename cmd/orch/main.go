@@ -1886,11 +1886,12 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 		Type:      "agents.cleaned",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"agents_cleaned":        agentsCleaned,
-			"agents_reconciled":     reconcileResult.Abandoned,
-			"disk_sessions_deleted": diskSessionsDeleted,
-			"project":               projectName,
-			"verify_opencode":       verifyOpenCode,
+			"agents_cleaned":              agentsCleaned,
+			"agents_reconciled_abandoned": reconcileResult.Abandoned,
+			"agents_reconciled_completed": beadsResult.Completed,
+			"disk_sessions_deleted":       diskSessionsDeleted,
+			"project":                     projectName,
+			"verify_opencode":             verifyOpenCode,
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -1900,6 +1901,9 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 	fmt.Printf("\nCleaned %d agents", agentsCleaned)
 	if reconcileResult.Abandoned > 0 {
 		fmt.Printf(", reconciled %d abandoned", reconcileResult.Abandoned)
+	}
+	if beadsResult.Completed > 0 {
+		fmt.Printf(", marked %d completed (beads closed)", beadsResult.Completed)
 	}
 	if verifyOpenCode && diskSessionsDeleted > 0 {
 		fmt.Printf(", deleted %d orphaned disk sessions", diskSessionsDeleted)

@@ -24,22 +24,29 @@ The daemon processes beads issues from the queue, spawning agents
 for each issue in priority order.
 
 Subcommands:
-  run      Process issues in a loop until queue is empty
+  run      Process issues continuously with polling
   once     Process a single issue and exit
   preview  Show what would be processed next without processing`,
 }
 
 var daemonRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Process issues in a loop until queue is empty",
-	Long: `Process all open beads issues in priority order, spawning agents for each.
+	Short: "Process issues continuously with polling",
+	Long: `Process beads issues in priority order, spawning agents for each.
 
-Runs until the queue is empty or interrupted with Ctrl+C.
+The daemon polls for ready issues at the specified interval, respecting
+the max-agents limit and only processing issues with the required label.
+
+Runs continuously until interrupted with Ctrl+C. Use --poll-interval=0
+to run once and exit (legacy behavior).
 
 Examples:
-  orch-go daemon run              # Process all issues
-  orch-go daemon run --delay 30   # Wait 30 seconds between spawns
-  orch-go daemon run --dry-run    # Preview what would be processed without spawning`,
+  orch-go daemon run                        # Continuous polling (default 60s)
+  orch-go daemon run --poll-interval 30     # Poll every 30 seconds
+  orch-go daemon run --poll-interval 0      # Run once and exit
+  orch-go daemon run --max-agents 5         # Allow up to 5 concurrent agents
+  orch-go daemon run --label triage:ready   # Only process issues with this label
+  orch-go daemon run --dry-run              # Preview without spawning`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDaemonLoop()
 	},
@@ -75,8 +82,12 @@ Examples:
 
 var (
 	// Daemon flags
-	daemonDelay  int  // Delay between spawns in seconds
-	daemonDryRun bool // Preview mode - show what would be processed without spawning
+	daemonDelay        int    // Delay between spawns in seconds
+	daemonDryRun       bool   // Preview mode - show what would be processed without spawning
+	daemonPollInterval int    // Poll interval in seconds (0 = run once)
+	daemonMaxAgents    int    // Maximum concurrent agents (0 = no limit)
+	daemonLabel        string // Filter issues by label
+	daemonVerbose      bool   // Enable verbose output
 )
 
 func init() {
@@ -84,8 +95,15 @@ func init() {
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
 
-	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 5, "Delay between spawns in seconds")
+	// Spawn delay between issues
+	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 10, "Delay between spawns in seconds")
 	daemonRunCmd.Flags().BoolVar(&daemonDryRun, "dry-run", false, "Preview mode - show what would be processed without spawning")
+
+	// New flags for continuous polling
+	daemonRunCmd.Flags().IntVar(&daemonPollInterval, "poll-interval", 60, "Poll interval in seconds (0 = run once and exit)")
+	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (0 = no limit)")
+	daemonRunCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+	daemonRunCmd.Flags().BoolVarP(&daemonVerbose, "verbose", "v", false, "Enable verbose output")
 }
 
 func runDaemonLoop() error {
@@ -94,7 +112,17 @@ func runDaemonLoop() error {
 		return runDaemonDryRun()
 	}
 
-	d := daemon.New()
+	// Build configuration from flags
+	config := daemon.Config{
+		PollInterval: time.Duration(daemonPollInterval) * time.Second,
+		MaxAgents:    daemonMaxAgents,
+		Label:        daemonLabel,
+		SpawnDelay:   time.Duration(daemonDelay) * time.Second,
+		DryRun:       daemonDryRun,
+		Verbose:      daemonVerbose,
+	}
+
+	d := daemon.NewWithConfig(config)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -111,63 +139,153 @@ func runDaemonLoop() error {
 
 	logger := events.NewLogger(events.DefaultLogPath())
 	processed := 0
+	cycles := 0
 
-	fmt.Println("Starting daemon loop...")
-	fmt.Printf("Delay between spawns: %d seconds\n\n", daemonDelay)
+	fmt.Println("Starting daemon...")
+	fmt.Printf("  Poll interval:   %s\n", formatDaemonDuration(config.PollInterval))
+	fmt.Printf("  Max agents:      %d\n", config.MaxAgents)
+	fmt.Printf("  Required label:  %s\n", config.Label)
+	fmt.Printf("  Spawn delay:     %s\n", formatDaemonDuration(config.SpawnDelay))
+	fmt.Println()
 
+	// Main polling loop
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Processed %d issues.\n", processed)
+			fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
 			return nil
 		default:
 		}
 
-		result, err := d.Once()
-		if err != nil {
-			return fmt.Errorf("daemon error: %w", err)
+		cycles++
+		timestamp := time.Now().Format("15:04:05")
+
+		// Check capacity before polling
+		if d.AtCapacity() {
+			activeCount := daemonMaxAgents // At capacity means at max
+			if daemonVerbose {
+				fmt.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
+					timestamp, activeCount, daemonMaxAgents)
+			}
+			// Wait for poll interval before checking again
+			select {
+			case <-ctx.Done():
+				fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+				return nil
+			case <-time.After(config.PollInterval):
+				continue
+			}
 		}
 
-		if !result.Processed {
-			fmt.Printf("Queue empty. Processed %d issues total.\n", processed)
+		if daemonVerbose {
+			fmt.Printf("[%s] Polling for issues...\n", timestamp)
+		}
+
+		// Process issues until queue is empty or at capacity
+		spawnedThisCycle := 0
+		for {
+			// Check for interrupt
+			select {
+			case <-ctx.Done():
+				fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+				return nil
+			default:
+			}
+
+			// Check capacity
+			if d.AtCapacity() {
+				if daemonVerbose {
+					fmt.Printf("[%s] At capacity, stopping this cycle\n", timestamp)
+				}
+				break
+			}
+
+			result, err := d.Once()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				break
+			}
+
+			if !result.Processed {
+				// No more issues
+				if daemonVerbose && spawnedThisCycle == 0 {
+					fmt.Printf("[%s] No spawnable issues found\n", timestamp)
+				}
+				break
+			}
+
+			processed++
+			spawnedThisCycle++
+			fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
+				timestamp,
+				result.Issue.ID,
+				result.Skill,
+				result.Issue.Title,
+			)
+
+			// Log the spawn
+			event := events.Event{
+				Type:      "daemon.spawn",
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"beads_id": result.Issue.ID,
+					"skill":    result.Skill,
+					"title":    result.Issue.Title,
+					"count":    processed,
+				},
+			}
+			if err := logger.Log(event); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+			}
+
+			// Delay before next spawn to avoid rate limits
+			select {
+			case <-ctx.Done():
+				fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+				return nil
+			case <-time.After(config.SpawnDelay):
+			}
+		}
+
+		// If poll interval is 0, run once and exit
+		if config.PollInterval == 0 {
+			fmt.Printf("Processed %d issues (run-once mode).\n", processed)
 			return nil
 		}
 
-		processed++
-		fmt.Printf("[%d] Spawned: %s (%s) - %s\n",
-			processed,
-			result.Issue.ID,
-			result.Skill,
-			result.Issue.Title,
-		)
-
-		// Log the spawn
-		event := events.Event{
-			Type:      "daemon.spawn",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"beads_id": result.Issue.ID,
-				"skill":    result.Skill,
-				"title":    result.Issue.Title,
-				"count":    processed,
-			},
+		// Wait for next poll cycle
+		if daemonVerbose {
+			fmt.Printf("[%s] Spawned %d this cycle, waiting %s before next poll...\n",
+				timestamp, spawnedThisCycle, formatDaemonDuration(config.PollInterval))
 		}
-		if err := logger.Log(event); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-		}
-
-		// Delay before next spawn
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Processed %d issues.\n", processed)
+			fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
 			return nil
-		case <-time.After(time.Duration(daemonDelay) * time.Second):
+		case <-time.After(config.PollInterval):
 		}
 	}
 }
 
+// formatDaemonDuration formats a duration for daemon display.
+func formatDaemonDuration(d time.Duration) string {
+	if d == 0 {
+		return "0 (run once)"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	return d.String()
+}
+
 func runDaemonDryRun() error {
-	d := daemon.New()
+	config := daemon.Config{
+		Label: daemonLabel,
+	}
+	d := daemon.NewWithConfig(config)
 
 	result, err := d.Preview()
 	if err != nil {
@@ -195,7 +313,10 @@ func runDaemonDryRun() error {
 }
 
 func runDaemonOnce() error {
-	d := daemon.New()
+	config := daemon.Config{
+		Label: daemonLabel,
+	}
+	d := daemon.NewWithConfig(config)
 
 	result, err := d.Once()
 	if err != nil {
@@ -231,7 +352,10 @@ func runDaemonOnce() error {
 }
 
 func runDaemonPreview() error {
-	d := daemon.New()
+	config := daemon.Config{
+		Label: daemonLabel,
+	}
+	d := daemon.NewWithConfig(config)
 
 	result, err := d.Preview()
 	if err != nil {

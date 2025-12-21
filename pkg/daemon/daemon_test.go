@@ -352,3 +352,168 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+// Tests for new features: label filtering, capacity, config
+
+func TestIssue_HasLabel(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		query  string
+		want   bool
+	}{
+		{"has exact label", []string{"triage:ready", "P1"}, "triage:ready", true},
+		{"has label case insensitive", []string{"TRIAGE:ready", "P1"}, "triage:ready", true},
+		{"does not have label", []string{"P1", "P2"}, "triage:ready", false},
+		{"empty labels", []string{}, "triage:ready", false},
+		{"nil labels", nil, "triage:ready", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issue := &Issue{Labels: tt.labels}
+			got := issue.HasLabel(tt.query)
+			if got != tt.want {
+				t.Errorf("Issue.HasLabel(%q) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNextIssue_FiltersbyLabel(t *testing.T) {
+	config := Config{Label: "triage:ready"}
+	d := &Daemon{
+		Config: config,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "No label", Priority: 0, IssueType: "feature", Labels: []string{}},
+				{ID: "proj-2", Title: "With label", Priority: 1, IssueType: "feature", Labels: []string{"triage:ready"}},
+			}, nil
+		},
+	}
+
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("NextIssue() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssue() expected issue, got nil")
+	}
+	if issue.ID != "proj-2" {
+		t.Errorf("NextIssue() = %q, want 'proj-2' (with triage:ready label)", issue.ID)
+	}
+}
+
+func TestNextIssue_NoLabelFilter(t *testing.T) {
+	// Empty label means no filtering
+	config := Config{Label: ""}
+	d := &Daemon{
+		Config: config,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "No label", Priority: 0, IssueType: "feature", Labels: []string{}},
+				{ID: "proj-2", Title: "With label", Priority: 1, IssueType: "feature", Labels: []string{"triage:ready"}},
+			}, nil
+		},
+	}
+
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("NextIssue() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssue() expected issue, got nil")
+	}
+	// Should return highest priority regardless of labels
+	if issue.ID != "proj-1" {
+		t.Errorf("NextIssue() = %q, want 'proj-1' (no label filter)", issue.ID)
+	}
+}
+
+func TestDaemon_AtCapacity(t *testing.T) {
+	tests := []struct {
+		name       string
+		maxAgents  int
+		activeFunc func() int
+		want       bool
+	}{
+		{"below limit", 3, func() int { return 1 }, false},
+		{"at limit", 3, func() int { return 3 }, true},
+		{"above limit", 3, func() int { return 5 }, true},
+		{"no limit (0)", 0, func() int { return 100 }, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &Daemon{
+				Config:          Config{MaxAgents: tt.maxAgents},
+				activeCountFunc: tt.activeFunc,
+			}
+			got := d.AtCapacity()
+			if got != tt.want {
+				t.Errorf("AtCapacity() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDaemon_AvailableSlots(t *testing.T) {
+	tests := []struct {
+		name       string
+		maxAgents  int
+		activeFunc func() int
+		want       int
+	}{
+		{"none active", 3, func() int { return 0 }, 3},
+		{"some active", 3, func() int { return 1 }, 2},
+		{"at capacity", 3, func() int { return 3 }, 0},
+		{"over capacity", 3, func() int { return 5 }, 0},
+		{"no limit", 0, func() int { return 100 }, 100}, // Returns high number when no limit
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &Daemon{
+				Config:          Config{MaxAgents: tt.maxAgents},
+				activeCountFunc: tt.activeFunc,
+			}
+			got := d.AvailableSlots()
+			if got != tt.want {
+				t.Errorf("AvailableSlots() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDefaultConfig(t *testing.T) {
+	config := DefaultConfig()
+
+	// Check sensible defaults
+	if config.PollInterval <= 0 {
+		t.Error("DefaultConfig() PollInterval should be positive")
+	}
+	if config.MaxAgents <= 0 {
+		t.Error("DefaultConfig() MaxAgents should be positive")
+	}
+	if config.Label == "" {
+		t.Error("DefaultConfig() Label should not be empty")
+	}
+	if config.SpawnDelay <= 0 {
+		t.Error("DefaultConfig() SpawnDelay should be positive")
+	}
+}
+
+func TestNewWithConfig(t *testing.T) {
+	config := Config{
+		MaxAgents: 5,
+		Label:     "custom:label",
+	}
+	d := NewWithConfig(config)
+
+	if d.Config.MaxAgents != 5 {
+		t.Errorf("NewWithConfig() MaxAgents = %d, want 5", d.Config.MaxAgents)
+	}
+	if d.Config.Label != "custom:label" {
+		t.Errorf("NewWithConfig() Label = %q, want 'custom:label'", d.Config.Label)
+	}
+}
