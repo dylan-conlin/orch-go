@@ -1,15 +1,15 @@
 # Session Synthesis
 
 **Agent:** og-feat-fix-buildspawncommand-pass-21dec
-**Issue:** orch-go-9owz
-**Duration:** 2025-12-21 10:07 → 2025-12-21 10:15
+**Issue:** orch-go-f99g
+**Duration:** 2025-12-21 10:00 → 2025-12-21 10:35
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Fix BuildSpawnCommand to pass --model flag to opencode CLI was already implemented and committed (commits 37a31bb and 2b9ed21). Verified implementation, tests passing, no additional changes needed.
+Fixed BuildSpawnCommand to pass --model flag to opencode CLI when model is provided, so inline spawns now respect user's --model choice. Followed TDD approach (RED-GREEN-REFACTOR) with comprehensive test coverage.
 
 ---
 
@@ -17,7 +17,7 @@ Fix BuildSpawnCommand to pass --model flag to opencode CLI was already implement
 
 ### Files Created
 
-- None (implementation already committed)
+- `.kb/investigations/2025-12-21-inv-fix-buildspawncommand-pass-model-flag.md` - Complete implementation documentation with findings and test results
 
 ### Files Modified
 
@@ -27,8 +27,9 @@ Fix BuildSpawnCommand to pass --model flag to opencode CLI was already implement
 
 ### Commits
 
-- `37a31bb` - test: add failing test for --model flag in BuildSpawnCommand
-- `2b9ed21` - feat: add --model flag to BuildSpawnCommand when model is provided
+- `37a31bb` - test: add failing test for --model flag in BuildSpawnCommand (RED)
+- `2b9ed21` - feat: add --model flag to BuildSpawnCommand when model is provided (GREEN)
+- `cb4f28e` - docs: document BuildSpawnCommand --model flag fix
 
 ---
 
@@ -58,16 +59,17 @@ go build ./cmd/orch
 
 ### New Artifacts
 
-- `.kb/investigations/2025-12-21-inv-fix-buildspawncommand-pass-model-flag.md` - Template investigation file (not filled out since implementation was already complete)
-- `.kb/investigations/2025-12-21-inv-model-handling-conflicts-between-orch.md` - Reference investigation that identified the bug
+- `.kb/investigations/2025-12-21-inv-fix-buildspawncommand-pass-model-flag.md` - Complete implementation documentation with D.E.K.N. summary, findings, synthesis, and test results
+- Reference: `.kb/investigations/2025-12-21-inv-model-handling-conflicts-between-orch.md` - Root cause investigation that identified this bug
 
 ### Decisions Made
 
-- Decision 1: Implementation was already complete when agent started, verified existing implementation rather than re-implementing
+- Decision 1: Follow BuildOpencodeAttachCommand pattern (conditionally add --model flag) for consistency across spawn modes
+- Decision 2: Use TDD approach (RED-GREEN-REFACTOR) to ensure comprehensive test coverage (both with-model and without-model cases)
 
 ### Constraints Discovered
 
-- None (implementation follows established pattern from BuildOpencodeAttachCommand)
+- TestFindRecentSession has pre-existing failure (verified via git checkout HEAD~2), unrelated to this fix
 
 ### Externalized via `kn`
 
@@ -81,10 +83,11 @@ go build ./cmd/orch
 
 ### If Close
 
-- [x] All deliverables complete (implementation already committed)
-- [x] Tests passing (all BuildSpawnCommand tests pass)
-- [x] Investigation file exists (template created)
-- [x] Ready for `orch complete orch-go-9owz`
+- [x] All deliverables complete (investigation file with findings, tests, implementation)
+- [x] Tests passing (TestBuildSpawnCommand, TestBuildSpawnCommandWithModel, TestBuildSpawnCommandWithoutModel)
+- [x] Investigation file has `**Phase:** Complete` and filled with D.E.K.N. summary
+- [x] SYNTHESIS.md created in workspace
+- [x] Ready for `orch complete orch-go-f99g`
 
 ---
 
@@ -94,4 +97,4 @@ go build ./cmd/orch
 **Model:** anthropic/claude-opus-4-5-20251101
 **Workspace:** `.orch/workspace/og-feat-fix-buildspawncommand-pass-21dec/`
 **Investigation:** `.kb/investigations/2025-12-21-inv-fix-buildspawncommand-pass-model-flag.md`
-**Beads:** `bd show orch-go-9owz`
+**Beads:** `bd show orch-go-f99g`
