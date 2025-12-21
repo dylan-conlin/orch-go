@@ -195,13 +195,25 @@ func BuildSpawnCommand(cfg *SpawnConfig) *exec.Cmd {
 }
 
 // EnsureWorkersSession ensures the workers session exists, creating if needed.
+// Also updates the tmuxinator config with current port allocations.
 // Returns the session name.
 func EnsureWorkersSession(projectName, projectDir string) (string, error) {
 	sessionName := GetWorkersSessionName(projectName)
 
 	// Check if session already exists
 	if SessionExists(sessionName) {
+		// Update tmuxinator config with current port allocations (non-blocking)
+		go func() {
+			_, _ = EnsureTmuxinatorConfig(projectName, projectDir)
+		}()
 		return sessionName, nil
+	}
+
+	// Update tmuxinator config before creating session
+	// This ensures the config exists for future tmuxinator start commands
+	if _, err := EnsureTmuxinatorConfig(projectName, projectDir); err != nil {
+		// Log warning but continue - tmuxinator config is nice-to-have
+		fmt.Fprintf(os.Stderr, "Warning: failed to update tmuxinator config: %v\n", err)
 	}
 
 	// Create new session with a "servers" window (matching Python behavior)

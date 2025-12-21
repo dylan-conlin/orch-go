@@ -2254,6 +2254,24 @@ Examples:
 	},
 }
 
+var portTmuxinatorCmd = &cobra.Command{
+	Use:   "tmuxinator [project] [project-dir]",
+	Short: "Generate tmuxinator config with allocated ports",
+	Long: `Generate or update a tmuxinator config file for a project's workers session.
+
+The config includes server panes with the correct port numbers from the port registry.
+This enables 'tmuxinator start workers-{project}' to launch dev servers with consistent ports.
+
+Examples:
+  orch port tmuxinator snap /path/to/snap     # Generate workers-snap.yml with ports
+  orch port allocate snap web vite            # First allocate ports...
+  orch port tmuxinator snap /path/to/snap     # ...then generate config with them`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runPortTmuxinator(args[0], args[1])
+	},
+}
+
 func init() {
 	portListCmd.Flags().StringVarP(&portListProject, "project", "p", "", "Filter by project")
 	portReleaseCmd.Flags().IntVar(&portReleasePort, "port", 0, "Release by port number")
@@ -2261,6 +2279,7 @@ func init() {
 	portCmd.AddCommand(portAllocateCmd)
 	portCmd.AddCommand(portListCmd)
 	portCmd.AddCommand(portReleaseCmd)
+	portCmd.AddCommand(portTmuxinatorCmd)
 }
 
 func runPortAllocate(project, service, purpose string) error {
@@ -2362,5 +2381,32 @@ func runPortReleaseByPort(portNum int) error {
 	}
 
 	fmt.Printf("Released port %d (%s/%s)\n", portNum, project, service)
+	return nil
+}
+
+func runPortTmuxinator(project, projectDir string) error {
+	configPath, err := tmux.UpdateTmuxinatorConfig(project, projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to generate tmuxinator config: %w", err)
+	}
+
+	// Get port allocations for display
+	reg, err := port.New("")
+	if err != nil {
+		return fmt.Errorf("failed to open port registry: %w", err)
+	}
+	allocs := reg.ListByProject(project)
+
+	fmt.Printf("Generated tmuxinator config: %s\n", configPath)
+	if len(allocs) > 0 {
+		fmt.Printf("\nPort allocations included:\n")
+		for _, a := range allocs {
+			fmt.Printf("  - %s/%s: port %d (%s)\n", a.Project, a.Service, a.Port, a.Purpose)
+		}
+	} else {
+		fmt.Printf("\nNo port allocations found for project '%s'.\n", project)
+		fmt.Printf("Use 'orch port allocate %s <service> <purpose>' to allocate ports.\n", project)
+	}
+
 	return nil
 }
