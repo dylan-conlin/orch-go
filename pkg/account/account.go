@@ -520,8 +520,13 @@ func GetAccountCapacity(name string) (*CapacityInfo, error) {
 		return &CapacityInfo{Error: fmt.Sprintf("account has no refresh token: %s", name)}, &CapacityError{Message: fmt.Sprintf("account '%s' has no refresh token", name)}
 	}
 
+	// Check if this is the currently active account in OpenCode
+	// We need to update OpenCode auth.json if this account is active, otherwise
+	// the token rotation will invalidate active agent sessions
+	currentAuth, authErr := LoadOpenCodeAuth()
+	isActiveAccount := authErr == nil && currentAuth.Anthropic.Refresh == acc.RefreshToken
+
 	// Refresh the token to get a temporary access token
-	// Note: This updates the refresh token but does NOT update OpenCode auth
 	tokenInfo, err := RefreshOAuthToken(acc.RefreshToken)
 	if err != nil {
 		return &CapacityInfo{Error: fmt.Sprintf("token refresh failed: %v", err)}, err
@@ -533,6 +538,17 @@ func GetAccountCapacity(name string) (*CapacityInfo, error) {
 	if err := SaveConfig(cfg); err != nil {
 		// Log warning but don't fail - we still have the access token
 		fmt.Fprintf(os.Stderr, "Warning: failed to save updated refresh token: %v\n", err)
+	}
+
+	// If this is the active account, also update OpenCode auth.json
+	// This prevents active agents from losing their sessions due to token rotation
+	if isActiveAccount {
+		currentAuth.Anthropic.Refresh = tokenInfo.RefreshToken
+		currentAuth.Anthropic.Access = tokenInfo.AccessToken
+		currentAuth.Anthropic.Expires = tokenInfo.ExpiresAt
+		if err := SaveOpenCodeAuth(currentAuth); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update OpenCode auth: %v\n", err)
+		}
 	}
 
 	// Fetch capacity with the temporary access token
