@@ -383,6 +383,14 @@ tmux ls | grep workers-
 ./build/orch question orch-go-559o
 cat ~/.orch/agent-registry.json | jq '.agents[] | select(.beads_id == "orch-go-559o")'
 tmux list-windows -t workers-orch-go -F "#{window_index} #{window_name} #{window_id}"
+
+# Iteration 9 commands (regression testing)
+./build/orch status 2>&1 | head -30
+./build/orch tail orch-go-smjj -n 15
+./build/orch tail orch-go-bo6h -n 10
+./build/orch question orch-go-bo6h
+./build/orch status 2>&1 | grep -E "(tmux|orch-go-smjj|orch-go-bo6h)"
+tmux list-windows -t workers-orch-go -F "#{window_index} #{window_name} #{window_id}"
 ```
 
 **External Documentation:**
@@ -399,17 +407,18 @@ tmux list-windows -t workers-orch-go -F "#{window_index} #{window_name} #{window
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
+**2025-12-21 (Iteration 4):** Investigation started
 
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+- Initial question: Does the tmux fallback mechanism work correctly for orch tail, question, and status?
+- Context: Verifying implementation from 2025-12-21-inv-add-tmux-fallback-orch-status.md
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
+**2025-12-21 (Iteration 5):** Edge case discovery
 
-- [Description of what happened or was discovered]
+- Discovered fallback failure condition: stale registry window ID + missing beads ID in window name
+- Tested multiple tmux agents, found both success and failure scenarios
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
+**2025-12-21 (Iteration 9):** Regression testing completed
 
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+- Final confidence: High (90%)
+- Status: Complete
+- Key outcome: All three fallback mechanisms confirmed stable; regression testing shows no degradation
