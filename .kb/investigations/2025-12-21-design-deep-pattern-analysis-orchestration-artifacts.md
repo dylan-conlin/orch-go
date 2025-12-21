@@ -6,7 +6,7 @@
 
 **Knowledge:** Artifacts fall into three temporal categories: ephemeral (workspaces), persistent (knowledge base), and operational (beads). The core tension is cohesion (keep related artifacts together) vs discoverability (standard locations for search).
 
-**Next:** Implement tiered artifact model with explicit promotion paths and adopt SESSION_HANDOFF.md pattern for orchestrator sessions.
+**Next:** Epic created (orch-go-4kwt) with 7 child investigations to explore remaining questions. Ready for parallel execution.
 
 **Confidence:** High (85%) - comprehensive audit but limited testing of proposed changes.
 
@@ -287,6 +287,15 @@ Comprehensive artifact audit across 3 days of intensive system usage. Clear patt
 - How to handle session synthesis when orchestrator session ends mid-day vs end-of-day
 - Whether to version or timestamp SESSION_HANDOFF.md updates
 - Integration with `orch review` for orchestrator work
+
+**Follow-up epic created:** orch-go-4kwt "Amnesia-Resilient Artifact Architecture" with 7 children:
+- orch-go-4kwt.1: Workspace lifecycle and archival strategy
+- orch-go-4kwt.2: Knowledge promotion paths (project → global)
+- orch-go-4kwt.3: Orchestrator session boundaries and handoff timing
+- orch-go-4kwt.4: Beads ↔ KB ↔ Workspace relationship model
+- orch-go-4kwt.5: Multi-agent synthesis and conflict detection
+- orch-go-4kwt.6: Failure mode artifacts and post-mortems
+- orch-go-4kwt.7: Design: Minimal artifact set specification (synthesis)
 
 **Success criteria:**
 - ✅ Next Claude instance can resume orchestrator work via SESSION_HANDOFF.md

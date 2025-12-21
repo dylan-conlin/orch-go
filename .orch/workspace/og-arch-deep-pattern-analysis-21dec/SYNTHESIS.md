@@ -76,10 +76,15 @@ ls .kb/investigations/*.md | wc -l             # 140+
 - [x] Recommendation made with trade-off analysis
 - [ ] Ready for `orch complete orch-go-pzdt`
 
-### Follow-up Work (not blocking)
-1. **Create SESSION_HANDOFF.md template** - Add to `.orch/templates/` based on skillc pattern
-2. **Update orchestrator skill** - Reference SESSION_HANDOFF.md for cross-session context
-3. **Consider SYNTHESIS.md archival** - Option to preserve before workspace cleanup
+### Follow-up Work
+**Epic created:** orch-go-4kwt "Amnesia-Resilient Artifact Architecture" with 7 children:
+- .1: Workspace lifecycle and archival strategy
+- .2: Knowledge promotion paths (project → global)
+- .3: Orchestrator session boundaries and handoff timing
+- .4: Beads ↔ KB ↔ Workspace relationship model
+- .5: Multi-agent synthesis and conflict detection
+- .6: Failure mode artifacts and post-mortems
+- .7: Design: Minimal artifact set specification (synthesis task)
 
 ---
 
