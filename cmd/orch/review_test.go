@@ -304,3 +304,85 @@ func TestReviewCommandFlags(t *testing.T) {
 		t.Error("Expected 'done' subcommand")
 	}
 }
+
+// TestSummarizeDelta verifies the Delta summary generation.
+func TestSummarizeDelta(t *testing.T) {
+	tests := []struct {
+		name     string
+		delta    string
+		contains []string
+	}{
+		{
+			name: "files created and modified",
+			delta: `### Files Created
+
+- cmd/orch/new.go - New command
+- pkg/new/new.go - Core logic
+
+### Files Modified
+
+- cmd/orch/main.go - Added command
+
+### Commits
+
+- abc1234 - feat: add feature`,
+			contains: []string{"2 files created", "1 files modified", "1 commits"},
+		},
+		{
+			name: "only files created",
+			delta: `### Files Created
+
+- file1.go
+- file2.go
+- file3.go`,
+			contains: []string{"3 files created"},
+		},
+		{
+			name:     "empty delta",
+			delta:    "",
+			contains: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := summarizeDelta(tt.delta)
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf("summarizeDelta() = %q, want to contain %q", result, want)
+				}
+			}
+		})
+	}
+}
+
+// TestCountBulletPoints verifies bullet point counting.
+func TestCountBulletPoints(t *testing.T) {
+	content := `### Files Created
+
+- file1.go
+- file2.go
+
+### Files Modified
+
+- main.go
+`
+
+	tests := []struct {
+		section string
+		want    int
+	}{
+		{"### Files Created", 2},
+		{"### Files Modified", 1},
+		{"### Nonexistent", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.section, func(t *testing.T) {
+			got := countBulletPoints(content, tt.section)
+			if got != tt.want {
+				t.Errorf("countBulletPoints(%q) = %d, want %d", tt.section, got, tt.want)
+			}
+		})
+	}
+}

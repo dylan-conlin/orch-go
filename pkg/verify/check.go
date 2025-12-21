@@ -4,7 +4,9 @@ package verify
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -12,7 +14,7 @@ import (
 // Comment represents a beads issue comment.
 type Comment struct {
 	ID        int64  `json:"id"`
-	Content   string `json:"content"`
+	Text      string `json:"text"`
 	Author    string `json:"author"`
 	CreatedAt string `json:"created_at"`
 }
@@ -64,7 +66,7 @@ func ParsePhaseFromComments(comments []Comment) PhaseStatus {
 	var latestPhase PhaseStatus
 
 	for _, comment := range comments {
-		matches := phasePattern.FindStringSubmatch(comment.Content)
+		matches := phasePattern.FindStringSubmatch(comment.Text)
 		if len(matches) >= 2 {
 			latestPhase = PhaseStatus{
 				Phase: matches[1],
@@ -111,9 +113,175 @@ type VerificationResult struct {
 	Phase    PhaseStatus
 }
 
+// Synthesis represents the content of a SYNTHESIS.md file using the D.E.K.N. structure.
+// D.E.K.N. = Delta (what changed), Evidence (what was observed), Knowledge (what was learned), Next (what should happen)
+type Synthesis struct {
+	// Header fields
+	Agent    string // Agent workspace name
+	Issue    string // Beads issue ID
+	Duration string // Session duration
+	Outcome  string // success, partial, blocked, etc.
+
+	// Core D.E.K.N. sections
+	TLDR      string // One-sentence summary
+	Delta     string // What changed (files created/modified, commits)
+	Evidence  string // What was observed (tests run, verification)
+	Knowledge string // What was learned (artifacts, decisions, constraints)
+	Next      string // What should happen (recommendation, follow-up)
+
+	// Parsed fields for easy access
+	Recommendation string   // Extracted from Next section (close, continue, escalate)
+	NextActions    []string // Follow-up items
+}
+
+// ParseSynthesis extracts key information from a SYNTHESIS.md file.
+// Supports both the full D.E.K.N. format and simpler formats with just TLDR and Next Actions.
+func ParseSynthesis(workspacePath string) (*Synthesis, error) {
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	data, err := os.ReadFile(synthesisPath)
+	if err != nil {
+		return nil, err
+	}
+	content := string(data)
+
+	s := &Synthesis{}
+
+	// Parse header fields
+	s.Agent = extractHeaderField(content, "Agent")
+	s.Issue = extractHeaderField(content, "Issue")
+	s.Duration = extractHeaderField(content, "Duration")
+	s.Outcome = extractHeaderField(content, "Outcome")
+
+	// Parse TLDR section
+	s.TLDR = extractSection(content, "TLDR")
+
+	// Parse D.E.K.N. sections
+	// Delta can be "## Delta" or "## Delta (What Changed)"
+	s.Delta = extractSectionWithVariant(content, "Delta", "Delta (What Changed)")
+
+	// Evidence can be "## Evidence" or "## Evidence (What Was Observed)"
+	s.Evidence = extractSectionWithVariant(content, "Evidence", "Evidence (What Was Observed)")
+
+	// Knowledge can be "## Knowledge" or "## Knowledge (What Was Learned)"
+	s.Knowledge = extractSectionWithVariant(content, "Knowledge", "Knowledge (What Was Learned)")
+
+	// Next can be "## Next", "## Next (What Should Happen)", or "## Next Actions"
+	s.Next = extractSectionWithVariant(content, "Next", "Next (What Should Happen)")
+
+	// Extract recommendation from Next section
+	s.Recommendation = extractRecommendation(s.Next)
+
+	// Parse Next Actions (follow-up items)
+	s.NextActions = extractNextActions(content)
+
+	return s, nil
+}
+
+// extractHeaderField extracts a header field like "**Field:** value"
+func extractHeaderField(content, field string) string {
+	pattern := regexp.MustCompile(`(?m)\*\*` + regexp.QuoteMeta(field) + `:\*\*\s*(.+)$`)
+	matches := pattern.FindStringSubmatch(content)
+	if len(matches) >= 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+// extractSection extracts content from a markdown section.
+// Handles sections that end at the next ## heading or end of file.
+func extractSection(content, sectionName string) string {
+	// Match section header (with optional parenthetical)
+	// Use \n## to match next section, but be careful to capture multi-line content
+	pattern := regexp.MustCompile(`(?s)## ` + regexp.QuoteMeta(sectionName) + `(?:\s*\([^)]*\))?\s*\n(.*?)(?:\n---\n|\n## |\z)`)
+	matches := pattern.FindStringSubmatch(content)
+	if len(matches) >= 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+// extractSectionWithVariant tries multiple section name variants.
+func extractSectionWithVariant(content, name1, name2 string) string {
+	result := extractSection(content, name1)
+	if result == "" {
+		result = extractSection(content, name2)
+	}
+	return result
+}
+
+// extractRecommendation extracts the recommendation from the Next section.
+// Looks for patterns like "**Recommendation:** close" or just "close" on its own line.
+func extractRecommendation(nextSection string) string {
+	// Try explicit recommendation field
+	recPattern := regexp.MustCompile(`(?m)\*\*Recommendation:\*\*\s*(\w+)`)
+	matches := recPattern.FindStringSubmatch(nextSection)
+	if len(matches) >= 2 {
+		return strings.ToLower(strings.TrimSpace(matches[1]))
+	}
+	return ""
+}
+
+// extractNextActions extracts follow-up action items from various sections.
+func extractNextActions(content string) []string {
+	var actions []string
+
+	// Try "## Next Actions" section first
+	actionsSection := extractSection(content, "Next Actions")
+	if actionsSection != "" {
+		actions = append(actions, parseActionItems(actionsSection)...)
+	}
+
+	// Also look for follow-up work in Next section
+	nextSection := extractSectionWithVariant(content, "Next", "Next (What Should Happen)")
+	if nextSection != "" {
+		// Look for "### Follow-up Work" subsection
+		followUpPattern := regexp.MustCompile(`(?s)### Follow-up Work[^\n]*\n(.*?)(?:\n###|\n---|\z)`)
+		matches := followUpPattern.FindStringSubmatch(nextSection)
+		if len(matches) >= 2 {
+			actions = append(actions, parseActionItems(matches[1])...)
+		}
+	}
+
+	return actions
+}
+
+// parseActionItems extracts list items (- item, * item, or 1. item format).
+func parseActionItems(section string) []string {
+	var items []string
+	lines := strings.Split(section, "\n")
+	numberedPattern := regexp.MustCompile(`^\d+\.`)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") || numberedPattern.MatchString(line) {
+			items = append(items, line)
+		}
+	}
+	return items
+}
+
+// VerifySynthesis checks if SYNTHESIS.md exists and is not empty.
+func VerifySynthesis(workspacePath string) (bool, error) {
+	if workspacePath == "" {
+		return false, nil
+	}
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	info, err := os.Stat(synthesisPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return info.Size() > 0, nil
+}
+
 // VerifyCompletion checks if an agent is ready for completion.
 // Returns a VerificationResult with any errors or warnings.
-func VerifyCompletion(beadsID string) (VerificationResult, error) {
+func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
 	}
@@ -141,6 +309,18 @@ func VerifyCompletion(beadsID string) (VerificationResult, error) {
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
 		return result, nil
+	}
+
+	// Check for SYNTHESIS.md
+	if workspacePath != "" {
+		ok, err := VerifySynthesis(workspacePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
+		} else if !ok {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+		}
 	}
 
 	return result, nil

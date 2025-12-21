@@ -65,6 +65,7 @@ type CompletionInfo struct {
 	VerifyError string
 	Phase       string
 	Summary     string
+	Synthesis   *verify.Synthesis
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
@@ -83,9 +84,11 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			Project: extractProject(agent.ProjectDir),
 		}
 
+		workspacePath := filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+
 		// Check verification status
 		if agent.BeadsID != "" {
-			result, err := verify.VerifyCompletion(agent.BeadsID)
+			result, err := verify.VerifyCompletion(agent.BeadsID, workspacePath)
 			if err != nil {
 				info.VerifyError = fmt.Sprintf("verification error: %v", err)
 				info.VerifyOK = false
@@ -93,6 +96,12 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				info.VerifyOK = true
 				info.Phase = result.Phase.Phase
 				info.Summary = result.Phase.Summary
+
+				// Try to parse synthesis
+				s, err := verify.ParseSynthesis(workspacePath)
+				if err == nil {
+					info.Synthesis = s
+				}
 			} else {
 				info.VerifyOK = false
 				if len(result.Errors) > 0 {
@@ -205,6 +214,11 @@ func runReview(projectFilter string, needsReviewOnly bool) error {
 				fmt.Printf("         Phase: %s - %s\n", c.Phase, c.Summary)
 			}
 
+			// Display Synthesis Card if available
+			if c.Synthesis != nil {
+				printSynthesisCard(c.Synthesis)
+			}
+
 			if !c.VerifyOK && c.VerifyError != "" {
 				fmt.Printf("         Error: %s\n", c.VerifyError)
 			}
@@ -313,4 +327,130 @@ func FormatCompletionStatus(c CompletionInfo) string {
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// printSynthesisCard displays a condensed Synthesis Card for an agent.
+// Shows the D.E.K.N. sections (Delta, Evidence, Knowledge, Next) in a compact format.
+func printSynthesisCard(s *verify.Synthesis) {
+	indent := "         "
+
+	// TLDR is always shown if available
+	if s.TLDR != "" {
+		// Truncate TLDR if too long (single line display)
+		tldr := s.TLDR
+		if len(tldr) > 100 {
+			tldr = tldr[:97] + "..."
+		}
+		// Replace newlines with spaces for single-line display
+		tldr = strings.ReplaceAll(tldr, "\n", " ")
+		fmt.Printf("%sTLDR:  %s\n", indent, tldr)
+	}
+
+	// Outcome and Recommendation (condensed line)
+	if s.Outcome != "" || s.Recommendation != "" {
+		var meta []string
+		if s.Outcome != "" {
+			meta = append(meta, fmt.Sprintf("outcome=%s", s.Outcome))
+		}
+		if s.Recommendation != "" {
+			meta = append(meta, fmt.Sprintf("rec=%s", s.Recommendation))
+		}
+		fmt.Printf("%sStatus: %s\n", indent, strings.Join(meta, ", "))
+	}
+
+	// Delta summary (files changed, commits)
+	if s.Delta != "" {
+		deltaSummary := summarizeDelta(s.Delta)
+		if deltaSummary != "" {
+			fmt.Printf("%sDelta: %s\n", indent, deltaSummary)
+		}
+	}
+
+	// Next Actions
+	if len(s.NextActions) > 0 {
+		fmt.Printf("%sNext:\n", indent)
+		// Show at most 3 actions to keep it condensed
+		maxActions := 3
+		for i, action := range s.NextActions {
+			if i >= maxActions {
+				fmt.Printf("%s  ... +%d more\n", indent, len(s.NextActions)-maxActions)
+				break
+			}
+			// Truncate long actions
+			if len(action) > 80 {
+				action = action[:77] + "..."
+			}
+			fmt.Printf("%s  %s\n", indent, action)
+		}
+	}
+}
+
+// summarizeDelta creates a one-line summary of the Delta section.
+// Extracts file counts and commit info.
+func summarizeDelta(delta string) string {
+	var parts []string
+
+	// Count files created
+	createdCount := strings.Count(delta, "### Files Created")
+	if createdCount > 0 {
+		// Count bullet points in the section
+		fileCount := countBulletPoints(delta, "### Files Created")
+		if fileCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d files created", fileCount))
+		}
+	}
+
+	// Count files modified
+	modifiedCount := strings.Count(delta, "### Files Modified")
+	if modifiedCount > 0 {
+		fileCount := countBulletPoints(delta, "### Files Modified")
+		if fileCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d files modified", fileCount))
+		}
+	}
+
+	// Count commits
+	commitsCount := strings.Count(delta, "### Commits")
+	if commitsCount > 0 {
+		commitCount := countBulletPoints(delta, "### Commits")
+		if commitCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d commits", commitCount))
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// countBulletPoints counts bullet points (-) after a section header.
+func countBulletPoints(content, sectionHeader string) int {
+	idx := strings.Index(content, sectionHeader)
+	if idx == -1 {
+		return 0
+	}
+
+	// Find content after header
+	afterHeader := content[idx+len(sectionHeader):]
+
+	// Find end (next ### or end of content)
+	endIdx := strings.Index(afterHeader, "\n###")
+	if endIdx == -1 {
+		endIdx = len(afterHeader)
+	}
+
+	section := afterHeader[:endIdx]
+
+	// Count lines starting with -
+	count := 0
+	for _, line := range strings.Split(section, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") {
+			count++
+		}
+	}
+
+	return count
 }
