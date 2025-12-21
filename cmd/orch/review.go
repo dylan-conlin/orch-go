@@ -20,18 +20,30 @@ var (
 )
 
 var reviewCmd = &cobra.Command{
-	Use:   "review",
-	Short: "Review pending agent completions",
-	Long: `Review pending agent completions grouped by project.
+	Use:   "review [beads-id]",
+	Short: "Review agent work before completing",
+	Long: `Review agent work before completing.
 
-Shows completed agents that need orchestrator review. Use after overnight
-daemon runs or when multiple agents have finished work.
+Without arguments: Shows all pending completions grouped by project (batch mode).
+With beads-id: Shows detailed review for a single agent.
+
+Single-agent review shows:
+  - SYNTHESIS.md summary (TLDR, outcome, recommendation)
+  - Recent commits with stats
+  - Beads comments history
+  - Artifacts produced (investigations, design docs)
 
 Examples:
-  orch-go review                    # Show all pending completions
-  orch-go review -p orch-cli        # Filter by project
-  orch-go review --needs-review     # Show failures only (need attention)`,
+  orch-go review                    # Batch mode: show all pending completions
+  orch-go review orch-go-3anf       # Single agent: detailed review
+  orch-go review -p orch-cli        # Batch mode: filter by project
+  orch-go review --needs-review     # Batch mode: show failures only`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Single-agent mode if beads ID provided
+		if len(args) > 0 {
+			return runReviewSingle(args[0])
+		}
+		// Batch mode
 		return runReview(reviewProject, reviewNeedsReview)
 	},
 }
@@ -134,6 +146,76 @@ func groupByProject(completions []CompletionInfo) map[string][]CompletionInfo {
 		grouped[c.Project] = append(grouped[c.Project], c)
 	}
 	return grouped
+}
+
+// runReviewSingle displays detailed review information for a single agent.
+func runReviewSingle(beadsID string) error {
+	// Find agent in registry
+	reg, err := registry.New("")
+	if err != nil {
+		return fmt.Errorf("failed to open registry: %w", err)
+	}
+
+	agent := reg.Find(beadsID)
+
+	// Build workspace path
+	var workspacePath string
+	var projectDir string
+
+	if agent != nil {
+		projectDir = agent.ProjectDir
+		workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+	} else {
+		// Try to find from current directory
+		cwd, err := os.Getwd()
+		if err == nil {
+			projectDir = cwd
+			// Look for workspaces matching the beads ID
+			workspaceDir := filepath.Join(cwd, ".orch", "workspace")
+			entries, err := os.ReadDir(workspaceDir)
+			if err == nil {
+				for _, entry := range entries {
+					if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
+						workspacePath = filepath.Join(workspaceDir, entry.Name())
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Get review data
+	review, err := verify.GetAgentReview(beadsID, workspacePath, projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to get agent review: %w", err)
+	}
+
+	// Enrich with registry data if available
+	if agent != nil {
+		review.Skill = agent.Skill
+		if review.WorkspaceName == "" {
+			review.WorkspaceName = agent.ID
+		}
+	}
+
+	// Display the review
+	fmt.Print(verify.FormatAgentReview(review))
+
+	// Print next steps
+	fmt.Println("---")
+	if review.Status == "Phase: Complete" && review.SynthesisExists {
+		fmt.Printf("Ready to complete: orch complete %s\n", beadsID)
+	} else {
+		if !review.SynthesisExists {
+			fmt.Println("Missing: SYNTHESIS.md - agent should create this before completing")
+		}
+		if review.Status != "Phase: Complete" {
+			fmt.Println("Missing: Phase: Complete - agent should report via bd comment")
+		}
+		fmt.Printf("\nTo force completion: orch complete %s --force\n", beadsID)
+	}
+
+	return nil
 }
 
 func runReview(projectFilter string, needsReviewOnly bool) error {
