@@ -151,260 +151,219 @@
 	);
 </script>
 
-<div class="space-y-8">
-	<!-- Stats Overview -->
-	<div class="grid gap-4 md:grid-cols-5">
-		<Card>
-			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<CardTitle class="text-sm font-medium">Active Agents</CardTitle>
-				<span class="text-2xl">🐝</span>
-			</CardHeader>
-			<CardContent>
-				<div class="text-2xl font-bold">{$activeAgents.length}</div>
-				<p class="text-xs text-muted-foreground">Currently working</p>
-			</CardContent>
-		</Card>
-		<Card>
-			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<CardTitle class="text-sm font-medium">Completed</CardTitle>
-				<span class="text-2xl">✅</span>
-			</CardHeader>
-			<CardContent>
-				<div class="text-2xl font-bold">{$completedAgents.length}</div>
-				<p class="text-xs text-muted-foreground">Tasks finished</p>
-			</CardContent>
-		</Card>
-		<Card>
-			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<CardTitle class="text-sm font-medium">Abandoned</CardTitle>
-				<span class="text-2xl">⚠️</span>
-			</CardHeader>
-			<CardContent>
-				<div class="text-2xl font-bold">{$abandonedAgents.length}</div>
-				<p class="text-xs text-muted-foreground">Stuck or failed</p>
-			</CardContent>
-		</Card>
-		<Card>
-			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<CardTitle class="text-sm font-medium">Agent Log</CardTitle>
-				<span class="text-2xl">📋</span>
-			</CardHeader>
-			<CardContent>
-				<div class="text-2xl font-bold">{$agentlogEvents.length}</div>
-				<p class="text-xs text-muted-foreground">Lifecycle events</p>
-			</CardContent>
-		</Card>
-		<Card>
-			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-				<CardTitle class="text-sm font-medium">SSE Events</CardTitle>
-				<span class="text-2xl">📡</span>
-			</CardHeader>
-			<CardContent>
-				<div class="text-2xl font-bold">{$sseEvents.length}</div>
-				<p class="text-xs text-muted-foreground">Last 100 events</p>
-			</CardContent>
-		</Card>
+<div class="space-y-3">
+	<!-- Compact Stats Bar -->
+	<div class="flex items-center gap-4 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
+		<div class="flex items-center gap-2">
+			<span class="text-lg">🐝</span>
+			<div class="flex items-baseline gap-1">
+				<span class="text-xl font-bold">{$activeAgents.length}</span>
+				<span class="text-xs text-muted-foreground">active</span>
+			</div>
+		</div>
+		<div class="h-4 w-px bg-border"></div>
+		<div class="flex items-center gap-2">
+			<span class="text-lg">✅</span>
+			<div class="flex items-baseline gap-1">
+				<span class="text-xl font-bold">{$completedAgents.length}</span>
+				<span class="text-xs text-muted-foreground">done</span>
+			</div>
+		</div>
+		<div class="h-4 w-px bg-border"></div>
+		<div class="flex items-center gap-2">
+			<span class="text-lg">⚠️</span>
+			<div class="flex items-baseline gap-1">
+				<span class="text-xl font-bold">{$abandonedAgents.length}</span>
+				<span class="text-xs text-muted-foreground">stuck</span>
+			</div>
+		</div>
+		<div class="h-4 w-px bg-border"></div>
+		<div class="flex items-center gap-2">
+			<span class="text-lg">📋</span>
+			<div class="flex items-baseline gap-1">
+				<span class="text-xl font-bold">{$agentlogEvents.length}</span>
+				<span class="text-xs text-muted-foreground">events</span>
+			</div>
+		</div>
+		<div class="ml-auto flex items-center gap-2">
+			<Button
+				variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
+				size="sm"
+				onclick={handleConnectClick}
+				class="h-7 text-xs"
+			>
+				{#if $connectionStatus === 'connecting'}
+					...
+				{:else if $connectionStatus === 'connected'}
+					Disconnect
+				{:else}
+					Connect
+				{/if}
+			</Button>
+		</div>
 	</div>
 
-	<!-- Swarm Map -->
-	<Card>
-		<CardHeader>
-			<div class="flex items-center justify-between">
-				<div>
-					<CardTitle>Swarm Map</CardTitle>
-					<CardDescription>Real-time view of all agent activity</CardDescription>
-				</div>
-				<Button
-					variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
-					size="sm"
-					onclick={handleConnectClick}
-				>
-					{#if $connectionStatus === 'connecting'}
-						Connecting...
-					{:else if $connectionStatus === 'connected'}
-						Disconnect
-					{:else}
-						Connect SSE
-					{/if}
-				</Button>
+	<!-- Swarm Map (Primary Focus) -->
+	<div class="rounded-lg border bg-card">
+		<div class="flex items-center justify-between border-b px-3 py-2">
+			<div class="flex items-center gap-2">
+				<h2 class="text-sm font-semibold">Swarm Map</h2>
+				<span class="text-xs text-muted-foreground">Real-time agent activity</span>
 			</div>
-		</CardHeader>
-		<CardContent>
-			<!-- Filter Bar -->
-			<div class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-3" data-testid="filter-bar">
-				<!-- Status Filter -->
-				<div class="flex items-center gap-2">
-					<label for="status-filter" class="text-sm font-medium text-muted-foreground">Status:</label>
-					<select
-						id="status-filter"
-						bind:value={statusFilter}
-						class="h-8 rounded-md border border-input bg-background px-2 text-sm"
-						data-testid="status-filter"
-					>
-						<option value="all">All</option>
-						<option value="active">Active</option>
-						<option value="completed">Completed</option>
-						<option value="abandoned">Abandoned</option>
-					</select>
-				</div>
+		</div>
+		<div class="p-2">
+			<!-- Compact Filter Bar -->
+			<div class="mb-2 flex flex-wrap items-center gap-2 text-xs" data-testid="filter-bar">
+				<select
+					id="status-filter"
+					bind:value={statusFilter}
+					class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+					data-testid="status-filter"
+				>
+					<option value="all">All status</option>
+					<option value="active">Active</option>
+					<option value="completed">Completed</option>
+					<option value="abandoned">Abandoned</option>
+				</select>
 
-				<!-- Skill Filter -->
 				{#if uniqueSkills.length > 0}
-					<div class="flex items-center gap-2">
-						<label for="skill-filter" class="text-sm font-medium text-muted-foreground">Skill:</label>
-						<select
-							id="skill-filter"
-							bind:value={skillFilter}
-							class="h-8 rounded-md border border-input bg-background px-2 text-sm"
-							data-testid="skill-filter"
-						>
-							<option value="all">All</option>
-							{#each uniqueSkills as skill}
-								<option value={skill}>{skill}</option>
-							{/each}
-						</select>
-					</div>
-				{/if}
-
-				<!-- Sort -->
-				<div class="flex items-center gap-2">
-					<label for="sort-by" class="text-sm font-medium text-muted-foreground">Sort:</label>
 					<select
-						id="sort-by"
-						bind:value={sortBy}
-						class="h-8 rounded-md border border-input bg-background px-2 text-sm"
-						data-testid="sort-select"
+						id="skill-filter"
+						bind:value={skillFilter}
+						class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+						data-testid="skill-filter"
 					>
-						<option value="newest">Newest first</option>
-						<option value="oldest">Oldest first</option>
-						<option value="alphabetical">A-Z</option>
+						<option value="all">All skills</option>
+						{#each uniqueSkills as skill}
+							<option value={skill}>{skill}</option>
+						{/each}
 					</select>
-				</div>
-
-				<!-- Clear Filters -->
-				{#if hasActiveFilters}
-					<Button variant="ghost" size="sm" onclick={clearFilters} class="ml-auto text-xs">
-						Clear filters
-					</Button>
 				{/if}
 
-				<!-- Result count -->
-				<span class="ml-auto text-xs text-muted-foreground" data-testid="filter-count">
+				<select
+					id="sort-by"
+					bind:value={sortBy}
+					class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+					data-testid="sort-select"
+				>
+					<option value="newest">Newest</option>
+					<option value="oldest">Oldest</option>
+					<option value="alphabetical">A-Z</option>
+				</select>
+
+				{#if hasActiveFilters}
+					<button onclick={clearFilters} class="text-xs text-muted-foreground hover:text-foreground">
+						Clear
+					</button>
+				{/if}
+
+				<span class="ml-auto text-muted-foreground" data-testid="filter-count">
 					{filteredAgents.length} agent{filteredAgents.length === 1 ? '' : 's'}
 				</span>
 			</div>
 
-			<!-- Agent Grid -->
-			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="agent-grid">
+			<!-- Dense Agent Grid -->
+			<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
 				{#each filteredAgents as agent (agent.id)}
 					<AgentCard {agent} />
 				{:else}
-					<div class="col-span-full rounded-lg border border-dashed p-8 text-center">
+					<div class="col-span-full rounded border border-dashed p-6 text-center">
 						{#if hasActiveFilters}
-							<p class="text-muted-foreground">No agents match the current filters</p>
-							<Button variant="link" onclick={clearFilters} class="mt-2">
+							<p class="text-sm text-muted-foreground">No agents match filters</p>
+							<Button variant="link" onclick={clearFilters} class="mt-1 h-auto p-0 text-xs">
 								Clear filters
 							</Button>
 						{:else}
-							<p class="text-muted-foreground">No agents in the swarm</p>
-							<p class="mt-1 text-sm text-muted-foreground">
-								Agents will appear here when spawned via <code class="rounded bg-muted px-1">orch spawn</code>
+							<p class="text-sm text-muted-foreground">No agents in the swarm</p>
+							<p class="mt-1 text-xs text-muted-foreground">
+								Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
 							</p>
 						{/if}
 					</div>
 				{/each}
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 
-	<!-- Agent Lifecycle Events -->
-	<Card>
-		<CardHeader>
-			<div class="flex items-center justify-between">
-				<div>
-					<CardTitle>Agent Lifecycle</CardTitle>
-					<CardDescription>Events from ~/.orch/events.jsonl</CardDescription>
+	<!-- Collapsed Event Panels (side by side on larger screens) -->
+	<div class="grid gap-2 lg:grid-cols-2">
+		<!-- Agent Lifecycle Events -->
+		<div class="rounded-lg border bg-card">
+			<div class="flex items-center justify-between border-b px-3 py-1.5">
+				<div class="flex items-center gap-2">
+					<h3 class="text-xs font-semibold">Agent Lifecycle</h3>
+					<span class="text-xs text-muted-foreground">~/.orch/events.jsonl</span>
 				</div>
 				<Button
-					variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'outline'}
+					variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'ghost'}
 					size="sm"
 					onclick={handleAgentlogConnectClick}
+					class="h-5 px-2 text-xs"
 				>
 					{#if $agentlogConnectionStatus === 'connecting'}
-						Connecting...
+						...
 					{:else if $agentlogConnectionStatus === 'connected'}
-						Disconnect
+						Stop
 					{:else}
-						Follow Live
+						Follow
 					{/if}
 				</Button>
 			</div>
-		</CardHeader>
-		<CardContent>
-			<div class="max-h-80 overflow-y-auto rounded-lg bg-muted/50 p-4 font-mono text-xs">
-				{#each $agentlogEvents.slice().reverse() as event, i (i)}
-					<div class="border-b border-border py-2 last:border-0">
-						<span class="mr-2">{getEventIcon(event.type)}</span>
-						<span class="text-muted-foreground">[{formatUnixTime(event.timestamp)}]</span>
-						<Badge variant="outline" class="ml-2 text-xs">
+			<div class="max-h-32 overflow-y-auto p-2 font-mono text-xs">
+				{#each $agentlogEvents.slice().reverse().slice(0, 10) as event, i (i)}
+					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
+						<span>{getEventIcon(event.type)}</span>
+						<span class="opacity-60">{formatUnixTime(event.timestamp)}</span>
+						<Badge variant="outline" class="h-4 px-1 text-[10px]">
 							{getEventLabel(event.type)}
 						</Badge>
 						{#if event.session_id}
-							<span class="ml-2 font-medium">{event.session_id.slice(0, 12)}...</span>
-						{/if}
-						{#if event.data?.title}
-							<span class="ml-2 text-muted-foreground">"{event.data.title}"</span>
+							<span class="font-medium text-foreground">{event.session_id.slice(0, 8)}</span>
 						{/if}
 						{#if event.data?.error}
-							<span class="ml-2 text-red-500">{event.data.error}</span>
-						{/if}
-						{#if event.data?.status}
-							<span class="ml-2 text-muted-foreground">→ {event.data.status}</span>
+							<span class="text-red-500">{event.data.error}</span>
 						{/if}
 					</div>
 				{:else}
-					<p class="text-muted-foreground">
+					<p class="py-2 text-center text-muted-foreground">
 						{#if $agentlogConnectionStatus === 'connected'}
-							Waiting for agent events...
-						{:else if $agentlogConnectionStatus === 'connecting'}
-							Connecting to agentlog stream...
+							Waiting...
 						{:else}
-							No agent lifecycle events yet. Spawn agents with <code class="rounded bg-muted px-1">orch spawn</code>
+							No events
 						{/if}
 					</p>
 				{/each}
 			</div>
-		</CardContent>
-	</Card>
+		</div>
 
-	<!-- Recent Events -->
-	<Card>
-		<CardHeader>
-			<CardTitle>Recent Events</CardTitle>
-			<CardDescription>SSE event stream from OpenCode</CardDescription>
-		</CardHeader>
-		<CardContent>
-			<div class="max-h-64 overflow-y-auto rounded-lg bg-muted/50 p-4 font-mono text-xs">
-				{#each $sseEvents.slice().reverse() as event, i (i)}
-					<div class="border-b border-border py-2 last:border-0">
-						<span class="text-muted-foreground">[{formatTime(event.timestamp)}]</span>
-						<span class="ml-2">{event.type}</span>
+		<!-- SSE Events -->
+		<div class="rounded-lg border bg-card">
+			<div class="flex items-center justify-between border-b px-3 py-1.5">
+				<div class="flex items-center gap-2">
+					<h3 class="text-xs font-semibold">SSE Stream</h3>
+					<span class="text-xs text-muted-foreground">OpenCode events</span>
+				</div>
+				<span class="text-xs text-muted-foreground">{$sseEvents.length} events</span>
+			</div>
+			<div class="max-h-32 overflow-y-auto p-2 font-mono text-xs">
+				{#each $sseEvents.slice().reverse().slice(0, 10) as event, i (i)}
+					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
+						<span class="opacity-60">{formatTime(event.timestamp)}</span>
+						<span class="text-foreground">{event.type}</span>
 						{#if event.properties?.sessionID}
-							<span class="ml-2 text-muted-foreground">session: {event.properties.sessionID.slice(0, 8)}...</span>
+							<span class="opacity-60">{event.properties.sessionID.slice(0, 8)}</span>
 						{/if}
 					</div>
 				{:else}
-					<p class="text-muted-foreground">
+					<p class="py-2 text-center text-muted-foreground">
 						{#if $connectionStatus === 'connected'}
-							Waiting for events...
-						{:else if $connectionStatus === 'connecting'}
-							Connecting to SSE...
+							Waiting...
 						{:else}
-							Click "Connect SSE" to start receiving events
+							Click Connect
 						{/if}
 					</p>
 				{/each}
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 </div>

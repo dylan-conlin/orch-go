@@ -36,74 +36,61 @@
 		const minutes = Math.floor(ms / 60000);
 		const hours = Math.floor(minutes / 60);
 		if (hours > 0) {
-			return `${hours}h ${minutes % 60}m`;
+			return `${hours}h${minutes % 60}m`;
 		}
 		return `${minutes}m`;
 	}
-
-	function formatDate(isoDate: string): string {
-		return new Date(isoDate).toLocaleDateString(undefined, {
-			month: 'short',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
-	}
 </script>
 
-<div class="group relative rounded-lg border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-md">
+<div class="group relative rounded border bg-card p-2 transition-all hover:border-primary/50 hover:shadow-sm">
 	<!-- Status indicator bar at top -->
-	<div class={`absolute left-0 top-0 h-1 w-full rounded-t-lg ${getStatusColor(agent.status)}`}></div>
+	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${getStatusColor(agent.status)}`}></div>
 
-	<!-- Primary row: Status + Duration -->
-	<div class="mt-1 flex items-center justify-between">
-		<div class="flex items-center gap-2">
-			<Badge variant={getStatusVariant(agent.status)} class="text-xs font-medium">
-				{agent.status}
-			</Badge>
+	<!-- Header: Status + Duration -->
+	<div class="flex items-center justify-between gap-1">
+		<Badge variant={getStatusVariant(agent.status)} class="h-4 px-1.5 text-[10px]">
+			{agent.status}
+		</Badge>
+		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
 			{#if agent.status === 'active'}
-				<span class="flex items-center gap-1 text-xs text-muted-foreground">
-					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500"></span>
-					{formatDuration(agent.spawned_at)}
-				</span>
-			{:else}
-				<span class="text-xs text-muted-foreground">
-					{formatDuration(agent.spawned_at)}
-				</span>
+				<span class="h-1 w-1 animate-pulse rounded-full bg-green-500"></span>
 			{/if}
-		</div>
+			{formatDuration(agent.spawned_at)}
+		</span>
 	</div>
 
-	<!-- Secondary: Agent ID (prominent) -->
-	<div class="mt-3">
-		<p class="font-mono text-sm font-semibold text-foreground" title={agent.id}>
-			{agent.id}
-		</p>
-	</div>
+	<!-- Agent ID -->
+	<p class="mt-1 truncate font-mono text-xs font-medium" title={agent.id}>
+		{agent.id}
+	</p>
 
-	<!-- Tertiary: Skill + Beads ID -->
-	<div class="mt-2 flex flex-wrap items-center gap-2">
+	<!-- Skill + Beads -->
+	<div class="mt-1 flex flex-wrap items-center gap-1">
 		{#if agent.skill}
-			<Badge variant="outline" class="text-xs">
+			<Badge variant="outline" class="h-4 px-1 text-[10px]">
 				{agent.skill}
 			</Badge>
 		{/if}
 		{#if agent.beads_id}
-			<span class="text-xs text-muted-foreground" title="Beads Issue">
+			<span class="text-[10px] text-muted-foreground" title="Beads Issue">
 				{agent.beads_id}
 			</span>
 		{/if}
 	</div>
 
-	<!-- Metadata: Spawned time -->
-	<div class="mt-3 border-t border-border/50 pt-2">
-		<span class="text-xs text-muted-foreground">
-			Spawned {formatDate(agent.spawned_at)}
-		</span>
-	</div>
-
-	<!-- Synthesis Card for completed agents -->
+	<!-- Compact Synthesis for completed agents -->
 	{#if agent.status === 'completed' && agent.synthesis}
-		<SynthesisCard synthesis={agent.synthesis} />
+		<div class="mt-1.5 border-t border-border/50 pt-1.5">
+			{#if agent.synthesis.tldr}
+				<p class="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
+					{agent.synthesis.tldr}
+				</p>
+			{/if}
+			{#if agent.synthesis.outcome}
+				<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="mt-1 h-4 px-1 text-[10px]">
+					{agent.synthesis.outcome}
+				</Badge>
+			{/if}
+		</div>
 	{/if}
 </div>

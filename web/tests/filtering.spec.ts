@@ -86,7 +86,7 @@ test.describe('Agent Filtering and Sorting', () => {
 		await page.goto('/');
 		
 		// Initially no clear button (default filters)
-		const clearButton = page.getByRole('button', { name: 'Clear filters' });
+		const clearButton = page.getByRole('button', { name: 'Clear' });
 		await expect(clearButton).not.toBeVisible();
 		
 		// Change status filter
