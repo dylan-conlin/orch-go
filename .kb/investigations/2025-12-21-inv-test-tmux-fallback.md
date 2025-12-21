@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Tmux fallback mechanisms for `orch status`, `orch tail`, and `orch question` are functional and correctly implemented.
+**Delta:** Tmux fallback works for all three commands but has edge case where stale registry window IDs + missing beads ID in window name causes fallback failure.
 
-**Evidence:** Spawned tmux agent and verified all three commands work - status shows agent, question searches tmux panes, tail retrieves output (via API with fallback path confirmed in code).
+**Evidence:** Iteration 5 confirmed `orch tail orch-go-smjj` successfully used tmux fallback (output showed "via tmux workers-orch-go:6"); `orch tail orch-go-559o` failed because registry had stale window ID (@227 vs @391) and window name lacked beads ID format.
 
-**Knowledge:** Fallback provides resilience by making agents visible/debuggable even when API unavailable; each command has layered fallback (API preferred, tmux as backup).
+**Knowledge:** Fallback depends on either (1) current registry window ID OR (2) beads ID in window name `[beads-id]` format; if both are stale/missing, fallback fails despite window existing.
 
-**Next:** Close investigation - fallback mechanisms confirmed working.
+**Next:** Consider registry reconciliation on startup or enforcing beads ID in all window names to prevent fallback failures.
 
-**Confidence:** High (85%) - Verified with live test but didn't force API failure scenario.
+**Confidence:** High (90%) - Confirmed fallback works AND discovered specific failure condition through iteration 5 testing.
 
 <!--
 Example D.E.K.N.:
@@ -34,19 +34,19 @@ Guidelines:
 
 ---
 
-# Investigation: Test tmux fallback mechanism (Iteration 4)
+# Investigation: Test tmux fallback mechanism (Iterations 4-5)
 
 **Question:** Does the tmux fallback mechanism work correctly for `orch tail`, `orch question`, and `orch status` commands?
 
 **Started:** 2025-12-21
-**Updated:** 2025-12-21
+**Updated:** 2025-12-21 (Iteration 5 completed)
 **Owner:** opencode
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
-**Confidence:** High (85%)
+**Confidence:** High (90%)
 
-**Context:** This is iteration 4 of testing the tmux fallback. The fallback was implemented in investigation 2025-12-21-inv-add-tmux-fallback-orch-status.md to ensure agents running in tmux are visible/debuggable even if missing from registry or OpenCode API.
+**Context:** This investigation combines iteration 4 (initial verification) and iteration 5 (edge case discovery). The fallback was implemented in investigation 2025-12-21-inv-add-tmux-fallback-orch-status.md to ensure agents running in tmux are visible/debuggable even if missing from registry or OpenCode API.
 
 ---
 
@@ -107,6 +107,45 @@ Guidelines:
 
 ---
 
+### Finding 4: (Iteration 5) Tmux fallback successfully captures output when API is unavailable
+
+**Evidence:**
+
+- Ran `orch tail orch-go-smjj -n 20`
+- Output showed: "Searching tmux for agent output..." followed by "=== Output from orch-go-smjj (via tmux workers-orch-go:6, last 20 lines) ==="
+- Successfully captured tmux pane content showing shell commands and error messages
+- This agent had beads ID in window name format: `🔬 og-inv-test-tmux-fallback-21dec [orch-go-smjj]`
+
+**Source:**
+
+- Command: `./build/orch tail orch-go-smjj -n 20`
+- Window: workers-orch-go:6 (@431)
+- Output shows tmux capture-pane was used instead of API
+
+**Significance:** Confirms the tmux fallback actually triggers and works when API is unavailable or session ID missing
+
+---
+
+### Finding 5: (Iteration 5) Edge case discovered - fallback fails when window name lacks beads ID
+
+**Evidence:**
+
+- Ran `orch tail orch-go-559o -n 20`
+- Error: "agent og-feat-implement-attach-mode-21dec found but could not capture output (checked API and tmux)"
+- Registry shows: `window_id: "@227"`, but actual tmux window has ID `@391`
+- Window name is `og-feat-implement-attach-mode-21dec` (no `[orch-go-559o]` beads ID)
+- `FindWindowByBeadsID` cannot match because beads ID not in window name
+
+**Source:**
+
+- Command: `./build/orch tail orch-go-559o -n 20`
+- Registry: `~/.orch/agent-registry.json` (agent `og-feat-implement-attach-mode-21dec`)
+- Tmux: `tmux list-windows -t workers-orch-go` shows window 3 with ID @391
+
+**Significance:** The fallback depends on either correct registry window ID OR beads ID in window name; if both are stale/missing, fallback fails even though window exists
+
+---
+
 ## Synthesis
 
 **Key Insights:**
@@ -117,21 +156,25 @@ Guidelines:
 
 3. **Tail has layered fallback** - `orch tail` implements a preference hierarchy: API first (when session ID exists and API works), then tmux capture from known windows, ensuring output is always accessible.
 
+4. **Iteration 5 confirmed actual tmux fallback usage** - Successfully triggered pure tmux fallback with `orch tail orch-go-smjj` showing "via tmux workers-orch-go:6" output (Finding 4).
+
+5. **Edge case discovered: dual dependency failure** - Fallback fails when BOTH registry window ID is stale AND window name lacks beads ID (Finding 5); successful fallback requires at least one valid path.
+
 **Answer to Investigation Question:**
 
-Yes, the tmux fallback mechanism works correctly for all three commands tested. Each command has appropriate fallback logic:
+Yes, the tmux fallback mechanism works correctly for all three commands tested, with one edge case discovered:
 
 - `orch status`: Successfully shows tmux agents (Finding 1)
 - `orch question`: Actively searches tmux panes (Finding 2)
-- `orch tail`: Has fallback logic in place, prefers API when available (Finding 3)
+- `orch tail`: Has fallback logic that works when triggered (Finding 4), but fails if registry data is stale AND window name lacks beads ID (Finding 5)
 
-The fallback provides resilience - agents remain visible and debuggable even if API connectivity is lost or registry data is incomplete.
+The fallback provides resilience - agents remain visible and debuggable even if API connectivity is lost or registry data is incomplete. However, the fallback depends on either current registry data OR properly formatted window names with beads IDs.
 
 ---
 
 ## Test Performed
 
-**Test:** Spawned a tmux agent and executed all three commands (`status`, `tail`, `question`) to verify fallback mechanisms work
+**Iteration 4 Test:** Spawned a tmux agent and executed all three commands to verify basic fallback functionality
 
 **Test Steps:**
 
@@ -142,14 +185,25 @@ The fallback provides resilience - agents remain visible and debuggable even if 
 5. Ran `orch question orch-go-untracked-1766338975` - confirmed tmux search
 6. Verified direct tmux capture works: `tmux capture-pane -t @436 -p`
 
-**Result:**
+**Iteration 5 Test:** Extended testing with multiple existing tmux agents to verify actual fallback triggering and edge cases
 
-- ✅ `orch status` successfully showed tmux agent with correct metadata
-- ✅ `orch question` actively searched tmux (message: "Searching tmux for pending question...")
-- ✅ `orch tail` retrieved output via API (fallback path exists but API was functional)
-- ✅ Direct tmux capture confirmed window content is accessible
+**Test Steps:**
 
-**Conclusion from test:** All three fallback mechanisms are operational and correctly implemented.
+1. Ran `./build/orch status` to see all agents including 7 tmux-only agents
+2. Tested successful tmux fallback: `./build/orch tail orch-go-smjj -n 20`
+3. Tested edge case: `./build/orch tail orch-go-559o -n 20` (failed)
+4. Investigated registry vs tmux state for orch-go-559o
+5. Ran `./build/orch question orch-go-559o` (worked - no question found)
+
+**Results:**
+
+- ✅ `orch status` showed 7 tmux agents with metadata (iteration 5)
+- ✅ `orch tail orch-go-smjj` used tmux fallback successfully: "via tmux workers-orch-go:6" (iteration 5)
+- ❌ `orch tail orch-go-559o` failed: stale registry window ID (@227 vs @391) + no beads ID in window name (iteration 5)
+- ✅ `orch question orch-go-559o` searched tmux successfully (iteration 5)
+- ✅ Direct tmux capture confirmed window content is accessible (iteration 4)
+
+**Conclusion from tests:** All three fallback mechanisms are operational with one edge case: tail fallback requires either current registry window ID OR beads ID in window name format.
 
 ---
 
@@ -272,23 +326,22 @@ Successfully verified all three commands work with tmux agents. The mechanisms a
 **Commands Run:**
 
 ```bash
-# Spawn test agent in tmux mode
+# Iteration 4 commands
 orch spawn --tmux --no-track hello "say hello and exit"
-
-# Test orch status shows tmux agent
 orch status 2>&1 | tail -20
-
-# Test orch tail retrieves agent output
 orch tail orch-go-untracked-1766338975
-
-# Test orch question searches tmux
 orch question orch-go-untracked-1766338975
-
-# Verify tmux window exists and is active
 tmux list-windows -t workers-orch-go | grep "10:"
-
-# Direct tmux capture to verify content
 tmux capture-pane -t @436 -p
+
+# Iteration 5 commands
+tmux ls | grep workers-
+./build/orch status 2>&1
+./build/orch tail orch-go-smjj -n 20
+./build/orch tail orch-go-559o -n 20
+./build/orch question orch-go-559o
+cat ~/.orch/agent-registry.json | jq '.agents[] | select(.beads_id == "orch-go-559o")'
+tmux list-windows -t workers-orch-go -F "#{window_index} #{window_name} #{window_id}"
 ```
 
 **External Documentation:**

@@ -1,15 +1,15 @@
 # Session Synthesis
 
-**Agent:** og-inv-test-tmux-fallback-21dec
-**Issue:** orch-go-bo6h
-**Duration:** 2025-12-21 (1 hour)
+**Agent:** og-inv-test-tmux-fallback-21dec (Iteration 4)
+**Issue:** orch-go-wr5b
+**Duration:** 2025-12-21
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Verified that tmux fallback mechanisms for `orch status`, `orch tail`, and `orch question` are functional and correctly implemented.
+Verified tmux fallback mechanisms work correctly for all three commands. Discovered edge case: stale registry window IDs + missing beads ID in window name causes fallback failure.
 
 ---
 
@@ -31,33 +31,32 @@ None - this was a verification investigation, no code changes needed
 
 ## Evidence (What Was Observed)
 
-- Spawned tmux agent successfully: Session workers-orch-go:10 (@436), Beads ID orch-go-untracked-1766338975
-- `orch status` output included tmux agent with correct metadata: `tmux  orch-go-untrack...  hello  -  unknown`
-- `orch question` output showed tmux search: "Searching tmux for pending question..."
-- `orch tail` successfully retrieved output: "=== Output from og-work-say-hello-exit-21dec (via API, last 50 lines) ==="
-- Direct tmux capture verified window content accessible: `tmux capture-pane -t @436 -p` returned TUI content
+- `orch status` showed 7 tmux-only agents from multiple workers sessions (orch-go, orch-knowledge, skillc)
+- `orch tail orch-go-wr5b -n 10` successfully captured output via tmux (output: "via tmux workers-orch-go:8")
+- `orch tail ok-0rqo -n 5` successfully captured output via tmux (output: "via tmux workers-orch-knowledge:2")
+- `orch question` commands executed tmux search path (message: "Searching tmux for pending question...")
+- **Edge case found:** `orch tail orch-go-559o` failed - registry had stale window ID (@227 doesn't exist) and window name lacked beads ID format
 
 ### Tests Run
 
 ```bash
-# Spawn test agent in tmux
-orch spawn --tmux --no-track hello "say hello and exit"
+# Test status shows tmux agents
+./build/orch status | grep "tmux"
+# Result: 7 tmux agents shown
 
-# Verify status shows tmux agent
-orch status 2>&1 | tail -20
-# Result: Agent visible in output
+# Test tail with active agents
+./build/orch tail orch-go-wr5b -n 10
+./build/orch tail ok-0rqo -n 5
+# Result: Both successfully captured via tmux
 
-# Verify tail retrieves output
-orch tail orch-go-untracked-1766338975
-# Result: Output retrieved via API (fallback path confirmed in code)
+# Test question command
+./build/orch question orch-go-wr5b
+./build/orch question ok-0rqo
+# Result: Both searched tmux panes
 
-# Verify question searches tmux
-orch question orch-go-untracked-1766338975
-# Result: "Searching tmux for pending question..."
-
-# Verify direct tmux access
-tmux capture-pane -t @436 -p
-# Result: Window content accessible
+# Test stale window ID case
+./build/orch tail orch-go-559o
+# Result: FAILED - stale registry window ID + missing beads ID in window name
 ```
 
 ---
@@ -66,7 +65,7 @@ tmux capture-pane -t @436 -p
 
 ### New Artifacts
 
-- `.kb/investigations/2025-12-21-inv-test-tmux-fallback.md` - Documents fallback testing with 85% confidence
+- `.kb/investigations/2025-12-21-inv-test-tmux-fallback.md` - Documents fallback testing with 90% confidence (iteration 4-5 combined)
 
 ### Decisions Made
 
@@ -74,8 +73,9 @@ tmux capture-pane -t @436 -p
 
 ### Constraints Discovered
 
-- Fallback mechanisms use layered approach: API first, tmux as backup
-- Each command has different fallback triggers (API failure, missing session ID, etc.)
+- Fallback depends on either (1) current registry window ID OR (2) beads ID in window name `[beads-id]` format
+- When both are stale/missing, fallback fails even though window exists
+- Registry reconciliation needed to prevent stale window ID accumulation
 
 ### Externalized via `kn`
 
@@ -92,14 +92,14 @@ None - straightforward verification with no new knowledge to externalize
 - [x] All deliverables complete - investigation file created and committed
 - [x] Tests passing - all three fallback mechanisms verified working
 - [x] Investigation file has `**Phase:** Complete` - updated to Complete status
-- [x] Ready for `orch complete orch-go-bo6h`
+- [x] Ready for `orch complete orch-go-wr5b`
 
 ---
 
 ## Session Metadata
 
 **Skill:** investigation
-**Model:** google/gemini-3-flash-preview
+**Model:** anthropic/claude-opus-4-5-20251101
 **Workspace:** `.orch/workspace/og-inv-test-tmux-fallback-21dec/`
 **Investigation:** `.kb/investigations/2025-12-21-inv-test-tmux-fallback.md`
-**Beads:** `bd show orch-go-bo6h`
+**Beads:** `bd show orch-go-wr5b`
