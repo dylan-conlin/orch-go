@@ -34,19 +34,19 @@ Guidelines:
 
 ---
 
-# Investigation: Test tmux fallback mechanism (Iterations 4-5)
+# Investigation: Test tmux fallback mechanism (Iterations 4-5, 9)
 
 **Question:** Does the tmux fallback mechanism work correctly for `orch tail`, `orch question`, and `orch status` commands?
 
 **Started:** 2025-12-21
-**Updated:** 2025-12-21 (Iteration 5 completed)
+**Updated:** 2025-12-21 (Iteration 9 completed)
 **Owner:** opencode
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
 **Confidence:** High (90%)
 
-**Context:** This investigation combines iteration 4 (initial verification) and iteration 5 (edge case discovery). The fallback was implemented in investigation 2025-12-21-inv-add-tmux-fallback-orch-status.md to ensure agents running in tmux are visible/debuggable even if missing from registry or OpenCode API.
+**Context:** This investigation combines iteration 4 (initial verification), iteration 5 (edge case discovery), and iteration 9 (regression testing). The fallback was implemented in investigation 2025-12-21-inv-add-tmux-fallback-orch-status.md to ensure agents running in tmux are visible/debuggable even if missing from registry or OpenCode API.
 
 ---
 
@@ -146,6 +146,28 @@ Guidelines:
 
 ---
 
+### Finding 6: (Iteration 9) Regression test confirms fallback stability
+
+**Evidence:**
+
+- Ran iteration 9 regression tests on 2025-12-21
+- `orch tail orch-go-smjj -n 15` successfully used tmux fallback: "via tmux workers-orch-go:6"
+- `orch tail orch-go-bo6h -n 10` successfully used tmux fallback: "via tmux workers-orch-go:7"  
+- `orch question orch-go-bo6h` successfully searched tmux: "Searching tmux for pending question..."
+- `orch status` displayed multiple tmux agents including orch-go-559o, orch-go-qncq, orch-go-untrack...
+
+**Source:**
+
+- Command: `./build/orch tail orch-go-smjj -n 15`
+- Command: `./build/orch tail orch-go-bo6h -n 10`
+- Command: `./build/orch question orch-go-bo6h`
+- Command: `./build/orch status 2>&1 | grep -E "tmux"`
+- Windows tested: @431, @432 (both with beads ID in name format)
+
+**Significance:** Regression test confirms the tmux fallback mechanisms remain functional after implementation; all three commands continue to work correctly
+
+---
+
 ## Synthesis
 
 **Key Insights:**
@@ -159,6 +181,8 @@ Guidelines:
 4. **Iteration 5 confirmed actual tmux fallback usage** - Successfully triggered pure tmux fallback with `orch tail orch-go-smjj` showing "via tmux workers-orch-go:6" output (Finding 4).
 
 5. **Edge case discovered: dual dependency failure** - Fallback fails when BOTH registry window ID is stale AND window name lacks beads ID (Finding 5); successful fallback requires at least one valid path.
+
+6. **Iteration 9 confirms stability** - Regression testing demonstrates fallback mechanisms remain functional; all three commands continue to work correctly without degradation (Finding 6).
 
 **Answer to Investigation Question:**
 
@@ -203,7 +227,24 @@ The fallback provides resilience - agents remain visible and debuggable even if 
 - ✅ `orch question orch-go-559o` searched tmux successfully (iteration 5)
 - ✅ Direct tmux capture confirmed window content is accessible (iteration 4)
 
-**Conclusion from tests:** All three fallback mechanisms are operational with one edge case: tail fallback requires either current registry window ID OR beads ID in window name format.
+**Iteration 9 Test:** Regression testing to verify fallback stability after implementation
+
+**Test Steps:**
+
+1. Ran `./build/orch status` to verify tmux agent visibility
+2. Tested tail fallback on agent with beads ID: `./build/orch tail orch-go-smjj -n 15`
+3. Tested tail fallback on second agent: `./build/orch tail orch-go-bo6h -n 10`
+4. Tested question fallback: `./build/orch question orch-go-bo6h`
+5. Verified status shows multiple tmux agents
+
+**Results:**
+
+- ✅ `orch tail orch-go-smjj -n 15` used tmux fallback: "via tmux workers-orch-go:6" (iteration 9)
+- ✅ `orch tail orch-go-bo6h -n 10` used tmux fallback: "via tmux workers-orch-go:7" (iteration 9)
+- ✅ `orch question orch-go-bo6h` searched tmux: "Searching tmux for pending question..." (iteration 9)
+- ✅ `orch status` displayed multiple tmux agents including orch-go-559o, orch-go-qncq (iteration 9)
+
+**Conclusion from tests:** All three fallback mechanisms are operational with one edge case: tail fallback requires either current registry window ID OR beads ID in window name format. Regression testing confirms stability.
 
 ---
 
