@@ -1150,6 +1150,32 @@ func runComplete(beadsID string) error {
 		}
 	}
 
+	// Update registry to mark agent as completed BEFORE closing beads issue
+	// This ensures registry state is updated first, preventing inconsistent state
+	reg, err := registry.New("")
+	if err != nil {
+		return fmt.Errorf("failed to open registry: %w", err)
+	}
+
+	agent := reg.Find(beadsID)
+	if agent == nil {
+		// Agent not found in registry - this is a warning, not a fatal error
+		// The beads issue can still be closed, but registry won't be updated
+		fmt.Fprintf(os.Stderr, "Warning: agent %s not found in registry (may have been cleaned already)\n", beadsID)
+	} else {
+		// Mark agent as completed in registry
+		if !reg.Complete(agent.ID) {
+			// Complete() returns false if agent is not active (already completed/abandoned/deleted)
+			fmt.Fprintf(os.Stderr, "Warning: agent %s is not active in registry (status: %s)\n", agent.ID, agent.Status)
+		} else {
+			// Save registry after successful completion
+			if err := reg.Save(); err != nil {
+				return fmt.Errorf("failed to save registry: %w", err)
+			}
+			fmt.Printf("Updated registry: marked %s as completed\n", agent.ID)
+		}
+	}
+
 	// Close the beads issue if not already closed
 	if !isClosed {
 		if err := verify.CloseIssue(beadsID, reason); err != nil {
@@ -1158,20 +1184,6 @@ func runComplete(beadsID string) error {
 		fmt.Printf("Closed beads issue: %s\n", beadsID)
 	}
 	fmt.Printf("Reason: %s\n", reason)
-
-	// Update registry to mark agent as completed
-	reg, err := registry.New("")
-	if err == nil {
-		agent := reg.Find(beadsID)
-		if agent != nil {
-			// Mark agent as completed in registry
-			if reg.Complete(agent.ID) {
-				if err := reg.Save(); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
-				}
-			}
-		}
-	}
 
 	// Log the completion
 	logger := events.NewLogger(events.DefaultLogPath())
