@@ -7,3 +7,8 @@ orch-go
 # IDE
 .idea/
 .vscode/
+
+# Web UI (SvelteKit)
+web/node_modules/
+web/.svelte-kit/
+web/build/
