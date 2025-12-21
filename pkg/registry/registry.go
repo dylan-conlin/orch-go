@@ -385,6 +385,34 @@ func (r *Registry) ListActive() []*Agent {
 	return result
 }
 
+// ListCompleted returns only completed agents (not active, abandoned, or deleted).
+func (r *Registry) ListCompleted() []*Agent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*Agent, 0)
+	for _, a := range r.agents {
+		if a.Status == StateCompleted {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
+// ListCleanable returns agents that can be cleaned (completed or abandoned).
+func (r *Registry) ListCleanable() []*Agent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*Agent, 0)
+	for _, a := range r.agents {
+		if a.Status == StateCompleted || a.Status == StateAbandoned {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
 // Abandon marks an agent as abandoned.
 // Returns true if agent was found and abandoned, false otherwise.
 func (r *Registry) Abandon(agentID string) bool {
@@ -396,6 +424,24 @@ func (r *Registry) Abandon(agentID string) bool {
 			now := time.Now().Format(TimeFormat)
 			a.Status = StateAbandoned
 			a.AbandonedAt = now
+			a.UpdatedAt = now
+			return true
+		}
+	}
+	return false
+}
+
+// Complete marks an agent as completed.
+// Returns true if agent was found and marked completed, false otherwise.
+func (r *Registry) Complete(agentID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, a := range r.agents {
+		if a.ID == agentID && a.Status == StateActive {
+			now := time.Now().Format(TimeFormat)
+			a.Status = StateCompleted
+			a.CompletedAt = now
 			a.UpdatedAt = now
 			return true
 		}
@@ -421,8 +467,14 @@ func (r *Registry) Remove(agentID string) bool {
 	return false
 }
 
+// HeadlessWindowID is the special window ID marker for headless spawns.
+// Headless agents don't have a tmux window and are tracked via SSE events.
+const HeadlessWindowID = "headless"
+
 // Reconcile updates agent status based on active tmux windows.
 // Agents whose windows are no longer active are marked as completed.
+// Headless agents (window_id='headless') are never reconciled via tmux - they
+// are tracked via SSE events instead.
 func (r *Registry) Reconcile(activeWindowIDs []string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -436,6 +488,10 @@ func (r *Registry) Reconcile(activeWindowIDs []string) int {
 	now := time.Now().Format(TimeFormat)
 
 	for _, a := range r.agents {
+		// Skip headless agents - they're tracked via SSE, not tmux
+		if a.WindowID == HeadlessWindowID {
+			continue
+		}
 		if a.Status == StateActive && a.WindowID != "" {
 			if !activeSet[a.WindowID] {
 				a.Status = StateCompleted

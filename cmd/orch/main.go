@@ -79,6 +79,7 @@ var (
 	spawnMode              string
 	spawnValidation        string
 	spawnInline            bool   // Run inline (blocking) instead of in tmux
+	spawnHeadless          bool   // Run headless (via HTTP API, no TUI)
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright")
@@ -92,6 +93,7 @@ var spawnCmd = &cobra.Command{
 
 By default, spawns the agent in a tmux window and returns immediately.
 Use --inline to run in the current terminal (blocking).
+Use --headless to spawn via HTTP API without a TUI (for automation).
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
@@ -101,6 +103,7 @@ Examples:
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
   orch-go spawn --inline investigation "explore codebase"  # Run inline (blocking)
+  orch-go spawn --headless investigation "explore codebase"  # Run headless (HTTP API)
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"  # Skip beads tracking
@@ -111,7 +114,7 @@ Examples:
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline)
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnHeadless)
 	},
 }
 
@@ -121,6 +124,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) instead of in tmux")
+	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (no TUI, for automation)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
@@ -491,10 +495,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline)
+	return runSpawnWithSkill(serverURL, skillName, task, inline, false)
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline, headless bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -567,9 +571,12 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Decide spawn mode: tmux (default) or inline
-	useTmux := !inline && tmux.IsAvailable()
+	// Decide spawn mode: headless > inline > tmux (default)
+	if headless {
+		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
 
+	useTmux := !inline && tmux.IsAvailable()
 	if useTmux {
 		return runSpawnInTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
@@ -801,6 +808,85 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	fmt.Printf("  Session ID: %s\n", result.SessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	if cfg.MCP != "" {
+		fmt.Printf("  MCP:        %s\n", cfg.MCP)
+	}
+	if cfg.NoTrack {
+		fmt.Printf("  Tracking:   disabled (--no-track)\n")
+	}
+	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+
+	return nil
+}
+
+// runSpawnHeadless spawns the agent via HTTP API without a TUI.
+// This is useful for automation and daemon-driven spawns.
+// The agent is registered with window_id='headless' for tracking.
+func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+	client := opencode.NewClient(serverURL)
+
+	// Create session via HTTP API
+	sessionResp, err := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir)
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Send the prompt to start the agent
+	if err := client.SendPrompt(sessionResp.ID, minimalPrompt); err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
+	}
+
+	// Register agent in persistent registry with window_id='headless'
+	reg, err := registry.New("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to open registry: %v\n", err)
+	} else {
+		agent := &registry.Agent{
+			ID:         cfg.WorkspaceName,
+			BeadsID:    beadsID,
+			WindowID:   registry.HeadlessWindowID, // Special marker for headless spawns
+			ProjectDir: cfg.ProjectDir,
+			Skill:      skillName,
+		}
+		if err := reg.Register(agent); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to register agent: %v\n", err)
+		} else if err := reg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+		}
+	}
+
+	// Log the session creation
+	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"session_id":          sessionResp.ID,
+		"spawn_mode":          "headless",
+		"model":               cfg.Model,
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	if cfg.MCP != "" {
+		eventData["mcp"] = cfg.MCP
+	}
+	event := events.Event{
+		Type:      "session.spawned",
+		SessionID: sessionResp.ID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Print spawn summary
+	fmt.Printf("Spawned agent (headless):\n")
+	fmt.Printf("  Session ID: %s\n", sessionResp.ID)
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Model:      %s\n", cfg.Model)
 	if cfg.MCP != "" {
 		fmt.Printf("  MCP:        %s\n", cfg.MCP)
 	}

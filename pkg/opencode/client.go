@@ -2,10 +2,12 @@ package opencode
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 )
 
@@ -17,6 +19,13 @@ type Client struct {
 // NewClient creates a new OpenCode client.
 func NewClient(serverURL string) *Client {
 	return &Client{ServerURL: serverURL}
+}
+
+func (c *Client) getOpencodeBin() string {
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		return bin
+	}
+	return "opencode"
 }
 
 // ParseEvent parses a JSON event from opencode output.
@@ -122,7 +131,7 @@ func (c *Client) BuildSpawnCommand(prompt, title string) *exec.Cmd {
 		"--title", title,
 		prompt,
 	}
-	return exec.Command("opencode", args...)
+	return exec.Command(c.getOpencodeBin(), args...)
 }
 
 // BuildAskCommand builds the opencode ask command.
@@ -134,7 +143,30 @@ func (c *Client) BuildAskCommand(sessionID, prompt string) *exec.Cmd {
 		"--format", "json",
 		prompt,
 	}
-	return exec.Command("opencode", args...)
+	return exec.Command(c.getOpencodeBin(), args...)
+}
+
+// SendMessageAsync sends a message to an existing session asynchronously.
+func (c *Client) SendMessageAsync(sessionID, content string) error {
+	payload := map[string]any{
+		"parts": []map[string]string{{"type": "text", "text": content}},
+		"agent": "build",
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.Post(c.ServerURL+"/session/"+sessionID+"/prompt_async", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // ListSessions fetches all sessions from the OpenCode API.
@@ -175,4 +207,54 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 	}
 
 	return &session, nil
+}
+
+// CreateSessionRequest represents the request body for creating a new session.
+type CreateSessionRequest struct {
+	Title     string `json:"title,omitempty"`
+	Directory string `json:"directory,omitempty"`
+}
+
+// CreateSessionResponse represents the response from creating a new session.
+type CreateSessionResponse struct {
+	ID        string `json:"id"`
+	Title     string `json:"title,omitempty"`
+	Directory string `json:"directory,omitempty"`
+}
+
+// CreateSession creates a new OpenCode session via HTTP API.
+// This is used for headless spawns (no tmux window).
+func (c *Client) CreateSession(title, directory string) (*CreateSessionResponse, error) {
+	payload := CreateSessionRequest{
+		Title:     title,
+		Directory: directory,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resp, err := http.Post(c.ServerURL+"/session", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result CreateSessionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// SendPrompt sends a prompt to a session via HTTP API (async).
+// This is used for headless spawns to send the initial prompt.
+func (c *Client) SendPrompt(sessionID, prompt string) error {
+	return c.SendMessageAsync(sessionID, prompt)
 }

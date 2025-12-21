@@ -638,6 +638,153 @@ func TestNewWithEmptyPath(t *testing.T) {
 	}
 }
 
+// TestListCompleted verifies ListCompleted returns only completed agents.
+func TestListCompleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Create agents with different statuses
+	agent1 := &Agent{ID: "agent-1", WindowID: "@100"}
+	agent2 := &Agent{ID: "agent-2", WindowID: "@200"}
+	agent3 := &Agent{ID: "agent-3", WindowID: "@300"}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent3); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// agent-1 stays active
+	// agent-2 gets reconciled to completed (window closed)
+	reg.Reconcile([]string{"@100", "@300"}) // @200 is missing, so agent-2 is completed
+	// agent-3 gets abandoned
+	reg.Abandon("agent-3")
+
+	// ListCompleted should only return agent-2
+	completed := reg.ListCompleted()
+	if len(completed) != 1 {
+		t.Errorf("expected 1 completed agent, got %d", len(completed))
+	}
+	if len(completed) > 0 && completed[0].ID != "agent-2" {
+		t.Errorf("expected agent-2, got %s", completed[0].ID)
+	}
+}
+
+// TestListCleanable verifies ListCleanable returns completed and abandoned agents.
+func TestListCleanable(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Create agents with different statuses
+	agent1 := &Agent{ID: "agent-1", WindowID: "@100"}
+	agent2 := &Agent{ID: "agent-2", WindowID: "@200"}
+	agent3 := &Agent{ID: "agent-3", WindowID: "@300"}
+	agent4 := &Agent{ID: "agent-4", WindowID: "@400"}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent3); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent4); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// agent-1 stays active
+	// agent-2 gets reconciled to completed
+	reg.Reconcile([]string{"@100", "@300", "@400"}) // @200 missing -> completed
+	// agent-3 gets abandoned
+	reg.Abandon("agent-3")
+	// agent-4 gets deleted
+	reg.Remove("agent-4")
+
+	// ListCleanable should return agent-2 (completed) and agent-3 (abandoned)
+	cleanable := reg.ListCleanable()
+	if len(cleanable) != 2 {
+		t.Errorf("expected 2 cleanable agents, got %d", len(cleanable))
+	}
+
+	ids := make(map[string]bool)
+	for _, a := range cleanable {
+		ids[a.ID] = true
+	}
+
+	if !ids["agent-2"] {
+		t.Error("expected agent-2 to be cleanable (completed)")
+	}
+	if !ids["agent-3"] {
+		t.Error("expected agent-3 to be cleanable (abandoned)")
+	}
+	if ids["agent-1"] {
+		t.Error("agent-1 (active) should not be cleanable")
+	}
+	if ids["agent-4"] {
+		t.Error("agent-4 (deleted) should not be cleanable")
+	}
+}
+
+// TestReconcileIgnoresHeadlessAgents verifies reconcile skips headless agents.
+// Headless agents are tracked via SSE events, not tmux windows.
+func TestReconcileIgnoresHeadlessAgents(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Agent with tmux window
+	agent1 := &Agent{ID: "tmux-agent", WindowID: "@100"}
+	// Headless agent
+	agent2 := &Agent{ID: "headless-agent", WindowID: HeadlessWindowID}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register tmux agent: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register headless agent: %v", err)
+	}
+
+	// Reconcile with no active windows
+	count := reg.Reconcile([]string{})
+
+	// Only the tmux agent should be reconciled
+	if count != 1 {
+		t.Errorf("expected 1 completed (tmux agent), got %d", count)
+	}
+
+	// tmux-agent should be completed
+	found1 := reg.Find("tmux-agent")
+	if found1.Status != StateCompleted {
+		t.Errorf("expected tmux-agent status completed, got %s", found1.Status)
+	}
+
+	// headless-agent should still be active (SSE tracks it)
+	found2 := reg.Find("headless-agent")
+	if found2.Status != StateActive {
+		t.Errorf("expected headless-agent status active, got %s", found2.Status)
+	}
+}
+
 // TestLoadNonExistentFile verifies loading a non-existent file creates empty registry.
 func TestLoadNonExistentFile(t *testing.T) {
 	tmpDir := t.TempDir()
