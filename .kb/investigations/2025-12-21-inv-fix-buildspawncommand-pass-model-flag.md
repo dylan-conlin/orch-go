@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** BuildSpawnCommand now passes --model flag to opencode CLI when model is provided, fixing inline spawns to respect user's --model choice.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tests pass for both with-model and without-model cases; implementation follows pattern from BuildOpencodeAttachCommand.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Inline spawns (via BuildSpawnCommand) were silently ignoring cfg.Model parameter because it wasn't passed to opencode CLI.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** None - fix is complete and tested.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (95%) - Simple fix, well-tested, follows existing patterns.
 
 <!--
 Example D.E.K.N.:
@@ -34,49 +34,49 @@ Guidelines:
 
 ---
 
-# Investigation: [Investigation Title]
+# Investigation: Fix BuildSpawnCommand to Pass Model Flag
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How do we fix BuildSpawnCommand to pass the --model flag to opencode CLI so inline spawns respect user's model choice?
 
-**Started:** [YYYY-MM-DD]
-**Updated:** [YYYY-MM-DD]
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
+**Started:** 2025-12-21
+**Updated:** 2025-12-21
+**Owner:** Agent og-feat-fix-buildspawncommand-pass-21dec
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (95%)
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: BuildSpawnCommand signature needed model parameter
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Function signature was `BuildSpawnCommand(prompt, title string)` with no model parameter, even though spawn.Config has Model field.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/opencode/client.go:128
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Without model parameter, there was no way to pass user's model choice to opencode CLI.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Caller had cfg.Model available but couldn't pass it
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** runSpawnInline function in cmd/orch/main.go:765 had access to `cfg.Model` but BuildSpawnCommand didn't accept it.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** cmd/orch/main.go:765
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The model was being resolved correctly in orch-go but lost when spawning opencode.
+
+---
+
+### Finding 3: Pattern exists in BuildOpencodeAttachCommand
+
+**Evidence:** BuildOpencodeAttachCommand in pkg/tmux/tmux.go:99-100 shows correct pattern: conditionally add --model flag only when model is not empty.
+
+**Source:** Investigation file .kb/investigations/2025-12-21-inv-model-handling-conflicts-between-orch.md (Finding 4)
+
+**Significance:** Provided clear implementation pattern to follow - consistency across spawn modes.
 
 ---
 
@@ -84,45 +84,44 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Simple fix with clear pattern** - The fix required adding a model parameter to BuildSpawnCommand signature and conditionally appending --model flag when model is not empty (Finding 3 pattern).
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **TDD workflow validated approach** - Writing failing tests first (RED) revealed the exact change needed, then implementing to make tests pass (GREEN) confirmed correctness.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Consistency across spawn modes** - By following BuildOpencodeAttachCommand pattern, inline spawns now handle --model flag the same way as tmux spawns (consistency).
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Fixed BuildSpawnCommand by: (1) Adding model parameter to function signature, (2) Conditionally appending --model flag when model is not empty, (3) Updating caller to pass cfg.Model. Tests verify both with-model and without-model cases. Implementation follows existing pattern from BuildOpencodeAttachCommand for consistency.
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** High (95%)
 
 **Why this level?**
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+Simple fix with comprehensive tests covering both cases (with and without model). Implementation follows established pattern from BuildOpencodeAttachCommand. All related tests pass.
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ BuildSpawnCommand now accepts model parameter and passes --model flag when provided (verified via tests)
+- ✅ Tests cover both cases: with model (flag included) and without model (flag omitted)
+- ✅ Pattern matches BuildOpencodeAttachCommand for consistency (verified via code review)
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ Runtime behavior not tested (only unit tests, no actual spawn execution verification)
+- ⚠️ TestFindRecentSession failure exists but is pre-existing (verified via git checkout HEAD~2)
 
-**What would increase confidence to [next level]:**
+**What would increase confidence to Very High (95%+):**
 
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
+- Runtime test: `orch spawn --inline investigation "test" --model sonnet` and verify Sonnet is used
+- Integration test: Verify opencode CLI actually receives and uses the --model flag
 
 **Confidence levels guide:**
+
 - **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
 - **High (80-94%):** Solid evidence, minor uncertainties, confident to act
 - **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
@@ -131,103 +130,89 @@ Guidelines:
 
 ---
 
-## Implementation Recommendations
+## Test Performed
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Test 1: Write failing test for --model flag (RED)**
 
-### Recommended Approach ⭐
+```bash
+# Added TestBuildSpawnCommandWithModel and TestBuildSpawnCommandWithoutModel
+go test ./pkg/opencode -v -run TestBuildSpawnCommand
+```
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Result:** Tests failed with "too many arguments" - confirmed function signature needed model parameter.
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+**Test 2: Implement fix and verify tests pass (GREEN)**
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+```bash
+# Modified BuildSpawnCommand to accept model param and add --model flag conditionally
+# Updated caller to pass cfg.Model
+go test ./pkg/opencode -v -run TestBuildSpawnCommand
+```
 
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+**Result:** All 3 tests pass (TestBuildSpawnCommand, TestBuildSpawnCommandWithModel, TestBuildSpawnCommandWithoutModel).
 
-### Alternative Approaches Considered
+**Test 3: Regression check - verify no other tests broke**
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+```bash
+go test ./... 2>&1 | tail -20
+```
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**Result:** No new failures. TestFindRecentSession fails but verified as pre-existing via `git checkout HEAD~2`.
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+
+- pkg/opencode/client.go:127-137 - BuildSpawnCommand function that needed modification
+- pkg/opencode/client_test.go:142-210 - Tests for BuildSpawnCommand
+- cmd/orch/main.go:765 - Caller that needed to pass cfg.Model
+- pkg/spawn/config.go:40 - Verified Model field exists in spawn.Config
 
 **Commands Run:**
-```bash
-# [Command description]
-[command]
 
-# [Command description]
-[command]
+```bash
+# Verify tests fail before fix (RED)
+go test ./pkg/opencode -v -run TestBuildSpawnCommand
+
+# Verify tests pass after fix (GREEN)
+go test ./pkg/opencode -v -run TestBuildSpawnCommand
+
+# Regression check
+go test ./...
+
+# Verify pre-existing test failure
+git checkout HEAD~2 && go test ./pkg/opencode -v -run TestFindRecentSession
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+
+- **Investigation:** .kb/investigations/2025-12-21-inv-model-handling-conflicts-between-orch.md - Root cause investigation that identified this bug
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-21 10:00:** Investigation started
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+- Initial question: How do we fix BuildSpawnCommand to pass --model flag?
+- Context: Following TDD approach to fix bug identified in investigation .kb/investigations/2025-12-21-inv-model-handling-conflicts-between-orch.md
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-21 10:15:** TDD RED phase - Failing tests written
+
+- Added TestBuildSpawnCommandWithModel and TestBuildSpawnCommandWithoutModel
+- Tests fail as expected (function doesn't accept model param yet)
+
+**2025-12-21 10:25:** TDD GREEN phase - Implementation complete
+
+- Modified BuildSpawnCommand signature to accept model parameter
+- Added conditional --model flag logic
+- Updated caller to pass cfg.Model
+- All tests pass
+
+**2025-12-21 10:30:** Investigation completed
+
+- Final confidence: High (95%)
+- Status: Complete
+- Key outcome: BuildSpawnCommand now passes --model flag to opencode CLI, inline spawns respect user's model choice
