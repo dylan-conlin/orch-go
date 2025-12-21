@@ -282,13 +282,13 @@ func TestAbandonReturnsFalseForNonActive(t *testing.T) {
 		t.Fatalf("failed to create registry: %v", err)
 	}
 
-	agent := &Agent{ID: "agent-1", WindowID: "@100"}
+	agent := &Agent{ID: "agent-1", SessionID: "ses_123"}
 	if err := reg.Register(agent); err != nil {
 		t.Fatalf("failed to register: %v", err)
 	}
 
-	// Reconcile to mark as completed
-	reg.Reconcile([]string{}) // No active windows
+	// Mark as completed
+	reg.Complete("agent-1")
 
 	// Can't abandon a completed agent
 	if reg.Abandon("agent-1") {
@@ -359,75 +359,6 @@ func TestDeleteReturnsFalseForUnknown(t *testing.T) {
 
 	if reg.Remove("nonexistent") {
 		t.Error("expected Remove to return false for unknown agent")
-	}
-}
-
-// TestReconcileCompletesAgentsWithClosedWindows verifies reconcile behavior.
-func TestReconcileCompletesAgentsWithClosedWindows(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := New(path)
-	if err != nil {
-		t.Fatalf("failed to create registry: %v", err)
-	}
-
-	agent1 := &Agent{ID: "agent-1", WindowID: "@100"}
-	agent2 := &Agent{ID: "agent-2", WindowID: "@200"}
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("failed to register: %v", err)
-	}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("failed to register: %v", err)
-	}
-
-	// Window @100 closed, @200 still open
-	count := reg.Reconcile([]string{"@200"})
-
-	if count != 1 {
-		t.Errorf("expected 1 completed, got %d", count)
-	}
-
-	found1 := reg.Find("agent-1")
-	if found1.Status != StateCompleted {
-		t.Errorf("expected agent-1 status completed, got %s", found1.Status)
-	}
-	if found1.CompletedAt == "" {
-		t.Error("expected completed_at to be set")
-	}
-
-	found2 := reg.Find("agent-2")
-	if found2.Status != StateActive {
-		t.Errorf("expected agent-2 status active, got %s", found2.Status)
-	}
-}
-
-// TestReconcileIgnoresAgentsWithoutWindowID verifies agents without window_id aren't affected.
-func TestReconcileIgnoresAgentsWithoutWindowID(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := New(path)
-	if err != nil {
-		t.Fatalf("failed to create registry: %v", err)
-	}
-
-	// Agent without window_id (e.g., inline spawn)
-	agent := &Agent{ID: "agent-1", WindowID: ""}
-	if err := reg.Register(agent); err != nil {
-		t.Fatalf("failed to register: %v", err)
-	}
-
-	// Reconcile with no active windows
-	count := reg.Reconcile([]string{})
-
-	if count != 0 {
-		t.Errorf("expected 0 completed (no window_id), got %d", count)
-	}
-
-	found := reg.Find("agent-1")
-	if found.Status != StateActive {
-		t.Errorf("expected status active, got %s", found.Status)
 	}
 }
 
@@ -554,15 +485,15 @@ func TestMergePreservesNewerUpdatedAt(t *testing.T) {
 	// Small delay to ensure timestamp difference
 	time.Sleep(20 * time.Millisecond)
 
-	// First instance modifies (reconcile to mark completed)
-	reg1.Reconcile([]string{}) // Mark completed
+	// First instance modifies (mark completed)
+	reg1.Complete("merge-test")
 	if err := reg1.Save(); err != nil {
-		t.Fatalf("failed to save after reconcile: %v", err)
+		t.Fatalf("failed to save after complete: %v", err)
 	}
 
 	newerUpdated := reg1.Find("merge-test").UpdatedAt
 	if newerUpdated <= originalUpdated {
-		t.Error("expected newer timestamp after reconcile")
+		t.Error("expected newer timestamp after complete")
 	}
 
 	// Second instance tries to save stale data
@@ -664,8 +595,8 @@ func TestListCompleted(t *testing.T) {
 	}
 
 	// agent-1 stays active
-	// agent-2 gets reconciled to completed (window closed)
-	reg.Reconcile([]string{"@100", "@300"}) // @200 is missing, so agent-2 is completed
+	// agent-2 gets completed
+	reg.Complete("agent-2")
 	// agent-3 gets abandoned
 	reg.Abandon("agent-3")
 
@@ -709,8 +640,8 @@ func TestListCleanable(t *testing.T) {
 	}
 
 	// agent-1 stays active
-	// agent-2 gets reconciled to completed
-	reg.Reconcile([]string{"@100", "@300", "@400"}) // @200 missing -> completed
+	// agent-2 gets completed
+	reg.Complete("agent-2")
 	// agent-3 gets abandoned
 	reg.Abandon("agent-3")
 	// agent-4 gets deleted
@@ -741,47 +672,10 @@ func TestListCleanable(t *testing.T) {
 	}
 }
 
-// TestReconcileIgnoresHeadlessAgents verifies reconcile skips headless agents.
-// Headless agents are tracked via SSE events, not tmux windows.
-func TestReconcileIgnoresHeadlessAgents(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := New(path)
-	if err != nil {
-		t.Fatalf("failed to create registry: %v", err)
-	}
-
-	// Agent with tmux window
-	agent1 := &Agent{ID: "tmux-agent", WindowID: "@100"}
-	// Headless agent
-	agent2 := &Agent{ID: "headless-agent", WindowID: HeadlessWindowID}
-
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("failed to register tmux agent: %v", err)
-	}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("failed to register headless agent: %v", err)
-	}
-
-	// Reconcile with no active windows
-	count := reg.Reconcile([]string{})
-
-	// Only the tmux agent should be reconciled
-	if count != 1 {
-		t.Errorf("expected 1 completed (tmux agent), got %d", count)
-	}
-
-	// tmux-agent should be completed
-	found1 := reg.Find("tmux-agent")
-	if found1.Status != StateCompleted {
-		t.Errorf("expected tmux-agent status completed, got %s", found1.Status)
-	}
-
-	// headless-agent should still be active (SSE tracks it)
-	found2 := reg.Find("headless-agent")
-	if found2.Status != StateActive {
-		t.Errorf("expected headless-agent status active, got %s", found2.Status)
+// TestHeadlessWindowIDConstant verifies the headless window ID marker.
+func TestHeadlessWindowIDConstant(t *testing.T) {
+	if HeadlessWindowID != "headless" {
+		t.Errorf("expected HeadlessWindowID to be 'headless', got %s", HeadlessWindowID)
 	}
 }
 

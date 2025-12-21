@@ -124,19 +124,17 @@ func buildSpawnCmd() *cobra.Command {
 		Short: "Spawn a new OpenCode session with skill context",
 		Long: `Spawn a new OpenCode session with skill context.
 
-By default, spawns the agent in a tmux window and returns immediately.
-Use --inline to run in the current terminal (blocking).
-Use --headless to spawn via HTTP API without a TUI (for automation).
+By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
+Use --inline to run in the current terminal (blocking with TUI).
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
 Examples:
-  orch-go spawn investigation "explore the codebase"
+  orch-go spawn investigation "explore the codebase"           # Default: headless
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
-  orch-go spawn --inline investigation "explore codebase"
-  orch-go spawn --headless investigation "explore codebase"
+  orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
   orch-go spawn --model opus investigation "explore the codebase"
   orch-go spawn --model flash investigation "explore the codebase"
   orch-go spawn --no-track investigation "exploratory work"
@@ -149,8 +147,7 @@ Examples:
 	cmd.Flags().String("phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	cmd.Flags().String("mode", "tdd", "Implementation mode: tdd or direct")
 	cmd.Flags().String("validation", "tests", "Validation level: none, tests, smoke-test")
-	cmd.Flags().Bool("inline", false, "Run inline (blocking) instead of in tmux")
-	cmd.Flags().Bool("headless", false, "Run headless via HTTP API (no TUI, for automation)")
+	cmd.Flags().Bool("inline", false, "Run inline (blocking) with TUI")
 	cmd.Flags().String("model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	cmd.Flags().Bool("no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	cmd.Flags().String("mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
@@ -241,12 +238,12 @@ The skill is automatically determined from the issue type:
 The issue description becomes the task prompt for the spawned agent.
 
 Examples:
-  orch-go work proj-123           # Start work on issue proj-123 in tmux
-  orch-go work proj-123 --inline  # Start work inline (blocking)`,
+  orch-go work proj-123           # Start work headlessly (default)
+  orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
 		Run: noopRun,
 	}
 
-	cmd.Flags().Bool("inline", false, "Run inline (blocking) instead of in tmux")
+	cmd.Flags().Bool("inline", false, "Run inline (blocking) with TUI")
 
 	return cmd
 }
@@ -290,11 +287,10 @@ agents to work on them. It tracks active agents and respects concurrency limits.
 func buildTailCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tail [beads-id]",
-		Short: "Capture recent output from an agent's tmux window",
-		Long: `Capture recent output from an agent's tmux window for debugging stuck agents.
+		Short: "Capture recent output from an agent",
+		Long: `Capture recent output from an agent for debugging.
 
-Finds the tmux window associated with the beads issue ID and captures
-the last N lines of output.
+Fetches messages from the OpenCode API for the agent's session.
 
 Examples:
   orch-go tail proj-123              # Capture last 50 lines (default)
@@ -311,15 +307,15 @@ Examples:
 func buildQuestionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "question [beads-id]",
-		Short: "Extract pending question from an agent's tmux window",
-		Long: `Extract pending question from an agent's tmux window.
+		Short: "Extract pending question from an agent's session",
+		Long: `Extract pending question from an agent's session.
 
-Finds the tmux window associated with the beads issue ID and extracts
+Finds the OpenCode session associated with the beads issue ID and extracts
 any pending question the agent is asking. Useful for monitoring agents
 that are blocked waiting for user input.
 
 Examples:
-  orch-go question proj-123  # Extract question from agent's window`,
+  orch-go question proj-123  # Extract question from agent's session`,
 		Run: noopRun,
 	}
 }
@@ -328,7 +324,7 @@ func buildAbandonCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "abandon [beads-id]",
 		Short: "Abandon a stuck or frozen agent",
-		Long: `Abandon an agent by killing its tmux window and marking it abandoned in the registry.
+		Long: `Abandon an agent and mark it abandoned in the registry.
 
 Use this command for stuck or frozen agents that are not responding.
 The agent's beads issue is NOT closed - you can restart work with 'orch work'.
@@ -342,22 +338,18 @@ Examples:
 func buildCleanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
-		Short: "Remove completed agents and close their tmux windows",
-		Long: `Remove completed and abandoned agents from the registry and close their tmux windows.
+		Short: "Remove completed agents from the registry",
+		Long: `Remove completed and abandoned agents from the registry.
 
 By default, only cleans agents that are marked as completed or abandoned in the registry.
-Use --all to also reconcile the registry with active tmux windows first (marking agents
-whose windows have closed as completed).
 
 Examples:
   orch-go clean              # Clean completed/abandoned agents
-  orch-go clean --dry-run    # Show what would be cleaned
-  orch-go clean --all        # Reconcile with tmux first, then clean`,
+  orch-go clean --dry-run    # Show what would be cleaned`,
 		Run: noopRun,
 	}
 
 	cmd.Flags().Bool("dry-run", false, "Show what would be cleaned without making changes")
-	cmd.Flags().Bool("all", false, "Reconcile with active tmux windows first")
 
 	return cmd
 }

@@ -57,9 +57,9 @@ func TestRunCleanWithCompletedAgents(t *testing.T) {
 	}
 
 	// agent-1 stays active
-	// agent-2 gets completed via reconcile
+	// agent-2 gets completed
 	// agent-3 gets abandoned
-	reg.Reconcile([]string{"@100", "@300"}) // @200 missing -> completed
+	reg.Complete("agent-2")
 	reg.Abandon("agent-3")
 
 	// ListCleanable should return agent-2 and agent-3
@@ -101,11 +101,11 @@ func TestRunCleanDryRun(t *testing.T) {
 	}
 
 	// Register and complete an agent
-	agent := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", WindowID: "@100"}
+	agent := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_123"}
 	if err := reg.Register(agent); err != nil {
 		t.Fatalf("Failed to register: %v", err)
 	}
-	reg.Reconcile([]string{}) // Mark completed
+	reg.Complete("agent-1")
 	if err := reg.Save(); err != nil {
 		t.Fatalf("Failed to save: %v", err)
 	}
@@ -126,8 +126,8 @@ func TestRunCleanDryRun(t *testing.T) {
 	}
 }
 
-// TestRunCleanReconcileFirst verifies --all reconciles before cleaning.
-func TestRunCleanReconcileFirst(t *testing.T) {
+// TestCompleteMarksForClean verifies Complete marks agents as cleanable.
+func TestCompleteMarksForClean(t *testing.T) {
 	tmpDir := t.TempDir()
 	registryPath := filepath.Join(tmpDir, "registry.json")
 
@@ -138,8 +138,8 @@ func TestRunCleanReconcileFirst(t *testing.T) {
 	}
 
 	// Register active agents
-	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", WindowID: "@100"}
-	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", WindowID: "@200"}
+	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_100"}
+	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", SessionID: "ses_200"}
 
 	if err := reg.Register(agent1); err != nil {
 		t.Fatalf("Failed to register agent-1: %v", err)
@@ -154,17 +154,13 @@ func TestRunCleanReconcileFirst(t *testing.T) {
 		t.Errorf("Expected 0 cleanable agents initially, got %d", len(cleanable))
 	}
 
-	// Simulate --all behavior: reconcile with active window IDs
-	// Only @100 is active, @200 is not
-	completedCount := reg.Reconcile([]string{"@100"})
-	if completedCount != 1 {
-		t.Errorf("Expected 1 completed via reconcile, got %d", completedCount)
-	}
+	// Complete agent-2
+	reg.Complete("agent-2")
 
 	// Now agent-2 should be cleanable
 	cleanable = reg.ListCleanable()
 	if len(cleanable) != 1 {
-		t.Errorf("Expected 1 cleanable agent after reconcile, got %d", len(cleanable))
+		t.Errorf("Expected 1 cleanable agent after complete, got %d", len(cleanable))
 	}
 	if cleanable[0].ID != "agent-2" {
 		t.Errorf("Expected agent-2 to be cleanable, got %s", cleanable[0].ID)
@@ -305,7 +301,6 @@ func TestCleanCommandIntegration(t *testing.T) {
 	}
 
 	// This is a placeholder for a more comprehensive integration test
-	// that would actually run the clean command against a real registry
-	// and tmux session.
-	t.Skip("Integration test not implemented - requires tmux session setup")
+	// that would actually run the clean command against a real registry.
+	t.Skip("Integration test not implemented - requires agent setup")
 }

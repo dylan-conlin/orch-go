@@ -1,12 +1,12 @@
 // Package registry provides persistent agent tracking for orch-go.
 //
-// This is a minimal registry for tmux window management that stores:
-// - Agent ID (workspace name) <-> window_id mapping
+// This is a minimal registry for agent management that stores:
+// - Agent ID (workspace name) <-> session_id mapping
 // - Basic agent metadata (beads_id for lifecycle tracking)
 // - Status tracking (active, completed, abandoned, deleted)
 //
 // Beads is the source of truth for detailed agent state and lifecycle.
-// This registry exists primarily for tmux operations (clean, wait, abandon).
+// This registry provides local agent tracking for CLI operations.
 package registry
 
 import (
@@ -469,42 +469,8 @@ func (r *Registry) Remove(agentID string) bool {
 }
 
 // HeadlessWindowID is the special window ID marker for headless spawns.
-// Headless agents don't have a tmux window and are tracked via SSE events.
+// This is used to identify agents spawned via HTTP API (without a terminal/TUI).
 const HeadlessWindowID = "headless"
-
-// Reconcile updates agent status based on active tmux windows.
-// Agents whose windows are no longer active are marked as completed.
-// Headless agents (window_id='headless') are never reconciled via tmux - they
-// are tracked via SSE events instead.
-func (r *Registry) Reconcile(activeWindowIDs []string) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	activeSet := make(map[string]bool)
-	for _, wid := range activeWindowIDs {
-		activeSet[wid] = true
-	}
-
-	completedCount := 0
-	now := time.Now().Format(TimeFormat)
-
-	for _, a := range r.agents {
-		// Skip headless agents - they're tracked via SSE, not tmux
-		if a.WindowID == HeadlessWindowID {
-			continue
-		}
-		if a.Status == StateActive && a.WindowID != "" {
-			if !activeSet[a.WindowID] {
-				a.Status = StateCompleted
-				a.CompletedAt = now
-				a.UpdatedAt = now
-				completedCount++
-			}
-		}
-	}
-
-	return completedCount
-}
 
 // SaveSkipMerge saves without merging (used for delete operations).
 func (r *Registry) SaveSkipMerge() error {

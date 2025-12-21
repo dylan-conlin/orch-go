@@ -2,7 +2,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +17,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -80,8 +78,6 @@ var (
 	spawnMode              string
 	spawnValidation        string
 	spawnInline            bool   // Run inline (blocking) instead of headless
-	spawnTmux              bool   // Run in tmux window (opt-in, deprecated default)
-	spawnHeadless          bool   // DEPRECATED: Run headless (now the default)
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright")
@@ -95,7 +91,6 @@ var spawnCmd = &cobra.Command{
 
 By default, spawns the agent headlessly via HTTP API (no TUI) and returns immediately.
 Use --inline to run in the current terminal (blocking with TUI).
-Use --tmux to spawn in a tmux window (deprecated, was previous default).
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
@@ -105,7 +100,6 @@ Examples:
   orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
   orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
-  orch-go spawn --tmux investigation "explore codebase"        # Run in tmux window
   orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
@@ -116,7 +110,7 @@ Examples:
 		skillName := args[0]
 		task := strings.Join(args[1:], " ")
 
-		return runSpawnWithSkill(serverURL, skillName, task, spawnInline, spawnTmux)
+		return runSpawnWithSkill(serverURL, skillName, task, spawnInline)
 	},
 }
 
@@ -126,14 +120,10 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
-	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in, was previous default)")
-	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "DEPRECATED: Headless is now the default; this flag is a no-op")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
-	// Mark --headless as deprecated
-	spawnCmd.Flags().MarkDeprecated("headless", "headless is now the default spawn mode; this flag is a no-op")
 }
 
 var askCmd = &cobra.Command{
@@ -176,27 +166,15 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
-var (
-	// Status command flags
-	statusJSON bool
-)
-
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show swarm status and active agents",
-	Long: `Show swarm status including active/queued/completed agent counts,
-per-account usage percentages, and individual agent details.
+	Short: "List active OpenCode sessions",
+	Long: `List all active OpenCode sessions with their status.
 
-Examples:
-  orch-go status              # Show swarm status with agent details
-  orch-go status --json       # Output as JSON for scripting`,
+Shows session ID, workspace/title, directory, and last update time.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStatus(serverURL)
 	},
-}
-
-func init() {
-	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON for scripting")
 }
 
 var (
@@ -232,7 +210,6 @@ func init() {
 var (
 	// Work command flags
 	workInline bool // Run inline (blocking) with TUI
-	workTmux   bool // Run in tmux window (opt-in)
 )
 
 var workCmd = &cobra.Command{
@@ -250,22 +227,19 @@ The issue description becomes the task prompt for the spawned agent.
 
 By default, spawns headlessly via HTTP API (no TUI).
 Use --inline to run in the current terminal (blocking with TUI).
-Use --tmux to spawn in a tmux window.
 
 Examples:
   orch-go work proj-123           # Start work headlessly (default)
-  orch-go work proj-123 --inline  # Start work inline (blocking TUI)
-  orch-go work proj-123 --tmux    # Start work in tmux window`,
+  orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runWork(serverURL, beadsID, workInline, workTmux)
+		return runWork(serverURL, beadsID, workInline)
 	},
 }
 
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
-	workCmd.Flags().BoolVar(&workTmux, "tmux", false, "Run in tmux window (opt-in)")
 }
 
 var (
@@ -278,11 +252,7 @@ var tailCmd = &cobra.Command{
 	Short: "Capture recent output from an agent",
 	Long: `Capture recent output from an agent for debugging.
 
-For headless agents (default spawn mode), fetches messages via OpenCode API.
-For tmux agents (--tmux spawn mode), captures from the tmux window.
-
-The command automatically detects which mode the agent is running in
-and uses the appropriate method.
+Fetches messages from the OpenCode API for the agent's session.
 
 Examples:
   orch-go tail proj-123              # Capture last 50 lines (default)
@@ -300,30 +270,17 @@ func init() {
 }
 
 func runTail(beadsID string, lines int) error {
-	// First, try to find the agent in the registry
+	// Find the agent in the registry
 	reg, err := registry.New("")
 	if err != nil {
 		return fmt.Errorf("failed to open registry: %w", err)
 	}
 
 	agent := reg.Find(beadsID)
-
-	// If agent is found and is headless, use OpenCode API
-	if agent != nil && agent.WindowID == registry.HeadlessWindowID {
-		return runTailFromAPI(agent, lines)
+	if agent == nil {
+		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
 	}
 
-	// If agent has a session ID but no window, try API first
-	if agent != nil && agent.SessionID != "" && agent.WindowID == "" {
-		return runTailFromAPI(agent, lines)
-	}
-
-	// Fall back to tmux for agents with windows
-	return runTailFromTmux(beadsID, lines)
-}
-
-// runTailFromAPI fetches recent output from an agent via OpenCode API.
-func runTailFromAPI(agent *registry.Agent, lines int) error {
 	if agent.SessionID == "" {
 		return fmt.Errorf("agent %s has no session ID - cannot fetch via API", agent.ID)
 	}
@@ -345,50 +302,8 @@ func runTailFromAPI(agent *registry.Agent, lines int) error {
 	textLines := opencode.ExtractRecentText(messages, lines)
 
 	// Print the captured output
-	fmt.Printf("=== Output from %s (last %d lines, via API) ===\n", agent.ID, lines)
+	fmt.Printf("=== Output from %s (last %d lines) ===\n", agent.ID, lines)
 	for _, line := range textLines {
-		fmt.Println(line)
-	}
-	fmt.Printf("=== End of output ===\n")
-
-	return nil
-}
-
-// runTailFromTmux fetches recent output from an agent's tmux window.
-func runTailFromTmux(beadsID string, lines int) error {
-	// Get current directory to determine project name
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
-	}
-	projectName := filepath.Base(projectDir)
-
-	// Get workers session name for this project
-	sessionName := tmux.GetWorkersSessionName(projectName)
-
-	// Check if session exists
-	if !tmux.SessionExists(sessionName) {
-		return fmt.Errorf("no workers session found for project %s (expected: %s)", projectName, sessionName)
-	}
-
-	// Find window by beads ID
-	window, err := tmux.FindWindowByBeadsID(sessionName, beadsID)
-	if err != nil {
-		return fmt.Errorf("failed to find window: %w", err)
-	}
-	if window == nil {
-		return fmt.Errorf("no window found for beads ID: %s", beadsID)
-	}
-
-	// Capture lines from the window
-	output, err := tmux.CaptureLines(window.Target, lines)
-	if err != nil {
-		return fmt.Errorf("failed to capture output: %w", err)
-	}
-
-	// Print the captured output
-	fmt.Printf("=== Output from %s (last %d lines) ===\n", window.Name, lines)
-	for _, line := range output {
 		fmt.Println(line)
 	}
 	fmt.Printf("=== End of output ===\n")
@@ -398,15 +313,15 @@ func runTailFromTmux(beadsID string, lines int) error {
 
 var questionCmd = &cobra.Command{
 	Use:   "question [beads-id]",
-	Short: "Extract pending question from an agent's tmux window",
-	Long: `Extract pending question from an agent's tmux window.
+	Short: "Extract pending question from an agent's session",
+	Long: `Extract pending question from an agent's session.
 
-Finds the tmux window associated with the beads issue ID and extracts
+Finds the OpenCode session associated with the beads issue ID and extracts
 any pending question the agent is asking. Useful for monitoring agents
 that are blocked waiting for user input.
 
 Examples:
-  orch-go question proj-123  # Extract question from agent's window`,
+  orch-go question proj-123  # Extract question from agent's session`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
@@ -415,35 +330,36 @@ Examples:
 }
 
 func runQuestion(beadsID string) error {
-	// Get current directory to determine project name
-	projectDir, err := os.Getwd()
+	// Find agent in registry
+	reg, err := registry.New("")
 	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
-	}
-	projectName := filepath.Base(projectDir)
-
-	// Get workers session name for this project
-	sessionName := tmux.GetWorkersSessionName(projectName)
-
-	// Check if session exists
-	if !tmux.SessionExists(sessionName) {
-		return fmt.Errorf("no workers session found for project %s (expected: %s)", projectName, sessionName)
+		return fmt.Errorf("failed to open registry: %w", err)
 	}
 
-	// Find window by beads ID
-	window, err := tmux.FindWindowByBeadsID(sessionName, beadsID)
+	agent := reg.Find(beadsID)
+	if agent == nil {
+		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
+	}
+
+	if agent.SessionID == "" {
+		return fmt.Errorf("agent %s has no session ID - cannot extract question", agent.ID)
+	}
+
+	// Fetch recent messages from the session
+	client := opencode.NewClient(serverURL)
+	messages, err := client.GetMessages(agent.SessionID)
 	if err != nil {
-		return fmt.Errorf("failed to find window: %w", err)
-	}
-	if window == nil {
-		return fmt.Errorf("no window found for beads ID: %s", beadsID)
+		return fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	// Capture pane content (full visible content)
-	content, err := tmux.GetPaneContent(window.Target)
-	if err != nil {
-		return fmt.Errorf("failed to capture pane content: %w", err)
+	if len(messages) == 0 {
+		fmt.Println("No messages found in session")
+		return nil
 	}
+
+	// Extract recent text content from messages to search for questions
+	textLines := opencode.ExtractRecentText(messages, 100)
+	content := strings.Join(textLines, "\n")
 
 	// Extract question from content
 	q := question.Extract(content)
@@ -459,7 +375,7 @@ func runQuestion(beadsID string) error {
 var abandonCmd = &cobra.Command{
 	Use:   "abandon [beads-id]",
 	Short: "Abandon a stuck or frozen agent",
-	Long: `Abandon an agent by killing its tmux window and marking it abandoned in the registry.
+	Long: `Abandon an agent and mark it abandoned in the registry.
 
 Use this command for stuck or frozen agents that are not responding.
 The agent's beads issue is NOT closed - you can restart work with 'orch work'.
@@ -489,16 +405,6 @@ func runAbandon(beadsID string) error {
 	// Check if already abandoned or completed
 	if agent.Status != registry.StateActive {
 		return fmt.Errorf("agent %s is not active (status: %s)", agent.ID, agent.Status)
-	}
-
-	// Kill the tmux window if it has one
-	if agent.WindowID != "" {
-		if err := tmux.KillWindowByID(agent.WindowID); err != nil {
-			// Window might already be gone, just warn
-			fmt.Fprintf(os.Stderr, "Warning: could not kill window %s: %v\n", agent.WindowID, err)
-		} else {
-			fmt.Printf("Killed tmux window: %s\n", agent.Window)
-		}
 	}
 
 	// Mark agent as abandoned in registry
@@ -554,7 +460,7 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 	}
 }
 
-func runWork(serverURL, beadsID string, inline, useTmux bool) error {
+func runWork(serverURL, beadsID string, inline bool) error {
 	// Get issue details
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
@@ -578,10 +484,10 @@ func runWork(serverURL, beadsID string, inline, useTmux bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline, useTmux)
+	return runSpawnWithSkill(serverURL, skillName, task, inline)
 }
 
-func runSpawnWithSkill(serverURL, skillName, task string, inline, useTmux bool) error {
+func runSpawnWithSkill(serverURL, skillName, task string, inline bool) error {
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -654,169 +560,14 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline, useTmux bool) 
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Decide spawn mode: inline > tmux (opt-in) > headless (default)
+	// Spawn mode: inline (blocking with TUI) or headless (HTTP API, no TUI)
 	if inline {
 		// Inline mode (blocking) - run in current terminal with TUI
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
-	if useTmux && tmux.IsAvailable() {
-		// Tmux mode (opt-in) - spawn in tmux window
-		return runSpawnInTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
-	}
-
 	// Default: Headless mode - spawn via HTTP API (no TUI)
 	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
-}
-
-// runSpawnInTmux spawns the agent in a tmux window using standalone mode.
-// This matches Python orch-cli's approach (spawn.py:959-1032):
-// 1. Start opencode in standalone mode (no prompt arg)
-// 2. Wait for TUI to be ready
-// 3. Type prompt via send-keys
-// 4. Send Enter to submit
-func runSpawnInTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
-	// Ensure workers session exists
-	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
-	if err != nil {
-		return fmt.Errorf("failed to ensure workers session: %w", err)
-	}
-
-	// Build window name
-	windowName := tmux.BuildWindowName(cfg.WorkspaceName, skillName, beadsID)
-
-	// Create window
-	windowTarget, windowID, err := tmux.CreateWindow(sessionName, windowName, cfg.ProjectDir)
-	if err != nil {
-		return fmt.Errorf("failed to create window: %w", err)
-	}
-
-	// Build opencode command using standalone mode
-	// Standalone mode: opencode {project_dir} --model {model}
-	// Prompt is typed into TUI after it's ready (more reliable than CLI arg)
-	standaloneCfg := &tmux.StandaloneConfig{
-		ProjectDir: cfg.ProjectDir,
-		Model:      cfg.Model,
-	}
-	opencodeCmd := tmux.BuildStandaloneCommand(standaloneCfg)
-
-	// Set ORCH_WORKER env var to signal hooks this is a worker session
-	// This prevents the orchestrator skill from being injected
-	envExport := "export ORCH_WORKER=true && "
-
-	// Pass through common API keys if set in environment
-	keys := []string{"GOOGLE_GENERATIVE_AI_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GOOGLE_GEMINI_API_SCS", "GOOGLE_GEMINI_SCS_DEV"}
-	for _, k := range keys {
-		if v := os.Getenv(k); v != "" {
-			envExport += fmt.Sprintf("export %s='%s' && ", k, v)
-			// Map aliases to expected names for OpenCode
-			if (k == "GOOGLE_GEMINI_API_SCS" || k == "GOOGLE_GEMINI_SCS_DEV") && os.Getenv("GOOGLE_GENERATIVE_AI_API_KEY") == "" {
-				envExport += fmt.Sprintf("export GOOGLE_GENERATIVE_AI_API_KEY='%s' && ", v)
-			}
-		}
-	}
-
-	// If using Gemini, ensure we don't have a stale Anthropic key in the window
-	if strings.Contains(cfg.Model, "gemini") {
-		envExport += "unset ANTHROPIC_API_KEY && "
-	} else if v := os.Getenv("ANTHROPIC_API_KEY"); v != "" {
-		envExport += fmt.Sprintf("export ANTHROPIC_API_KEY='%s' && ", v)
-	}
-
-	fullCmd := envExport + opencodeCmd
-
-	// Send the command to the tmux window
-	if err := tmux.SendKeysLiteral(windowTarget, fullCmd); err != nil {
-		return fmt.Errorf("failed to send command: %w", err)
-	}
-
-	// Send Enter to execute the command
-	if err := tmux.SendEnter(windowTarget); err != nil {
-		return fmt.Errorf("failed to send enter: %w", err)
-	}
-
-	// Wait for OpenCode TUI to be ready, then send the prompt
-	// This is the key difference from the old approach - we wait for TUI
-	// and then type the prompt, rather than passing it as a CLI arg
-	waitCfg := tmux.DefaultWaitConfig()
-	sendCfg := tmux.DefaultSendPromptConfig()
-
-	if err := tmux.SendPromptAfterReady(windowTarget, minimalPrompt, waitCfg, sendCfg); err != nil {
-		// Log warning but don't fail - agent may still work
-		fmt.Fprintf(os.Stderr, "Warning: failed to send prompt after TUI ready: %v\n", err)
-		fmt.Fprintf(os.Stderr, "You may need to manually enter the prompt in the tmux window\n")
-	}
-
-	// Verify window still exists after waiting (it may have crashed)
-	if !tmux.WindowExists(windowTarget) {
-		return fmt.Errorf("window %s closed unexpectedly - OpenCode may have crashed", windowTarget)
-	}
-
-	// Select the window to focus it
-	_ = tmux.SelectWindow(windowTarget)
-
-	// Register agent in persistent registry
-
-	reg, err := registry.New("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to open registry: %v\n", err)
-	} else {
-		agent := &registry.Agent{
-			ID:         cfg.WorkspaceName,
-			BeadsID:    beadsID,
-			WindowID:   windowID,
-			Window:     windowTarget,
-			ProjectDir: cfg.ProjectDir,
-			Skill:      skillName,
-		}
-		if err := reg.Register(agent); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to register agent: %v\n", err)
-		} else if err := reg.Save(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
-		}
-	}
-
-	// Log the session creation
-	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"skill":               skillName,
-		"task":                task,
-		"workspace":           cfg.WorkspaceName,
-		"beads_id":            beadsID,
-		"window":              windowTarget,
-		"window_id":           windowID,
-		"spawn_mode":          "tmux",
-		"model":               cfg.Model,
-		"no_track":            cfg.NoTrack,
-		"skip_artifact_check": cfg.SkipArtifactCheck,
-	}
-	if cfg.MCP != "" {
-		eventData["mcp"] = cfg.MCP
-	}
-	event := events.Event{
-		Type:      "session.spawned",
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
-	}
-
-	// Print spawn summary
-	fmt.Printf("Spawned agent:\n")
-	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
-	fmt.Printf("  Window:     %s\n", windowTarget)
-	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	fmt.Printf("  Model:      %s\n", cfg.Model)
-	if cfg.MCP != "" {
-		fmt.Printf("  MCP:        %s\n", cfg.MCP)
-	}
-	if cfg.NoTrack {
-		fmt.Printf("  Tracking:   disabled (--no-track)\n")
-	}
-	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
-
-	return nil
 }
 
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
@@ -1053,250 +804,36 @@ func runSend(serverURL, sessionID, message string) error {
 	return nil
 }
 
-// SwarmStatus represents aggregate swarm information.
-type SwarmStatus struct {
-	Active    int `json:"active"`
-	Queued    int `json:"queued"`
-	Completed int `json:"completed_today"`
-}
-
-// AccountUsage represents usage info for a single account.
-type AccountUsage struct {
-	Name        string  `json:"name"`
-	Email       string  `json:"email,omitempty"`
-	UsedPercent float64 `json:"used_percent"`
-	ResetTime   string  `json:"reset_time,omitempty"`
-	IsActive    bool    `json:"is_active"`
-}
-
-// AgentInfo represents information about an active agent.
-type AgentInfo struct {
-	SessionID string `json:"session_id"`
-	BeadsID   string `json:"beads_id,omitempty"`
-	Skill     string `json:"skill,omitempty"`
-	Account   string `json:"account,omitempty"`
-	Runtime   string `json:"runtime"`
-	Title     string `json:"title,omitempty"`
-}
-
-// StatusOutput represents the full status output for JSON serialization.
-type StatusOutput struct {
-	Swarm    SwarmStatus    `json:"swarm"`
-	Accounts []AccountUsage `json:"accounts"`
-	Agents   []AgentInfo    `json:"agents"`
-}
-
 func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
-
-	// Fetch sessions from OpenCode
 	sessions, err := client.ListSessions()
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
-	// Open registry to get agent metadata
-	reg, regErr := registry.New("")
-	if regErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not open registry: %v\n", regErr)
-	}
-
-	// Get active agents from registry for metadata
-	var regAgents []*registry.Agent
-	if reg != nil {
-		regAgents = reg.ListActive()
-	}
-
-	// Build agent lookup by session ID
-	agentBySession := make(map[string]*registry.Agent)
-	for _, a := range regAgents {
-		if a.SessionID != "" {
-			agentBySession[a.SessionID] = a
-		}
-	}
-
-	// Build agents list
-	now := time.Now()
-	agents := make([]AgentInfo, 0, len(sessions))
-	for _, s := range sessions {
-		agent := AgentInfo{
-			SessionID: s.ID,
-			Title:     s.Title,
-		}
-
-		// Calculate runtime from session creation
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		runtime := now.Sub(createdAt)
-		agent.Runtime = formatDuration(runtime)
-
-		// Enrich with registry metadata if available
-		if regAgent, ok := agentBySession[s.ID]; ok {
-			agent.BeadsID = regAgent.BeadsID
-			agent.Skill = regAgent.Skill
-		}
-
-		agents = append(agents, agent)
-	}
-
-	// Count completed today from registry
-	completedToday := 0
-	if reg != nil {
-		today := time.Now().Truncate(24 * time.Hour)
-		for _, a := range reg.ListCompleted() {
-			if a.CompletedAt != "" {
-				completedTime, err := time.Parse(registry.TimeFormat, a.CompletedAt)
-				if err == nil && completedTime.After(today) {
-					completedToday++
-				}
-			}
-		}
-	}
-
-	// Build swarm status
-	swarm := SwarmStatus{
-		Active:    len(sessions),
-		Queued:    0, // TODO: implement queuing system
-		Completed: completedToday,
-	}
-
-	// Fetch account usage information
-	accounts := getAccountUsage()
-
-	// Build output
-	output := StatusOutput{
-		Swarm:    swarm,
-		Accounts: accounts,
-		Agents:   agents,
-	}
-
-	// Output as JSON if flag is set
-	if statusJSON {
-		data, err := json.MarshalIndent(output, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal JSON: %w", err)
-		}
-		fmt.Println(string(data))
+	if len(sessions) == 0 {
+		fmt.Println("No active sessions")
 		return nil
 	}
 
-	// Print human-readable output
-	printSwarmStatus(output)
+	// Print table header
+	fmt.Printf("%-35s %-30s %-40s %s\n", "SESSION ID", "TITLE", "DIRECTORY", "UPDATED")
+	fmt.Printf("%s\n", strings.Repeat("-", 130))
+
+	// Print each session
+	for _, s := range sessions {
+		// Format updated time
+		updated := time.Unix(s.Time.Updated/1000, 0).Format("2006-01-02 15:04:05")
+
+		// Truncate long fields
+		title := truncate(s.Title, 28)
+		dir := truncate(s.Directory, 38)
+
+		fmt.Printf("%-35s %-30s %-40s %s\n", s.ID, title, dir, updated)
+	}
+
+	fmt.Printf("\nTotal: %d sessions\n", len(sessions))
 	return nil
-}
-
-// getAccountUsage fetches usage info for all configured accounts.
-func getAccountUsage() []AccountUsage {
-	var accounts []AccountUsage
-
-	// Get current account usage
-	currentUsage := usage.FetchUsage()
-	if currentUsage.Error == "" && currentUsage.SevenDay != nil {
-		current := AccountUsage{
-			Name:        "current",
-			Email:       currentUsage.Email,
-			UsedPercent: currentUsage.SevenDay.Utilization,
-			IsActive:    true,
-		}
-		if currentUsage.SevenDay.ResetsAt != nil {
-			current.ResetTime = currentUsage.SevenDay.TimeUntilReset()
-		}
-		accounts = append(accounts, current)
-	}
-
-	// Try to get saved accounts info (without switching)
-	cfg, err := account.LoadConfig()
-	if err == nil {
-		for name, acc := range cfg.Accounts {
-			if acc.Source == "saved" {
-				// Check if this is the current account (by email match)
-				isCurrentAccount := false
-				for i := range accounts {
-					if accounts[i].Email == acc.Email {
-						accounts[i].Name = name // Update name to the saved account name
-						isCurrentAccount = true
-						break
-					}
-				}
-				if !isCurrentAccount {
-					// Add as a saved account (no live usage data without switching)
-					accounts = append(accounts, AccountUsage{
-						Name:     name,
-						Email:    acc.Email,
-						IsActive: false,
-					})
-				}
-			}
-		}
-	}
-
-	return accounts
-}
-
-// printSwarmStatus prints the swarm status in human-readable format.
-func printSwarmStatus(output StatusOutput) {
-	// Print swarm summary
-	fmt.Println("SWARM STATUS")
-	fmt.Printf("  Active:    %d\n", output.Swarm.Active)
-	if output.Swarm.Queued > 0 {
-		fmt.Printf("  Queued:    %d\n", output.Swarm.Queued)
-	}
-	fmt.Printf("  Completed: %d (today)\n", output.Swarm.Completed)
-	fmt.Println()
-
-	// Print account usage
-	if len(output.Accounts) > 0 {
-		fmt.Println("ACCOUNTS")
-		for _, acc := range output.Accounts {
-			activeMarker := ""
-			if acc.IsActive {
-				activeMarker = " *"
-			}
-			usageStr := "N/A"
-			if acc.UsedPercent > 0 || acc.IsActive {
-				usageStr = fmt.Sprintf("%.0f%% used", acc.UsedPercent)
-				if acc.ResetTime != "" {
-					usageStr += fmt.Sprintf(" (resets in %s)", acc.ResetTime)
-				}
-			}
-			name := acc.Name
-			if acc.Email != "" && acc.Name == "current" {
-				name = acc.Email
-			}
-			fmt.Printf("  %-20s %s%s\n", name+":", usageStr, activeMarker)
-		}
-		fmt.Println()
-	}
-
-	// Print active agents table
-	if len(output.Agents) > 0 {
-		fmt.Println("ACTIVE AGENTS")
-		fmt.Printf("  %-35s %-15s %-20s %-10s %s\n", "SESSION ID", "BEADS ID", "SKILL", "ACCOUNT", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 90))
-
-		for _, agent := range output.Agents {
-			beadsID := agent.BeadsID
-			if beadsID == "" {
-				beadsID = "-"
-			}
-			skill := agent.Skill
-			if skill == "" {
-				skill = "-"
-			}
-			accountName := agent.Account
-			if accountName == "" {
-				accountName = "-"
-			}
-
-			fmt.Printf("  %-35s %-15s %-20s %-10s %s\n",
-				truncate(agent.SessionID, 33),
-				truncate(beadsID, 13),
-				truncate(skill, 18),
-				truncate(accountName, 8),
-				agent.Runtime)
-		}
-	} else {
-		fmt.Println("No active agents")
-	}
 }
 
 func runComplete(beadsID string) error {
@@ -1371,20 +908,11 @@ func runComplete(beadsID string) error {
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
-	// Clean up tmux window and registry
+	// Update registry to mark agent as completed
 	reg, err := registry.New("")
 	if err == nil {
 		agent := reg.Find(beadsID)
 		if agent != nil {
-			// Kill the tmux window if it has one
-			if agent.WindowID != "" {
-				if err := tmux.KillWindowByID(agent.WindowID); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: could not kill window %s: %v\n", agent.WindowID, err)
-				} else {
-					fmt.Printf("Closed tmux window: %s\n", agent.Window)
-				}
-			}
-
 			// Mark agent as completed in registry
 			if reg.Complete(agent.ID) {
 				if err := reg.Save(); err != nil {
@@ -1439,63 +967,32 @@ func runMonitor(serverURL string) error {
 var (
 	// Clean command flags
 	cleanDryRun bool
-	cleanAll    bool
 )
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Remove completed agents and close their tmux windows",
-	Long: `Remove completed and abandoned agents from the registry and close their tmux windows.
+	Short: "Remove completed agents from the registry",
+	Long: `Remove completed and abandoned agents from the registry.
 
 By default, only cleans agents that are marked as completed or abandoned in the registry.
-Use --all to also reconcile the registry with active tmux windows first (marking agents
-whose windows have closed as completed).
 
 Examples:
   orch-go clean              # Clean completed/abandoned agents
-  orch-go clean --dry-run    # Show what would be cleaned
-  orch-go clean --all        # Reconcile with tmux first, then clean`,
+  orch-go clean --dry-run    # Show what would be cleaned`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanAll)
+		return runClean(cleanDryRun)
 	},
 }
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Reconcile with active tmux windows first")
 }
 
-func runClean(dryRun, reconcileFirst bool) error {
-	// Get current directory to determine project name
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
-	}
-	projectName := filepath.Base(projectDir)
-
+func runClean(dryRun bool) error {
 	// Open registry
 	reg, err := registry.New("")
 	if err != nil {
 		return fmt.Errorf("failed to open registry: %w", err)
-	}
-
-	// Optionally reconcile with tmux first
-	if reconcileFirst {
-		sessionName := tmux.GetWorkersSessionName(projectName)
-		if tmux.SessionExists(sessionName) {
-			activeIDs, err := tmux.ListWindowIDs(sessionName)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to list tmux windows: %v\n", err)
-			} else {
-				completedCount := reg.Reconcile(activeIDs)
-				if completedCount > 0 {
-					fmt.Printf("Reconciled: %d agents marked as completed (windows closed)\n", completedCount)
-					if err := reg.Save(); err != nil {
-						return fmt.Errorf("failed to save registry after reconcile: %w", err)
-					}
-				}
-			}
-		}
 	}
 
 	// Get cleanable agents (completed or abandoned)
@@ -1506,39 +1003,20 @@ func runClean(dryRun, reconcileFirst bool) error {
 		return nil
 	}
 
-	// Get workers session name for this project
-	sessionName := tmux.GetWorkersSessionName(projectName)
-	sessionExists := tmux.SessionExists(sessionName)
-
 	// Track cleanup stats
-	windowsClosed := 0
 	agentsCleaned := 0
 
 	fmt.Printf("Found %d agents to clean:\n", len(agents))
 
 	for _, agent := range agents {
 		status := string(agent.Status)
-		windowInfo := ""
-		if agent.WindowID != "" {
-			windowInfo = fmt.Sprintf(" (window: %s)", agent.WindowID)
-		}
 
 		if dryRun {
-			fmt.Printf("  [DRY-RUN] Would clean: %s [%s]%s\n", agent.ID, status, windowInfo)
+			fmt.Printf("  [DRY-RUN] Would clean: %s [%s]\n", agent.ID, status)
 			continue
 		}
 
-		fmt.Printf("  Cleaning: %s [%s]%s\n", agent.ID, status, windowInfo)
-
-		// Try to close tmux window if it exists
-		if agent.WindowID != "" && sessionExists {
-			if err := tmux.KillWindowByID(agent.WindowID); err != nil {
-				// Window may already be closed, just log warning
-				fmt.Fprintf(os.Stderr, "    Warning: failed to close window %s: %v\n", agent.WindowID, err)
-			} else {
-				windowsClosed++
-			}
-		}
+		fmt.Printf("  Cleaning: %s [%s]\n", agent.ID, status)
 
 		// Mark agent as deleted in registry
 		if reg.Remove(agent.ID) {
@@ -1556,23 +1034,25 @@ func runClean(dryRun, reconcileFirst bool) error {
 		return fmt.Errorf("failed to save registry: %w", err)
 	}
 
+	// Get current directory for logging
+	projectDir, _ := os.Getwd()
+	projectName := filepath.Base(projectDir)
+
 	// Log the cleanup
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
 		Type:      "agents.cleaned",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"agents_cleaned":  agentsCleaned,
-			"windows_closed":  windowsClosed,
-			"project":         projectName,
-			"reconcile_first": reconcileFirst,
+			"agents_cleaned": agentsCleaned,
+			"project":        projectName,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("\nCleaned %d agents, closed %d windows\n", agentsCleaned, windowsClosed)
+	fmt.Printf("\nCleaned %d agents\n", agentsCleaned)
 	return nil
 }
 
