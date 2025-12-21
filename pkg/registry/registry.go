@@ -415,6 +415,21 @@ func (r *Registry) ListActive() []*Agent {
 	return result
 }
 
+// ActiveCount returns the number of active agents.
+// This is more efficient than len(ListActive()) as it doesn't allocate a slice.
+func (r *Registry) ActiveCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	count := 0
+	for _, a := range r.agents {
+		if a.Status == StateActive {
+			count++
+		}
+	}
+	return count
+}
+
 // ListCompleted returns only completed agents (not active, abandoned, or deleted).
 func (r *Registry) ListCompleted() []*Agent {
 	r.mu.RLock()
@@ -515,12 +530,20 @@ type LivenessChecker interface {
 	SessionExists(sessionID string) bool
 }
 
+// BeadsStatusChecker is an interface for checking beads issue status.
+// This allows for dependency injection in tests.
+type BeadsStatusChecker interface {
+	// IsIssueClosed checks if a beads issue is closed
+	IsIssueClosed(beadsID string) bool
+}
+
 // ReconcileResult holds the results of a reconciliation operation.
 type ReconcileResult struct {
 	Checked   int      // Number of agents checked
 	Abandoned int      // Number of agents marked as abandoned
-	AgentIDs  []string // IDs of agents that were marked as abandoned
-	Details   []string // Human-readable details for each abandonment
+	Completed int      // Number of agents marked as completed (e.g., beads issue closed)
+	AgentIDs  []string // IDs of agents that were marked as abandoned or completed
+	Details   []string // Human-readable details for each status change
 }
 
 // ReconcileActive checks all active agents against tmux and OpenCode for liveness.
@@ -577,6 +600,53 @@ func (r *Registry) ReconcileActive(checker LivenessChecker, dryRun bool) *Reconc
 			if !dryRun {
 				agent.Status = StateAbandoned
 				agent.AbandonedAt = now
+				agent.UpdatedAt = now
+			}
+		}
+	}
+
+	return result
+}
+
+// ReconcileWithBeads checks all active agents with beads IDs against beads issue status.
+// Agents are marked as completed if their beads issue is closed.
+// This complements ReconcileActive by handling the case where `bd close` was called
+// manually, which closes the beads issue but doesn't update the registry.
+//
+// Note: This marks agents as "completed" (not "abandoned") because a closed beads
+// issue indicates deliberate completion, not an orphaned/stuck agent.
+func (r *Registry) ReconcileWithBeads(checker BeadsStatusChecker, dryRun bool) *ReconcileResult {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result := &ReconcileResult{
+		AgentIDs: make([]string, 0),
+		Details:  make([]string, 0),
+	}
+
+	now := time.Now().Format(TimeFormat)
+
+	for _, agent := range r.agents {
+		if agent.Status != StateActive {
+			continue
+		}
+
+		// Only check agents that have a beads ID
+		if agent.BeadsID == "" {
+			continue
+		}
+
+		result.Checked++
+
+		// Check if beads issue is closed
+		if checker.IsIssueClosed(agent.BeadsID) {
+			result.Completed++
+			result.AgentIDs = append(result.AgentIDs, agent.ID)
+			result.Details = append(result.Details, fmt.Sprintf("%s: beads issue %s is closed", agent.ID, agent.BeadsID))
+
+			if !dryRun {
+				agent.Status = StateCompleted
+				agent.CompletedAt = now
 				agent.UpdatedAt = now
 			}
 		}

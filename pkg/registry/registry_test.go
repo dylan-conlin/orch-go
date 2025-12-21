@@ -1055,4 +1055,269 @@ func TestReconcileActiveReturnsDetails(t *testing.T) {
 	}
 }
 
-// Duplicate comment removed - TestAbandonedAgentCanBeRespawned is already defined above
+// TestActiveCountReturnsCorrectCount verifies ActiveCount returns the correct number of active agents.
+func TestActiveCountReturnsCorrectCount(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Initially no agents
+	if count := reg.ActiveCount(); count != 0 {
+		t.Errorf("expected 0 active agents, got %d", count)
+	}
+
+	// Register some agents
+	agent1 := &Agent{ID: "agent-1", WindowID: "@100"}
+	agent2 := &Agent{ID: "agent-2", WindowID: "@200"}
+	agent3 := &Agent{ID: "agent-3", WindowID: "@300"}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+	if err := reg.Register(agent3); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// All three should be active
+	if count := reg.ActiveCount(); count != 3 {
+		t.Errorf("expected 3 active agents, got %d", count)
+	}
+
+	// Complete one, abandon another
+	reg.Complete("agent-1")
+	reg.Abandon("agent-2")
+
+	// Only one should remain active
+	if count := reg.ActiveCount(); count != 1 {
+		t.Errorf("expected 1 active agent after complete/abandon, got %d", count)
+	}
+
+	// Remove the remaining active agent
+	reg.Remove("agent-3")
+
+	// None should be active
+	if count := reg.ActiveCount(); count != 0 {
+		t.Errorf("expected 0 active agents after remove, got %d", count)
+	}
+}
+
+// MockBeadsStatusChecker is a mock implementation of BeadsStatusChecker for testing.
+type MockBeadsStatusChecker struct {
+	ClosedIssues map[string]bool // beads IDs that are "closed"
+}
+
+func NewMockBeadsStatusChecker() *MockBeadsStatusChecker {
+	return &MockBeadsStatusChecker{
+		ClosedIssues: make(map[string]bool),
+	}
+}
+
+func (m *MockBeadsStatusChecker) IsIssueClosed(beadsID string) bool {
+	return m.ClosedIssues[beadsID]
+}
+
+// TestReconcileWithBeadsMarksClosedIssuesAsCompleted verifies that agents with closed beads issues are marked as completed.
+func TestReconcileWithBeadsMarksClosedIssuesAsCompleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agents with beads IDs
+	agent1 := &Agent{ID: "agent-1", BeadsID: "beads-open", WindowID: "@100"}   // issue open
+	agent2 := &Agent{ID: "agent-2", BeadsID: "beads-closed", WindowID: "@200"} // issue closed
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register agent-1: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register agent-2: %v", err)
+	}
+
+	// Mock beads checker: only beads-closed is closed
+	checker := NewMockBeadsStatusChecker()
+	checker.ClosedIssues["beads-closed"] = true
+
+	// Reconcile (not dry-run)
+	result := reg.ReconcileWithBeads(checker, false)
+
+	// Should have checked 2 agents (both have beads IDs)
+	if result.Checked != 2 {
+		t.Errorf("expected 2 checked, got %d", result.Checked)
+	}
+
+	// Should have completed 1 agent (agent-2)
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+
+	// agent-1 should still be active
+	found1 := reg.Find("agent-1")
+	if found1.Status != StateActive {
+		t.Errorf("expected agent-1 to be active, got %s", found1.Status)
+	}
+
+	// agent-2 should be completed (not abandoned)
+	found2 := reg.Find("agent-2")
+	if found2.Status != StateCompleted {
+		t.Errorf("expected agent-2 to be completed, got %s", found2.Status)
+	}
+	if found2.CompletedAt == "" {
+		t.Error("expected agent-2 CompletedAt to be set")
+	}
+}
+
+// TestReconcileWithBeadsSkipsAgentsWithoutBeadsID verifies that agents without beads IDs are skipped.
+func TestReconcileWithBeadsSkipsAgentsWithoutBeadsID(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent without beads ID
+	agent := &Agent{ID: "agent-1", WindowID: "@100"} // No BeadsID
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	checker := NewMockBeadsStatusChecker()
+
+	// Reconcile
+	result := reg.ReconcileWithBeads(checker, false)
+
+	// Should not check agents without beads ID
+	if result.Checked != 0 {
+		t.Errorf("expected 0 checked (no beads ID), got %d", result.Checked)
+	}
+	if result.Completed != 0 {
+		t.Errorf("expected 0 completed, got %d", result.Completed)
+	}
+
+	// Agent should still be active
+	found := reg.Find("agent-1")
+	if found.Status != StateActive {
+		t.Errorf("expected agent-1 to remain active, got %s", found.Status)
+	}
+}
+
+// TestReconcileWithBeadsDryRunDoesNotModify verifies dry-run mode doesn't modify the registry.
+func TestReconcileWithBeadsDryRunDoesNotModify(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with closed beads issue
+	agent := &Agent{ID: "agent-1", BeadsID: "beads-closed", WindowID: "@100"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	checker := NewMockBeadsStatusChecker()
+	checker.ClosedIssues["beads-closed"] = true
+
+	// Reconcile with dry-run
+	result := reg.ReconcileWithBeads(checker, true)
+
+	// Should report 1 completed
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+
+	// But agent should still be active (dry-run doesn't modify)
+	found := reg.Find("agent-1")
+	if found.Status != StateActive {
+		t.Errorf("expected agent-1 to still be active after dry-run, got %s", found.Status)
+	}
+}
+
+// TestReconcileWithBeadsReturnsDetails verifies the result includes human-readable details.
+func TestReconcileWithBeadsReturnsDetails(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	agent := &Agent{ID: "agent-1", BeadsID: "beads-closed", WindowID: "@100"}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	checker := NewMockBeadsStatusChecker()
+	checker.ClosedIssues["beads-closed"] = true
+
+	result := reg.ReconcileWithBeads(checker, false)
+
+	if len(result.AgentIDs) != 1 || result.AgentIDs[0] != "agent-1" {
+		t.Errorf("expected AgentIDs=['agent-1'], got %v", result.AgentIDs)
+	}
+	if len(result.Details) != 1 {
+		t.Errorf("expected 1 detail, got %d", len(result.Details))
+	}
+}
+
+// TestReconcileWithBeadsSkipsNonActiveAgents verifies that only active agents are checked.
+func TestReconcileWithBeadsSkipsNonActiveAgents(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agents
+	agent1 := &Agent{ID: "agent-1", BeadsID: "beads-1", WindowID: "@100"}
+	agent2 := &Agent{ID: "agent-2", BeadsID: "beads-2", WindowID: "@200"}
+	agent3 := &Agent{ID: "agent-3", BeadsID: "beads-3", WindowID: "@300"}
+
+	if err := reg.Register(agent1); err != nil {
+		t.Fatalf("failed to register agent-1: %v", err)
+	}
+	if err := reg.Register(agent2); err != nil {
+		t.Fatalf("failed to register agent-2: %v", err)
+	}
+	if err := reg.Register(agent3); err != nil {
+		t.Fatalf("failed to register agent-3: %v", err)
+	}
+
+	// Mark agent-1 as completed, agent-2 as abandoned
+	reg.Complete("agent-1")
+	reg.Abandon("agent-2")
+
+	// All issues are closed
+	checker := NewMockBeadsStatusChecker()
+	checker.ClosedIssues["beads-1"] = true
+	checker.ClosedIssues["beads-2"] = true
+	checker.ClosedIssues["beads-3"] = true
+
+	// Reconcile
+	result := reg.ReconcileWithBeads(checker, false)
+
+	// Should only check agent-3 (the only active one)
+	if result.Checked != 1 {
+		t.Errorf("expected 1 checked (only active agent), got %d", result.Checked)
+	}
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+}

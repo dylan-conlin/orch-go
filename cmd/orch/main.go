@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,6 +145,9 @@ func runVersionSource() {
 	}
 }
 
+// DefaultMaxAgents is the default maximum number of concurrent agents.
+const DefaultMaxAgents = 5
+
 var (
 	// Spawn command flags
 	spawnSkill             string
@@ -158,6 +162,7 @@ var (
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright")
 	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
+	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
 )
 
 var spawnCmd = &cobra.Command{
@@ -169,6 +174,11 @@ By default, spawns the agent in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
 Use --headless for automation/scripting (no TUI, fire-and-forget).
 Use --attach to spawn in tmux and attach immediately.
+
+Concurrency Limiting:
+  By default, limits concurrent agents to 5. This prevents runaway agent spawning.
+  Configure via --max-agents flag or ORCH_MAX_AGENTS environment variable.
+  Set to 0 to disable the limit (not recommended).
 
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
@@ -184,7 +194,8 @@ Examples:
   orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
   orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
-  orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check`,
+  orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
+  orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -206,6 +217,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
+	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 }
 
 var askCmd = &cobra.Command{
@@ -669,7 +681,59 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	return runSpawnWithSkill(serverURL, skillName, task, inline, false, false) // headless=false means tmux (default)
 }
 
+// getMaxAgents returns the effective maximum agents limit.
+// Priority: --max-agents flag > ORCH_MAX_AGENTS env var > DefaultMaxAgents constant.
+// Returns 0 if limit is explicitly disabled (flag set to 0).
+func getMaxAgents() int {
+	// If flag was explicitly set (non-zero), use it
+	if spawnMaxAgents != 0 {
+		return spawnMaxAgents
+	}
+
+	// Check environment variable
+	if envVal := os.Getenv("ORCH_MAX_AGENTS"); envVal != "" {
+		if val, err := strconv.Atoi(envVal); err == nil {
+			return val
+		}
+		// Invalid value - fall through to default
+		fmt.Fprintf(os.Stderr, "Warning: invalid ORCH_MAX_AGENTS value '%s', using default %d\n", envVal, DefaultMaxAgents)
+	}
+
+	return DefaultMaxAgents
+}
+
+// checkConcurrencyLimit checks if spawning a new agent would exceed the concurrency limit.
+// Returns nil if spawning is allowed, or an error if at the limit.
+func checkConcurrencyLimit() error {
+	maxAgents := getMaxAgents()
+
+	// Limit disabled (0 means unlimited)
+	if maxAgents == 0 {
+		return nil
+	}
+
+	// Open registry to check active count
+	reg, err := registry.New("")
+	if err != nil {
+		// If we can't open the registry, log a warning but allow the spawn
+		fmt.Fprintf(os.Stderr, "Warning: could not check agent limit (registry error): %v\n", err)
+		return nil
+	}
+
+	activeCount := reg.ActiveCount()
+	if activeCount >= maxAgents {
+		return fmt.Errorf("concurrency limit reached: %d active agents (max %d). Use 'orch status' to see active agents, 'orch complete' to finish agents, or --max-agents to increase limit", activeCount, maxAgents)
+	}
+
+	return nil
+}
+
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, attach bool) error {
+	// Check concurrency limit before spawning
+	if err := checkConcurrencyLimit(); err != nil {
+		return err
+	}
+
 	// Get current directory as project dir
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -947,16 +1011,11 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to start opencode: %w", err)
 	}
 
-	// Give OpenCode a moment to register the session in the API
-	time.Sleep(2 * time.Second)
-
-	// Capture session ID from API (it should be the most recent session in this directory)
+	// Capture session ID from API with retry (OpenCode may not have registered yet)
+	// Uses 3 attempts with 500ms initial delay, doubling each time (500ms, 1s, 2s)
 	client := opencode.NewClient(serverURL)
-	sessionID, err := client.FindRecentSession(cfg.ProjectDir, "")
-	if err != nil {
-		// Log warning but don't fail - tmux fallback still works
-		fmt.Fprintf(os.Stderr, "Warning: could not capture session_id: %v\n", err)
-	}
+	sessionID, _ := client.FindRecentSessionWithRetry(cfg.ProjectDir, "", 3, 500*time.Millisecond)
+	// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
 
 	// Send prompt
 	sendCfg := tmux.DefaultSendPromptConfig()
@@ -1690,6 +1749,25 @@ func (c *DefaultLivenessChecker) SessionExists(sessionID string) bool {
 	return c.client.SessionExists(sessionID)
 }
 
+// DefaultBeadsStatusChecker implements registry.BeadsStatusChecker using the verify package.
+type DefaultBeadsStatusChecker struct{}
+
+// NewDefaultBeadsStatusChecker creates a new beads status checker.
+func NewDefaultBeadsStatusChecker() *DefaultBeadsStatusChecker {
+	return &DefaultBeadsStatusChecker{}
+}
+
+// IsIssueClosed checks if a beads issue is closed.
+func (c *DefaultBeadsStatusChecker) IsIssueClosed(beadsID string) bool {
+	issue, err := verify.GetIssue(beadsID)
+	if err != nil {
+		// If we can't get the issue, assume it's not closed
+		// (could be network error, issue not found, etc.)
+		return false
+	}
+	return issue.Status == "closed"
+}
+
 func runClean(dryRun bool, verifyOpenCode bool) error {
 	// Open registry
 	reg, err := registry.New("")
@@ -1721,10 +1799,32 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 		fmt.Println("  No active agents to check")
 	}
 
-	// Step 2: Get cleanable agents (completed or abandoned, including newly abandoned)
+	// Step 1b: Reconcile active agents against beads issue status
+	// This catches the case where `bd close` was called manually
+	fmt.Println("Checking beads issue status...")
+	beadsChecker := NewDefaultBeadsStatusChecker()
+	beadsResult := reg.ReconcileWithBeads(beadsChecker, dryRun)
+
+	if beadsResult.Checked > 0 {
+		fmt.Printf("  Checked %d agents with beads IDs\n", beadsResult.Checked)
+		if beadsResult.Completed > 0 {
+			prefix := "Marked"
+			if dryRun {
+				prefix = "Would mark"
+			}
+			fmt.Printf("  %s %d as completed (beads issue closed):\n", prefix, beadsResult.Completed)
+			for _, detail := range beadsResult.Details {
+				fmt.Printf("    - %s\n", detail)
+			}
+		}
+	} else {
+		fmt.Println("  No agents with beads IDs to check")
+	}
+
+	// Step 2: Get cleanable agents (completed or abandoned, including newly marked)
 	agents := reg.ListCleanable()
 
-	if len(agents) == 0 && reconcileResult.Abandoned == 0 && !verifyOpenCode {
+	if len(agents) == 0 && reconcileResult.Abandoned == 0 && beadsResult.Completed == 0 && !verifyOpenCode {
 		fmt.Println("\nNo agents to clean")
 		return nil
 	}
