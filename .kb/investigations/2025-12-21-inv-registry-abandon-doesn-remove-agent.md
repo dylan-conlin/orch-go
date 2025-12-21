@@ -184,7 +184,10 @@ Bug was reproduced with a failing test, root cause was clearly identified in the
 
 **Areas needing further investigation:**
 
-- End-to-end validation: actual orch abandon + orch spawn workflow with real OpenCode sessions
+- ~~End-to-end validation: actual orch abandon + orch spawn workflow with real OpenCode sessions~~ ✅ COMPLETED
+  - Smoke test performed using direct registry API calls
+  - Verified: register → abandon → re-register workflow succeeds
+  - Verified: agent status changes to active, metadata updates correctly, no duplicates created
 - Performance impact of the additional field assignments when reusing slots (likely negligible)
 
 **Success criteria:**
