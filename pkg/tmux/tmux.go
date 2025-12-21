@@ -372,18 +372,22 @@ func KillWindowByID(windowID string) error {
 	return cmd.Run()
 }
 
+// BuildAttachCommand creates the tmux command for attaching to a window.
+// insideTmux should be true if the current process is running inside a tmux session.
+func BuildAttachCommand(windowTarget string, insideTmux bool) *exec.Cmd {
+	if insideTmux {
+		// Inside tmux: switch client to the new window
+		return exec.Command("tmux", "switch-client", "-t", windowTarget)
+	}
+	// Outside tmux: attach to the session/window
+	return exec.Command("tmux", "attach-session", "-t", windowTarget)
+}
+
 // Attach attaches the current terminal to a tmux window.
 // If already inside tmux, it switches the client to the target window.
 // If outside tmux, it attaches to the session/window.
 func Attach(windowTarget string) error {
-	var cmd *exec.Cmd
-	if os.Getenv("TMUX") != "" {
-		// Inside tmux: switch client to the new window
-		cmd = exec.Command("tmux", "switch-client", "-t", windowTarget)
-	} else {
-		// Outside tmux: attach to the session/window
-		cmd = exec.Command("tmux", "attach-session", "-t", windowTarget)
-	}
+	cmd := BuildAttachCommand(windowTarget, os.Getenv("TMUX") != "")
 
 	// Connect stdin/stdout/stderr so tmux can take over the terminal
 	cmd.Stdin = os.Stdin

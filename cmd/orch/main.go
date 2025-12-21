@@ -482,38 +482,76 @@ func runQuestion(beadsID string) error {
 	}
 
 	agent := reg.Find(beadsID)
-	if agent == nil {
-		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
+	if agent != nil && agent.SessionID != "" {
+		// Fetch recent messages from the session
+		client := opencode.NewClient(serverURL)
+		messages, err := client.GetMessages(agent.SessionID)
+		if err == nil {
+			if len(messages) == 0 {
+				fmt.Println("No messages found in session")
+				return nil
+			}
+
+			// Extract recent text content from messages to search for questions
+			textLines := opencode.ExtractRecentText(messages, 100)
+			content := strings.Join(textLines, "\n")
+
+			// Extract question from content
+			q := question.Extract(content)
+			if q != "" {
+				fmt.Printf("Pending question (via API):\n%s\n", q)
+				return nil
+			}
+			// If no question found via API, fall through to tmux fallback
+		}
 	}
 
-	if agent.SessionID == "" {
-		return fmt.Errorf("agent %s has no session ID - cannot extract question", agent.ID)
+	// Tmux fallback
+	fmt.Println("Searching tmux for pending question...")
+
+	// 1. If we have a window target in the registry, try it first
+	if agent != nil {
+		targets := []string{agent.Window, agent.WindowID}
+		for _, target := range targets {
+			if target == "" || target == registry.HeadlessWindowID {
+				continue
+			}
+			lines, err := tmux.CaptureLines(target, 100)
+			if err == nil {
+				content := strings.Join(lines, "\n")
+				q := question.Extract(content)
+				if q != "" {
+					fmt.Printf("Pending question (via tmux %s):\n%s\n", target, q)
+					return nil
+				}
+			}
+		}
 	}
 
-	// Fetch recent messages from the session
-	client := opencode.NewClient(serverURL)
-	messages, err := client.GetMessages(agent.SessionID)
+	// 2. Search all workers sessions
+	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
-		return fmt.Errorf("failed to fetch messages: %w", err)
+		return fmt.Errorf("failed to list tmux sessions: %w", err)
 	}
 
-	if len(messages) == 0 {
-		fmt.Println("No messages found in session")
-		return nil
+	for _, session := range sessions {
+		window, err := tmux.FindWindowByBeadsID(session, beadsID)
+		if err != nil || window == nil {
+			continue
+		}
+
+		lines, err := tmux.CaptureLines(window.Target, 100)
+		if err == nil {
+			content := strings.Join(lines, "\n")
+			q := question.Extract(content)
+			if q != "" {
+				fmt.Printf("Pending question (via tmux %s):\n%s\n", window.Target, q)
+				return nil
+			}
+		}
 	}
 
-	// Extract recent text content from messages to search for questions
-	textLines := opencode.ExtractRecentText(messages, 100)
-	content := strings.Join(textLines, "\n")
-
-	// Extract question from content
-	q := question.Extract(content)
-	if q == "" {
-		fmt.Println("No pending question found")
-		return nil
-	}
-
-	fmt.Printf("Pending question:\n%s\n", q)
+	fmt.Println("No pending question found (checked API and tmux)")
 	return nil
 }
 
@@ -1352,8 +1390,8 @@ func printSwarmStatus(output StatusOutput) {
 	// Print active agents table
 	if len(output.Agents) > 0 {
 		fmt.Println("ACTIVE AGENTS")
-		fmt.Printf("  %-35s %-15s %-20s %-10s %s\n", "SESSION ID", "BEADS ID", "SKILL", "ACCOUNT", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 90))
+		fmt.Printf("  %-35s %-20s %-20s %-10s %s\n", "SESSION ID", "BEADS ID", "SKILL", "ACCOUNT", "RUNTIME")
+		fmt.Printf("  %s\n", strings.Repeat("-", 100))
 
 		for _, agent := range output.Agents {
 			beadsID := agent.BeadsID
@@ -1369,9 +1407,9 @@ func printSwarmStatus(output StatusOutput) {
 				accountName = "-"
 			}
 
-			fmt.Printf("  %-35s %-15s %-20s %-10s %s\n",
+			fmt.Printf("  %-35s %-20s %-20s %-10s %s\n",
 				truncate(agent.SessionID, 33),
-				truncate(beadsID, 13),
+				truncate(beadsID, 18),
 				truncate(skill, 18),
 				truncate(accountName, 8),
 				agent.Runtime)
