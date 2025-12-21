@@ -108,20 +108,26 @@ func (s *CompletionService) handleCompletion(sessionID string) {
 		fmt.Printf("Warning: failed to send notification: %v\n", err)
 	}
 
-	// Update registry if we found the agent
-	if beadsID != "" {
-		// Mark agent as completed in registry
-		if s.registry.Complete(beadsID) || s.registry.Complete(workspace) {
-			if err := s.registry.Save(); err != nil {
-				fmt.Printf("Warning: failed to save registry: %v\n", err)
-			}
-		}
-
-		// Update beads status
-		if err := s.updateBeadsPhase(beadsID); err != nil {
-			fmt.Printf("Warning: failed to update beads phase: %v\n", err)
-		}
-	}
+	// DISABLED: Automatic registry completion (2025-12-21)
+	// Reason: Monitor's busy→idle detection triggers false positives.
+	// Agents go idle during normal operation (loading, thinking, waiting for tools).
+	// The first idle transition after spawn (4-6 seconds) incorrectly marks agents complete.
+	// Solution: Require explicit `orch complete` command instead of automatic detection.
+	// See: .kb/investigations/2025-12-21-inv-agents-being-marked-completed-registry.md
+	//
+	// if beadsID != "" {
+	// 	// Mark agent as completed in registry
+	// 	if s.registry.Complete(beadsID) || s.registry.Complete(workspace) {
+	// 		if err := s.registry.Save(); err != nil {
+	// 			fmt.Printf("Warning: failed to save registry: %v\n", err)
+	// 		}
+	// 	}
+	//
+	// 	// Update beads status
+	// 	if err := s.updateBeadsPhase(beadsID); err != nil {
+	// 		fmt.Printf("Warning: failed to update beads phase: %v\n", err)
+	// 	}
+	// }
 
 	// Log the completion event
 	eventData := map[string]interface{}{
