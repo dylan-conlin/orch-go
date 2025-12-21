@@ -1768,6 +1768,36 @@ func (c *DefaultBeadsStatusChecker) IsIssueClosed(beadsID string) bool {
 	return issue.Status == "closed"
 }
 
+// DefaultCompletionIndicatorChecker implements registry.CompletionIndicatorChecker using the verify package.
+// This is used during reconciliation to check for completion indicators (SYNTHESIS.md, Phase: Complete)
+// before marking an agent as abandoned.
+type DefaultCompletionIndicatorChecker struct{}
+
+// NewDefaultCompletionIndicatorChecker creates a new completion indicator checker.
+func NewDefaultCompletionIndicatorChecker() *DefaultCompletionIndicatorChecker {
+	return &DefaultCompletionIndicatorChecker{}
+}
+
+// SynthesisExists checks if SYNTHESIS.md exists in the agent's workspace.
+func (c *DefaultCompletionIndicatorChecker) SynthesisExists(workspacePath string) bool {
+	exists, err := verify.VerifySynthesis(workspacePath)
+	if err != nil {
+		// If we can't check (e.g., directory doesn't exist), assume no synthesis
+		return false
+	}
+	return exists
+}
+
+// IsPhaseComplete checks if beads shows Phase: Complete for the agent.
+func (c *DefaultCompletionIndicatorChecker) IsPhaseComplete(beadsID string) bool {
+	complete, err := verify.IsPhaseComplete(beadsID)
+	if err != nil {
+		// If we can't check (e.g., beads error), assume not complete
+		return false
+	}
+	return complete
+}
+
 func runClean(dryRun bool, verifyOpenCode bool) error {
 	// Open registry
 	reg, err := registry.New("")
@@ -1776,13 +1806,29 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 	}
 
 	// Step 1: Reconcile active agents against tmux and OpenCode
-	// This implements the four-layer reconciliation pattern
+	// This implements the four-layer reconciliation pattern with completion checking.
+	// Before marking an agent as abandoned, we check for completion indicators
+	// (SYNTHESIS.md exists or beads Phase: Complete) to avoid incorrectly abandoning
+	// agents that finished their work but whose sessions were garbage collected.
 	fmt.Println("Reconciling active agents...")
-	checker := NewDefaultLivenessChecker(serverURL)
-	reconcileResult := reg.ReconcileActive(checker, dryRun)
+	livenessChecker := NewDefaultLivenessChecker(serverURL)
+	completionChecker := NewDefaultCompletionIndicatorChecker()
+	reconcileResult := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, dryRun)
 
 	if reconcileResult.Checked > 0 {
 		fmt.Printf("  Checked %d active agents\n", reconcileResult.Checked)
+		if reconcileResult.Completed > 0 {
+			prefix := "Marked"
+			if dryRun {
+				prefix = "Would mark"
+			}
+			fmt.Printf("  %s %d as completed (found completion indicators):\n", prefix, reconcileResult.Completed)
+			for _, detail := range reconcileResult.Details {
+				if strings.Contains(detail, "SYNTHESIS.md") || strings.Contains(detail, "beads Phase") {
+					fmt.Printf("    - %s\n", detail)
+				}
+			}
+		}
 		if reconcileResult.Abandoned > 0 {
 			prefix := "Marked"
 			if dryRun {
@@ -1790,9 +1836,12 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 			}
 			fmt.Printf("  %s %d as abandoned:\n", prefix, reconcileResult.Abandoned)
 			for _, detail := range reconcileResult.Details {
-				fmt.Printf("    - %s\n", detail)
+				if !strings.Contains(detail, "SYNTHESIS.md") && !strings.Contains(detail, "beads Phase") {
+					fmt.Printf("    - %s\n", detail)
+				}
 			}
-		} else {
+		}
+		if reconcileResult.Completed == 0 && reconcileResult.Abandoned == 0 {
 			fmt.Println("  All active agents are alive")
 		}
 	} else {

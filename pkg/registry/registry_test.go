@@ -1275,6 +1275,354 @@ func TestReconcileWithBeadsReturnsDetails(t *testing.T) {
 	}
 }
 
+// MockCompletionIndicatorChecker is a mock implementation of CompletionIndicatorChecker for testing.
+type MockCompletionIndicatorChecker struct {
+	SynthesisPaths  map[string]bool // workspace paths where SYNTHESIS.md exists
+	CompletedPhases map[string]bool // beads IDs where Phase: Complete is reported
+}
+
+func NewMockCompletionIndicatorChecker() *MockCompletionIndicatorChecker {
+	return &MockCompletionIndicatorChecker{
+		SynthesisPaths:  make(map[string]bool),
+		CompletedPhases: make(map[string]bool),
+	}
+}
+
+func (m *MockCompletionIndicatorChecker) SynthesisExists(workspacePath string) bool {
+	return m.SynthesisPaths[workspacePath]
+}
+
+func (m *MockCompletionIndicatorChecker) IsPhaseComplete(beadsID string) bool {
+	return m.CompletedPhases[beadsID]
+}
+
+// TestReconcileActiveWithCompletionCheckMarksCompletedWithSynthesis verifies that agents with
+// dead sessions but SYNTHESIS.md present are marked as completed, not abandoned.
+func TestReconcileActiveWithCompletionCheckMarksCompletedWithSynthesis(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with session ID and project dir
+	agent := &Agent{
+		ID:         "agent-1",
+		SessionID:  "ses_dead",
+		WindowID:   HeadlessWindowID,
+		ProjectDir: "/project",
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// Mock liveness: session is dead
+	livenessChecker := NewMockLivenessChecker()
+
+	// Mock completion: SYNTHESIS.md exists
+	completionChecker := NewMockCompletionIndicatorChecker()
+	completionChecker.SynthesisPaths["/project/.orch/workspace/agent-1"] = true
+
+	// Reconcile with completion check
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, false)
+
+	// Should mark as completed, not abandoned
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+	if result.Abandoned != 0 {
+		t.Errorf("expected 0 abandoned, got %d", result.Abandoned)
+	}
+
+	found := reg.Find("agent-1")
+	if found.Status != StateCompleted {
+		t.Errorf("expected agent-1 to be completed, got %s", found.Status)
+	}
+	if found.CompletedAt == "" {
+		t.Error("expected CompletedAt to be set")
+	}
+}
+
+// TestReconcileActiveWithCompletionCheckMarksCompletedWithPhaseComplete verifies that agents with
+// dead sessions but Phase: Complete in beads are marked as completed, not abandoned.
+func TestReconcileActiveWithCompletionCheckMarksCompletedWithPhaseComplete(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with session ID and beads ID (no project dir for SYNTHESIS.md)
+	agent := &Agent{
+		ID:        "agent-1",
+		SessionID: "ses_dead",
+		WindowID:  HeadlessWindowID,
+		BeadsID:   "beads-123",
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// Mock liveness: session is dead
+	livenessChecker := NewMockLivenessChecker()
+
+	// Mock completion: Phase: Complete is reported in beads
+	completionChecker := NewMockCompletionIndicatorChecker()
+	completionChecker.CompletedPhases["beads-123"] = true
+
+	// Reconcile with completion check
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, false)
+
+	// Should mark as completed, not abandoned
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+	if result.Abandoned != 0 {
+		t.Errorf("expected 0 abandoned, got %d", result.Abandoned)
+	}
+
+	found := reg.Find("agent-1")
+	if found.Status != StateCompleted {
+		t.Errorf("expected agent-1 to be completed, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveWithCompletionCheckAbandonsWithNoIndicators verifies that agents with
+// dead sessions and NO completion indicators are still marked as abandoned.
+func TestReconcileActiveWithCompletionCheckAbandonsWithNoIndicators(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with session ID
+	agent := &Agent{
+		ID:         "agent-1",
+		SessionID:  "ses_dead",
+		WindowID:   HeadlessWindowID,
+		ProjectDir: "/project",
+		BeadsID:    "beads-123",
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// Mock liveness: session is dead
+	livenessChecker := NewMockLivenessChecker()
+
+	// Mock completion: neither SYNTHESIS.md nor Phase: Complete exists
+	completionChecker := NewMockCompletionIndicatorChecker()
+
+	// Reconcile with completion check
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, false)
+
+	// Should mark as abandoned (no completion indicators)
+	if result.Abandoned != 1 {
+		t.Errorf("expected 1 abandoned, got %d", result.Abandoned)
+	}
+	if result.Completed != 0 {
+		t.Errorf("expected 0 completed, got %d", result.Completed)
+	}
+
+	found := reg.Find("agent-1")
+	if found.Status != StateAbandoned {
+		t.Errorf("expected agent-1 to be abandoned, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveWithCompletionCheckNilCheckerBehavesLikeReconcileActive verifies that
+// passing nil for completionChecker makes it behave like the original ReconcileActive.
+func TestReconcileActiveWithCompletionCheckNilCheckerBehavesLikeReconcileActive(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with session ID
+	agent := &Agent{
+		ID:        "agent-1",
+		SessionID: "ses_dead",
+		WindowID:  HeadlessWindowID,
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	// Mock liveness: session is dead
+	livenessChecker := NewMockLivenessChecker()
+
+	// Pass nil for completionChecker - should behave like ReconcileActive
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, nil, false)
+
+	// Should mark as abandoned (nil completion checker means no completion check)
+	if result.Abandoned != 1 {
+		t.Errorf("expected 1 abandoned, got %d", result.Abandoned)
+	}
+
+	found := reg.Find("agent-1")
+	if found.Status != StateAbandoned {
+		t.Errorf("expected agent-1 to be abandoned, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveWithCompletionCheckDryRunDoesNotModify verifies dry-run mode doesn't modify registry.
+func TestReconcileActiveWithCompletionCheckDryRunDoesNotModify(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with session ID and completion indicator
+	agent := &Agent{
+		ID:         "agent-1",
+		SessionID:  "ses_dead",
+		WindowID:   HeadlessWindowID,
+		ProjectDir: "/project",
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	livenessChecker := NewMockLivenessChecker()
+	completionChecker := NewMockCompletionIndicatorChecker()
+	completionChecker.SynthesisPaths["/project/.orch/workspace/agent-1"] = true
+
+	// Reconcile with dry-run
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, true)
+
+	// Should report 1 completed
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+
+	// But agent should still be active (dry-run doesn't modify)
+	found := reg.Find("agent-1")
+	if found.Status != StateActive {
+		t.Errorf("expected agent-1 to still be active after dry-run, got %s", found.Status)
+	}
+}
+
+// TestReconcileActiveWithCompletionCheckPrioritizesSynthesisOverPhase verifies that when both
+// indicators are present, SYNTHESIS.md is checked first (as it's more definitive).
+func TestReconcileActiveWithCompletionCheckPrioritizesSynthesisOverPhase(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with both project dir and beads ID
+	agent := &Agent{
+		ID:         "agent-1",
+		SessionID:  "ses_dead",
+		WindowID:   HeadlessWindowID,
+		ProjectDir: "/project",
+		BeadsID:    "beads-123",
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	livenessChecker := NewMockLivenessChecker()
+	completionChecker := NewMockCompletionIndicatorChecker()
+	// Both indicators are present
+	completionChecker.SynthesisPaths["/project/.orch/workspace/agent-1"] = true
+	completionChecker.CompletedPhases["beads-123"] = true
+
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, false)
+
+	// Should mark as completed
+	if result.Completed != 1 {
+		t.Errorf("expected 1 completed, got %d", result.Completed)
+	}
+
+	// Detail should mention SYNTHESIS.md (checked first)
+	found := false
+	for _, detail := range result.Details {
+		if contains(detail, "SYNTHESIS.md") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected detail to mention SYNTHESIS.md, got %v", result.Details)
+	}
+}
+
+// TestReconcileActiveWithCompletionCheckLiveAgentNotAffected verifies that agents with live
+// sessions are not checked for completion indicators.
+func TestReconcileActiveWithCompletionCheckLiveAgentNotAffected(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "registry.json")
+
+	reg, err := New(path)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agent with live session
+	agent := &Agent{
+		ID:         "agent-1",
+		SessionID:  "ses_alive",
+		WindowID:   HeadlessWindowID,
+		ProjectDir: "/project",
+	}
+	if err := reg.Register(agent); err != nil {
+		t.Fatalf("failed to register: %v", err)
+	}
+
+	livenessChecker := NewMockLivenessChecker()
+	livenessChecker.LiveSessions["ses_alive"] = true
+
+	// Even if SYNTHESIS.md exists, live agent should not be marked completed
+	completionChecker := NewMockCompletionIndicatorChecker()
+	completionChecker.SynthesisPaths["/project/.orch/workspace/agent-1"] = true
+
+	result := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, false)
+
+	// Should not be abandoned or completed (still active)
+	if result.Abandoned != 0 {
+		t.Errorf("expected 0 abandoned, got %d", result.Abandoned)
+	}
+	if result.Completed != 0 {
+		t.Errorf("expected 0 completed, got %d", result.Completed)
+	}
+
+	found := reg.Find("agent-1")
+	if found.Status != StateActive {
+		t.Errorf("expected agent-1 to remain active, got %s", found.Status)
+	}
+}
+
+// helper function for string contains check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // TestReconcileWithBeadsSkipsNonActiveAgents verifies that only active agents are checked.
 func TestReconcileWithBeadsSkipsNonActiveAgents(t *testing.T) {
 	tmpDir := t.TempDir()

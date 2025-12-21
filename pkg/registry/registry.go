@@ -537,6 +537,17 @@ type BeadsStatusChecker interface {
 	IsIssueClosed(beadsID string) bool
 }
 
+// CompletionIndicatorChecker checks for evidence that an agent actually completed its work.
+// This is used during reconciliation to avoid marking completed agents as abandoned
+// when their OpenCode session disappears but they left completion artifacts behind.
+type CompletionIndicatorChecker interface {
+	// SynthesisExists checks if SYNTHESIS.md exists in the agent's workspace
+	// workspacePath is the full path to the agent's workspace directory
+	SynthesisExists(workspacePath string) bool
+	// IsPhaseComplete checks if beads shows Phase: Complete for the agent
+	IsPhaseComplete(beadsID string) bool
+}
+
 // ReconcileResult holds the results of a reconciliation operation.
 type ReconcileResult struct {
 	Checked   int      // Number of agents checked
@@ -596,6 +607,105 @@ func (r *Registry) ReconcileActive(checker LivenessChecker, dryRun bool) *Reconc
 			result.Abandoned++
 			result.AgentIDs = append(result.AgentIDs, agent.ID)
 			result.Details = append(result.Details, fmt.Sprintf("%s: %s", agent.ID, reason))
+
+			if !dryRun {
+				agent.Status = StateAbandoned
+				agent.AbandonedAt = now
+				agent.UpdatedAt = now
+			}
+		}
+	}
+
+	return result
+}
+
+// ReconcileActiveWithCompletionCheck is like ReconcileActive but also checks for completion
+// indicators before marking an agent as abandoned. If an agent's session is gone but there's
+// evidence it completed (SYNTHESIS.md exists or beads shows Phase: Complete), it will be
+// marked as completed instead of abandoned.
+//
+// This prevents the scenario where an agent that finished its work but whose session was
+// garbage collected gets incorrectly marked as abandoned.
+//
+// The completionChecker parameter is optional - if nil, behaves exactly like ReconcileActive.
+func (r *Registry) ReconcileActiveWithCompletionCheck(livenessChecker LivenessChecker, completionChecker CompletionIndicatorChecker, dryRun bool) *ReconcileResult {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result := &ReconcileResult{
+		AgentIDs: make([]string, 0),
+		Details:  make([]string, 0),
+	}
+
+	now := time.Now().Format(TimeFormat)
+
+	for _, agent := range r.agents {
+		if agent.Status != StateActive {
+			continue
+		}
+
+		result.Checked++
+		sessionGone := false
+		livenessReason := ""
+
+		// Check tmux window liveness (for non-headless agents)
+		if agent.WindowID != "" && agent.WindowID != HeadlessWindowID {
+			if !livenessChecker.WindowExists(agent.WindowID) {
+				sessionGone = true
+				livenessReason = fmt.Sprintf("tmux window %s no longer exists", agent.WindowID)
+			}
+		}
+
+		// Check OpenCode session liveness (for agents with session IDs)
+		// This catches headless agents and provides additional verification for tmux agents
+		if !sessionGone && agent.SessionID != "" {
+			if !livenessChecker.SessionExists(agent.SessionID) {
+				sessionGone = true
+				livenessReason = fmt.Sprintf("OpenCode session %s no longer exists", agent.SessionID)
+			}
+		}
+
+		if sessionGone {
+			// Session is gone, but check for completion indicators before abandoning
+			if completionChecker != nil {
+				completed := false
+				completionReason := ""
+
+				// Check 1: SYNTHESIS.md exists in workspace
+				if agent.ProjectDir != "" {
+					workspacePath := fmt.Sprintf("%s/.orch/workspace/%s", agent.ProjectDir, agent.ID)
+					if completionChecker.SynthesisExists(workspacePath) {
+						completed = true
+						completionReason = fmt.Sprintf("SYNTHESIS.md exists in workspace (%s)", livenessReason)
+					}
+				}
+
+				// Check 2: Beads phase shows Complete
+				if !completed && agent.BeadsID != "" {
+					if completionChecker.IsPhaseComplete(agent.BeadsID) {
+						completed = true
+						completionReason = fmt.Sprintf("beads Phase: Complete (%s)", livenessReason)
+					}
+				}
+
+				if completed {
+					result.Completed++
+					result.AgentIDs = append(result.AgentIDs, agent.ID)
+					result.Details = append(result.Details, fmt.Sprintf("%s: %s", agent.ID, completionReason))
+
+					if !dryRun {
+						agent.Status = StateCompleted
+						agent.CompletedAt = now
+						agent.UpdatedAt = now
+					}
+					continue
+				}
+			}
+
+			// No completion indicators found, mark as abandoned
+			result.Abandoned++
+			result.AgentIDs = append(result.AgentIDs, agent.ID)
+			result.Details = append(result.Details, fmt.Sprintf("%s: %s", agent.ID, livenessReason))
 
 			if !dryRun {
 				agent.Status = StateAbandoned
