@@ -3,6 +3,7 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { SynthesisCard } from '$lib/components/synthesis-card';
 	import {
 		agents,
 		activeAgents,
@@ -167,6 +168,11 @@
 								</span>
 							{/if}
 						</div>
+
+						<!-- Synthesis Card for completed agents -->
+						{#if agent.status === 'completed' && agent.synthesis}
+							<SynthesisCard synthesis={agent.synthesis} />
+						{/if}
 					</div>
 				{:else}
 					<div class="col-span-full rounded-lg border border-dashed p-8 text-center">

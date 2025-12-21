@@ -3,6 +3,15 @@ import { writable, derived } from 'svelte/store';
 // Agent types matching orch-go registry
 export type AgentState = 'active' | 'completed' | 'abandoned' | 'deleted';
 
+// Synthesis data from SYNTHESIS.md (D.E.K.N. format)
+export interface Synthesis {
+	tldr?: string;
+	outcome?: string; // success, partial, blocked, failed
+	recommendation?: string; // close, continue, escalate
+	delta_summary?: string; // e.g., "3 files created, 2 modified, 5 commits"
+	next_actions?: string[]; // Follow-up items
+}
+
 export interface Agent {
 	id: string;
 	beads_id?: string;
@@ -18,6 +27,7 @@ export interface Agent {
 	skill?: string;
 	primary_artifact?: string;
 	is_interactive?: boolean;
+	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 }
 
 // SSE Event types from OpenCode

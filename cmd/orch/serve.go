@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/registry"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -92,7 +94,27 @@ func runServe(port int) error {
 	return http.ListenAndServe(addr, mux)
 }
 
+// AgentWithSynthesis extends the registry Agent with parsed synthesis data for the API.
+type AgentWithSynthesis struct {
+	*registry.Agent
+	Synthesis *SynthesisResponse `json:"synthesis,omitempty"`
+}
+
+// SynthesisResponse is a condensed version of verify.Synthesis for the API.
+// Uses the D.E.K.N. structure: Delta, Evidence, Knowledge, Next.
+type SynthesisResponse struct {
+	// Header fields
+	TLDR           string `json:"tldr,omitempty"`
+	Outcome        string `json:"outcome,omitempty"`        // success, partial, blocked, failed
+	Recommendation string `json:"recommendation,omitempty"` // close, continue, escalate
+
+	// Condensed sections
+	DeltaSummary string   `json:"delta_summary,omitempty"` // e.g., "3 files created, 2 modified, 5 commits"
+	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
+}
+
 // handleAgents returns JSON list of all non-deleted agents from the registry.
+// For completed agents, also parses SYNTHESIS.md and includes condensed synthesis data.
 func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -107,8 +129,30 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	agents := reg.ListAgents()
 
+	// Build response with synthesis data for completed agents
+	response := make([]*AgentWithSynthesis, len(agents))
+	for i, agent := range agents {
+		aws := &AgentWithSynthesis{Agent: agent}
+
+		// Parse synthesis for completed agents with a project directory
+		if agent.Status == registry.StateCompleted && agent.ProjectDir != "" {
+			workspacePath := filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+			if synthesis, err := verify.ParseSynthesis(workspacePath); err == nil {
+				aws.Synthesis = &SynthesisResponse{
+					TLDR:           synthesis.TLDR,
+					Outcome:        synthesis.Outcome,
+					Recommendation: synthesis.Recommendation,
+					DeltaSummary:   summarizeDelta(synthesis.Delta),
+					NextActions:    synthesis.NextActions,
+				}
+			}
+		}
+
+		response[i] = aws
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(agents); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode agents: %v", err), http.StatusInternalServerError)
 		return
 	}
