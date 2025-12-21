@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Client handles OpenCode CLI interactions.
@@ -257,4 +258,119 @@ func (c *Client) CreateSession(title, directory string) (*CreateSessionResponse,
 // This is used for headless spawns to send the initial prompt.
 func (c *Client) SendPrompt(sessionID, prompt string) error {
 	return c.SendMessageAsync(sessionID, prompt)
+}
+
+// SendMessageWithStreaming sends a message to a session and streams the response.
+// It sends the message via the async API, then connects to SSE to stream text events
+// until the session becomes idle. Text content is written to the provided writer.
+func (c *Client) SendMessageWithStreaming(sessionID, content string, streamTo io.Writer) error {
+	// Send the message via async API first
+	if err := c.SendMessageAsync(sessionID, content); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Connect to SSE and stream the response
+	sseURL := c.ServerURL + "/event"
+	resp, err := http.Get(sseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SSE: %w", err)
+	}
+	defer resp.Body.Close()
+
+	reader := bufio.NewReader(resp.Body)
+	var eventBuffer strings.Builder
+	var sessionWasBusy bool
+	var messageIDSeen = make(map[string]bool) // Track message IDs to avoid duplicates
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		eventBuffer.WriteString(line)
+
+		// Empty line signals end of event
+		if line == "\n" && eventBuffer.Len() > 1 {
+			raw := eventBuffer.String()
+			eventType, data := ParseSSEEvent(raw)
+			eventBuffer.Reset()
+
+			if data == "" {
+				continue
+			}
+
+			// Parse the JSON data
+			var eventData map[string]interface{}
+			if err := json.Unmarshal([]byte(data), &eventData); err != nil {
+				continue
+			}
+
+			// Check if this event is for our session
+			eventSessionID := ""
+			if props, ok := eventData["properties"].(map[string]interface{}); ok {
+				if sid, ok := props["sessionID"].(string); ok {
+					eventSessionID = sid
+				}
+			}
+			// Also check top-level sessionID
+			if sid, ok := eventData["sessionID"].(string); ok && eventSessionID == "" {
+				eventSessionID = sid
+			}
+
+			// Skip events from other sessions
+			if eventSessionID != "" && eventSessionID != sessionID {
+				continue
+			}
+
+			// Handle session status events
+			if eventType == "session.status" {
+				status, sid := ParseSessionStatus(data)
+				if sid == sessionID {
+					if status == "busy" || status == "running" {
+						sessionWasBusy = true
+					}
+					// Completion: session was busy and is now idle
+					if sessionWasBusy && status == "idle" {
+						return nil
+					}
+				}
+				continue
+			}
+
+			// Handle message.part events (text streaming)
+			if eventType == "message.part" {
+				if props, ok := eventData["properties"].(map[string]interface{}); ok {
+					// Check this is for our session
+					if sid, ok := props["sessionID"].(string); ok && sid != sessionID {
+						continue
+					}
+
+					// Get message ID to track what we've seen
+					messageID := ""
+					if mid, ok := props["messageID"].(string); ok {
+						messageID = mid
+					}
+
+					// Get the part data
+					if part, ok := props["part"].(map[string]interface{}); ok {
+						if partType, ok := part["type"].(string); ok && partType == "text" {
+							if text, ok := part["text"].(string); ok && text != "" {
+								// Write text to output
+								streamTo.Write([]byte(text))
+							}
+						}
+					}
+
+					// Track message ID if provided
+					if messageID != "" {
+						messageIDSeen[messageID] = true
+					}
+				}
+			}
+		}
+	}
 }

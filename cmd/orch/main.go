@@ -942,14 +942,7 @@ func truncate(s string, maxLen int) string {
 func runSend(serverURL, sessionID, message string) error {
 	client := opencode.NewClient(serverURL)
 
-	// Use async API to avoid hang
-	if err := client.SendMessageAsync(sessionID, message); err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
-	}
-
-	fmt.Printf("✓ Message sent to session %s\n", sessionID)
-
-	// Log the send
+	// Log the send event first (before streaming starts)
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
 		Type:      "session.send",
@@ -962,6 +955,15 @@ func runSend(serverURL, sessionID, message string) error {
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
+
+	// Send message and stream the response to stdout
+	// This uses the OpenCode HTTP API exclusively (no tmux dependency)
+	if err := client.SendMessageWithStreaming(sessionID, message, os.Stdout); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Add newline at end for clean output
+	fmt.Println()
 
 	return nil
 }

@@ -336,3 +336,165 @@ func TestProcessOutputWithStreamingEmpty(t *testing.T) {
 		t.Errorf("Expected empty streamed content, got: %s", streamedContent.String())
 	}
 }
+
+// TestSendMessageWithStreaming tests the SendMessageWithStreaming method.
+func TestSendMessageWithStreaming(t *testing.T) {
+	sessionID := "ses_test123"
+	messageReceived := false
+	sseRequestReceived := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session/" + sessionID + "/prompt_async":
+			// Verify the message was received correctly
+			messageReceived = true
+			w.WriteHeader(http.StatusOK)
+
+		case "/event":
+			// SSE endpoint - send a series of events
+			sseRequestReceived = true
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				t.Fatal("Expected http.Flusher")
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.WriteHeader(http.StatusOK)
+
+			// Send session busy event
+			busyEvent := `event: session.status
+data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","status":{"type":"busy"}}}
+
+`
+			w.Write([]byte(busyEvent))
+			flusher.Flush()
+
+			// Send text streaming events
+			textEvent1 := `event: message.part
+data: {"type":"message.part","properties":{"sessionID":"` + sessionID + `","messageID":"msg_1","part":{"type":"text","text":"Hello, "}}}
+
+`
+			w.Write([]byte(textEvent1))
+			flusher.Flush()
+
+			textEvent2 := `event: message.part
+data: {"type":"message.part","properties":{"sessionID":"` + sessionID + `","messageID":"msg_1","part":{"type":"text","text":"world!"}}}
+
+`
+			w.Write([]byte(textEvent2))
+			flusher.Flush()
+
+			// Send session idle event (completion)
+			idleEvent := `event: session.status
+data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","status":{"type":"idle"}}}
+
+`
+			w.Write([]byte(idleEvent))
+			flusher.Flush()
+
+		default:
+			t.Errorf("Unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	var streamedContent bytes.Buffer
+	err := client.SendMessageWithStreaming(sessionID, "test message", &streamedContent)
+	if err != nil {
+		t.Fatalf("SendMessageWithStreaming() error = %v", err)
+	}
+
+	if !messageReceived {
+		t.Error("Message was not sent to async endpoint")
+	}
+	if !sseRequestReceived {
+		t.Error("SSE request was not made")
+	}
+
+	// Check streamed content
+	content := streamedContent.String()
+	if !strings.Contains(content, "Hello, ") {
+		t.Errorf("Streamed content missing 'Hello, ', got: %s", content)
+	}
+	if !strings.Contains(content, "world!") {
+		t.Errorf("Streamed content missing 'world!', got: %s", content)
+	}
+}
+
+// TestSendMessageWithStreamingIgnoresOtherSessions tests that we only stream from target session.
+func TestSendMessageWithStreamingIgnoresOtherSessions(t *testing.T) {
+	sessionID := "ses_target"
+	otherSessionID := "ses_other"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session/" + sessionID + "/prompt_async":
+			w.WriteHeader(http.StatusOK)
+
+		case "/event":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				t.Fatal("Expected http.Flusher")
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+
+			// Send busy event for target session
+			busyEvent := `event: session.status
+data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","status":{"type":"busy"}}}
+
+`
+			w.Write([]byte(busyEvent))
+			flusher.Flush()
+
+			// Send text from OTHER session - should be ignored
+			otherEvent := `event: message.part
+data: {"type":"message.part","properties":{"sessionID":"` + otherSessionID + `","messageID":"msg_other","part":{"type":"text","text":"WRONG SESSION"}}}
+
+`
+			w.Write([]byte(otherEvent))
+			flusher.Flush()
+
+			// Send text from target session
+			targetEvent := `event: message.part
+data: {"type":"message.part","properties":{"sessionID":"` + sessionID + `","messageID":"msg_1","part":{"type":"text","text":"correct"}}}
+
+`
+			w.Write([]byte(targetEvent))
+			flusher.Flush()
+
+			// Send completion for target session
+			idleEvent := `event: session.status
+data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","status":{"type":"idle"}}}
+
+`
+			w.Write([]byte(idleEvent))
+			flusher.Flush()
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	var streamedContent bytes.Buffer
+	err := client.SendMessageWithStreaming(sessionID, "test", &streamedContent)
+	if err != nil {
+		t.Fatalf("SendMessageWithStreaming() error = %v", err)
+	}
+
+	content := streamedContent.String()
+	if strings.Contains(content, "WRONG SESSION") {
+		t.Errorf("Streamed content should not include events from other sessions, got: %s", content)
+	}
+	if !strings.Contains(content, "correct") {
+		t.Errorf("Streamed content missing 'correct', got: %s", content)
+	}
+}
