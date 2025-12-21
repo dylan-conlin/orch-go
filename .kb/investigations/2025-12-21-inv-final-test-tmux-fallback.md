@@ -173,63 +173,27 @@ High confidence because all three critical commands were tested with both succes
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Status:** No implementation required - fallback mechanism is working as designed.
 
-### Recommended Approach ⭐
+### Observations for Future Consideration
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Known limitation:** Agents with both stale registry entries AND missing beads ID format in window name cannot be accessed via fallback.
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+**Potential improvements (not urgent):**
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+1. **Registry reconciliation on startup** - Scan tmux windows and update registry window_ids to prevent staleness
+   - **Benefit:** Reduces edge case frequency
+   - **Trade-off:** Adds startup overhead, may update windows that intentionally weren't tracked
+   
+2. **Retroactive window renaming** - Add beads ID to older window names lacking the format
+   - **Benefit:** Fixes existing edge case instances
+   - **Trade-off:** Intrusive to running agents, may cause confusion if agents reference their window name
 
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+3. **Warning on stale registry detection** - Log when registry window_id doesn't match actual tmux state
+   - **Benefit:** Visibility into when edge case occurs
+   - **Trade-off:** May create noise if normal during certain workflows
 
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**Recommendation:** Monitor for user-reported issues before implementing any fixes. The edge case appears limited to older agents and new spawns follow the correct convention.
 
 ---
 
@@ -276,14 +240,56 @@ tmux capture-pane -t @391 -p | tail -5
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-21 09:50:** Investigation started
+- Initial question: Does the tmux fallback mechanism continue to work correctly?
+- Context: Final regression test after multiple iterations (4, 5, 9, 12) to confirm stability
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-21 09:55:** Comprehensive testing completed
+- Tested all three commands: status (246 agents), tail (both API and tmux), question (both sources)
+- Reproduced known edge case with orch-go-559o (stale registry @227 vs actual @391)
+- Confirmed new spawns with beads ID format work correctly
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-21 10:00:** Investigation completed
+- Final confidence: High (90%)
+- Status: Complete
+- Key outcome: Fallback mechanism works correctly, known edge case persists but limited to older agents
+
+---
+
+## Test Performed
+
+**Test:** Executed all three tmux fallback commands with multiple agents in different states (API-active, tmux-only, edge case with stale registry)
+
+**Result:** 
+- `orch status` showed 246 agents including both API and tmux sources
+- `orch tail orch-go-qtpy` used tmux fallback successfully (via @448)
+- `orch tail orch-go-l9r5` used API successfully
+- `orch question orch-go-qtpy` searched both sources correctly
+- `orch tail orch-go-559o` failed as expected due to known edge case (stale registry + missing beads ID)
+- Manual tmux capture confirmed windows exist and contain content
+
+**Conclusion:** The tmux fallback mechanism is working correctly for all three commands. The mechanism successfully retrieves agent output when API is unavailable and the registry or window name provides necessary targeting information. The known edge case (stale registry + missing beads ID format) remains but is limited to older agents created before the window naming convention was established.
+
+---
+
+## Self-Review
+
+- [x] **Real test performed** - Ran actual commands (`orch status`, `orch tail`, `orch question`) with live agents
+- [x] **Conclusion from evidence** - Based on observed command outputs and tmux state, not speculation
+- [x] **Question answered** - Investigation confirms tmux fallback works correctly
+- [x] **File complete** - All sections filled with concrete data
+- [x] **D.E.K.N. filled** - Summary section completed with Delta, Evidence, Knowledge, Next, Confidence
+
+**Self-Review Status:** PASSED
+
+**Scope verification:**
+- [x] **Problem scoped** - Searched for all references to "fallback" in codebase (found 7 matches in main.go and question.go)
+- [x] **Scope documented** - Investigation states tested 246 agents across multiple command types
+- [x] **Broader patterns checked** - Reviewed previous iterations (4, 5, 9, 12) to understand history
+
+**Discovered work check:**
+- [x] **Reviewed for discoveries** - Confirmed known edge case still exists, no new issues found
+- [x] **Tracked if applicable** - No new issues to create (edge case already documented in previous iterations)
+- [x] **Included in summary** - Noted "No new discovered work items" in completion
+
+**No new discovered work items** - Edge case is already documented from previous iterations, no action required.
