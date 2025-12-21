@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully ported --tmux flag from Python orch-cli to Go orch-go, enabling interactive tmux window spawning alongside existing inline/headless modes.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Implemented runSpawnTmux() function, tested with `orch spawn --tmux investigation "test"`, verified tmux window creation in workers-orch-go session, confirmed agent registration with window ID @203.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Tmux spawning requires session management, window creation with auto-indexing, command sending, TUI readiness waiting, and window focus. Go implementation mirrors Python pattern.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - feature complete and tested.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (90%) - Implementation tested successfully, minor edge cases may exist in production use.
 
 <!--
 Example D.E.K.N.:
@@ -41,10 +41,10 @@ Guidelines:
 **Started:** 2025-12-21
 **Updated:** 2025-12-21
 **Owner:** Agent og-feat-add-tmux-flag-21dec
-**Phase:** Investigating
-**Next Step:** Implement tmux spawning mode in Go
-**Status:** In Progress
-**Confidence:** High (85%)
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (90%)
 
 ---
 
@@ -84,15 +84,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Go implementation needed third spawn mode** - Existing inline and headless modes didn't cover tmux use case. Added --tmux flag as explicit opt-in for interactive tmux sessions, keeping headless as default for daemon/automation.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Tmux workflow follows Python pattern** - Session management (workers-{project}), window creation with auto-indexing, opencode command sending, TUI readiness waiting, and window focus all ported from Python implementation.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Registry tracking with window ID** - Tmux agents are tracked via window ID (like `@203`) instead of session ID (headless) or no ID (inline), enabling proper lifecycle management and window targeting.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The --tmux flag was successfully ported from Python orch-cli to Go orch-go by adding a third spawn mode alongside inline and headless. Implementation creates workers-{project} tmux session if needed, creates a new window with auto-incrementing index, sends opencode command with ORCH_WORKER env var, waits for TUI ready, sends the prompt, registers agent with window ID, and focuses the window. Tested successfully with test spawn creating window in workers-orch-go session.
 
 ---
 
