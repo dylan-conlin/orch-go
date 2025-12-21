@@ -156,6 +156,59 @@ func TestBuildSpawnCommand(t *testing.T) {
 	}
 }
 
+func TestBuildSpawnCommandWithModel(t *testing.T) {
+	client := NewClient("http://127.0.0.1:4096")
+	cmd := client.BuildSpawnCommand("say hello", "test-title", "anthropic/claude-opus-4")
+
+	expectedArgs := []string{
+		"run",
+		"--attach", "http://127.0.0.1:4096",
+		"--format", "json",
+		"--model", "anthropic/claude-opus-4",
+		"--title", "test-title",
+		"say hello",
+	}
+
+	// Check that all expected args are present
+	found := 0
+	for _, expected := range expectedArgs {
+		for _, arg := range cmd.Args {
+			if arg == expected {
+				found++
+				break
+			}
+		}
+	}
+
+	if found < len(expectedArgs) {
+		t.Errorf("BuildSpawnCommand() missing expected args, found %v of %v. Args: %v", found, len(expectedArgs), cmd.Args)
+	}
+
+	// Verify --model flag is included
+	hasModel := false
+	for i, arg := range cmd.Args {
+		if arg == "--model" && i+1 < len(cmd.Args) && cmd.Args[i+1] == "anthropic/claude-opus-4" {
+			hasModel = true
+			break
+		}
+	}
+	if !hasModel {
+		t.Errorf("BuildSpawnCommand() should include --model flag when model is provided. Args: %v", cmd.Args)
+	}
+}
+
+func TestBuildSpawnCommandWithoutModel(t *testing.T) {
+	client := NewClient("http://127.0.0.1:4096")
+	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
+
+	// Verify --model flag is NOT included when model is empty
+	for i, arg := range cmd.Args {
+		if arg == "--model" {
+			t.Errorf("BuildSpawnCommand() should not include --model flag when model is empty. Found at index %d. Args: %v", i, cmd.Args)
+		}
+	}
+}
+
 func TestBuildAskCommand(t *testing.T) {
 	client := NewClient("http://127.0.0.1:4096")
 	cmd := client.BuildAskCommand("ses_123", "what did you do?")
