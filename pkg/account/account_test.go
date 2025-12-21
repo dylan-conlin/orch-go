@@ -129,3 +129,197 @@ func TestSaveAndLoadConfig(t *testing.T) {
 		t.Errorf("Loaded Email = %q, want %q", acc.Email, "user@example.com")
 	}
 }
+
+// ============================================================================
+// Capacity Info Tests
+// ============================================================================
+
+func TestCapacityInfo_IsHealthy(t *testing.T) {
+	tests := []struct {
+		name     string
+		capacity CapacityInfo
+		want     bool
+	}{
+		{
+			name:     "healthy capacity",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60},
+			want:     true,
+		},
+		{
+			name:     "low 5-hour",
+			capacity: CapacityInfo{FiveHourRemaining: 15, SevenDayRemaining: 60},
+			want:     false,
+		},
+		{
+			name:     "low 7-day",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 15},
+			want:     false,
+		},
+		{
+			name:     "both low",
+			capacity: CapacityInfo{FiveHourRemaining: 10, SevenDayRemaining: 10},
+			want:     false,
+		},
+		{
+			name:     "with error",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60, Error: "some error"},
+			want:     false,
+		},
+		{
+			name:     "exactly at threshold",
+			capacity: CapacityInfo{FiveHourRemaining: 20, SevenDayRemaining: 20},
+			want:     false, // threshold is >20, not >=20
+		},
+		{
+			name:     "just above threshold",
+			capacity: CapacityInfo{FiveHourRemaining: 21, SevenDayRemaining: 21},
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.capacity.IsHealthy(); got != tt.want {
+				t.Errorf("IsHealthy() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCapacityInfo_IsLow(t *testing.T) {
+	tests := []struct {
+		name     string
+		capacity CapacityInfo
+		want     bool
+	}{
+		{
+			name:     "healthy capacity",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60},
+			want:     false,
+		},
+		{
+			name:     "low 5-hour",
+			capacity: CapacityInfo{FiveHourRemaining: 15, SevenDayRemaining: 60},
+			want:     true,
+		},
+		{
+			name:     "low 7-day",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 15},
+			want:     true,
+		},
+		{
+			name:     "with error",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60, Error: "some error"},
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.capacity.IsLow(); got != tt.want {
+				t.Errorf("IsLow() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCapacityInfo_IsCritical(t *testing.T) {
+	tests := []struct {
+		name     string
+		capacity CapacityInfo
+		want     bool
+	}{
+		{
+			name:     "healthy capacity",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60},
+			want:     false,
+		},
+		{
+			name:     "low but not critical",
+			capacity: CapacityInfo{FiveHourRemaining: 10, SevenDayRemaining: 10},
+			want:     false,
+		},
+		{
+			name:     "critical 5-hour",
+			capacity: CapacityInfo{FiveHourRemaining: 3, SevenDayRemaining: 60},
+			want:     true,
+		},
+		{
+			name:     "critical 7-day",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 2},
+			want:     true,
+		},
+		{
+			name:     "with error",
+			capacity: CapacityInfo{FiveHourRemaining: 50, SevenDayRemaining: 60, Error: "some error"},
+			want:     true,
+		},
+		{
+			name:     "exactly at threshold",
+			capacity: CapacityInfo{FiveHourRemaining: 5, SevenDayRemaining: 5},
+			want:     false, // threshold is <5, not <=5
+		},
+		{
+			name:     "just below threshold",
+			capacity: CapacityInfo{FiveHourRemaining: 4.9, SevenDayRemaining: 50},
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.capacity.IsCritical(); got != tt.want {
+				t.Errorf("IsCritical() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetCurrentCapacity_NoAuthFile(t *testing.T) {
+	// Use temp directory with no auth file
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	capacity, err := GetCurrentCapacity()
+	if err == nil {
+		t.Error("GetCurrentCapacity() should return error when no auth file exists")
+	}
+
+	if capacity == nil {
+		t.Fatal("GetCurrentCapacity() should return CapacityInfo even on error")
+	}
+
+	if capacity.Error == "" {
+		t.Error("CapacityInfo.Error should be set when auth file doesn't exist")
+	}
+}
+
+func TestGetAccountCapacity_NotFound(t *testing.T) {
+	// Use temp directory with empty config
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	capacity, err := GetAccountCapacity("nonexistent")
+	if err == nil {
+		t.Error("GetAccountCapacity() should return error for nonexistent account")
+	}
+
+	if capacity == nil {
+		t.Fatal("GetAccountCapacity() should return CapacityInfo even on error")
+	}
+
+	if capacity.Error == "" {
+		t.Error("CapacityInfo.Error should be set for nonexistent account")
+	}
+}
+
+func TestCapacityError(t *testing.T) {
+	err := &CapacityError{Message: "test error message"}
+	if got := err.Error(); got != "test error message" {
+		t.Errorf("CapacityError.Error() = %q, want %q", got, "test error message")
+	}
+}
