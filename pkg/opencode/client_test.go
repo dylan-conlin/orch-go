@@ -2,10 +2,12 @@ package opencode
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseEvent(t *testing.T) {
@@ -283,11 +285,19 @@ func TestListSessions(t *testing.T) {
 // TestFindRecentSession tests the FindRecentSession method.
 func TestFindRecentSession(t *testing.T) {
 	projectDir := "/home/user/project1"
-	mockSessions := `[
-		{"id":"ses_old","directory":"/home/user/project1","time":{"created":1000}},
-		{"id":"ses_new","directory":"/home/user/project1","time":{"created":2000}},
-		{"id":"ses_other","directory":"/home/user/other","time":{"created":3000}}
-	]`
+	nowMs := time.Now().UnixMilli()
+	// Old session (more than 30 seconds ago)
+	oldMs := nowMs - 60*1000
+	// New session (just created)
+	newMs := nowMs - 1000 // 1 second ago
+	// Other project session (even newer, but different directory)
+	otherMs := nowMs - 500
+
+	mockSessions := fmt.Sprintf(`[
+		{"id":"ses_old","directory":"/home/user/project1","time":{"created":%d}},
+		{"id":"ses_new","directory":"/home/user/project1","time":{"created":%d}},
+		{"id":"ses_other","directory":"/home/user/other","time":{"created":%d}}
+	]`, oldMs, newMs, otherMs)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/session" {
@@ -310,6 +320,87 @@ func TestFindRecentSession(t *testing.T) {
 	if sessionID != "ses_new" {
 		t.Errorf("sessionID = %s, want ses_new", sessionID)
 	}
+}
+
+// TestFindRecentSessionWithRetry tests the retry logic for session discovery.
+func TestFindRecentSessionWithRetry(t *testing.T) {
+	projectDir := "/home/user/project1"
+
+	t.Run("succeeds on first attempt", func(t *testing.T) {
+		callCount := 0
+		nowMs := time.Now().UnixMilli()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			// Return a session created "now" so it's within the 30s window
+			w.Write([]byte(fmt.Sprintf(`[{"id":"ses_found","directory":"%s","time":{"created":%d}}]`, projectDir, nowMs)))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		sessionID, err := client.FindRecentSessionWithRetry(projectDir, "", 3, 10*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+		if sessionID != "ses_found" {
+			t.Errorf("sessionID = %s, want ses_found", sessionID)
+		}
+		if callCount != 1 {
+			t.Errorf("callCount = %d, want 1", callCount)
+		}
+	})
+
+	t.Run("succeeds on second attempt", func(t *testing.T) {
+		callCount := 0
+		nowMs := time.Now().UnixMilli()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			if callCount == 1 {
+				// First call returns empty
+				w.Write([]byte(`[]`))
+			} else {
+				// Second call returns the session
+				w.Write([]byte(fmt.Sprintf(`[{"id":"ses_found","directory":"%s","time":{"created":%d}}]`, projectDir, nowMs)))
+			}
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		sessionID, err := client.FindRecentSessionWithRetry(projectDir, "", 3, 10*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+		if sessionID != "ses_found" {
+			t.Errorf("sessionID = %s, want ses_found", sessionID)
+		}
+		if callCount != 2 {
+			t.Errorf("callCount = %d, want 2", callCount)
+		}
+	})
+
+	t.Run("returns error after max attempts", func(t *testing.T) {
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			// Always return empty
+			w.Write([]byte(`[]`))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		sessionID, err := client.FindRecentSessionWithRetry(projectDir, "", 3, 10*time.Millisecond)
+		if err == nil {
+			t.Error("Expected error after max attempts")
+		}
+		if sessionID != "" {
+			t.Errorf("sessionID = %s, want empty string", sessionID)
+		}
+		if callCount != 3 {
+			t.Errorf("callCount = %d, want 3", callCount)
+		}
+	})
 }
 
 // TestListSessionsEmpty tests ListSessions with empty response.

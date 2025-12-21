@@ -360,6 +360,31 @@ func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
 	return mostRecent.ID, nil
 }
 
+// FindRecentSessionWithRetry retries finding a recent session with exponential backoff.
+// This handles the race condition where OpenCode TUI starts before registering with the API.
+// Returns the session ID if found, or empty string with no error if not found after retries.
+func (c *Client) FindRecentSessionWithRetry(projectDir, title string, maxAttempts int, initialDelay time.Duration) (string, error) {
+	delay := initialDelay
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		sessionID, err := c.FindRecentSession(projectDir, title)
+		if err == nil {
+			return sessionID, nil
+		}
+		lastErr = err
+
+		// Don't sleep after the last attempt
+		if attempt < maxAttempts {
+			time.Sleep(delay)
+			delay = delay * 2 // Exponential backoff
+		}
+	}
+
+	// Return empty string (not an error) since tmux window_id is sufficient for monitoring
+	return "", lastErr
+}
+
 // ExtractRecentText extracts the most recent text content from messages.
 // It returns up to `lines` worth of text from the most recent messages.
 // The text is extracted from message parts of type "text".
