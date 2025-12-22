@@ -1348,14 +1348,33 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 }
 
 func runSend(serverURL, identifier, message string) error {
-	// Resolve identifier to session ID (supports beads ID, workspace name, or raw session ID)
-	sessionID, err := resolveSessionID(serverURL, identifier)
-	if err != nil {
-		return fmt.Errorf("failed to resolve session: %w", err)
-	}
+	// First, try to resolve identifier to OpenCode session ID
+	sessionID, resolveErr := resolveSessionID(serverURL, identifier)
 
 	client := opencode.NewClient(serverURL)
 
+	// If resolution succeeded, use OpenCode API
+	if resolveErr == nil && sessionID != "" {
+		return sendViaOpenCodeAPI(client, sessionID, identifier, message)
+	}
+
+	// OpenCode session not found - try tmux send-keys fallback
+	// This handles tmux agents where session ID wasn't captured or title doesn't match
+	windowInfo, err := findTmuxWindowByIdentifier(identifier)
+	if err != nil || windowInfo == nil {
+		// Neither OpenCode session nor tmux window found
+		if resolveErr != nil {
+			return fmt.Errorf("failed to resolve session and no tmux window found: %w", resolveErr)
+		}
+		return fmt.Errorf("no session or tmux window found for identifier: %s", identifier)
+	}
+
+	// Found tmux window - send via send-keys
+	return sendViaTmux(windowInfo, identifier, message)
+}
+
+// sendViaOpenCodeAPI sends a message using the OpenCode HTTP API.
+func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message string) error {
 	// Log the send event first (before streaming starts)
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -1366,6 +1385,7 @@ func runSend(serverURL, identifier, message string) error {
 			"message":    message,
 			"async":      sendAsync,
 			"identifier": identifier,
+			"method":     "api",
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -1377,7 +1397,7 @@ func runSend(serverURL, identifier, message string) error {
 		if err := client.SendMessageAsync(sessionID, message); err != nil {
 			return fmt.Errorf("failed to send message asynchronously: %w", err)
 		}
-		fmt.Printf("✓ Message sent to session %s\n", sessionID)
+		fmt.Printf("✓ Message sent to session %s (via API)\n", sessionID)
 		return nil
 	}
 
@@ -1390,6 +1410,70 @@ func runSend(serverURL, identifier, message string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// sendViaTmux sends a message to a tmux window using send-keys.
+// This is used as a fallback when the OpenCode session ID cannot be resolved.
+func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error {
+	// Log the send event
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "session.send",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"message":       message,
+			"identifier":    identifier,
+			"method":        "tmux",
+			"window_target": windowInfo.Target,
+			"window_id":     windowInfo.ID,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Send the message using tmux send-keys in literal mode
+	if err := tmux.SendKeysLiteral(windowInfo.Target, message); err != nil {
+		return fmt.Errorf("failed to send message via tmux: %w", err)
+	}
+
+	// Send Enter to submit the message
+	if err := tmux.SendEnter(windowInfo.Target); err != nil {
+		return fmt.Errorf("failed to send enter via tmux: %w", err)
+	}
+
+	fmt.Printf("✓ Message sent to %s (via tmux %s)\n", identifier, windowInfo.Target)
+	return nil
+}
+
+// findTmuxWindowByIdentifier searches for a tmux window matching the identifier.
+// The identifier can be a beads ID, workspace name, or partial match.
+func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
+	sessions, err := tmux.ListWorkersSessions()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, session := range sessions {
+		// First try exact beads ID match (format: "[beads-id]" in window name)
+		window, err := tmux.FindWindowByBeadsID(session, identifier)
+		if err == nil && window != nil {
+			return window, nil
+		}
+
+		// Also try partial match on window name (for workspace name matches)
+		windows, err := tmux.ListWindows(session)
+		if err != nil {
+			continue
+		}
+		for i := range windows {
+			if strings.Contains(windows[i].Name, identifier) {
+				return &windows[i], nil
+			}
+		}
+	}
+
+	return nil, nil // Not found (no error, just not found)
 }
 
 // SwarmStatus represents aggregate swarm information.
