@@ -8,7 +8,7 @@
 
 **Next:** None - investigation complete. The spawn flow is well-documented and working as designed.
 
-**Confidence:** High (90%) - verified against live tmux sessions, but didn't test actual spawn execution.
+**Confidence:** Very High (95%) - verified against live tmux sessions AND tested actual spawn execution (4.98s, window @623 created).
 
 ---
 
@@ -22,7 +22,7 @@
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
-**Confidence:** High (90%)
+**Confidence:** Very High (95%)
 
 ---
 
@@ -167,7 +167,7 @@ The flow is designed for visual monitoring while maintaining API accessibility f
 
 ## Confidence Assessment
 
-**Current Confidence:** High (90%)
+**Current Confidence:** Very High (95%)
 
 **Why this level?**
 
@@ -182,15 +182,19 @@ Code analysis is comprehensive and verified against live tmux sessions. The syst
 
 **What's uncertain:**
 
-- ⚠️ Didn't test actual spawn execution (would create another agent)
 - ⚠️ Error handling paths not explored in detail
 - ⚠️ Tmuxinator integration not fully traced
 
 **What would increase confidence to Very High (95%+):**
 
-- Execute actual spawn and trace through flow
 - Test error cases (no tmux, no opencode, timeout)
-- Verify session ID capture works reliably
+- Verify session ID capture works reliably across more agents
+
+**Update 2025-12-22 15:39:** Executed actual spawn test with:
+```bash
+orch spawn investigation "test tmux spawn" --no-track --skip-artifact-check
+```
+Result: Completed in 4.98s, created window workers-orch-go:26 with ID @623, workspace og-inv-test-tmux-spawn-22dec created with SPAWN_CONTEXT.md, agent immediately began reading context and executing. This confirms spawn execution works correctly.
 
 ---
 

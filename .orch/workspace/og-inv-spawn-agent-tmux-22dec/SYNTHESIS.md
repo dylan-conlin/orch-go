@@ -44,6 +44,12 @@ tmux list-sessions
 # Verified current window naming
 tmux list-windows -t workers-orch-go -F "#{window_index} #{window_name}"
 # Output: Windows with emoji prefixes + workspace names + beads IDs
+
+# ACTUAL SPAWN TEST (executed by continuation session)
+time orch spawn investigation "test tmux spawn" --no-track --skip-artifact-check
+# Result: 4.98s total, window workers-orch-go:26 created with ID @623
+# Verified workspace og-inv-test-tmux-spawn-22dec created with SPAWN_CONTEXT.md
+# Verified agent immediately began reading context and executing
 ```
 
 ---
@@ -90,6 +96,8 @@ tmux list-windows -t workers-orch-go -F "#{window_index} #{window_name}"
 **What remains unclear:**
 - Whether 15s timeout is sufficient for all scenarios
 - How often session ID capture actually fails in practice
+
+**Update:** After actual spawn test, the system is confirmed working with 4.98s spawn time.
 
 ---
 
