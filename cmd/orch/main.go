@@ -846,7 +846,19 @@ func checkConcurrencyLimit() error {
 		return nil
 	}
 
-	activeCount := len(sessions)
+	// Filter to only count active sessions (updated within last 30 minutes)
+	// This prevents stale sessions from blocking new spawns after restart
+	now := time.Now()
+	staleThreshold := 30 * time.Minute
+	activeCount := 0
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		idleTime := now.Sub(updatedAt)
+		if idleTime < staleThreshold {
+			activeCount++
+		}
+	}
+
 	if activeCount >= maxAgents {
 		return fmt.Errorf("concurrency limit reached: %d active agents (max %d). Use 'orch status' to see active agents, 'orch complete' to finish agents, or --max-agents to increase limit", activeCount, maxAgents)
 	}
