@@ -26,7 +26,8 @@ for each issue in priority order.
 Subcommands:
   run      Process issues continuously with polling
   once     Process a single issue and exit
-  preview  Show what would be processed next without processing`,
+  preview  Show what would be processed next without processing
+  reflect  Run kb reflect analysis and store suggestions`,
 }
 
 var daemonRunCmd = &cobra.Command{
@@ -80,6 +81,27 @@ Examples:
 	},
 }
 
+var daemonReflectCmd = &cobra.Command{
+	Use:   "reflect",
+	Short: "Run kb reflect analysis and store suggestions",
+	Long: `Run knowledge reflection analysis and store suggestions for SessionStart hook.
+
+This command runs 'kb reflect --format json' to detect:
+- Investigation clusters needing synthesis
+- kn entries worth promoting to decisions
+- Stale decisions with no citations
+- Constraints that may conflict with code
+
+Results are stored in ~/.orch/reflect-suggestions.json and surfaced
+by the SessionStart hook at next session start.
+
+Examples:
+  orch-go daemon reflect`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDaemonReflect()
+	},
+}
+
 var (
 	// Daemon flags
 	daemonDelay        int    // Delay between spawns in seconds
@@ -94,6 +116,7 @@ func init() {
 	daemonCmd.AddCommand(daemonRunCmd)
 	daemonCmd.AddCommand(daemonOnceCmd)
 	daemonCmd.AddCommand(daemonPreviewCmd)
+	daemonCmd.AddCommand(daemonReflectCmd)
 
 	// Spawn delay between issues
 	daemonRunCmd.Flags().IntVar(&daemonDelay, "delay", 10, "Delay between spawns in seconds")
@@ -378,4 +401,67 @@ func runDaemonPreview() error {
 	fmt.Println("\nRun 'orch-go daemon once' to process this issue.")
 
 	return nil
+}
+
+func runDaemonReflect() error {
+	fmt.Println("Running knowledge reflection analysis...")
+
+	result := daemon.RunAndSaveReflection()
+	if result.Error != nil {
+		return fmt.Errorf("reflection error: %w", result.Error)
+	}
+
+	if result.Suggestions == nil || !result.Suggestions.HasSuggestions() {
+		fmt.Println("No reflection suggestions found.")
+		return nil
+	}
+
+	// Print summary
+	fmt.Printf("\n%s\n", result.Suggestions.Summary())
+
+	// Print details by category
+	if len(result.Suggestions.Synthesis) > 0 {
+		fmt.Printf("\nSynthesis Opportunities (%d):\n", len(result.Suggestions.Synthesis))
+		for _, s := range result.Suggestions.Synthesis[:min(5, len(result.Suggestions.Synthesis))] {
+			fmt.Printf("  - %s: %d investigations\n", s.Topic, s.Count)
+		}
+		if len(result.Suggestions.Synthesis) > 5 {
+			fmt.Printf("  ... and %d more\n", len(result.Suggestions.Synthesis)-5)
+		}
+	}
+
+	if len(result.Suggestions.Promote) > 0 {
+		fmt.Printf("\nPromotion Candidates (%d):\n", len(result.Suggestions.Promote))
+		for _, p := range result.Suggestions.Promote[:min(5, len(result.Suggestions.Promote))] {
+			fmt.Printf("  - %s\n", truncateDaemonString(p.Content, 60))
+		}
+	}
+
+	if len(result.Suggestions.Stale) > 0 {
+		fmt.Printf("\nStale Decisions (%d):\n", len(result.Suggestions.Stale))
+		for _, s := range result.Suggestions.Stale[:min(5, len(result.Suggestions.Stale))] {
+			fmt.Printf("  - %s (%d days old)\n", filepath.Base(s.Path), s.Age)
+		}
+	}
+
+	if len(result.Suggestions.Drift) > 0 {
+		fmt.Printf("\nPotential Drifts (%d):\n", len(result.Suggestions.Drift))
+		for _, d := range result.Suggestions.Drift[:min(5, len(result.Suggestions.Drift))] {
+			fmt.Printf("  - %s\n", truncateDaemonString(d.Content, 60))
+		}
+	}
+
+	if result.Saved {
+		fmt.Printf("\nSuggestions saved to: %s\n", daemon.SuggestionsPath())
+		fmt.Println("They will be surfaced at next session start.")
+	}
+
+	return nil
+}
+
+func truncateDaemonString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
