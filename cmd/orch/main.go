@@ -1328,32 +1328,48 @@ func extractSkillFromWindowName(name string) string {
 
 // resolveSessionID resolves an identifier to an OpenCode session ID.
 // The identifier can be:
-// 1. A full OpenCode session ID (ses_xxx) - returned as-is
-// 2. A beads ID (project-xxxx) - looked up via workspace file or API
+// 1. A full OpenCode session ID (ses_xxx) - verified against API, returned if valid
+// 2. A beads ID (project-xxxx) - looked up via workspace SPAWN_CONTEXT.md or API
 // 3. A workspace name - looked up via workspace file
 //
 // Returns the resolved session ID or an error if resolution fails.
 func resolveSessionID(serverURL, identifier string) (string, error) {
-	// If it looks like a full session ID, return as-is
+	// If it looks like a full session ID, verify it exists
 	if strings.HasPrefix(identifier, "ses_") {
+		// Validate the session ID has content after the prefix
+		suffix := strings.TrimPrefix(identifier, "ses_")
+		if len(suffix) < 8 { // Session IDs have substantial content after ses_
+			return "", fmt.Errorf("invalid session ID format: %s (too short)", identifier)
+		}
+		// Verify the session exists in OpenCode
+		client := opencode.NewClient(serverURL)
+		_, err := client.GetSession(identifier)
+		if err != nil {
+			return "", fmt.Errorf("session not found in OpenCode: %s", identifier)
+		}
 		return identifier, nil
 	}
 
 	client := opencode.NewClient(serverURL)
 	projectDir, _ := os.Getwd()
 
-	// Strategy: Workspace file first (fast path), then API lookup
-	//
-	// 1. Try to find session ID via workspace file (fast path)
-	// 2. If no workspace file, search OpenCode sessions by title match
+	// Strategy 1: Use findWorkspaceByBeadsID which scans SPAWN_CONTEXT.md
+	// This is the authoritative way to find workspace by beads ID
+	workspacePath, _ := findWorkspaceByBeadsID(projectDir, identifier)
+	if workspacePath != "" {
+		sessionID := spawn.ReadSessionID(workspacePath)
+		if sessionID != "" {
+			return sessionID, nil
+		}
+	}
 
-	// Try workspace file lookup for session ID (fast path)
+	// Strategy 2: Direct workspace name match (for workspace name identifiers)
 	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
 	if entries, err := os.ReadDir(workspaceBase); err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() && strings.Contains(entry.Name(), identifier) {
-				workspacePath := filepath.Join(workspaceBase, entry.Name())
-				sessionID := spawn.ReadSessionID(workspacePath)
+				wp := filepath.Join(workspaceBase, entry.Name())
+				sessionID := spawn.ReadSessionID(wp)
 				if sessionID != "" {
 					return sessionID, nil
 				}
@@ -1361,7 +1377,7 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 		}
 	}
 
-	// Try API lookup: search sessions by title containing identifier
+	// Strategy 3: API lookup - search sessions by title containing identifier
 	allSessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to list sessions: %w", err)
@@ -1374,7 +1390,7 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 		}
 	}
 
-	// Try tmux window lookup as last resort
+	// Strategy 4: tmux window lookup as last resort - find window, then try to get session
 	sessions, err := tmux.ListWorkersSessions()
 	if err == nil {
 		for _, session := range sessions {
@@ -1383,9 +1399,10 @@ func resolveSessionID(serverURL, identifier string) (string, error) {
 				continue
 			}
 
-			// Found tmux window - search for matching OpenCode session
+			// Found tmux window - try to find matching OpenCode session by window name
+			// Window names have workspace names in them
 			for _, s := range allSessions {
-				if strings.Contains(s.Title, identifier) || extractBeadsIDFromTitle(s.Title) == identifier {
+				if strings.Contains(window.Name, s.Title) || strings.Contains(s.Title, identifier) {
 					return s.ID, nil
 				}
 			}
