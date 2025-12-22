@@ -271,3 +271,223 @@ func TestFilterByType(t *testing.T) {
 		t.Errorf("filterByType() for guide returned %d, want 0", len(guides))
 	}
 }
+
+func TestExtractProjectFromMatch(t *testing.T) {
+	tests := []struct {
+		name  string
+		match KBContextMatch
+		want  string
+	}{
+		{
+			name:  "extracts project from bracket prefix",
+			match: KBContextMatch{Title: "[orch-go] Some constraint about spawning"},
+			want:  "orch-go",
+		},
+		{
+			name:  "extracts project with hyphen",
+			match: KBContextMatch{Title: "[orch-knowledge] Some decision"},
+			want:  "orch-knowledge",
+		},
+		{
+			name:  "returns empty for no prefix",
+			match: KBContextMatch{Title: "Plain title without project"},
+			want:  "",
+		},
+		{
+			name:  "returns empty for malformed prefix",
+			match: KBContextMatch{Title: "[incomplete"},
+			want:  "",
+		},
+		{
+			name:  "handles empty title",
+			match: KBContextMatch{Title: ""},
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractProjectFromMatch(tt.match)
+			if got != tt.want {
+				t.Errorf("extractProjectFromMatch() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilterToOrchEcosystem(t *testing.T) {
+	matches := []KBContextMatch{
+		{Type: "constraint", Title: "[orch-go] Agents must not spawn recursively"},
+		{Type: "constraint", Title: "[orch-cli] Worker agents must not spawn"},
+		{Type: "constraint", Title: "[price-watch] Max retries per product"},
+		{Type: "decision", Title: "[kb-cli] Use YAML for config"},
+		{Type: "decision", Title: "[dotfiles] Zsh is the default shell"},
+		{Type: "investigation", Title: "[orch-knowledge] Pattern analysis"},
+		{Type: "investigation", Title: "[beads] Issue tracking investigation"},
+		{Type: "investigation", Title: "[scs-slack] Slack integration research"},
+		{Type: "constraint", Title: "Local constraint without prefix"}, // Should be included
+	}
+
+	filtered := filterToOrchEcosystem(matches)
+
+	// Should keep: orch-go, orch-cli, kb-cli, orch-knowledge, beads, and local (no prefix)
+	// Should filter: price-watch, dotfiles, scs-slack
+	expectedCount := 6
+	if len(filtered) != expectedCount {
+		t.Errorf("filterToOrchEcosystem() returned %d matches, want %d", len(filtered), expectedCount)
+	}
+
+	// Verify specific matches
+	wantTitles := map[string]bool{
+		"[orch-go] Agents must not spawn recursively": true,
+		"[orch-cli] Worker agents must not spawn":     true,
+		"[kb-cli] Use YAML for config":                true,
+		"[orch-knowledge] Pattern analysis":           true,
+		"[beads] Issue tracking investigation":        true,
+		"Local constraint without prefix":             true,
+	}
+
+	for _, m := range filtered {
+		if !wantTitles[m.Title] {
+			t.Errorf("filterToOrchEcosystem() included unwanted match: %q", m.Title)
+		}
+	}
+
+	// Verify filtered out matches are not present
+	noTitles := []string{
+		"[price-watch] Max retries per product",
+		"[dotfiles] Zsh is the default shell",
+		"[scs-slack] Slack integration research",
+	}
+	for _, m := range filtered {
+		for _, noTitle := range noTitles {
+			if m.Title == noTitle {
+				t.Errorf("filterToOrchEcosystem() should have filtered out: %q", noTitle)
+			}
+		}
+	}
+}
+
+func TestApplyPerCategoryLimits(t *testing.T) {
+	// Create matches with 25 constraints, 10 decisions, 5 investigations
+	var matches []KBContextMatch
+	for i := 0; i < 25; i++ {
+		matches = append(matches, KBContextMatch{Type: "constraint", Title: "C" + string(rune('0'+i%10))})
+	}
+	for i := 0; i < 10; i++ {
+		matches = append(matches, KBContextMatch{Type: "decision", Title: "D" + string(rune('0'+i))})
+	}
+	for i := 0; i < 5; i++ {
+		matches = append(matches, KBContextMatch{Type: "investigation", Title: "I" + string(rune('0'+i))})
+	}
+
+	// Apply limit of 20 per category
+	filtered := applyPerCategoryLimits(matches, 20)
+
+	// Count by type
+	counts := make(map[string]int)
+	for _, m := range filtered {
+		counts[m.Type]++
+	}
+
+	// Constraints should be capped at 20
+	if counts["constraint"] != 20 {
+		t.Errorf("applyPerCategoryLimits() constraint count = %d, want 20", counts["constraint"])
+	}
+
+	// Decisions should all be included (only 10)
+	if counts["decision"] != 10 {
+		t.Errorf("applyPerCategoryLimits() decision count = %d, want 10", counts["decision"])
+	}
+
+	// Investigations should all be included (only 5)
+	if counts["investigation"] != 5 {
+		t.Errorf("applyPerCategoryLimits() investigation count = %d, want 5", counts["investigation"])
+	}
+}
+
+func TestMergeResults(t *testing.T) {
+	local := &KBContextResult{
+		Query: "test",
+		Matches: []KBContextMatch{
+			{Type: "constraint", Title: "Local constraint"},
+			{Type: "decision", Title: "Shared decision"}, // Also in global
+		},
+	}
+
+	global := &KBContextResult{
+		Query: "test",
+		Matches: []KBContextMatch{
+			{Type: "decision", Title: "Shared decision"}, // Duplicate
+			{Type: "investigation", Title: "[orch-go] Global investigation"},
+		},
+	}
+
+	merged := mergeResults(local, global)
+
+	if merged == nil {
+		t.Fatal("mergeResults() returned nil")
+	}
+
+	// Should have 3 unique matches (deduplicated)
+	if len(merged.Matches) != 3 {
+		t.Errorf("mergeResults() returned %d matches, want 3", len(merged.Matches))
+	}
+
+	// Verify local matches come first
+	if merged.Matches[0].Title != "Local constraint" {
+		t.Errorf("mergeResults() first match = %q, want local match first", merged.Matches[0].Title)
+	}
+}
+
+func TestMergeResults_NilInputs(t *testing.T) {
+	local := &KBContextResult{
+		Query:   "test",
+		Matches: []KBContextMatch{{Type: "constraint", Title: "C1"}},
+	}
+
+	// nil local
+	if result := mergeResults(nil, local); result != local {
+		t.Error("mergeResults(nil, local) should return local")
+	}
+
+	// nil global
+	if result := mergeResults(local, nil); result != local {
+		t.Error("mergeResults(local, nil) should return local")
+	}
+
+	// both nil
+	if result := mergeResults(nil, nil); result != nil {
+		t.Error("mergeResults(nil, nil) should return nil")
+	}
+}
+
+func TestFormatMatchesForDisplay(t *testing.T) {
+	matches := []KBContextMatch{
+		{Type: "constraint", Source: "kn", Title: "No infinite loops", Reason: "Prevents runaway"},
+		{Type: "decision", Source: "kb", Title: "Use JWT", Path: "/path/to/decision.md"},
+		{Type: "investigation", Source: "kb", Title: "Auth flow analysis", Path: "/path/to/inv.md"},
+	}
+
+	output := formatMatchesForDisplay(matches, "auth")
+
+	// Check for required sections
+	if !strings.Contains(output, "Context for \"auth\"") {
+		t.Error("formatMatchesForDisplay() missing query header")
+	}
+	if !strings.Contains(output, "## CONSTRAINTS") {
+		t.Error("formatMatchesForDisplay() missing CONSTRAINTS section")
+	}
+	if !strings.Contains(output, "## DECISIONS") {
+		t.Error("formatMatchesForDisplay() missing DECISIONS section")
+	}
+	if !strings.Contains(output, "## INVESTIGATIONS") {
+		t.Error("formatMatchesForDisplay() missing INVESTIGATIONS section")
+	}
+	if !strings.Contains(output, "No infinite loops") {
+		t.Error("formatMatchesForDisplay() missing constraint title")
+	}
+	if !strings.Contains(output, "Reason: Prevents runaway") {
+		t.Error("formatMatchesForDisplay() missing constraint reason")
+	}
+}

@@ -10,6 +10,24 @@ import (
 	"strings"
 )
 
+// OrchEcosystemRepos defines the allowlist of repos that are relevant for orchestration work.
+// Used for tiered filtering: when global search is needed, results are post-filtered to this set.
+var OrchEcosystemRepos = map[string]bool{
+	"orch-go":        true,
+	"orch-cli":       true,
+	"kb-cli":         true,
+	"orch-knowledge": true,
+	"beads":          true,
+	"kn":             true,
+}
+
+// MinMatchesForLocalSearch is the threshold below which we expand to global search.
+// If local search returns fewer matches than this, we try global with ecosystem filter.
+const MinMatchesForLocalSearch = 3
+
+// MaxMatchesPerCategory limits results per category to prevent context flood.
+const MaxMatchesPerCategory = 20
+
 // KBContextMatch represents a match from kb context.
 type KBContextMatch struct {
 	Type        string // "constraint", "decision", "investigation", "guide"
@@ -58,11 +76,63 @@ func ExtractKeywords(task string, maxWords int) string {
 	return strings.Join(words, " ")
 }
 
-// RunKBContextCheck runs 'kb context' with the given query and parses the output.
+// RunKBContextCheck runs 'kb context' with tiered search strategy:
+// 1. First query current project (no --global) for targeted results
+// 2. If sparse (<3 matches), expand to global search with orch ecosystem filter
+// 3. Apply per-category limits to prevent context flood
 // Returns nil if no matches found or if kb command fails.
 func RunKBContextCheck(query string) (*KBContextResult, error) {
-	// Run kb context command with --global to find cross-repo decisions
-	cmd := exec.Command("kb", "context", "--global", query)
+	// Step 1: Try current project first (no --global flag)
+	result, err := runKBContextQuery(query, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 2: If local search is sparse, expand to global with ecosystem filter
+	if result == nil || len(result.Matches) < MinMatchesForLocalSearch {
+		globalResult, err := runKBContextQuery(query, true)
+		if err != nil {
+			return nil, err
+		}
+
+		if globalResult != nil && len(globalResult.Matches) > 0 {
+			// Post-filter to orch ecosystem repos
+			globalResult.Matches = filterToOrchEcosystem(globalResult.Matches)
+			globalResult.HasMatches = len(globalResult.Matches) > 0
+
+			// Merge with local results if any
+			if result != nil && len(result.Matches) > 0 {
+				result = mergeResults(result, globalResult)
+			} else if globalResult.HasMatches {
+				result = globalResult
+			}
+		}
+	}
+
+	// Step 3: Apply per-category limits
+	if result != nil && len(result.Matches) > 0 {
+		result.Matches = applyPerCategoryLimits(result.Matches, MaxMatchesPerCategory)
+		result.HasMatches = len(result.Matches) > 0
+		// Regenerate RawOutput to reflect filtered results
+		result.RawOutput = formatMatchesForDisplay(result.Matches, result.Query)
+	}
+
+	if result == nil || !result.HasMatches {
+		return nil, nil
+	}
+
+	return result, nil
+}
+
+// runKBContextQuery runs a single kb context query with optional --global flag.
+func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
+	var cmd *exec.Cmd
+	if global {
+		cmd = exec.Command("kb", "context", "--global", query)
+	} else {
+		cmd = exec.Command("kb", "context", query)
+	}
+
 	output, err := cmd.Output()
 	if err != nil {
 		// If kb command fails (not found, no matches, etc.), return nil
@@ -91,6 +161,130 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 	}
 
 	return result, nil
+}
+
+// filterToOrchEcosystem filters matches to only include those from orch ecosystem repos.
+// Matches without a project prefix (local results) are always included.
+func filterToOrchEcosystem(matches []KBContextMatch) []KBContextMatch {
+	var filtered []KBContextMatch
+	for _, m := range matches {
+		project := extractProjectFromMatch(m)
+		// Include if: no project prefix (local), OR project is in ecosystem allowlist
+		if project == "" || OrchEcosystemRepos[project] {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
+}
+
+// extractProjectFromMatch extracts the project name from a match's title or path.
+// Returns empty string if no project prefix found.
+func extractProjectFromMatch(m KBContextMatch) string {
+	// Check for [project] prefix in title (e.g., "[orch-go] Title here")
+	if strings.HasPrefix(m.Title, "[") {
+		end := strings.Index(m.Title, "]")
+		if end > 1 {
+			return m.Title[1:end]
+		}
+	}
+	return ""
+}
+
+// applyPerCategoryLimits limits the number of matches per category type.
+func applyPerCategoryLimits(matches []KBContextMatch, limit int) []KBContextMatch {
+	categoryCounts := make(map[string]int)
+	var filtered []KBContextMatch
+
+	for _, m := range matches {
+		if categoryCounts[m.Type] < limit {
+			filtered = append(filtered, m)
+			categoryCounts[m.Type]++
+		}
+	}
+	return filtered
+}
+
+// mergeResults combines two KBContextResults, deduplicating matches.
+func mergeResults(local, global *KBContextResult) *KBContextResult {
+	if local == nil {
+		return global
+	}
+	if global == nil {
+		return local
+	}
+
+	// Create a set of existing titles to avoid duplicates
+	seen := make(map[string]bool)
+	var merged []KBContextMatch
+
+	// Add local matches first (higher priority)
+	for _, m := range local.Matches {
+		key := m.Type + ":" + m.Title
+		if !seen[key] {
+			seen[key] = true
+			merged = append(merged, m)
+		}
+	}
+
+	// Add global matches that aren't duplicates
+	for _, m := range global.Matches {
+		key := m.Type + ":" + m.Title
+		if !seen[key] {
+			seen[key] = true
+			merged = append(merged, m)
+		}
+	}
+
+	return &KBContextResult{
+		Query:      local.Query,
+		HasMatches: len(merged) > 0,
+		Matches:    merged,
+		RawOutput:  formatMatchesForDisplay(merged, local.Query),
+	}
+}
+
+// formatMatchesForDisplay regenerates a display-friendly output from matches.
+func formatMatchesForDisplay(matches []KBContextMatch, query string) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Context for %q:\n\n", query))
+
+	// Group by type
+	byType := make(map[string][]KBContextMatch)
+	for _, m := range matches {
+		byType[m.Type] = append(byType[m.Type], m)
+	}
+
+	// Output in consistent order
+	typeOrder := []string{"constraint", "decision", "investigation", "guide"}
+	typeHeaders := map[string]string{
+		"constraint":    "## CONSTRAINTS",
+		"decision":      "## DECISIONS",
+		"investigation": "## INVESTIGATIONS",
+		"guide":         "## GUIDES",
+	}
+
+	for _, t := range typeOrder {
+		if ms, ok := byType[t]; ok && len(ms) > 0 {
+			// Determine source annotation
+			source := "(from kb)"
+			if len(ms) > 0 && ms[0].Source == "kn" {
+				source = "(from kn)"
+			}
+			sb.WriteString(fmt.Sprintf("%s %s\n\n", typeHeaders[t], source))
+			for _, m := range ms {
+				sb.WriteString(fmt.Sprintf("- %s\n", m.Title))
+				if m.Reason != "" {
+					sb.WriteString(fmt.Sprintf("  Reason: %s\n", m.Reason))
+				}
+				if m.Path != "" {
+					sb.WriteString(fmt.Sprintf("  Path: %s\n", m.Path))
+				}
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
 }
 
 // parseKBContextOutput parses the output of 'kb context' command.
