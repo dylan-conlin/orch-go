@@ -33,3 +33,8 @@ orch-go on  master [$!?] via 🐹 v1.23.5 on ☁️  dylan.conlin@sendcutsend
 
 
  i don't want two opencode installs on my machine. i just want the from src install: /Users/dylanconlin/Documents/personal/opencode 
+* so we should look 
+* new thoughts i've been having
+i'm realizing that there is more value than i initially realized in well-defined process when it comes to orchestration. we have the orchestrator skill, which packs a lot in, but i'm wondering if it's overloaded. beads itself has an entire process of intricate steps of creation, scoping, prioritizing, etc. and then there is review and synthesis, another phase of the orchestration lifecycle. have we ever actually sat down and tried to define this? there's a flow, a sequence, a cadence, but you can also approach it from different angles - plan heavy or dive in and learn as you go? daemon focused with proper triage or spawn as you go? there is a lot here to think about. where do we even begin? and what about things like post-mortems? process reflection? what can we learn from existing solutions that pre-date ai agent orchestration? what can we learn from the state of the art?
+
+i get wrecked because i chase the most exciting new idea i have, so i need the system to heavily stage and sequence the work.
