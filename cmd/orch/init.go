@@ -7,14 +7,18 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/dylan-conlin/orch-go/pkg/claudemd"
+	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/spf13/cobra"
 )
 
 var (
 	// Init command flags
-	initForce       bool   // Force re-initialization even if directories exist
-	initSkipBeads   bool   // Skip beads initialization
-	initBeadsPrefix string // Custom prefix for beads issues
+	initForce        bool   // Force re-initialization even if directories exist
+	initSkipBeads    bool   // Skip beads initialization
+	initSkipClaudeMD bool   // Skip CLAUDE.md generation
+	initBeadsPrefix  string // Custom prefix for beads issues
+	initProjectType  string // Project type for CLAUDE.md template
 )
 
 var initCmd = &cobra.Command{
@@ -28,13 +32,22 @@ Creates:
   - .kb/investigations/  Investigation artifacts
   - .kb/decisions/       Decision records
   - .beads/              Issue tracking (via 'bd init')
+  - CLAUDE.md            Project context for Claude agents
 
 This command is idempotent - it can be run multiple times safely.
 Use --force to recreate directories even if they exist.
 
+Project types for CLAUDE.md:
+  - go-cli      Go CLI project (auto-detected via go.mod + cmd/)
+  - svelte-app  SvelteKit app (auto-detected via svelte.config.js)
+  - python-cli  Python CLI (auto-detected via pyproject.toml)
+  - minimal     Minimal template (default fallback)
+
 Examples:
-  orch-go init                      # Initialize with defaults
+  orch-go init                      # Initialize with defaults (auto-detect type)
+  orch-go init --type go-cli        # Use go-cli template
   orch-go init --skip-beads         # Skip beads initialization
+  orch-go init --skip-claude        # Skip CLAUDE.md generation
   orch-go init --beads-prefix snap  # Use custom beads prefix
   orch-go init --force              # Force re-initialization`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,17 +58,27 @@ Examples:
 func init() {
 	initCmd.Flags().BoolVar(&initForce, "force", false, "Force re-initialization even if directories exist")
 	initCmd.Flags().BoolVar(&initSkipBeads, "skip-beads", false, "Skip beads initialization")
+	initCmd.Flags().BoolVar(&initSkipClaudeMD, "skip-claude", false, "Skip CLAUDE.md generation")
 	initCmd.Flags().StringVar(&initBeadsPrefix, "beads-prefix", "", "Custom prefix for beads issues (default: directory name)")
+	initCmd.Flags().StringVar(&initProjectType, "type", "", "Project type for CLAUDE.md (go-cli, svelte-app, python-cli, minimal)")
 }
 
 // InitResult captures the result of initialization.
 type InitResult struct {
-	ProjectDir     string
-	DirsCreated    []string
-	DirsExisted    []string
-	BeadsInitiated bool
-	BeadsSkipped   bool
-	BeadsError     error
+	ProjectDir      string
+	ProjectName     string
+	DirsCreated     []string
+	DirsExisted     []string
+	BeadsInitiated  bool
+	BeadsSkipped    bool
+	BeadsError      error
+	ClaudeMDCreated bool
+	ClaudeMDSkipped bool
+	ClaudeMDExisted bool
+	ClaudeMDError   error
+	ProjectType     claudemd.ProjectType
+	PortWeb         int
+	PortAPI         int
 }
 
 // runInit initializes orch scaffolding in the current directory.
@@ -65,7 +88,7 @@ func runInit() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	result, err := initProject(projectDir, initForce, initSkipBeads, initBeadsPrefix)
+	result, err := initProject(projectDir, initForce, initSkipBeads, initSkipClaudeMD, initBeadsPrefix, initProjectType)
 	if err != nil {
 		return err
 	}
@@ -77,9 +100,12 @@ func runInit() error {
 
 // initProject performs the actual initialization work.
 // This is separated from runInit to make testing easier.
-func initProject(projectDir string, force, skipBeads bool, beadsPrefix string) (*InitResult, error) {
+func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPrefix, projectType string) (*InitResult, error) {
+	projectName := filepath.Base(projectDir)
+
 	result := &InitResult{
-		ProjectDir: projectDir,
+		ProjectDir:  projectDir,
+		ProjectName: projectName,
 	}
 
 	// Directories to create
@@ -129,7 +155,64 @@ func initProject(projectDir string, force, skipBeads bool, beadsPrefix string) (
 		}
 	}
 
+	// Generate CLAUDE.md unless skipped
+	if skipClaudeMD {
+		result.ClaudeMDSkipped = true
+	} else {
+		claudePath := filepath.Join(projectDir, "CLAUDE.md")
+		if _, err := os.Stat(claudePath); err == nil && !force {
+			result.ClaudeMDExisted = true
+		} else {
+			// Determine project type
+			var pType claudemd.ProjectType
+			if projectType != "" {
+				pType = claudemd.ProjectType(projectType)
+			} else {
+				pType = claudemd.DetectProjectType(projectDir)
+			}
+			result.ProjectType = pType
+
+			// Allocate ports for project (best effort)
+			portWeb, portAPI := allocatePorts(projectName)
+			result.PortWeb = portWeb
+			result.PortAPI = portAPI
+
+			// Generate CLAUDE.md
+			data := claudemd.TemplateData{
+				ProjectName: projectName,
+				ProjectType: pType,
+				PortWeb:     portWeb,
+				PortAPI:     portAPI,
+			}
+
+			_, err := claudemd.WriteToProject(projectDir, data)
+			if err != nil {
+				result.ClaudeMDError = err
+				fmt.Fprintf(os.Stderr, "Warning: failed to write CLAUDE.md: %v\n", err)
+			} else {
+				result.ClaudeMDCreated = true
+			}
+		}
+	}
+
 	return result, nil
+}
+
+// allocatePorts allocates web and API ports for a project.
+// Returns 0 for ports that couldn't be allocated (best effort).
+func allocatePorts(projectName string) (portWeb, portAPI int) {
+	registry, err := port.New("")
+	if err != nil {
+		return 0, 0
+	}
+
+	// Allocate web port (vite dev server)
+	portWeb, _ = registry.Allocate(projectName, "web", port.PurposeVite)
+
+	// Allocate API port
+	portAPI, _ = registry.Allocate(projectName, "api", port.PurposeAPI)
+
+	return portWeb, portAPI
 }
 
 // ensureDir creates a directory if it doesn't exist.
@@ -166,7 +249,7 @@ func initBeads(projectDir, prefix string) error {
 
 // printInitResult prints a summary of what was initialized.
 func printInitResult(result *InitResult) {
-	fmt.Printf("Initialized orch scaffolding in %s\n\n", filepath.Base(result.ProjectDir))
+	fmt.Printf("Initialized orch scaffolding in %s\n\n", result.ProjectName)
 
 	if len(result.DirsCreated) > 0 {
 		fmt.Println("Created:")
@@ -192,9 +275,24 @@ func printInitResult(result *InitResult) {
 		fmt.Println("\nBeads already initialized (.beads/)")
 	}
 
+	// CLAUDE.md status
+	if result.ClaudeMDCreated {
+		fmt.Printf("\nCLAUDE.md created (type: %s)\n", result.ProjectType)
+		if result.PortWeb > 0 || result.PortAPI > 0 {
+			fmt.Printf("  Ports allocated: web=%d api=%d\n", result.PortWeb, result.PortAPI)
+		}
+	} else if result.ClaudeMDSkipped {
+		fmt.Println("\nCLAUDE.md generation skipped (--skip-claude)")
+	} else if result.ClaudeMDExisted {
+		fmt.Println("\nCLAUDE.md already exists")
+	} else if result.ClaudeMDError != nil {
+		fmt.Printf("\nCLAUDE.md generation failed: %v\n", result.ClaudeMDError)
+	}
+
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Create a beads issue: bd create \"task description\"")
-	fmt.Println("  2. Spawn an agent: orch spawn investigation \"explore codebase\"")
+	fmt.Println("  1. Edit CLAUDE.md with project-specific details")
+	fmt.Println("  2. Create a beads issue: bd create \"task description\"")
+	fmt.Println("  3. Spawn an agent: orch spawn investigation \"explore codebase\"")
 }
 
 // writeSynthesisTemplate writes the default SYNTHESIS.md template.

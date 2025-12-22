@@ -21,7 +21,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, "") // skip beads
+		result, err := initProject(testDir, false, true, true, "", "") // skip beads and claudemd
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -54,13 +54,13 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, "")
+		_, err := initProject(testDir, false, true, true, "", "")
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init
-		result, err := initProject(testDir, false, true, "")
+		result, err := initProject(testDir, false, true, true, "", "")
 		if err != nil {
 			t.Fatalf("second initProject failed: %v", err)
 		}
@@ -81,13 +81,13 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, "")
+		_, err := initProject(testDir, false, true, true, "", "")
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init with force
-		result, err := initProject(testDir, true, true, "")
+		result, err := initProject(testDir, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("force initProject failed: %v", err)
 		}
@@ -104,7 +104,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, "")
+		result, err := initProject(testDir, false, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -120,7 +120,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		_, err := initProject(testDir, false, true, "")
+		_, err := initProject(testDir, false, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -129,6 +129,91 @@ func TestInitProject(t *testing.T) {
 		synthPath := filepath.Join(testDir, ".orch", "templates", "SYNTHESIS.md")
 		if _, err := os.Stat(synthPath); os.IsNotExist(err) {
 			t.Error("expected SYNTHESIS.md template to exist")
+		}
+	})
+
+	t.Run("CLAUDE.md is generated with auto-detection", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "test6")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		// Create go.mod and cmd/ to trigger go-cli detection
+		if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte("module test"), 0644); err != nil {
+			t.Fatalf("failed to create go.mod: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(testDir, "cmd"), 0755); err != nil {
+			t.Fatalf("failed to create cmd dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, false, "", "")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.ClaudeMDCreated {
+			t.Error("expected ClaudeMDCreated to be true")
+		}
+
+		if result.ProjectType != "go-cli" {
+			t.Errorf("expected ProjectType go-cli, got %s", result.ProjectType)
+		}
+
+		// Check that CLAUDE.md exists
+		claudePath := filepath.Join(testDir, "CLAUDE.md")
+		if _, err := os.Stat(claudePath); os.IsNotExist(err) {
+			t.Error("expected CLAUDE.md to exist")
+		}
+
+		// Check content contains project name
+		content, _ := os.ReadFile(claudePath)
+		if !containsSubstring(string(content), "test6") {
+			t.Error("expected project name in CLAUDE.md")
+		}
+	})
+
+	t.Run("skip CLAUDE.md sets flag", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "test7")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, true, "", "")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.ClaudeMDSkipped {
+			t.Error("expected ClaudeMDSkipped to be true")
+		}
+
+		// Check that CLAUDE.md does NOT exist
+		claudePath := filepath.Join(testDir, "CLAUDE.md")
+		if _, err := os.Stat(claudePath); err == nil {
+			t.Error("expected CLAUDE.md to NOT exist when skipped")
+		}
+	})
+
+	t.Run("CLAUDE.md with explicit type", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "test8")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, false, "", "svelte-app")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if result.ProjectType != "svelte-app" {
+			t.Errorf("expected ProjectType svelte-app, got %s", result.ProjectType)
+		}
+
+		// Check content contains svelte-specific content
+		claudePath := filepath.Join(testDir, "CLAUDE.md")
+		content, _ := os.ReadFile(claudePath)
+		if !containsSubstring(string(content), "bun") {
+			t.Error("expected svelte-app template content in CLAUDE.md")
 		}
 	})
 }
