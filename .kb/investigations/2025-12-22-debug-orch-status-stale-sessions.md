@@ -5,78 +5,61 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** orch status showed 339+ stale sessions as active because OpenCode API returns all persisted sessions and liveness checks used existence rather than activity time.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** GET /session returns 339 sessions; only 5-7 were updated in last 30 min; SessionExists() returned true for all persisted sessions.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** OpenCode persists ALL sessions to disk; liveness detection must check activity time (updated within 30 min), not just whether session exists in API.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Issue closed - fix implemented and committed (9606f43).
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Confidence: High (85%) - small sample size (5 sessions).
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Confidence:** Very High (95%) - Fix tested, all tests passing, smoke test confirms 339→7 reduction.
 
 ---
 
-# Investigation: [Investigation Title]
+# Investigation: orch status stale sessions fix
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Why does orch status show 339+ stale OpenCode sessions as active?
 
-**Started:** [YYYY-MM-DD]
-**Updated:** [YYYY-MM-DD]
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
+**Started:** 2025-12-22
+**Updated:** 2025-12-22
+**Owner:** Agent og-debug-orch-status-shows-22dec
+**Phase:** Complete
+**Next Step:** None (fix implemented)
+**Status:** Complete
+**Confidence:** Very High (95%)
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: OpenCode API returns ALL persisted sessions
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** `curl http://127.0.0.1:4096/session | jq 'length'` returns 339, but only 5-7 were updated within 30 minutes.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Direct API call, confirmed via `jq '[.[] | select(.time.updated > (now * 1000 - 1800000))] | length'` returning 5-7.
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The status command was iterating over 339 sessions when only ~5 were actually active.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: SessionExists() returns true for any persisted session
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** `pkg/opencode/client.go:229-240` - SessionExists() calls GET /session/{id} and returns true if status 200. This returns true for ANY session that exists on disk, not just actively running ones.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Code review of client.go
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Liveness checks using SessionExists() incorrectly reported stale sessions as "live".
+
+---
+
+### Finding 3: Prior investigation identified root cause correctly
+
+**Evidence:** `.kb/investigations/2025-12-21-inv-investigate-orch-status-showing-stale.md` documented the four-layer architecture (OpenCode memory, disk, registry, tmux) and recommended activity-based liveness.
+
+**Source:** Prior investigation file
+
+**Significance:** Solution was straightforward implementation of prior recommendation.
 
 ---
 
@@ -84,150 +67,73 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Activity time is the correct liveness signal** - OpenCode persists sessions forever; checking "exists" is meaningless. Must check "updated recently".
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **30 minute threshold matches existing behavior** - The code already used 30 min for sessions without beads IDs. Made this universal.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Early filtering prevents wasted work** - Adding filter before GetLiveness() calls prevents 339 API calls.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Sessions appeared active because SessionExists() returned true for all 339 persisted sessions. Fix: Add IsSessionActive() method that checks updated time, use 30 min max idle threshold, filter early in runStatus().
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** Very High (95%)
 
 **Why this level?**
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+Fix is implemented, all tests pass, smoke test confirms dramatic reduction (339→7).
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ OpenCode returns all persisted sessions via GET /session (tested: 339 returned)
+- ✅ Activity filter correctly reduces to ~5-7 active sessions (tested)
+- ✅ All existing tests still pass (tested: go test ./...)
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-
-**What would increase confidence to [next level]:**
-
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-
-**Confidence levels guide:**
-- **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
-- **High (80-94%):** Solid evidence, minor uncertainties, confident to act
-- **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
-- **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
-- **Very Low (<40%):** Highly speculative, more investigation needed
+- ⚠️ Edge case: agent actively working but idle for >30 min (rare, acceptable false negative)
 
 ---
 
-## Implementation Recommendations
+## Implementation (Completed)
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Changes made:**
 
-### Recommended Approach ⭐
+1. `pkg/opencode/client.go` - Added `IsSessionActive(sessionID, maxIdleTime)` method
+2. `pkg/state/reconcile.go` - Updated `checkOpenCodeSession()` to use activity time (30 min)
+3. `cmd/orch/main.go` - Added early activity filter in `runStatus()`
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**Commit:** `9606f43` - fix: filter stale OpenCode sessions by activity time in orch status
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
-
-**Commands Run:**
-```bash
-# [Command description]
-[command]
-
-# [Command description]
-[command]
-```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
+**Files Modified:**
+- `pkg/opencode/client.go:229-253` - Added IsSessionActive()
+- `pkg/state/reconcile.go:102-147` - Activity-based liveness
+- `cmd/orch/main.go:1713-1750` - Early filtering
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Prior Investigation:** `.kb/investigations/2025-12-21-inv-investigate-orch-status-showing-stale.md`
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-22 19:30:** Investigation started
+- Initial question: Why does orch status show 339+ stale sessions?
+- Context: Spawned to implement fix from prior investigation
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-22 19:45:** Fix implemented
+- Added activity-based liveness detection
+- All tests passing
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-22 19:55:** Investigation completed
+- Final confidence: Very High (95%)
+- Status: Complete
+- Key outcome: Reduced active sessions from 339+ to ~7 actual active agents
