@@ -257,3 +257,64 @@ func TestFindInvestigationFile(t *testing.T) {
 		t.Errorf("findInvestigationFile returned wrong path: %s", path)
 	}
 }
+
+func TestFormatAgentReviewWithUnexploredQuestions(t *testing.T) {
+	review := &AgentReview{
+		WorkspaceName:   "og-feat-test-21dec",
+		BeadsID:         "test-123",
+		Skill:           "feature-impl",
+		Status:          "Phase: Complete",
+		TLDR:            "Implemented a new feature with unexplored questions.",
+		Outcome:         "success",
+		Recommendation:  "close",
+		SynthesisExists: true,
+		AreasToExplore: []string{
+			"- Performance optimization for large files",
+			"- Integration with external services",
+		},
+		Uncertainties: []string{
+			"- Edge cases with concurrent access",
+			"- Behavior under high load",
+		},
+	}
+
+	output := FormatAgentReview(review)
+
+	// Check for unexplored questions section
+	if !strings.Contains(output, "UNEXPLORED QUESTIONS:") {
+		t.Error("Output should contain UNEXPLORED QUESTIONS section")
+	}
+
+	if !strings.Contains(output, "Areas to explore:") {
+		t.Error("Output should contain 'Areas to explore' subsection")
+	}
+
+	if !strings.Contains(output, "Performance optimization") {
+		t.Error("Output should contain area to explore content")
+	}
+
+	if !strings.Contains(output, "What remains unclear:") {
+		t.Error("Output should contain 'What remains unclear' subsection")
+	}
+
+	if !strings.Contains(output, "Edge cases with concurrent access") {
+		t.Error("Output should contain uncertainty content")
+	}
+}
+
+func TestFormatAgentReviewWithoutUnexploredQuestions(t *testing.T) {
+	review := &AgentReview{
+		WorkspaceName:   "og-feat-test-21dec",
+		BeadsID:         "test-123",
+		SynthesisExists: true,
+		AreasToExplore:  nil,
+		Uncertainties:   nil,
+	}
+
+	output := FormatAgentReview(review)
+
+	// Output should NOT contain unexplored questions section when empty
+	if strings.Contains(output, "UNEXPLORED QUESTIONS:") {
+		t.Error("Output should NOT contain UNEXPLORED QUESTIONS section when fields are empty")
+	}
+}

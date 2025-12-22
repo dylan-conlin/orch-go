@@ -129,6 +129,11 @@ type Synthesis struct {
 	Knowledge string // What was learned (artifacts, decisions, constraints)
 	Next      string // What should happen (recommendation, follow-up)
 
+	// Unexplored Questions section (for self-reflection)
+	UnexploredQuestions string   // Questions that emerged during session
+	AreasToExplore      []string // Areas worth exploring further
+	Uncertainties       []string // What remains unclear
+
 	// Parsed fields for easy access
 	Recommendation string   // Extracted from Next section (close, continue, escalate)
 	NextActions    []string // Follow-up items
@@ -173,6 +178,14 @@ func ParseSynthesis(workspacePath string) (*Synthesis, error) {
 
 	// Parse Next Actions (follow-up items)
 	s.NextActions = extractNextActions(content)
+
+	// Parse Unexplored Questions section
+	unexploredSection := extractSection(content, "Unexplored Questions")
+	if unexploredSection != "" {
+		s.UnexploredQuestions = unexploredSection
+		s.AreasToExplore = extractBoldSubsection(unexploredSection, "Areas worth exploring further")
+		s.Uncertainties = extractBoldSubsection(unexploredSection, "What remains unclear")
+	}
 
 	return s, nil
 }
@@ -260,6 +273,34 @@ func parseActionItems(section string) []string {
 			items = append(items, line)
 		}
 	}
+	return items
+}
+
+// extractBoldSubsection extracts list items from a subsection that starts with **bold header:**
+// For example: **Areas worth exploring further:** followed by bullet points.
+func extractBoldSubsection(content, header string) []string {
+	var items []string
+
+	// Find the bold header and extract content until the next bold header or end
+	pattern := regexp.MustCompile(`(?s)\*\*` + regexp.QuoteMeta(header) + `:\*\*\s*\n(.*?)(?:\n\*\*|\n---|\z)`)
+	matches := pattern.FindStringSubmatch(content)
+	if len(matches) < 2 {
+		return items
+	}
+
+	subsection := matches[1]
+	lines := strings.Split(subsection, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Only extract bullet point items
+		if strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") {
+			items = append(items, line)
+		}
+	}
+
 	return items
 }
 

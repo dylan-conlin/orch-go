@@ -94,6 +94,24 @@ go test ./...
 
 ---
 
+## Unexplored Questions
+
+**Questions that emerged during this session that weren't directly in scope:**
+- [Question 1 - why it's interesting]
+- [Question 2 - why it's interesting]
+
+**Areas worth exploring further:**
+- [Area 1]
+- [Area 2]
+
+**What remains unclear:**
+- [Uncertainty 1]
+- [Uncertainty 2]
+
+*(If nothing emerged, note: "Straightforward session, no unexplored territory")*
+
+---
+
 ## Session Metadata
 
 **Skill:** {skill-name}

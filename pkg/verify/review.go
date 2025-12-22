@@ -29,6 +29,11 @@ type AgentReview struct {
 	Outcome        string
 	Recommendation string
 
+	// Unexplored Questions (from SYNTHESIS.md)
+	UnexploredQuestions string   // Raw section content
+	AreasToExplore      []string // Areas worth exploring further
+	Uncertainties       []string // What remains unclear
+
 	// Delta (from git)
 	FilesCreated  int
 	FilesModified int
@@ -87,6 +92,9 @@ func GetAgentReview(beadsID, workspacePath, projectDir string) (*AgentReview, er
 			review.TLDR = synthesis.TLDR
 			review.Outcome = synthesis.Outcome
 			review.Recommendation = synthesis.Recommendation
+			review.UnexploredQuestions = synthesis.UnexploredQuestions
+			review.AreasToExplore = synthesis.AreasToExplore
+			review.Uncertainties = synthesis.Uncertainties
 		} else {
 			// Check if file exists but couldn't parse
 			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
@@ -330,6 +338,42 @@ func FormatAgentReview(review *AgentReview) string {
 		sb.WriteString(fmt.Sprintf("  • %s\n", filepath.Base(review.InvestigationPath)))
 	}
 	sb.WriteString("\n")
+
+	// Unexplored Questions section
+	hasUnexplored := len(review.AreasToExplore) > 0 || len(review.Uncertainties) > 0 || review.UnexploredQuestions != ""
+	if hasUnexplored {
+		sb.WriteString("UNEXPLORED QUESTIONS:\n")
+
+		// Show areas to explore
+		if len(review.AreasToExplore) > 0 {
+			sb.WriteString("  Areas to explore:\n")
+			for _, area := range review.AreasToExplore {
+				// Clean up the bullet point prefix
+				area = strings.TrimPrefix(area, "- ")
+				area = strings.TrimPrefix(area, "* ")
+				if len(area) > 70 {
+					area = area[:67] + "..."
+				}
+				sb.WriteString(fmt.Sprintf("    • %s\n", area))
+			}
+		}
+
+		// Show uncertainties
+		if len(review.Uncertainties) > 0 {
+			sb.WriteString("  What remains unclear:\n")
+			for _, uncertainty := range review.Uncertainties {
+				// Clean up the bullet point prefix
+				uncertainty = strings.TrimPrefix(uncertainty, "- ")
+				uncertainty = strings.TrimPrefix(uncertainty, "* ")
+				if len(uncertainty) > 70 {
+					uncertainty = uncertainty[:67] + "..."
+				}
+				sb.WriteString(fmt.Sprintf("    • %s\n", uncertainty))
+			}
+		}
+
+		sb.WriteString("\n")
+	}
 
 	return sb.String()
 }

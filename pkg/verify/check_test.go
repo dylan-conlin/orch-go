@@ -428,6 +428,119 @@ Quick fix for bug.
 	}
 }
 
+func TestParseSynthesisUnexploredQuestions(t *testing.T) {
+	// Test parsing of Unexplored Questions section
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	content := `# Session Synthesis
+
+**Agent:** og-feat-test-21dec
+**Issue:** test-456
+**Outcome:** success
+
+## TLDR
+
+Implemented feature Y with unexplored questions.
+
+---
+
+## Delta (What Changed)
+
+### Files Modified
+- ` + "`pkg/verify/check.go`" + ` - Added unexplored questions parsing
+
+---
+
+## Unexplored Questions
+
+**Questions that emerged during this session that weren't directly in scope:**
+- How would this work with concurrent agents?
+- Should we add rate limiting?
+
+**Areas worth exploring further:**
+- Performance optimization for large synthesis files
+- Integration with kb reflect command
+
+**What remains unclear:**
+- Edge cases with empty sections
+- Behavior with malformed markdown
+
+---
+
+## Session Metadata
+
+**Skill:** feature-impl
+`
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test synthesis file: %v", err)
+	}
+
+	got, err := ParseSynthesis(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseSynthesis failed: %v", err)
+	}
+
+	// Test UnexploredQuestions raw section
+	if got.UnexploredQuestions == "" {
+		t.Error("UnexploredQuestions should not be empty")
+	}
+
+	// Test AreasToExplore extraction
+	if len(got.AreasToExplore) != 2 {
+		t.Errorf("len(AreasToExplore) = %d, want 2", len(got.AreasToExplore))
+	} else {
+		if !contains(got.AreasToExplore[0], "Performance optimization") {
+			t.Errorf("AreasToExplore[0] = %q, want to contain 'Performance optimization'", got.AreasToExplore[0])
+		}
+	}
+
+	// Test Uncertainties extraction
+	if len(got.Uncertainties) != 2 {
+		t.Errorf("len(Uncertainties) = %d, want 2", len(got.Uncertainties))
+	} else {
+		if !contains(got.Uncertainties[0], "Edge cases") {
+			t.Errorf("Uncertainties[0] = %q, want to contain 'Edge cases'", got.Uncertainties[0])
+		}
+	}
+}
+
+func TestParseSynthesisNoUnexploredQuestions(t *testing.T) {
+	// Test that parsing works fine when Unexplored Questions section is missing
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	content := `# Session Synthesis
+
+## TLDR
+
+Straightforward session, no unexplored territory.
+
+## Next Actions
+
+- Deploy changes
+`
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test synthesis file: %v", err)
+	}
+
+	got, err := ParseSynthesis(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseSynthesis failed: %v", err)
+	}
+
+	// Verify that missing section doesn't cause issues
+	if got.UnexploredQuestions != "" {
+		t.Errorf("UnexploredQuestions should be empty, got %q", got.UnexploredQuestions)
+	}
+	if len(got.AreasToExplore) != 0 {
+		t.Errorf("AreasToExplore should be empty, got %v", got.AreasToExplore)
+	}
+	if len(got.Uncertainties) != 0 {
+		t.Errorf("Uncertainties should be empty, got %v", got.Uncertainties)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }
