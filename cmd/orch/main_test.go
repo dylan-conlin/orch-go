@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 )
 
 // TestGetMaxAgentsDefault tests that getMaxAgents returns the default when no flag or env var is set.
@@ -105,77 +103,17 @@ func TestGetMaxAgentsInvalidEnvVar(t *testing.T) {
 	}
 }
 
-// TestCheckConcurrencyLimitAllowsWhenUnderLimit tests that spawning is allowed when under limit.
-func TestCheckConcurrencyLimitAllowsWhenUnderLimit(t *testing.T) {
-	// Save and restore original values
-	originalMaxAgents := spawnMaxAgents
-	defer func() {
-		spawnMaxAgents = originalMaxAgents
-	}()
-
-	// Set up a test registry with 2 active agents
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("failed to create registry: %v", err)
-	}
-
-	// Register 2 agents
-	agent1 := &registry.Agent{ID: "agent-1", WindowID: "@100"}
-	agent2 := &registry.Agent{ID: "agent-2", WindowID: "@200"}
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("failed to register agent: %v", err)
-	}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("failed to register agent: %v", err)
-	}
-	if err := reg.Save(); err != nil {
-		t.Fatalf("failed to save registry: %v", err)
-	}
-
-	// Set limit to 5 (above 2 active)
-	spawnMaxAgents = 5
-
-	// Note: checkConcurrencyLimit uses registry.New("") which uses DefaultPath
-	// For proper testing, we would need to inject the registry path or mock it
-	// This test verifies the function exists and basic logic works
-	// Full integration testing requires using the default registry path
-}
-
-// TestCheckConcurrencyLimitBlocksWhenAtLimit tests that spawning is blocked when at limit.
-func TestCheckConcurrencyLimitBlocksWhenAtLimit(t *testing.T) {
-	// This is a design test - the actual test requires registry injection
-	// or using the real default path, which would conflict with other tests.
-	// The logic is tested via TestGetMaxAgents* tests above and registry tests.
-}
-
-// TestCheckConcurrencyLimitZeroDisablesLimit tests that limit=0 disables the check.
-func TestCheckConcurrencyLimitZeroDisablesLimit(t *testing.T) {
-	// Save and restore original values
-	originalMaxAgents := spawnMaxAgents
-	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
-	defer func() {
-		spawnMaxAgents = originalMaxAgents
-		if originalEnv == "" {
-			os.Unsetenv("ORCH_MAX_AGENTS")
-		} else {
-			os.Setenv("ORCH_MAX_AGENTS", originalEnv)
-		}
-	}()
-
-	// Set limit to 0 (disable)
-	spawnMaxAgents = 0
-	os.Unsetenv("ORCH_MAX_AGENTS") // Make sure default isn't used
-
-	// Verify getMaxAgents returns the default when both are 0
-	got := getMaxAgents()
-	if got != DefaultMaxAgents {
-		// This is expected - when flag is 0 and no env, we get default
-		// To actually disable, user must set flag to a negative value or env to 0
-		// But our current implementation doesn't support negative values
-	}
+// TestCheckConcurrencyLimitUsesOpenCodeAPI documents the new behavior.
+// After registry removal, concurrency checking uses OpenCode API ListSessions().
+func TestCheckConcurrencyLimitUsesOpenCodeAPI(t *testing.T) {
+	// The checkConcurrencyLimit function now:
+	// 1. Creates an OpenCode client
+	// 2. Calls client.ListSessions()
+	// 3. Counts active sessions (status != "completed")
+	// 4. Returns error if count >= max
+	//
+	// This replaces the old registry-based counting.
+	// Integration testing requires a running OpenCode server.
 }
 
 func TestParseBeadsCreateOutput(t *testing.T) {
@@ -282,19 +220,9 @@ func (e *mockError) Error() string {
 
 // TestAbandonNonExistentAgent tests that abandoning a non-existent agent returns an error.
 func TestAbandonNonExistentAgent(t *testing.T) {
-	// This test relies on the registry behavior tested in pkg/registry/registry_test.go
-	// It verifies the end-to-end flow of the abandon command.
-
-	// Create a temporary directory for the registry
-	tempDir := t.TempDir()
-
-	// Set up a test registry path (this will use an empty registry)
-	// The runAbandon function should fail because no beads issue exists
 	beadsID := "nonexistent-agent-xyz"
 
-	// We can't easily test runAbandon directly because it uses os.Getwd()
-	// and global state. Instead, verify the error message pattern.
-	// Phase 2: runAbandon now first verifies the beads issue exists
+	// runAbandon first verifies the beads issue exists
 	err := runAbandon(beadsID)
 	if err == nil {
 		t.Error("Expected error for non-existent agent")
@@ -303,19 +231,6 @@ func TestAbandonNonExistentAgent(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "failed to get beads issue") && !strings.Contains(err.Error(), "no agent found") {
 		t.Errorf("Expected 'failed to get beads issue' or 'no agent found' error, got: %v", err)
 	}
-
-	_ = tempDir // Use tempDir to avoid unused variable warning
-}
-
-// TestAbandonValidatesAgentStatus tests that only active agents can be abandoned.
-func TestAbandonValidatesAgentStatus(t *testing.T) {
-	// This is integration tested via pkg/registry/registry_test.go
-	// The registry.Abandon method only works on active agents.
-	// We verify that the error message is correct.
-
-	// Note: Full integration testing would require setting up a registry
-	// with a completed/abandoned agent and verifying the error.
-	// For now, we rely on the unit tests in pkg/registry.
 }
 
 // TestExtractBeadsIDFromTitle tests extracting beads ID from session titles.

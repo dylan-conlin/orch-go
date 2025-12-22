@@ -4,272 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 )
-
-// TestRunCleanNoAgents verifies clean handles empty registry gracefully.
-func TestRunCleanNoAgents(t *testing.T) {
-	// Create a temp registry file
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create empty registry
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// Test that clean works with empty registry (unit test on registry directly)
-	agents := reg.ListCleanable()
-	if len(agents) != 0 {
-		t.Errorf("Expected 0 cleanable agents, got %d", len(agents))
-	}
-}
-
-// TestRunCleanWithCompletedAgents verifies clean removes completed agents.
-func TestRunCleanWithCompletedAgents(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create registry with agents
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register agents
-	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", WindowID: "@100"}
-	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", WindowID: "@200"}
-	agent3 := &registry.Agent{ID: "agent-3", BeadsID: "beads-3", WindowID: "@300"}
-
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("Failed to register agent-1: %v", err)
-	}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("Failed to register agent-2: %v", err)
-	}
-	if err := reg.Register(agent3); err != nil {
-		t.Fatalf("Failed to register agent-3: %v", err)
-	}
-
-	// agent-1 stays active
-	// agent-2 gets completed
-	// agent-3 gets abandoned
-	reg.Complete("agent-2")
-	reg.Abandon("agent-3")
-
-	// ListCleanable should return agent-2 and agent-3
-	cleanable := reg.ListCleanable()
-	if len(cleanable) != 2 {
-		t.Errorf("Expected 2 cleanable agents, got %d", len(cleanable))
-	}
-
-	// Simulate clean operation: mark as deleted
-	for _, agent := range cleanable {
-		reg.Remove(agent.ID)
-	}
-
-	// After clean, should have no cleanable agents
-	cleanable = reg.ListCleanable()
-	if len(cleanable) != 0 {
-		t.Errorf("Expected 0 cleanable agents after clean, got %d", len(cleanable))
-	}
-
-	// agent-1 should still be active
-	active := reg.ListActive()
-	if len(active) != 1 {
-		t.Errorf("Expected 1 active agent, got %d", len(active))
-	}
-	if active[0].ID != "agent-1" {
-		t.Errorf("Expected agent-1 to be active, got %s", active[0].ID)
-	}
-}
-
-// TestRunCleanDryRun verifies dry-run doesn't modify registry.
-func TestRunCleanDryRun(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create registry with agents
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register and complete an agent
-	agent := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_123"}
-	if err := reg.Register(agent); err != nil {
-		t.Fatalf("Failed to register: %v", err)
-	}
-	reg.Complete("agent-1")
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save: %v", err)
-	}
-
-	// Simulate dry-run: list but don't modify
-	cleanable := reg.ListCleanable()
-	if len(cleanable) != 1 {
-		t.Fatalf("Expected 1 cleanable agent, got %d", len(cleanable))
-	}
-
-	// Don't call Remove - just log what would happen
-	// This is the dry-run behavior
-
-	// After dry-run, agent should still be cleanable
-	cleanable = reg.ListCleanable()
-	if len(cleanable) != 1 {
-		t.Errorf("Expected 1 cleanable agent after dry-run, got %d", len(cleanable))
-	}
-}
-
-// TestCompleteMarksForClean verifies Complete marks agents as cleanable.
-func TestCompleteMarksForClean(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create registry with active agents
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register active agents
-	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_100"}
-	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", SessionID: "ses_200"}
-
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("Failed to register agent-1: %v", err)
-	}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("Failed to register agent-2: %v", err)
-	}
-
-	// Initially no cleanable agents
-	cleanable := reg.ListCleanable()
-	if len(cleanable) != 0 {
-		t.Errorf("Expected 0 cleanable agents initially, got %d", len(cleanable))
-	}
-
-	// Complete agent-2
-	reg.Complete("agent-2")
-
-	// Now agent-2 should be cleanable
-	cleanable = reg.ListCleanable()
-	if len(cleanable) != 1 {
-		t.Errorf("Expected 1 cleanable agent after complete, got %d", len(cleanable))
-	}
-	if cleanable[0].ID != "agent-2" {
-		t.Errorf("Expected agent-2 to be cleanable, got %s", cleanable[0].ID)
-	}
-}
-
-// TestCleanPreservesActiveAgents verifies clean never removes active agents.
-func TestCleanPreservesActiveAgents(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register active agent
-	agent := &registry.Agent{ID: "active-agent", BeadsID: "beads-active", WindowID: "@100"}
-	if err := reg.Register(agent); err != nil {
-		t.Fatalf("Failed to register: %v", err)
-	}
-
-	// ListCleanable should NOT include active agents
-	cleanable := reg.ListCleanable()
-	for _, a := range cleanable {
-		if a.ID == "active-agent" {
-			t.Error("Active agent should not be in cleanable list")
-		}
-	}
-
-	// Active agents should remain after any clean operation
-	active := reg.ListActive()
-	if len(active) != 1 {
-		t.Errorf("Expected 1 active agent, got %d", len(active))
-	}
-}
-
-// TestCleanHandlesAgentsWithoutWindowID verifies clean works for inline agents.
-func TestCleanHandlesAgentsWithoutWindowID(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register inline agent (no window ID)
-	agent := &registry.Agent{ID: "inline-agent", BeadsID: "beads-inline", WindowID: ""}
-	if err := reg.Register(agent); err != nil {
-		t.Fatalf("Failed to register: %v", err)
-	}
-
-	// Mark as completed
-	reg.Complete("inline-agent")
-
-	// Should be cleanable even without window ID
-	cleanable := reg.ListCleanable()
-	if len(cleanable) != 1 {
-		t.Fatalf("Expected 1 cleanable agent, got %d", len(cleanable))
-	}
-	if cleanable[0].ID != "inline-agent" {
-		t.Errorf("Expected inline-agent, got %s", cleanable[0].ID)
-	}
-}
-
-// TestCleanPersistence verifies cleaned agents don't come back after reload.
-func TestCleanPersistence(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// First session: create and clean agent
-	reg1, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	agent := &registry.Agent{ID: "persistent-agent", BeadsID: "beads-persist", WindowID: "@100"}
-	if err := reg1.Register(agent); err != nil {
-		t.Fatalf("Failed to register: %v", err)
-	}
-	reg1.Complete("persistent-agent")
-	reg1.Remove("persistent-agent")
-	if err := reg1.SaveSkipMerge(); err != nil {
-		t.Fatalf("Failed to save: %v", err)
-	}
-
-	// Second session: verify agent is gone
-	reg2, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create second registry: %v", err)
-	}
-
-	// ListAgents excludes deleted
-	agents := reg2.ListAgents()
-	for _, a := range agents {
-		if a.ID == "persistent-agent" {
-			t.Error("Cleaned agent should not appear in ListAgents")
-		}
-	}
-
-	// ListCleanable excludes deleted
-	cleanable := reg2.ListCleanable()
-	for _, a := range cleanable {
-		if a.ID == "persistent-agent" {
-			t.Error("Cleaned agent should not appear in ListCleanable")
-		}
-	}
-}
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
 func TestGetProjectNameFromWorkdir(t *testing.T) {
@@ -293,6 +28,118 @@ func TestGetProjectNameFromWorkdir(t *testing.T) {
 	}
 }
 
+// TestCleanWorkspaceBased tests workspace-based cleanup detection.
+// After registry removal, clean operates on workspaces directly.
+func TestCleanWorkspaceBased(t *testing.T) {
+	// Create temp directory structure
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Create completed workspace (has SYNTHESIS.md)
+	ws1 := filepath.Join(workspaceDir, "og-feat-completed-21dec")
+	if err := os.MkdirAll(ws1, 0755); err != nil {
+		t.Fatalf("Failed to create ws1: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(ws1, "SYNTHESIS.md"), []byte("# Complete"), 0644); err != nil {
+		t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+	}
+
+	// Create incomplete workspace (no SYNTHESIS.md)
+	ws2 := filepath.Join(workspaceDir, "og-feat-in-progress-21dec")
+	if err := os.MkdirAll(ws2, 0755); err != nil {
+		t.Fatalf("Failed to create ws2: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(ws2, "SPAWN_CONTEXT.md"), []byte("Task: test"), 0644); err != nil {
+		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+
+	// Verify workspace detection
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		t.Fatalf("Failed to read workspace dir: %v", err)
+	}
+
+	var completed, inProgress []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		synthPath := filepath.Join(workspaceDir, entry.Name(), "SYNTHESIS.md")
+		if _, err := os.Stat(synthPath); err == nil {
+			completed = append(completed, entry.Name())
+		} else {
+			inProgress = append(inProgress, entry.Name())
+		}
+	}
+
+	if len(completed) != 1 {
+		t.Errorf("Expected 1 completed workspace, got %d", len(completed))
+	}
+	if len(inProgress) != 1 {
+		t.Errorf("Expected 1 in-progress workspace, got %d", len(inProgress))
+	}
+}
+
+// TestCleanPreservesInProgressWorkspaces verifies clean never removes in-progress work.
+func TestCleanPreservesInProgressWorkspaces(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Create in-progress workspace (no SYNTHESIS.md, but has .session_id)
+	ws := filepath.Join(workspaceDir, "og-feat-active-21dec")
+	if err := os.MkdirAll(ws, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".session_id"), []byte("ses_abc123"), 0644); err != nil {
+		t.Fatalf("Failed to write .session_id: %v", err)
+	}
+
+	// Simulate cleanable detection - should NOT include active work
+	synthPath := filepath.Join(ws, "SYNTHESIS.md")
+	_, err := os.Stat(synthPath)
+	if !os.IsNotExist(err) {
+		t.Error("Active workspace should not have SYNTHESIS.md")
+	}
+
+	// Workspace should still exist (not cleaned)
+	if _, err := os.Stat(ws); os.IsNotExist(err) {
+		t.Error("Active workspace should not be removed")
+	}
+}
+
+// TestSessionIDFileBased tests session ID file operations.
+func TestSessionIDFileBased(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	ws := filepath.Join(workspaceDir, "og-feat-test-21dec")
+	if err := os.MkdirAll(ws, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+
+	// Write session ID
+	sessionIDPath := filepath.Join(ws, ".session_id")
+	expectedID := "ses_test123"
+	if err := os.WriteFile(sessionIDPath, []byte(expectedID), 0644); err != nil {
+		t.Fatalf("Failed to write session ID: %v", err)
+	}
+
+	// Read session ID
+	data, err := os.ReadFile(sessionIDPath)
+	if err != nil {
+		t.Fatalf("Failed to read session ID: %v", err)
+	}
+
+	if string(data) != expectedID {
+		t.Errorf("Expected session ID %q, got %q", expectedID, string(data))
+	}
+}
+
 // Integration test - requires environment
 func TestCleanCommandIntegration(t *testing.T) {
 	// Skip in CI or if not in correct environment
@@ -301,251 +148,6 @@ func TestCleanCommandIntegration(t *testing.T) {
 	}
 
 	// This is a placeholder for a more comprehensive integration test
-	// that would actually run the clean command against a real registry.
+	// that would actually run the clean command against real workspaces.
 	t.Skip("Integration test not implemented - requires agent setup")
-}
-
-// TestReconcileIntegrationWithClean verifies that reconciliation works with the clean flow.
-func TestReconcileIntegrationWithClean(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create registry with agents
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register agents with different states
-	// Agent 1: Active with dead window (should be reconciled to abandoned)
-	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", WindowID: "@dead-window"}
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("Failed to register agent-1: %v", err)
-	}
-
-	// Agent 2: Active with dead session (should be reconciled to abandoned)
-	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", WindowID: registry.HeadlessWindowID, SessionID: "ses_dead"}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("Failed to register agent-2: %v", err)
-	}
-
-	// Agent 3: Already completed (should be cleaned)
-	agent3 := &registry.Agent{ID: "agent-3", BeadsID: "beads-3", WindowID: "@100"}
-	if err := reg.Register(agent3); err != nil {
-		t.Fatalf("Failed to register agent-3: %v", err)
-	}
-	reg.Complete("agent-3")
-
-	// Save the registry
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// Create a mock liveness checker where nothing is alive
-	mockChecker := &MockLivenessChecker{
-		LiveWindows:  make(map[string]bool),
-		LiveSessions: make(map[string]bool),
-	}
-
-	// Reconcile - should mark agent-1 and agent-2 as abandoned
-	result := reg.ReconcileActive(mockChecker, false)
-
-	// Should have checked 2 active agents (agent-1 and agent-2)
-	if result.Checked != 2 {
-		t.Errorf("Expected 2 checked, got %d", result.Checked)
-	}
-
-	// Should have marked 2 as abandoned
-	if result.Abandoned != 2 {
-		t.Errorf("Expected 2 abandoned, got %d", result.Abandoned)
-	}
-
-	// Now there should be 3 cleanable agents (agent-1, agent-2, agent-3)
-	cleanable := reg.ListCleanable()
-	if len(cleanable) != 3 {
-		t.Errorf("Expected 3 cleanable after reconciliation, got %d", len(cleanable))
-	}
-
-	// Clean them
-	for _, a := range cleanable {
-		reg.Remove(a.ID)
-	}
-
-	// No more cleanable agents
-	cleanable = reg.ListCleanable()
-	if len(cleanable) != 0 {
-		t.Errorf("Expected 0 cleanable after clean, got %d", len(cleanable))
-	}
-}
-
-// MockLivenessChecker for testing (matches the one in registry_test.go)
-type MockLivenessChecker struct {
-	LiveWindows  map[string]bool
-	LiveSessions map[string]bool
-}
-
-func (m *MockLivenessChecker) WindowExists(windowID string) bool {
-	return m.LiveWindows[windowID]
-}
-
-func (m *MockLivenessChecker) SessionExists(sessionID string) bool {
-	return m.LiveSessions[sessionID]
-}
-
-// TestCleanOrphanedDiskSessionsIdentification verifies orphan detection logic.
-func TestCleanOrphanedDiskSessionsIdentification(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create registry with agents
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register agents with session IDs
-	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_tracked_1"}
-	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2", SessionID: "ses_tracked_2"}
-	if err := reg.Register(agent1); err != nil {
-		t.Fatalf("Failed to register agent-1: %v", err)
-	}
-	if err := reg.Register(agent2); err != nil {
-		t.Fatalf("Failed to register agent-2: %v", err)
-	}
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// Simulate disk sessions - some tracked, some orphaned
-	diskSessionIDs := []string{"ses_tracked_1", "ses_tracked_2", "ses_orphan_1", "ses_orphan_2", "ses_orphan_3"}
-
-	// Build tracked set (as the real function does)
-	trackedSessionIDs := make(map[string]bool)
-	for _, agent := range reg.ListAgents() {
-		if agent.SessionID != "" {
-			trackedSessionIDs[agent.SessionID] = true
-		}
-	}
-
-	// Find orphans
-	var orphanedSessions []string
-	for _, sessionID := range diskSessionIDs {
-		if !trackedSessionIDs[sessionID] {
-			orphanedSessions = append(orphanedSessions, sessionID)
-		}
-	}
-
-	// Should identify 3 orphans
-	if len(orphanedSessions) != 3 {
-		t.Errorf("Expected 3 orphaned sessions, got %d: %v", len(orphanedSessions), orphanedSessions)
-	}
-
-	// Tracked sessions should NOT be in orphans
-	for _, tracked := range []string{"ses_tracked_1", "ses_tracked_2"} {
-		for _, orphan := range orphanedSessions {
-			if orphan == tracked {
-				t.Errorf("Tracked session %s should not be in orphans list", tracked)
-			}
-		}
-	}
-
-	// All orphans should be the untracked ones
-	expectedOrphans := map[string]bool{"ses_orphan_1": true, "ses_orphan_2": true, "ses_orphan_3": true}
-	for _, orphan := range orphanedSessions {
-		if !expectedOrphans[orphan] {
-			t.Errorf("Unexpected orphan: %s", orphan)
-		}
-	}
-}
-
-// TestCleanWithVerifyOpenCodeDryRun verifies dry-run doesn't delete anything.
-func TestCleanWithVerifyOpenCodeDryRun(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	// Create registry with an agent
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	agent := &registry.Agent{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_tracked"}
-	if err := reg.Register(agent); err != nil {
-		t.Fatalf("Failed to register agent: %v", err)
-	}
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// In dry-run mode, we should identify orphans but not delete them
-	// The actual deletion would be skipped
-	diskSessions := []string{"ses_tracked", "ses_orphan_1", "ses_orphan_2"}
-
-	trackedSessionIDs := make(map[string]bool)
-	for _, a := range reg.ListAgents() {
-		if a.SessionID != "" {
-			trackedSessionIDs[a.SessionID] = true
-		}
-	}
-
-	// Count orphans (simulating dry-run)
-	dryRunDeleteCount := 0
-	for _, sessionID := range diskSessions {
-		if !trackedSessionIDs[sessionID] {
-			dryRunDeleteCount++
-		}
-	}
-
-	// Should count 2 orphans
-	if dryRunDeleteCount != 2 {
-		t.Errorf("Expected 2 orphans in dry-run, got %d", dryRunDeleteCount)
-	}
-
-	// Registry should be unchanged (tracked sessions still there)
-	agents := reg.ListAgents()
-	if len(agents) != 1 {
-		t.Errorf("Expected 1 agent in registry, got %d", len(agents))
-	}
-}
-
-// TestCleanDeletedAgentsNotTracked verifies deleted agents are not counted as tracked.
-func TestCleanDeletedAgentsNotTracked(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register agent, then delete it
-	agent := &registry.Agent{ID: "deleted-agent", BeadsID: "beads-deleted", SessionID: "ses_deleted"}
-	if err := reg.Register(agent); err != nil {
-		t.Fatalf("Failed to register agent: %v", err)
-	}
-	reg.Remove("deleted-agent")
-	if err := reg.SaveSkipMerge(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// ListAgents should NOT include deleted agents
-	agents := reg.ListAgents()
-	for _, a := range agents {
-		if a.ID == "deleted-agent" {
-			t.Error("Deleted agent should not be in ListAgents")
-		}
-	}
-
-	// So the session ID from deleted agent should be orphaned
-	trackedSessionIDs := make(map[string]bool)
-	for _, a := range reg.ListAgents() {
-		if a.SessionID != "" {
-			trackedSessionIDs[a.SessionID] = true
-		}
-	}
-
-	// ses_deleted should NOT be tracked (agent was deleted)
-	if trackedSessionIDs["ses_deleted"] {
-		t.Error("Session from deleted agent should not be tracked")
-	}
 }

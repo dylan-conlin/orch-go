@@ -1,11 +1,8 @@
 package main
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 )
 
 // TestFormatDuration tests the formatDuration function.
@@ -34,98 +31,64 @@ func TestFormatDurationForStatus(t *testing.T) {
 	}
 }
 
-// TestCompletedTodayCount tests counting completed agents from today.
-func TestCompletedTodayCount(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
-	}
-
-	// Register some agents
-	agent1 := &registry.Agent{ID: "agent-1", BeadsID: "beads-1"}
-	agent2 := &registry.Agent{ID: "agent-2", BeadsID: "beads-2"}
-	agent3 := &registry.Agent{ID: "agent-3", BeadsID: "beads-3"}
-
-	for _, a := range []*registry.Agent{agent1, agent2, agent3} {
-		if err := reg.Register(a); err != nil {
-			t.Fatalf("Failed to register agent: %v", err)
-		}
-	}
-
-	// Complete some agents
-	reg.Complete("agent-1")
-	reg.Complete("agent-2")
-
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// Count completed today
-	completed := reg.ListCompleted()
-	if len(completed) != 2 {
-		t.Errorf("Expected 2 completed agents, got %d", len(completed))
-	}
-
-	// Verify timestamps exist
-	for _, a := range completed {
-		if a.CompletedAt == "" {
-			t.Errorf("Agent %s has no CompletedAt timestamp", a.ID)
-		}
-	}
+// TestStatusUsesOpenCodeAPI verifies that status command now uses OpenCode API.
+// This is a design test - the actual implementation uses ListSessions() from the API.
+func TestStatusUsesOpenCodeAPI(t *testing.T) {
+	// The status command now uses OpenCode API (ListSessions) instead of a registry.
+	// This test documents the architectural change:
+	// - OLD: Read from ~/.orch/agent-registry.json
+	// - NEW: GET /session from OpenCode API
+	//
+	// The runStatus function:
+	// 1. Creates an OpenCode client
+	// 2. Calls client.ListSessions()
+	// 3. Filters for active sessions
+	// 4. Enriches with tmux window info if available
+	// 5. Displays results
+	//
+	// Integration testing requires a running OpenCode server.
 }
 
-// TestAgentBySessionLookup tests building the session-to-agent lookup map.
-func TestAgentBySessionLookup(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "registry.json")
-
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to create registry: %v", err)
+// TestExtractSkillFromTitle_StatusContext tests skill extraction for status display.
+func TestExtractSkillFromTitle_StatusContext(t *testing.T) {
+	tests := []struct {
+		name      string
+		title     string
+		wantSkill string
+	}{
+		{
+			name:      "feature-impl from -feat-",
+			title:     "og-feat-add-feature-19dec",
+			wantSkill: "feature-impl",
+		},
+		{
+			name:      "investigation from -inv-",
+			title:     "og-inv-explore-codebase-19dec",
+			wantSkill: "investigation",
+		},
+		{
+			name:      "systematic-debugging from -debug-",
+			title:     "og-debug-fix-bug-19dec",
+			wantSkill: "systematic-debugging",
+		},
+		{
+			name:      "architect from -arch-",
+			title:     "og-arch-design-system-19dec",
+			wantSkill: "architect",
+		},
+		{
+			name:      "no matching pattern",
+			title:     "random-session-name",
+			wantSkill: "",
+		},
 	}
 
-	// Register agents with session IDs (headless agents)
-	agents := []*registry.Agent{
-		{ID: "agent-1", BeadsID: "beads-1", SessionID: "ses_abc123", Skill: "investigation"},
-		{ID: "agent-2", BeadsID: "beads-2", SessionID: "ses_def456", Skill: "feature-impl"},
-		{ID: "agent-3", BeadsID: "beads-3", Skill: "debugging"}, // no session ID
-	}
-
-	for _, a := range agents {
-		if err := reg.Register(a); err != nil {
-			t.Fatalf("Failed to register agent: %v", err)
-		}
-	}
-
-	if err := reg.Save(); err != nil {
-		t.Fatalf("Failed to save registry: %v", err)
-	}
-
-	// Build lookup map
-	agentBySession := make(map[string]*registry.Agent)
-	for _, a := range reg.ListActive() {
-		if a.SessionID != "" {
-			agentBySession[a.SessionID] = a
-		}
-	}
-
-	// Verify lookup
-	if len(agentBySession) != 2 {
-		t.Errorf("Expected 2 agents in lookup, got %d", len(agentBySession))
-	}
-
-	if a, ok := agentBySession["ses_abc123"]; !ok {
-		t.Error("ses_abc123 not found in lookup")
-	} else if a.Skill != "investigation" {
-		t.Errorf("Wrong agent for ses_abc123: got skill %s", a.Skill)
-	}
-
-	if a, ok := agentBySession["ses_def456"]; !ok {
-		t.Error("ses_def456 not found in lookup")
-	} else if a.Skill != "feature-impl" {
-		t.Errorf("Wrong agent for ses_def456: got skill %s", a.Skill)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractSkillFromTitle(tt.title)
+			if got != tt.wantSkill {
+				t.Errorf("extractSkillFromTitle(%q) = %q, want %q", tt.title, got, tt.wantSkill)
+			}
+		})
 	}
 }

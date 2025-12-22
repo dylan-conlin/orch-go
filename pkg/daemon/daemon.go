@@ -4,6 +4,7 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"sort"
@@ -268,36 +269,34 @@ func SpawnWork(beadsID string) error {
 	return nil
 }
 
-// DefaultActiveCount returns the number of active agents from the registry.
-// This reads the registry file directly to avoid circular imports.
+// DefaultActiveCount returns the number of active agents by querying OpenCode API.
+// Counts all in-memory sessions, which represent active agents.
 func DefaultActiveCount() int {
-	home, err := os.UserHomeDir()
+	// Use OpenCode API to count active sessions
+	// The default server URL is used; this works because the daemon runs
+	// on the same machine as OpenCode server.
+	serverURL := os.Getenv("OPENCODE_URL")
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:4096"
+	}
+
+	// Make HTTP request to list sessions
+	resp, err := http.Get(serverURL + "/session")
 	if err != nil {
 		return 0
 	}
-	registryPath := fmt.Sprintf("%s/.orch/agent-registry.json", home)
+	defer resp.Body.Close()
 
-	data, err := os.ReadFile(registryPath)
-	if err != nil {
-		return 0 // Registry doesn't exist or can't be read
+	var sessions []struct {
+		ID string `json:"id"`
 	}
-
-	var registry struct {
-		Agents []struct {
-			Status string `json:"status"`
-		} `json:"agents"`
-	}
-	if err := json.Unmarshal(data, &registry); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		return 0
 	}
 
-	count := 0
-	for _, a := range registry.Agents {
-		if a.Status == "active" {
-			count++
-		}
-	}
-	return count
+	// All active OpenCode sessions are considered active agents
+	// The daemon polls at 60s intervals, so this is acceptable overhead
+	return len(sessions)
 }
 
 // Once processes a single issue from the queue and returns.

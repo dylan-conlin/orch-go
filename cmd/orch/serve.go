@@ -7,13 +7,14 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +29,7 @@ var serveCmd = &cobra.Command{
 	Long: `Start an HTTP API server that provides endpoints for the beads-ui dashboard.
 
 Endpoints:
-  GET /api/agents  - Returns JSON list of agents from the registry
+  GET /api/agents  - Returns JSON list of active agents from OpenCode/tmux
   GET /api/events  - Proxies the OpenCode SSE stream for real-time updates
 
 The server runs on port 3333 by default.
@@ -74,7 +75,7 @@ func runServe(port int) error {
 		}
 	}
 
-	// GET /api/agents - returns JSON list of agents from registry
+	// GET /api/agents - returns JSON list of agents from OpenCode/tmux
 	mux.HandleFunc("/api/agents", corsHandler(handleAgents))
 
 	// GET /api/events - proxies OpenCode SSE stream
@@ -93,7 +94,7 @@ func runServe(port int) error {
 	addr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Starting orch-go API server on http://127.0.0.1%s\n", addr)
 	fmt.Println("Endpoints:")
-	fmt.Println("  GET /api/agents    - List of agents from registry")
+	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events (supports ?follow=true for SSE)")
 	fmt.Println("  GET /health        - Health check")
@@ -102,10 +103,16 @@ func runServe(port int) error {
 	return http.ListenAndServe(addr, mux)
 }
 
-// AgentWithSynthesis extends the registry Agent with parsed synthesis data for the API.
-type AgentWithSynthesis struct {
-	*registry.Agent
+// AgentAPIResponse is the JSON structure returned by /api/agents.
+type AgentAPIResponse struct {
+	ID         string             `json:"id"`
+	SessionID  string             `json:"session_id,omitempty"`
+	BeadsID    string             `json:"beads_id,omitempty"`
 	BeadsTitle string             `json:"beads_title,omitempty"`
+	Skill      string             `json:"skill,omitempty"`
+	Status     string             `json:"status"` // "active", "completed", etc.
+	Runtime    string             `json:"runtime,omitempty"`
+	Window     string             `json:"window,omitempty"`
 	Synthesis  *SynthesisResponse `json:"synthesis,omitempty"`
 }
 
@@ -122,51 +129,136 @@ type SynthesisResponse struct {
 	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
 }
 
-// handleAgents returns JSON list of all non-deleted agents from the registry.
-// For completed agents, also parses SYNTHESIS.md and includes condensed synthesis data.
+// handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
 func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	reg, err := registry.New("")
+	projectDir, _ := os.Getwd()
+	client := opencode.NewClient(serverURL)
+
+	// Get active sessions from OpenCode
+	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to open registry: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	agents := reg.ListAgents()
+	now := time.Now()
+	var agents []AgentAPIResponse
 
-	// Build response with synthesis data for completed agents
-	response := make([]*AgentWithSynthesis, len(agents))
-	for i, agent := range agents {
-		aws := &AgentWithSynthesis{Agent: agent}
+	// Add active sessions from OpenCode
+	for _, s := range sessions {
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+		runtime := now.Sub(createdAt)
 
-		// Fetch beads issue title if agent has a beads_id
-		if agent.BeadsID != "" {
-			aws.BeadsTitle = getBeadsTitle(agent.BeadsID, agent.BeadsDBPath)
+		agent := AgentAPIResponse{
+			ID:        s.Title,
+			SessionID: s.ID,
+			Status:    "active",
+			Runtime:   formatDuration(runtime),
 		}
 
-		// Parse synthesis for completed agents with a project directory
-		if agent.Status == registry.StateCompleted && agent.ProjectDir != "" {
-			workspacePath := filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
-			if synthesis, err := verify.ParseSynthesis(workspacePath); err == nil {
-				aws.Synthesis = &SynthesisResponse{
-					TLDR:           synthesis.TLDR,
-					Outcome:        synthesis.Outcome,
-					Recommendation: synthesis.Recommendation,
-					DeltaSummary:   summarizeDelta(synthesis.Delta),
-					NextActions:    synthesis.NextActions,
+		// Derive beadsID and skill from session title
+		if s.Title != "" {
+			agent.BeadsID = extractBeadsIDFromTitle(s.Title)
+			agent.Skill = extractSkillFromTitle(s.Title)
+		}
+
+		agents = append(agents, agent)
+	}
+
+	// Add tmux-only agents
+	workersSessions, _ := tmux.ListWorkersSessions()
+	for _, sessionName := range workersSessions {
+		windows, _ := tmux.ListWindows(sessionName)
+		for _, win := range windows {
+			if win.Name == "servers" || win.Name == "zsh" {
+				continue
+			}
+
+			beadsID := extractBeadsIDFromWindowName(win.Name)
+			skill := extractSkillFromWindowName(win.Name)
+
+			// Check if already in agents list
+			alreadyIn := false
+			for _, a := range agents {
+				if (beadsID != "" && a.BeadsID == beadsID) || (a.ID != "" && strings.Contains(win.Name, a.ID)) {
+					alreadyIn = true
+					break
+				}
+			}
+
+			if !alreadyIn {
+				agents = append(agents, AgentAPIResponse{
+					ID:      win.Name,
+					BeadsID: beadsID,
+					Skill:   skill,
+					Status:  "active",
+					Window:  win.Target,
+				})
+			}
+		}
+	}
+
+	// Add completed workspaces (those with SYNTHESIS.md)
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	if entries, err := os.ReadDir(workspaceDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			workspacePath := filepath.Join(workspaceDir, entry.Name())
+			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+
+			// Check if SYNTHESIS.md exists (indicates completion)
+			if _, err := os.Stat(synthesisPath); err == nil {
+				// Check if already in active list
+				alreadyIn := false
+				for _, a := range agents {
+					if a.ID == entry.Name() {
+						alreadyIn = true
+						break
+					}
+				}
+
+				if !alreadyIn {
+					agent := AgentAPIResponse{
+						ID:     entry.Name(),
+						Status: "completed",
+					}
+
+					// Read session ID from workspace
+					if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
+						agent.SessionID = sessionID
+					}
+
+					// Parse synthesis
+					if synthesis, err := verify.ParseSynthesis(workspacePath); err == nil {
+						agent.Synthesis = &SynthesisResponse{
+							TLDR:           synthesis.TLDR,
+							Outcome:        synthesis.Outcome,
+							Recommendation: synthesis.Recommendation,
+							DeltaSummary:   summarizeDelta(synthesis.Delta),
+							NextActions:    synthesis.NextActions,
+						}
+					}
+
+					// Derive beadsID from workspace name
+					agent.BeadsID = extractBeadsIDFromTitle(entry.Name())
+					agent.Skill = extractSkillFromTitle(entry.Name())
+
+					agents = append(agents, agent)
 				}
 			}
 		}
-
-		response[i] = aws
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := json.NewEncoder(w).Encode(agents); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode agents: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -415,41 +507,4 @@ func readLastNEvents(path string, n int) ([]events.Event, error) {
 		return allEvents[len(allEvents)-n:], nil
 	}
 	return allEvents, nil
-}
-
-// beadsIssue represents the JSON structure from `bd show --json`
-type beadsIssue struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-}
-
-// getBeadsTitle fetches the title for a beads issue using the bd CLI.
-// Returns empty string if the issue cannot be found or bd CLI fails.
-func getBeadsTitle(beadsID, beadsDBPath string) string {
-	if beadsID == "" {
-		return ""
-	}
-
-	args := []string{"show", beadsID, "--json"}
-	if beadsDBPath != "" {
-		args = append(args, "--db", beadsDBPath)
-	}
-
-	cmd := exec.Command("bd", args...)
-	output, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-
-	var issues []beadsIssue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return ""
-	}
-
-	if len(issues) > 0 {
-		return issues[0].Title
-	}
-	return ""
 }

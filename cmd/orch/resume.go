@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,7 @@ var resumeCmd = &cobra.Command{
 	Short: "Resume a paused agent with workspace-aware continuation",
 	Long: `Resume a paused agent by sending a continuation prompt via the OpenCode API.
 
-Looks up the agent by beads ID in the registry, finds the associated session,
+Looks up the agent by beads ID via workspace files, finds the associated session,
 and sends a message to continue work with full workspace context.
 
 Examples:
@@ -53,33 +54,49 @@ func runResume(beadsID string) error {
 	}
 	projectName := filepath.Base(projectDir)
 
-	// Look up agent in registry
-	reg, err := registry.New("")
-	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
+	// Find workspace by beadsID and read session_id
+	var sessionID, agentID, workspacePath string
+	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
+	if entries, err := os.ReadDir(workspaceBase); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
+				workspacePath = filepath.Join(workspaceBase, entry.Name())
+				sessionID = spawn.ReadSessionID(workspacePath)
+				agentID = entry.Name()
+				break
+			}
+		}
 	}
 
-	agent := reg.Find(beadsID)
-	if agent == nil {
-		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
+	// If workspace file doesn't have session_id, try to find via OpenCode API
+	if sessionID == "" {
+		client := opencode.NewClient(serverURL)
+		allSessions, err := client.ListSessions(projectDir)
+		if err == nil {
+			for _, s := range allSessions {
+				if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
+					sessionID = s.ID
+					break
+				}
+			}
+		}
 	}
 
-	// Check if agent is still active
-	if agent.Status != registry.StateActive {
-		return fmt.Errorf("agent %s is not active (status: %s)", beadsID, agent.Status)
+	if sessionID == "" {
+		return fmt.Errorf("no agent found for beads ID: %s (no workspace file or active session)", beadsID)
 	}
 
-	// Verify the agent has a session ID
-	if agent.SessionID == "" {
-		return fmt.Errorf("agent %s has no associated session ID - cannot resume via API", beadsID)
+	// If we didn't find workspace, use beadsID as agentID
+	if agentID == "" {
+		agentID = beadsID
 	}
 
 	// Generate the resume prompt
-	prompt := GenerateResumePrompt(agent.ID, projectDir, beadsID)
+	prompt := GenerateResumePrompt(agentID, projectDir, beadsID)
 
 	// Send the resume message via OpenCode API
 	client := opencode.NewClient(serverURL)
-	if err := client.SendMessageAsync(agent.SessionID, prompt); err != nil {
+	if err := client.SendMessageAsync(sessionID, prompt); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
 
@@ -90,10 +107,9 @@ func runResume(beadsID string) error {
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
 			"beads_id":   beadsID,
-			"agent_id":   agent.ID,
-			"session_id": agent.SessionID,
+			"agent_id":   agentID,
+			"session_id": sessionID,
 			"project":    projectName,
-			"skill":      agent.Skill,
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -102,10 +118,9 @@ func runResume(beadsID string) error {
 
 	// Print summary
 	fmt.Printf("Resumed agent:\n")
-	fmt.Printf("  Agent ID:   %s\n", agent.ID)
+	fmt.Printf("  Agent ID:   %s\n", agentID)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	fmt.Printf("  Session ID: %s\n", agent.SessionID)
-	fmt.Printf("  Skill:      %s\n", agent.Skill)
+	fmt.Printf("  Session ID: %s\n", sessionID)
 
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/spf13/cobra"
 )
 
@@ -257,18 +257,27 @@ func runDrift() error {
 }
 
 // getActiveIssues returns the beads IDs of currently active work.
-// Checks the registry for active agents.
+// Uses OpenCode API to list active sessions and extracts beads IDs from session titles.
 func getActiveIssues() []string {
-	reg, err := registry.New("")
+	// Get current directory for project context
+	projectDir, err := os.Getwd()
 	if err != nil {
 		return nil
 	}
 
-	agents := reg.ListActive()
+	// Use default OpenCode server URL
+	client := opencode.NewClient("http://127.0.0.1:4096")
+	sessions, err := client.ListSessions(projectDir)
+	if err != nil {
+		return nil
+	}
+
 	var issues []string
-	for _, agent := range agents {
-		if agent.BeadsID != "" {
-			issues = append(issues, agent.BeadsID)
+	for _, session := range sessions {
+		// Extract beads ID from session title (format: "workspace [beads-id]")
+		beadsID := extractBeadsIDFromTitle(session.Title)
+		if beadsID != "" {
+			issues = append(issues, beadsID)
 		}
 	}
 

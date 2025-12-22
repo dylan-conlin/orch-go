@@ -4,12 +4,12 @@ package opencode
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 )
 
 // CompletionService monitors sessions and handles completion actions.
@@ -17,7 +17,6 @@ type CompletionService struct {
 	monitor   *Monitor
 	notifier  *notify.Notifier
 	client    *Client
-	registry  *registry.Registry
 	logger    *events.Logger
 	serverURL string
 
@@ -37,16 +36,10 @@ type SessionCompletionInfo struct {
 
 // NewCompletionService creates a new completion service.
 func NewCompletionService(serverURL string) (*CompletionService, error) {
-	reg, err := registry.New("")
-	if err != nil {
-		return nil, fmt.Errorf("failed to open registry: %w", err)
-	}
-
 	s := &CompletionService{
 		monitor:     NewMonitor(serverURL),
 		notifier:    notify.Default(),
 		client:      NewClient(serverURL),
-		registry:    reg,
 		logger:      events.NewLogger(events.DefaultLogPath()),
 		serverURL:   serverURL,
 		sessionInfo: make(map[string]*SessionCompletionInfo),
@@ -94,12 +87,8 @@ func (s *CompletionService) handleCompletion(sessionID string) {
 		session, err := s.client.GetSession(sessionID)
 		if err == nil && session != nil {
 			workspace = session.Title
-
-			// Try to find matching agent in registry by workspace name
-			agent := s.findAgentByWorkspace(workspace)
-			if agent != nil {
-				beadsID = agent.BeadsID
-			}
+			// Try to extract beads ID from session title (format: "workspace [beads-id]")
+			beadsID = extractBeadsIDFromTitle(session.Title)
 		}
 	}
 
@@ -108,26 +97,12 @@ func (s *CompletionService) handleCompletion(sessionID string) {
 		fmt.Printf("Warning: failed to send notification: %v\n", err)
 	}
 
-	// DISABLED: Automatic registry completion (2025-12-21)
+	// NOTE: Automatic registry completion was disabled (2025-12-21)
 	// Reason: Monitor's busy→idle detection triggers false positives.
 	// Agents go idle during normal operation (loading, thinking, waiting for tools).
 	// The first idle transition after spawn (4-6 seconds) incorrectly marks agents complete.
 	// Solution: Require explicit `orch complete` command instead of automatic detection.
 	// See: .kb/investigations/2025-12-21-inv-agents-being-marked-completed-registry.md
-	//
-	// if beadsID != "" {
-	// 	// Mark agent as completed in registry
-	// 	if s.registry.Complete(beadsID) || s.registry.Complete(workspace) {
-	// 		if err := s.registry.Save(); err != nil {
-	// 			fmt.Printf("Warning: failed to save registry: %v\n", err)
-	// 		}
-	// 	}
-	//
-	// 	// Update beads status
-	// 	if err := s.updateBeadsPhase(beadsID); err != nil {
-	// 		fmt.Printf("Warning: failed to update beads phase: %v\n", err)
-	// 	}
-	// }
 
 	// Log the completion event
 	eventData := map[string]interface{}{
@@ -153,23 +128,16 @@ func (s *CompletionService) handleCompletion(sessionID string) {
 	fmt.Printf("Session completed: %s (workspace: %s, beads: %s)\n", sessionID, workspace, beadsID)
 }
 
-// findAgentByWorkspace looks up an agent in the registry by workspace name.
-func (s *CompletionService) findAgentByWorkspace(workspace string) *registry.Agent {
-	// Try exact match first
-	agent := s.registry.Find(workspace)
-	if agent != nil {
-		return agent
+// extractBeadsIDFromTitle extracts beads ID from session title.
+// Format: "workspace [beads-id]" -> "beads-id"
+func extractBeadsIDFromTitle(title string) string {
+	// Look for "[...]" at the end of the title
+	start := strings.LastIndex(title, "[")
+	end := strings.LastIndex(title, "]")
+	if start == -1 || end == -1 || end <= start {
+		return ""
 	}
-
-	// Try to find by iterating through active agents
-	activeAgents := s.registry.ListActive()
-	for _, a := range activeAgents {
-		if a.ID == workspace {
-			return a
-		}
-	}
-
-	return nil
+	return strings.TrimSpace(title[start+1 : end])
 }
 
 // updateBeadsPhase adds a "Phase: Complete" comment to the beads issue.
@@ -201,14 +169,14 @@ func (s *CompletionService) updateBeadsPhase(beadsID string) error {
 // containsPhaseComplete checks if the comments JSON contains "Phase: Complete".
 func containsPhaseComplete(commentsJSON string) bool {
 	// Simple string check - more robust than parsing JSON
-	return contains(commentsJSON, "Phase: Complete") ||
-		contains(commentsJSON, "Phase: complete") ||
-		contains(commentsJSON, "phase: Complete") ||
-		contains(commentsJSON, "phase: complete")
+	return containsStr(commentsJSON, "Phase: Complete") ||
+		containsStr(commentsJSON, "Phase: complete") ||
+		containsStr(commentsJSON, "phase: Complete") ||
+		containsStr(commentsJSON, "phase: complete")
 }
 
-// contains is a simple case-sensitive substring check.
-func contains(s, substr string) bool {
+// containsStr is a simple case-sensitive substring check.
+func containsStr(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && findSubstring(s, substr) >= 0
 }
 

@@ -65,8 +65,8 @@ func TestHandleEventsMethodNotAllowed(t *testing.T) {
 	}
 }
 
-func TestAgentWithSynthesisJSONFormat(t *testing.T) {
-	// Test that AgentWithSynthesis serializes correctly to JSON
+func TestAgentAPIResponseJSONFormat(t *testing.T) {
+	// Test that AgentAPIResponse serializes correctly to JSON
 	synthesis := &SynthesisResponse{
 		TLDR:           "Test synthesis summary",
 		Outcome:        "success",
@@ -75,13 +75,13 @@ func TestAgentWithSynthesisJSONFormat(t *testing.T) {
 		NextActions:    []string{"- Review changes", "- Update docs"},
 	}
 
-	aws := &AgentWithSynthesis{
+	agent := &AgentAPIResponse{
 		Synthesis: synthesis,
 	}
 
-	data, err := json.Marshal(aws)
+	data, err := json.Marshal(agent)
 	if err != nil {
-		t.Fatalf("Failed to marshal AgentWithSynthesis: %v", err)
+		t.Fatalf("Failed to marshal AgentAPIResponse: %v", err)
 	}
 
 	// Verify the JSON contains expected fields

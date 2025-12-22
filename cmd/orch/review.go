@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -51,7 +50,7 @@ Examples:
 var reviewDoneCmd = &cobra.Command{
 	Use:   "done [project]",
 	Short: "Mark project completions as reviewed",
-	Long: `Mark all completed agents for a project as reviewed (deleted from registry).
+	Long: `Mark all completed agents for a project as reviewed.
 
 Use this after reviewing completions and verifying the work is acceptable.
 
@@ -71,19 +70,19 @@ func init() {
 
 // CompletionInfo holds information about a completed agent for review.
 type CompletionInfo struct {
-	Agent       *registry.Agent // nil if derived from workspace only
-	WorkspaceID string          // Workspace directory name
-	BeadsID     string          // Beads issue ID
+	WorkspaceID string // Workspace directory name
+	BeadsID     string // Beads issue ID
 	Project     string
 	VerifyOK    bool
 	VerifyError string
 	Phase       string
 	Summary     string
+	Skill       string
 	Synthesis   *verify.Synthesis
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
-// Uses derived lookups from .orch/workspace/ with registry as optional fallback.
+// Scans .orch/workspace/ for completed workspaces (those with SYNTHESIS.md).
 func getCompletionsForReview() ([]CompletionInfo, error) {
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -91,9 +90,8 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 	}
 
 	var results []CompletionInfo
-	seen := make(map[string]bool) // Track by workspace ID to avoid duplicates
 
-	// Phase 2: Scan workspaces for SYNTHESIS.md (derived completion indicator)
+	// Scan workspaces for SYNTHESIS.md (completion indicator)
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	entries, _ := os.ReadDir(workspaceDir)
 
@@ -114,10 +112,14 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		// Extract beads ID from SPAWN_CONTEXT.md
 		beadsID := extractBeadsIDFromWorkspace(dirPath)
 
+		// Extract skill from workspace name
+		skill := extractSkillFromTitle(dirName)
+
 		info := CompletionInfo{
 			WorkspaceID: dirName,
 			BeadsID:     beadsID,
 			Project:     extractProject(projectDir),
+			Skill:       skill,
 		}
 
 		// Check verification status if we have a beads ID
@@ -156,56 +158,6 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		}
 
 		results = append(results, info)
-		seen[dirName] = true
-	}
-
-	// Also check registry for backwards compatibility
-	reg, _ := registry.New("")
-	if reg != nil {
-		for _, agent := range reg.ListCompleted() {
-			// Skip if already seen from workspace scan
-			if seen[agent.ID] {
-				continue
-			}
-
-			info := CompletionInfo{
-				Agent:       agent,
-				WorkspaceID: agent.ID,
-				BeadsID:     agent.BeadsID,
-				Project:     extractProject(agent.ProjectDir),
-			}
-
-			workspacePath := filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
-
-			// Check verification status
-			if agent.BeadsID != "" {
-				result, err := verify.VerifyCompletion(agent.BeadsID, workspacePath)
-				if err != nil {
-					info.VerifyError = fmt.Sprintf("verification error: %v", err)
-					info.VerifyOK = false
-				} else if result.Passed {
-					info.VerifyOK = true
-					info.Phase = result.Phase.Phase
-					info.Summary = result.Phase.Summary
-
-					// Try to parse synthesis
-					s, err := verify.ParseSynthesis(workspacePath)
-					if err == nil {
-						info.Synthesis = s
-					}
-				} else {
-					info.VerifyOK = false
-					if len(result.Errors) > 0 {
-						info.VerifyError = result.Errors[0]
-					}
-				}
-			} else {
-				info.VerifyError = "no beads ID"
-				info.VerifyOK = false
-			}
-
-			results = append(results, info)
-		}
 	}
 
 	return results, nil
@@ -263,36 +215,23 @@ func groupByProject(completions []CompletionInfo) map[string][]CompletionInfo {
 
 // runReviewSingle displays detailed review information for a single agent.
 func runReviewSingle(beadsID string) error {
-	// Find agent in registry
-	reg, err := registry.New("")
+	// Try to find workspace from current directory
+	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
+		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	agent := reg.Find(beadsID)
-
-	// Build workspace path
+	projectDir := cwd
 	var workspacePath string
-	var projectDir string
 
-	if agent != nil {
-		projectDir = agent.ProjectDir
-		workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
-	} else {
-		// Try to find from current directory
-		cwd, err := os.Getwd()
-		if err == nil {
-			projectDir = cwd
-			// Look for workspaces matching the beads ID
-			workspaceDir := filepath.Join(cwd, ".orch", "workspace")
-			entries, err := os.ReadDir(workspaceDir)
-			if err == nil {
-				for _, entry := range entries {
-					if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
-						workspacePath = filepath.Join(workspaceDir, entry.Name())
-						break
-					}
-				}
+	// Look for workspaces matching the beads ID
+	workspaceDir := filepath.Join(cwd, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
+				workspacePath = filepath.Join(workspaceDir, entry.Name())
+				break
 			}
 		}
 	}
@@ -303,12 +242,9 @@ func runReviewSingle(beadsID string) error {
 		return fmt.Errorf("failed to get agent review: %w", err)
 	}
 
-	// Enrich with registry data if available
-	if agent != nil {
-		review.Skill = agent.Skill
-		if review.WorkspaceName == "" {
-			review.WorkspaceName = agent.ID
-		}
+	// Derive skill from workspace name if available
+	if workspacePath != "" {
+		review.Skill = extractSkillFromTitle(filepath.Base(workspacePath))
 	}
 
 	// Display the review
@@ -418,9 +354,9 @@ func runReview(projectFilter string, needsReviewOnly bool) error {
 				fmt.Printf("         Error: %s\n", c.VerifyError)
 			}
 
-			// Show skill if available from registry agent
-			if c.Agent != nil && c.Agent.Skill != "" {
-				fmt.Printf("         Skill: %s\n", c.Agent.Skill)
+			// Show skill if available
+			if c.Skill != "" {
+				fmt.Printf("         Skill: %s\n", c.Skill)
 			}
 		}
 	}
@@ -464,30 +400,16 @@ func runReviewDone(project string) error {
 		return nil
 	}
 
-	// Open registry for modifications (optional - for backwards compatibility)
-	reg, _ := registry.New("")
-
-	// Mark each as deleted (reviewed)
+	// Mark each as reviewed (we just print - no persistent state needed since
+	// workspaces with SYNTHESIS.md are the source of truth for completion)
 	marked := 0
 	for _, c := range projectCompletions {
-		// Use WorkspaceID for marking as reviewed
-		// Registry removal is optional - workspace presence is what matters
-		if reg != nil {
-			reg.Remove(c.WorkspaceID)
-		}
 		fmt.Printf("Marked as reviewed: %s", c.WorkspaceID)
 		if c.BeadsID != "" {
 			fmt.Printf(" (%s)", c.BeadsID)
 		}
 		fmt.Println()
 		marked++
-	}
-
-	// Save registry if available
-	if reg != nil {
-		if err := reg.SaveSkipMerge(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
-		}
 	}
 
 	fmt.Printf("\nMarked %d completions as reviewed for %s\n", marked, project)
@@ -506,25 +428,6 @@ func runReviewDone(project string) error {
 	}
 
 	return nil
-}
-
-// FormatCompletionStatus returns a formatted status string for a completion.
-func FormatCompletionStatus(c CompletionInfo) string {
-	var parts []string
-
-	if c.VerifyOK {
-		parts = append(parts, "OK")
-	} else {
-		parts = append(parts, "NEEDS_REVIEW")
-	}
-
-	parts = append(parts, c.Agent.ID)
-
-	if c.Agent.BeadsID != "" {
-		parts = append(parts, fmt.Sprintf("(%s)", c.Agent.BeadsID))
-	}
-
-	return strings.Join(parts, " ")
 }
 
 // printSynthesisCard displays a condensed Synthesis Card for an agent.
