@@ -501,6 +501,10 @@ You were spawned from beads issue: **orch-go-debug99**
 			wantAgent: "og-feat-test-[orch-go-abc12]",
 		},
 		{
+			// This test case is critical for headless spawns discoverability.
+			// Headless agents create workspaces like "og-debug-task-22dec" (no beads ID in name)
+			// but the beads ID is stored in SPAWN_CONTEXT.md. Commands like tail, question,
+			// and complete must find the workspace via SPAWN_CONTEXT.md scanning.
 			name:      "find by beads ID in SPAWN_CONTEXT.md",
 			beadsID:   "orch-go-xyz78",
 			wantPath:  true,

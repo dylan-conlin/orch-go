@@ -409,21 +409,15 @@ func runTail(beadsID string, lines int) error {
 	// 4. If tmux window found, also try to find matching OpenCode session by title
 
 	// Try workspace file lookup for session ID (fast path)
+	// Use findWorkspaceByBeadsID which correctly scans SPAWN_CONTEXT.md for beads ID
 	var sessionID string
 	var agentID string = beadsID
 
-	// Look for workspace with beadsID in name
-	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
-	if entries, err := os.ReadDir(workspaceBase); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
-				workspacePath := filepath.Join(workspaceBase, entry.Name())
-				sessionID = spawn.ReadSessionID(workspacePath)
-				if sessionID != "" {
-					agentID = entry.Name()
-					break
-				}
-			}
+	workspacePath, workspaceName := findWorkspaceByBeadsID(projectDir, beadsID)
+	if workspacePath != "" {
+		sessionID = spawn.ReadSessionID(workspacePath)
+		if sessionID != "" {
+			agentID = workspaceName
 		}
 	}
 
@@ -525,18 +519,11 @@ func runQuestion(beadsID string) error {
 	// 4. If tmux window found, also try to find matching OpenCode session by title
 
 	// Try workspace file lookup for session ID (fast path)
+	// Use findWorkspaceByBeadsID which correctly scans SPAWN_CONTEXT.md for beads ID
 	var sessionID string
-	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
-	if entries, err := os.ReadDir(workspaceBase); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
-				workspacePath := filepath.Join(workspaceBase, entry.Name())
-				sessionID = spawn.ReadSessionID(workspacePath)
-				if sessionID != "" {
-					break
-				}
-			}
-		}
+	workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
+	if workspacePath != "" {
+		sessionID = spawn.ReadSessionID(workspacePath)
 	}
 
 	// If we have a session ID (from workspace file), try OpenCode API first
