@@ -1512,48 +1512,14 @@ type StatusOutput struct {
 
 func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
-
-	// Get current directory for filtering
-	projectDir, _ := os.Getwd()
-
-	// Fetch sessions from OpenCode (primary source)
-	sessions, err := client.ListSessions(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
-	}
-
-	// Build agents list from OpenCode sessions (primary source)
 	now := time.Now()
 	agents := make([]AgentInfo, 0)
-	for _, s := range sessions {
-		// Calculate runtime from session creation
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		runtime := now.Sub(createdAt)
-		idleTime := now.Sub(updatedAt)
 
-		// Filter: only show sessions updated in the last 4 hours
-		if idleTime > 4*time.Hour {
-			continue
-		}
+	// Collect tmux windows first (primary source of truth for "active")
+	// Build a set of known beads IDs and workspace names from tmux
+	tmuxBeadsIDs := make(map[string]bool)
+	tmuxTitles := make(map[string]bool)
 
-		agent := AgentInfo{
-			SessionID: s.ID,
-			Title:     s.Title,
-			Runtime:   formatDuration(runtime),
-		}
-
-		// Derive beadsID and skill from session title
-		// Format expected: "og-feat-description-19dec" or similar workspace names
-		if s.Title != "" {
-			agent.BeadsID = extractBeadsIDFromTitle(s.Title)
-			agent.Skill = extractSkillFromTitle(s.Title)
-		}
-
-		agents = append(agents, agent)
-	}
-
-	// Add tmux-only agents (derived from tmux window names)
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
 		windows, _ := tmux.ListWindows(sessionName)
@@ -1569,30 +1535,82 @@ func runStatus(serverURL string) error {
 			// Derive skill from window emoji (primary) or workspace prefix
 			skill := extractSkillFromWindowName(w.Name)
 
-			// Check if already in agents list
-			alreadyIn := false
-			for _, a := range agents {
-				// Match by beads ID, window ID/target, or title
-				if (beadsID != "" && a.BeadsID == beadsID) || (a.Window != "" && (a.Window == w.ID || a.Window == w.Target)) || (a.Title != "" && strings.Contains(w.Name, a.Title)) {
-					alreadyIn = true
-					break
-				}
+			// Track beads ID and title to avoid duplicates from OpenCode API
+			if beadsID != "" {
+				tmuxBeadsIDs[beadsID] = true
+			}
+			// Extract workspace name from window name for matching
+			// Window names often contain the workspace name
+			tmuxTitles[w.Name] = true
+
+			agent := AgentInfo{
+				SessionID: "tmux",
+				BeadsID:   beadsID,
+				Skill:     skill,
+				Title:     w.Name,
+				Runtime:   "unknown",
+				Window:    w.Target,
 			}
 
-			if !alreadyIn {
-				// Add as tmux agent with derived metadata
-				agent := AgentInfo{
-					SessionID: "tmux",
-					BeadsID:   beadsID,
-					Skill:     skill,
-					Title:     w.Name,
-					Runtime:   "unknown",
-					Window:    w.Target,
-				}
+			agents = append(agents, agent)
+		}
+	}
 
-				agents = append(agents, agent)
+	// Fetch in-memory sessions from OpenCode
+	// Note: ListSessions("") returns only in-memory sessions, not disk history
+	// ListSessions(dir) with x-opencode-directory header returns ALL disk sessions
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	// Add OpenCode sessions that aren't already tracked via tmux
+	// Only include sessions that were recently active (updated in last 30 minutes)
+	// OpenCode keeps sessions in memory even after agents exit, so we need to filter
+	for _, s := range sessions {
+		// Calculate runtime and idle time
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		runtime := now.Sub(createdAt)
+		idleTime := now.Sub(updatedAt)
+
+		// Skip sessions idle for more than 30 minutes
+		// These are likely completed agents still in OpenCode's memory
+		if idleTime > 30*time.Minute {
+			continue
+		}
+
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		skill := extractSkillFromTitle(s.Title)
+
+		// Skip if already tracked via tmux (by beads ID or title)
+		if beadsID != "" && tmuxBeadsIDs[beadsID] {
+			continue
+		}
+		if tmuxTitles[s.Title] {
+			continue
+		}
+		// Also check if any tmux title contains this session's title
+		alreadyIn := false
+		for title := range tmuxTitles {
+			if strings.Contains(title, s.Title) {
+				alreadyIn = true
+				break
 			}
 		}
+		if alreadyIn {
+			continue
+		}
+
+		agent := AgentInfo{
+			SessionID: s.ID,
+			Title:     s.Title,
+			Runtime:   formatDuration(runtime),
+			BeadsID:   beadsID,
+			Skill:     skill,
+		}
+
+		agents = append(agents, agent)
 	}
 
 	// Build swarm status
