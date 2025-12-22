@@ -127,6 +127,27 @@ func TestParseKBContextOutput(t *testing.T) {
 			output:    "No results found",
 			wantCount: 0,
 		},
+		{
+			name: "parses global output with project prefixes",
+			output: `Context for "spawn":
+
+## CONSTRAINTS (from kn)
+
+- [orch-knowledge] Orchestrators NEVER do spawnable work
+  Reason: Orchestrator doing task work blocks the entire system
+- [orch-cli] Worker agents must NEVER spawn other agents
+  Reason: Recursive spawn testing incident
+- [orch-go] Agents must not spawn more than 3 iterations
+  Reason: Prevents runaway iteration loops
+
+## DECISIONS (from kn)
+
+- [orch-knowledge] kn integrates via smart auto-inject in orch spawn
+  Reason: Auto-inject prevents missing critical knowledge`,
+			wantCount:   4,
+			wantTypes:   []string{"constraint", "constraint", "constraint", "decision"},
+			wantSources: []string{"kn", "kn", "kn", "kn"},
+		},
 	}
 
 	for _, tt := range tests {

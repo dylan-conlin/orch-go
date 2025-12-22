@@ -61,8 +61,8 @@ func ExtractKeywords(task string, maxWords int) string {
 // RunKBContextCheck runs 'kb context' with the given query and parses the output.
 // Returns nil if no matches found or if kb command fails.
 func RunKBContextCheck(query string) (*KBContextResult, error) {
-	// Run kb context command
-	cmd := exec.Command("kb", "context", query)
+	// Run kb context command with --global to find cross-repo decisions
+	cmd := exec.Command("kb", "context", "--global", query)
 	output, err := cmd.Output()
 	if err != nil {
 		// If kb command fails (not found, no matches, etc.), return nil
