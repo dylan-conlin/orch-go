@@ -77,6 +77,7 @@ func init() {
 	rootCmd.AddCommand(reviewCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(portCmd)
+	rootCmd.AddCommand(initCmd)
 }
 
 var (
@@ -594,6 +595,11 @@ func runQuestion(beadsID string) error {
 	return nil
 }
 
+var (
+	// Abandon command flags
+	abandonReason string
+)
+
 var abandonCmd = &cobra.Command{
 	Use:   "abandon [beads-id]",
 	Short: "Abandon a stuck or frozen agent",
@@ -602,16 +608,25 @@ var abandonCmd = &cobra.Command{
 Use this command for stuck or frozen agents that are not responding.
 The agent's beads issue is NOT closed - you can restart work with 'orch work'.
 
+When --reason is provided, a FAILURE_REPORT.md is generated in the agent's workspace
+documenting what went wrong and recommendations for retry.
+
 Examples:
-  orch-go abandon proj-123           # Abandon agent for issue proj-123`,
+  orch-go abandon proj-123                                    # Abandon agent
+  orch-go abandon proj-123 --reason "Out of context"          # Abandon with failure report
+  orch-go abandon proj-123 --reason "Stuck in loop"           # Document the failure`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runAbandon(beadsID)
+		return runAbandon(beadsID, abandonReason)
 	},
 }
 
-func runAbandon(beadsID string) error {
+func init() {
+	abandonCmd.Flags().StringVar(&abandonReason, "reason", "", "Reason for abandonment (generates FAILURE_REPORT.md)")
+}
+
+func runAbandon(beadsID, reason string) error {
 	// Strategy: Check liveness directly via tmux and OpenCode, not registry
 	// An agent is "alive" if it has a tmux window OR an active OpenCode session
 
@@ -678,6 +693,22 @@ func runAbandon(beadsID string) error {
 		}
 	}
 
+	// Generate FAILURE_REPORT.md if reason is provided
+	if reason != "" && workspacePath != "" {
+		// Ensure the failure report template exists in the project
+		if err := spawn.EnsureFailureReportTemplate(projectDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to ensure failure report template: %v\n", err)
+		}
+
+		// Generate and write the failure report
+		reportPath, err := spawn.WriteFailureReport(workspacePath, agentName, beadsID, reason, issue.Title)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write failure report: %v\n", err)
+		} else {
+			fmt.Printf("Generated failure report: %s\n", reportPath)
+		}
+	}
+
 	// Log the abandonment
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
@@ -694,6 +725,9 @@ func runAbandon(beadsID string) error {
 	if workspacePath != "" {
 		eventData["workspace_path"] = workspacePath
 	}
+	if reason != "" {
+		eventData["reason"] = reason
+	}
 	event := events.Event{
 		Type:      "agent.abandoned",
 		Timestamp: time.Now().Unix(),
@@ -705,6 +739,9 @@ func runAbandon(beadsID string) error {
 
 	fmt.Printf("Abandoned agent: %s\n", agentName)
 	fmt.Printf("  Beads ID: %s\n", beadsID)
+	if reason != "" {
+		fmt.Printf("  Reason: %s\n", reason)
+	}
 	fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
 
 	return nil
