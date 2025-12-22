@@ -409,3 +409,96 @@ func TestWindowExistsByID(t *testing.T) {
 		t.Errorf("Expected window %s to not exist after kill", windowID)
 	}
 }
+
+func TestFindWindowByWorkspaceName(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-find-ws"
+	projectDir := "/tmp/orch-go-test-find-ws"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a window with a workspace name pattern
+	workspaceName := "og-feat-test-find-22dec"
+	windowName := BuildWindowName(workspaceName, "feature-impl", "test-123")
+	_, windowID, err := CreateWindow(sessionName, windowName, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Find the window by workspace name
+	found, err := FindWindowByWorkspaceName(sessionName, workspaceName)
+	if err != nil {
+		t.Fatalf("FindWindowByWorkspaceName failed: %v", err)
+	}
+	if found == nil {
+		t.Errorf("Expected to find window with workspace name %q", workspaceName)
+	}
+	if found != nil && found.ID != windowID {
+		t.Errorf("Found window ID %s doesn't match expected %s", found.ID, windowID)
+	}
+
+	// Try to find a non-existent workspace
+	notFound, err := FindWindowByWorkspaceName(sessionName, "nonexistent-workspace")
+	if err != nil {
+		t.Fatalf("FindWindowByWorkspaceName failed: %v", err)
+	}
+	if notFound != nil {
+		t.Errorf("Expected not to find nonexistent workspace, but got %+v", notFound)
+	}
+}
+
+func TestFindWindowByWorkspaceNameAllSessions(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session
+	project := "orch-go-test-find-all"
+	projectDir := "/tmp/orch-go-test-find-all"
+
+	sessionName, err := EnsureWorkersSession(project, projectDir)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// Create a window with a workspace name pattern
+	workspaceName := "og-inv-test-all-22dec"
+	windowName := BuildWindowName(workspaceName, "investigation", "")
+	_, windowID, err := CreateWindow(sessionName, windowName, projectDir)
+	if err != nil {
+		t.Fatalf("Could not create window: %v", err)
+	}
+
+	// Find the window across all sessions
+	found, foundSession, err := FindWindowByWorkspaceNameAllSessions(workspaceName)
+	if err != nil {
+		t.Fatalf("FindWindowByWorkspaceNameAllSessions failed: %v", err)
+	}
+	if found == nil {
+		t.Errorf("Expected to find window with workspace name %q across all sessions", workspaceName)
+	}
+	if found != nil && found.ID != windowID {
+		t.Errorf("Found window ID %s doesn't match expected %s", found.ID, windowID)
+	}
+	if foundSession != sessionName {
+		t.Errorf("Found session %s doesn't match expected %s", foundSession, sessionName)
+	}
+
+	// Try to find a non-existent workspace
+	notFound, _, err := FindWindowByWorkspaceNameAllSessions("nonexistent-workspace-all")
+	if err != nil {
+		t.Fatalf("FindWindowByWorkspaceNameAllSessions failed: %v", err)
+	}
+	if notFound != nil {
+		t.Errorf("Expected not to find nonexistent workspace, but got %+v", notFound)
+	}
+}
