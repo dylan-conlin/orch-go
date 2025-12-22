@@ -4,15 +4,15 @@
 package account
 
 import (
-	"context"
+	"bufio"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -22,25 +22,21 @@ import (
 // OAuth authorization constants
 const (
 	AuthorizationEndpoint = "https://console.anthropic.com/oauth/authorize"
-	// DefaultCallbackPort is the default port for the local OAuth callback server
-	DefaultCallbackPort = 19283
-	// CallbackPath is the path for the OAuth callback
-	CallbackPath = "/callback"
+	// AnthropicCallbackURL is Anthropic's official OAuth callback URL.
+	// Anthropic only allows their own callback URL - local servers are not permitted.
+	AnthropicCallbackURL = "https://console.anthropic.com/oauth/code/callback"
 )
 
 // OAuthConfig holds configuration for the OAuth authorization flow.
 type OAuthConfig struct {
-	// CallbackPort is the port for the local callback server (default: 19283)
-	CallbackPort int
-	// Timeout is the maximum time to wait for the authorization callback
+	// Timeout is the maximum time to wait for the user to paste the code
 	Timeout time.Duration
 }
 
 // DefaultOAuthConfig returns the default OAuth configuration.
 func DefaultOAuthConfig() *OAuthConfig {
 	return &OAuthConfig{
-		CallbackPort: DefaultCallbackPort,
-		Timeout:      5 * time.Minute,
+		Timeout: 10 * time.Minute,
 	}
 }
 
@@ -88,35 +84,56 @@ func generateCodeChallenge(verifier string) string {
 }
 
 // buildAuthorizationURL builds the OAuth authorization URL.
-func buildAuthorizationURL(redirectURI, codeChallenge, state string) string {
+// Following opencode-anthropic-auth plugin pattern, we use the code verifier as state.
+func buildAuthorizationURL(codeChallenge, codeVerifier string) string {
 	params := url.Values{
+		"code":                  {"true"}, // Signal that we want a code displayed, not redirect
 		"client_id":             {OAuthClientID},
-		"redirect_uri":          {redirectURI},
+		"redirect_uri":          {AnthropicCallbackURL},
 		"response_type":         {"code"},
 		"code_challenge":        {codeChallenge},
 		"code_challenge_method": {"S256"},
-		"state":                 {state},
-		"scope":                 {"user:inference"},
+		"state":                 {codeVerifier}, // Use verifier as state (matches opencode pattern)
+		"scope":                 {"org:create_api_key user:profile user:inference"},
 	}
 	return AuthorizationEndpoint + "?" + params.Encode()
 }
 
 // exchangeCodeForTokens exchanges an authorization code for tokens.
-func exchangeCodeForTokens(code, codeVerifier, redirectURI string) (*AuthorizationResult, error) {
-	reqBody := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"redirect_uri":  {redirectURI},
-		"client_id":     {OAuthClientID},
-		"code_verifier": {codeVerifier},
+// The code may contain state appended after '#' (e.g., "code#state").
+func exchangeCodeForTokens(rawCode, codeVerifier string) (*AuthorizationResult, error) {
+	// Split code and state if combined (Anthropic returns "code#state" format)
+	code := rawCode
+	state := ""
+	if idx := strings.Index(rawCode, "#"); idx != -1 {
+		code = rawCode[:idx]
+		state = rawCode[idx+1:]
+	}
+
+	// Build request body as JSON (matching opencode-anthropic-auth pattern)
+	reqBody := map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"redirect_uri":  AnthropicCallbackURL,
+		"client_id":     OAuthClientID,
+		"code_verifier": codeVerifier,
+	}
+	// Include state if present
+	if state != "" {
+		reqBody["state"] = state
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, &OAuthError{Message: "failed to marshal token request", Cause: err}
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("POST", TokenEndpoint, strings.NewReader(reqBody.Encode()))
+	req, err := http.NewRequest("POST", TokenEndpoint, strings.NewReader(string(bodyBytes)))
 	if err != nil {
 		return nil, &OAuthError{Message: "failed to create token request", Cause: err}
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -183,15 +200,9 @@ func openBrowser(url string) error {
 	return cmd.Start()
 }
 
-// callbackResult holds the result from the OAuth callback.
-type callbackResult struct {
-	code  string
-	state string
-	err   error
-}
-
 // StartOAuthFlow initiates the OAuth authorization code flow with PKCE.
-// It opens the browser for user authentication and waits for the callback.
+// It opens the browser for user authentication and prompts the user to paste
+// the authorization code displayed by Anthropic's callback page.
 // Returns an AuthorizationResult with tokens on success.
 func StartOAuthFlow(cfg *OAuthConfig) (*AuthorizationResult, error) {
 	if cfg == nil {
@@ -205,57 +216,36 @@ func StartOAuthFlow(cfg *OAuthConfig) (*AuthorizationResult, error) {
 	}
 	codeChallenge := generateCodeChallenge(codeVerifier)
 
-	// Generate state for CSRF protection
-	stateBytes := make([]byte, 16)
-	if _, err := rand.Read(stateBytes); err != nil {
-		return nil, &OAuthError{Message: "failed to generate state", Cause: err}
-	}
-	state := base64.RawURLEncoding.EncodeToString(stateBytes)
-
-	// Build redirect URI
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d%s", cfg.CallbackPort, CallbackPath)
-
-	// Start local callback server
-	resultChan := make(chan callbackResult, 1)
-	server, err := startCallbackServer(cfg.CallbackPort, state, resultChan)
-	if err != nil {
-		return nil, &OAuthError{Message: "failed to start callback server", Cause: err}
-	}
-
-	// Build and open authorization URL
-	authURL := buildAuthorizationURL(redirectURI, codeChallenge, state)
+	// Build authorization URL (using code verifier as state, matching opencode pattern)
+	authURL := buildAuthorizationURL(codeChallenge, codeVerifier)
 
 	fmt.Println("Opening browser for authentication...")
-	fmt.Printf("If browser doesn't open, visit:\n%s\n\n", authURL)
+	fmt.Printf("\nIf browser doesn't open, visit:\n%s\n\n", authURL)
 
 	if err := openBrowser(authURL); err != nil {
 		fmt.Printf("Warning: could not open browser: %v\n", err)
 		fmt.Println("Please open the URL above manually.")
 	}
 
-	fmt.Println("Waiting for authorization...")
+	// Prompt user to paste the authorization code
+	fmt.Println("After authorizing, Anthropic will display an authorization code.")
+	fmt.Print("Paste the authorization code here: ")
 
-	// Wait for callback with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
-	defer cancel()
-
-	var result callbackResult
-	select {
-	case result = <-resultChan:
-	case <-ctx.Done():
-		shutdownServer(server)
-		return nil, &OAuthError{Message: "authorization timed out"}
+	reader := bufio.NewReader(os.Stdin)
+	rawCode, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, &OAuthError{Message: "failed to read authorization code", Cause: err}
 	}
 
-	// Shutdown the server
-	shutdownServer(server)
-
-	if result.err != nil {
-		return nil, &OAuthError{Message: "authorization failed", Cause: result.err}
+	rawCode = strings.TrimSpace(rawCode)
+	if rawCode == "" {
+		return nil, &OAuthError{Message: "no authorization code provided"}
 	}
+
+	fmt.Println("\nExchanging code for tokens...")
 
 	// Exchange code for tokens
-	tokens, err := exchangeCodeForTokens(result.code, codeVerifier, redirectURI)
+	tokens, err := exchangeCodeForTokens(rawCode, codeVerifier)
 	if err != nil {
 		return nil, err
 	}
@@ -264,77 +254,6 @@ func StartOAuthFlow(cfg *OAuthConfig) (*AuthorizationResult, error) {
 	tokens.Email = fetchProfileEmailFromToken(tokens.AccessToken)
 
 	return tokens, nil
-}
-
-// startCallbackServer starts a local HTTP server to receive the OAuth callback.
-func startCallbackServer(port int, expectedState string, resultChan chan<- callbackResult) (*http.Server, error) {
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen on port %d: %w", port, err)
-	}
-
-	mux := http.NewServeMux()
-	server := &http.Server{Handler: mux}
-
-	mux.HandleFunc(CallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		// Check for error response
-		if errParam := r.URL.Query().Get("error"); errParam != "" {
-			errDesc := r.URL.Query().Get("error_description")
-			resultChan <- callbackResult{
-				err: fmt.Errorf("%s: %s", errParam, errDesc),
-			}
-			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprintf(w, `<html><body><h1>Authorization Failed</h1><p>%s: %s</p><p>You can close this window.</p></body></html>`, errParam, errDesc)
-			return
-		}
-
-		// Get code and state
-		code := r.URL.Query().Get("code")
-		state := r.URL.Query().Get("state")
-
-		// Validate state
-		if state != expectedState {
-			resultChan <- callbackResult{
-				err: fmt.Errorf("state mismatch: possible CSRF attack"),
-			}
-			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprint(w, `<html><body><h1>Authorization Failed</h1><p>State validation failed.</p><p>You can close this window.</p></body></html>`)
-			return
-		}
-
-		if code == "" {
-			resultChan <- callbackResult{
-				err: fmt.Errorf("no authorization code received"),
-			}
-			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprint(w, `<html><body><h1>Authorization Failed</h1><p>No authorization code received.</p><p>You can close this window.</p></body></html>`)
-			return
-		}
-
-		// Success
-		resultChan <- callbackResult{
-			code:  code,
-			state: state,
-		}
-
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<html><body><h1>Authorization Successful!</h1><p>You can close this window and return to the terminal.</p></body></html>`)
-	})
-
-	go func() {
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			resultChan <- callbackResult{err: fmt.Errorf("server error: %w", err)}
-		}
-	}()
-
-	return server, nil
-}
-
-// shutdownServer gracefully shuts down the callback server.
-func shutdownServer(server *http.Server) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	server.Shutdown(ctx)
 }
 
 // fetchProfileEmailFromToken fetches the user's email from the profile API.

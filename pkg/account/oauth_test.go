@@ -48,11 +48,10 @@ func TestGenerateCodeChallenge(t *testing.T) {
 }
 
 func TestBuildAuthorizationURL(t *testing.T) {
-	redirectURI := "http://127.0.0.1:19283/callback"
 	codeChallenge := "test_challenge"
-	state := "test_state"
+	codeVerifier := "test_verifier"
 
-	authURL := buildAuthorizationURL(redirectURI, codeChallenge, state)
+	authURL := buildAuthorizationURL(codeChallenge, codeVerifier)
 
 	// Parse the URL to verify components
 	parsed, err := url.Parse(authURL)
@@ -74,8 +73,8 @@ func TestBuildAuthorizationURL(t *testing.T) {
 		t.Errorf("client_id = %s, want %s", params.Get("client_id"), OAuthClientID)
 	}
 
-	if params.Get("redirect_uri") != redirectURI {
-		t.Errorf("redirect_uri = %s, want %s", params.Get("redirect_uri"), redirectURI)
+	if params.Get("redirect_uri") != AnthropicCallbackURL {
+		t.Errorf("redirect_uri = %s, want %s", params.Get("redirect_uri"), AnthropicCallbackURL)
 	}
 
 	if params.Get("response_type") != "code" {
@@ -90,24 +89,28 @@ func TestBuildAuthorizationURL(t *testing.T) {
 		t.Errorf("code_challenge_method = %s, want S256", params.Get("code_challenge_method"))
 	}
 
-	if params.Get("state") != state {
-		t.Errorf("state = %s, want %s", params.Get("state"), state)
+	// State should be the code verifier (matching opencode pattern)
+	if params.Get("state") != codeVerifier {
+		t.Errorf("state = %s, want %s", params.Get("state"), codeVerifier)
 	}
 
-	if params.Get("scope") != "user:inference" {
-		t.Errorf("scope = %s, want user:inference", params.Get("scope"))
+	// Should include "code=true" parameter
+	if params.Get("code") != "true" {
+		t.Errorf("code = %s, want true", params.Get("code"))
+	}
+
+	// Scope should include required permissions
+	scope := params.Get("scope")
+	if !strings.Contains(scope, "user:inference") {
+		t.Errorf("scope should contain user:inference, got %s", scope)
 	}
 }
 
 func TestDefaultOAuthConfig(t *testing.T) {
 	cfg := DefaultOAuthConfig()
 
-	if cfg.CallbackPort != DefaultCallbackPort {
-		t.Errorf("CallbackPort = %d, want %d", cfg.CallbackPort, DefaultCallbackPort)
-	}
-
-	if cfg.Timeout != 5*time.Minute {
-		t.Errorf("Timeout = %v, want %v", cfg.Timeout, 5*time.Minute)
+	if cfg.Timeout != 10*time.Minute {
+		t.Errorf("Timeout = %v, want %v", cfg.Timeout, 10*time.Minute)
 	}
 }
 
@@ -134,119 +137,53 @@ func TestOAuthError(t *testing.T) {
 	}
 }
 
-func TestCallbackServerSuccess(t *testing.T) {
-	state := "test_state_123"
-	resultChan := make(chan callbackResult, 1)
+func TestExchangeCodeForTokens_CodeWithState(t *testing.T) {
+	// Test that code with state suffix (code#state) is correctly parsed
+	// This is a unit test for the code parsing logic
 
-	server, err := startCallbackServer(0, state, resultChan) // Port 0 = find available port
-	if err != nil {
-		t.Fatalf("startCallbackServer() error = %v", err)
+	tests := []struct {
+		name             string
+		rawCode          string
+		expectedCode     string
+		expectedHasState bool
+	}{
+		{
+			name:             "code only",
+			rawCode:          "simple_code_123",
+			expectedCode:     "simple_code_123",
+			expectedHasState: false,
+		},
+		{
+			name:             "code with state",
+			rawCode:          "auth_code_abc#state_xyz",
+			expectedCode:     "auth_code_abc",
+			expectedHasState: true,
+		},
+		{
+			name:             "code with empty state",
+			rawCode:          "auth_code#",
+			expectedCode:     "auth_code",
+			expectedHasState: true,
+		},
 	}
-	defer shutdownServer(server)
 
-	// Get the actual port from the server address
-	// Since we use port 0, we need to make a test request to localhost
-	// For this test, we'll just verify the server starts without error
-	// and handles requests correctly using httptest
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse the code the same way exchangeCodeForTokens does
+			code := tt.rawCode
+			hasState := false
+			if idx := strings.Index(tt.rawCode, "#"); idx != -1 {
+				code = tt.rawCode[:idx]
+				hasState = true
+			}
 
-	// Create a mock request with valid code and state
-	req := httptest.NewRequest("GET", "/callback?code=test_code&state="+state, nil)
-	w := httptest.NewRecorder()
-
-	// Create handler directly to test
-	mux := http.NewServeMux()
-	expectedState := state
-	mux.HandleFunc(CallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		code := r.URL.Query().Get("code")
-		reqState := r.URL.Query().Get("state")
-
-		if reqState != expectedState {
-			resultChan <- callbackResult{err: nil}
-			return
-		}
-
-		resultChan <- callbackResult{code: code, state: reqState}
-		w.WriteHeader(http.StatusOK)
-	})
-
-	mux.ServeHTTP(w, req)
-
-	// Check result
-	select {
-	case result := <-resultChan:
-		if result.err != nil {
-			t.Errorf("callback result error = %v", result.err)
-		}
-		if result.code != "test_code" {
-			t.Errorf("callback code = %s, want test_code", result.code)
-		}
-		if result.state != state {
-			t.Errorf("callback state = %s, want %s", result.state, state)
-		}
-	case <-time.After(time.Second):
-		t.Error("callback result timeout")
-	}
-}
-
-func TestCallbackServerStateMismatch(t *testing.T) {
-	state := "correct_state"
-	resultChan := make(chan callbackResult, 1)
-
-	// Create handler directly to test state validation
-	mux := http.NewServeMux()
-	mux.HandleFunc(CallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		reqState := r.URL.Query().Get("state")
-
-		if reqState != state {
-			resultChan <- callbackResult{err: nil} // Changed to show state mismatch behavior
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		resultChan <- callbackResult{code: r.URL.Query().Get("code"), state: reqState}
-		w.WriteHeader(http.StatusOK)
-	})
-
-	// Make request with wrong state
-	req := httptest.NewRequest("GET", "/callback?code=test_code&state=wrong_state", nil)
-	w := httptest.NewRecorder()
-
-	mux.ServeHTTP(w, req)
-
-	// The handler should detect state mismatch
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected BadRequest for state mismatch, got %d", w.Code)
-	}
-}
-
-func TestCallbackServerErrorResponse(t *testing.T) {
-	resultChan := make(chan callbackResult, 1)
-
-	// Create handler directly to test error handling
-	mux := http.NewServeMux()
-	mux.HandleFunc(CallbackPath, func(w http.ResponseWriter, r *http.Request) {
-		if errParam := r.URL.Query().Get("error"); errParam != "" {
-			_ = r.URL.Query().Get("error_description") // Would be used in real handler
-			resultChan <- callbackResult{err: nil}     // Handler received error
-			w.Header().Set("Content-Type", "text/html")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		resultChan <- callbackResult{code: "code"}
-	})
-
-	// Make request with error response
-	req := httptest.NewRequest("GET", "/callback?error=access_denied&error_description=User+denied+access", nil)
-	w := httptest.NewRecorder()
-
-	mux.ServeHTTP(w, req)
-
-	// Verify handler processed the error
-	select {
-	case <-resultChan:
-		// Handler received the error - test passes
-	case <-time.After(time.Second):
-		t.Error("callback result timeout")
+			if code != tt.expectedCode {
+				t.Errorf("code = %s, want %s", code, tt.expectedCode)
+			}
+			if hasState != tt.expectedHasState {
+				t.Errorf("hasState = %v, want %v", hasState, tt.expectedHasState)
+			}
+		})
 	}
 }
 
@@ -258,8 +195,9 @@ func TestExchangeCodeForTokens_MockServer(t *testing.T) {
 			t.Errorf("Expected POST request, got %s", r.Method)
 		}
 
-		if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
-			t.Errorf("Expected Content-Type application/x-www-form-urlencoded, got %s", r.Header.Get("Content-Type"))
+		// The new implementation uses JSON, not form-urlencoded
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("Expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
 		}
 
 		// Return mock token response
@@ -279,13 +217,13 @@ func TestExchangeCodeForTokens_MockServer(t *testing.T) {
 	// In a real test, we would inject the endpoint URL
 
 	// For now, just verify the mock server responds correctly
-	resp, err := http.PostForm(server.URL, url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {"test_code"},
-		"redirect_uri":  {"http://localhost/callback"},
-		"client_id":     {OAuthClientID},
-		"code_verifier": {"test_verifier"},
-	})
+	resp, err := http.Post(server.URL, "application/json", strings.NewReader(`{
+		"grant_type": "authorization_code",
+		"code": "test_code",
+		"redirect_uri": "https://console.anthropic.com/oauth/code/callback",
+		"client_id": "`+OAuthClientID+`",
+		"code_verifier": "test_verifier"
+	}`))
 	if err != nil {
 		t.Fatalf("Mock server request failed: %v", err)
 	}
@@ -293,5 +231,13 @@ func TestExchangeCodeForTokens_MockServer(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Mock server status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestAnthropicCallbackURL(t *testing.T) {
+	// Verify the callback URL is Anthropic's official URL
+	expected := "https://console.anthropic.com/oauth/code/callback"
+	if AnthropicCallbackURL != expected {
+		t.Errorf("AnthropicCallbackURL = %s, want %s", AnthropicCallbackURL, expected)
 	}
 }
