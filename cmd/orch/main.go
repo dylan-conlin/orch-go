@@ -1643,13 +1643,20 @@ func runStatus(serverURL string) error {
 	for _, sessionName := range workersSessions {
 		windows, _ := tmux.ListWindows(sessionName)
 		for _, w := range windows {
-			// Skip "servers" and "zsh" windows
+			// Skip known non-agent windows
 			if w.Name == "servers" || w.Name == "zsh" {
 				continue
 			}
 
 			// Derive beads ID from window name (format: "... [beads-id]")
 			beadsID := extractBeadsIDFromWindowName(w.Name)
+
+			// Skip windows without parseable beadsID - these are not orch-spawned agents
+			// (e.g., docker, frontend, logs, console, tests windows in workers sessions)
+			if beadsID == "" {
+				continue
+			}
+
 			skill := extractSkillFromWindowName(w.Name)
 			project := extractProjectFromBeadsID(beadsID)
 
@@ -1722,23 +1729,24 @@ func runStatus(serverURL string) error {
 		}
 
 		beadsID := extractBeadsIDFromTitle(s.Title)
+
+		// Skip sessions without parseable beadsID - these are not orch-spawned agents
+		// (e.g., manual OpenCode sessions, test sessions, etc.)
+		if beadsID == "" {
+			continue
+		}
+
 		skill := extractSkillFromTitle(s.Title)
 		project := extractProjectFromBeadsID(beadsID)
 
 		// Skip if already tracked via tmux
-		if beadsID != "" && seenBeadsIDs[beadsID] {
+		if seenBeadsIDs[beadsID] {
 			continue
 		}
 
 		// Use state.GetLiveness() to check if this is actually live
-		var liveness state.LivenessResult
-		if beadsID != "" {
-			liveness = state.GetLiveness(beadsID, serverURL, projectDir)
-			seenBeadsIDs[beadsID] = true
-		} else {
-			// No beads ID - session is active if we got here (passed idle time check above)
-			liveness.OpencodeLive = true
-		}
+		liveness := state.GetLiveness(beadsID, serverURL, projectDir)
+		seenBeadsIDs[beadsID] = true
 
 		// Get phase from beads comments if we have a beads ID
 		var phase, task string
