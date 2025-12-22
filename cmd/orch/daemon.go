@@ -110,6 +110,7 @@ var (
 	daemonMaxAgents    int    // Maximum concurrent agents (0 = no limit)
 	daemonLabel        string // Filter issues by label
 	daemonVerbose      bool   // Enable verbose output
+	daemonReflect      bool   // Run reflection analysis after processing
 )
 
 func init() {
@@ -127,6 +128,7 @@ func init() {
 	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (0 = no limit)")
 	daemonRunCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonRunCmd.Flags().BoolVarP(&daemonVerbose, "verbose", "v", false, "Enable verbose output")
+	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis after processing (default: true)")
 }
 
 func runDaemonLoop() error {
@@ -163,6 +165,11 @@ func runDaemonLoop() error {
 	logger := events.NewLogger(events.DefaultLogPath())
 	processed := 0
 	cycles := 0
+
+	// Ensure reflection runs on exit if enabled
+	if daemonReflect {
+		defer runReflectionAnalysis(daemonVerbose)
+	}
 
 	fmt.Println("Starting daemon...")
 	fmt.Printf("  Poll interval:   %s\n", formatDaemonDuration(config.PollInterval))
@@ -464,4 +471,32 @@ func truncateDaemonString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// runReflectionAnalysis runs kb reflect and saves suggestions.
+// Called at the end of daemon processing to update reflection suggestions.
+func runReflectionAnalysis(verbose bool) {
+	if verbose {
+		fmt.Println("Running reflection analysis...")
+	}
+
+	result := daemon.RunAndSaveReflection()
+	if result.Error != nil {
+		fmt.Fprintf(os.Stderr, "Warning: reflection analysis failed: %v\n", result.Error)
+		return
+	}
+
+	if result.Suggestions == nil || !result.Suggestions.HasSuggestions() {
+		if verbose {
+			fmt.Println("No reflection suggestions found.")
+		}
+		return
+	}
+
+	fmt.Printf("Reflection: %s\n", result.Suggestions.Summary())
+	if result.Saved {
+		if verbose {
+			fmt.Printf("Suggestions saved to: %s\n", daemon.SuggestionsPath())
+		}
+	}
 }
