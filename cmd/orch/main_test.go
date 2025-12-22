@@ -470,6 +470,24 @@ You were spawned from beads issue: **orch-go-xyz78**
 		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
 	}
 
+	// Create a workspace that MENTIONS a beads ID but is spawned from a different one
+	// This tests that we only match the authoritative "spawned from beads issue" line
+	ws3 := filepath.Join(workspaceDir, "og-debug-fix-issue-21dec")
+	if err := os.MkdirAll(ws3, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	spawnContext3 := `TASK: Fix bug in orch-go-xyz78 workspace
+
+This workspace is debugging an issue with orch-go-xyz78.
+
+## BEADS PROGRESS TRACKING
+
+You were spawned from beads issue: **orch-go-debug99**
+`
+	if err := os.WriteFile(filepath.Join(ws3, "SPAWN_CONTEXT.md"), []byte(spawnContext3), 0644); err != nil {
+		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+
 	tests := []struct {
 		name      string
 		beadsID   string
@@ -493,6 +511,12 @@ You were spawned from beads issue: **orch-go-xyz78**
 			beadsID:   "nonexistent-beads-id",
 			wantPath:  false,
 			wantAgent: "",
+		},
+		{
+			name:      "find debug workspace by its actual beads ID",
+			beadsID:   "orch-go-debug99",
+			wantPath:  true,
+			wantAgent: "og-debug-fix-issue-21dec",
 		},
 	}
 

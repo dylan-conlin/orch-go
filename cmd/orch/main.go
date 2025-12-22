@@ -1747,9 +1747,9 @@ func printSwarmStatus(output StatusOutput) {
 	}
 }
 
-// findWorkspaceByBeadsID searches for a workspace directory containing the beads ID.
+// findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
 // Looks in .orch/workspace/ for directories that match the beads ID in their name
-// or contain a SPAWN_CONTEXT.md referencing the beads ID.
+// or contain a SPAWN_CONTEXT.md with "spawned from beads issue: **beadsID**".
 // Returns the workspace path and agent name (directory name) if found.
 func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentName string) {
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
@@ -1773,11 +1773,23 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 			return dirPath, dirName
 		}
 
-		// Also check SPAWN_CONTEXT.md for the beads ID
+		// Check SPAWN_CONTEXT.md for authoritative "spawned from beads issue" line
+		// This is more precise than just checking if beadsID appears anywhere
 		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
 		if content, err := os.ReadFile(spawnContextPath); err == nil {
-			if strings.Contains(string(content), beadsID) {
-				return dirPath, dirName
+			contentStr := string(content)
+			// Look for the authoritative beads issue declaration
+			// Pattern: "spawned from beads issue: **orch-go-xxxx**" or similar
+			for _, line := range strings.Split(contentStr, "\n") {
+				lineLower := strings.ToLower(line)
+				if strings.Contains(lineLower, "spawned from beads issue:") {
+					if strings.Contains(line, beadsID) {
+						return dirPath, dirName
+					}
+					// Found the authoritative line but beads ID doesn't match
+					// Don't continue searching this file - this workspace has a different ID
+					break
+				}
 			}
 		}
 	}

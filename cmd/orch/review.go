@@ -222,19 +222,9 @@ func runReviewSingle(beadsID string) error {
 	}
 
 	projectDir := cwd
-	var workspacePath string
 
-	// Look for workspaces matching the beads ID
-	workspaceDir := filepath.Join(cwd, ".orch", "workspace")
-	entries, err := os.ReadDir(workspaceDir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
-				workspacePath = filepath.Join(workspaceDir, entry.Name())
-				break
-			}
-		}
-	}
+	// Find workspace by beads ID (searches SPAWN_CONTEXT.md, not just directory name)
+	workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
 
 	// Get review data
 	review, err := verify.GetAgentReview(beadsID, workspacePath, projectDir)
