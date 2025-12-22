@@ -272,7 +272,9 @@ var monitorCmd = &cobra.Command{
 
 var (
 	// Status command flags
-	statusJSON bool
+	statusJSON    bool
+	statusAll     bool   // Include phantom agents (default: hide)
+	statusProject string // Filter by project
 )
 
 var statusCmd = &cobra.Command{
@@ -281,8 +283,13 @@ var statusCmd = &cobra.Command{
 	Long: `Show swarm status including active/queued/completed agent counts,
 per-account usage percentages, and individual agent details.
 
+By default, phantom agents (beads issue open but no running agent) are hidden.
+Use --all to include them.
+
 Examples:
-  orch-go status              # Show swarm status with agent details
+  orch-go status              # Show active agents only
+  orch-go status --all        # Include phantom agents
+  orch-go status --project snap  # Filter by project
   orch-go status --json       # Output as JSON for scripting`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStatus(serverURL)
@@ -291,6 +298,8 @@ Examples:
 
 func init() {
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON for scripting")
+	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Include phantom agents")
+	statusCmd.Flags().StringVar(&statusProject, "project", "", "Filter by project")
 }
 
 var (
@@ -1567,6 +1576,9 @@ type AgentInfo struct {
 	Runtime   string `json:"runtime"`
 	Title     string `json:"title,omitempty"`
 	Window    string `json:"window,omitempty"`
+	Phase     string `json:"phase,omitempty"`      // Current phase from beads comments
+	Task      string `json:"task,omitempty"`       // Task description (truncated)
+	Project   string `json:"project,omitempty"`    // Project name derived from beads ID or workspace
 	IsPhantom bool   `json:"is_phantom,omitempty"` // True if beads issue open but agent not running
 }
 
@@ -1598,6 +1610,7 @@ func runStatus(serverURL string) error {
 			// Derive beads ID from window name (format: "... [beads-id]")
 			beadsID := extractBeadsIDFromWindowName(w.Name)
 			skill := extractSkillFromWindowName(w.Name)
+			project := extractProjectFromBeadsID(beadsID)
 
 			// Use state.GetLiveness() for accurate liveness check
 			var liveness state.LivenessResult
@@ -1606,13 +1619,31 @@ func runStatus(serverURL string) error {
 				seenBeadsIDs[beadsID] = true
 			}
 
+			// Get phase from beads comments if we have a beads ID
+			var phase, task string
+			if beadsID != "" {
+				phase, task = getPhaseAndTask(beadsID)
+			}
+
+			// Calculate runtime from OpenCode session if available
+			runtime := "unknown"
+			if liveness.SessionID != "" {
+				if session, err := client.GetSession(liveness.SessionID); err == nil {
+					createdAt := time.Unix(session.Time.Created/1000, 0)
+					runtime = formatDuration(now.Sub(createdAt))
+				}
+			}
+
 			agent := AgentInfo{
 				SessionID: liveness.SessionID,
 				BeadsID:   beadsID,
 				Skill:     skill,
 				Title:     w.Name,
-				Runtime:   "unknown",
+				Runtime:   runtime,
 				Window:    w.Target,
+				Phase:     phase,
+				Task:      task,
+				Project:   project,
 				IsPhantom: liveness.IsPhantom(),
 			}
 
@@ -1638,6 +1669,7 @@ func runStatus(serverURL string) error {
 
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		skill := extractSkillFromTitle(s.Title)
+		project := extractProjectFromBeadsID(beadsID)
 
 		// Skip if already tracked via tmux
 		if beadsID != "" && seenBeadsIDs[beadsID] {
@@ -1660,6 +1692,12 @@ func runStatus(serverURL string) error {
 			liveness.OpencodeLive = true // Consider active if recently updated
 		}
 
+		// Get phase from beads comments if we have a beads ID
+		var phase, task string
+		if beadsID != "" {
+			phase, task = getPhaseAndTask(beadsID)
+		}
+
 		// Skip if not alive (neither tmux nor OpenCode)
 		if !liveness.IsAlive() && beadsID != "" {
 			// Not alive but has beads ID - might be phantom
@@ -1671,6 +1709,9 @@ func runStatus(serverURL string) error {
 					Runtime:   formatDuration(runtime),
 					BeadsID:   beadsID,
 					Skill:     skill,
+					Phase:     phase,
+					Task:      task,
+					Project:   project,
 					IsPhantom: true,
 				}
 				agents = append(agents, agent)
@@ -1684,13 +1725,30 @@ func runStatus(serverURL string) error {
 			Runtime:   formatDuration(runtime),
 			BeadsID:   beadsID,
 			Skill:     skill,
+			Phase:     phase,
+			Task:      task,
+			Project:   project,
 			IsPhantom: liveness.IsPhantom(),
 		}
 
 		agents = append(agents, agent)
 	}
 
-	// Phase 3: Build swarm status (exclude phantoms from Active count)
+	// Phase 3: Filter agents based on flags
+	filteredAgents := make([]AgentInfo, 0)
+	for _, agent := range agents {
+		// Filter by project if specified
+		if statusProject != "" && agent.Project != statusProject {
+			continue
+		}
+		// Filter phantoms unless --all is set
+		if agent.IsPhantom && !statusAll {
+			continue
+		}
+		filteredAgents = append(filteredAgents, agent)
+	}
+
+	// Phase 4: Build swarm status (counts before filtering)
 	activeCount := 0
 	phantomCount := 0
 	for _, agent := range agents {
@@ -1711,11 +1769,11 @@ func runStatus(serverURL string) error {
 	// Fetch account usage information
 	accounts := getAccountUsage()
 
-	// Build output
+	// Build output (use filtered agents for display)
 	output := StatusOutput{
 		Swarm:    swarm,
 		Accounts: accounts,
-		Agents:   agents,
+		Agents:   filteredAgents,
 	}
 
 	// Output as JSON if flag is set
@@ -1729,8 +1787,41 @@ func runStatus(serverURL string) error {
 	}
 
 	// Print human-readable output
-	printSwarmStatus(output)
+	printSwarmStatus(output, statusAll)
 	return nil
+}
+
+// extractProjectFromBeadsID extracts the project name from a beads ID.
+// Beads IDs follow the format: project-xxxx (e.g., orch-go-3anf)
+func extractProjectFromBeadsID(beadsID string) string {
+	if beadsID == "" {
+		return ""
+	}
+	// Find the last hyphen followed by 4 alphanumeric characters (the hash)
+	// The project is everything before that
+	parts := strings.Split(beadsID, "-")
+	if len(parts) < 2 {
+		return beadsID
+	}
+	// The last part should be the 4-char hash, join everything else
+	return strings.Join(parts[:len(parts)-1], "-")
+}
+
+// getPhaseAndTask retrieves the current phase and task description from beads.
+func getPhaseAndTask(beadsID string) (phase, task string) {
+	// Get issue for task description
+	issue, err := verify.GetIssue(beadsID)
+	if err == nil {
+		task = truncate(issue.Title, 40)
+	}
+
+	// Get phase from comments
+	status, err := verify.GetPhaseStatus(beadsID)
+	if err == nil && status.Found {
+		phase = status.Phase
+	}
+
+	return phase, task
 }
 
 // getAccountUsage fetches usage info for all configured accounts.
@@ -1782,17 +1873,16 @@ func getAccountUsage() []AccountUsage {
 }
 
 // printSwarmStatus prints the swarm status in human-readable format.
-func printSwarmStatus(output StatusOutput) {
-	// Print swarm summary
-	fmt.Println("SWARM STATUS")
-	fmt.Printf("  Active:    %d\n", output.Swarm.Active)
+func printSwarmStatus(output StatusOutput, showPhantoms bool) {
+	// Print swarm summary header
+	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
 	if output.Swarm.Phantom > 0 {
-		fmt.Printf("  Phantom:   %d (beads open but not running)\n", output.Swarm.Phantom)
+		fmt.Printf(", Phantom: %d", output.Swarm.Phantom)
+		if !showPhantoms {
+			fmt.Printf(" (use --all to show)")
+		}
 	}
-	if output.Swarm.Queued > 0 {
-		fmt.Printf("  Queued:    %d\n", output.Swarm.Queued)
-	}
-	fmt.Printf("  Completed: %d (today)\n", output.Swarm.Completed)
+	fmt.Println()
 	fmt.Println()
 
 	// Print account usage
@@ -1819,41 +1909,45 @@ func printSwarmStatus(output StatusOutput) {
 		fmt.Println()
 	}
 
-	// Print agents table (both active and phantom)
+	// Print agents table
 	if len(output.Agents) > 0 {
 		fmt.Println("AGENTS")
-		fmt.Printf("  %-10s %-30s %-18s %-18s %-12s %s\n", "STATUS", "SESSION ID", "BEADS ID", "SKILL", "WINDOW", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 110))
+		// New column layout: BEADS ID (full), PHASE, TASK, SKILL, RUNTIME
+		fmt.Printf("  %-18s %-12s %-40s %-20s %s\n", "BEADS ID", "PHASE", "TASK", "SKILL", "RUNTIME")
+		fmt.Printf("  %s\n", strings.Repeat("-", 100))
 
 		for _, agent := range output.Agents {
-			status := "active"
-			if agent.IsPhantom {
-				status = "phantom"
-			}
-
 			beadsID := agent.BeadsID
 			if beadsID == "" {
 				beadsID = "-"
+			}
+			phase := agent.Phase
+			if phase == "" {
+				phase = "-"
+			}
+			task := agent.Task
+			if task == "" {
+				task = "-"
 			}
 			skill := agent.Skill
 			if skill == "" {
 				skill = "-"
 			}
-			window := agent.Window
-			if window == "" {
-				window = "-"
+
+			// Add phantom indicator to phase
+			if agent.IsPhantom {
+				phase = "⚠ " + phase
 			}
 
-			fmt.Printf("  %-10s %-30s %-18s %-18s %-12s %s\n",
-				status,
-				truncate(agent.SessionID, 28),
-				truncate(beadsID, 16),
-				truncate(skill, 16),
-				truncate(window, 10),
+			fmt.Printf("  %-18s %-12s %-40s %-20s %s\n",
+				beadsID,
+				truncate(phase, 10),
+				truncate(task, 38),
+				truncate(skill, 18),
 				agent.Runtime)
 		}
 	} else {
-		fmt.Println("No agents")
+		fmt.Println("No active agents")
 	}
 }
 
