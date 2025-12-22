@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -99,10 +100,17 @@ func GetLiveness(beadsID, serverURL, projectDir string) LivenessResult {
 	return result
 }
 
+// DefaultMaxIdleTime is the maximum time since last update to consider a session "active".
+// Sessions idle longer than this are considered stale and not actively running.
+const DefaultMaxIdleTime = 30 * time.Minute
+
 // checkOpenCodeSession checks if an OpenCode session is active for the agent.
 // It tries multiple approaches:
-// 1. Read session ID from workspace .session_id file
-// 2. Search sessions by title containing beads ID
+// 1. Read session ID from workspace .session_id file and verify it's recently active
+// 2. Search sessions by title containing beads ID and verify activity
+//
+// NOTE: OpenCode persists sessions to disk, so we check activity time rather than
+// just existence. A session is considered "active" if updated within DefaultMaxIdleTime.
 func checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath string) (bool, string) {
 	client := opencode.NewClient(serverURL)
 
@@ -111,22 +119,29 @@ func checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath string) 
 		sessionFile := filepath.Join(workspacePath, ".session_id")
 		if data, err := os.ReadFile(sessionFile); err == nil {
 			sessionID := strings.TrimSpace(string(data))
-			if sessionID != "" && client.SessionExists(sessionID) {
+			if sessionID != "" && client.IsSessionActive(sessionID, DefaultMaxIdleTime) {
 				return true, sessionID
 			}
 		}
 	}
 
 	// Try 2: Search sessions by title/beads ID match
-	sessions, err := client.ListSessions(projectDir)
+	// Use ListSessions without directory to get in-memory sessions only
+	// (With directory header, OpenCode returns ALL disk-persisted sessions)
+	sessions, err := client.ListSessions("")
 	if err != nil {
 		return false, ""
 	}
 
+	now := time.Now()
 	for _, s := range sessions {
 		// Match by beads ID in title (common pattern: "... [beadsID]" or "og-feat-X-beadsID-date")
 		if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
-			return true, s.ID
+			// Verify the session is recently active
+			updatedAt := time.Unix(s.Time.Updated/1000, 0)
+			if now.Sub(updatedAt) <= DefaultMaxIdleTime {
+				return true, s.ID
+			}
 		}
 	}
 

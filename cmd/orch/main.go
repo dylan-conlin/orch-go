@@ -1711,15 +1711,28 @@ func runStatus(serverURL string) error {
 	}
 
 	// Phase 2: Collect agents from OpenCode sessions (headless mode agents)
+	// NOTE: ListSessions("") returns ALL persisted sessions (339+), not just active ones.
+	// We filter by activity time to only show sessions updated within the last 30 minutes.
 	sessions, err := client.ListSessions("")
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
+	// Maximum idle time to consider a session "active"
+	const maxIdleTime = 30 * time.Minute
+
 	for _, s := range sessions {
-		// Calculate runtime
+		// Calculate runtime and idle time
 		createdAt := time.Unix(s.Time.Created/1000, 0)
 		runtime := now.Sub(createdAt)
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		idleTime := now.Sub(updatedAt)
+
+		// Early filter: skip sessions idle longer than maxIdleTime
+		// This prevents 339 stale sessions from appearing as active
+		if idleTime > maxIdleTime {
+			continue
+		}
 
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		skill := extractSkillFromTitle(s.Title)
@@ -1736,14 +1749,8 @@ func runStatus(serverURL string) error {
 			liveness = state.GetLiveness(beadsID, serverURL, projectDir)
 			seenBeadsIDs[beadsID] = true
 		} else {
-			// No beads ID - check if session is still active using idle time
-			// OpenCode keeps sessions in memory, so filter by recent activity
-			updatedAt := time.Unix(s.Time.Updated/1000, 0)
-			idleTime := now.Sub(updatedAt)
-			if idleTime > 30*time.Minute {
-				continue // Skip stale sessions without beads ID
-			}
-			liveness.OpencodeLive = true // Consider active if recently updated
+			// No beads ID - session is active if we got here (passed idle time check above)
+			liveness.OpencodeLive = true
 		}
 
 		// Get phase from beads comments if we have a beads ID

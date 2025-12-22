@@ -228,6 +228,8 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 
 // SessionExists checks if a session exists in OpenCode (in-memory).
 // Returns true if the session is accessible via the API, false otherwise.
+// NOTE: This returns true for any persisted session, not just actively running ones.
+// For liveness checks, use IsSessionActive() instead.
 func (c *Client) SessionExists(sessionID string) bool {
 	resp, err := http.Get(c.ServerURL + "/session/" + sessionID)
 	if err != nil {
@@ -237,6 +239,21 @@ func (c *Client) SessionExists(sessionID string) bool {
 
 	// Session exists if we get 200 OK
 	return resp.StatusCode == http.StatusOK
+}
+
+// IsSessionActive checks if a session is actively running (updated within maxIdleTime).
+// This is more reliable than SessionExists() for liveness detection because OpenCode
+// persists sessions to disk, so SessionExists() returns true for historical sessions.
+// maxIdleTime is the maximum time since last update to consider a session "active".
+func (c *Client) IsSessionActive(sessionID string, maxIdleTime time.Duration) bool {
+	session, err := c.GetSession(sessionID)
+	if err != nil {
+		return false
+	}
+
+	updatedAt := time.Unix(session.Time.Updated/1000, 0)
+	idleTime := time.Since(updatedAt)
+	return idleTime <= maxIdleTime
 }
 
 // CreateSessionRequest represents the request body for creating a new session.
