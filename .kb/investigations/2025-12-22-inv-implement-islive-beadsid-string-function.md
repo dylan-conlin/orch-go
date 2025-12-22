@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented `pkg/state/reconcile.go` with `IsLive(beadsID)` function that cross-references 4 state sources to detect phantom agents.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** All tests pass (TestIsLive, TestFindWorkspaceByBeadsID, TestLivenessResult); full test suite passes without regressions.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Agent liveness can be determined by checking OpenCode sessions, tmux windows, beads issues, and workspace directories - combining these reveals "phantom" agents (beads open but nothing running).
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close issue; next step is integrating IsLive into `orch status` command.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (90%) - Unit tests pass, but integration tests would require mocking tmux/OpenCode.
 
 <!--
 Example D.E.K.N.:
@@ -34,17 +34,17 @@ Guidelines:
 
 ---
 
-# Investigation: [Investigation Title]
+# Investigation: Implement IsLive Function for Agent Liveness Detection
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to implement a function that cross-references 4 state sources (OpenCode sessions, tmux windows, beads issues, workspaces) to determine if an agent is actually running?
 
-**Started:** [YYYY-MM-DD]
-**Updated:** [YYYY-MM-DD]
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
+**Started:** 2025-12-22
+**Updated:** 2025-12-22
+**Owner:** og-feat-implement-islive-beadsid-22dec
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (90%)
 
 ---
 
