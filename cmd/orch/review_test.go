@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -351,6 +352,67 @@ func TestSummarizeDelta(t *testing.T) {
 				if !strings.Contains(result, want) {
 					t.Errorf("summarizeDelta() = %q, want to contain %q", result, want)
 				}
+			}
+		})
+	}
+}
+
+// TestExtractBeadsIDFromWorkspace tests extracting beads ID from SPAWN_CONTEXT.md.
+func TestExtractBeadsIDFromWorkspace(t *testing.T) {
+	tests := []struct {
+		name           string
+		contextContent string
+		wantID         string
+	}{
+		{
+			name: "standard beads issue format",
+			contextContent: `TASK: Test task
+
+## BEADS PROGRESS TRACKING
+
+You were spawned from beads issue: **orch-go-pe5d.2**
+
+Use bd comment for progress updates.`,
+			wantID: "orch-go-pe5d.2",
+		},
+		{
+			name: "beads issue with backticks",
+			contextContent: `TASK: Another task
+
+beads issue: ` + "`snap-abc123`",
+			wantID: "snap-abc123",
+		},
+		{
+			name: "no beads issue",
+			contextContent: `TASK: Untracked task
+
+No beads tracking for this one.`,
+			wantID: "",
+		},
+		{
+			name: "spawned from beads issue format",
+			contextContent: `TASK: Feature work
+
+## BEADS PROGRESS TRACKING (PREFERRED)
+
+You were spawned from beads issue: **orch-cli-xyz99**
+
+Use bd comment for updates.`,
+			wantID: "orch-cli-xyz99",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp workspace
+			tmpDir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte(tt.contextContent), 0644); err != nil {
+				t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+			}
+
+			got := extractBeadsIDFromWorkspace(tmpDir)
+			if got != tt.wantID {
+				t.Errorf("extractBeadsIDFromWorkspace() = %q, want %q", got, tt.wantID)
 			}
 		})
 	}

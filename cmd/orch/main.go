@@ -595,49 +595,111 @@ Examples:
 }
 
 func runAbandon(beadsID string) error {
-	// Open the registry
-	reg, err := registry.New("")
+	// Strategy: Check liveness directly via tmux and OpenCode, not registry
+	// An agent is "alive" if it has a tmux window OR an active OpenCode session
+
+	// First, verify the beads issue exists
+	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
+		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Find agent by beads ID
-	agent := reg.Find(beadsID)
-	if agent == nil {
-		return fmt.Errorf("no agent found for beads ID: %s", beadsID)
+	if issue.Status == "closed" {
+		return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
 	}
 
-	// Check if already abandoned or completed
-	if agent.Status != registry.StateActive {
-		return fmt.Errorf("agent %s is not active (status: %s)", agent.ID, agent.Status)
+	// Get current directory for OpenCode client
+	projectDir, _ := os.Getwd()
+	client := opencode.NewClient(serverURL)
+
+	// Check for tmux window
+	var windowInfo *tmux.WindowInfo
+	sessions, _ := tmux.ListWorkersSessions()
+	for _, session := range sessions {
+		window, err := tmux.FindWindowByBeadsID(session, beadsID)
+		if err == nil && window != nil {
+			windowInfo = window
+			break
+		}
 	}
 
-	// Mark agent as abandoned in registry
-	if !reg.Abandon(agent.ID) {
-		return fmt.Errorf("failed to mark agent as abandoned")
+	// Check for OpenCode session
+	var sessionID string
+	allSessions, _ := client.ListSessions(projectDir)
+	for _, s := range allSessions {
+		if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
+			sessionID = s.ID
+			break
+		}
 	}
 
-	// Save the registry
-	if err := reg.Save(); err != nil {
-		return fmt.Errorf("failed to save registry: %w", err)
+	// Find workspace for logging
+	workspacePath, agentName := findWorkspaceByBeadsID(projectDir, beadsID)
+	if agentName == "" {
+		agentName = beadsID // Use beads ID as fallback
+	}
+
+	// Report what we found
+	if windowInfo != nil {
+		fmt.Printf("Found tmux window: %s\n", windowInfo.Target)
+	}
+	if sessionID != "" {
+		fmt.Printf("Found OpenCode session: %s\n", sessionID[:12])
+	}
+
+	// If neither found, warn but still allow abandonment
+	if windowInfo == nil && sessionID == "" {
+		fmt.Printf("Note: No active tmux window or OpenCode session found for %s\n", beadsID)
+		fmt.Printf("The agent may have already exited.\n")
+	}
+
+	// Optionally kill the tmux window if it exists
+	if windowInfo != nil {
+		fmt.Printf("Killing tmux window: %s\n", windowInfo.Target)
+		if err := tmux.KillWindow(windowInfo.Target); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux window: %v\n", err)
+		}
+	}
+
+	// Registry update is OPTIONAL - for backwards compatibility
+	reg, _ := registry.New("")
+	if reg != nil {
+		agent := reg.Find(beadsID)
+		if agent != nil {
+			if reg.Abandon(agent.ID) {
+				if err := reg.Save(); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+				}
+			}
+		}
 	}
 
 	// Log the abandonment
 	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"beads_id": beadsID,
+		"agent_id": agentName,
+	}
+	if windowInfo != nil {
+		eventData["window_id"] = windowInfo.ID
+		eventData["window_target"] = windowInfo.Target
+	}
+	if sessionID != "" {
+		eventData["session_id"] = sessionID
+	}
+	if workspacePath != "" {
+		eventData["workspace_path"] = workspacePath
+	}
 	event := events.Event{
 		Type:      "agent.abandoned",
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"beads_id":  beadsID,
-			"agent_id":  agent.ID,
-			"window_id": agent.WindowID,
-		},
+		Data:      eventData,
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("Abandoned agent: %s\n", agent.ID)
+	fmt.Printf("Abandoned agent: %s\n", agentName)
 	fmt.Printf("  Beads ID: %s\n", beadsID)
 	fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
 
@@ -1615,6 +1677,44 @@ func printSwarmStatus(output StatusOutput) {
 	}
 }
 
+// findWorkspaceByBeadsID searches for a workspace directory containing the beads ID.
+// Looks in .orch/workspace/ for directories that match the beads ID in their name
+// or contain a SPAWN_CONTEXT.md referencing the beads ID.
+// Returns the workspace path and agent name (directory name) if found.
+func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentName string) {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return "", ""
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+		dirPath := filepath.Join(workspaceDir, dirName)
+
+		// Check if the beads ID is in the directory name
+		// Workspace names follow format: og-feat-description-21dec
+		// Beads ID format: project-xxxx (e.g., orch-go-3anf)
+		if strings.Contains(dirName, beadsID) {
+			return dirPath, dirName
+		}
+
+		// Also check SPAWN_CONTEXT.md for the beads ID
+		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+		if content, err := os.ReadFile(spawnContextPath); err == nil {
+			if strings.Contains(string(content), beadsID) {
+				return dirPath, dirName
+			}
+		}
+	}
+
+	return "", ""
+}
+
 func runComplete(beadsID string) error {
 	// Get issue to verify it exists
 	issue, err := verify.GetIssue(beadsID)
@@ -1628,16 +1728,32 @@ func runComplete(beadsID string) error {
 		fmt.Printf("Issue %s is already closed in beads\n", beadsID)
 	}
 
+	// Get current directory as project dir
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
 	// Verify phase status unless force flag is set
 	if !completeForce {
-		// Find agent in registry to get workspace path for SYNTHESIS.md verification
-		var workspacePath string
-		reg, err := registry.New("")
-		if err == nil {
-			agent := reg.Find(beadsID)
-			if agent != nil && agent.ProjectDir != "" {
-				workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+		// Derive workspace path from project dir + beads ID (not registry)
+		// Strategy: Search .orch/workspace/ for directories containing the beads ID
+		workspacePath, agentName := findWorkspaceByBeadsID(projectDir, beadsID)
+
+		// Fall back to registry as optional optimization (if workspace not found)
+		if workspacePath == "" {
+			reg, err := registry.New("")
+			if err == nil {
+				agent := reg.Find(beadsID)
+				if agent != nil && agent.ProjectDir != "" {
+					workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+					agentName = agent.ID
+				}
 			}
+		}
+
+		if workspacePath != "" {
+			fmt.Printf("Workspace: %s\n", agentName)
 		}
 
 		result, err := verify.VerifyCompletion(beadsID, workspacePath)
@@ -1678,29 +1794,17 @@ func runComplete(beadsID string) error {
 		}
 	}
 
-	// Update registry to mark agent as completed BEFORE closing beads issue
-	// This ensures registry state is updated first, preventing inconsistent state
-	reg, err := registry.New("")
-	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
-	}
-
-	agent := reg.Find(beadsID)
-	if agent == nil {
-		// Agent not found in registry - this is a warning, not a fatal error
-		// The beads issue can still be closed, but registry won't be updated
-		fmt.Fprintf(os.Stderr, "Warning: agent %s not found in registry (may have been cleaned already)\n", beadsID)
-	} else {
-		// Mark agent as completed in registry
-		if !reg.Complete(agent.ID) {
-			// Complete() returns false if agent is not active (already completed/abandoned/deleted)
-			fmt.Fprintf(os.Stderr, "Warning: agent %s is not active in registry (status: %s)\n", agent.ID, agent.Status)
-		} else {
-			// Save registry after successful completion
-			if err := reg.Save(); err != nil {
-				return fmt.Errorf("failed to save registry: %w", err)
+	// Registry update is now OPTIONAL - beads issue closure IS the source of truth
+	// We still update registry if it exists for backwards compatibility during migration
+	reg, _ := registry.New("")
+	if reg != nil {
+		agent := reg.Find(beadsID)
+		if agent != nil {
+			if reg.Complete(agent.ID) {
+				if err := reg.Save(); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+				}
 			}
-			fmt.Printf("Updated registry: marked %s as completed\n", agent.ID)
 		}
 	}
 
@@ -1763,18 +1867,17 @@ var (
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Remove completed agents from the registry",
-	Long: `Remove completed and abandoned agents from the registry.
+	Short: "Clean up completed/abandoned agents",
+	Long: `Clean up completed and abandoned agents.
 
-By default, performs four-layer reconciliation before cleaning:
-1. Checks registry for completed/abandoned agents
-2. Verifies active agents against tmux windows (marks as abandoned if window missing)
-3. Verifies active agents against OpenCode sessions (marks as abandoned if session missing)
-
-This prevents ghost agents (registry entries pointing to dead tmux windows or sessions).
+This command uses derived lookups (Phase 2 pattern):
+1. Scans .orch/workspace/ for workspaces with SYNTHESIS.md (completed)
+2. Cross-references with beads issue status (closed = completed)
+3. Checks tmux/OpenCode liveness for active windows
+4. Registry is updated for backwards compatibility but not required
 
 Examples:
-  orch-go clean                   # Reconcile + clean completed/abandoned
+  orch-go clean                   # Clean completed agents
   orch-go clean --dry-run         # Show what would be cleaned (no changes)
   orch-go clean --verify-opencode # Also check OpenCode disk sessions`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -1858,93 +1961,176 @@ func (c *DefaultCompletionIndicatorChecker) IsPhaseComplete(beadsID string) bool
 	return complete
 }
 
-func runClean(dryRun bool, verifyOpenCode bool) error {
-	// Open registry
-	reg, err := registry.New("")
+// CleanableWorkspace represents a workspace that can be cleaned.
+type CleanableWorkspace struct {
+	Name       string // Workspace directory name
+	Path       string // Full path to workspace
+	BeadsID    string // Beads issue ID (extracted from SPAWN_CONTEXT.md)
+	IsComplete bool   // Has SYNTHESIS.md
+	Reason     string // Why it's cleanable
+}
+
+// findCleanableWorkspaces scans .orch/workspace/ for completed/abandoned workspaces.
+// Returns workspaces that have SYNTHESIS.md OR whose beads issue is closed.
+func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatusChecker) []CleanableWorkspace {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
+		return nil
 	}
 
-	// Step 1: Reconcile active agents against tmux and OpenCode
-	// This implements the four-layer reconciliation pattern with completion checking.
-	// Before marking an agent as abandoned, we check for completion indicators
-	// (SYNTHESIS.md exists or beads Phase: Complete) to avoid incorrectly abandoning
-	// agents that finished their work but whose sessions were garbage collected.
-	fmt.Println("Reconciling active agents...")
-	livenessChecker := NewDefaultLivenessChecker(serverURL)
-	completionChecker := NewDefaultCompletionIndicatorChecker()
-	reconcileResult := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, dryRun)
+	var cleanable []CleanableWorkspace
 
-	if reconcileResult.Checked > 0 {
-		fmt.Printf("  Checked %d active agents\n", reconcileResult.Checked)
-		if reconcileResult.Completed > 0 {
-			prefix := "Marked"
-			if dryRun {
-				prefix = "Would mark"
-			}
-			fmt.Printf("  %s %d as completed (found completion indicators):\n", prefix, reconcileResult.Completed)
-			for _, detail := range reconcileResult.Details {
-				if strings.Contains(detail, "SYNTHESIS.md") || strings.Contains(detail, "beads Phase") {
-					fmt.Printf("    - %s\n", detail)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+		dirPath := filepath.Join(workspaceDir, dirName)
+
+		// Extract beads ID from SPAWN_CONTEXT.md
+		beadsID := ""
+		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+		if content, err := os.ReadFile(spawnContextPath); err == nil {
+			// Look for "beads issue: **xxx**" pattern
+			lines := strings.Split(string(content), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "beads issue:") || strings.Contains(line, "BEADS ISSUE:") {
+					// Extract beads ID from the line
+					parts := strings.Fields(line)
+					for _, part := range parts {
+						// Look for pattern like "orch-go-xxxx" or similar
+						if strings.Contains(part, "-") && !strings.HasPrefix(part, "beads") && !strings.HasPrefix(part, "BEADS") {
+							// Clean up markdown formatting
+							beadsID = strings.Trim(part, "*`[]")
+							break
+						}
+					}
 				}
 			}
 		}
-		if reconcileResult.Abandoned > 0 {
-			prefix := "Marked"
-			if dryRun {
-				prefix = "Would mark"
-			}
-			fmt.Printf("  %s %d as abandoned:\n", prefix, reconcileResult.Abandoned)
-			for _, detail := range reconcileResult.Details {
-				if !strings.Contains(detail, "SYNTHESIS.md") && !strings.Contains(detail, "beads Phase") {
-					fmt.Printf("    - %s\n", detail)
-				}
-			}
+
+		workspace := CleanableWorkspace{
+			Name:    dirName,
+			Path:    dirPath,
+			BeadsID: beadsID,
 		}
-		if reconcileResult.Completed == 0 && reconcileResult.Abandoned == 0 {
-			fmt.Println("  All active agents are alive")
+
+		// Check for SYNTHESIS.md (completion indicator)
+		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
+		if info, err := os.Stat(synthesisPath); err == nil && info.Size() > 0 {
+			workspace.IsComplete = true
+			workspace.Reason = "SYNTHESIS.md exists"
+			cleanable = append(cleanable, workspace)
+			continue
 		}
-	} else {
-		fmt.Println("  No active agents to check")
+
+		// Check beads issue status if we have a beads ID
+		if beadsID != "" && beadsChecker.IsIssueClosed(beadsID) {
+			workspace.IsComplete = true
+			workspace.Reason = "beads issue closed"
+			cleanable = append(cleanable, workspace)
+			continue
+		}
+
+		// Check if workspace is orphaned (no tmux window, no OpenCode session, no active beads issue)
+		// This would be a workspace from a crashed or abandoned agent
+		// For now, we only clean explicitly completed workspaces
 	}
 
-	// Step 1b: Reconcile active agents against beads issue status
-	// This catches the case where `bd close` was called manually
-	fmt.Println("Checking beads issue status...")
+	return cleanable
+}
+
+func runClean(dryRun bool, verifyOpenCode bool) error {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Open registry (OPTIONAL - for backwards compatibility)
+	reg, _ := registry.New("")
+
+	// Step 1: Find cleanable workspaces using derived lookups
+	fmt.Println("Scanning workspaces for completed agents...")
 	beadsChecker := NewDefaultBeadsStatusChecker()
-	beadsResult := reg.ReconcileWithBeads(beadsChecker, dryRun)
+	cleanableWorkspaces := findCleanableWorkspaces(projectDir, beadsChecker)
 
-	if beadsResult.Checked > 0 {
-		fmt.Printf("  Checked %d agents with beads IDs\n", beadsResult.Checked)
+	// Step 2: Also check registry for any completed/abandoned agents (backwards compatibility)
+	var registryAgents []*registry.Agent
+	if reg != nil {
+		// Reconcile active agents against tmux and OpenCode (existing pattern)
+		fmt.Println("Reconciling registry with liveness checks...")
+		livenessChecker := NewDefaultLivenessChecker(serverURL)
+		completionChecker := NewDefaultCompletionIndicatorChecker()
+		reconcileResult := reg.ReconcileActiveWithCompletionCheck(livenessChecker, completionChecker, dryRun)
+
+		if reconcileResult.Checked > 0 {
+			fmt.Printf("  Checked %d registry agents\n", reconcileResult.Checked)
+			if reconcileResult.Completed > 0 {
+				prefix := "Marked"
+				if dryRun {
+					prefix = "Would mark"
+				}
+				fmt.Printf("  %s %d as completed (found completion indicators)\n", prefix, reconcileResult.Completed)
+			}
+			if reconcileResult.Abandoned > 0 {
+				prefix := "Marked"
+				if dryRun {
+					prefix = "Would mark"
+				}
+				fmt.Printf("  %s %d as abandoned\n", prefix, reconcileResult.Abandoned)
+			}
+		}
+
+		// Also reconcile with beads
+		beadsResult := reg.ReconcileWithBeads(beadsChecker, dryRun)
 		if beadsResult.Completed > 0 {
 			prefix := "Marked"
 			if dryRun {
 				prefix = "Would mark"
 			}
-			fmt.Printf("  %s %d as completed (beads issue closed):\n", prefix, beadsResult.Completed)
-			for _, detail := range beadsResult.Details {
-				fmt.Printf("    - %s\n", detail)
-			}
+			fmt.Printf("  %s %d as completed (beads issue closed)\n", prefix, beadsResult.Completed)
 		}
-	} else {
-		fmt.Println("  No agents with beads IDs to check")
+
+		// Get cleanable agents from registry
+		registryAgents = reg.ListCleanable()
 	}
 
-	// Step 2: Get cleanable agents (completed or abandoned, including newly marked)
-	agents := reg.ListCleanable()
+	// Merge: workspaces from derived lookup + agents from registry
+	fmt.Printf("\nFound %d cleanable workspaces, %d registry agents\n", len(cleanableWorkspaces), len(registryAgents))
 
-	if len(agents) == 0 && reconcileResult.Abandoned == 0 && beadsResult.Completed == 0 && !verifyOpenCode {
-		fmt.Println("\nNo agents to clean")
+	if len(cleanableWorkspaces) == 0 && len(registryAgents) == 0 && !verifyOpenCode {
+		fmt.Println("No agents to clean")
 		return nil
 	}
 
 	// Track cleanup stats
+	workspacesCleaned := 0
 	agentsCleaned := 0
 
-	if len(agents) > 0 {
-		fmt.Printf("\nFound %d agents to clean:\n", len(agents))
+	// Clean workspaces found via derived lookup
+	if len(cleanableWorkspaces) > 0 {
+		fmt.Printf("\nWorkspaces to clean:\n")
+		for _, ws := range cleanableWorkspaces {
+			if dryRun {
+				fmt.Printf("  [DRY-RUN] Would clean: %s (%s)\n", ws.Name, ws.Reason)
+			} else {
+				fmt.Printf("  Cleaning: %s (%s)\n", ws.Name, ws.Reason)
+				// Note: We don't delete the workspace directory itself
+				// Just remove from registry if it exists there
+				if reg != nil {
+					reg.Remove(ws.Name)
+				}
+			}
+			workspacesCleaned++
+		}
+	}
 
-		for _, agent := range agents {
+	// Clean agents from registry (backwards compatibility)
+	if len(registryAgents) > 0 {
+		fmt.Printf("\nRegistry agents to clean:\n")
+		for _, agent := range registryAgents {
 			status := string(agent.Status)
 
 			if dryRun {
@@ -1955,7 +2141,7 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 			fmt.Printf("  Cleaning: %s [%s]\n", agent.ID, status)
 
 			// Mark agent as deleted in registry
-			if reg.Remove(agent.ID) {
+			if reg != nil && reg.Remove(agent.ID) {
 				agentsCleaned++
 			}
 		}
@@ -1963,7 +2149,7 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 
 	// Step 3: Verify and clean OpenCode disk sessions (optional)
 	var diskSessionsDeleted int
-	if verifyOpenCode {
+	if verifyOpenCode && reg != nil {
 		diskSessionsDeleted, err = cleanOrphanedDiskSessions(serverURL, reg, dryRun)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean disk sessions: %v\n", err)
@@ -1971,8 +2157,8 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 	}
 
 	if dryRun {
-		total := len(agents)
-		fmt.Printf("\nDry run complete. Would clean %d agents", total)
+		total := workspacesCleaned + agentsCleaned
+		fmt.Printf("\nDry run complete. Would clean %d items", total)
 		if verifyOpenCode {
 			fmt.Printf(", %d orphaned disk sessions", diskSessionsDeleted)
 		}
@@ -1981,39 +2167,31 @@ func runClean(dryRun bool, verifyOpenCode bool) error {
 	}
 
 	// Save registry (including reconciliation changes)
-	if err := reg.SaveSkipMerge(); err != nil {
-		return fmt.Errorf("failed to save registry: %w", err)
+	if reg != nil {
+		if err := reg.SaveSkipMerge(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+		}
 	}
 
-	// Get current directory for logging
-	projectDir, _ := os.Getwd()
-	projectName := filepath.Base(projectDir)
-
 	// Log the cleanup
+	projectName := filepath.Base(projectDir)
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
 		Type:      "agents.cleaned",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"agents_cleaned":              agentsCleaned,
-			"agents_reconciled_abandoned": reconcileResult.Abandoned,
-			"agents_reconciled_completed": beadsResult.Completed,
-			"disk_sessions_deleted":       diskSessionsDeleted,
-			"project":                     projectName,
-			"verify_opencode":             verifyOpenCode,
+			"workspaces_cleaned":    workspacesCleaned,
+			"agents_cleaned":        agentsCleaned,
+			"disk_sessions_deleted": diskSessionsDeleted,
+			"project":               projectName,
+			"verify_opencode":       verifyOpenCode,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("\nCleaned %d agents", agentsCleaned)
-	if reconcileResult.Abandoned > 0 {
-		fmt.Printf(", reconciled %d abandoned", reconcileResult.Abandoned)
-	}
-	if beadsResult.Completed > 0 {
-		fmt.Printf(", marked %d completed (beads closed)", beadsResult.Completed)
-	}
+	fmt.Printf("\nCleaned %d workspaces, %d registry agents", workspacesCleaned, agentsCleaned)
 	if verifyOpenCode && diskSessionsDeleted > 0 {
 		fmt.Printf(", deleted %d orphaned disk sessions", diskSessionsDeleted)
 	}

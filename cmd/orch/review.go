@@ -71,7 +71,9 @@ func init() {
 
 // CompletionInfo holds information about a completed agent for review.
 type CompletionInfo struct {
-	Agent       *registry.Agent
+	Agent       *registry.Agent // nil if derived from workspace only
+	WorkspaceID string          // Workspace directory name
+	BeadsID     string          // Beads issue ID
 	Project     string
 	VerifyOK    bool
 	VerifyError string
@@ -81,26 +83,46 @@ type CompletionInfo struct {
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
+// Uses derived lookups from .orch/workspace/ with registry as optional fallback.
 func getCompletionsForReview() ([]CompletionInfo, error) {
-	reg, err := registry.New("")
+	projectDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open registry: %w", err)
+		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	completed := reg.ListCompleted()
 	var results []CompletionInfo
+	seen := make(map[string]bool) // Track by workspace ID to avoid duplicates
 
-	for _, agent := range completed {
-		info := CompletionInfo{
-			Agent:   agent,
-			Project: extractProject(agent.ProjectDir),
+	// Phase 2: Scan workspaces for SYNTHESIS.md (derived completion indicator)
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, _ := os.ReadDir(workspaceDir)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
 		}
 
-		workspacePath := filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+		dirName := entry.Name()
+		dirPath := filepath.Join(workspaceDir, dirName)
 
-		// Check verification status
-		if agent.BeadsID != "" {
-			result, err := verify.VerifyCompletion(agent.BeadsID, workspacePath)
+		// Check for SYNTHESIS.md
+		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
+		if _, err := os.Stat(synthesisPath); os.IsNotExist(err) {
+			continue // No synthesis = not complete
+		}
+
+		// Extract beads ID from SPAWN_CONTEXT.md
+		beadsID := extractBeadsIDFromWorkspace(dirPath)
+
+		info := CompletionInfo{
+			WorkspaceID: dirName,
+			BeadsID:     beadsID,
+			Project:     extractProject(projectDir),
+		}
+
+		// Check verification status if we have a beads ID
+		if beadsID != "" {
+			result, err := verify.VerifyCompletion(beadsID, dirPath)
 			if err != nil {
 				info.VerifyError = fmt.Sprintf("verification error: %v", err)
 				info.VerifyOK = false
@@ -110,7 +132,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				info.Summary = result.Phase.Summary
 
 				// Try to parse synthesis
-				s, err := verify.ParseSynthesis(workspacePath)
+				s, err := verify.ParseSynthesis(dirPath)
 				if err == nil {
 					info.Synthesis = s
 				}
@@ -121,14 +143,105 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				}
 			}
 		} else {
-			info.VerifyError = "no beads ID"
-			info.VerifyOK = false
+			// No beads ID but has SYNTHESIS.md - partially verifiable
+			info.VerifyOK = true
+			info.Phase = "Complete"
+			info.Summary = "(no beads tracking)"
+
+			// Try to parse synthesis
+			s, err := verify.ParseSynthesis(dirPath)
+			if err == nil {
+				info.Synthesis = s
+			}
 		}
 
 		results = append(results, info)
+		seen[dirName] = true
+	}
+
+	// Also check registry for backwards compatibility
+	reg, _ := registry.New("")
+	if reg != nil {
+		for _, agent := range reg.ListCompleted() {
+			// Skip if already seen from workspace scan
+			if seen[agent.ID] {
+				continue
+			}
+
+			info := CompletionInfo{
+				Agent:       agent,
+				WorkspaceID: agent.ID,
+				BeadsID:     agent.BeadsID,
+				Project:     extractProject(agent.ProjectDir),
+			}
+
+			workspacePath := filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+
+			// Check verification status
+			if agent.BeadsID != "" {
+				result, err := verify.VerifyCompletion(agent.BeadsID, workspacePath)
+				if err != nil {
+					info.VerifyError = fmt.Sprintf("verification error: %v", err)
+					info.VerifyOK = false
+				} else if result.Passed {
+					info.VerifyOK = true
+					info.Phase = result.Phase.Phase
+					info.Summary = result.Phase.Summary
+
+					// Try to parse synthesis
+					s, err := verify.ParseSynthesis(workspacePath)
+					if err == nil {
+						info.Synthesis = s
+					}
+				} else {
+					info.VerifyOK = false
+					if len(result.Errors) > 0 {
+						info.VerifyError = result.Errors[0]
+					}
+				}
+			} else {
+				info.VerifyError = "no beads ID"
+				info.VerifyOK = false
+			}
+
+			results = append(results, info)
+		}
 	}
 
 	return results, nil
+}
+
+// extractBeadsIDFromWorkspace extracts the beads ID from SPAWN_CONTEXT.md
+func extractBeadsIDFromWorkspace(workspacePath string) string {
+	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+	content, err := os.ReadFile(spawnContextPath)
+	if err != nil {
+		return ""
+	}
+
+	// Look for "beads issue: **xxx**" pattern or "orch-go-pe5d.2" format
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		lineLower := strings.ToLower(line)
+		if strings.Contains(lineLower, "beads issue:") || strings.Contains(lineLower, "spawned from beads issue:") {
+			// Extract beads ID from the line
+			// Patterns: "beads issue: **orch-go-pe5d.2**" or "orch-go-pe5d.2"
+			for _, part := range strings.Fields(line) {
+				part = strings.Trim(part, "*`[]")
+				// Look for pattern like "project-xxxx" or "project-xxxx.n"
+				if strings.Count(part, "-") >= 1 && len(part) > 5 {
+					// Skip common non-ID words
+					if strings.HasPrefix(part, "beads") || strings.HasPrefix(part, "BEADS") ||
+						strings.HasPrefix(part, "issue") || strings.HasPrefix(part, "ISSUE") ||
+						strings.HasPrefix(part, "bd") || strings.HasPrefix(part, "comment") {
+						continue
+					}
+					return part
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // extractProject gets project name from project directory.
@@ -286,11 +399,11 @@ func runReview(projectFilter string, needsReviewOnly bool) error {
 			}
 
 			beadsInfo := ""
-			if c.Agent.BeadsID != "" {
-				beadsInfo = fmt.Sprintf(" (%s)", c.Agent.BeadsID)
+			if c.BeadsID != "" {
+				beadsInfo = fmt.Sprintf(" (%s)", c.BeadsID)
 			}
 
-			fmt.Printf("  [%s] %s%s\n", status, c.Agent.ID, beadsInfo)
+			fmt.Printf("  [%s] %s%s\n", status, c.WorkspaceID, beadsInfo)
 
 			if c.VerifyOK && c.Summary != "" {
 				fmt.Printf("         Phase: %s - %s\n", c.Phase, c.Summary)
@@ -305,7 +418,8 @@ func runReview(projectFilter string, needsReviewOnly bool) error {
 				fmt.Printf("         Error: %s\n", c.VerifyError)
 			}
 
-			if c.Agent.Skill != "" {
+			// Show skill if available from registry agent
+			if c.Agent != nil && c.Agent.Skill != "" {
 				fmt.Printf("         Skill: %s\n", c.Agent.Skill)
 			}
 		}
@@ -350,28 +464,30 @@ func runReviewDone(project string) error {
 		return nil
 	}
 
-	// Open registry for modifications
-	reg, err := registry.New("")
-	if err != nil {
-		return fmt.Errorf("failed to open registry: %w", err)
-	}
+	// Open registry for modifications (optional - for backwards compatibility)
+	reg, _ := registry.New("")
 
 	// Mark each as deleted (reviewed)
 	marked := 0
 	for _, c := range projectCompletions {
-		if reg.Remove(c.Agent.ID) {
-			marked++
-			fmt.Printf("Marked as reviewed: %s", c.Agent.ID)
-			if c.Agent.BeadsID != "" {
-				fmt.Printf(" (%s)", c.Agent.BeadsID)
-			}
-			fmt.Println()
+		// Use WorkspaceID for marking as reviewed
+		// Registry removal is optional - workspace presence is what matters
+		if reg != nil {
+			reg.Remove(c.WorkspaceID)
 		}
+		fmt.Printf("Marked as reviewed: %s", c.WorkspaceID)
+		if c.BeadsID != "" {
+			fmt.Printf(" (%s)", c.BeadsID)
+		}
+		fmt.Println()
+		marked++
 	}
 
-	// Save registry
-	if err := reg.SaveSkipMerge(); err != nil {
-		return fmt.Errorf("failed to save registry: %w", err)
+	// Save registry if available
+	if reg != nil {
+		if err := reg.SaveSkipMerge(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save registry: %v\n", err)
+		}
 	}
 
 	fmt.Printf("\nMarked %d completions as reviewed for %s\n", marked, project)

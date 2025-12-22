@@ -289,17 +289,19 @@ func TestAbandonNonExistentAgent(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Set up a test registry path (this will use an empty registry)
-	// The runAbandon function should fail because no agent exists
+	// The runAbandon function should fail because no beads issue exists
 	beadsID := "nonexistent-agent-xyz"
 
 	// We can't easily test runAbandon directly because it uses os.Getwd()
 	// and global state. Instead, verify the error message pattern.
+	// Phase 2: runAbandon now first verifies the beads issue exists
 	err := runAbandon(beadsID)
 	if err == nil {
 		t.Error("Expected error for non-existent agent")
 	}
-	if err != nil && !strings.Contains(err.Error(), "no agent found") {
-		t.Errorf("Expected 'no agent found' error, got: %v", err)
+	// Now the error is from beads lookup failure (issue not found)
+	if err != nil && !strings.Contains(err.Error(), "failed to get beads issue") && !strings.Contains(err.Error(), "no agent found") {
+		t.Errorf("Expected 'failed to get beads issue' or 'no agent found' error, got: %v", err)
 	}
 
 	_ = tempDir // Use tempDir to avoid unused variable warning
@@ -512,6 +514,85 @@ func TestExtractSkillFromWindowName(t *testing.T) {
 			got := extractSkillFromWindowName(tt.windowName)
 			if got != tt.wantSkill {
 				t.Errorf("extractSkillFromWindowName(%q) = %q, want %q", tt.windowName, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+// TestFindWorkspaceByBeadsID tests finding workspaces by beads ID.
+func TestFindWorkspaceByBeadsID(t *testing.T) {
+	// Create a temp directory structure
+	tempDir, err := os.MkdirTemp("", "test-workspace-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create workspace directory structure
+	workspaceDir := filepath.Join(tempDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Create a workspace with beads ID in name
+	ws1 := filepath.Join(workspaceDir, "og-feat-test-[orch-go-abc12]")
+	if err := os.MkdirAll(ws1, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+
+	// Create a workspace with beads ID in SPAWN_CONTEXT.md
+	ws2 := filepath.Join(workspaceDir, "og-inv-explore-21dec")
+	if err := os.MkdirAll(ws2, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	spawnContext := `TASK: Explore the codebase
+
+## BEADS PROGRESS TRACKING
+
+You were spawned from beads issue: **orch-go-xyz78**
+`
+	if err := os.WriteFile(filepath.Join(ws2, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		beadsID   string
+		wantPath  bool
+		wantAgent string
+	}{
+		{
+			name:      "find by beads ID in directory name",
+			beadsID:   "orch-go-abc12",
+			wantPath:  true,
+			wantAgent: "og-feat-test-[orch-go-abc12]",
+		},
+		{
+			name:      "find by beads ID in SPAWN_CONTEXT.md",
+			beadsID:   "orch-go-xyz78",
+			wantPath:  true,
+			wantAgent: "og-inv-explore-21dec",
+		},
+		{
+			name:      "beads ID not found",
+			beadsID:   "nonexistent-beads-id",
+			wantPath:  false,
+			wantAgent: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPath, gotAgent := findWorkspaceByBeadsID(tempDir, tt.beadsID)
+
+			if tt.wantPath && gotPath == "" {
+				t.Errorf("findWorkspaceByBeadsID() path = empty, want non-empty")
+			}
+			if !tt.wantPath && gotPath != "" {
+				t.Errorf("findWorkspaceByBeadsID() path = %q, want empty", gotPath)
+			}
+			if gotAgent != tt.wantAgent {
+				t.Errorf("findWorkspaceByBeadsID() agent = %q, want %q", gotAgent, tt.wantAgent)
 			}
 		})
 	}
