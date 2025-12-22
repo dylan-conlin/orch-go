@@ -2632,10 +2632,37 @@ var accountRemoveCmd = &cobra.Command{
 	},
 }
 
+var (
+	// Account add command flags
+	accountAddSetDefault bool
+)
+
+var accountAddCmd = &cobra.Command{
+	Use:   "add [name]",
+	Short: "Add a new account via OAuth login",
+	Long: `Add a new Claude Max account by initiating an OAuth login flow.
+
+This command opens your browser for authentication with Anthropic. After
+successful login, the refresh token is saved to ~/.orch/accounts.yaml.
+
+The account can then be switched to using 'orch account switch <name>'.
+
+Examples:
+  orch-go account add personal           # Add account named 'personal'
+  orch-go account add work --default     # Add as default account`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runAccountAdd(args[0], accountAddSetDefault)
+	},
+}
+
 func init() {
+	accountAddCmd.Flags().BoolVar(&accountAddSetDefault, "default", false, "Set as default account")
+
 	accountCmd.AddCommand(accountListCmd)
 	accountCmd.AddCommand(accountSwitchCmd)
 	accountCmd.AddCommand(accountRemoveCmd)
+	accountCmd.AddCommand(accountAddCmd)
 }
 
 func runAccountList() error {
@@ -2646,9 +2673,8 @@ func runAccountList() error {
 
 	if len(accounts) == 0 {
 		fmt.Println("No saved accounts")
-		fmt.Println("\nTo save the current account:")
-		fmt.Println("  1. Login via OpenCode first")
-		fmt.Println("  2. Use Python orch: orch account save <name>")
+		fmt.Println("\nTo add an account:")
+		fmt.Println("  orch account add <name>")
 		return nil
 	}
 
@@ -2691,6 +2717,35 @@ func runAccountRemove(name string) error {
 	}
 
 	fmt.Printf("Removed account: %s\n", name)
+	return nil
+}
+
+func runAccountAdd(name string, setDefault bool) error {
+	// Check if account already exists
+	cfg, err := account.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load accounts: %w", err)
+	}
+
+	if _, err := cfg.Get(name); err == nil {
+		return fmt.Errorf("account '%s' already exists. Use 'orch account remove %s' first, or choose a different name", name, name)
+	}
+
+	fmt.Printf("Adding account '%s'...\n", name)
+	fmt.Println()
+
+	email, err := account.AddAccount(name, setDefault, nil)
+	if err != nil {
+		return fmt.Errorf("failed to add account: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("Successfully added account '%s' (%s)\n", name, email)
+	if setDefault {
+		fmt.Println("Set as default account")
+	}
+	fmt.Println("\nThe account is now active. Use 'orch account switch <name>' to change accounts later.")
+
 	return nil
 }
 
