@@ -222,33 +222,39 @@ func init() {
 }
 
 var askCmd = &cobra.Command{
-	Use:   "ask [session-id] [prompt]",
+	Use:   "ask [identifier] [prompt]",
 	Short: "Send a message to an existing session (alias for send)",
-	Long:  "Send a message to an existing OpenCode session. This is an alias for the 'send' command.",
+	Long:  "Send a message to an existing OpenCode session. This is an alias for the 'send' command. Supports session IDs, beads IDs, or workspace names.",
 	Args:  cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sessionID := args[0]
+		identifier := args[0]
 		prompt := strings.Join(args[1:], " ")
-		return runSend(serverURL, sessionID, prompt)
+		return runSend(serverURL, identifier, prompt)
 	},
 }
 
 var sendCmd = &cobra.Command{
-	Use:   "send [session-id] [message]",
+	Use:   "send [identifier] [message]",
 	Short: "Send a message to an existing session",
 	Long: `Send a message to an existing OpenCode session.
+
+The identifier can be:
+  - A full session ID (ses_xxx)
+  - A beads issue ID (project-xxxx) - looked up via workspace or API
+  - A workspace name - looked up via workspace file
 
 The session can be running or completed. Response text is streamed to stdout
 as it's received from the agent.
 
 Examples:
   orch-go send ses_abc123 "what files did you modify?"
-  orch-go send ses_xyz789 "can you explain the changes?"`,
+  orch-go send orch-go-3anf "can you explain the changes?"
+  orch-go send og-debug-fix-issue-21dec "status update?"`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sessionID := args[0]
+		identifier := args[0]
 		message := strings.Join(args[1:], " ")
-		return runSend(serverURL, sessionID, message)
+		return runSend(serverURL, identifier, message)
 	},
 }
 
@@ -1272,7 +1278,82 @@ func extractSkillFromWindowName(name string) string {
 	return extractSkillFromTitle(name)
 }
 
-func runSend(serverURL, sessionID, message string) error {
+// resolveSessionID resolves an identifier to an OpenCode session ID.
+// The identifier can be:
+// 1. A full OpenCode session ID (ses_xxx) - returned as-is
+// 2. A beads ID (project-xxxx) - looked up via workspace file or API
+// 3. A workspace name - looked up via workspace file
+//
+// Returns the resolved session ID or an error if resolution fails.
+func resolveSessionID(serverURL, identifier string) (string, error) {
+	// If it looks like a full session ID, return as-is
+	if strings.HasPrefix(identifier, "ses_") {
+		return identifier, nil
+	}
+
+	client := opencode.NewClient(serverURL)
+	projectDir, _ := os.Getwd()
+
+	// Strategy: Workspace file first (fast path), then API lookup
+	//
+	// 1. Try to find session ID via workspace file (fast path)
+	// 2. If no workspace file, search OpenCode sessions by title match
+
+	// Try workspace file lookup for session ID (fast path)
+	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
+	if entries, err := os.ReadDir(workspaceBase); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() && strings.Contains(entry.Name(), identifier) {
+				workspacePath := filepath.Join(workspaceBase, entry.Name())
+				sessionID := spawn.ReadSessionID(workspacePath)
+				if sessionID != "" {
+					return sessionID, nil
+				}
+			}
+		}
+	}
+
+	// Try API lookup: search sessions by title containing identifier
+	allSessions, err := client.ListSessions(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	for _, s := range allSessions {
+		// Match session by title containing identifier (beads ID or workspace name)
+		if strings.Contains(s.Title, identifier) || extractBeadsIDFromTitle(s.Title) == identifier {
+			return s.ID, nil
+		}
+	}
+
+	// Try tmux window lookup as last resort
+	sessions, err := tmux.ListWorkersSessions()
+	if err == nil {
+		for _, session := range sessions {
+			window, err := tmux.FindWindowByBeadsID(session, identifier)
+			if err != nil || window == nil {
+				continue
+			}
+
+			// Found tmux window - search for matching OpenCode session
+			for _, s := range allSessions {
+				if strings.Contains(s.Title, identifier) || extractBeadsIDFromTitle(s.Title) == identifier {
+					return s.ID, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no session found for identifier: %s (checked workspace files, API sessions, and tmux windows)", identifier)
+}
+
+func runSend(serverURL, identifier, message string) error {
+	// Resolve identifier to session ID (supports beads ID, workspace name, or raw session ID)
+	sessionID, err := resolveSessionID(serverURL, identifier)
+	if err != nil {
+		return fmt.Errorf("failed to resolve session: %w", err)
+	}
+
 	client := opencode.NewClient(serverURL)
 
 	// Log the send event first (before streaming starts)
@@ -1282,8 +1363,9 @@ func runSend(serverURL, sessionID, message string) error {
 		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"message": message,
-			"async":   sendAsync,
+			"message":    message,
+			"async":      sendAsync,
+			"identifier": identifier,
 		},
 	}
 	if err := logger.Log(event); err != nil {
