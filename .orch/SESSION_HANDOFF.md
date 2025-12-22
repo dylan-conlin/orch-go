@@ -2,32 +2,39 @@
 
 ## TLDR
 
-Reviewed reflection epic, tested `kb reflect`, cleaned up 19 test investigations, surfaced buried recommendations, shipped 5 features. source_repo bug was just daemon restart.
+Fixed investigation failures by adding pre-spawn kb context check, but **critical bug: missing --global flag**. Also shipped phantom detection, liveness warnings, structured uncertainty. Created issues for knowledge extraction design.
+
+---
+
+## ⚠️ CRITICAL: Fix Before Spawning
+
+**orch-go-cjl0** - Pre-spawn kb context check missing `--global` flag
+
+The pre-spawn hook was implemented without `--global`, so cross-repo decisions won't be found. This was the exact problem we were fixing. One-line fix in `pkg/spawn/kbcontext.go:65`:
+
+```go
+// Current (broken):
+cmd := exec.Command("kb", "context", query)
+
+// Should be:
+cmd := exec.Command("kb", "context", "--global", query)
+```
+
+**Fix this first** or the pre-spawn check is useless for cross-repo work.
 
 ---
 
 ## What Shipped This Session
 
-| Feature | Command | Status |
-|---------|---------|--------|
-| `kb reflect --type open` | Surfaces buried action items from investigations | ✅ kb-cli |
-| FAILURE_REPORT.md | Template + `spawn.WriteFailureReport()` | ✅ orch-go |
-| `orch init` | Project scaffolding command | ✅ orch-go |
-| `orch handoff` | Session handoff generation | ✅ orch-go |
-| `--max-agents` | Already existed, verified working | ✅ orch-go |
-
----
-
-## Completed This Session
-
-- **bd-ef1a**: source_repo bug - just needed `bd daemon --stop && bd daemon --start`
-- **orch-go-26lo**: stale session display fix (commit c6d014d)
-- **kb-cli-7ha**: `kb reflect --type open` 
-- **orch-go-ng51**: FAILURE_REPORT.md template
-- **orch-go-wo9y**: --max-agents (verified existing)
-- **orch-go-5yec**: orch init command
-- **orch-go-qxdo**: orch handoff command
-- **beads-ui verification**: Demo mode works, live blocked by db issue
+| Feature | Description |
+|---------|-------------|
+| `pkg/state/reconcile.go` | `IsLive()` cross-referencing 4 state sources |
+| `orch status` phantom detection | Shows "active" vs "phantom", accurate count |
+| `orch complete` liveness warning | Prompts before closing if agent still running |
+| Pre-spawn kb context check | Surfaces existing decisions (BUT missing --global) |
+| Confidence → structured uncertainty | Templates updated in ~/.claude/skills/ |
+| Beads db integrity fix | Removed 235 orphaned dependencies |
+| Beads prefix parsing fix | Compound prefixes (orch-go-) now work |
 
 ---
 
@@ -35,44 +42,82 @@ Reviewed reflection epic, tested `kb reflect`, cleaned up 19 test investigations
 
 | Issue | Problem | Impact |
 |-------|---------|--------|
-| **orch-go-m0hm** | 235 orphaned dependencies in beads db | Live multi-repo filtering broken |
+| **orch-go-cjl0** | Pre-spawn missing --global | Cross-repo decisions invisible |
+| **orch-go-abeu** | Source templates not updated | orch build skills will overwrite changes |
 
 ---
 
 ## Open Issues Created
 
-| Issue | Description |
-|-------|-------------|
-| **orch-go-m0hm** | Fix beads database integrity (235 orphaned deps) |
-| **orch-go-d6x9** | Consider CLAUDE.md in orch init (low priority) |
-| **orch-go-ipq9** | Auto-init on spawn (low priority) |
+| Issue | Description | Priority |
+|-------|-------------|----------|
+| orch-go-cjl0 | Pre-spawn missing --global flag | **P0 - fix first** |
+| orch-go-abeu | Update orch-knowledge source templates | P1 |
+| orch-go-jgc1 | Implement kb extract command | P2 |
+| orch-go-p73c | Implement kb supersede command | P2 |
+| orch-go-hkkh | Add lineage headers to templates | P2 |
+| orch-go-jtat | Sync kb-cli hardcoded template | P2 |
+| orch-go-oo1f | Retire stale orch-knowledge template | P2 |
+
+---
+
+## Key Findings
+
+### Root Cause of Investigation Failures
+
+Two investigations produced wrong conclusions because orchestrator didn't run `kb context --global` before spawning. Cross-repo decisions (skillc's stated vision) were invisible.
+
+**Fix:** Pre-spawn hook that runs `kb context --global` and surfaces existing decisions. But the implementation missed `--global`.
+
+### Template Fragmentation
+
+Found 6 distinct template systems with significant divergence:
+- kb-cli hardcoded (25 lines) vs ~/.kb/templates/ (234 lines)
+- orch-knowledge embedded templates are stale
+- Recommendation: Domain-based ownership (kb-cli for artifacts, orch-go for spawn-time)
+
+### Knowledge Extraction Design
+
+When extracting components to new repos, knowledge doesn't follow. Recommended:
+- Inline lineage metadata (headers in artifacts)
+- `kb extract` and `kb supersede` commands
+- DEPRECATED.md pattern for project deprecation
+
+---
+
+## Decisions Made This Session
+
+1. **Replace confidence scores with structured uncertainty** - `.kb/decisions/2025-12-22-replace-confidence-scores-with-structured-uncertainty.md`
+2. **Inline lineage metadata over centralized registry** - Aligns with Session Amnesia principle
+
+---
+
+## Previous Epic to Revisit
+
+**orch-go-4ztg** - Epic: Migrate skills to skillc
+
+This epic was created based on a faulty investigation that said "skillc and orch build skills are complementary, no migration needed." The investigation didn't check skillc's stated vision (compile all AI artifacts including SKILL.md). After fixing the pre-spawn hook, may want to re-evaluate this epic.
+
+---
+
+## Account Status
+
+- **personal:** ~30% used (resets in ~4d)
+- **work:** Was at 90%, may have reset
 
 ---
 
 ## Stale Tmux Windows
 
-Many completed agents still have tmux windows open. Run:
+Still have old tmux windows from completed agents. Run:
 ```bash
 orch clean
 ```
 
 ---
 
-## Next Session
+## Next Session Priority
 
-1. **Fix orch-go-m0hm** - Database integrity blocking live multi-repo
-2. **Clean stale tmux windows** - 23 "active" but most are done
-3. **Push changes** - Multiple repos have uncommitted work
-
----
-
-## Account Status
-
-- **work**: 90% used (resets in ~11h)
-- **personal**: 29% used (resets in 4d) - switched to this
-
----
-
-## Key Learning
-
-`kb reflect` found topic clusters but missed **open recommendations** buried in investigations. Fixed with `--type open` which parses the `Next:` field from D.E.K.N. structure.
+1. **Fix orch-go-cjl0** - Add --global to pre-spawn (5 min fix)
+2. **Fix orch-go-abeu** - Update orch-knowledge source templates
+3. **Re-evaluate orch-go-4ztg** - Should skillc replace orch build skills?
