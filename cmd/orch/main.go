@@ -827,6 +827,42 @@ func getMaxAgents() int {
 	return DefaultMaxAgents
 }
 
+// ensureOpenCodeRunning checks if OpenCode is reachable, and starts it if not.
+// Returns nil if OpenCode is running (or was successfully started), error otherwise.
+func ensureOpenCodeRunning() error {
+	client := opencode.NewClient(serverURL)
+	_, err := client.ListSessions("")
+	if err == nil {
+		return nil // Already running
+	}
+
+	// Check if it's a connection error (not running)
+	if !strings.Contains(err.Error(), "connection refused") {
+		return nil // Some other error, let it proceed
+	}
+
+	fmt.Fprintf(os.Stderr, "OpenCode not running, starting it...\n")
+
+	// Start OpenCode server in background, fully detached via shell
+	// This ensures the process survives even if the parent is killed
+	cmd := exec.Command("sh", "-c", "opencode serve --port 4096 </dev/null >/dev/null 2>&1 &")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to start OpenCode: %w", err)
+	}
+
+	// Wait for it to be ready (poll for up to 10 seconds)
+	for i := 0; i < 20; i++ {
+		time.Sleep(500 * time.Millisecond)
+		_, err := client.ListSessions("")
+		if err == nil {
+			fmt.Fprintf(os.Stderr, "OpenCode started successfully\n")
+			return nil
+		}
+	}
+
+	return fmt.Errorf("OpenCode started but not responding after 10s")
+}
+
 // checkConcurrencyLimit checks if spawning a new agent would exceed the concurrency limit.
 // Returns nil if spawning is allowed, or an error if at the limit.
 func checkConcurrencyLimit() error {
@@ -835,6 +871,12 @@ func checkConcurrencyLimit() error {
 	// Limit disabled (0 means unlimited)
 	if maxAgents == 0 {
 		return nil
+	}
+
+	// Ensure OpenCode is running before checking
+	if err := ensureOpenCodeRunning(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		return nil // Allow spawn to proceed, it will fail later with better error
 	}
 
 	// Check active count via OpenCode API
