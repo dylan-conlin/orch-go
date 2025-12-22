@@ -9,16 +9,19 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/claudemd"
 	"github.com/dylan-conlin/orch-go/pkg/port"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
 
 var (
 	// Init command flags
-	initForce        bool   // Force re-initialization even if directories exist
-	initSkipBeads    bool   // Skip beads initialization
-	initSkipClaudeMD bool   // Skip CLAUDE.md generation
-	initBeadsPrefix  string // Custom prefix for beads issues
-	initProjectType  string // Project type for CLAUDE.md template
+	initForce          bool   // Force re-initialization even if directories exist
+	initSkipBeads      bool   // Skip beads initialization
+	initSkipKB         bool   // Skip kb initialization
+	initSkipClaudeMD   bool   // Skip CLAUDE.md generation
+	initSkipTmuxinator bool   // Skip tmuxinator config generation
+	initBeadsPrefix    string // Custom prefix for beads issues
+	initProjectType    string // Project type for CLAUDE.md template
 )
 
 var initCmd = &cobra.Command{
@@ -29,10 +32,10 @@ var initCmd = &cobra.Command{
 Creates:
   - .orch/workspace/     Agent workspaces
   - .orch/templates/     Shared templates (SYNTHESIS.md, etc.)
-  - .kb/investigations/  Investigation artifacts
-  - .kb/decisions/       Decision records
+  - .kb/                 Knowledge base (via 'kb init')
   - .beads/              Issue tracking (via 'bd init')
   - CLAUDE.md            Project context for Claude agents
+  - tmuxinator config    Workers session configuration (~/.tmuxinator/workers-{project}.yml)
 
 This command is idempotent - it can be run multiple times safely.
 Use --force to recreate directories even if they exist.
@@ -44,12 +47,14 @@ Project types for CLAUDE.md:
   - minimal     Minimal template (default fallback)
 
 Examples:
-  orch-go init                      # Initialize with defaults (auto-detect type)
-  orch-go init --type go-cli        # Use go-cli template
-  orch-go init --skip-beads         # Skip beads initialization
-  orch-go init --skip-claude        # Skip CLAUDE.md generation
-  orch-go init --beads-prefix snap  # Use custom beads prefix
-  orch-go init --force              # Force re-initialization`,
+  orch-go init                       # Initialize with defaults (auto-detect type)
+  orch-go init --type go-cli         # Use go-cli template
+  orch-go init --skip-beads          # Skip beads initialization
+  orch-go init --skip-kb             # Skip kb initialization
+  orch-go init --skip-claude         # Skip CLAUDE.md generation
+  orch-go init --skip-tmuxinator     # Skip tmuxinator config generation
+  orch-go init --beads-prefix snap   # Use custom beads prefix
+  orch-go init --force               # Force re-initialization`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runInit()
 	},
@@ -58,27 +63,38 @@ Examples:
 func init() {
 	initCmd.Flags().BoolVar(&initForce, "force", false, "Force re-initialization even if directories exist")
 	initCmd.Flags().BoolVar(&initSkipBeads, "skip-beads", false, "Skip beads initialization")
+	initCmd.Flags().BoolVar(&initSkipKB, "skip-kb", false, "Skip kb initialization")
 	initCmd.Flags().BoolVar(&initSkipClaudeMD, "skip-claude", false, "Skip CLAUDE.md generation")
+	initCmd.Flags().BoolVar(&initSkipTmuxinator, "skip-tmuxinator", false, "Skip tmuxinator config generation")
 	initCmd.Flags().StringVar(&initBeadsPrefix, "beads-prefix", "", "Custom prefix for beads issues (default: directory name)")
 	initCmd.Flags().StringVar(&initProjectType, "type", "", "Project type for CLAUDE.md (go-cli, svelte-app, python-cli, minimal)")
 }
 
 // InitResult captures the result of initialization.
 type InitResult struct {
-	ProjectDir      string
-	ProjectName     string
-	DirsCreated     []string
-	DirsExisted     []string
-	BeadsInitiated  bool
-	BeadsSkipped    bool
-	BeadsError      error
-	ClaudeMDCreated bool
-	ClaudeMDSkipped bool
-	ClaudeMDExisted bool
-	ClaudeMDError   error
-	ProjectType     claudemd.ProjectType
-	PortWeb         int
-	PortAPI         int
+	ProjectDir        string
+	ProjectName       string
+	DirsCreated       []string
+	DirsExisted       []string
+	BeadsInitiated    bool
+	BeadsSkipped      bool
+	BeadsError        error
+	KBInitiated       bool
+	KBSkipped         bool
+	KBExisted         bool
+	KBError           error
+	ClaudeMDCreated   bool
+	ClaudeMDSkipped   bool
+	ClaudeMDExisted   bool
+	ClaudeMDError     error
+	ProjectType       claudemd.ProjectType
+	PortWeb           int
+	PortAPI           int
+	TmuxinatorCreated bool
+	TmuxinatorUpdated bool
+	TmuxinatorSkipped bool
+	TmuxinatorError   error
+	TmuxinatorPath    string
 }
 
 // runInit initializes orch scaffolding in the current directory.
@@ -88,7 +104,7 @@ func runInit() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	result, err := initProject(projectDir, initForce, initSkipBeads, initSkipClaudeMD, initBeadsPrefix, initProjectType)
+	result, err := initProject(projectDir, initForce, initSkipBeads, initSkipKB, initSkipClaudeMD, initSkipTmuxinator, initBeadsPrefix, initProjectType)
 	if err != nil {
 		return err
 	}
@@ -100,7 +116,7 @@ func runInit() error {
 
 // initProject performs the actual initialization work.
 // This is separated from runInit to make testing easier.
-func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPrefix, projectType string) (*InitResult, error) {
+func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skipTmuxinator bool, beadsPrefix, projectType string) (*InitResult, error) {
 	projectName := filepath.Base(projectDir)
 
 	result := &InitResult{
@@ -108,12 +124,10 @@ func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPr
 		ProjectName: projectName,
 	}
 
-	// Directories to create
+	// Directories to create (only .orch/ - .kb/ is handled by kb init)
 	dirs := []string{
 		filepath.Join(projectDir, ".orch", "workspace"),
 		filepath.Join(projectDir, ".orch", "templates"),
-		filepath.Join(projectDir, ".kb", "investigations"),
-		filepath.Join(projectDir, ".kb", "decisions"),
 	}
 
 	// Create directories
@@ -140,6 +154,23 @@ func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPr
 		}
 	}
 
+	// Initialize kb unless skipped
+	if skipKB {
+		result.KBSkipped = true
+	} else {
+		kbDir := filepath.Join(projectDir, ".kb")
+		if _, err := os.Stat(kbDir); os.IsNotExist(err) || force {
+			if err := initKB(projectDir); err != nil {
+				result.KBError = err
+				fmt.Fprintf(os.Stderr, "Warning: kb initialization failed: %v\n", err)
+			} else {
+				result.KBInitiated = true
+			}
+		} else {
+			result.KBExisted = true
+		}
+	}
+
 	// Initialize beads unless skipped
 	if skipBeads {
 		result.BeadsSkipped = true
@@ -154,6 +185,11 @@ func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPr
 			}
 		}
 	}
+
+	// Allocate ports for project (needed for CLAUDE.md and tmuxinator)
+	portWeb, portAPI := allocatePorts(projectName)
+	result.PortWeb = portWeb
+	result.PortAPI = portAPI
 
 	// Generate CLAUDE.md unless skipped
 	if skipClaudeMD {
@@ -172,11 +208,6 @@ func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPr
 			}
 			result.ProjectType = pType
 
-			// Allocate ports for project (best effort)
-			portWeb, portAPI := allocatePorts(projectName)
-			result.PortWeb = portWeb
-			result.PortAPI = portAPI
-
 			// Generate CLAUDE.md
 			data := claudemd.TemplateData{
 				ProjectName: projectName,
@@ -191,6 +222,32 @@ func initProject(projectDir string, force, skipBeads, skipClaudeMD bool, beadsPr
 				fmt.Fprintf(os.Stderr, "Warning: failed to write CLAUDE.md: %v\n", err)
 			} else {
 				result.ClaudeMDCreated = true
+			}
+		}
+	}
+
+	// Generate tmuxinator config unless skipped
+	if skipTmuxinator {
+		result.TmuxinatorSkipped = true
+	} else {
+		// Check if config already exists
+		configPath := tmux.TmuxinatorConfigPath(projectName)
+		configExists := false
+		if _, err := os.Stat(configPath); err == nil {
+			configExists = true
+		}
+
+		// Generate/update tmuxinator config
+		path, err := tmux.EnsureTmuxinatorConfig(projectName, projectDir)
+		if err != nil {
+			result.TmuxinatorError = err
+			fmt.Fprintf(os.Stderr, "Warning: failed to create tmuxinator config: %v\n", err)
+		} else {
+			result.TmuxinatorPath = path
+			if configExists {
+				result.TmuxinatorUpdated = true
+			} else {
+				result.TmuxinatorCreated = true
 			}
 		}
 	}
@@ -232,6 +289,16 @@ func ensureDir(path string, force bool) (bool, error) {
 	return true, nil
 }
 
+// initKB runs 'kb init' to initialize the knowledge base.
+func initKB(projectDir string) error {
+	cmd := exec.Command("kb", "init")
+	cmd.Dir = projectDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
 // initBeads runs 'bd init' to initialize beads tracking.
 func initBeads(projectDir, prefix string) error {
 	args := []string{"init", "--quiet"}
@@ -265,6 +332,18 @@ func printInitResult(result *InitResult) {
 		}
 	}
 
+	// KB status
+	if result.KBInitiated {
+		fmt.Println("\nKnowledge base initialized (.kb/)")
+	} else if result.KBSkipped {
+		fmt.Println("\nKB initialization skipped (--skip-kb)")
+	} else if result.KBError != nil {
+		fmt.Printf("\nKB initialization failed: %v\n", result.KBError)
+	} else if result.KBExisted {
+		fmt.Println("\nKB already initialized (.kb/)")
+	}
+
+	// Beads status
 	if result.BeadsInitiated {
 		fmt.Println("\nBeads initialized (.beads/)")
 	} else if result.BeadsSkipped {
@@ -287,6 +366,17 @@ func printInitResult(result *InitResult) {
 		fmt.Println("\nCLAUDE.md already exists")
 	} else if result.ClaudeMDError != nil {
 		fmt.Printf("\nCLAUDE.md generation failed: %v\n", result.ClaudeMDError)
+	}
+
+	// Tmuxinator status
+	if result.TmuxinatorCreated {
+		fmt.Printf("\nTmuxinator config created: %s\n", result.TmuxinatorPath)
+	} else if result.TmuxinatorUpdated {
+		fmt.Printf("\nTmuxinator config updated: %s\n", result.TmuxinatorPath)
+	} else if result.TmuxinatorSkipped {
+		fmt.Println("\nTmuxinator config generation skipped (--skip-tmuxinator)")
+	} else if result.TmuxinatorError != nil {
+		fmt.Printf("\nTmuxinator config generation failed: %v\n", result.TmuxinatorError)
 	}
 
 	fmt.Println("\nNext steps:")

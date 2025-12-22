@@ -15,23 +15,22 @@ func TestInitProject(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Test basic initialization
+	// Args: projectDir, force, skipBeads, skipKB, skipClaudeMD, skipTmuxinator, beadsPrefix, projectType
 	t.Run("creates all directories", func(t *testing.T) {
 		testDir := filepath.Join(tmpDir, "test1")
 		if err := os.MkdirAll(testDir, 0755); err != nil {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, "", "") // skip beads and claudemd
+		result, err := initProject(testDir, false, true, true, true, true, "", "") // skip beads, kb, claudemd, tmuxinator
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
 
-		// Check that directories were created
+		// Check that directories were created (.orch only, .kb handled by kb init)
 		expectedDirs := []string{
 			".orch/workspace",
 			".orch/templates",
-			".kb/investigations",
-			".kb/decisions",
 		}
 
 		for _, dir := range expectedDirs {
@@ -41,9 +40,9 @@ func TestInitProject(t *testing.T) {
 			}
 		}
 
-		// Check that all directories were marked as created
-		if len(result.DirsCreated) != 4 {
-			t.Errorf("expected 4 directories created, got %d", len(result.DirsCreated))
+		// Check that directories were marked as created (2 .orch dirs)
+		if len(result.DirsCreated) != 2 {
+			t.Errorf("expected 2 directories created, got %d", len(result.DirsCreated))
 		}
 	})
 
@@ -54,13 +53,13 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, true, "", "")
+		_, err := initProject(testDir, false, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init
-		result, err := initProject(testDir, false, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("second initProject failed: %v", err)
 		}
@@ -69,8 +68,8 @@ func TestInitProject(t *testing.T) {
 		if len(result.DirsCreated) != 0 {
 			t.Errorf("expected 0 directories created on second run, got %d", len(result.DirsCreated))
 		}
-		if len(result.DirsExisted) != 4 {
-			t.Errorf("expected 4 directories already existed, got %d", len(result.DirsExisted))
+		if len(result.DirsExisted) != 2 {
+			t.Errorf("expected 2 directories already existed, got %d", len(result.DirsExisted))
 		}
 	})
 
@@ -81,20 +80,20 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, true, "", "")
+		_, err := initProject(testDir, false, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init with force
-		result, err := initProject(testDir, true, true, true, "", "")
+		result, err := initProject(testDir, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("force initProject failed: %v", err)
 		}
 
 		// With force, all directories should be marked as created
-		if len(result.DirsCreated) != 4 {
-			t.Errorf("expected 4 directories created with force, got %d", len(result.DirsCreated))
+		if len(result.DirsCreated) != 2 {
+			t.Errorf("expected 2 directories created with force, got %d", len(result.DirsCreated))
 		}
 	})
 
@@ -104,7 +103,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -114,13 +113,29 @@ func TestInitProject(t *testing.T) {
 		}
 	})
 
+	t.Run("skip kb sets flag", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "test4b")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.KBSkipped {
+			t.Error("expected KBSkipped to be true")
+		}
+	})
+
 	t.Run("synthesis template is written", func(t *testing.T) {
 		testDir := filepath.Join(tmpDir, "test5")
 		if err := os.MkdirAll(testDir, 0755); err != nil {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		_, err := initProject(testDir, false, true, true, "", "")
+		_, err := initProject(testDir, false, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -146,7 +161,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create cmd dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, false, "", "")
+		result, err := initProject(testDir, false, true, true, false, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -178,7 +193,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -200,7 +215,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, false, "", "svelte-app")
+		result, err := initProject(testDir, false, true, true, false, true, "", "svelte-app")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -214,6 +229,49 @@ func TestInitProject(t *testing.T) {
 		content, _ := os.ReadFile(claudePath)
 		if !containsSubstring(string(content), "bun") {
 			t.Error("expected svelte-app template content in CLAUDE.md")
+		}
+	})
+
+	t.Run("tmuxinator config is generated", func(t *testing.T) {
+		// Use a unique name based on timestamp to avoid conflicts with previous test runs
+		testDir := filepath.Join(tmpDir, "tmux-test")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, true, true, false, "", "")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		// Accept either created or updated - both are valid outcomes
+		if !result.TmuxinatorCreated && !result.TmuxinatorUpdated {
+			t.Error("expected TmuxinatorCreated or TmuxinatorUpdated to be true")
+		}
+
+		if result.TmuxinatorPath == "" {
+			t.Error("expected TmuxinatorPath to be set")
+		}
+
+		// Check that tmuxinator config file exists
+		if _, err := os.Stat(result.TmuxinatorPath); os.IsNotExist(err) {
+			t.Errorf("expected tmuxinator config at %s to exist", result.TmuxinatorPath)
+		}
+	})
+
+	t.Run("skip tmuxinator sets flag", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "test10")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.TmuxinatorSkipped {
+			t.Error("expected TmuxinatorSkipped to be true")
 		}
 	})
 }
