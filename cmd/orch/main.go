@@ -875,17 +875,24 @@ func checkConcurrencyLimit() error {
 		return nil
 	}
 
-	// Filter to only count active sessions (updated within last 30 minutes)
-	// This prevents stale sessions from blocking new spawns after restart
+	// Filter to only count active ORCH-SPAWNED sessions:
+	// 1. Updated within last 30 minutes (not stale)
+	// 2. Has parseable beadsID (is orch-spawned, not manual OpenCode session)
 	now := time.Now()
 	staleThreshold := 30 * time.Minute
 	activeCount := 0
 	for _, s := range sessions {
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		idleTime := now.Sub(updatedAt)
-		if idleTime < staleThreshold {
-			activeCount++
+		if idleTime >= staleThreshold {
+			continue // stale session
 		}
+		// Only count sessions with parseable beadsID (orch-spawned agents)
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" {
+			continue // not an orch-spawned agent
+		}
+		activeCount++
 	}
 
 	if activeCount >= maxAgents {
@@ -1682,6 +1689,16 @@ func runStatus(serverURL string) error {
 				}
 			}
 
+			// Determine if this is a phantom agent:
+			// - Has beadsID (orch-spawned) but no live OpenCode session = phantom
+			// - Cross-project agents we can't verify liveness for = assume active if tmux exists
+			isPhantom := !liveness.OpencodeLive && !liveness.TmuxLive
+			// If tmux window exists but no OpenCode session, it's stalled (variant of phantom)
+			if liveness.SessionID == "" && beadsID != "" {
+				// Window exists but session is dead - mark as phantom/stalled
+				isPhantom = true
+			}
+
 			agent := AgentInfo{
 				SessionID: liveness.SessionID,
 				BeadsID:   beadsID,
@@ -1692,12 +1709,12 @@ func runStatus(serverURL string) error {
 				Phase:     phase,
 				Task:      task,
 				Project:   project,
-				IsPhantom: liveness.IsPhantom(),
+				IsPhantom: isPhantom,
 			}
 
-			// If we got a session ID from tmux, use "tmux" as identifier
+			// If no OpenCode session found, note it's tmux-only
 			if agent.SessionID == "" {
-				agent.SessionID = "tmux"
+				agent.SessionID = "tmux-stalled"
 			}
 
 			agents = append(agents, agent)
