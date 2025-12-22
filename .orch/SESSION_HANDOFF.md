@@ -1,145 +1,130 @@
-# Session Handoff - 22 Dec 2025 (evening)
+# Session Handoff - 22 Dec 2025 (late afternoon)
 
 ## TLDR
 
-Massive productivity session: completed skillc (all issues closed), shipped Self-Reflection Protocol epic (all 5 phases), fixed multiple orch-go reliability bugs, cleaned up 18 stale investigations. **Next session focus: orch init epic** for reliable project bootstrapping.
+Completed `orch init` epic, created `~/.orch/ECOSYSTEM.md` ecosystem documentation, fixed OAuth flow, de-bloated feature-impl skill (1757→400 lines). Session friction identified and captured as issues. **Next session focus: P1 reliability bugs** (phantom agents, workers stalling).
 
 ---
 
 ## What Shipped
 
-### orch-go commits
-| Commit | Description |
-|--------|-------------|
-| 2c16c3b | Remove 7 empty template investigation files |
-| e7f7a00 | Add reflection analysis to daemon run loop |
-| 12e3582 | Review and close stale investigations |
-| 2da3752 | Fix headless spawn discoverability by beads ID |
-| c095757 | Verify kb chronicle command is working |
-| e4bdeda | Add synthesis for template ownership documentation |
-| ffbe65f | Document template ownership model for kb-cli and orch-go |
-| 8f6306d | Add investigation file and synthesis for stale sessions fix |
-| 9606f43 | Fix filter stale OpenCode sessions by activity time in orch status |
+### Features
+| Commit/Change | Description |
+|---------------|-------------|
+| `orch init` epic | All 4 phases complete - CLAUDE.md templates, port allocation, tmuxinator, init command |
+| `~/.orch/ECOSYSTEM.md` | Central documentation of all 8 ecosystem repos |
+| feature-impl skill | De-bloated from 1757 to 400 lines (77% reduction) via progressive disclosure |
+| OAuth fix | Changed from local callback to code paste flow (matches OpenCode) |
 
-### skillc commits
-| Commit | Description |
-|--------|-------------|
-| 79b63f1 | Add recommended skill development workflow docs |
-| 107e2ec | Add deploy-specific headers with full source and target paths |
-| 21dc0a3 | Add skillc watch command for auto-rebuild on changes |
-| 15a3310 | Fix deploy when source IS a .skillc directory |
-
----
-
-## Epics Closed
-
-| Epic | Description |
-|------|-------------|
-| orch-go-ivtg | Self-Reflection Protocol - all 5 phases complete |
-
-**Self-Reflection Protocol now operational:**
-- `kb reflect --type synthesis|promote|stale|drift|open`
-- `kb chronicle "topic"` for temporal narrative
-- Daemon integration with `--reflect` flag
-- SessionStart hook for suggestions
+### Issues Closed
+| Issue | Description |
+|-------|-------------|
+| orch-go-lqll | Epic: orch init and Project Standardization (all 4 children) |
+| orch-go-lqll.1 | Add orch init command |
+| orch-go-lqll.4 | Create CLAUDE.md template system |
+| orch-go-d08v | Cross-repo ecosystem design |
+| orch-go-4ues | Add orch account add command |
+| orch-go-u1nt | Fix OAuth flow (code paste instead of local callback) |
+| orch-go-b0ql | De-bloat feature-impl skill design |
+| orch-go-l3d2 | Implement progressive disclosure for feature-impl |
+| orch-go-kszt | orch send fails silently (was already fixed) |
+| orch-go-bdd.2 | Capacity manager (was already implemented) |
 
 ---
 
-## Issues Closed This Session
+## Backlog Created
 
-### orch-go
-| Issue | Resolution |
-|-------|------------|
-| orch-go-d1rk | Fixed stale sessions in orch status (activity time filter) |
-| orch-go-j8rr | Documented template ownership model |
-| orch-go-ttbc | Fixed headless spawn discoverability |
-| orch-go-ivtg.4 | Verified kb chronicle working |
-| orch-go-ivtg.5 | Integrated reflection into daemon |
-| orch-go-z1m8 | Cleaned up 18 stale investigations |
-| orch-go-1ni4 | Template consolidation into kb-cli |
+### P1 (High Priority)
+| Issue | Description |
+|-------|-------------|
+| orch-go-c4fh | Phantom agents in orch status - needs liveness reconciliation |
+| orch-go-d039 | Workers stalling during Build phase |
 
-### skillc (ALL COMPLETE)
-| Issue | Resolution |
-|-------|------------|
-| skillc-qbk | Fixed deploy output path bug |
-| skillc-10x | Added skillc watch command |
-| skillc-8ur | Added deploy header rewrite with full paths |
-| skillc-ygp | Added README workflow documentation |
+### P2
+| Issue | Description |
+|-------|-------------|
+| orch-go-i1cm | orch clean messaging misleading - says 'Cleaned' but doesn't delete |
+| orch-go-257f | Add kn init to orch init command |
 
 ---
 
-## Next Session Priority: orch init Epic
+## Session Friction Identified
 
-**Epic:** `orch-go-lqll` - orch init and Project Standardization
-
-**Why this matters:** Port allocation and tmuxinator improvements are needed for reliable project bootstrapping across multiple projects.
-
-**Status:**
-- Phase 2 (port registry): DONE
-- Phase 3 (tmuxinator): DONE
-- **Phase 4 (CLAUDE.md templates): OPEN** - `orch-go-lqll.4`
-- **Phase 1 (orch init command): OPEN** - `orch-go-lqll.1` (blocked by .4)
-
-**Recommended approach:**
-1. Spawn `orch-go-lqll.4` first (CLAUDE.md template system)
-2. Then spawn `orch-go-lqll.1` (orch init command)
-3. Close epic
+1. **Phantom agents in `orch status`** - showed 16-19 "active" but most were ghosts → `orch-go-c4fh`
+2. **`orch clean` misleading** - "Cleaned 137" but didn't delete files → `orch-go-i1cm`
+3. **Cross-repo beads confusion** - config had kb-cli but `bd repo list` didn't show it → removed config
+4. **OAuth shipped broken** - tests passed but real flow failed → added kn constraint
+5. **Workers stalling** - Build phase hangs requiring manual interrupt → `orch-go-d039`
+6. **Skill bloat ad-hoc** - no tooling to detect 1757-line skill → future reflect capability
 
 ---
 
-## KB Reflect Insights (New Capability)
+## Constraints Added
 
-Ran `kb reflect` exploration - key findings:
-
-- **14 synthesis opportunities** across topics (orch: 16 investigations, implement: 14, add: 13)
-- **Open items cleaned up** from 19 to ~5 (implemented ones marked complete, empty templates deleted)
-- **No stale decisions or drift detected**
-
-**Useful commands for next session:**
-```bash
-kb reflect                    # All reflection types
-kb reflect --type open        # Find stale investigations
-kb chronicle "topic"          # Temporal narrative
-orch daemon reflect           # Run reflection and save suggestions
 ```
+kn-38ef83: External integrations require manual smoke test before Phase: Complete
+  Reason: OAuth feature shipped with passing tests but failed real-world use
+```
+
+---
+
+## In-Progress Issues (Need Attention)
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| orch-go-3dem | in_progress | Status redesign - partially done, still has issues |
+| orch-go-7p9 | in_progress | Dashboard cards - partially done or descoped |
+
+---
+
+## Next Session Priority
+
+**Focus: P1 Reliability Bugs**
+
+```bash
+# 1. Fix phantom agents (most impactful)
+orch spawn systematic-debugging "Phantom agents in orch status" --issue orch-go-c4fh
+
+# 2. Investigate workers stalling
+orch spawn investigation "Workers stalling at Build phase" --issue orch-go-d039
+```
+
+**Why reliability first:** Session friction came from these bugs - phantom agents hit concurrency limits, stalling workers needed babysitting. Fix these before adding features.
+
+---
+
+## Key Decisions Made
+
+1. **Beads stays per-repo** - cross-repo coordination belongs in orch, not beads
+2. **`kb context --global`** is the cross-repo knowledge solution (already exists, works)
+3. **ECOSYSTEM.md lives in `~/.orch/`** - keeps orchestration docs with orchestration state
+4. **Progressive disclosure for skill bloat** - slim router + reference docs
+5. **agentlog optional** - add as `--with-agentlog` flag, not default
 
 ---
 
 ## System State
 
-**Skillc:** COMPLETE - no open issues
+**Account usage:** 11% (resets in 6d 20h)
 
-**orch-go ready queue:**
+**Ready queue:**
 ```
-1. orch-go-lqll.4  [P2] Create CLAUDE.md template system
-2. orch-go-lqll.1  [P2] Add orch init command (blocked by .4)
-3. orch-go-xwh     [P2] Dashboard UI/UX iteration
-4. orch-go-bdd     [P2] Headless Swarm epic
+1. orch-go-c4fh  [P1] Phantom agents - liveness reconciliation
+2. orch-go-d039  [P1] Workers stalling at Build phase
+3. orch-go-i1cm  [P2] Clean messaging fix
+4. orch-go-257f  [P2] Add kn init to orch init
+5. orch-go-xwh   [P2] Dashboard UI/UX iteration
 ```
-
-**Account usage:** 5% (resets in 6d 21h)
 
 ---
 
-## Key Learnings
-
-1. **kb reflect is production-ready** - successfully identified 18 stale investigations, cleaned them up
-2. **Self-reflection protocol works end-to-end** - daemon → suggestions file → SessionStart hook
-3. **Template ownership clarified** - kb-cli owns artifact templates, orch-go owns spawn-time templates
-4. **Headless spawns now discoverable** - fixed lookup to use findWorkspaceByBeadsID
-
----
-
-## Quick Start for Next Session
+## Quick Start
 
 ```bash
-# Check status
+# Check status (will show phantom agents until fixed)
 orch status
 bd ready
 
-# Start orch init work
-orch spawn feature-impl "CLAUDE.md template system" --issue orch-go-lqll.4
-
-# After .4 completes
-orch spawn feature-impl "orch init command" --issue orch-go-lqll.1
+# Start with P1 bugs
+orch spawn systematic-debugging "Phantom agents" --issue orch-go-c4fh
 ```

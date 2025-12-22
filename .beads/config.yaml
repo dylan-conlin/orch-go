@@ -1,4 +1,2 @@
 repos:
   primary: "."
-  additional:
-    - "/Users/dylanconlin/Documents/personal/kb-cli"
