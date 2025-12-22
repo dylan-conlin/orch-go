@@ -2,119 +2,77 @@
 
 ## TLDR
 
-Completed orch-go-ivtg epic (Self-Reflection Protocol - 5 phases). Shipped `kb reflect` (4 modes), `kb chronicle`, `orch daemon reflect`. Fixed 3 beads bugs and submitted PRs. Discovered beads-ui multi-repo requires `source_repo` in `bd list --json` - agent investigating storage layer fix.
+Reviewed reflection epic, tested `kb reflect`, cleaned up 19 test investigations, surfaced buried recommendations, shipped 5 features. source_repo bug was just daemon restart.
 
 ---
 
-## What Happened This Session
+## What Shipped This Session
 
-### Epic Completed
-- **orch-go-ivtg** - Implement Self-Reflection Protocol (all 5 phases)
-
-### Beads PRs Submitted (Clean)
-| PR | Status | Fix |
-|----|--------|-----|
-| #684 | Open | Empty config JSON parsing |
-| #683 | Open | bd repo writes to YAML + cleanup on remove |
-| #685 | Closed | source_repo in bd list (incomplete - storage layer issue) |
-
-### Code Shipped
-- `kb reflect --type synthesis|promote|stale|drift` (kb-cli)
-- `kb chronicle "topic"` (kb-cli)
-- `orch daemon reflect` (orch-go)
-- SYNTHESIS.md template auto-creation on spawn (orch-go)
-- beads-ui multi-repo infrastructure (bdsv-tq6)
-- beads-ui repo filter + column (bdsv-dt1)
-- Orchestrator SKILL.md updated with reflection commands
-
-### Decisions Made
-- **Beads OSS:** Clean slate - use upstream, contribute via PRs
-- **PR waiting pattern:** Use fix branch locally for high-confidence PRs
-- **Cross-project spawning:** `--no-track` + manual `bd close` until multi-repo works
-
-### Housekeeping
-- Cleaned up 33→13 "test" investigations
-- Removed orphaned beads issues from kb-cli DB
+| Feature | Command | Status |
+|---------|---------|--------|
+| `kb reflect --type open` | Surfaces buried action items from investigations | ✅ kb-cli |
+| FAILURE_REPORT.md | Template + `spawn.WriteFailureReport()` | ✅ orch-go |
+| `orch init` | Project scaffolding command | ✅ orch-go |
+| `orch handoff` | Session handoff generation | ✅ orch-go |
+| `--max-agents` | Already existed, verified working | ✅ orch-go |
 
 ---
 
-## Agent Still Running
+## Completed This Session
 
-| Agent | Repo | Task |
-|-------|------|------|
-| **bd-ef1a** | beads | Investigate `bd list --json` not returning `source_repo` - storage layer scan issue |
-
----
-
-## Blocking Issue: Multi-Repo UI
-
-**Problem:** beads-ui multi-repo filtering doesn't work because `bd list --json` returns `source_repo: null` even though SQLite has the data.
-
-**Root cause:** Storage layer `scanIssue` function doesn't populate `SourceRepo` field when reading from database.
-
-**What we tried:**
-1. Changed `json:"-"` to `json:"source_repo,omitempty"` on Issue struct ✓
-2. Removed redundant `SourceRepo` assignments in IssueWithCounts literals ✓
-3. Still returns null - the scan function never reads the column
-
-**Next:** bd-ef1a agent investigating. When complete, create clean PR with full fix.
+- **bd-ef1a**: source_repo bug - just needed `bd daemon --stop && bd daemon --start`
+- **orch-go-26lo**: stale session display fix (commit c6d014d)
+- **kb-cli-7ha**: `kb reflect --type open` 
+- **orch-go-ng51**: FAILURE_REPORT.md template
+- **orch-go-wo9y**: --max-agents (verified existing)
+- **orch-go-5yec**: orch init command
+- **orch-go-qxdo**: orch handoff command
+- **beads-ui verification**: Demo mode works, live blocked by db issue
 
 ---
 
-## Beads Local State
+## Blocking Issues
 
-Using fix branch with local changes:
+| Issue | Problem | Impact |
+|-------|---------|--------|
+| **orch-go-m0hm** | 235 orphaned dependencies in beads db | Live multi-repo filtering broken |
+
+---
+
+## Open Issues Created
+
+| Issue | Description |
+|-------|-------------|
+| **orch-go-m0hm** | Fix beads database integrity (235 orphaned deps) |
+| **orch-go-d6x9** | Consider CLAUDE.md in orch init (low priority) |
+| **orch-go-ipq9** | Auto-init on spawn (low priority) |
+
+---
+
+## Stale Tmux Windows
+
+Many completed agents still have tmux windows open. Run:
 ```bash
-cd ~/Documents/personal/beads
-git branch  # fix-repo-empty-config (has uncommitted changes)
+orch clean
 ```
-
-When PRs merge:
-```bash
-git checkout main && git reset --hard origin/main && go install ./cmd/bd
-```
-
----
-
-## Cross-Repo Config
-
-| Repo | Multi-repo configured |
-|------|----------------------|
-| orch-go | kb-cli |
-| kb-cli | orch-go |
-| beads | (primary only) |
 
 ---
 
 ## Next Session
 
-1. **Check bd-ef1a** - Complete investigation, create clean PR for storage layer fix
-2. **Verify multi-repo UI** - Once source_repo populates, test filtering
-3. **Wait for beads PRs** - #683, #684 to merge
-
-### Lower Priority
-- Further "test" investigation cleanup (13 remaining)
-- beads-ui: better repo display in UI
+1. **Fix orch-go-m0hm** - Database integrity blocking live multi-repo
+2. **Clean stale tmux windows** - 23 "active" but most are done
+3. **Push changes** - Multiple repos have uncommitted work
 
 ---
 
-## Quick Commands
+## Account Status
 
-```bash
-# Check agent status
-cd ~/Documents/personal/beads && orch review bd-ef1a
-
-# Test if source_repo fix works
-bd list --json | jq '.[0] | {id, source_repo}'
-
-# Beads PRs status
-gh pr list --repo steveyegge/beads --author dylan-conlin
-```
+- **work**: 90% used (resets in ~11h)
+- **personal**: 29% used (resets in 4d) - switched to this
 
 ---
 
-## Session Metadata
+## Key Learning
 
-**Agents spawned:** ~15
-**Beads PRs:** 3 submitted (2 open, 1 closed)
-**Epic completed:** orch-go-ivtg (5 phases)
+`kb reflect` found topic clusters but missed **open recommendations** buried in investigations. Fixed with `--type open` which parses the `Next:` field from D.E.K.N. structure.
