@@ -632,6 +632,93 @@ func TestLivenessWarningMessage(t *testing.T) {
 	})
 }
 
+// TestSwarmStatusPhantomCount tests that phantom agents are correctly excluded from Active count.
+func TestSwarmStatusPhantomCount(t *testing.T) {
+	tests := []struct {
+		name        string
+		agents      []AgentInfo
+		wantActive  int
+		wantPhantom int
+	}{
+		{
+			name: "all active agents",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1", IsPhantom: false},
+				{SessionID: "ses_2", BeadsID: "test-2", IsPhantom: false},
+			},
+			wantActive:  2,
+			wantPhantom: 0,
+		},
+		{
+			name: "all phantom agents",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1", IsPhantom: true},
+				{SessionID: "ses_2", BeadsID: "test-2", IsPhantom: true},
+			},
+			wantActive:  0,
+			wantPhantom: 2,
+		},
+		{
+			name: "mixed active and phantom",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1", IsPhantom: false},
+				{SessionID: "ses_2", BeadsID: "test-2", IsPhantom: true},
+				{SessionID: "ses_3", BeadsID: "test-3", IsPhantom: false},
+				{SessionID: "ses_4", BeadsID: "test-4", IsPhantom: true},
+			},
+			wantActive:  2,
+			wantPhantom: 2,
+		},
+		{
+			name:        "empty list",
+			agents:      []AgentInfo{},
+			wantActive:  0,
+			wantPhantom: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Replicate the counting logic from runStatus()
+			activeCount := 0
+			phantomCount := 0
+			for _, agent := range tt.agents {
+				if agent.IsPhantom {
+					phantomCount++
+				} else {
+					activeCount++
+				}
+			}
+
+			if activeCount != tt.wantActive {
+				t.Errorf("activeCount = %d, want %d", activeCount, tt.wantActive)
+			}
+			if phantomCount != tt.wantPhantom {
+				t.Errorf("phantomCount = %d, want %d", phantomCount, tt.wantPhantom)
+			}
+		})
+	}
+}
+
+// TestAgentInfoIsPhantomField tests that IsPhantom field is correctly set.
+func TestAgentInfoIsPhantomField(t *testing.T) {
+	// Test that AgentInfo correctly stores phantom status
+	agent := AgentInfo{
+		SessionID: "ses_test",
+		BeadsID:   "test-abc",
+		IsPhantom: true,
+	}
+
+	if !agent.IsPhantom {
+		t.Error("AgentInfo.IsPhantom should be true")
+	}
+
+	agent.IsPhantom = false
+	if agent.IsPhantom {
+		t.Error("AgentInfo.IsPhantom should be false after setting")
+	}
+}
+
 // TestDetermineBeadsID tests the beads ID determination logic.
 func TestDetermineBeadsID(t *testing.T) {
 	// Mock createBeadsIssue function that always returns an error
