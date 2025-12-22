@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Spawn context generation is working correctly - all critical sections (TASK, PROJECT_DIR, AUTHORITY, DELIVERABLES, SKILL GUIDANCE, BEADS PROGRESS) are present and properly templated.
+**Delta:** Spawn context generation works correctly, but untracked agents (--no-track) receive fake beads IDs that cause `bd comment` commands to fail.
 
-**Evidence:** Verified SPAWN_CONTEXT.md contains 419 lines, 26 major sections, beads ID is consistently templated 11 times throughout the document. Validated against source template in `pkg/spawn/context.go:14-163`.
+**Evidence:** Template substituted 11 beads ID occurrences correctly. However, `bd comment orch-go-untracked-1766417753` failed with "issue not found" because the ID is a placeholder, not a real issue.
 
-**Knowledge:** The spawn context uses Go's text/template for variable substitution. Key fields are: Task, BeadsID, ProjectDir, WorkspaceName, SkillName, SkillContent, InvestigationSlug, Phases, Mode, Validation, InvestigationType, KBContext.
+**Knowledge:** When `--no-track` is used, `determineBeadsID()` in `cmd/orch/main.go:1212-1213` generates `{project}-untracked-{timestamp}` without creating an actual beads issue. The spawn context still instructs agents to use `bd comment` in "FIRST 3 ACTIONS".
 
-**Next:** Close - spawn context generation is functioning as designed.
+**Next:** Consider updating spawn context template to conditionally omit beads instructions for untracked agents, or document the expected failure.
 
 **Confidence:** High (90%) - tested against real spawn, verified template source.
 
@@ -130,7 +130,9 @@ The spawn context generation is working correctly. The template produces a compl
 6. Embedded skill guidance
 7. Session completion protocol
 
-The only minor issue encountered was the beads issue not existing (ID `orch-go-untracked-1766417740`), but this is expected for a test spawn and the `bd comment` command fails gracefully with a clear error message.
+**Issue Found:** The beads issue does not exist (ID `orch-go-untracked-1766417753`). This is expected behavior for `--no-track` spawns, but the spawn context still instructs agents to run `bd comment` as their "FIRST 3 ACTIONS", causing a guaranteed failure. This is a UX issue - agents receive conflicting instructions.
+
+**Recommendation:** Update spawn context template to conditionally omit beads tracking sections when `IsTracked=false`, or add a note explaining that untracked agents should skip beads commands.
 
 ---
 

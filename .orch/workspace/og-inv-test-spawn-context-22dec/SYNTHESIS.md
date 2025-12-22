@@ -9,7 +9,7 @@
 
 ## TLDR
 
-Validated spawn context generation is working correctly. The SPAWN_CONTEXT.md file contains all critical sections (TASK, PROJECT_DIR, AUTHORITY, DELIVERABLES, SKILL GUIDANCE, BEADS PROGRESS) with proper template variable substitution.
+Validated spawn context generation is working correctly. However, identified a UX issue: untracked agents (--no-track) receive placeholder BeadsIDs but the spawn context still instructs them to use `bd comment` as "FIRST 3 ACTIONS", causing guaranteed failures.
 
 ---
 
@@ -60,28 +60,40 @@ rg -c "orch-go-untracked" SPAWN_CONTEXT.md
 - None - this was a validation investigation
 
 ### Constraints Discovered
-- Beads issue must exist for `bd comment` to work (test spawns use fake IDs)
+- Beads issue must exist for `bd comment` to work 
+- `--no-track` spawns generate `{project}-untracked-{timestamp}` IDs without creating actual issues
+- Spawn context template doesn't conditionally omit beads instructions for untracked agents
 
 ### Externalized via `kn`
-- Not applicable - straightforward validation, no new knowledge to externalize
+- `kn tried "beads progress tracking for untracked agents" --failed "bd comment fails when --no-track generates placeholder ID instead of real issue"` → kn-5c647f
 
 ---
 
 ## Next (What Should Happen)
 
-**Recommendation:** close
+**Recommendation:** escalate
 
-### If Close
-- [x] All deliverables complete
-- [x] Tests passing (N/A - investigation only)
-- [x] Investigation file has `**Status:** Complete`
-- [x] Ready for `orch complete` (note: beads issue doesn't exist for test)
+### If Escalate
+**Question:** Should spawn context template conditionally omit beads tracking instructions for untracked agents?
+
+**Options:**
+1. **Conditional template** - Add `{{if .IsTracked}}` around beads sections
+   - Pros: Clean UX, agents don't see instructions they can't follow
+   - Cons: Template complexity increases slightly
+
+2. **Document expected behavior** - Add note explaining beads commands are optional for untracked
+   - Pros: Zero code change
+   - Cons: Agents still see "CRITICAL - FIRST 3 ACTIONS" that fail
+
+**Recommendation:** Option 1 (conditional template)
 
 ---
 
 ## Unexplored Questions
 
-Straightforward session, no unexplored territory.
+- How common are `--no-track` spawns in practice?
+- Should untracked agents have an alternative progress reporting mechanism?
+- Was the beads instruction failure for untracked agents an intentional design choice?
 
 ---
 
