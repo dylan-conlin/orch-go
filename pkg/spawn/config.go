@@ -47,6 +47,9 @@ type Config struct {
 
 	// SkipArtifactCheck bypasses pre-spawn kb context check
 	SkipArtifactCheck bool
+
+	// KBContext is the formatted kb context to include in SPAWN_CONTEXT.md
+	KBContext string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

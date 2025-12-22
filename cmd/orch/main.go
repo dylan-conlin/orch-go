@@ -891,6 +891,14 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Resolve model - convert aliases to full format
 	resolvedModel := model.Resolve(spawnModel)
 
+	// Run pre-spawn kb context check unless skipped
+	var kbContext string
+	if !spawnSkipArtifactCheck {
+		kbContext = runPreSpawnKBCheck(task)
+	} else {
+		fmt.Println("Skipping kb context check (--skip-artifact-check)")
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:              task,
@@ -907,6 +915,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		MCP:               spawnMCP,
 		NoTrack:           spawnNoTrack,
 		SkipArtifactCheck: spawnSkipArtifactCheck,
+		KBContext:         kbContext,
 	}
 
 	// Write SPAWN_CONTEXT.md
@@ -2752,4 +2761,52 @@ func runPortTmuxinator(project, projectDir string) error {
 	}
 
 	return nil
+}
+
+// runPreSpawnKBCheck runs kb context check before spawning an agent.
+// Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
+func runPreSpawnKBCheck(task string) string {
+	// Extract keywords from task description
+	// Try with 3 keywords first (more specific), fall back to 1 keyword (more broad)
+	keywords := spawn.ExtractKeywords(task, 3)
+	if keywords == "" {
+		return ""
+	}
+
+	fmt.Printf("Checking kb context for: %q\n", keywords)
+
+	// Run kb context check
+	result, err := spawn.RunKBContextCheck(keywords)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
+		return ""
+	}
+
+	// If no matches with multiple keywords, try with just the first keyword
+	if result == nil || !result.HasMatches {
+		firstKeyword := spawn.ExtractKeywords(task, 1)
+		if firstKeyword != "" && firstKeyword != keywords {
+			fmt.Printf("Trying broader search for: %q\n", firstKeyword)
+			result, err = spawn.RunKBContextCheck(firstKeyword)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
+				return ""
+			}
+		}
+	}
+
+	if result == nil || !result.HasMatches {
+		fmt.Println("No prior knowledge found.")
+		return ""
+	}
+
+	// Display results and prompt for acknowledgment
+	if !spawn.DisplayContextAndPrompt(result) {
+		fmt.Println("Context declined - proceeding without prior knowledge.")
+		return ""
+	}
+
+	// Format context for inclusion in SPAWN_CONTEXT.md
+	fmt.Println("Including prior knowledge in spawn context.")
+	return spawn.FormatContextForSpawn(result)
 }

@@ -12,7 +12,9 @@ import (
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
-
+{{if .KBContext}}
+{{.KBContext}}
+{{end}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
 1. Report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - [brief description]\"`" + `
@@ -173,6 +175,7 @@ type contextData struct {
 	Mode              string
 	Validation        string
 	InvestigationType string
+	KBContext         string
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -197,6 +200,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		Mode:              cfg.Mode,
 		Validation:        cfg.Validation,
 		InvestigationType: cfg.InvestigationType,
+		KBContext:         cfg.KBContext,
 	}
 
 	var buf bytes.Buffer
