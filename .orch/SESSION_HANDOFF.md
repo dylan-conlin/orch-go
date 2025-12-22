@@ -1,130 +1,90 @@
-# Session Handoff - 22 Dec 2025 (late afternoon)
+# Session Handoff - 22 Dec 2025 (evening)
 
 ## TLDR
 
-Completed `orch init` epic, created `~/.orch/ECOSYSTEM.md` ecosystem documentation, fixed OAuth flow, de-bloated feature-impl skill (1757→400 lines). Session friction identified and captured as issues. **Next session focus: P1 reliability bugs** (phantom agents, workers stalling).
+**Phantom agents bug fixed** (`orch-go-c4fh` closed). Status now correctly shows 0 active when no agents running. Workers stalling investigation spawned (`orch-go-d039`). New issue discovered: session titles don't contain beadsID, so active agents may show as phantom until this is addressed.
 
 ---
 
-## What Shipped
+## What Shipped This Session
 
-### Features
-| Commit/Change | Description |
-|---------------|-------------|
-| `orch init` epic | All 4 phases complete - CLAUDE.md templates, port allocation, tmuxinator, init command |
-| `~/.orch/ECOSYSTEM.md` | Central documentation of all 8 ecosystem repos |
-| feature-impl skill | De-bloated from 1757 to 400 lines (77% reduction) via progressive disclosure |
-| OAuth fix | Changed from local callback to code paste flow (matches OpenCode) |
+### Commits
+| Commit | Description |
+|--------|-------------|
+| `0ba0104` | Filter phantom agents - require parseable beadsID in tmux/OpenCode |
+| `5d8c187` | Mark stalled tmux agents as phantom + fix concurrency check |
 
 ### Issues Closed
 | Issue | Description |
 |-------|-------------|
-| orch-go-lqll | Epic: orch init and Project Standardization (all 4 children) |
-| orch-go-lqll.1 | Add orch init command |
-| orch-go-lqll.4 | Create CLAUDE.md template system |
-| orch-go-d08v | Cross-repo ecosystem design |
-| orch-go-4ues | Add orch account add command |
-| orch-go-u1nt | Fix OAuth flow (code paste instead of local callback) |
-| orch-go-b0ql | De-bloat feature-impl skill design |
-| orch-go-l3d2 | Implement progressive disclosure for feature-impl |
-| orch-go-kszt | orch send fails silently (was already fixed) |
-| orch-go-bdd.2 | Capacity manager (was already implemented) |
+| orch-go-c4fh | Phantom agents in orch status - fixed with beadsID filtering |
 
 ---
 
-## Backlog Created
+## Root Cause Analysis: Phantom Agents
 
-### P1 (High Priority)
-| Issue | Description |
-|-------|-------------|
-| orch-go-c4fh | Phantom agents in orch status - needs liveness reconciliation |
-| orch-go-d039 | Workers stalling during Build phase |
+**Problem:** `orch status` showed 17 "active" agents when only 6 were real
 
-### P2
-| Issue | Description |
-|-------|-------------|
-| orch-go-i1cm | orch clean messaging misleading - says 'Cleaned' but doesn't delete |
-| orch-go-257f | Add kn init to orch init command |
+**Three root causes found:**
+1. **Tmux windows without beadsID** - Service windows (docker, frontend, logs) in `workers-*` sessions were counted
+2. **OpenCode sessions without beadsID** - Manual sessions and test sessions passing idle filter
+3. **Stalled tmux windows** - Tmux window exists but OpenCode session ended (cross-project agents)
 
----
+**Fix:** 
+- Only include windows/sessions with parseable beadsID (orch-spawned)
+- Mark tmux windows without active OpenCode session as "phantom/stalled"
+- Concurrency limit only counts sessions with beadsID
 
-## Session Friction Identified
-
-1. **Phantom agents in `orch status`** - showed 16-19 "active" but most were ghosts → `orch-go-c4fh`
-2. **`orch clean` misleading** - "Cleaned 137" but didn't delete files → `orch-go-i1cm`
-3. **Cross-repo beads confusion** - config had kb-cli but `bd repo list` didn't show it → removed config
-4. **OAuth shipped broken** - tests passed but real flow failed → added kn constraint
-5. **Workers stalling** - Build phase hangs requiring manual interrupt → `orch-go-d039`
-6. **Skill bloat ad-hoc** - no tooling to detect 1757-line skill → future reflect capability
+**Before:** 17 "active", blocked spawning
+**After:** 0 active, 7 phantom (correctly classified)
 
 ---
 
-## Constraints Added
+## In-Progress Work
 
-```
-kn-38ef83: External integrations require manual smoke test before Phase: Complete
-  Reason: OAuth feature shipped with passing tests but failed real-world use
-```
-
----
-
-## In-Progress Issues (Need Attention)
-
-| Issue | Status | Notes |
+| Issue | Status | Agent |
 |-------|--------|-------|
-| orch-go-3dem | in_progress | Status redesign - partially done, still has issues |
-| orch-go-7p9 | in_progress | Dashboard cards - partially done or descoped |
+| orch-go-d039 | investigating | og-inv-workers-stall-during-22dec |
 
 ---
 
-## Next Session Priority
+## New Issue Discovered
 
-**Focus: P1 Reliability Bugs**
+**Session titles don't contain beadsID** - When spawning, OpenCode auto-generates session title from first message (e.g., "Reading SPAWN_CONTEXT.md"). The beadsID is not embedded in the title, so `orch status` can't match active sessions to their beads issues.
 
-```bash
-# 1. Fix phantom agents (most impactful)
-orch spawn systematic-debugging "Phantom agents in orch status" --issue orch-go-c4fh
-
-# 2. Investigate workers stalling
-orch spawn investigation "Workers stalling at Build phase" --issue orch-go-d039
-```
-
-**Why reliability first:** Session friction came from these bugs - phantom agents hit concurrency limits, stalling workers needed babysitting. Fix these before adding features.
-
----
-
-## Key Decisions Made
-
-1. **Beads stays per-repo** - cross-repo coordination belongs in orch, not beads
-2. **`kb context --global`** is the cross-repo knowledge solution (already exists, works)
-3. **ECOSYSTEM.md lives in `~/.orch/`** - keeps orchestration docs with orchestration state
-4. **Progressive disclosure for skill bloat** - slim router + reference docs
-5. **agentlog optional** - add as `--with-agentlog` flag, not default
+**Impact:** Active agents may appear as phantom in status
+**Workaround:** Check tmux directly or wait for workspace `.session_id` file approach
 
 ---
 
 ## System State
 
-**Account usage:** 11% (resets in 6d 20h)
+**Account usage:** 13% (resets in 6d 19h)
 
 **Ready queue:**
 ```
-1. orch-go-c4fh  [P1] Phantom agents - liveness reconciliation
-2. orch-go-d039  [P1] Workers stalling at Build phase
-3. orch-go-i1cm  [P2] Clean messaging fix
-4. orch-go-257f  [P2] Add kn init to orch init
-5. orch-go-xwh   [P2] Dashboard UI/UX iteration
+1. orch-go-d039  [P1] Workers stalling at Build phase (IN PROGRESS - agent spawned)
+2. orch-go-i1cm  [P2] Clean messaging fix  
+3. orch-go-257f  [P2] Add kn init to orch init
+4. orch-go-xwh   [P2] Dashboard UI/UX iteration
 ```
+
+**Phantoms (cross-project, can ignore):**
+- 6 from skillc project
+- 1 from price-watch project
 
 ---
 
-## Quick Start
+## Quick Start Next Session
 
 ```bash
-# Check status (will show phantom agents until fixed)
+# Check if worker stalling investigation completed
 orch status
-bd ready
+bd show orch-go-d039  # Check comments for phase
 
-# Start with P1 bugs
-orch spawn systematic-debugging "Phantom agents" --issue orch-go-c4fh
+# If complete, review and close
+orch complete orch-go-d039
+
+# Otherwise, continue monitoring or check tmux
+tmux capture-pane -t workers-orch-go:2 -p | tail -30
 ```
