@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/question"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -1516,6 +1518,7 @@ func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
 // SwarmStatus represents aggregate swarm information.
 type SwarmStatus struct {
 	Active    int `json:"active"`
+	Phantom   int `json:"phantom,omitempty"` // Agents with open beads issue but not running
 	Queued    int `json:"queued"`
 	Completed int `json:"completed_today"`
 }
@@ -1538,6 +1541,7 @@ type AgentInfo struct {
 	Runtime   string `json:"runtime"`
 	Title     string `json:"title,omitempty"`
 	Window    string `json:"window,omitempty"`
+	IsPhantom bool   `json:"is_phantom,omitempty"` // True if beads issue open but agent not running
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -1550,13 +1554,12 @@ type StatusOutput struct {
 func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
+	projectDir, _ := os.Getwd()
+
 	agents := make([]AgentInfo, 0)
+	seenBeadsIDs := make(map[string]bool)
 
-	// Collect tmux windows first (primary source of truth for "active")
-	// Build a set of known beads IDs and workspace names from tmux
-	tmuxBeadsIDs := make(map[string]bool)
-	tmuxTitles := make(map[string]bool)
-
+	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
 		windows, _ := tmux.ListWindows(sessionName)
@@ -1568,74 +1571,84 @@ func runStatus(serverURL string) error {
 
 			// Derive beads ID from window name (format: "... [beads-id]")
 			beadsID := extractBeadsIDFromWindowName(w.Name)
-
-			// Derive skill from window emoji (primary) or workspace prefix
 			skill := extractSkillFromWindowName(w.Name)
 
-			// Track beads ID and title to avoid duplicates from OpenCode API
+			// Use state.GetLiveness() for accurate liveness check
+			var liveness state.LivenessResult
 			if beadsID != "" {
-				tmuxBeadsIDs[beadsID] = true
+				liveness = state.GetLiveness(beadsID, serverURL, projectDir)
+				seenBeadsIDs[beadsID] = true
 			}
-			// Extract workspace name from window name for matching
-			// Window names often contain the workspace name
-			tmuxTitles[w.Name] = true
 
 			agent := AgentInfo{
-				SessionID: "tmux",
+				SessionID: liveness.SessionID,
 				BeadsID:   beadsID,
 				Skill:     skill,
 				Title:     w.Name,
 				Runtime:   "unknown",
 				Window:    w.Target,
+				IsPhantom: liveness.IsPhantom(),
+			}
+
+			// If we got a session ID from tmux, use "tmux" as identifier
+			if agent.SessionID == "" {
+				agent.SessionID = "tmux"
 			}
 
 			agents = append(agents, agent)
 		}
 	}
 
-	// Fetch in-memory sessions from OpenCode
-	// Note: ListSessions("") returns only in-memory sessions, not disk history
-	// ListSessions(dir) with x-opencode-directory header returns ALL disk sessions
+	// Phase 2: Collect agents from OpenCode sessions (headless mode agents)
 	sessions, err := client.ListSessions("")
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
-	// Add OpenCode sessions that aren't already tracked via tmux
-	// Only include sessions that were recently active (updated in last 30 minutes)
-	// OpenCode keeps sessions in memory even after agents exit, so we need to filter
 	for _, s := range sessions {
-		// Calculate runtime and idle time
+		// Calculate runtime
 		createdAt := time.Unix(s.Time.Created/1000, 0)
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		runtime := now.Sub(createdAt)
-		idleTime := now.Sub(updatedAt)
-
-		// Skip sessions idle for more than 30 minutes
-		// These are likely completed agents still in OpenCode's memory
-		if idleTime > 30*time.Minute {
-			continue
-		}
 
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		skill := extractSkillFromTitle(s.Title)
 
-		// Skip if already tracked via tmux (by beads ID or title)
-		if beadsID != "" && tmuxBeadsIDs[beadsID] {
+		// Skip if already tracked via tmux
+		if beadsID != "" && seenBeadsIDs[beadsID] {
 			continue
 		}
-		if tmuxTitles[s.Title] {
-			continue
-		}
-		// Also check if any tmux title contains this session's title
-		alreadyIn := false
-		for title := range tmuxTitles {
-			if strings.Contains(title, s.Title) {
-				alreadyIn = true
-				break
+
+		// Use state.GetLiveness() to check if this is actually live
+		var liveness state.LivenessResult
+		if beadsID != "" {
+			liveness = state.GetLiveness(beadsID, serverURL, projectDir)
+			seenBeadsIDs[beadsID] = true
+		} else {
+			// No beads ID - check if session is still active using idle time
+			// OpenCode keeps sessions in memory, so filter by recent activity
+			updatedAt := time.Unix(s.Time.Updated/1000, 0)
+			idleTime := now.Sub(updatedAt)
+			if idleTime > 30*time.Minute {
+				continue // Skip stale sessions without beads ID
 			}
+			liveness.OpencodeLive = true // Consider active if recently updated
 		}
-		if alreadyIn {
+
+		// Skip if not alive (neither tmux nor OpenCode)
+		if !liveness.IsAlive() && beadsID != "" {
+			// Not alive but has beads ID - might be phantom
+			if liveness.IsPhantom() {
+				// Include phantom agents in the list
+				agent := AgentInfo{
+					SessionID: s.ID,
+					Title:     s.Title,
+					Runtime:   formatDuration(runtime),
+					BeadsID:   beadsID,
+					Skill:     skill,
+					IsPhantom: true,
+				}
+				agents = append(agents, agent)
+			}
 			continue
 		}
 
@@ -1645,14 +1658,26 @@ func runStatus(serverURL string) error {
 			Runtime:   formatDuration(runtime),
 			BeadsID:   beadsID,
 			Skill:     skill,
+			IsPhantom: liveness.IsPhantom(),
 		}
 
 		agents = append(agents, agent)
 	}
 
-	// Build swarm status
+	// Phase 3: Build swarm status (exclude phantoms from Active count)
+	activeCount := 0
+	phantomCount := 0
+	for _, agent := range agents {
+		if agent.IsPhantom {
+			phantomCount++
+		} else {
+			activeCount++
+		}
+	}
+
 	swarm := SwarmStatus{
-		Active:    len(agents),
+		Active:    activeCount,
+		Phantom:   phantomCount,
 		Queued:    0, // TODO: implement queuing system
 		Completed: 0, // No longer tracked via registry
 	}
@@ -1735,6 +1760,9 @@ func printSwarmStatus(output StatusOutput) {
 	// Print swarm summary
 	fmt.Println("SWARM STATUS")
 	fmt.Printf("  Active:    %d\n", output.Swarm.Active)
+	if output.Swarm.Phantom > 0 {
+		fmt.Printf("  Phantom:   %d (beads open but not running)\n", output.Swarm.Phantom)
+	}
 	if output.Swarm.Queued > 0 {
 		fmt.Printf("  Queued:    %d\n", output.Swarm.Queued)
 	}
@@ -1765,13 +1793,18 @@ func printSwarmStatus(output StatusOutput) {
 		fmt.Println()
 	}
 
-	// Print active agents table
+	// Print agents table (both active and phantom)
 	if len(output.Agents) > 0 {
-		fmt.Println("ACTIVE AGENTS")
-		fmt.Printf("  %-35s %-20s %-20s %-15s %-10s %s\n", "SESSION ID", "BEADS ID", "SKILL", "WINDOW", "ACCOUNT", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 120))
+		fmt.Println("AGENTS")
+		fmt.Printf("  %-10s %-30s %-18s %-18s %-12s %s\n", "STATUS", "SESSION ID", "BEADS ID", "SKILL", "WINDOW", "RUNTIME")
+		fmt.Printf("  %s\n", strings.Repeat("-", 110))
 
 		for _, agent := range output.Agents {
+			status := "active"
+			if agent.IsPhantom {
+				status = "phantom"
+			}
+
 			beadsID := agent.BeadsID
 			if beadsID == "" {
 				beadsID = "-"
@@ -1784,21 +1817,17 @@ func printSwarmStatus(output StatusOutput) {
 			if window == "" {
 				window = "-"
 			}
-			accountName := agent.Account
-			if accountName == "" {
-				accountName = "-"
-			}
 
-			fmt.Printf("  %-35s %-20s %-20s %-15s %-10s %s\n",
-				truncate(agent.SessionID, 33),
-				truncate(beadsID, 18),
-				truncate(skill, 18),
-				truncate(window, 13),
-				truncate(accountName, 8),
+			fmt.Printf("  %-10s %-30s %-18s %-18s %-12s %s\n",
+				status,
+				truncate(agent.SessionID, 28),
+				truncate(beadsID, 16),
+				truncate(skill, 16),
+				truncate(window, 10),
 				agent.Runtime)
 		}
 	} else {
-		fmt.Println("No active agents")
+		fmt.Println("No agents")
 	}
 }
 
@@ -1905,6 +1934,46 @@ func runComplete(beadsID string) error {
 		}
 	} else {
 		fmt.Println("Skipping phase verification (--force)")
+	}
+
+	// Check liveness before closing - warn if agent appears still running
+	if !completeForce {
+		liveness := state.GetLiveness(beadsID, serverURL, projectDir)
+		if liveness.IsAlive() {
+			// Build warning message with details about what's still running
+			var runningDetails []string
+			if liveness.TmuxLive {
+				detail := "tmux window"
+				if liveness.WindowID != "" {
+					detail += " (" + liveness.WindowID + ")"
+				}
+				runningDetails = append(runningDetails, detail)
+			}
+			if liveness.OpencodeLive {
+				detail := "OpenCode session"
+				if liveness.SessionID != "" {
+					detail += " (" + liveness.SessionID[:12] + ")"
+				}
+				runningDetails = append(runningDetails, detail)
+			}
+
+			fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
+
+			// Prompt user for confirmation
+			fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read response: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "y" && response != "yes" {
+				return fmt.Errorf("aborted: agent still running")
+			}
+
+			fmt.Println("Proceeding with completion despite liveness warning...")
+		}
 	}
 
 	// Determine close reason

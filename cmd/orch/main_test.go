@@ -537,6 +537,101 @@ You were spawned from beads issue: **orch-go-debug99**
 	}
 }
 
+// TestLivenessWarningMessage tests the liveness warning message generation.
+// This is a documentation test - the actual prompt is handled in runComplete().
+func TestLivenessWarningMessage(t *testing.T) {
+	// Document the expected behavior:
+	// When calling `orch complete <id>`, if the agent is still running
+	// (tmux window active OR OpenCode session live), the user should be warned
+	// and prompted before proceeding.
+	//
+	// The warning format is:
+	//   ⚠️  Agent appears still running: tmux window (@1234), OpenCode session (ses_abc12)
+	//   Proceed anyway? [y/N]:
+	//
+	// If the user types "y" or "yes", completion proceeds.
+	// If the user types anything else (including just pressing Enter), completion is aborted.
+	// If --force is set, the liveness check is skipped entirely.
+
+	t.Run("warning message includes both sources when both are live", func(t *testing.T) {
+		// Test the string building logic by simulating what runComplete does
+		tmuxLive := true
+		opencodeLive := true
+		windowID := "@1234"
+		sessionID := "ses_abc12def34567890"
+
+		var runningDetails []string
+		if tmuxLive {
+			detail := "tmux window"
+			if windowID != "" {
+				detail += " (" + windowID + ")"
+			}
+			runningDetails = append(runningDetails, detail)
+		}
+		if opencodeLive {
+			detail := "OpenCode session"
+			if sessionID != "" {
+				detail += " (" + sessionID[:12] + ")"
+			}
+			runningDetails = append(runningDetails, detail)
+		}
+
+		result := strings.Join(runningDetails, ", ")
+		expected := "tmux window (@1234), OpenCode session (ses_abc12def)"
+		if result != expected {
+			t.Errorf("warning message = %q, want %q", result, expected)
+		}
+	})
+
+	t.Run("warning message includes only tmux when OpenCode is not live", func(t *testing.T) {
+		tmuxLive := true
+		opencodeLive := false
+		windowID := "@5678"
+
+		var runningDetails []string
+		if tmuxLive {
+			detail := "tmux window"
+			if windowID != "" {
+				detail += " (" + windowID + ")"
+			}
+			runningDetails = append(runningDetails, detail)
+		}
+		if opencodeLive {
+			runningDetails = append(runningDetails, "OpenCode session")
+		}
+
+		result := strings.Join(runningDetails, ", ")
+		expected := "tmux window (@5678)"
+		if result != expected {
+			t.Errorf("warning message = %q, want %q", result, expected)
+		}
+	})
+
+	t.Run("warning message includes only OpenCode when tmux is not live", func(t *testing.T) {
+		tmuxLive := false
+		opencodeLive := true
+		sessionID := "ses_xyz789abc123456"
+
+		var runningDetails []string
+		if tmuxLive {
+			runningDetails = append(runningDetails, "tmux window")
+		}
+		if opencodeLive {
+			detail := "OpenCode session"
+			if sessionID != "" {
+				detail += " (" + sessionID[:12] + ")"
+			}
+			runningDetails = append(runningDetails, detail)
+		}
+
+		result := strings.Join(runningDetails, ", ")
+		expected := "OpenCode session (ses_xyz789ab)"
+		if result != expected {
+			t.Errorf("warning message = %q, want %q", result, expected)
+		}
+	})
+}
+
 // TestDetermineBeadsID tests the beads ID determination logic.
 func TestDetermineBeadsID(t *testing.T) {
 	// Mock createBeadsIssue function that always returns an error
