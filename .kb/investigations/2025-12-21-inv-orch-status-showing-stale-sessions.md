@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-26lo
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** `orch status` was showing stale sessions because `ListSessions(projectDir)` returns historical disk sessions, not just active ones. The fix is to call `ListSessions("")` (no directory header) to get only in-memory sessions, and to use tmux windows as the primary source of truth.

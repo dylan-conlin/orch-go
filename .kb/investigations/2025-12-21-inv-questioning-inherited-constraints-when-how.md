@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-ws4z.10
+---
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 -->

@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-4kwt.8
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Artifact-level approach (adding "Unexplored Questions" section to SYNTHESIS.md) is the minimal change that captures reflection value without adding new tooling or process overhead.

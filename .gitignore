@@ -1,5 +1,6 @@
 # Binary
 orch-go
+build/
 
 # macOS
 .DS_Store
@@ -12,3 +13,4 @@ orch-go
 web/node_modules/
 web/.svelte-kit/
 web/build/
+tmp/

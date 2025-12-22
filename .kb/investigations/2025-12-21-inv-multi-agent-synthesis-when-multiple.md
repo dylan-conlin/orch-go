@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-4kwt.5
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Multi-agent synthesis is already well-supported through SYNTHESIS.md templates, `orch review` batch mode, and workspace isolation; conflict detection relies on git mechanics (no codebase conflicts detected in 100+ commits over 3 days).
