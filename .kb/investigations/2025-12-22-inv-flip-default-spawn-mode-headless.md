@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully flipped default spawn mode from tmux to headless with --tmux opt-in flag.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Code compiles, help text shows correct defaults, flags registered properly, spawn mode logic updated to check tmux/attach before defaulting to headless.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Spawn mode is determined by cascading flag checks in runSpawnWithSkill; documentation (CLAUDE.md, orchestrator skill) already reflected headless as default.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Clean up test artifact (orch-test), verify in production usage.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (90%) - Implementation complete, compiles, help text correct; production testing pending.
 
 <!--
 Example D.E.K.N.:
@@ -41,9 +41,9 @@ Guidelines:
 **Started:** 2025-12-22
 **Updated:** 2025-12-22
 **Owner:** Worker Agent
-**Phase:** Implementing
-**Next Step:** Implement changes to spawn mode logic
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 **Confidence:** High (85%)
 
 <!-- Lineage (fill only when applicable) -->
