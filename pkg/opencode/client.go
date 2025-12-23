@@ -283,7 +283,19 @@ func (c *Client) CreateSession(title, directory, model string) (*CreateSessionRe
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := http.Post(c.ServerURL+"/session", "application/json", bytes.NewReader(body))
+	// Create request to set custom headers
+	req, err := http.NewRequest("POST", c.ServerURL+"/session", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// OpenCode expects directory via x-opencode-directory header
+	if directory != "" {
+		req.Header.Set("x-opencode-directory", directory)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}

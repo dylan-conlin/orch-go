@@ -171,6 +171,7 @@ var (
 	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
 	spawnLight             bool   // Light tier spawn (skips SYNTHESIS.md requirement)
 	spawnFull              bool   // Full tier spawn (requires SYNTHESIS.md)
+	spawnWorkdir           string // Target project directory (defaults to current directory)
 )
 
 var spawnCmd = &cobra.Command{
@@ -227,7 +228,8 @@ Examples:
   orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
   orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
   orch-go spawn --light feature-impl "quick fix"               # Light tier (no synthesis)
-  orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)`,
+  orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)
+  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -254,6 +256,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
 	spawnCmd.Flags().BoolVar(&spawnLight, "light", false, "Light tier spawn (skips SYNTHESIS.md requirement on completion)")
 	spawnCmd.Flags().BoolVar(&spawnFull, "full", false, "Full tier spawn (requires SYNTHESIS.md for knowledge externalization)")
+	spawnCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (defaults to current directory)")
 }
 
 var askCmd = &cobra.Command{
@@ -954,10 +957,27 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		return err
 	}
 
-	// Get current directory as project dir
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+	// Get project directory - use --workdir if provided, otherwise current directory
+	var projectDir string
+	var err error
+	if spawnWorkdir != "" {
+		// User specified target directory via --workdir
+		projectDir, err = filepath.Abs(spawnWorkdir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		// Verify directory exists
+		if stat, err := os.Stat(projectDir); err != nil {
+			return fmt.Errorf("workdir does not exist: %s", projectDir)
+		} else if !stat.IsDir() {
+			return fmt.Errorf("workdir is not a directory: %s", projectDir)
+		}
+	} else {
+		// Default: use current working directory
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
 	}
 
 	// Get project name from directory
