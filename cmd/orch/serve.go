@@ -151,14 +151,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	client := opencode.NewClient(serverURL)
 
 	// Get active sessions from OpenCode
-	sessions, err := client.ListSessions(projectDir)
+	// Don't filter by directory - show all sessions across all projects
+	// (serve process CWD may not match project directory)
+	sessions, err := client.ListSessions("")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	now := time.Now()
-	var agents []AgentAPIResponse
+	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
 
 	// Add active sessions from OpenCode
 	// Filter: only show sessions updated in the last 10 minutes as "active"
