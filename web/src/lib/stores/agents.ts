@@ -51,7 +51,7 @@ export interface SSEEvent {
 }
 
 // API configuration
-const API_BASE = 'http://127.0.0.1:3333';
+const API_BASE = 'http://127.0.0.1:3348';
 
 // Agent store
 function createAgentStore() {
@@ -151,13 +151,13 @@ export function connectSSE(): void {
 		agents.fetch().catch(console.error);
 	};
 
-	eventSource.onerror = (error) => {
-		console.error('SSE error:', error);
+	eventSource.onerror = () => {
+		// Don't log errors during page unload (expected behavior)
 		connectionStatus.set('disconnected');
 		eventSource?.close();
 		eventSource = null;
 
-		// Auto-reconnect after 5 seconds
+		// Auto-reconnect after 5 seconds (unless page is unloading)
 		if (reconnectTimeout) {
 			clearTimeout(reconnectTimeout);
 		}

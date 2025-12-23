@@ -14,7 +14,7 @@ export interface AgentLogEvent {
 }
 
 // API configuration
-const API_BASE = 'http://127.0.0.1:3333';
+const API_BASE = 'http://127.0.0.1:3348';
 
 // Agentlog store
 function createAgentlogStore() {
@@ -88,8 +88,8 @@ export function connectAgentlogSSE(): void {
 		agentlogEvents.fetch().catch(console.error);
 	};
 
-	agentlogEventSource.onerror = (error) => {
-		console.error('Agentlog SSE error:', error);
+	agentlogEventSource.onerror = () => {
+		// Don't log errors during page unload (expected behavior)
 		agentlogConnectionStatus.set('disconnected');
 		agentlogEventSource?.close();
 		agentlogEventSource = null;

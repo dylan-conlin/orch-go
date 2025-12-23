@@ -78,6 +78,17 @@
 		// Removes race condition from parallel fetch + SSE connect
 		connectSSE();
 		connectAgentlogSSE();
+
+		// Clean up connections before page unload to avoid Firefox network errors
+		const handleBeforeUnload = () => {
+			disconnectSSE();
+			disconnectAgentlogSSE();
+		};
+		window.addEventListener('beforeunload', handleBeforeUnload);
+
+		return () => {
+			window.removeEventListener('beforeunload', handleBeforeUnload);
+		};
 	});
 
 	onDestroy(() => {

@@ -33,11 +33,8 @@ Endpoints:
   GET /api/agents  - Returns JSON list of active agents from OpenCode/tmux
   GET /api/events  - Proxies the OpenCode SSE stream for real-time updates
 
-The server auto-detects the port from the project's port allocation (via 'orch port allocate').
-Falls back to port 3333 if no allocation exists.
-
 Examples:
-  orch-go serve              # Start server on allocated port (or 3333)
+  orch-go serve              # Start server on port 3348
   orch-go serve --port 8080  # Override with explicit port`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe(servePort)
@@ -45,18 +42,11 @@ Examples:
 }
 
 func init() {
-	serveCmd.Flags().IntVarP(&servePort, "port", "p", 3333, "Port to listen on (auto-detected from port registry if not specified)")
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", 3348, "Port to listen on")
 	rootCmd.AddCommand(serveCmd)
 }
 
 func runServe(portNum int) error {
-	// If no explicit port provided (using default), try to get from port registry
-	if portNum == 3333 {
-		if allocatedPort := getProjectAPIPort(); allocatedPort > 0 {
-			portNum = allocatedPort
-		}
-	}
-
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
