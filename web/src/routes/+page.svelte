@@ -25,42 +25,53 @@
 	} from '$lib/stores/agentlog';
 
 	// Filter and sort state
-	let statusFilter: AgentState | 'all' = $state('all');
-	let skillFilter: string = $state('all');
-	let sortBy: 'newest' | 'oldest' | 'alphabetical' = $state('newest');
-	let activeOnly: boolean = $state(false);
+	let statusFilter: AgentState | 'all' = 'all';
+	let skillFilter: string = 'all';
+	let sortBy: 'newest' | 'oldest' | 'alphabetical' = 'newest';
+	let activeOnly: boolean = false;
 
 	// Get unique skills from agents
-	let uniqueSkills = $derived(
-		[...new Set($agents.map(a => a.skill).filter(Boolean))] as string[]
-	);
+	$: uniqueSkills = [...new Set($agents.map(a => a.skill).filter(Boolean))] as string[];
 
-	// Filtered and sorted agents
-	let filteredAgents = $derived.by(() => {
+	// Filtered and sorted agents using Svelte 4 reactive declarations
+	$: {
+		console.log('[+page] REACTIVE BLOCK: $agents.length =', $agents.length);
+	}
+	
+	$: filteredAgents = (() => {
+		console.log('[+page] filteredAgents recomputing - $agents.length:', $agents.length);
 		let result = $agents.filter(a => a.status !== 'deleted');
+		console.log('[+page] After deleted filter:', result.length);
 
 		// Apply active-only filter
 		if (activeOnly) {
 			result = result.filter(a => a.status === 'active');
+			console.log('[+page] After activeOnly filter:', result.length);
 		}
 
 		// Apply status filter
 		if (statusFilter !== 'all') {
 			result = result.filter(a => a.status === statusFilter);
+			console.log('[+page] After status filter:', result.length);
 		}
 
 		// Apply skill filter
 		if (skillFilter !== 'all') {
 			result = result.filter(a => a.skill === skillFilter);
+			console.log('[+page] After skill filter:', result.length);
 		}
 
 		// Apply sorting
 		result = [...result].sort((a, b) => {
 			switch (sortBy) {
 				case 'newest':
-					return new Date(b.spawned_at).getTime() - new Date(a.spawned_at).getTime();
+					const bTime = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+					const aTime = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+					return bTime - aTime;
 				case 'oldest':
-					return new Date(a.spawned_at).getTime() - new Date(b.spawned_at).getTime();
+					const aTimeOld = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+					const bTimeOld = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+					return aTimeOld - bTimeOld;
 				case 'alphabetical':
 					return a.id.localeCompare(b.id);
 				default:
@@ -68,10 +79,12 @@
 			}
 		});
 
+		console.log('[+page] Final filtered result:', result.length);
 		return result;
-	});
+	})();
 
 	onMount(() => {
+		console.log('[+page] onMount called');
 		// Fetch initial agents
 		agents.fetch().catch((err) => {
 			console.error('Initial fetch failed:', err);
@@ -154,9 +167,7 @@
 		activeOnly = false;
 	}
 
-	let hasActiveFilters = $derived(
-		statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'newest' || activeOnly
-	);
+	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'newest' || activeOnly;
 </script>
 
 <div class="space-y-3">
@@ -251,6 +262,7 @@
 				>
 					<option value="all">All status</option>
 					<option value="active">Active</option>
+					<option value="idle">Idle</option>
 					<option value="completed">Completed</option>
 					<option value="abandoned">Abandoned</option>
 				</select>
@@ -293,7 +305,7 @@
 
 			<!-- Dense Agent Grid -->
 			<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
-				{#each filteredAgents as agent (agent.id)}
+				{#each filteredAgents as agent, idx (idx)}
 					<AgentCard {agent} />
 				{:else}
 					<div class="col-span-full rounded border border-dashed p-6 text-center">
