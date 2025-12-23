@@ -36,15 +36,15 @@ Guidelines:
 
 # Investigation: Model Flexibility Phase Expand Model
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How can we extend model selection support to headless spawn mode (currently only works for inline and tmux modes)?
 
 **Started:** 2025-12-22
 **Updated:** 2025-12-22
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
+**Owner:** feature-impl agent
+**Phase:** Investigating
+**Next Step:** Implement model parameter support in CreateSession API
+**Status:** In Progress
+**Confidence:** High (85%)
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,33 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: CreateSessionRequest missing Model field
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The `CreateSessionRequest` struct at pkg/opencode/client.go:260-263 only has `Title` and `Directory` fields, no `Model` field.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/opencode/client.go:260-263
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Headless spawns cannot specify model because the HTTP API request doesn't include a model parameter, even though the resolved model is available in cfg.Model.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Inline and tmux modes already support model selection
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** BuildSpawnCommand (client.go:128-142) accepts model parameter and adds `--model` flag to opencode CLI command. BuildOpencodeAttachCommand (tmux package) also accepts model parameter.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/opencode/client.go:128-142, pkg/tmux/tmux.go (BuildOpencodeAttachCommand)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The CLI-based spawn modes (inline, tmux) already have working model selection - only headless mode (HTTP API) is missing this capability.
+
+---
+
+### Finding 3: runSpawnHeadless has model available but doesn't use it
+
+**Evidence:** runSpawnHeadless at cmd/orch/main.go:1115 has cfg.Model available (line 1143) and prints it (line 1165), but CreateSession call at line 1119 doesn't pass the model parameter.
+
+**Source:** cmd/orch/main.go:1115-1175
+
+**Significance:** The fix is straightforward - we just need to thread the model parameter through CreateSession API, the data is already available in the spawn config.
 
 ---
 
@@ -89,15 +89,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Model selection inconsistency across spawn modes** - Inline and tmux modes support model selection via CLI flags, but headless mode (HTTP API) lacks this capability due to missing field in CreateSessionRequest struct.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Simple fix with minimal API surface changes** - The model parameter just needs to be added to CreateSessionRequest struct and threaded through CreateSession function - no complex refactoring needed.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Data already available** - All spawn modes already resolve the model via model.Resolve() and store it in cfg.Model, so headless mode just needs to pass it to the API.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+To extend model selection to headless spawn mode, we need to: (1) Add a `Model` field to `CreateSessionRequest` struct, (2) Update `CreateSession` function signature to accept model parameter and include it in the HTTP request, (3) Update `runSpawnHeadless` to pass cfg.Model to CreateSession. This will achieve parity with inline and tmux modes.
 
 ---
 
@@ -142,21 +142,22 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Add Model field to CreateSessionRequest and thread through CreateSession** - Extend the HTTP API request to include model parameter, matching the CLI-based spawn modes.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Minimal API surface change - just one new optional field
+- Matches existing pattern in BuildSpawnCommand (uses optional --model flag)
+- No breaking changes - model field is optional, backward compatible
+- Achieves parity across all spawn modes (inline, tmux, headless)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- OpenCode server must support model parameter in POST /session (assumption based on CLI support)
+- No validation that model string is valid - relies on OpenCode server validation
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Add `Model string` field to CreateSessionRequest struct - enables API request
+2. Update CreateSession function to accept model parameter - threads it through
+3. Update runSpawnHeadless to pass cfg.Model to CreateSession - connects spawn config to API
 
 ### Alternative Approaches Considered
 
@@ -177,24 +178,25 @@ Guidelines:
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Add Model field to CreateSessionRequest struct (pkg/opencode/client.go:260-263)
+- Update CreateSession function signature to accept model parameter
+- Update runSpawnHeadless to pass cfg.Model to CreateSession
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Model field should be optional (omitempty tag) for backward compatibility
+- ⚠️ Empty model string should not be sent in request (OpenCode might error or use unexpected default)
+- ⚠️ Need to verify OpenCode server actually accepts model parameter in POST /session
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Whether OpenCode server supports model parameter in HTTP API (assumption based on CLI support)
+- Default model behavior when model parameter is empty vs omitted
+- Whether model validation happens server-side (likely yes, but untested)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Headless spawn with --model flag sets correct model in OpenCode session
+- ✅ Headless spawn without --model flag uses default (opus) like other modes
+- ✅ Model parameter appears in logged events for headless spawns
+- ✅ No regressions in inline or tmux spawn modes
 
 ---
 
