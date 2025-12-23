@@ -223,3 +223,56 @@ func TestServersStatus(t *testing.T) {
 		t.Error("expected status output")
 	}
 }
+
+func TestServersListReadsFromProjectConfig(t *testing.T) {
+	// Create temp directory for a project with config
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "myproject")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Create .orch/config.yaml
+	orchDir := filepath.Join(projectDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	configContent := `servers:
+  web: 5173
+  api: 3000
+`
+	configPath := filepath.Join(orchDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	// Read servers from project config
+	servers, err := port.ListProjectServers(projectDir)
+	if err != nil {
+		t.Fatalf("ListProjectServers failed: %v", err)
+	}
+
+	if len(servers) != 2 {
+		t.Errorf("Expected 2 servers, got %d", len(servers))
+	}
+
+	// Verify ports match config
+	foundWeb := false
+	foundAPI := false
+	for _, srv := range servers {
+		if srv.Service == "web" && srv.Port == 5173 {
+			foundWeb = true
+		}
+		if srv.Service == "api" && srv.Port == 3000 {
+			foundAPI = true
+		}
+	}
+
+	if !foundWeb {
+		t.Error("web:5173 not found")
+	}
+	if !foundAPI {
+		t.Error("api:3000 not found")
+	}
+}
