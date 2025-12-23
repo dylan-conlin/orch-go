@@ -40,6 +40,35 @@
 		}
 		return `${minutes}m`;
 	}
+
+	function getActivityIcon(type?: string): string {
+		switch (type) {
+			case 'text':
+				return '💬';
+			case 'tool':
+			case 'tool-invocation':
+				return '🔧';
+			case 'reasoning':
+				return '🤔';
+			case 'step-start':
+				return '▶️';
+			case 'step-finish':
+				return '✓';
+			default:
+				return '📝';
+		}
+	}
+
+	function formatActivityAge(timestamp?: number): string {
+		if (!timestamp) return '';
+		const seconds = Math.floor((Date.now() - timestamp) / 1000);
+		if (seconds < 5) return 'now';
+		if (seconds < 60) return `${seconds}s ago`;
+		const minutes = Math.floor(seconds / 60);
+		if (minutes < 60) return `${minutes}m ago`;
+		const hours = Math.floor(minutes / 60);
+		return `${hours}h ago`;
+	}
 </script>
 
 <div class="group relative rounded border bg-card p-2 transition-all hover:border-primary/50 hover:shadow-sm">
@@ -77,6 +106,23 @@
 			</span>
 		{/if}
 	</div>
+
+	<!-- Current Activity (for active agents) -->
+	{#if agent.status === 'active' && agent.current_activity}
+		<div class="mt-1.5 border-t border-border/50 pt-1.5">
+			<div class="flex items-start gap-1">
+				<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
+				<div class="flex-1 min-w-0">
+					<p class="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
+						{agent.current_activity.text || 'Working...'}
+					</p>
+					<span class="text-[9px] text-muted-foreground/70">
+						{formatActivityAge(agent.current_activity.timestamp)}
+					</span>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Compact Synthesis for completed agents -->
 	{#if agent.status === 'completed' && agent.synthesis}

@@ -28,6 +28,7 @@
 	let statusFilter: AgentState | 'all' = $state('all');
 	let skillFilter: string = $state('all');
 	let sortBy: 'newest' | 'oldest' | 'alphabetical' = $state('newest');
+	let activeOnly: boolean = $state(false);
 
 	// Get unique skills from agents
 	let uniqueSkills = $derived(
@@ -37,6 +38,11 @@
 	// Filtered and sorted agents
 	let filteredAgents = $derived.by(() => {
 		let result = $agents.filter(a => a.status !== 'deleted');
+
+		// Apply active-only filter
+		if (activeOnly) {
+			result = result.filter(a => a.status === 'active');
+		}
 
 		// Apply status filter
 		if (statusFilter !== 'all') {
@@ -145,10 +151,11 @@
 		statusFilter = 'all';
 		skillFilter = 'all';
 		sortBy = 'newest';
+		activeOnly = false;
 	}
 
 	let hasActiveFilters = $derived(
-		statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'newest'
+		statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'newest' || activeOnly
 	);
 </script>
 
@@ -223,11 +230,24 @@
 		<div class="p-2">
 			<!-- Compact Filter Bar -->
 			<div class="mb-2 flex flex-wrap items-center gap-2 text-xs" data-testid="filter-bar">
+				<label class="flex items-center gap-1 cursor-pointer">
+					<input
+						type="checkbox"
+						bind:checked={activeOnly}
+						class="h-3 w-3 rounded border-input"
+						data-testid="active-only-toggle"
+					/>
+					<span class="text-xs">Active Only</span>
+				</label>
+
+				<div class="h-4 w-px bg-border"></div>
+
 				<select
 					id="status-filter"
 					bind:value={statusFilter}
 					class="h-6 rounded border border-input bg-background px-1.5 text-xs"
 					data-testid="status-filter"
+					disabled={activeOnly}
 				>
 					<option value="all">All status</option>
 					<option value="active">Active</option>

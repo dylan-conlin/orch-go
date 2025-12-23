@@ -29,6 +29,12 @@ export interface Agent {
 	primary_artifact?: string;
 	is_interactive?: boolean;
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
+	// Real-time activity tracking
+	current_activity?: {
+		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';
+		text?: string;
+		timestamp: number;
+	};
 }
 
 // SSE Event types from OpenCode
@@ -226,6 +232,32 @@ function handleSSEEvent(data: any) {
 	};
 	sseEvents.addEvent(sseEvent);
 
+	// Handle message.part events - update agent activity in real-time
+	if (data.type === 'message.part' && data.properties) {
+		const sessionID = data.properties.sessionID;
+		const part = data.properties.part;
+		
+		if (sessionID && part && part.type) {
+			// Update agent activity based on message part
+			agents.update((agentList) => {
+				return agentList.map((agent) => {
+					// Match by session_id
+					if (agent.session_id === sessionID) {
+						return {
+							...agent,
+							current_activity: {
+								type: part.type,
+								text: part.text || extractActivityText(part),
+								timestamp: Date.now()
+							}
+						};
+					}
+					return agent;
+				});
+			});
+		}
+	}
+
 	// Handle session status changes - refresh agent list
 	const refreshEvents = [
 		'session.status',
@@ -237,6 +269,33 @@ function handleSSEEvent(data: any) {
 	if (refreshEvents.includes(data.type)) {
 		agents.fetch().catch(console.error);
 	}
+}
+
+// Extract displayable text from message part
+function extractActivityText(part: any): string {
+	// For tool invocations, show tool name and function
+	if (part.type === 'tool-invocation' || part.type === 'tool') {
+		if (part.tool) {
+			return `Using ${part.tool}${part.function ? `.${part.function}` : ''}`;
+		}
+		return 'Using tool';
+	}
+	
+	// For step-start/finish, show step info
+	if (part.type === 'step-start') {
+		return 'Starting step...';
+	}
+	if (part.type === 'step-finish') {
+		return 'Completed step';
+	}
+	
+	// For reasoning, show preview
+	if (part.type === 'reasoning' && part.text) {
+		return part.text.substring(0, 100);
+	}
+	
+	// Default: show part type
+	return part.type.replace(/-/g, ' ');
 }
 
 export function disconnectSSE(): void {

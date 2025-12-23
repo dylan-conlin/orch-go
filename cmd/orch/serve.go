@@ -113,6 +113,8 @@ type AgentAPIResponse struct {
 	Status     string             `json:"status"` // "active", "completed", etc.
 	Runtime    string             `json:"runtime,omitempty"`
 	Window     string             `json:"window,omitempty"`
+	SpawnedAt  string             `json:"spawned_at,omitempty"` // ISO 8601 timestamp
+	UpdatedAt  string             `json:"updated_at,omitempty"` // ISO 8601 timestamp
 	Synthesis  *SynthesisResponse `json:"synthesis,omitempty"`
 }
 
@@ -152,6 +154,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Add active sessions from OpenCode
 	for _, s := range sessions {
 		createdAt := time.Unix(s.Time.Created/1000, 0)
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		runtime := now.Sub(createdAt)
 
 		agent := AgentAPIResponse{
@@ -159,6 +162,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			SessionID: s.ID,
 			Status:    "active",
 			Runtime:   formatDuration(runtime),
+			SpawnedAt: createdAt.Format(time.RFC3339),
+			UpdatedAt: updatedAt.Format(time.RFC3339),
 		}
 
 		// Derive beadsID and skill from session title
