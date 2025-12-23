@@ -221,6 +221,9 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 	var agents []ActiveAgent
 	projectName := filepath.Base(projectDir)
 
+	// Get in-progress beads IDs for filtering
+	inProgressBeads := getInProgressBeadsIDs()
+
 	// Collect from tmux windows
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
@@ -233,6 +236,11 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 
 			beadsID := extractBeadsIDFromWindowName(w.Name)
 			if beadsID == "" {
+				continue
+			}
+
+			// Only include agents that are actually in_progress in beads
+			if !inProgressBeads[beadsID] {
 				continue
 			}
 
@@ -273,6 +281,11 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 			continue
 		}
 
+		// Only include if in_progress in beads
+		if !inProgressBeads[beadsID] {
+			continue
+		}
+
 		// Only include recent sessions (last 30 min)
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		if time.Since(updatedAt) > 30*time.Minute {
@@ -288,6 +301,38 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 	}
 
 	return agents
+}
+
+// getInProgressBeadsIDs returns a set of beads IDs that are currently in_progress.
+func getInProgressBeadsIDs() map[string]bool {
+	result := make(map[string]bool)
+
+	cmd := exec.Command("bd", "list", "--status", "in_progress")
+	output, err := cmd.Output()
+	if err != nil {
+		return result
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Parse lines like "orch-go-hey6 [P2] [task] in_progress - description"
+		// The beads ID is the first field
+		parts := strings.Fields(line)
+		if len(parts) >= 1 {
+			beadsID := parts[0]
+			// Validate it looks like a beads ID (contains hyphen and alphanumeric)
+			if strings.Contains(beadsID, "-") && len(beadsID) > 3 {
+				result[beadsID] = true
+			}
+		}
+	}
+
+	return result
 }
 
 func gatherPendingIssues() []PendingIssue {
@@ -308,19 +353,34 @@ func gatherPendingIssues() []PendingIssue {
 			continue
 		}
 
-		// Parse lines like "1. [P0] issue-id: title..."
+		// Parse lines like "1. [P2] [feature] orch-go-xwh: Iterate on Swarm Dashboard UI/UX"
+		// Format: {num}. [{priority}] [{type}] {beads-id}: {title}
 		if len(line) >= 3 && line[0] >= '0' && line[0] <= '9' && line[1] == '.' {
 			parts := strings.Fields(line)
-			if len(parts) >= 3 {
+			if len(parts) >= 4 {
+				// parts[0] is "1.", parts[1] is "[P2]", parts[2] is "[feature]", parts[3] is "orch-go-xwh:"
 				priority := strings.Trim(parts[1], "[]")
-				issueID := strings.TrimSuffix(parts[2], ":")
-				title := strings.Join(parts[3:], " ")
 
-				issues = append(issues, PendingIssue{
-					ID:       issueID,
-					Title:    title,
-					Priority: priority,
-				})
+				// Find the beads ID - it's the field that ends with ":"
+				var beadsID, title string
+				for i := 2; i < len(parts); i++ {
+					if strings.HasSuffix(parts[i], ":") {
+						beadsID = strings.TrimSuffix(parts[i], ":")
+						// Title is everything after the beads ID
+						if i+1 < len(parts) {
+							title = strings.Join(parts[i+1:], " ")
+						}
+						break
+					}
+				}
+
+				if beadsID != "" {
+					issues = append(issues, PendingIssue{
+						ID:       beadsID,
+						Title:    title,
+						Priority: priority,
+					})
+				}
 			}
 		}
 	}
@@ -339,6 +399,7 @@ func gatherRecentWork() []RecentWorkItem {
 	}
 
 	// Parse closed issues (limited to most recent 5)
+	// Format: "orch-go-66n [P0] [task] closed [triage:ready] - Implement Synthesis Protocol..."
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	count := 0
 	for _, line := range lines {
@@ -350,16 +411,29 @@ func gatherRecentWork() []RecentWorkItem {
 			continue
 		}
 
-		// Extract issue info
-		if strings.Contains(line, ":") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				work = append(work, RecentWorkItem{
-					Type:        "completed",
-					Description: strings.TrimSpace(parts[1]),
-				})
-				count++
+		// Find the " - " separator that precedes the title
+		if idx := strings.Index(line, " - "); idx > 0 {
+			// Extract beads ID (first field)
+			parts := strings.Fields(line[:idx])
+			beadsID := ""
+			if len(parts) >= 1 {
+				beadsID = parts[0]
 			}
+
+			// Title is everything after " - "
+			title := line[idx+3:]
+
+			// Construct a more useful description
+			description := title
+			if beadsID != "" {
+				description = fmt.Sprintf("[%s] %s", beadsID, title)
+			}
+
+			work = append(work, RecentWorkItem{
+				Type:        "completed",
+				Description: description,
+			})
+			count++
 		}
 	}
 

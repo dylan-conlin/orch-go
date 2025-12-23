@@ -354,3 +354,160 @@ func TestLocalStateInfoStructure(t *testing.T) {
 		t.Errorf("Expected branch 'feature/test', got %q", state.Branch)
 	}
 }
+
+// TestParseInProgressBeadsOutput verifies parsing of bd list --status in_progress output.
+func TestParseInProgressBeadsOutput(t *testing.T) {
+	// Sample output from bd list --status in_progress
+	sampleOutput := `orch-go-3dem [P1] [feature] in_progress - [orch-go] Redesign orch status output to be actionable
+kb-cli-e9z [P2] [feature] in_progress - [kb-cli] kb context should detect stale investigations with closed linked issues
+orch-go-hey6 [P2] [task] in_progress - orch handoff generates stale/incorrect data
+orch-go-ipq9 [P2] [task] in_progress - orch spawn: Auto-init if .orch directories missing`
+
+	// Parse the output (simulating what getInProgressBeadsIDs does)
+	result := make(map[string]bool)
+	lines := strings.Split(strings.TrimSpace(sampleOutput), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 1 {
+			beadsID := parts[0]
+			if strings.Contains(beadsID, "-") && len(beadsID) > 3 {
+				result[beadsID] = true
+			}
+		}
+	}
+
+	// Verify expected IDs are present
+	expectedIDs := []string{"orch-go-3dem", "kb-cli-e9z", "orch-go-hey6", "orch-go-ipq9"}
+	for _, id := range expectedIDs {
+		if !result[id] {
+			t.Errorf("Expected beads ID %q to be in result", id)
+		}
+	}
+
+	// Verify no false positives
+	unexpectedIDs := []string{"orch-go-66n", "P1", "feature", "in_progress"}
+	for _, id := range unexpectedIDs {
+		if result[id] {
+			t.Errorf("Did not expect %q to be in result", id)
+		}
+	}
+}
+
+// TestParseBdReadyOutput verifies parsing of bd ready output format.
+func TestParseBdReadyOutput(t *testing.T) {
+	// Sample output from bd ready
+	sampleOutput := `📋 Ready work (10 issues with no blockers):
+
+1. [P2] [feature] orch-go-xwh: Iterate on Swarm Dashboard UI/UX
+2. [P2] [task] orch-go-36b: [orch-go] design-session: Dashboard needs better agent activity visibilit...
+3. [P2] [task] orch-go-vut1: [feature] Model flexibility - phase 2`
+
+	var issues []PendingIssue
+	lines := strings.Split(strings.TrimSpace(sampleOutput), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "📋") || strings.HasPrefix(line, "No ") {
+			continue
+		}
+		if len(line) >= 3 && line[0] >= '0' && line[0] <= '9' && line[1] == '.' {
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				priority := strings.Trim(parts[1], "[]")
+				var beadsID, title string
+				for i := 2; i < len(parts); i++ {
+					if strings.HasSuffix(parts[i], ":") {
+						beadsID = strings.TrimSuffix(parts[i], ":")
+						if i+1 < len(parts) {
+							title = strings.Join(parts[i+1:], " ")
+						}
+						break
+					}
+				}
+				if beadsID != "" {
+					issues = append(issues, PendingIssue{
+						ID:       beadsID,
+						Title:    title,
+						Priority: priority,
+					})
+				}
+			}
+		}
+	}
+
+	// Verify parsed issues
+	if len(issues) != 3 {
+		t.Fatalf("Expected 3 issues, got %d", len(issues))
+	}
+
+	// Check first issue
+	if issues[0].ID != "orch-go-xwh" {
+		t.Errorf("Expected first issue ID 'orch-go-xwh', got %q", issues[0].ID)
+	}
+	if issues[0].Priority != "P2" {
+		t.Errorf("Expected first issue priority 'P2', got %q", issues[0].Priority)
+	}
+	if issues[0].Title != "Iterate on Swarm Dashboard UI/UX" {
+		t.Errorf("Expected first issue title 'Iterate on Swarm Dashboard UI/UX', got %q", issues[0].Title)
+	}
+
+	// Check second issue (has colons in title)
+	if issues[1].ID != "orch-go-36b" {
+		t.Errorf("Expected second issue ID 'orch-go-36b', got %q", issues[1].ID)
+	}
+}
+
+// TestParseBdClosedOutput verifies parsing of bd list --status closed output format.
+func TestParseBdClosedOutput(t *testing.T) {
+	// Sample output from bd list --status closed
+	sampleOutput := `orch-go-66n [P0] [task] closed [triage:ready] - Implement Synthesis Protocol (D.E.K.N. Schema & Verification Gate)
+orch-go-o7x [P0] [task] closed [triage:ready] - Full HTTP API integration for orch send (Native Q&A)
+orch-go-5b9 [P0] [bug] closed - Fix: tmux spawn should not use --format json`
+
+	var work []RecentWorkItem
+	lines := strings.Split(strings.TrimSpace(sampleOutput), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if idx := strings.Index(line, " - "); idx > 0 {
+			parts := strings.Fields(line[:idx])
+			beadsID := ""
+			if len(parts) >= 1 {
+				beadsID = parts[0]
+			}
+			title := line[idx+3:]
+			description := title
+			if beadsID != "" {
+				description = "[" + beadsID + "] " + title
+			}
+			work = append(work, RecentWorkItem{
+				Type:        "completed",
+				Description: description,
+			})
+		}
+	}
+
+	// Verify parsed work items
+	if len(work) != 3 {
+		t.Fatalf("Expected 3 work items, got %d", len(work))
+	}
+
+	// Check first item
+	expectedDesc := "[orch-go-66n] Implement Synthesis Protocol (D.E.K.N. Schema & Verification Gate)"
+	if work[0].Description != expectedDesc {
+		t.Errorf("Expected description %q, got %q", expectedDesc, work[0].Description)
+	}
+
+	// Check that we're not including the brackets or status in the description
+	if strings.Contains(work[0].Description, "[P0]") {
+		t.Error("Description should not contain priority")
+	}
+	if strings.Contains(work[0].Description, "closed") {
+		t.Error("Description should not contain status")
+	}
+}
