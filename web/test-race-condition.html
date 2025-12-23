@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Race Condition Test</title>
+    <script>
+        // Simulate the race condition
+        async function testOriginalApproach() {
+            console.log('=== ORIGINAL APPROACH (with race) ===');
+            const start = Date.now();
+            
+            // Parallel fetch + SSE connect (original)
+            fetch('http://127.0.0.1:3333/api/agents')
+                .then(() => console.log(`[${Date.now() - start}ms] Initial fetch completed`))
+                .catch(err => console.error(`[${Date.now() - start}ms] Initial fetch failed:`, err));
+            
+            // Simulate SSE connection triggering another fetch
+            setTimeout(() => {
+                fetch('http://127.0.0.1:3333/api/agents')
+                    .then(() => console.log(`[${Date.now() - start}ms] SSE onopen fetch completed`))
+                    .catch(err => console.error(`[${Date.now() - start}ms] SSE onopen fetch failed:`, err));
+            }, 100);
+        }
+        
+        async function testFixedApproach() {
+            console.log('=== FIXED APPROACH (no race) ===');
+            const start = Date.now();
+            
+            // Only SSE connection fetch (fixed)
+            setTimeout(() => {
+                fetch('http://127.0.0.1:3333/api/agents')
+                    .then(() => console.log(`[${Date.now() - start}ms] SSE onopen fetch completed`))
+                    .catch(err => console.error(`[${Date.now() - start}ms] SSE onopen fetch failed:`, err));
+            }, 100);
+        }
+        
+        async function runTests() {
+            await testOriginalApproach();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            await testFixedApproach();
+        }
+    </script>
+</head>
+<body>
+    <h1>Race Condition Test</h1>
+    <button onclick="runTests()">Run Tests</button>
+    <p>Open DevTools console to see results</p>
+</body>
+</html>

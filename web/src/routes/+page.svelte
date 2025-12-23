@@ -74,17 +74,8 @@
 	})();
 
 	onMount(() => {
-		// Fetch initial agents
-		agents.fetch().catch((err) => {
-			console.error('Initial fetch failed:', err);
-		});
-
-		// Fetch initial agentlog
-		agentlogEvents.fetch().catch((err) => {
-			console.error('Initial agentlog fetch failed:', err);
-		});
-
-		// Connect to SSE for real-time updates
+		// Connect to SSE - this will trigger initial fetch when connection opens
+		// Removes race condition from parallel fetch + SSE connect
 		connectSSE();
 		connectAgentlogSSE();
 	});
