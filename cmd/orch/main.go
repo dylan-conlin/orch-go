@@ -825,7 +825,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline, false, true, false) // tmux=true for work command (interactive monitoring)
+	return runSpawnWithSkill(serverURL, skillName, task, inline, true, false, false) // headless=true for work command (daemon uses this)
 }
 
 // getMaxAgents returns the effective maximum agents limit.
