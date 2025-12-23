@@ -87,11 +87,16 @@ type Daemon struct {
 	// Config holds the daemon configuration.
 	Config Config
 
+	// Pool is the worker pool for concurrency control.
+	// If set, it is used instead of activeCountFunc.
+	Pool *WorkerPool
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
 	spawnFunc func(beadsID string) error
 	// activeCountFunc is used for testing - allows mocking active agent count
+	// Deprecated: Use Pool for concurrency control instead.
 	activeCountFunc func() int
 }
 
@@ -102,8 +107,25 @@ func New() *Daemon {
 
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
+	d := &Daemon{
+		Config:          config,
+		listIssuesFunc:  ListOpenIssues,
+		spawnFunc:       SpawnWork,
+		activeCountFunc: DefaultActiveCount,
+	}
+	// Initialize worker pool if MaxAgents is set
+	if config.MaxAgents > 0 {
+		d.Pool = NewWorkerPool(config.MaxAgents)
+	}
+	return d
+}
+
+// NewWithPool creates a new Daemon instance with an explicit worker pool.
+// This is useful for sharing a pool across daemon instances or for testing.
+func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	return &Daemon{
 		Config:          config,
+		Pool:            pool,
 		listIssuesFunc:  ListOpenIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
@@ -147,6 +169,11 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 // AvailableSlots returns the number of agent slots available for spawning.
 // Returns a high number if no limit is set.
 func (d *Daemon) AvailableSlots() int {
+	// Use pool if available
+	if d.Pool != nil {
+		return d.Pool.Available()
+	}
+	// Fallback to legacy activeCountFunc
 	if d.Config.MaxAgents <= 0 {
 		return 100 // No limit
 	}
@@ -160,10 +187,33 @@ func (d *Daemon) AvailableSlots() int {
 
 // AtCapacity returns true if the daemon cannot spawn more agents.
 func (d *Daemon) AtCapacity() bool {
+	// Use pool if available
+	if d.Pool != nil {
+		return d.Pool.AtCapacity()
+	}
+	// Fallback to legacy activeCountFunc
 	if d.Config.MaxAgents <= 0 {
 		return false // No limit
 	}
 	return d.activeCountFunc() >= d.Config.MaxAgents
+}
+
+// ActiveCount returns the number of currently active agents.
+func (d *Daemon) ActiveCount() int {
+	if d.Pool != nil {
+		return d.Pool.Active()
+	}
+	return d.activeCountFunc()
+}
+
+// PoolStatus returns the current worker pool status for monitoring.
+// Returns nil if no pool is configured.
+func (d *Daemon) PoolStatus() *PoolStatus {
+	if d.Pool == nil {
+		return nil
+	}
+	status := d.Pool.Status()
+	return &status
 }
 
 // Preview shows what would be processed next without actually processing.
@@ -300,6 +350,9 @@ func DefaultActiveCount() int {
 }
 
 // Once processes a single issue from the queue and returns.
+// If a worker pool is configured, it acquires a slot before spawning.
+// Note: The slot is NOT automatically released when the agent completes.
+// Use OnceWithSlot() for explicit slot management, or ReleaseSlot() manually.
 func (d *Daemon) Once() (*OnceResult, error) {
 	issue, err := d.NextIssue()
 	if err != nil {
@@ -318,8 +371,27 @@ func (d *Daemon) Once() (*OnceResult, error) {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
+	// If pool is configured, acquire a slot first
+	var slot *Slot
+	if d.Pool != nil {
+		slot = d.Pool.TryAcquire()
+		if slot == nil {
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Message:   "At capacity - no slots available",
+			}, nil
+		}
+		slot.BeadsID = issue.ID
+	}
+
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
+		// Release slot on spawn failure
+		if d.Pool != nil && slot != nil {
+			d.Pool.Release(slot)
+		}
 		return &OnceResult{
 			Processed: false,
 			Issue:     issue,
@@ -335,6 +407,73 @@ func (d *Daemon) Once() (*OnceResult, error) {
 		Skill:     skill,
 		Message:   fmt.Sprintf("Spawned work on %s", issue.ID),
 	}, nil
+}
+
+// OnceWithSlot processes a single issue and returns the acquired slot.
+// The caller is responsible for releasing the slot when the agent completes.
+// Returns (result, slot, error). Slot will be nil if no pool is configured or if spawn failed.
+func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
+	issue, err := d.NextIssue()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if issue == nil {
+		return &OnceResult{
+			Processed: false,
+			Message:   "No spawnable issues in queue",
+		}, nil, nil
+	}
+
+	skill, err := InferSkill(issue.IssueType)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to infer skill: %w", err)
+	}
+
+	// If pool is configured, acquire a slot first
+	var slot *Slot
+	if d.Pool != nil {
+		slot = d.Pool.TryAcquire()
+		if slot == nil {
+			return &OnceResult{
+				Processed: false,
+				Issue:     issue,
+				Skill:     skill,
+				Message:   "At capacity - no slots available",
+			}, nil, nil
+		}
+		slot.BeadsID = issue.ID
+	}
+
+	// Spawn the work
+	if err := d.spawnFunc(issue.ID); err != nil {
+		// Release slot on spawn failure
+		if d.Pool != nil && slot != nil {
+			d.Pool.Release(slot)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Error:     err,
+			Message:   fmt.Sprintf("Failed to spawn: %v", err),
+		}, nil, nil
+	}
+
+	return &OnceResult{
+		Processed: true,
+		Issue:     issue,
+		Skill:     skill,
+		Message:   fmt.Sprintf("Spawned work on %s", issue.ID),
+	}, slot, nil
+}
+
+// ReleaseSlot releases a previously acquired slot.
+// Safe to call with nil slot.
+func (d *Daemon) ReleaseSlot(slot *Slot) {
+	if d.Pool != nil && slot != nil {
+		d.Pool.Release(slot)
+	}
 }
 
 // Run processes issues in a loop until the queue is empty or maxIterations is reached.

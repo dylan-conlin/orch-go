@@ -2,6 +2,7 @@
 package daemon
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -516,4 +517,285 @@ func TestNewWithConfig(t *testing.T) {
 	if d.Config.Label != "custom:label" {
 		t.Errorf("NewWithConfig() Label = %q, want 'custom:label'", d.Config.Label)
 	}
+}
+
+// Tests for WorkerPool integration
+
+func TestNewWithConfig_CreatesPool(t *testing.T) {
+	config := Config{
+		MaxAgents: 3,
+	}
+	d := NewWithConfig(config)
+
+	if d.Pool == nil {
+		t.Fatal("NewWithConfig() should create pool when MaxAgents > 0")
+	}
+	if d.Pool.MaxWorkers() != 3 {
+		t.Errorf("Pool.MaxWorkers() = %d, want 3", d.Pool.MaxWorkers())
+	}
+}
+
+func TestNewWithConfig_NoPoolWhenNoLimit(t *testing.T) {
+	config := Config{
+		MaxAgents: 0, // No limit
+	}
+	d := NewWithConfig(config)
+
+	if d.Pool != nil {
+		t.Error("NewWithConfig() should not create pool when MaxAgents = 0")
+	}
+}
+
+func TestNewWithPool(t *testing.T) {
+	pool := NewWorkerPool(5)
+	config := Config{
+		MaxAgents: 10, // This should be ignored when pool is provided
+	}
+	d := NewWithPool(config, pool)
+
+	if d.Pool != pool {
+		t.Error("NewWithPool() should use provided pool")
+	}
+	// The pool's max should be 5, not 10
+	if d.Pool.MaxWorkers() != 5 {
+		t.Errorf("Pool.MaxWorkers() = %d, want 5 (from provided pool)", d.Pool.MaxWorkers())
+	}
+}
+
+func TestDaemon_AtCapacity_WithPool(t *testing.T) {
+	pool := NewWorkerPool(2)
+	d := NewWithPool(Config{}, pool)
+
+	if d.AtCapacity() {
+		t.Error("AtCapacity() should be false when pool is empty")
+	}
+
+	// Acquire slots
+	slot1 := pool.TryAcquire()
+	slot2 := pool.TryAcquire()
+
+	if !d.AtCapacity() {
+		t.Error("AtCapacity() should be true when pool is full")
+	}
+
+	pool.Release(slot1)
+	if d.AtCapacity() {
+		t.Error("AtCapacity() should be false after release")
+	}
+	pool.Release(slot2)
+}
+
+func TestDaemon_AvailableSlots_WithPool(t *testing.T) {
+	pool := NewWorkerPool(3)
+	d := NewWithPool(Config{}, pool)
+
+	if d.AvailableSlots() != 3 {
+		t.Errorf("AvailableSlots() = %d, want 3", d.AvailableSlots())
+	}
+
+	slot := pool.TryAcquire()
+	if d.AvailableSlots() != 2 {
+		t.Errorf("AvailableSlots() = %d, want 2", d.AvailableSlots())
+	}
+	pool.Release(slot)
+}
+
+func TestDaemon_ActiveCount_WithPool(t *testing.T) {
+	pool := NewWorkerPool(3)
+	d := NewWithPool(Config{}, pool)
+
+	if d.ActiveCount() != 0 {
+		t.Errorf("ActiveCount() = %d, want 0", d.ActiveCount())
+	}
+
+	slot := pool.TryAcquire()
+	if d.ActiveCount() != 1 {
+		t.Errorf("ActiveCount() = %d, want 1", d.ActiveCount())
+	}
+	pool.Release(slot)
+}
+
+func TestDaemon_PoolStatus(t *testing.T) {
+	pool := NewWorkerPool(3)
+	d := NewWithPool(Config{}, pool)
+
+	status := d.PoolStatus()
+	if status == nil {
+		t.Fatal("PoolStatus() should not be nil when pool is configured")
+	}
+	if status.MaxWorkers != 3 {
+		t.Errorf("PoolStatus().MaxWorkers = %d, want 3", status.MaxWorkers)
+	}
+}
+
+func TestDaemon_PoolStatus_NilPool(t *testing.T) {
+	d := &Daemon{} // No pool
+
+	status := d.PoolStatus()
+	if status != nil {
+		t.Error("PoolStatus() should be nil when no pool is configured")
+	}
+}
+
+func TestDaemon_Once_WithPool_AcquiresSlot(t *testing.T) {
+	pool := NewWorkerPool(2)
+	spawnCount := 0
+	d := &Daemon{
+		Pool: pool,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCount++
+			return nil
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error = %v", err)
+	}
+	if !result.Processed {
+		t.Error("Once() expected Processed=true")
+	}
+
+	// Pool should have one active slot
+	if pool.Active() != 1 {
+		t.Errorf("Pool.Active() = %d, want 1", pool.Active())
+	}
+}
+
+func TestDaemon_Once_WithPool_AtCapacity(t *testing.T) {
+	pool := NewWorkerPool(1)
+	// Fill the pool
+	pool.TryAcquire()
+
+	d := &Daemon{
+		Pool: pool,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			t.Error("spawnFunc should not be called when at capacity")
+			return nil
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error = %v", err)
+	}
+	if result.Processed {
+		t.Error("Once() should not process when at capacity")
+	}
+	if result.Message != "At capacity - no slots available" {
+		t.Errorf("Once() message = %q, want 'At capacity - no slots available'", result.Message)
+	}
+}
+
+func TestDaemon_Once_WithPool_ReleasesSlotOnError(t *testing.T) {
+	pool := NewWorkerPool(2)
+	d := &Daemon{
+		Pool: pool,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			return fmt.Errorf("spawn failed")
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error = %v", err)
+	}
+	if result.Processed {
+		t.Error("Once() expected Processed=false on spawn error")
+	}
+
+	// Pool should have released the slot on error
+	if pool.Active() != 0 {
+		t.Errorf("Pool.Active() = %d, want 0 (slot should be released on error)", pool.Active())
+	}
+}
+
+func TestDaemon_OnceWithSlot_ReturnsSlot(t *testing.T) {
+	pool := NewWorkerPool(2)
+	d := &Daemon{
+		Pool: pool,
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			return nil
+		},
+	}
+
+	result, slot, err := d.OnceWithSlot()
+	if err != nil {
+		t.Fatalf("OnceWithSlot() error = %v", err)
+	}
+	if !result.Processed {
+		t.Error("OnceWithSlot() expected Processed=true")
+	}
+	if slot == nil {
+		t.Error("OnceWithSlot() should return slot")
+	}
+	if slot.BeadsID != "proj-1" {
+		t.Errorf("Slot.BeadsID = %q, want 'proj-1'", slot.BeadsID)
+	}
+
+	// Release the slot
+	d.ReleaseSlot(slot)
+	if pool.Active() != 0 {
+		t.Errorf("Pool.Active() = %d after release, want 0", pool.Active())
+	}
+}
+
+func TestDaemon_OnceWithSlot_NoPool(t *testing.T) {
+	d := &Daemon{
+		Pool: nil, // No pool
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			return nil
+		},
+	}
+
+	result, slot, err := d.OnceWithSlot()
+	if err != nil {
+		t.Fatalf("OnceWithSlot() error = %v", err)
+	}
+	if !result.Processed {
+		t.Error("OnceWithSlot() expected Processed=true")
+	}
+	if slot != nil {
+		t.Error("OnceWithSlot() should return nil slot when no pool configured")
+	}
+}
+
+func TestDaemon_ReleaseSlot_Nil(t *testing.T) {
+	pool := NewWorkerPool(2)
+	d := NewWithPool(Config{}, pool)
+
+	// Should not panic
+	d.ReleaseSlot(nil)
+}
+
+func TestDaemon_ReleaseSlot_NoPool(t *testing.T) {
+	d := &Daemon{Pool: nil}
+
+	// Should not panic
+	d.ReleaseSlot(&Slot{ID: 1})
 }

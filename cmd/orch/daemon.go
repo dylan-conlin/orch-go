@@ -35,8 +35,9 @@ var daemonRunCmd = &cobra.Command{
 	Short: "Process issues continuously with polling",
 	Long: `Process beads issues in priority order, spawning agents for each.
 
-The daemon polls for ready issues at the specified interval, respecting
-the max-agents limit and only processing issues with the required label.
+The daemon uses a worker pool pattern to control concurrency. It polls for
+ready issues at the specified interval, respecting the concurrency limit
+and only processing issues with the required label.
 
 Runs continuously until interrupted with Ctrl+C. Use --poll-interval=0
 to run once and exit (legacy behavior).
@@ -45,7 +46,8 @@ Examples:
   orch-go daemon run                        # Continuous polling (default 60s)
   orch-go daemon run --poll-interval 30     # Poll every 30 seconds
   orch-go daemon run --poll-interval 0      # Run once and exit
-  orch-go daemon run --max-agents 5         # Allow up to 5 concurrent agents
+  orch-go daemon run --concurrency 5        # Allow up to 5 concurrent agents
+  orch-go daemon run --max-agents 5         # Same as --concurrency (alias)
   orch-go daemon run --label triage:ready   # Only process issues with this label
   orch-go daemon run --dry-run              # Preview without spawning`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -125,10 +127,13 @@ func init() {
 
 	// New flags for continuous polling
 	daemonRunCmd.Flags().IntVar(&daemonPollInterval, "poll-interval", 60, "Poll interval in seconds (0 = run once and exit)")
-	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (0 = no limit)")
+	daemonRunCmd.Flags().IntVarP(&daemonMaxAgents, "concurrency", "c", 3, "Maximum concurrent agents (0 = no limit)")
+	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (alias for --concurrency)")
 	daemonRunCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonRunCmd.Flags().BoolVarP(&daemonVerbose, "verbose", "v", false, "Enable verbose output")
 	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis after processing (default: true)")
+	// Mark max-agents as hidden since --concurrency is the preferred name
+	daemonRunCmd.Flags().MarkHidden("max-agents")
 }
 
 func runDaemonLoop() error {
@@ -173,7 +178,7 @@ func runDaemonLoop() error {
 
 	fmt.Println("Starting daemon...")
 	fmt.Printf("  Poll interval:   %s\n", formatDaemonDuration(config.PollInterval))
-	fmt.Printf("  Max agents:      %d\n", config.MaxAgents)
+	fmt.Printf("  Concurrency:     %d (worker pool)\n", config.MaxAgents)
 	fmt.Printf("  Required label:  %s\n", config.Label)
 	fmt.Printf("  Spawn delay:     %s\n", formatDaemonDuration(config.SpawnDelay))
 	fmt.Println()
@@ -192,7 +197,7 @@ func runDaemonLoop() error {
 
 		// Check capacity before polling
 		if d.AtCapacity() {
-			activeCount := daemonMaxAgents // At capacity means at max
+			activeCount := d.ActiveCount()
 			if daemonVerbose {
 				fmt.Printf("[%s] At capacity (%d/%d agents active), waiting...\n",
 					timestamp, activeCount, daemonMaxAgents)
