@@ -14,6 +14,7 @@ export interface Synthesis {
 
 export interface Agent {
 	id: string;
+	session_id?: string;
 	beads_id?: string;
 	window_id?: string;
 	window?: string;

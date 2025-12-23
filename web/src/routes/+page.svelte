@@ -294,7 +294,7 @@
 		</div>
 	</div>
 
-	<!-- Collapsed Event Panels (side by side on larger screens) -->
+	<!-- Event Panels (side by side on larger screens) -->
 	<div class="grid gap-2 lg:grid-cols-2">
 		<!-- Agent Lifecycle Events -->
 		<div class="rounded-lg border bg-card">
@@ -318,19 +318,19 @@
 					{/if}
 				</Button>
 			</div>
-			<div class="max-h-32 overflow-y-auto p-2 font-mono text-xs">
-				{#each $agentlogEvents.slice().reverse().slice(0, 10) as event, i (i)}
+			<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
+				{#each $agentlogEvents.slice().reverse().slice(0, 20) as event, i (i)}
 					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
 						<span>{getEventIcon(event.type)}</span>
 						<span class="opacity-60">{formatUnixTime(event.timestamp)}</span>
-						<Badge variant="outline" class="h-4 px-1 text-[10px]">
+						<Badge variant="outline" class="h-4 px-1 text-xs">
 							{getEventLabel(event.type)}
 						</Badge>
 						{#if event.session_id}
 							<span class="font-medium text-foreground">{event.session_id.slice(0, 8)}</span>
 						{/if}
 						{#if event.data?.error}
-							<span class="text-red-500">{event.data.error}</span>
+							<span class="text-red-500 font-semibold">{event.data.error}</span>
 						{/if}
 					</div>
 				{:else}
@@ -354,8 +354,8 @@
 				</div>
 				<span class="text-xs text-muted-foreground">{$sseEvents.length} events</span>
 			</div>
-			<div class="max-h-32 overflow-y-auto p-2 font-mono text-xs">
-				{#each $sseEvents.slice().reverse().slice(0, 10) as event, i (i)}
+			<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
+				{#each $sseEvents.slice().reverse().slice(0, 20) as event, i (i)}
 					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
 						<span class="opacity-60">{formatTime(event.timestamp)}</span>
 						<span class="text-foreground">{event.type}</span>
