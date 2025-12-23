@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Cross-repo hydration works correctly; reported failure was caused by database corruption in kb-cli, not a multi-repo bug.
+**Delta:** Cross-repo hydration works correctly in beads v0.33.2. Historical failures were caused by: (1) a bug in v0.29.0 where `bd repo add` wrote config to database but hydration read from YAML (fixed in commit 634c0b93), and (2) database corruption in specific repos like kb-cli.
 
-**Evidence:** Test repo successfully imported 323 issues and resolved `bd show orch-go-ivtg.3`; kb-cli has 235 orphaned dependencies blocking all database operations.
+**Evidence:** (1) Tested add+sync+show flow on v0.33.2 in orch-go - imported 784 beads issues, resolved `bd show bd-0134cc5a`. (2) Git log shows fix commit 634c0b93 with clear explanation. (3) kb-cli has 235 orphaned dependencies blocking operations.
 
-**Knowledge:** Multi-repo hydration imports issues into SQLite database with `source_repo` field; `bd show` queries database, so hydrated issues are fully queryable when database is healthy.
+**Knowledge:** Prior kn entry "Beads multi-repo config via bd repo add - buggy in v0.29.0" is now stale. Multi-repo works when: beads >= v0.33.2, database healthy, `bd repo sync` run after add. The config-database-YAML disconnect bug was the original root cause.
 
-**Next:** Fix kb-cli database corruption with `bd doctor --fix` or reinitialize; document need for healthy database before multi-repo sync.
+**Next:** Update kn to supersede stale "buggy" entry. Fix kb-cli corruption separately. No beads code changes needed.
 
-**Confidence:** High (85%) - tested with real repo, confirmed architecture via code review, identified root cause
+**Confidence:** Very High (95%) - Bug confirmed fixed via testing and git log analysis; two independent root causes identified
 
 <!--
 Example D.E.K.N.:
@@ -147,36 +147,76 @@ Error: failed to open database: post-migration validation failed: migration inva
 
 ---
 
+### Finding 6: Historical bug in beads v0.29.0 was fixed in v0.33.2
+
+**Evidence:**
+Prior kn entry from December 21, 2025:
+```
+- Beads multi-repo config via bd repo add
+  Result: JSON parsing error even after setting repos config. bd repo commands are buggy in v0.29.0
+```
+
+Git log shows fix commits:
+```bash
+$ git -C ~/Documents/personal/beads log --oneline --grep="repo" --since="2025-12-01"
+634c0b93 fix: bd repo add/remove now writes to YAML instead of database
+7ae74ace fix: bd repo commands write to YAML and cleanup on remove
+6585070a fix: handle empty config values in getRepoConfig()
+```
+
+Fix commit message (634c0b93):
+> The bug: bd repo add wrote repos config to the database config table, but GetMultiRepoConfig() (used by hydration) reads from YAML only. This caused repos added via CLI to never be seen during hydration.
+
+Current beads version: `bd version 0.33.2 (dev: master@833983e5b2e7)`
+
+**Source:** 
+- `kn list | grep beads` (prior failed attempt entry)
+- `git -C ~/Documents/personal/beads log --oneline`
+- `git -C ~/Documents/personal/beads show 634c0b93`
+
+**Significance:** The ORIGINAL root cause of cross-repo failures was a config disconnect bug: `bd repo add` wrote to database, but `GetMultiRepoConfig()` read from YAML. This was fixed on December 21, 2025. The prior kn entry about "buggy" multi-repo is now stale and should be superseded.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
 1. **Multi-repo hydration architecture is sound** - Issues are imported into the local SQLite database from additional repos' JSONL files, with `source_repo` field tracking origin. `bd show` queries the database, so hydrated issues are fully queryable.
 
-2. **Cross-repo resolution works in clean environments** - Test with fresh repo confirms 323 issues imported successfully and `bd show orch-go-ivtg.3` resolves correctly from a different repo.
+2. **Cross-repo resolution works in clean environments** - Test with fresh repo confirms 323 issues imported successfully and `bd show orch-go-ivtg.3` resolves correctly from a different repo. Also confirmed in orch-go with 784 beads issues.
 
-3. **Database corruption blocks all operations** - kb-cli has 235 orphaned dependencies, preventing database operations including multi-repo hydration. This is the root cause of the reported failure, not a bug in multi-repo code.
+3. **Two independent root causes identified:**
+   - **Historical (v0.29.0):** Config disconnect bug - `bd repo add` wrote to database but `GetMultiRepoConfig()` read from YAML. Fixed in commit 634c0b93 (Dec 21, 2025).
+   - **Current (kb-cli):** Database corruption with 235 orphaned dependencies blocking all operations.
 
 **Answer to Investigation Question:**
 
-`bd show` does NOT fail for cross-repo IDs after `bd repo add/sync` in general - the feature works correctly. The reported failure in kb-cli was caused by database corruption (orphaned dependencies), not a multi-repo hydration bug. When the database is healthy, cross-repo resolution works as designed: sync imports issues into the database, and show queries the database to find them.
+`bd show` does NOT fail for cross-repo IDs after `bd repo add/sync` in beads v0.33.2 - the feature works correctly. There were two distinct root causes for historical failures:
+
+1. **Config disconnect bug (v0.29.0, fixed):** `bd repo add` wrote repos to database config table, but `GetMultiRepoConfig()` (used by hydration) read from YAML only. Repos added via CLI were never seen by hydration. Fixed in commit 634c0b93.
+
+2. **Database corruption (environment-specific):** kb-cli has 235 orphaned dependencies preventing all database operations including hydration.
+
+When running beads >= v0.33.2 with a healthy database, cross-repo resolution works as designed: `bd repo add` writes to YAML, `bd repo sync` imports issues into database, `bd show` queries database to find them.
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** High (85%)
+**Current Confidence:** Very High (95%)
 
 **Why this level?**
 
-Tested with real repository data (orch-go with 323 issues), reviewed source code to understand architecture, and identified specific root cause (database corruption). Only uncertainty is whether there are other edge cases not tested.
+Two independent verification paths: (1) Tested with real repository data (orch-go with 323 issues, beads with 784 issues), confirmed cross-repo resolution works. (2) Traced historical failure to commit 634c0b93 which explicitly documents and fixes the config disconnect bug. Both current and historical root causes identified with evidence.
 
 **What's certain:**
 
 - ✅ Multi-repo hydration imports issues into SQLite database correctly (verified via test + code review)
 - ✅ `bd show` queries database, not JSONL files (verified in show.go:254-261)
 - ✅ kb-cli database corruption prevents operations (error message shows 235 orphaned dependencies)
-- ✅ Cross-repo resolution works in clean environments (test imported 323 issues successfully)
+- ✅ Cross-repo resolution works in clean environments (tested: 323 orch-go issues, 784 beads issues)
+- ✅ Historical config disconnect bug was fixed in commit 634c0b93 (2025-12-21)
 
 **What's uncertain:**
 
@@ -314,10 +354,17 @@ sqlite3 /tmp/test-beads-multi/.beads/beads.db "SELECT COUNT(*) FROM issues WHERE
 - Created fresh test repo to confirm multi-repo works correctly
 - Successfully imported 323 issues and resolved cross-repo IDs
 
-**2025-12-22 18:45:** Investigation completed
-- Final confidence: High (85%)
-- Status: Complete
-- Key outcome: Multi-repo hydration works correctly; reported failure was database corruption in kb-cli, not a multi-repo bug
+**2025-12-22 18:45:** First investigation pass completed
+- Identified: kb-cli database corruption as one root cause
+- Confidence: High (85%)
+
+**2025-12-22 18:15 (session 2):** Historical bug discovery
+- Found prior kn entry about "buggy" multi-repo in v0.29.0
+- Traced to commit 634c0b93 which fixed config disconnect bug
+- Tested in orch-go: confirmed 784 beads issues hydrated successfully
+- Updated investigation with second root cause
+- Final confidence: Very High (95%)
+- Key outcome: Two independent root causes identified - historical config bug (fixed) and kb-cli corruption (environment-specific)
 
 ---
 
@@ -334,3 +381,4 @@ sqlite3 /tmp/test-beads-multi/.beads/beads.db "SELECT COUNT(*) FROM issues WHERE
 
 Externalized findings via kn:
 - Created kn decision kn-741ba1: "Multi-repo hydration requires healthy database"
+- Created kn decision kn-605d3b: "Beads multi-repo hydration works correctly in v0.33.2" (supersedes prior "buggy v0.29.0" entry)

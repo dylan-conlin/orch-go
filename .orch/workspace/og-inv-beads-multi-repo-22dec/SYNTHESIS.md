@@ -9,7 +9,7 @@
 
 ## TLDR
 
-Investigated why `bd show` fails for cross-repo IDs after multi-repo sync. Found that multi-repo hydration works correctly - the reported failure was caused by database corruption in kb-cli (235 orphaned dependencies), not a bug in the multi-repo feature.
+Investigated why `bd show` fails for cross-repo IDs after multi-repo sync. Found **two root causes**: (1) stale bd binary writing repos to database instead of YAML (causing `GetMultiRepoConfig()` to miss additional repos), and (2) database corruption in kb-cli blocking operations. After rebuilding bd from commit 634c0b93, multi-repo works correctly with 784 beads issues imported.
 
 ---
 
@@ -28,37 +28,41 @@ Investigated why `bd show` fails for cross-repo IDs after multi-repo sync. Found
 
 ## Evidence (What Was Observed)
 
+**Stale Binary Issue (Primary Finding):**
+- Before rebuild: `cat .beads/config.yaml` showed only `repos.primary: "."`, no `additional` array
+- `bd config list` showed malformed data: `repos.additional = {"/path":"/path"}` (map instead of array)
+- Commit 634c0b93 (2025-12-21) fixed this: "bd repo add wrote repos config to the database config table, but GetMultiRepoConfig() reads from YAML only"
+- After rebuild: Config correctly shows `additional: ["/path/to/beads"]` and 784 issues imported
+
+**Architecture:**
 - Multi-repo hydration imports issues into SQLite database via `HydrateFromMultiRepo()` in `/Users/dylanconlin/Documents/personal/beads/internal/storage/sqlite/multirepo.go:22`
 - `bd show` queries database via `store.GetIssue()`, not JSONL files (show.go:254-261)
-- Cross-repo resolution works in orch-go: `bd show orch-go-ivtg.3` successfully resolved
-- kb-cli database corrupted: "failed to open database: post-migration validation failed: migration invariants failed: foreign_keys_valid: found 235 orphaned dependencies"
-- Fresh test repo successfully imported 323 issues from orch-go
+- YAML is sole source of truth for multi-repo config; database config table is legacy
+
+**Additional Finding:**
+- kb-cli database corrupted: "found 235 orphaned dependencies" (blocking all operations)
 
 ### Tests Run
 ```bash
-# Create fresh test repo
-cd /tmp && mkdir test-beads-multi && cd test-beads-multi
-git init && bd init --prefix test
+# Rebuild bd binary with fix
+cd ~/Documents/personal/beads && go build -o ~/go/bin/bd ./cmd/bd
 
-# Add orch-go as additional repo
-bd --no-daemon repo add ~/Documents/personal/orch-go
-# Output: Added repository: /Users/dylanconlin/Documents/personal/orch-go
+# Add repo and sync (in orch-go)
+cd ~/Documents/personal/orch-go
+bd repo add /Users/dylanconlin/Documents/personal/beads
+bd repo sync
 
-# Sync issues from orch-go
-bd --no-daemon repo sync
-# Output: Multi-repo sync complete
+# Verify cross-repo resolution works
+bd show bd-8507
+# SUCCESS: Shows "Publish bd-wasm to npm" from beads repo
 
-# Import to database
-bd --no-daemon sync --import-only
-# Output: Import complete: 0 created, 0 updated, 1 unchanged
+# Verify database counts
+sqlite3 .beads/beads.db "SELECT COUNT(*) FROM issues WHERE source_repo = '/Users/dylanconlin/Documents/personal/beads'"
+# 784 issues imported
 
-# Test cross-repo resolution
-bd --no-daemon show orch-go-ivtg.3
-# Output: Full issue details displayed correctly
-
-# Verify issue count
-sqlite3 .beads/beads.db "SELECT COUNT(*) FROM issues WHERE source_repo = '/Users/dylanconlin/Documents/personal/orch-go'"
-# Output: 323
+# Verify config written correctly
+cat .beads/config.yaml
+# Shows additional: ["/Users/dylanconlin/Documents/personal/beads"]
 ```
 
 ---
@@ -74,9 +78,9 @@ sqlite3 .beads/beads.db "SELECT COUNT(*) FROM issues WHERE source_repo = '/Users
 - Database health is a prerequisite for multi-repo sync
 
 ### Constraints Discovered
+- **Binary must be current for multi-repo features** - Fix commit 634c0b93 changed YAML-writing behavior; stale binary = broken multi-repo
+- **YAML is sole source of truth** - `GetMultiRepoConfig()` reads from viper (YAML), never from database config table
 - Multi-repo sync requires healthy database (no orphaned dependencies)
-- `bd sync --import-only` required after `bd repo sync` to make issues queryable
-- Daemon mode may have issues (used `--no-daemon` in test to bypass)
 
 ### Externalized via `kn`
 - `kn decide "Multi-repo hydration requires healthy database" --reason "Orphaned dependencies in kb-cli blocked all database operations including multi-repo sync. Fix with 'bd doctor --fix' before attempting multi-repo setup."` - kn-741ba1
