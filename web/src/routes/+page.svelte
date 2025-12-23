@@ -33,32 +33,23 @@
 	// Get unique skills from agents
 	$: uniqueSkills = [...new Set($agents.map(a => a.skill).filter(Boolean))] as string[];
 
-	// Filtered and sorted agents using Svelte 4 reactive declarations
-	$: {
-		console.log('[+page] REACTIVE BLOCK: $agents.length =', $agents.length);
-	}
-	
+	// Filtered and sorted agents
 	$: filteredAgents = (() => {
-		console.log('[+page] filteredAgents recomputing - $agents.length:', $agents.length);
 		let result = $agents.filter(a => a.status !== 'deleted');
-		console.log('[+page] After deleted filter:', result.length);
 
 		// Apply active-only filter
 		if (activeOnly) {
 			result = result.filter(a => a.status === 'active');
-			console.log('[+page] After activeOnly filter:', result.length);
 		}
 
 		// Apply status filter
 		if (statusFilter !== 'all') {
 			result = result.filter(a => a.status === statusFilter);
-			console.log('[+page] After status filter:', result.length);
 		}
 
 		// Apply skill filter
 		if (skillFilter !== 'all') {
 			result = result.filter(a => a.skill === skillFilter);
-			console.log('[+page] After skill filter:', result.length);
 		}
 
 		// Apply sorting
@@ -79,12 +70,10 @@
 			}
 		});
 
-		console.log('[+page] Final filtered result:', result.length);
 		return result;
 	})();
 
 	onMount(() => {
-		console.log('[+page] onMount called');
 		// Fetch initial agents
 		agents.fetch().catch((err) => {
 			console.error('Initial fetch failed:', err);

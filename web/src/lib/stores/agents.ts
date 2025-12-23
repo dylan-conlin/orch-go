@@ -75,24 +75,12 @@ function createAgentStore() {
 		// Fetch agents from orch-go API
 		async fetch(): Promise<void> {
 			try {
-				console.log('Fetching agents from', `${API_BASE}/api/agents`);
 				const response = await fetch(`${API_BASE}/api/agents`);
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
 				const data = await response.json();
-				console.log('Fetched agents:', data?.length, 'agents');
-				console.log('First agent:', data?.[0]);
-				console.log('About to set store with', data?.length, 'agents');
 				set(data || []);
-				console.log('Store set complete');
-				// Debug: check what's actually in the store now
-				let currentValue: Agent[] = [];
-				subscribe((value) => {
-					currentValue = value;
-				})();
-				console.log('Store now contains:', currentValue.length, 'agents');
-				console.log('First agent in store:', currentValue[0]);
 			} catch (error) {
 				console.error('Failed to fetch agents:', error);
 				throw error;
