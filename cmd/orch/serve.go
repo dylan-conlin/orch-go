@@ -152,15 +152,32 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	var agents []AgentAPIResponse
 
 	// Add active sessions from OpenCode
+	// Filter: only show sessions updated in the last 10 minutes as "active"
+	// Only include sessions from last 24h (or active) to avoid showing hundreds of stale sessions
+	activeThreshold := 10 * time.Minute
+	displayThreshold := 6 * time.Hour
+
 	for _, s := range sessions {
 		createdAt := time.Unix(s.Time.Created/1000, 0)
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		runtime := now.Sub(createdAt)
+		timeSinceUpdate := now.Sub(updatedAt)
+
+		// Determine status based on recent activity
+		status := "active"
+		if timeSinceUpdate > activeThreshold {
+			status = "idle" // Session exists but hasn't had recent activity
+		}
+
+		// Skip sessions older than 24h unless they're active
+		if status == "idle" && timeSinceUpdate > displayThreshold {
+			continue
+		}
 
 		agent := AgentAPIResponse{
 			ID:        s.Title,
 			SessionID: s.ID,
-			Status:    "active",
+			Status:    status,
 			Runtime:   formatDuration(runtime),
 			SpawnedAt: createdAt.Format(time.RFC3339),
 			UpdatedAt: updatedAt.Format(time.RFC3339),
