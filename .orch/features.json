@@ -39,13 +39,33 @@
       "priority": "low",
       "created": "2025-12-23",
       "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-005",
+      "title": "Dashboard progressive disclosure: Active/Recent/Archive sections",
+      "description": "Implement collapsible sections in swarm dashboard to group agents by recency and activity. Active (always expanded) shows agents with <10min activity. Recent (collapsed by default) shows idle/completed from last 24h. Archive (collapsed) shows older sessions. Store collapse state in localStorage. Update stats bar to show section counts. File targets: web/src/routes/+page.svelte (grouping logic), create CollapsibleSection.svelte component. Acceptance: Dashboard loads with only Active visible, sections expand/collapse smoothly, state persists across refreshes.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md"
+    },
+    {
+      "id": "feat-006",
+      "title": "Add session deletion to 'orch clean' command",
+      "description": "Extend 'orch clean' with '--sessions' flag to delete OpenCode sessions for completed agents. Requires confirmation prompt before deletion (destructive operation). Should only delete sessions for agents with SYNTHESIS.md or closed beads issues. Updates cmd/orch/main.go runClean() function. Out of scope: Bulk session management UI. Acceptance: 'orch clean --sessions' prompts for confirmation, deletes only completed agent sessions, updates dashboard in real-time.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md"
     }
   ],
   "meta": {
     "last_updated": "2025-12-23",
-    "total_features": 4,
+    "total_features": 6,
     "by_status": {
-      "todo": 4,
+      "todo": 6,
       "in_progress": 0,
       "done": 0
     }
