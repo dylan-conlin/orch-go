@@ -9,6 +9,39 @@ import (
 	"time"
 )
 
+// Tier constants define the spawn tiers.
+const (
+	TierLight = "light" // Lightweight spawn - skips SYNTHESIS.md requirement
+	TierFull  = "full"  // Full spawn - requires SYNTHESIS.md for knowledge externalization
+)
+
+// SkillTierDefaults maps skills to their default tier.
+// Skills that produce knowledge artifacts default to "full".
+// Skills that primarily produce code changes default to "light".
+var SkillTierDefaults = map[string]string{
+	// Full tier: Investigation-type skills that produce knowledge artifacts
+	"investigation":        TierFull,
+	"architect":            TierFull,
+	"research":             TierFull,
+	"codebase-audit":       TierFull,
+	"design-session":       TierFull,
+	"systematic-debugging": TierFull, // Produces investigation file with findings
+
+	// Light tier: Implementation-focused skills
+	"feature-impl":        TierLight,
+	"reliability-testing": TierLight,
+	"issue-creation":      TierLight, // Creates beads issue, doesn't need synthesis
+}
+
+// DefaultTierForSkill returns the default tier for a given skill.
+// Returns TierFull for unknown skills (conservative default).
+func DefaultTierForSkill(skillName string) string {
+	if tier, ok := SkillTierDefaults[skillName]; ok {
+		return tier
+	}
+	return TierFull // Conservative default for unknown skills
+}
+
 // Config holds configuration for spawning an agent.
 type Config struct {
 	// Task description
@@ -41,6 +74,11 @@ type Config struct {
 
 	// MCP server configuration (e.g., "playwright" for browser automation)
 	MCP string
+
+	// Tier specifies the spawn tier: "light" or "full"
+	// Light tier skips SYNTHESIS.md requirement on completion
+	// Full tier requires SYNTHESIS.md for knowledge externalization
+	Tier string
 
 	// NoTrack opts out of beads issue tracking (ad-hoc work)
 	NoTrack bool

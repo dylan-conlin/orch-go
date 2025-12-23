@@ -322,7 +322,17 @@ func VerifySynthesis(workspacePath string) (bool, error) {
 
 // VerifyCompletion checks if an agent is ready for completion.
 // Returns a VerificationResult with any errors or warnings.
+// Uses VerifyCompletionWithTier with an empty tier (reads from workspace).
 func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult, error) {
+	return VerifyCompletionWithTier(beadsID, workspacePath, "")
+}
+
+// VerifyCompletionWithTier checks if an agent is ready for completion.
+// The tier parameter specifies the spawn tier ("light" or "full").
+// If tier is empty, it will be read from the workspace's .tier file.
+// Light tier spawns skip the SYNTHESIS.md requirement.
+// Returns a VerificationResult with any errors or warnings.
+func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
 	}
@@ -352,8 +362,13 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 		return result, nil
 	}
 
-	// Check for SYNTHESIS.md
-	if workspacePath != "" {
+	// Determine tier if not provided
+	if tier == "" && workspacePath != "" {
+		tier = ReadTierFromWorkspace(workspacePath)
+	}
+
+	// Check for SYNTHESIS.md (only for full tier)
+	if workspacePath != "" && tier != "light" {
 		ok, err := VerifySynthesis(workspacePath)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
@@ -365,6 +380,21 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 	}
 
 	return result, nil
+}
+
+// ReadTierFromWorkspace reads the spawn tier from the workspace's .tier file.
+// Returns "full" as the conservative default if the file doesn't exist.
+func ReadTierFromWorkspace(workspacePath string) string {
+	tierFile := filepath.Join(workspacePath, ".tier")
+	data, err := os.ReadFile(tierFile)
+	if err != nil {
+		return "full" // Conservative default
+	}
+	tier := strings.TrimSpace(string(data))
+	if tier == "" {
+		return "full"
+	}
+	return tier
 }
 
 // CloseIssue closes a beads issue with the given reason.

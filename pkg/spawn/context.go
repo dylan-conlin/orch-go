@@ -12,6 +12,16 @@ import (
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
+{{if .Tier}}
+SPAWN TIER: {{.Tier}}
+{{if eq .Tier "light"}}
+⚡ LIGHT TIER: This is a lightweight spawn. SYNTHESIS.md is NOT required.
+   Focus on completing the task efficiently. Skip session synthesis documentation.
+{{else}}
+📚 FULL TIER: This spawn requires SYNTHESIS.md for knowledge externalization.
+   Document your findings, decisions, and learnings in SYNTHESIS.md before completing.
+{{end}}
+{{end}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
@@ -26,10 +36,16 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
 After your final commit, BEFORE typing anything else:
+{{if eq .Tier "light"}}
+1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
+2. Run: ` + "`/exit`" + ` to close the agent session
+
+⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
+{{else}}
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
 2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
 3. Run: ` + "`/exit`" + ` to close the agent session
-
+{{end}}
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
 
@@ -76,9 +92,13 @@ DELIVERABLES (REQUIRED):
    - Only fill Conclusion if you actually tested (this is the key discipline)
 4. Update Status: field when done (Active → Complete)
 5. [Task-specific deliverables]
+{{if ne .Tier "light"}}
 6. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
    - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
    - This is CRITICAL for the orchestrator to review your work.
+{{else}}
+6. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
+{{end}}
 
 STATUS UPDATES:
 Update Status: field in your investigation file:
@@ -155,11 +175,17 @@ CONTEXT AVAILABLE:
 
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
+{{if eq .Tier "light"}}
+1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
+2. ` + "`/exit`" + `
+
+⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
+{{else}}
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
 2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
 3. ` + "`/exit`" + `
-
-⚠️ Your work is NOT complete until you run both commands.
+{{end}}
+⚠️ Your work is NOT complete until you run these commands.
 `
 
 // contextData holds template data for SPAWN_CONTEXT.md.
@@ -176,6 +202,7 @@ type contextData struct {
 	Validation        string
 	InvestigationType string
 	KBContext         string
+	Tier              string
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -201,6 +228,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		Validation:        cfg.Validation,
 		InvestigationType: cfg.InvestigationType,
 		KBContext:         cfg.KBContext,
+		Tier:              cfg.Tier,
 	}
 
 	var buf bytes.Buffer
@@ -218,9 +246,11 @@ func WriteContext(cfg *Config) error {
 		return err
 	}
 
-	// Ensure SYNTHESIS.md template exists in the project
-	if err := EnsureSynthesisTemplate(cfg.ProjectDir); err != nil {
-		return fmt.Errorf("failed to ensure synthesis template: %w", err)
+	// Ensure SYNTHESIS.md template exists in the project (only for full tier)
+	if cfg.Tier != TierLight {
+		if err := EnsureSynthesisTemplate(cfg.ProjectDir); err != nil {
+			return fmt.Errorf("failed to ensure synthesis template: %w", err)
+		}
 	}
 
 	// Create workspace directory
@@ -233,6 +263,11 @@ func WriteContext(cfg *Config) error {
 	contextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
 	if err := os.WriteFile(contextPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write context file: %w", err)
+	}
+
+	// Write tier metadata file for orch complete to read
+	if err := WriteTier(workspacePath, cfg.Tier); err != nil {
+		return fmt.Errorf("failed to write tier file: %w", err)
 	}
 
 	return nil

@@ -185,6 +185,55 @@ func TestPhaseStatusComplete(t *testing.T) {
 	}
 }
 
+func TestReadTierFromWorkspace(t *testing.T) {
+	t.Run("reads light tier", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		got := ReadTierFromWorkspace(tmpDir)
+		if got != "light" {
+			t.Errorf("ReadTierFromWorkspace = %q, want %q", got, "light")
+		}
+	})
+
+	t.Run("reads full tier", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("full\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		got := ReadTierFromWorkspace(tmpDir)
+		if got != "full" {
+			t.Errorf("ReadTierFromWorkspace = %q, want %q", got, "full")
+		}
+	})
+
+	t.Run("returns full for missing file (conservative default)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		got := ReadTierFromWorkspace(tmpDir)
+		if got != "full" {
+			t.Errorf("ReadTierFromWorkspace = %q, want %q (conservative default)", got, "full")
+		}
+	})
+
+	t.Run("returns full for empty file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte(""), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		got := ReadTierFromWorkspace(tmpDir)
+		if got != "full" {
+			t.Errorf("ReadTierFromWorkspace = %q, want %q (conservative default)", got, "full")
+		}
+	})
+}
+
 func TestParseSynthesis(t *testing.T) {
 	// Create a temporary directory for the test
 	tmpDir := t.TempDir()

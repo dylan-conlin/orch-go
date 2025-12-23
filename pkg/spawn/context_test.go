@@ -413,3 +413,159 @@ func TestGenerateFailureReport(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultTierForSkill(t *testing.T) {
+	tests := []struct {
+		skill string
+		want  string
+	}{
+		// Full tier skills (produce knowledge artifacts)
+		{"investigation", TierFull},
+		{"architect", TierFull},
+		{"research", TierFull},
+		{"codebase-audit", TierFull},
+		{"design-session", TierFull},
+		{"systematic-debugging", TierFull},
+
+		// Light tier skills (implementation-focused)
+		{"feature-impl", TierLight},
+		{"reliability-testing", TierLight},
+		{"issue-creation", TierLight},
+
+		// Unknown skill defaults to full (conservative)
+		{"unknown-skill", TierFull},
+		{"", TierFull},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.skill, func(t *testing.T) {
+			got := DefaultTierForSkill(tt.skill)
+			if got != tt.want {
+				t.Errorf("DefaultTierForSkill(%q) = %q, want %q", tt.skill, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateContext_LightTier(t *testing.T) {
+	cfg := &Config{
+		Task:       "implement quick fix",
+		SkillName:  "feature-impl",
+		Project:    "test-project",
+		ProjectDir: "/tmp/test",
+		BeadsID:    "test-123",
+		Tier:       TierLight,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should contain light tier indicator
+	if !strings.Contains(content, "SPAWN TIER: light") {
+		t.Error("expected content to contain 'SPAWN TIER: light'")
+	}
+	if !strings.Contains(content, "LIGHT TIER") {
+		t.Error("expected content to contain light tier message")
+	}
+	if !strings.Contains(content, "SYNTHESIS.md is NOT required") {
+		t.Error("expected content to indicate SYNTHESIS.md is not required")
+	}
+
+	// Should NOT contain full tier messaging
+	if strings.Contains(content, "FULL TIER") {
+		t.Error("light tier context should not contain FULL TIER messaging")
+	}
+}
+
+func TestGenerateContext_FullTier(t *testing.T) {
+	cfg := &Config{
+		Task:       "deep investigation",
+		SkillName:  "investigation",
+		Project:    "test-project",
+		ProjectDir: "/tmp/test",
+		BeadsID:    "test-123",
+		Tier:       TierFull,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should contain full tier indicator
+	if !strings.Contains(content, "SPAWN TIER: full") {
+		t.Error("expected content to contain 'SPAWN TIER: full'")
+	}
+	if !strings.Contains(content, "FULL TIER") {
+		t.Error("expected content to contain full tier message")
+	}
+	if !strings.Contains(content, "requires SYNTHESIS.md") {
+		t.Error("expected content to indicate SYNTHESIS.md is required")
+	}
+}
+
+func TestWriteContext_LightTierSkipsSynthesisTemplate(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := &Config{
+		Task:          "quick fix",
+		Project:       "test",
+		ProjectDir:    tempDir,
+		WorkspaceName: "og-feat-19dec",
+		BeadsID:       "test-123",
+		Tier:          TierLight,
+	}
+
+	if err := WriteContext(cfg); err != nil {
+		t.Fatalf("WriteContext failed: %v", err)
+	}
+
+	// Check SYNTHESIS.md template was NOT created (light tier)
+	templatePath := filepath.Join(tempDir, ".orch", "templates", "SYNTHESIS.md")
+	if _, err := os.Stat(templatePath); !os.IsNotExist(err) {
+		t.Error("light tier WriteContext should NOT create SYNTHESIS.md template")
+	}
+
+	// Check tier file was created
+	tierPath := filepath.Join(tempDir, ".orch", "workspace", "og-feat-19dec", ".tier")
+	content, err := os.ReadFile(tierPath)
+	if err != nil {
+		t.Fatalf("failed to read tier file: %v", err)
+	}
+	if strings.TrimSpace(string(content)) != TierLight {
+		t.Errorf("tier file should contain 'light', got %q", string(content))
+	}
+}
+
+func TestWriteContext_FullTierCreatesSynthesisTemplate(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := &Config{
+		Task:          "investigation",
+		Project:       "test",
+		ProjectDir:    tempDir,
+		WorkspaceName: "og-inv-19dec",
+		BeadsID:       "test-123",
+		Tier:          TierFull,
+	}
+
+	if err := WriteContext(cfg); err != nil {
+		t.Fatalf("WriteContext failed: %v", err)
+	}
+
+	// Check SYNTHESIS.md template WAS created (full tier)
+	templatePath := filepath.Join(tempDir, ".orch", "templates", "SYNTHESIS.md")
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Error("full tier WriteContext should create SYNTHESIS.md template")
+	}
+
+	// Check tier file was created
+	tierPath := filepath.Join(tempDir, ".orch", "workspace", "og-inv-19dec", ".tier")
+	content, err := os.ReadFile(tierPath)
+	if err != nil {
+		t.Fatalf("failed to read tier file: %v", err)
+	}
+	if strings.TrimSpace(string(content)) != TierFull {
+		t.Errorf("tier file should contain 'full', got %q", string(content))
+	}
+}

@@ -168,6 +168,8 @@ var (
 	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
 	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
 	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
+	spawnLight             bool   // Light tier spawn (skips SYNTHESIS.md requirement)
+	spawnFull              bool   // Full tier spawn (requires SYNTHESIS.md)
 )
 
 var spawnCmd = &cobra.Command{
@@ -179,6 +181,15 @@ By default, spawns the agent in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
 Use --headless for automation/scripting (no TUI, fire-and-forget).
 Use --attach to spawn in tmux and attach immediately.
+
+Spawn Tiers:
+  --light: Skip SYNTHESIS.md requirement (for code-focused work)
+  --full:  Require SYNTHESIS.md for knowledge externalization
+  
+  Default tier is determined by skill:
+    Full tier (require SYNTHESIS.md): investigation, architect, research, 
+      codebase-audit, design-session, systematic-debugging
+    Light tier (skip SYNTHESIS.md): feature-impl, reliability-testing, issue-creation
 
 Concurrency Limiting:
   By default, limits concurrent agents to 5. This prevents runaway agent spawning.
@@ -205,7 +216,9 @@ Examples:
   orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
   orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
-  orch-go spawn --auto-init investigation "new project"        # Auto-init if needed`,
+  orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
+  orch-go spawn --light feature-impl "quick fix"               # Light tier (no synthesis)
+  orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -229,6 +242,8 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
+	spawnCmd.Flags().BoolVar(&spawnLight, "light", false, "Light tier spawn (skips SYNTHESIS.md requirement on completion)")
+	spawnCmd.Flags().BoolVar(&spawnFull, "full", false, "Full tier spawn (requires SYNTHESIS.md for knowledge externalization)")
 }
 
 var askCmd = &cobra.Command{
@@ -909,6 +924,20 @@ func checkConcurrencyLimit() error {
 	return nil
 }
 
+// determineSpawnTier determines the spawn tier based on flags and skill defaults.
+// Priority: --light flag > --full flag > skill default > TierFull (conservative)
+func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
+	// Explicit flags take precedence
+	if lightFlag {
+		return spawn.TierLight
+	}
+	if fullFlag {
+		return spawn.TierFull
+	}
+	// Fall back to skill default
+	return spawn.DefaultTierForSkill(skillName)
+}
+
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, attach bool) error {
 	// Check concurrency limit before spawning
 	if err := checkConcurrencyLimit(); err != nil {
@@ -968,6 +997,9 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		fmt.Println("Skipping kb context check (--skip-artifact-check)")
 	}
 
+	// Determine spawn tier
+	tier := determineSpawnTier(skillName, spawnLight, spawnFull)
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:              task,
@@ -982,6 +1014,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		Validation:        spawnValidation,
 		Model:             resolvedModel.Format(),
 		MCP:               spawnMCP,
+		Tier:              tier,
 		NoTrack:           spawnNoTrack,
 		SkipArtifactCheck: spawnSkipArtifactCheck,
 		KBContext:         kbContext,
