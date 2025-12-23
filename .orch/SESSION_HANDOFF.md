@@ -1,87 +1,84 @@
-# Session Handoff - 22 Dec 2025 (late night)
+# Session Handoff - 22 Dec 2025 (night)
 
 ## TLDR
 
-Headless Swarm epic complete. Tiered spawn protocol (`--light`/`--full`) shipped. System transitioned from tmux-primary to headless-primary architecture.
+Created beginner-friendly learning environment for Lea (graphic designer learning AI agents). SCS Explorer scaffold with comprehensive CLAUDE.md. Also spawned 4 agents from ready queue (1 completed, 3 stalled due to cross-repo issue).
 
 ---
 
 ## What Shipped
 
-### Commits (this session)
-| Commit | Description |
-|--------|-------------|
-| `9bb0607` | WorkerPool for daemon concurrency control |
-| `da97969` | CompletionService for SSE-based headless tracking |
-| `a58d83f` | `orch swarm` command for batch spawning |
-| `3c0a971` | Fix: handoff shows correct active agents |
-| `d00a6c7` | `--auto-init` flag for spawn scaffolding |
-| `345e090` | Tiered spawn protocol (`--light`/`--full` flags) |
+### Lea's Learning Environment
 
-### Issues Closed
-| Issue | Type | Resolution |
-|-------|------|------------|
-| orch-go-bdd | epic | Headless Swarm complete (6/6 children) |
-| orch-go-bdd.3 | task | WorkerPool concurrency control |
-| orch-go-bdd.4 | task | `orch swarm` command |
-| orch-go-bdd.6 | task | SSE completion tracking |
-| orch-go-d6x9 | task | Already implemented (no-op) |
-| orch-go-ipq9 | task | `--auto-init` flag |
-| orch-go-hey6 | task | Handoff phantom fix |
-| orch-go-f7vj | feature | Tiered spawn protocol |
+**Location:** `/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/scs-explorer`
+
+| Component | Description |
+|-----------|-------------|
+| SvelteKit 5 scaffold | Full app with materials, hardware, finishes pages |
+| SCS API client | Typed client for SendCutSend public API |
+| Supabase auth | Email + Google OAuth wired up |
+| Fly.io ready | Dockerfile + fly.toml |
+| CLAUDE.md | Comprehensive beginner guide (500+ lines) |
+
+**CLAUDE.md includes:**
+1. Machine setup (brew, bun, git, gh, fly, go)
+2. Cursor installation + keyboard shortcuts
+3. kn for persisting decisions across sessions
+4. Git workflow for beginners
+5. Playwright MCP (Phase 2 - when ready)
+6. Project-specific guidance
+
+### Investigation
+
+`.kb/investigations/2025-12-22-inv-design-beginner-agent-learning-environment.md`
+
+Documents the design decisions:
+- Cursor over Claude Code (visual-first for designer)
+- kn included (she's already feeling session amnesia pain)
+- kb-cli/skillc deferred (solves orchestrator problems, not learner problems)
+- Add tools on pain, not preemptively
+
+### Issues
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| orch-go-djpb | Closed | Beads multi-repo hydration - config disconnect bug found |
+| orch-go-jtat | Stalled | Spawned in orch-go, work needed in kb-cli |
+| orch-go-oo1f | Stalled | Spawned in orch-go, work needed in orch-knowledge |
+| orch-go-hkkh | Stalled | Spawned in orch-go, work needed in kb-cli |
 
 ---
 
-## Key Changes
+## Friction Discovered
 
-### Headless Swarm (Epic Complete)
-The system now supports concurrent batch spawning:
+1. **Cross-repo spawn issue** - `orch spawn --issue X` spawns in current directory, but issue may require work in different repo. Agents stall because files don't exist.
+
+2. **Headless kb context prompt** - `--skip-artifact-check` needed for headless spawns because kb context prompt blocks.
+
+3. **No `-y` flag on spawn** - Can't auto-confirm kb context inclusion.
+
+---
+
+## Ready Queue (updated)
+
 ```bash
-orch swarm --ready --concurrency 3      # Spawn from ready queue
-orch swarm --issues a,b,c --detach      # Fire-and-forget
-orch daemon run --concurrency 5         # Overnight batch
+bd ready
 ```
 
-Architecture shift: tmux is now opt-in (`--tmux`), headless HTTP is the primary path.
+Still has 9 P2 issues:
+- Dashboard UI/UX (orch-go-xwh, orch-go-36b)
+- Model flexibility phase 2 (orch-go-vut1)
+- kb commands (orch-go-jgc1, orch-go-p73c)
+- Templates (orch-go-abeu, orch-go-jtat, orch-go-oo1f, orch-go-hkkh)
 
-### Tiered Protocol (New)
-Two-tier spawn protocol reduces ceremony for simple tasks:
-
-| Tier | Default For | SYNTHESIS.md |
-|------|-------------|--------------|
-| Light | feature-impl, issue-creation | Optional |
-| Full | investigation, debugging, architect | Required |
-
-```bash
-orch spawn --light feature-impl "quick fix"    # Skip synthesis
-orch spawn --full investigation "deep dive"   # Require synthesis
-```
-
-Agents can upgrade mid-flight (produce synthesis even if spawned light).
+**Note:** jtat, oo1f, hkkh need to be respawned in correct repos.
 
 ---
 
-## Session Friction (for next orchestrator)
+## Account State
 
-1. **`orch status` split brain** - Shows HTTP sessions but swarm spawns to tmux. Unified view needed.
-2. **Swarm blocks terminal** - `orch swarm` waits for completion. Consider `--detach` default.
-3. **`--force` on every complete** - Verification step adds friction, not value. Light tier could skip entirely.
-
----
-
-## System State
-
-**Account usage:** 76% 5-hour (resets 2h 50m), 21% weekly
-
-**Ready queue (all P2):**
 ```
-orch-go-xwh    Dashboard UI/UX iteration
-orch-go-36b    Dashboard agent visibility  
-orch-go-vut1   Model flexibility phase 2
-orch-go-djpb   Beads multi-repo hydration
-orch-go-jgc1   kb extract command
-orch-go-p73c   kb supersede command
-orch-go-abeu   Update templates with structured uncertainty
+work: 24% weekly (resets in 6d 16h)
 ```
 
 ---
@@ -92,9 +89,10 @@ orch-go-abeu   Update templates with structured uncertainty
 orch status
 bd ready
 
-# Test the new swarm command
-orch swarm --ready --concurrency 2 --dry-run
+# Check Lea's project
+ls /Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/scs-explorer
 
-# Or use tiered protocol
-orch spawn --light feature-impl "task" --issue <id>
+# Respawn stalled agents in correct repos (if desired)
+cd ~/Documents/personal/kb-cli
+orch spawn --light feature-impl "sync hardcoded investigation template" --issue orch-go-jtat
 ```
