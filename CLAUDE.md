@@ -225,5 +225,5 @@ orch clean
 
 - **Python orch-cli:** `~/Documents/personal/orch-cli` (fallback: `orch-py`)
 - **Beads:** Issue tracking via `bd` CLI
-- **Orchestrator skill:** `~/.claude/skills/policy/orchestrator/SKILL.md`
+- **Orchestrator skill:** `~/.claude/skills/meta/orchestrator/SKILL.md`
 - **orch-knowledge:** Skill sources, decisions, investigations
