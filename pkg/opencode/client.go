@@ -260,6 +260,7 @@ func (c *Client) IsSessionActive(sessionID string, maxIdleTime time.Duration) bo
 type CreateSessionRequest struct {
 	Title     string `json:"title,omitempty"`
 	Directory string `json:"directory,omitempty"`
+	Model     string `json:"model,omitempty"`
 }
 
 // CreateSessionResponse represents the response from creating a new session.
@@ -271,10 +272,11 @@ type CreateSessionResponse struct {
 
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
-func (c *Client) CreateSession(title, directory string) (*CreateSessionResponse, error) {
+func (c *Client) CreateSession(title, directory, model string) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
+		Model:     model,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Model selection for headless spawns was missing due to CreateSession API not accepting model parameter.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Added Model field to CreateSessionRequest, updated CreateSession signature, modified runSpawnHeadless to pass model - all tests pass including new CreateSession tests.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Headless mode now supports model selection matching inline and tmux modes; OpenCode HTTP API accepts model parameter via POST /session.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Implementation complete - model parameter now works across all spawn modes (inline, tmux, headless).
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (90%) - tests pass, code compiles, implementation matches spec.
 
 <!--
 Example D.E.K.N.:
@@ -41,10 +41,10 @@ Guidelines:
 **Started:** 2025-12-22
 **Updated:** 2025-12-22
 **Owner:** feature-impl agent
-**Phase:** Investigating
-**Next Step:** Implement model parameter support in CreateSession API
-**Status:** In Progress
-**Confidence:** High (85%)
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (90%)
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]

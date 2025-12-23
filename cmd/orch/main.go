@@ -1116,7 +1116,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	client := opencode.NewClient(serverURL)
 
 	// Create session via HTTP API
-	sessionResp, err := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir)
+	sessionResp, err := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir, cfg.Model)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}

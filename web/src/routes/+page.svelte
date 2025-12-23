@@ -20,7 +20,8 @@
 		agentlogEvents,
 		agentlogConnectionStatus,
 		connectAgentlogSSE,
-		disconnectAgentlogSSE
+		disconnectAgentlogSSE,
+		errorEvents
 	} from '$lib/stores/agentlog';
 
 	// Filter and sort state
@@ -175,6 +176,14 @@
 			<div class="flex items-baseline gap-1">
 				<span class="text-xl font-bold">{$abandonedAgents.length}</span>
 				<span class="text-xs text-muted-foreground">stuck</span>
+			</div>
+		</div>
+		<div class="h-4 w-px bg-border"></div>
+		<div class="flex items-center gap-2">
+			<span class="text-lg">❌</span>
+			<div class="flex items-baseline gap-1">
+				<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+				<span class="text-xs text-muted-foreground">errors</span>
 			</div>
 		</div>
 		<div class="h-4 w-px bg-border"></div>

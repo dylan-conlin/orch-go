@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1045,5 +1046,98 @@ data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","st
 	}
 	if !strings.Contains(content, "correct") {
 		t.Errorf("Streamed content missing 'correct', got: %s", content)
+	}
+}
+
+// TestCreateSession tests the CreateSession API call.
+func TestCreateSession(t *testing.T) {
+	title := "test-session"
+	directory := "/Users/dylan/project"
+	model := "anthropic/claude-opus-4"
+
+	var receivedRequest CreateSessionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/session" {
+			t.Errorf("Expected path /session, got %s", r.URL.Path)
+		}
+
+		// Decode request body
+		if err := json.NewDecoder(r.Body).Decode(&receivedRequest); err != nil {
+			t.Fatalf("Failed to decode request: %v", err)
+		}
+
+		// Return success
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		response := CreateSessionResponse{
+			ID:        "ses_test123",
+			Title:     title,
+			Directory: directory,
+		}
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	resp, err := client.CreateSession(title, directory, model)
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+
+	// Verify response
+	if resp.ID != "ses_test123" {
+		t.Errorf("resp.ID = %s, want ses_test123", resp.ID)
+	}
+	if resp.Title != title {
+		t.Errorf("resp.Title = %s, want %s", resp.Title, title)
+	}
+
+	// Verify request included model parameter
+	if receivedRequest.Title != title {
+		t.Errorf("receivedRequest.Title = %s, want %s", receivedRequest.Title, title)
+	}
+	if receivedRequest.Directory != directory {
+		t.Errorf("receivedRequest.Directory = %s, want %s", receivedRequest.Directory, directory)
+	}
+	if receivedRequest.Model != model {
+		t.Errorf("receivedRequest.Model = %s, want %s", receivedRequest.Model, model)
+	}
+}
+
+// TestCreateSessionWithoutModel tests CreateSession without model parameter.
+func TestCreateSessionWithoutModel(t *testing.T) {
+	title := "test-session"
+	directory := "/Users/dylan/project"
+	model := "" // Empty model
+
+	var receivedRequest CreateSessionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedRequest); err != nil {
+			t.Fatalf("Failed to decode request: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		response := CreateSessionResponse{
+			ID:        "ses_test456",
+			Title:     title,
+			Directory: directory,
+		}
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.CreateSession(title, directory, model)
+	if err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+
+	// Verify empty model was sent (omitempty should exclude it from JSON)
+	if receivedRequest.Model != "" {
+		t.Errorf("receivedRequest.Model = %s, want empty string", receivedRequest.Model)
 	}
 }
