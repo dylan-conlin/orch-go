@@ -1,0 +1,53 @@
+{
+  "features": [
+    {
+      "id": "feat-001",
+      "title": "Implement 'orch api status' command",
+      "description": "Add dedicated command to check if 'orch serve' API is running. Uses port listening check on 3348 via net.Dial with short timeout. Separates infrastructure status from project server status.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-002",
+      "title": "Remove port 3348 from orch-go project allocations",
+      "description": "Run 'orch port release orch-go api' to remove false coupling between project servers and infrastructure API. Prerequisite for feat-001.",
+      "status": "todo",
+      "skill": "manual",
+      "priority": "medium",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-003",
+      "title": "Clean up tmuxinator template API comment",
+      "description": "Remove the '# api server on port 3348' comment from pkg/tmux/tmuxinator.go:92-94 to eliminate confusion. The comment suggests tmuxinator manages the API server when it doesn't.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-004",
+      "title": "Document servers vs API infrastructure distinction",
+      "description": "Update CLAUDE.md and README to clarify: 'orch servers' = project dev servers (ephemeral, tmux-managed), 'orch api' = orchestrator monitoring infrastructure (persistent, standalone).",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    }
+  ],
+  "meta": {
+    "last_updated": "2025-12-23",
+    "total_features": 4,
+    "by_status": {
+      "todo": 4,
+      "in_progress": 0,
+      "done": 0
+    }
+  }
+}
