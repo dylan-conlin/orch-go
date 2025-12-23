@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Added real-time agent activity display using message.part SSE events with client-side parsing and granular store updates.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Implemented and committed: Activity fields in Agent type, SSE event parsing for message.part, individual agent updates in store, activity display in cards, and Active Only filter. Go build and all tests pass.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Real-time activity doesn't require backend changes - can be implemented purely client-side by parsing existing SSE events. Activity = most recent message part (tool use, reasoning, text).
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Feature complete and committed. Ready for manual testing with live agents.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (90%) - Implementation complete and builds successfully; needs manual testing with actual SSE events to verify message.part parsing.
 
 <!--
 Example D.E.K.N.:
@@ -41,10 +41,10 @@ Guidelines:
 **Started:** 2025-12-22
 **Updated:** 2025-12-22
 **Owner:** OpenCode Agent
-**Phase:** Investigating
-**Next Step:** Understanding what "current activity" means for agents
-**Status:** In Progress
-**Confidence:** Medium (60%)
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (90%)
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
