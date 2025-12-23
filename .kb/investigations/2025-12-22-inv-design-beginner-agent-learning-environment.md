@@ -116,8 +116,28 @@ Lea is a graphic designer who has been using ChatGPT to build Google Apps Script
 1. **Pair session** - Walk through the setup together, let her drive
 2. **First project idea** - "Add a favorites button to the materials page"
 3. **Check-in after 2 weeks** - See if she's hitting any walls
-4. **Add playwright-mcp** - When she wants to test UI or scrape data
+4. **Playwright MCP already documented** - Instructions in CLAUDE.md for when ready
 5. **Graduate to Claude Code** - When she outgrows Cursor's capabilities
+
+## Final CLAUDE.md Structure
+
+1. Machine Setup (brew, bun, git, gh, fly, go)
+2. Cursor installation + usage (Cmd+K, Cmd+L, Cmd+I)
+3. Quick Start (bun install, bun run dev)
+4. Stack overview
+5. Project structure
+6. Key files (scs-api.ts, supabase.ts)
+7. Adding UI components
+8. Svelte 5 patterns
+9. Data flow
+10. Environment variables
+11. Supabase setup
+12. Deployment (Fly.io)
+13. Common tasks
+14. **kn** - Persisting decisions across sessions
+15. Git workflow for beginners
+16. **Playwright MCP** - Browser automation (Phase 2)
+17. Troubleshooting
 
 ## Summary
 
