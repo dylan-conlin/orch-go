@@ -1,98 +1,67 @@
-# Session Handoff - 22 Dec 2025 (night)
+# Session Handoff - 22 Dec 2025 (late night)
 
 ## TLDR
 
-Created beginner-friendly learning environment for Lea (graphic designer learning AI agents). SCS Explorer scaffold with comprehensive CLAUDE.md. Also spawned 4 agents from ready queue (1 completed, 3 stalled due to cross-repo issue).
+Fixed dashboard to show real-time agent activity. Headless spawn mode now works reliably. Discovered and worked around policy skill loading bug (orchestrator skill was bloating worker context).
 
 ---
 
 ## What Shipped
 
-### Lea's Learning Environment
+### Dashboard Fixes
+- Added `idle` status for sessions without recent activity (>10min)
+- Filter stale sessions (>6h) from display
+- Fixed duplicate key error in Svelte each block
+- Real-time agent activity display working
 
-**Location:** `/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/scs-explorer`
+### Headless Spawn Mode
+- Flipped default from tmux to headless (orch-go-9e15.1)
+- Updated CLAUDE.md and help text
+- Model flexibility for headless spawns
 
-| Component | Description |
-|-----------|-------------|
-| SvelteKit 5 scaffold | Full app with materials, hardware, finishes pages |
-| SCS API client | Typed client for SendCutSend public API |
-| Supabase auth | Email + Google OAuth wired up |
-| Fly.io ready | Dockerfile + fly.toml |
-| CLAUDE.md | Comprehensive beginner guide (500+ lines) |
-
-**CLAUDE.md includes:**
-1. Machine setup (brew, bun, git, gh, fly, go)
-2. Cursor installation + keyboard shortcuts
-3. kn for persisting decisions across sessions
-4. Git workflow for beginners
-5. Playwright MCP (Phase 2 - when ready)
-6. Project-specific guidance
-
-### Investigation
-
-`.kb/investigations/2025-12-22-inv-design-beginner-agent-learning-environment.md`
-
-Documents the design decisions:
-- Cursor over Claude Code (visual-first for designer)
-- kn included (she's already feeling session amnesia pain)
-- kb-cli/skillc deferred (solves orchestrator problems, not learner problems)
-- Add tools on pain, not preemptively
-
-### Issues
-
-| Issue | Status | Notes |
-|-------|--------|-------|
-| orch-go-djpb | Closed | Beads multi-repo hydration - config disconnect bug found |
-| orch-go-jtat | Stalled | Spawned in orch-go, work needed in kb-cli |
-| orch-go-oo1f | Stalled | Spawned in orch-go, work needed in orch-knowledge |
-| orch-go-hkkh | Stalled | Spawned in orch-go, work needed in kb-cli |
-
----
-
-## Friction Discovered
-
-1. **Cross-repo spawn issue** - `orch spawn --issue X` spawns in current directory, but issue may require work in different repo. Agents stall because files don't exist.
-
-2. **Headless kb context prompt** - `--skip-artifact-check` needed for headless spawns because kb context prompt blocks.
-
-3. **No `-y` flag on spawn** - Can't auto-confirm kb context inclusion.
-
----
-
-## Ready Queue (updated)
-
-```bash
-bd ready
-```
-
-Still has 9 P2 issues:
-- Dashboard UI/UX (orch-go-xwh, orch-go-36b)
-- Model flexibility phase 2 (orch-go-vut1)
-- kb commands (orch-go-jgc1, orch-go-p73c)
-- Templates (orch-go-abeu, orch-go-jtat, orch-go-oo1f, orch-go-hkkh)
-
-**Note:** jtat, oo1f, hkkh need to be respawned in correct repos.
+### Bug Workaround
+- **Policy skill loading bug** (orch-go-v2cz): Orchestrator skill (1224 lines) was loading for ALL sessions including workers, causing token limit errors
+- **Workaround**: Moved `~/.claude/skills/policy/orchestrator` to `~/.claude/skills/meta/orchestrator`
+- Proper fix needs OpenCode to respect `audience: orchestrator` field
 
 ---
 
 ## Account State
 
 ```
-work: 24% weekly (resets in 6d 16h)
+work: 28% weekly, 25% 5-hour (resets 3h)
 ```
+
+---
+
+## Open Issues
+
+| Issue | Description | Status |
+|-------|-------------|--------|
+| orch-go-v2cz | Policy skills loading for workers despite audience:orchestrator | Open - needs OpenCode fix |
+| orch-go-9e15.3 | Update orchestrator skill for headless default | Blocked - needs orch-knowledge repo |
+
+---
+
+## Cleaned Up
+
+- Killed stale tmux worker sessions (workers-beads-ui-svelte, workers-kb-cli, workers-price-watch, workers-skillc, workers-test-spawn-auto-init)
+- Cleaned 14 stale windows from workers-orch-go
+- Active agents: 6 (down from 33)
 
 ---
 
 ## Quick Start Next Session
 
 ```bash
+# Check status
 orch status
+orch usage
+
+# Dashboard
+~/bin/orch serve &
+cd ~/Documents/personal/orch-go/web && bun run dev
+
+# Ready queue
 bd ready
-
-# Check Lea's project
-ls /Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/scs-explorer
-
-# Respawn stalled agents in correct repos (if desired)
-cd ~/Documents/personal/kb-cli
-orch spawn --light feature-impl "sync hardcoded investigation template" --issue orch-go-jtat
 ```
