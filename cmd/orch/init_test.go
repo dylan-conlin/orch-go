@@ -389,3 +389,76 @@ func containsSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestInitCreatesProjectConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Run init (skip beads, kb, claude, tmuxinator to focus on config)
+	result, err := initProject(tmpDir, false, true, true, true, true, "", "")
+	if err != nil {
+		t.Fatalf("initProject failed: %v", err)
+	}
+
+	// Verify .orch/config.yaml was created
+	configPath := filepath.Join(tmpDir, ".orch", "config.yaml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Fatal(".orch/config.yaml should be created by init")
+	}
+
+	// Verify config contains servers section
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	content := string(data)
+	if !containsSubstring(content, "servers:") {
+		t.Error("config should contain 'servers:' section")
+	}
+
+	// Verify web and api ports are declared
+	if result.PortWeb > 0 {
+		if !containsSubstring(content, "web:") {
+			t.Error("config should declare web port")
+		}
+	}
+	if result.PortAPI > 0 {
+		if !containsSubstring(content, "api:") {
+			t.Error("config should declare api port")
+		}
+	}
+}
+
+func TestInitProjectConfigWithAllocatedPorts(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Run init
+	result, err := initProject(tmpDir, false, true, true, true, true, "", "")
+	if err != nil {
+		t.Fatalf("initProject failed: %v", err)
+	}
+
+	// Ports should be allocated
+	if result.PortWeb == 0 {
+		t.Error("PortWeb should be allocated")
+	}
+	if result.PortAPI == 0 {
+		t.Error("PortAPI should be allocated")
+	}
+
+	// Config should reflect these ports
+	configPath := filepath.Join(tmpDir, ".orch", "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	content := string(data)
+	// Should contain the allocated ports
+	if !containsSubstring(content, "web:") {
+		t.Error("config should contain web port declaration")
+	}
+	if !containsSubstring(content, "api:") {
+		t.Error("config should contain api port declaration")
+	}
+}

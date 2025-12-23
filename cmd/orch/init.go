@@ -191,6 +191,11 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skip
 	result.PortWeb = portWeb
 	result.PortAPI = portAPI
 
+	// Create .orch/config.yaml with allocated ports
+	if err := createProjectConfig(projectDir, portWeb, portAPI); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create project config: %v\n", err)
+	}
+
 	// Generate CLAUDE.md unless skipped
 	if skipClaudeMD {
 		result.ClaudeMDSkipped = true
@@ -270,6 +275,28 @@ func allocatePorts(projectName string) (portWeb, portAPI int) {
 	portAPI, _ = registry.Allocate(projectName, "api", port.PurposeAPI)
 
 	return portWeb, portAPI
+}
+
+// createProjectConfig creates .orch/config.yaml with server port declarations.
+func createProjectConfig(projectDir string, portWeb, portAPI int) error {
+	configPath := filepath.Join(projectDir, ".orch", "config.yaml")
+
+	// Build config content
+	var content string
+	content += "servers:\n"
+	if portWeb > 0 {
+		content += fmt.Sprintf("  web: %d\n", portWeb)
+	}
+	if portAPI > 0 {
+		content += fmt.Sprintf("  api: %d\n", portAPI)
+	}
+
+	// Write config file
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
 }
 
 // ensureDir creates a directory if it doesn't exist.

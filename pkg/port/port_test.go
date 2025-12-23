@@ -451,3 +451,75 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestListProjectServers(t *testing.T) {
+	// Create temp directory with project config
+	tmpDir := t.TempDir()
+	orchDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	// Write project config
+	configContent := `servers:
+  web: 5173
+  api: 3000
+`
+	configPath := filepath.Join(orchDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// List servers from project config
+	servers, err := ListProjectServers(tmpDir)
+	if err != nil {
+		t.Fatalf("ListProjectServers() failed: %v", err)
+	}
+
+	if len(servers) != 2 {
+		t.Errorf("Expected 2 servers, got %d", len(servers))
+	}
+
+	// Verify servers are present
+	foundWeb := false
+	foundAPI := false
+	for _, srv := range servers {
+		if srv.Service == "web" && srv.Port == 5173 {
+			foundWeb = true
+		}
+		if srv.Service == "api" && srv.Port == 3000 {
+			foundAPI = true
+		}
+	}
+
+	if !foundWeb {
+		t.Error("web:5173 not found in servers")
+	}
+	if !foundAPI {
+		t.Error("api:3000 not found in servers")
+	}
+}
+
+func TestListProjectServersNoConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Should return error when config doesn't exist
+	_, err := ListProjectServers(tmpDir)
+	if err == nil {
+		t.Error("ListProjectServers() should return error when config missing")
+	}
+}
+
+func TestProjectServerInfo(t *testing.T) {
+	srv := ProjectServer{
+		Service: "web",
+		Port:    5173,
+	}
+
+	if srv.Service != "web" {
+		t.Errorf("Service = %s, want web", srv.Service)
+	}
+	if srv.Port != 5173 {
+		t.Errorf("Port = %d, want 5173", srv.Port)
+	}
+}

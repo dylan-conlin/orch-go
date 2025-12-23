@@ -358,3 +358,42 @@ func (r *Registry) ReleaseProject(project string) int {
 	}
 	return count
 }
+
+// ProjectServer represents a server configured in project config.
+type ProjectServer struct {
+	Service string
+	Port    int
+}
+
+// ListProjectServers reads server configurations from .orch/config.yaml.
+// This reads the declared configuration, not runtime tracking.
+func ListProjectServers(projectDir string) ([]ProjectServer, error) {
+	// Import config package to read project config
+	configPath := filepath.Join(projectDir, ".orch", "config.yaml")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read project config: %w", err)
+	}
+
+	// Parse config YAML
+	type projectConfig struct {
+		Servers map[string]int `yaml:"servers"`
+	}
+
+	var cfg projectConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse project config: %w", err)
+	}
+
+	// Convert to ProjectServer slice
+	var servers []ProjectServer
+	for service, port := range cfg.Servers {
+		servers = append(servers, ProjectServer{
+			Service: service,
+			Port:    port,
+		})
+	}
+
+	return servers, nil
+}
