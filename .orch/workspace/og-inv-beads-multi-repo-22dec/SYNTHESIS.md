@@ -2,7 +2,7 @@
 
 **Agent:** og-inv-beads-multi-repo-22dec
 **Issue:** orch-go-djpb
-**Duration:** 2025-12-22 18:10 → 18:50
+**Duration:** 2025-12-22 18:10 → 18:50 (session 1), 2025-12-23 02:09 → 02:20 (session 2)
 **Outcome:** success
 
 ---
@@ -84,6 +84,7 @@ cat .beads/config.yaml
 
 ### Externalized via `kn`
 - `kn decide "Multi-repo hydration requires healthy database" --reason "Orphaned dependencies in kb-cli blocked all database operations including multi-repo sync. Fix with 'bd doctor --fix' before attempting multi-repo setup."` - kn-741ba1
+- `kn decide "Beads multi-repo hydration works correctly in v0.33.2" --reason "Config disconnect bug fixed in commit 634c0b93. Prior kn entry about 'buggy v0.29.0' is superseded."` - kn-605d3b (session 2)
 
 ---
 
