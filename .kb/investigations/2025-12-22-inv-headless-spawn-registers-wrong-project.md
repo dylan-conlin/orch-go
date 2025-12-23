@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** OpenCode API requires directory via x-opencode-directory HTTP header, not JSON body parameter; added --workdir flag to spawn command.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Direct curl test confirmed header works (returns correct directory in response); JSON body parameter is ignored by OpenCode server.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** OpenCode API parameter passing is inconsistent (title/model in JSON, directory in header); --workdir enables cross-project spawning without cd.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - fix implemented, tested, and committed in 9568983.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (90%) - Fix verified via manual testing and API inspection; unclear why OpenCode uses header vs JSON inconsistently.
 
 <!--
 Example D.E.K.N.:
@@ -38,12 +38,12 @@ Guidelines:
 
 **Question:** Why do headless spawns register with the wrong project directory, and how can we add support for cross-project spawning?
 
-**Started:** 2025-12-22
-**Updated:** 2025-12-22
+**Started:** 2025-12-22 22:31
+**Updated:** 2025-12-22 23:05
 **Owner:** og-debug-headless-spawn-registers-22dec
-**Phase:** Implementing
-**Next Step:** Add --workdir flag to spawn command
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 **Confidence:** High (90%)
 
 <!-- Lineage (fill only when applicable) -->
