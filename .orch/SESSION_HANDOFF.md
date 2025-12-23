@@ -1,64 +1,87 @@
-# Session Handoff - 22 Dec 2025 (night)
+# Session Handoff - 22 Dec 2025 (late night)
 
 ## TLDR
 
-Both P1 reliability bugs resolved. Phantom agents fixed (status now accurate). Workers stalling investigated (root cause: Claude API not responding, recommend adding stall detection).
+Headless Swarm epic complete. Tiered spawn protocol (`--light`/`--full`) shipped. System transitioned from tmux-primary to headless-primary architecture.
 
 ---
 
 ## What Shipped
 
-### Commits
+### Commits (this session)
 | Commit | Description |
 |--------|-------------|
-| `0ba0104` | Filter phantom agents - require parseable beadsID |
-| `5d8c187` | Mark stalled tmux agents as phantom + fix concurrency check |
-| `d4b8fc8` | Investigation: workers stall during Build phase |
+| `9bb0607` | WorkerPool for daemon concurrency control |
+| `da97969` | CompletionService for SSE-based headless tracking |
+| `a58d83f` | `orch swarm` command for batch spawning |
+| `3c0a971` | Fix: handoff shows correct active agents |
+| `d00a6c7` | `--auto-init` flag for spawn scaffolding |
+| `345e090` | Tiered spawn protocol (`--light`/`--full` flags) |
 
 ### Issues Closed
 | Issue | Type | Resolution |
 |-------|------|------------|
-| orch-go-c4fh | bug | Fixed - filter by beadsID, mark stalled tmux as phantom |
-| orch-go-d039 | bug | Investigated - stall = busy without message events >5min |
+| orch-go-bdd | epic | Headless Swarm complete (6/6 children) |
+| orch-go-bdd.3 | task | WorkerPool concurrency control |
+| orch-go-bdd.4 | task | `orch swarm` command |
+| orch-go-bdd.6 | task | SSE completion tracking |
+| orch-go-d6x9 | task | Already implemented (no-op) |
+| orch-go-ipq9 | task | `--auto-init` flag |
+| orch-go-hey6 | task | Handoff phantom fix |
+| orch-go-f7vj | feature | Tiered spawn protocol |
 
 ---
 
-## Key Findings
+## Key Changes
 
-### Phantom Agents (Fixed)
-**Root causes:**
-1. Tmux service windows (docker, frontend, logs) in `workers-*` sessions counted as agents
-2. OpenCode sessions without beadsID passing idle filter
-3. Tmux windows with dead OpenCode sessions not marked phantom
+### Headless Swarm (Epic Complete)
+The system now supports concurrent batch spawning:
+```bash
+orch swarm --ready --concurrency 3      # Spawn from ready queue
+orch swarm --issues a,b,c --detach      # Fire-and-forget
+orch daemon run --concurrency 5         # Overnight batch
+```
 
-**Fix:** Only count windows/sessions with parseable beadsID; mark tmux-only as "stalled"
+Architecture shift: tmux is now opt-in (`--tmux`), headless HTTP is the primary path.
 
-### Workers Stalling (Investigated)
-**Finding:** "Build" is OpenCode's agent mode, not a compile phase. Stall = Claude API request sent but no tokens streaming back.
+### Tiered Protocol (New)
+Two-tier spawn protocol reduces ceremony for simple tasks:
 
-**Causes (likely order):**
-1. Rate limiting (429) - not surfaced to user
-2. API hang - request sent, no response
-3. Network issues
-4. OpenCode internal issues
+| Tier | Default For | SYNTHESIS.md |
+|------|-------------|--------------|
+| Light | feature-impl, issue-creation | Optional |
+| Full | investigation, debugging, architect | Required |
 
-**Recommendation:** Add stall detection to SSE monitor - alert when `session.status: busy` for >5min without `message.part` events
+```bash
+orch spawn --light feature-impl "quick fix"    # Skip synthesis
+orch spawn --full investigation "deep dive"   # Require synthesis
+```
+
+Agents can upgrade mid-flight (produce synthesis even if spawned light).
+
+---
+
+## Session Friction (for next orchestrator)
+
+1. **`orch status` split brain** - Shows HTTP sessions but swarm spawns to tmux. Unified view needed.
+2. **Swarm blocks terminal** - `orch swarm` waits for completion. Consider `--detach` default.
+3. **`--force` on every complete** - Verification step adds friction, not value. Light tier could skip entirely.
 
 ---
 
 ## System State
 
-**Account usage:** 13% (resets in 6d 19h)
-
-**Status:** 0 active, 7 phantom (cross-project agents from skillc/price-watch)
+**Account usage:** 76% 5-hour (resets 2h 50m), 21% weekly
 
 **Ready queue (all P2):**
 ```
 orch-go-xwh    Dashboard UI/UX iteration
-orch-go-bdd    Epic: Headless Swarm
-orch-go-bdd.3  Daemon concurrency control
-orch-go-36b    Dashboard agent visibility
+orch-go-36b    Dashboard agent visibility  
 orch-go-vut1   Model flexibility phase 2
+orch-go-djpb   Beads multi-repo hydration
+orch-go-jgc1   kb extract command
+orch-go-p73c   kb supersede command
+orch-go-abeu   Update templates with structured uncertainty
 ```
 
 ---
@@ -69,6 +92,9 @@ orch-go-vut1   Model flexibility phase 2
 orch status
 bd ready
 
-# P2 work available - pick based on priority
-orch spawn feature-impl "task" --issue <id>
+# Test the new swarm command
+orch swarm --ready --concurrency 2 --dry-run
+
+# Or use tiered protocol
+orch spawn --light feature-impl "task" --issue <id>
 ```
