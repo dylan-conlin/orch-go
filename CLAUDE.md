@@ -96,6 +96,12 @@ pkg/
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
 - Embeds skill content, task description, beads issue context
 - Sets deliverables paths for verification
+- Conditionally includes server context for UI-focused skills (feature-impl, systematic-debugging, reliability-testing)
+
+### pkg/config/ (Project Config)
+- `Load()` reads `.orch/config.yaml` from project directory
+- `Config.Servers` maps service names to ports (e.g., `web: 5173`)
+- Used by `orch servers` commands and spawn context generation
 
 ### pkg/verify/ (Completion Verification)
 - `Check()` validates agent work before closing
@@ -141,6 +147,14 @@ pkg/
 - `work <issue-id>` - Spawn from beads issue with skill inference
 - `daemon run` - Run autonomous processing in foreground
 - `daemon preview` - Show what would be spawned
+
+### Server Management
+- `servers list` - Show all projects with port allocations and running status
+- `servers start <project>` - Start servers via tmuxinator
+- `servers stop <project>` - Stop servers for a project
+- `servers attach <project>` - Attach to servers window
+- `servers open <project>` - Open web port in browser
+- `servers status` - Show summary view (running/stopped counts)
 
 ## Development
 

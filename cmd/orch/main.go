@@ -1048,6 +1048,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		NoTrack:           spawnNoTrack,
 		SkipArtifactCheck: spawnSkipArtifactCheck,
 		KBContext:         kbContext,
+		IncludeServers:    spawn.DefaultIncludeServersForSkill(skillName),
 	}
 
 	// Write SPAWN_CONTEXT.md

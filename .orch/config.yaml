@@ -1,0 +1,3 @@
+servers:
+  web: 5188
+  api: 3348

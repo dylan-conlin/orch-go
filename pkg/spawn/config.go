@@ -42,6 +42,23 @@ func DefaultTierForSkill(skillName string) string {
 	return TierFull // Conservative default for unknown skills
 }
 
+// SkillIncludesServers maps skills to whether they should include server context.
+// UI-focused skills get server info by default to save discovery time.
+var SkillIncludesServers = map[string]bool{
+	"feature-impl":         true, // Often involves web UI work
+	"systematic-debugging": true, // May need to access running servers
+	"reliability-testing":  true, // Needs to test live servers
+}
+
+// DefaultIncludeServersForSkill returns whether a skill should include server context by default.
+// Returns false for unknown skills (conservative default).
+func DefaultIncludeServersForSkill(skillName string) bool {
+	if include, ok := SkillIncludesServers[skillName]; ok {
+		return include
+	}
+	return false // Don't include for investigation-type skills by default
+}
+
 // Config holds configuration for spawning an agent.
 type Config struct {
 	// Task description
@@ -88,6 +105,14 @@ type Config struct {
 
 	// KBContext is the formatted kb context to include in SPAWN_CONTEXT.md
 	KBContext string
+
+	// IncludeServers controls whether server context is included in SPAWN_CONTEXT.md
+	// Default is based on skill type (true for UI-focused skills)
+	IncludeServers bool
+
+	// ServerContext is the formatted server info to include in SPAWN_CONTEXT.md
+	// Populated by GenerateServerContext() if IncludeServers is true
+	ServerContext string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

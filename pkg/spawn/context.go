@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/config"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
@@ -172,7 +176,10 @@ Follow investigation skill guidance for {{.InvestigationType}} investigations.
 CONTEXT AVAILABLE:
 - Global: ~/.claude/CLAUDE.md
 - Project: {{.ProjectDir}}/CLAUDE.md
+{{if .ServerContext}}
 
+{{.ServerContext}}
+{{end}}
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
 {{if eq .Tier "light"}}
@@ -203,6 +210,7 @@ type contextData struct {
 	InvestigationType string
 	KBContext         string
 	Tier              string
+	ServerContext     string
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -214,6 +222,12 @@ func GenerateContext(cfg *Config) (string, error) {
 
 	// Generate investigation slug from task
 	slug := generateSlug(cfg.Task, 5)
+
+	// Generate server context if enabled
+	serverContext := cfg.ServerContext
+	if cfg.IncludeServers && serverContext == "" {
+		serverContext = GenerateServerContext(cfg.ProjectDir)
+	}
 
 	data := contextData{
 		Task:              cfg.Task,
@@ -229,6 +243,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		InvestigationType: cfg.InvestigationType,
 		KBContext:         cfg.KBContext,
 		Tier:              cfg.Tier,
+		ServerContext:     serverContext,
 	}
 
 	var buf bytes.Buffer
@@ -647,3 +662,50 @@ orch spawn {skill} "{adjusted-task}" --issue {beads-id}
 **Beads:** ` + "`" + `bd show {issue-id}` + "`" + `
 **Time Spent:** {approximate-duration}
 `
+
+// GenerateServerContext creates the server context section for SPAWN_CONTEXT.md.
+// Returns empty string if no servers are configured for the project.
+func GenerateServerContext(projectDir string) string {
+	cfg, err := config.Load(projectDir)
+	if err != nil {
+		return "" // No config or can't load - skip silently
+	}
+
+	if len(cfg.Servers) == 0 {
+		return "" // No servers configured
+	}
+
+	// Get project name from directory
+	projectName := filepath.Base(projectDir)
+	sessionName := tmux.GetWorkersSessionName(projectName)
+
+	// Check if servers are running
+	running := tmux.SessionExists(sessionName)
+	status := "stopped"
+	if running {
+		status = "running"
+	}
+
+	// Build server list
+	var serverLines []string
+	for service, port := range cfg.Servers {
+		serverLines = append(serverLines, fmt.Sprintf("- **%s:** http://localhost:%d", service, port))
+	}
+
+	// Format the context section
+	var sb strings.Builder
+	sb.WriteString("## LOCAL SERVERS\n\n")
+	sb.WriteString(fmt.Sprintf("**Project:** %s\n", projectName))
+	sb.WriteString(fmt.Sprintf("**Status:** %s\n\n", status))
+	sb.WriteString("**Ports:**\n")
+	for _, line := range serverLines {
+		sb.WriteString(line + "\n")
+	}
+	sb.WriteString("\n**Quick commands:**\n")
+	sb.WriteString(fmt.Sprintf("- Start servers: `orch servers start %s`\n", projectName))
+	sb.WriteString(fmt.Sprintf("- Stop servers: `orch servers stop %s`\n", projectName))
+	sb.WriteString(fmt.Sprintf("- Open in browser: `orch servers open %s`\n", projectName))
+	sb.WriteString("\n")
+
+	return sb.String()
+}

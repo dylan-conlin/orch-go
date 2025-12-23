@@ -569,3 +569,179 @@ func TestWriteContext_FullTierCreatesSynthesisTemplate(t *testing.T) {
 		t.Errorf("tier file should contain 'full', got %q", string(content))
 	}
 }
+
+func TestDefaultIncludeServersForSkill(t *testing.T) {
+	tests := []struct {
+		skill string
+		want  bool
+	}{
+		// UI-focused skills include servers
+		{"feature-impl", true},
+		{"systematic-debugging", true},
+		{"reliability-testing", true},
+
+		// Investigation-type skills don't include servers by default
+		{"investigation", false},
+		{"architect", false},
+		{"research", false},
+		{"codebase-audit", false},
+
+		// Unknown skill defaults to false
+		{"unknown-skill", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.skill, func(t *testing.T) {
+			got := DefaultIncludeServersForSkill(tt.skill)
+			if got != tt.want {
+				t.Errorf("DefaultIncludeServersForSkill(%q) = %v, want %v", tt.skill, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateServerContext(t *testing.T) {
+	t.Run("with servers configured", func(t *testing.T) {
+		tempDir := t.TempDir()
+		orchDir := filepath.Join(tempDir, ".orch")
+		if err := os.MkdirAll(orchDir, 0755); err != nil {
+			t.Fatalf("failed to create .orch dir: %v", err)
+		}
+
+		// Write config with servers
+		configContent := `servers:
+  web: 5173
+  api: 3000
+`
+		configPath := filepath.Join(orchDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config: %v", err)
+		}
+
+		context := GenerateServerContext(tempDir)
+
+		// Check it contains expected content
+		if !strings.Contains(context, "## LOCAL SERVERS") {
+			t.Error("expected server context to contain header")
+		}
+		if !strings.Contains(context, "http://localhost:5173") {
+			t.Error("expected server context to contain web port")
+		}
+		if !strings.Contains(context, "http://localhost:3000") {
+			t.Error("expected server context to contain api port")
+		}
+		if !strings.Contains(context, "orch servers start") {
+			t.Error("expected server context to contain quick commands")
+		}
+	})
+
+	t.Run("without config file", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		context := GenerateServerContext(tempDir)
+
+		// Should return empty string when no config
+		if context != "" {
+			t.Errorf("expected empty string when no config, got: %s", context)
+		}
+	})
+
+	t.Run("with empty servers", func(t *testing.T) {
+		tempDir := t.TempDir()
+		orchDir := filepath.Join(tempDir, ".orch")
+		if err := os.MkdirAll(orchDir, 0755); err != nil {
+			t.Fatalf("failed to create .orch dir: %v", err)
+		}
+
+		// Write config with empty servers
+		configContent := `servers: {}`
+		configPath := filepath.Join(orchDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config: %v", err)
+		}
+
+		context := GenerateServerContext(tempDir)
+
+		// Should return empty string when no servers
+		if context != "" {
+			t.Errorf("expected empty string when no servers, got: %s", context)
+		}
+	})
+}
+
+func TestGenerateContext_WithServerContext(t *testing.T) {
+	tempDir := t.TempDir()
+	orchDir := filepath.Join(tempDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	// Write config with servers
+	configContent := `servers:
+  web: 5173
+  api: 3000
+`
+	configPath := filepath.Join(orchDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg := &Config{
+		Task:           "implement feature",
+		SkillName:      "feature-impl",
+		Project:        "test-project",
+		ProjectDir:     tempDir,
+		BeadsID:        "test-123",
+		IncludeServers: true,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should contain server context
+	if !strings.Contains(content, "## LOCAL SERVERS") {
+		t.Error("expected content to contain server context")
+	}
+	if !strings.Contains(content, "http://localhost:5173") {
+		t.Error("expected content to contain web port")
+	}
+}
+
+func TestGenerateContext_WithoutServerContext(t *testing.T) {
+	tempDir := t.TempDir()
+	orchDir := filepath.Join(tempDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	// Write config with servers (but IncludeServers is false)
+	configContent := `servers:
+  web: 5173
+`
+	configPath := filepath.Join(orchDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg := &Config{
+		Task:           "investigate something",
+		SkillName:      "investigation",
+		Project:        "test-project",
+		ProjectDir:     tempDir,
+		BeadsID:        "test-123",
+		IncludeServers: false, // Explicitly disabled
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should NOT contain server context
+	if strings.Contains(content, "## LOCAL SERVERS") {
+		t.Error("expected content to NOT contain server context when disabled")
+	}
+}
