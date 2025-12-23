@@ -810,3 +810,114 @@ func TestDetermineBeadsID(t *testing.T) {
 		})
 	}
 }
+
+// TestDirExists tests the dirExists helper function.
+func TestDirExists(t *testing.T) {
+	// Create a temp directory for testing
+	tempDir, err := os.MkdirTemp("", "test-dir-exists-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create a file inside for testing
+	testFile := filepath.Join(tempDir, "test-file.txt")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{
+			name: "existing directory",
+			path: tempDir,
+			want: true,
+		},
+		{
+			name: "non-existing path",
+			path: filepath.Join(tempDir, "does-not-exist"),
+			want: false,
+		},
+		{
+			name: "file not directory",
+			path: testFile,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dirExists(tt.path)
+			if got != tt.want {
+				t.Errorf("dirExists(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEnsureOrchScaffoldingNoTrack tests that --no-track bypasses beads check.
+func TestEnsureOrchScaffoldingNoTrack(t *testing.T) {
+	// Create a temp directory without .beads
+	tempDir, err := os.MkdirTemp("", "test-scaffold-notrack-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// With noTrack=true, should succeed even without .beads
+	err = ensureOrchScaffolding(tempDir, false, true)
+	if err != nil {
+		t.Errorf("ensureOrchScaffolding() with noTrack=true should succeed, got error: %v", err)
+	}
+}
+
+// TestEnsureOrchScaffoldingMissingBeads tests error when beads is missing.
+func TestEnsureOrchScaffoldingMissingBeads(t *testing.T) {
+	// Create a temp directory without .beads
+	tempDir, err := os.MkdirTemp("", "test-scaffold-missing-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// With noTrack=false and autoInit=false, should fail
+	err = ensureOrchScaffolding(tempDir, false, false)
+	if err == nil {
+		t.Error("ensureOrchScaffolding() should fail when .beads is missing and tracking enabled")
+	}
+
+	// Error message should mention .beads
+	if err != nil && !strings.Contains(err.Error(), ".beads") {
+		t.Errorf("Error message should mention .beads, got: %v", err)
+	}
+
+	// Error message should suggest alternatives
+	if err != nil && !strings.Contains(err.Error(), "orch init") {
+		t.Errorf("Error message should suggest 'orch init', got: %v", err)
+	}
+}
+
+// TestEnsureOrchScaffoldingExistingBeads tests that existing .beads passes.
+func TestEnsureOrchScaffoldingExistingBeads(t *testing.T) {
+	// Create a temp directory with .beads
+	tempDir, err := os.MkdirTemp("", "test-scaffold-existing-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create .beads directory
+	beadsDir := filepath.Join(tempDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("Failed to create .beads dir: %v", err)
+	}
+
+	// With existing .beads, should succeed
+	err = ensureOrchScaffolding(tempDir, false, false)
+	if err != nil {
+		t.Errorf("ensureOrchScaffolding() should succeed with existing .beads, got error: %v", err)
+	}
+}

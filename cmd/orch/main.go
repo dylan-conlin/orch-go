@@ -167,6 +167,7 @@ var (
 	spawnMCP               string // MCP server config (e.g., "playwright")
 	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
 	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
+	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
 )
 
 var spawnCmd = &cobra.Command{
@@ -184,6 +185,10 @@ Concurrency Limiting:
   Configure via --max-agents flag or ORCH_MAX_AGENTS environment variable.
   Set to 0 to disable the limit (not recommended).
 
+Auto-Initialization:
+  Use --auto-init to automatically run 'orch init' if .orch/ or .beads/ are missing.
+  This is useful for spawning in new projects without prior setup.
+
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
@@ -199,7 +204,8 @@ Examples:
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
   orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
-  orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents`,
+  orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
+  orch-go spawn --auto-init investigation "new project"        # Auto-init if needed`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -222,6 +228,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
+	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
 }
 
 var askCmd = &cobra.Command{
@@ -916,6 +923,11 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 
 	// Get project name from directory
 	projectName := filepath.Base(projectDir)
+
+	// Check and optionally auto-initialize scaffolding
+	if err := ensureOrchScaffolding(projectDir, spawnAutoInit, spawnNoTrack); err != nil {
+		return err
+	}
 
 	// Generate workspace name
 	workspaceName := spawn.GenerateWorkspaceName(skillName, task)
@@ -3039,6 +3051,57 @@ func runPortTmuxinator(project, projectDir string) error {
 	}
 
 	return nil
+}
+
+// ensureOrchScaffolding checks for .beads/ directory when beads tracking is enabled.
+// If autoInit is true, it automatically initializes missing directories.
+// If autoInit is false and .beads/ is missing (with tracking enabled), it returns an error with helpful suggestions.
+// Note: .orch/ directories are created automatically by spawn.WriteContext(), so we don't check for them here.
+func ensureOrchScaffolding(projectDir string, autoInit bool, noTrack bool) error {
+	beadsDir := filepath.Join(projectDir, ".beads")
+	beadsExists := dirExists(beadsDir)
+
+	// If beads exists or tracking is disabled, we're good
+	if beadsExists || noTrack {
+		return nil
+	}
+
+	// Beads is missing and tracking is enabled
+	// If auto-init is enabled, run initialization
+	if autoInit {
+		fmt.Println("Auto-initializing orch scaffolding...")
+
+		// Run init with appropriate flags (skip CLAUDE.md and tmuxinator for minimal init)
+		result, err := initProject(projectDir, false, false, false, true, true, "", "")
+		if err != nil {
+			return fmt.Errorf("auto-init failed: %w", err)
+		}
+
+		// Print minimal summary
+		if len(result.DirsCreated) > 0 {
+			fmt.Printf("Created: %s\n", strings.Join(result.DirsCreated, ", "))
+		}
+		if result.BeadsInitiated {
+			fmt.Println("Beads initialized (.beads/)")
+		}
+		if result.KBInitiated {
+			fmt.Println("KB initialized (.kb/)")
+		}
+
+		return nil
+	}
+
+	// Not auto-init, provide helpful error message
+	return fmt.Errorf("missing beads tracking (.beads/ not initialized)\n\nTo fix, run one of:\n  orch init           # Full initialization (recommended)\n  orch spawn --auto-init ...  # Auto-init during spawn\n  orch spawn --no-track ...   # Skip beads tracking (ad-hoc work)")
+}
+
+// dirExists returns true if the path exists and is a directory.
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
 
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
