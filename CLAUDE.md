@@ -109,9 +109,10 @@ pkg/
 3. Creates workspace: `.orch/workspace/{name}/`
 4. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
 5. **Default (headless):** Creates session via HTTP API, sends prompt
-6. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
-7. Registers agent in `~/.orch/agent-registry.json`
-8. Returns immediately (unless --inline)
+6. **With --tmux:** Creates session + tmux window for monitoring (opt-in)
+7. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
+8. Registers agent in `~/.orch/agent-registry.json`
+9. Returns immediately (unless --inline)
 
 ## Commands
 
@@ -126,7 +127,7 @@ pkg/
 ### Monitoring
 - `monitor` - Real-time SSE event watching
 - `wait <agent-id>` - Block until phase reached
-- `tail <agent-id>` - Capture recent tmux output
+- `tail <agent-id>` - Capture recent tmux output (requires `--tmux` spawn)
 - `question <agent-id>` - Extract pending question
 - `serve` - HTTP API server for web UI (port 3333)
 
@@ -183,6 +184,9 @@ orch version
 ```bash
 # Spawn with specific model (headless by default)
 orch spawn --model flash investigation "explore X"
+
+# Spawn in tmux window (opt-in for visual monitoring)
+orch spawn --tmux investigation "explore X"
 
 # Run inline with TUI (blocking)
 orch spawn --inline investigation "explore X"

@@ -175,13 +175,14 @@ var (
 
 var spawnCmd = &cobra.Command{
 	Use:   "spawn [skill] [task]",
-	Short: "Spawn a new OpenCode session with skill context",
+	Short: "Spawn a new agent with skill context (default: headless)",
 	Long: `Spawn a new OpenCode session with skill context.
 
-By default, spawns the agent headless via HTTP API (automation-friendly, no TUI overhead).
-Use --tmux to run in a tmux window (visible, interruptible).
-Use --inline to run in the current terminal (blocking with TUI).
-Use --attach to spawn in tmux and attach immediately.
+Spawn Modes:
+  Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
+  --tmux:             Spawns in a tmux window - visible, interruptible, opt-in
+  --inline:           Runs in current terminal - blocking with TUI, for debugging
+  --attach:           Spawns in tmux and attaches immediately (implies --tmux)
 
 Spawn Tiers:
   --light: Skip SYNTHESIS.md requirement (for code-focused work)
@@ -205,14 +206,21 @@ Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
 Examples:
-  orch-go spawn investigation "explore the codebase"           # Default: headless (HTTP API)
-  orch-go spawn feature-impl "add new spawn command" --phases implementation,validation
+  # Headless mode (default) - automation-friendly, returns immediately
+  orch-go spawn investigation "explore the codebase"
+  orch-go spawn feature-impl "add feature" --phases implementation,validation
   orch-go spawn --issue proj-123 feature-impl "implement the feature"
-  orch-go spawn --tmux investigation "explore codebase"        # Run in tmux window (opt-in)
-  orch-go spawn --inline investigation "explore codebase"      # Run inline (blocking TUI)
+  
+  # Tmux mode (opt-in) - visible, interruptible
+  orch-go spawn --tmux investigation "explore codebase"
   orch-go spawn --attach investigation "explore codebase"      # Tmux + attach immediately
-  orch-go spawn --model opus investigation "explore the codebase"  # Use Claude Opus
-  orch-go spawn --model flash investigation "explore the codebase"  # Use Gemini Flash
+  
+  # Inline mode - blocking with TUI, for debugging
+  orch-go spawn --inline investigation "explore codebase"
+  
+  # Other options
+  orch-go spawn --model opus investigation "analyze code"      # Use Claude Opus
+  orch-go spawn --model flash investigation "quick check"      # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
   orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
@@ -235,8 +243,8 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
-	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (for automation/scripting)")
-	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in, overrides default headless)")
+	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
+	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
 	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
