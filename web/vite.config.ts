@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
-		port: 5174,
+		port: 5188,
 		proxy: {
 			// Proxy SSE events from OpenCode
 			'/api/events': {

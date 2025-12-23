@@ -13,6 +13,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -32,22 +33,30 @@ Endpoints:
   GET /api/agents  - Returns JSON list of active agents from OpenCode/tmux
   GET /api/events  - Proxies the OpenCode SSE stream for real-time updates
 
-The server runs on port 3333 by default.
+The server auto-detects the port from the project's port allocation (via 'orch port allocate').
+Falls back to port 3333 if no allocation exists.
 
 Examples:
-  orch-go serve              # Start server on port 3333
-  orch-go serve --port 8080  # Start server on port 8080`,
+  orch-go serve              # Start server on allocated port (or 3333)
+  orch-go serve --port 8080  # Override with explicit port`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe(servePort)
 	},
 }
 
 func init() {
-	serveCmd.Flags().IntVarP(&servePort, "port", "p", 3333, "Port to listen on")
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", 3333, "Port to listen on (auto-detected from port registry if not specified)")
 	rootCmd.AddCommand(serveCmd)
 }
 
-func runServe(port int) error {
+func runServe(portNum int) error {
+	// If no explicit port provided (using default), try to get from port registry
+	if portNum == 3333 {
+		if allocatedPort := getProjectAPIPort(); allocatedPort > 0 {
+			portNum = allocatedPort
+		}
+	}
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -91,7 +100,7 @@ func runServe(port int) error {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf(":%d", portNum)
 	fmt.Printf("Starting orch-go API server on http://127.0.0.1%s\n", addr)
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
@@ -529,4 +538,26 @@ func readLastNEvents(path string, n int) ([]events.Event, error) {
 		return allEvents[len(allEvents)-n:], nil
 	}
 	return allEvents, nil
+}
+
+// getProjectAPIPort returns the allocated API port for the current project.
+// Returns 0 if no allocation exists or on error.
+func getProjectAPIPort() int {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return 0
+	}
+	projectName := filepath.Base(projectDir)
+
+	registry, err := port.New("")
+	if err != nil {
+		return 0
+	}
+
+	alloc := registry.Find(projectName, "api")
+	if alloc == nil {
+		return 0
+	}
+
+	return alloc.Port
 }

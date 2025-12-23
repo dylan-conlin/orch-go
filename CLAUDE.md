@@ -129,7 +129,7 @@ pkg/
 - `wait <agent-id>` - Block until phase reached
 - `tail <agent-id>` - Capture recent tmux output (requires `--tmux` spawn)
 - `question <agent-id>` - Extract pending question
-- `serve` - HTTP API server for web UI (port 3333)
+- `serve` - HTTP API server for web UI (port 3348)
 
 ### Account & Model
 - `account list` - Show saved Claude Max accounts
