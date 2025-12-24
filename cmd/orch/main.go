@@ -1021,12 +1021,22 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Resolve model - convert aliases to full format
 	resolvedModel := model.Resolve(spawnModel)
 
-	// Run pre-spawn kb context check unless skipped
+	// Parse skill requirements to determine what context to gather
+	requires := spawn.ParseSkillRequires(skillContent)
+
+	// Gather context based on skill requirements (or fall back to default behavior)
 	var kbContext string
 	if !spawnSkipArtifactCheck {
-		kbContext = runPreSpawnKBCheck(task)
+		if requires != nil && requires.HasRequirements() {
+			// Skill-driven context gathering
+			fmt.Printf("Gathering context (skill requires: %s)\n", requires.String())
+			kbContext = spawn.GatherRequiredContext(requires, task, beadsID, projectDir)
+		} else {
+			// Fall back to default kb context check (backwards compatible)
+			kbContext = runPreSpawnKBCheck(task)
+		}
 	} else {
-		fmt.Println("Skipping kb context check (--skip-artifact-check)")
+		fmt.Println("Skipping context check (--skip-artifact-check)")
 	}
 
 	// Determine spawn tier
@@ -2378,6 +2388,15 @@ func runComplete(beadsID string) error {
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
+	// Clean up tmux window if it exists (prevents phantom accumulation)
+	if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(beadsID); err == nil && window != nil {
+		if err := tmux.KillWindow(window.Target); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
+		} else {
+			fmt.Printf("Closed tmux window: %s:%s\n", sessionName, window.Name)
+		}
+	}
+
 	// Log the completion
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -2425,6 +2444,7 @@ var (
 	cleanDryRun         bool
 	cleanVerifyOpenCode bool
 	cleanWindows        bool
+	cleanPhantoms       bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -2442,9 +2462,10 @@ Examples:
   orch-go clean                   # Clean completed agents (reports only)
   orch-go clean --dry-run         # Show what would be cleaned (no changes)
   orch-go clean --windows         # Also close tmux windows for completed agents
+  orch-go clean --phantoms        # Close all phantom tmux windows (stale agent windows)
   orch-go clean --verify-opencode # Also check OpenCode disk sessions`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms)
 	},
 }
 
@@ -2452,6 +2473,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
+	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -2605,7 +2627,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -2669,6 +2691,15 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool) error {
 		}
 	}
 
+	// Clean phantom tmux windows (optional)
+	var phantomsClosed int
+	if cleanPhantoms {
+		phantomsClosed, err = cleanPhantomWindows(serverURL, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean phantom windows: %v\n", err)
+		}
+	}
+
 	if dryRun {
 		fmt.Printf("\nDry run complete. Would clean %d items", workspacesCleaned)
 		if closeWindows {
@@ -2682,6 +2713,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool) error {
 			if windowCount > 0 {
 				fmt.Printf(", %d tmux windows", windowCount)
 			}
+		}
+		if cleanPhantoms && phantomsClosed > 0 {
+			fmt.Printf(", %d phantom windows", phantomsClosed)
 		}
 		if verifyOpenCode {
 			fmt.Printf(", %d orphaned disk sessions", diskSessionsDeleted)
@@ -2699,10 +2733,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool) error {
 		Data: map[string]interface{}{
 			"workspaces_cleaned":    workspacesCleaned,
 			"windows_closed":        windowsClosed,
+			"phantoms_closed":       phantomsClosed,
 			"disk_sessions_deleted": diskSessionsDeleted,
 			"project":               projectName,
 			"verify_opencode":       verifyOpenCode,
 			"close_windows":         closeWindows,
+			"clean_phantoms":        cleanPhantoms,
 		},
 	}
 	if err := logger.Log(event); err != nil {
@@ -2712,6 +2748,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool) error {
 	fmt.Printf("\nCleaned %d workspaces", workspacesCleaned)
 	if closeWindows && windowsClosed > 0 {
 		fmt.Printf(", closed %d tmux windows", windowsClosed)
+	}
+	if cleanPhantoms && phantomsClosed > 0 {
+		fmt.Printf(", closed %d phantom windows", phantomsClosed)
 	}
 	if verifyOpenCode && diskSessionsDeleted > 0 {
 		fmt.Printf(", deleted %d orphaned disk sessions", diskSessionsDeleted)
@@ -2796,6 +2835,100 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 	}
 
 	return deleted, nil
+}
+
+// cleanPhantomWindows finds and closes tmux windows that are phantoms
+// (have a beads ID in the window name but no active OpenCode session).
+// Returns the number of windows closed and any error encountered.
+func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
+	client := opencode.NewClient(serverURL)
+	now := time.Now()
+	const maxIdleTime = 30 * time.Minute
+
+	fmt.Println("\nScanning for phantom tmux windows...")
+
+	// Get all OpenCode sessions and build a map of recently active beads IDs
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return 0, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	activeBeadsIDs := make(map[string]bool)
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) <= maxIdleTime {
+			beadsID := extractBeadsIDFromTitle(s.Title)
+			if beadsID != "" {
+				activeBeadsIDs[beadsID] = true
+			}
+		}
+	}
+
+	fmt.Printf("  Found %d active OpenCode sessions\n", len(activeBeadsIDs))
+
+	// Scan all workers sessions for phantom windows
+	var phantomWindows []struct {
+		window      *tmux.WindowInfo
+		sessionName string
+		beadsID     string
+	}
+
+	workersSessions, _ := tmux.ListWorkersSessions()
+	for _, sessionName := range workersSessions {
+		windows, err := tmux.ListWindows(sessionName)
+		if err != nil {
+			continue
+		}
+
+		for _, w := range windows {
+			// Skip known non-agent windows
+			if w.Name == "servers" || w.Name == "zsh" {
+				continue
+			}
+
+			beadsID := extractBeadsIDFromWindowName(w.Name)
+			if beadsID == "" {
+				continue
+			}
+
+			// If beads ID is not in active sessions, it's a phantom
+			if !activeBeadsIDs[beadsID] {
+				windowCopy := w
+				phantomWindows = append(phantomWindows, struct {
+					window      *tmux.WindowInfo
+					sessionName string
+					beadsID     string
+				}{&windowCopy, sessionName, beadsID})
+			}
+		}
+	}
+
+	if len(phantomWindows) == 0 {
+		fmt.Println("  No phantom windows found")
+		return 0, nil
+	}
+
+	fmt.Printf("  Found %d phantom windows:\n", len(phantomWindows))
+
+	// Close phantom windows
+	closed := 0
+	for _, pw := range phantomWindows {
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would close: %s:%s\n", pw.sessionName, pw.window.Name)
+			closed++
+			continue
+		}
+
+		if err := tmux.KillWindow(pw.window.Target); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to close %s: %v\n", pw.window.Name, err)
+			continue
+		}
+
+		fmt.Printf("    Closed: %s:%s\n", pw.sessionName, pw.window.Name)
+		closed++
+	}
+
+	return closed, nil
 }
 
 // ============================================================================
