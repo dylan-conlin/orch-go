@@ -327,8 +327,11 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 	return VerifyCompletionWithTier(beadsID, workspacePath, "")
 }
 
-// VerifyCompletionFull checks if an agent is ready for completion including skill constraints.
-// This extends VerifyCompletion with constraint verification from SPAWN_CONTEXT.md.
+// VerifyCompletionFull checks if an agent is ready for completion including skill constraints
+// and phase gates. This extends VerifyCompletion with:
+// 1. Constraint verification from SPAWN_CONTEXT.md (file patterns must match)
+// 2. Phase gate verification (required phases must be reported via beads comments)
+//
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
 	// First run standard verification
@@ -356,15 +359,25 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 	constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
-		return result, nil
+		// Continue to phase gate verification even if constraints failed to parse
+	} else {
+		// Merge constraint results
+		if !constraintResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, constraintResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 	}
 
-	// Merge constraint results
-	if !constraintResult.Passed {
+	// Verify phase gates from SPAWN_CONTEXT.md
+	// This checks that required phases were reported in beads comments
+	phaseGateResult, err := VerifyPhaseGatesForCompletion(workspacePath, beadsID)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
+	} else if !phaseGateResult.Passed {
 		result.Passed = false
-		result.Errors = append(result.Errors, constraintResult.Errors...)
+		result.Errors = append(result.Errors, phaseGateResult.Errors...)
 	}
-	result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 
 	return result, nil
 }
