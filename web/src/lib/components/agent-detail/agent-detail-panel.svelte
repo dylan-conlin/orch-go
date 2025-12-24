@@ -283,19 +283,26 @@
 				</div>
 			{/if}
 
-			<!-- Synthesis (for completed agents) -->
-			{#if $selectedAgent.status === 'completed' && $selectedAgent.synthesis}
+			<!-- Synthesis (for completed agents, with close_reason fallback) -->
+			{#if $selectedAgent.status === 'completed' && ($selectedAgent.synthesis || $selectedAgent.close_reason)}
 				<div class="border-b p-4">
-					<h3 class="mb-3 text-sm font-medium text-muted-foreground">Synthesis</h3>
+					<h3 class="mb-3 text-sm font-medium text-muted-foreground">
+						{$selectedAgent.synthesis ? 'Synthesis' : 'Completion Summary'}
+					</h3>
 					<div class="space-y-3">
-						{#if $selectedAgent.synthesis.tldr}
+						{#if $selectedAgent.synthesis?.tldr}
 							<div>
 								<span class="text-xs text-muted-foreground">TLDR</span>
 								<p class="text-sm">{$selectedAgent.synthesis.tldr}</p>
 							</div>
+						{:else if $selectedAgent.close_reason}
+							<div>
+								<span class="text-xs text-muted-foreground">Close Reason</span>
+								<p class="text-sm">{$selectedAgent.close_reason}</p>
+							</div>
 						{/if}
 
-						{#if $selectedAgent.synthesis.outcome}
+						{#if $selectedAgent.synthesis?.outcome}
 							<div>
 								<span class="text-xs text-muted-foreground">Outcome</span>
 								<Badge variant={$selectedAgent.synthesis.outcome === 'success' ? 'default' : 'secondary'}>
@@ -304,21 +311,21 @@
 							</div>
 						{/if}
 
-						{#if $selectedAgent.synthesis.recommendation}
+						{#if $selectedAgent.synthesis?.recommendation}
 							<div>
 								<span class="text-xs text-muted-foreground">Recommendation</span>
 								<p class="text-sm">{$selectedAgent.synthesis.recommendation}</p>
 							</div>
 						{/if}
 
-						{#if $selectedAgent.synthesis.delta_summary}
+						{#if $selectedAgent.synthesis?.delta_summary}
 							<div>
 								<span class="text-xs text-muted-foreground">Changes</span>
 								<p class="text-sm">{$selectedAgent.synthesis.delta_summary}</p>
 							</div>
 						{/if}
 
-						{#if $selectedAgent.synthesis.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
+						{#if $selectedAgent.synthesis?.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
 							<div>
 								<span class="text-xs text-muted-foreground">Next Actions</span>
 								<ul class="mt-1 list-inside list-disc text-sm">

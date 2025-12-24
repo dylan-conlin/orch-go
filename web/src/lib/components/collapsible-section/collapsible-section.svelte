@@ -43,6 +43,12 @@
 			const firstSentence = agent.synthesis.tldr.split(/[.!?]/)[0].trim();
 			return firstSentence.length > 40 ? firstSentence.substring(0, 40) + '…' : firstSentence;
 		}
+
+		// Fallback to close_reason for light-tier completed agents
+		if (agent.close_reason) {
+			const firstSentence = agent.close_reason.split(/[.!?]/)[0].trim();
+			return firstSentence.length > 40 ? firstSentence.substring(0, 40) + '…' : firstSentence;
+		}
 		
 		// Use task description if available
 		if (agent.task) {

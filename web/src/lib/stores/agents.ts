@@ -36,6 +36,7 @@ export interface Agent {
 	runtime?: string; // Formatted duration
 	is_processing?: boolean; // True if actively generating response
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
+	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	// Real-time activity tracking
 	current_activity?: {
 		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';

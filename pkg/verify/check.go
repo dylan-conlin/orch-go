@@ -26,6 +26,7 @@ type Issue struct {
 	Description string    `json:"description"`
 	Status      string    `json:"status"`
 	IssueType   string    `json:"issue_type"`
+	CloseReason string    `json:"close_reason,omitempty"`
 	Comments    []Comment `json:"comments"`
 }
 

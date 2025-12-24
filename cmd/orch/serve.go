@@ -289,9 +289,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Check if already in active list
+			// Active session IDs have format "workspace [beads-id]", workspace names don't
 			alreadyIn := false
+			workspaceName := entry.Name()
 			for _, a := range agents {
-				if a.ID == entry.Name() {
+				if a.ID == workspaceName || strings.HasPrefix(a.ID, workspaceName+" ") {
 					alreadyIn = true
 					break
 				}
