@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
 
+// Use existing dev server instead of building/previewing
+test.use({
+	baseURL: 'http://localhost:5188'
+});
+
 test.describe('Race Condition Fix', () => {
 	test('should load agents without network errors on initial page load', async ({ page }) => {
 		const consoleErrors: string[] = [];
@@ -12,7 +17,7 @@ test.describe('Race Condition Fix', () => {
 		});
 
 		// Navigate to the page
-		await page.goto('http://localhost:5188');
+		await page.goto('/');
 
 		// Wait for the stats bar to be visible (indicates page loaded)
 		await page.waitForSelector('[data-testid="stats-bar"]', { timeout: 5000 });
@@ -40,7 +45,7 @@ test.describe('Race Condition Fix', () => {
 
 		// Reload page 3 times to test consistency
 		for (let i = 0; i < 3; i++) {
-			await page.goto('http://localhost:5188');
+			await page.goto('/');
 			await page.waitForSelector('[data-testid="stats-bar"]', { timeout: 5000 });
 			await page.waitForTimeout(1000);
 		}
@@ -55,7 +60,7 @@ test.describe('Race Condition Fix', () => {
 	});
 
 	test('should display agent data after SSE connection establishes', async ({ page }) => {
-		await page.goto('http://localhost:5188');
+		await page.goto('/');
 
 		// Wait for stats bar
 		await page.waitForSelector('[data-testid="stats-bar"]', { timeout: 5000 });
@@ -70,7 +75,7 @@ test.describe('Race Condition Fix', () => {
 	});
 
 	test('should show agents sections after SSE connects', async ({ page }) => {
-		await page.goto('http://localhost:5188');
+		await page.goto('/');
 
 		// Wait for stats bar
 		await page.waitForSelector('[data-testid="stats-bar"]', { timeout: 5000 });
