@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** The orch-go spawn system successfully creates agents with complete context loading, workspace setup, and CLI integration.
+**Delta:** Spawn hangs fixed by adding 5-second timeout to kb context queries - root cause was discoverProjects() doing unbounded filepath.Walk() of ~/Documents.
 
-**Evidence:** Agent received 586-line SPAWN_CONTEXT.md, successfully created investigation file via kb CLI, and executed deliverables per spawn guidance.
+**Evidence:** Reproduced hang with kb context commands, traced to discoverProjects() in kb-cli (line 142 search.go), confirmed `find ~/Documents` also hangs; timeout fix allows spawn to complete.
 
-**Knowledge:** Spawn mechanics are functional for isolated testing; bd commands fail gracefully when beads issues don't exist (expected behavior).
+**Knowledge:** kb context --global searches large directories without timeout causing indefinite hangs; spawn fallback to global search amplified the issue.
 
-**Next:** Close this investigation as complete; spawn system verified working for basic use cases.
+**Next:** Consider fixing kb-cli's discoverProjects() to use registry-only or cached discovery; monitor for 400 error in prompt sending.
 
-**Confidence:** High (85%) - Single test spawn without edge cases or concurrent spawns
+**Confidence:** High (90%) - Root cause confirmed via code trace and reproduction, fix tested and working
 
 <!--
 Example D.E.K.N.:
@@ -36,15 +36,15 @@ Guidelines:
 
 # Investigation: Test Spawn
 
-**Question:** Does the orch-go spawn system correctly create agents with proper context loading?
+**Question:** Does the orch-go spawn system correctly create agents with proper context loading? (Updated: Fixed KB context hang)
 
 **Started:** 2025-12-23
 **Updated:** 2025-12-23
-**Owner:** og-feat-test-spawn-23dec
+**Owner:** og-debug-test-spawn-23dec
 **Phase:** Complete
-**Next Step:** None
+**Next Step:** Monitor for additional spawn issues
 **Status:** Complete
-**Confidence:** High (85%)
+**Confidence:** High (90%)
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,7 +55,38 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Spawn Context Successfully Loaded
+### Finding 1: Spawn Hangs During KB Context Global Search
+
+**Evidence:** 
+- `orch spawn` without `--skip-artifact-check` hangs indefinitely during "broader search" step
+- `kb context "verify"` hangs (local search)
+- `kb context --global "verify"` hangs (global search)
+- All kb context queries timeout after 30+ seconds
+- `find ~/Documents -name ".kb"` also hangs (5+ seconds timeout)
+
+**Source:**
+- pkg/spawn/kbcontext.go:131 - calls `kb context --global` when local search has few results
+- kb-cli/cmd/kb/context.go:181 - GetContextGlobal calls discoverProjects()
+- kb-cli/cmd/kb/search.go:142 - discoverProjects() does filepath.Walk() of ~/Documents
+
+**Significance:** The global KB context search hangs because discoverProjects() scans ~/Documents recursively (up to 3 levels deep), which is too large or contains problematic paths (symlinks, network mounts, permissions issues). This blocks spawn from completing.
+
+---
+
+### Finding 2: Spawn Works When KB Context Is Skipped
+
+**Evidence:**
+- `orch spawn --skip-artifact-check` completes successfully in <2 seconds
+- Creates session, workspace, and SPAWN_CONTEXT.md properly
+- Agent is spawned and functional
+
+**Source:** Test spawn with flag: `./build/orch spawn --no-track --light --skip-artifact-check investigation "verify spawn works"`
+
+**Significance:** The spawn mechanism itself works perfectly. The hang is ONLY in the KB context query step, specifically the global search fallback.
+
+---
+
+### Finding 3: Spawn Context Successfully Loaded (Previous Test)
 
 **Evidence:** Agent received and parsed SPAWN_CONTEXT.md from workspace directory with complete skill guidance (feature-impl), beads integration instructions, and deliverables requirements.
 
@@ -89,15 +120,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **Core Spawn Machinery Functional** - The spawn system successfully creates workspaces, generates context files, loads skill guidance, and spawns agents with complete procedural context (Finding 1).
+1. **KB Context Global Search Hangs Indefinitely** - The kb context --global command hangs because discoverProjects() does filepath.Walk() of ~/Documents and other large directories without timeout. Even `find ~/Documents -name ".kb"` hangs, confirming the directory is too large or contains problematic paths (symlinks, network mounts, permissions issues).
 
-2. **CLI Integration Working** - Integration between spawn system and supporting CLIs (kb, bd) is operational, with kb commands working and bd commands failing gracefully when issues don't exist (Findings 2, 3).
+2. **Spawn's Fallback Strategy Amplified the Problem** - When local KB context returns few results (<3 matches), spawn automatically falls back to --global search. This well-intentioned feature became a reliability issue because global search has no timeout and hangs indefinitely.
 
-3. **Test Isolation Supported** - Spawn can operate in isolation without real beads issues, allowing testing of spawn mechanics without full orchestration infrastructure (Finding 3).
+3. **Fix: Timeout Provides Graceful Degradation** - Adding a 5-second timeout to kb context command execution allows spawn to continue when KB context hangs. If timeout is reached, treat as "no context available" - spawn still works, just without KB context enrichment. This is better than hanging indefinitely.
 
 **Answer to Investigation Question:**
 
-Yes, the orch-go spawn system correctly creates agents with proper context loading. The spawn created a workspace, generated a complete SPAWN_CONTEXT.md with embedded skill guidance (586 lines), spawned the agent with access to that context, and the agent successfully executed deliverables (kb create investigation). The only limitation observed is bd comment failures for non-existent issues, which is expected behavior for isolated testing.
+Yes, the orch-go spawn system now correctly creates agents with proper context loading. The hang issue was caused by kb context --global scanning large directories without timeout. Fixed by adding 5-second timeout to kb context queries in pkg/spawn/kbcontext.go. Spawn now completes successfully even when global search times out, gracefully degrading to no KB context rather than hanging.
 
 ---
 

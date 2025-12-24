@@ -1,15 +1,15 @@
 # Session Synthesis
 
 **Agent:** og-debug-cli-output-not-23dec
-**Issue:** orch-go-kbi6
-**Duration:** 2025-12-23 (single session)
+**Issue:** orch-go-pkko
+**Duration:** 2025-12-23 16:10 → 2025-12-23 16:20
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Goal: Fix CLI output not appearing (only 3 commands shown instead of 30+). Root cause: stale ./orch binary from Dec 22 while source code updated Dec 23. Fix: replaced ./orch with current build/orch binary. All commands now visible and working.
+Investigated why `orch status` produced no output. Root cause: stale local binary (`./orch`) was being killed with SIGKILL (exit code 137) by macOS. Binary replacement fixed the issue; no code changes needed.
 
 ---
 
@@ -29,25 +29,32 @@ Goal: Fix CLI output not appearing (only 3 commands shown instead of 30+). Root 
 
 ## Evidence (What Was Observed)
 
-- `./orch --help` showed only 3 commands (spawn, monitor, ask) with "Error: unknown command: --help"
-- `build/orch --help` showed full set of 30+ commands correctly
-- Binary timestamps: ./orch (Dec 22 21:24:02) vs cmd/orch/main.go (Dec 23 15:42:34)
-- Source code in cmd/orch/main.go:61-82 correctly registers all commands in init()
+- Old `./orch` binary (7.9M, Dec 22) exits with code 137 (SIGKILL) producing no output
+- Fresh `./build/orch` binary (13M, Dec 23) works correctly with exit code 0  
+- PATH binary `~/bin/orch` was already up-to-date and functional
+- MD5 hash comparison: old=e275f3258d5b28d2a4cd7e9edd7c0f80, new=27c4786881dc62560b99d094ecff2dfa
+- Source code is correct: status command defined on cmd/orch/main.go:66
+- Old binary works when run from `/tmp` directory but fails from project directory
 
 ### Tests Run
 ```bash
-# Before fix
-./orch --help
-# Output: Error: unknown command: --help
-# Only showed: spawn, monitor, ask
+# Before fix - old binary
+./orch status 2>&1; echo "Exit code: $?"
+# Output: (nothing)
+# Exit code: 137
 
-# After fix (cp build/orch ./orch)
-./orch --help
-# Output: Full help with 30+ commands
+# After fix - new binary
+./orch status 2>&1; echo "Exit code: $?"
+# Output: SWARM STATUS: Active: 0, Phantom: 11 (use --all to show) ...
+# Exit code: 0
 
-./orch status
-# Output: SWARM STATUS with correct data
-# PASS: CLI now works correctly
+# Verify PATH binary works
+orch status
+# Output: SWARM STATUS: Active: 0, Phantom: 11 (use --all to show) ...
+
+# Verify binary hashes match
+md5 ./orch ./build/orch ~/bin/orch
+# All have MD5: 27c4786881dc62560b99d094ecff2dfa
 ```
 
 ---
@@ -58,16 +65,19 @@ Goal: Fix CLI output not appearing (only 3 commands shown instead of 30+). Root 
 - `.kb/investigations/2025-12-23-inv-cli-output-not-appearing.md` - Documents binary staleness debugging
 
 ### Decisions Made
-- Decision 1: Copy build/orch to ./orch rather than rebuild because build/orch was already current and verified working
-- Decision 2: Commit updated binary because git history shows this is normal workflow for this project
+- **No code changes needed** - Source code is correct; issue was purely binary/runtime-related
+- **Binary replacement strategy** - Rebuild and replace stale binaries rather than investigating macOS SIGKILL mechanism
+- **Acceptable uncertainty** - Root cause of SIGKILL remains unknown but binary replacement resolves the issue
 
 ### Constraints Discovered
-- Binary staleness is silent - no warnings when using outdated binary, commands just don't appear
-- Build process creates binary in build/ directory but doesn't auto-update root ./orch
-- Both ./orch and build/orch are tracked in git
+- **Silent SIGKILL failures** - macOS can kill binaries with SIGKILL producing no error output, making debugging extremely difficult
+- **Binary version confusion** - Multiple copies of binaries (./orch, ~/bin/orch, ./build/orch) can cause version confusion
+- **Directory-dependent behavior** - Same stale binary worked from /tmp but failed from project directory (unexplained)
 
 ### Externalized via `kn`
-- None needed - straightforward operational issue without reusable knowledge
+- Investigation file created in `.kb/investigations/` for future reference
+- D.E.K.N. summary provides 30-second handoff for next agent
+- No `kn` commands needed (issue resolved, no recurring constraint or decision to externalize)
 
 ---
 
