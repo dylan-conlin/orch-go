@@ -137,8 +137,8 @@ func formatDuration(d time.Duration) string {
 // resolveBeadsID resolves an identifier (session ID, beads ID, or workspace name) to a beads ID.
 // Returns the beads ID and an error if resolution fails.
 func resolveBeadsID(serverURL, identifier string) (string, error) {
-	// Strategy 1: If it looks like a beads ID (contains hyphen), verify it exists
-	if strings.Contains(identifier, "-") {
+	// Strategy 1: If it looks like a beads ID (contains hyphen but not a session ID), verify it exists
+	if strings.Contains(identifier, "-") && !strings.HasPrefix(identifier, "ses_") {
 		// Try to verify it exists
 		_, err := verify.GetIssue(identifier)
 		if err == nil {
@@ -148,7 +148,9 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 		// Continue to other strategies - might be a workspace name
 	}
 
-	// Strategy 2: If it's a session ID, get beads ID from session title
+	projectDir, _ := os.Getwd()
+
+	// Strategy 2: If it's a session ID, find workspace and extract beads ID from SPAWN_CONTEXT.md
 	if strings.HasPrefix(identifier, "ses_") {
 		client := opencode.NewClient(serverURL)
 		session, err := client.GetSession(identifier)
@@ -156,16 +158,23 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 			return "", fmt.Errorf("session not found: %s", identifier)
 		}
 
-		// Extract beads ID from session title using [beads-id] pattern
-		beadsID := extractBeadsIDFromTitle(session.Title)
-		if beadsID != "" {
-			return beadsID, nil
+		// The session title is the workspace name - use it to find the workspace
+		workspaceName := session.Title
+		workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
+
+		// Read SPAWN_CONTEXT.md to extract beads ID
+		spawnContext := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		if data, err := os.ReadFile(spawnContext); err == nil {
+			content := string(data)
+			if beadsID := extractBeadsIDFromSpawnContext(content); beadsID != "" {
+				return beadsID, nil
+			}
 		}
-		return "", fmt.Errorf("session %s exists but has no beads ID in title", identifier)
+
+		return "", fmt.Errorf("session %s exists but workspace %s has no beads ID in SPAWN_CONTEXT.md", identifier, workspaceName)
 	}
 
 	// Strategy 3: Look for workspace by name and extract beads ID from SPAWN_CONTEXT.md
-	projectDir, _ := os.Getwd()
 	workspacePath, _ := findWorkspaceByBeadsID(projectDir, identifier)
 	if workspacePath != "" {
 		// Read SPAWN_CONTEXT.md to extract beads ID
@@ -179,15 +188,20 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 		}
 	}
 
-	// Strategy 4: Search OpenCode sessions by title
+	// Strategy 4: Search OpenCode sessions by title (workspace name)
 	client := opencode.NewClient(serverURL)
 	sessions, err := client.ListSessions(projectDir)
 	if err == nil {
 		for _, s := range sessions {
 			if strings.Contains(s.Title, identifier) {
-				beadsID := extractBeadsIDFromTitle(s.Title)
-				if beadsID != "" {
-					return beadsID, nil
+				// Found a session with matching title, try to extract beads ID from workspace
+				workspacePath := filepath.Join(projectDir, ".orch", "workspace", s.Title)
+				spawnContext := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+				if data, err := os.ReadFile(spawnContext); err == nil {
+					content := string(data)
+					if beadsID := extractBeadsIDFromSpawnContext(content); beadsID != "" {
+						return beadsID, nil
+					}
 				}
 			}
 		}
