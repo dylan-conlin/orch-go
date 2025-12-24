@@ -275,72 +275,76 @@
 
 <div class="space-y-3">
 	<!-- Compact Stats Bar -->
-	<div class="flex items-center gap-4 rounded-lg border bg-card px-4 py-2 overflow-x-auto" data-testid="stats-bar">
-		<div class="flex items-center gap-2">
-			<span class="text-lg">🟢</span>
-			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold">{$activeAgents.length}</span>
-				<span class="text-xs text-muted-foreground">active</span>
-			</div>
-		</div>
-		<div class="h-4 w-px bg-border"></div>
-		<div class="flex items-center gap-2">
-			<span class="text-lg">🕐</span>
-			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold">{$recentAgents.length}</span>
-				<span class="text-xs text-muted-foreground">recent</span>
-			</div>
-		</div>
-		<div class="h-4 w-px bg-border"></div>
-		<div class="flex items-center gap-2">
-			<span class="text-lg">📦</span>
-			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold">{$archivedAgents.length}</span>
-				<span class="text-xs text-muted-foreground">archive</span>
-			</div>
-		</div>
-		<div class="h-4 w-px bg-border"></div>
-		<div class="flex items-center gap-2">
-			<span class="text-lg">❌</span>
-			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
-				<span class="text-xs text-muted-foreground">errors</span>
-			</div>
-		</div>
-		{#if $focus?.has_focus}
-			<div class="h-4 w-px bg-border"></div>
-			<div class="flex items-center gap-2" data-testid="focus-indicator" title={$focus.goal || 'Focus set'}>
-				<span class="text-lg">{getDriftEmoji($focus)}</span>
+	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
+		<!-- Agent counts group -->
+		<div class="flex items-center gap-4">
+			<div class="flex items-center gap-2">
+				<span class="text-lg">🟢</span>
 				<div class="flex items-baseline gap-1">
-					<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
-						{$focus.is_drifting ? 'drifting' : 'focused'}
-					</span>
+					<span class="text-xl font-bold">{$activeAgents.length}</span>
+					<span class="text-xs text-muted-foreground">active</span>
 				</div>
 			</div>
-		{/if}
-		{#if $servers}
 			<div class="h-4 w-px bg-border"></div>
-			<div class="flex items-center gap-2" data-testid="servers-indicator" title="{$servers.running_count} running, {$servers.stopped_count} stopped">
-				<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+			<div class="flex items-center gap-2">
+				<span class="text-lg">🕐</span>
 				<div class="flex items-baseline gap-1">
-					<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
-					<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+					<span class="text-xl font-bold">{$recentAgents.length}</span>
+					<span class="text-xs text-muted-foreground">recent</span>
 				</div>
 			</div>
-		{/if}
-		{#if $beads}
 			<div class="h-4 w-px bg-border"></div>
-			<div class="flex items-center gap-2" data-testid="beads-indicator" title="{$beads.ready_issues} ready, {$beads.blocked_issues} blocked, {$beads.open_issues} open">
-				<span class="text-lg">📋</span>
+			<div class="flex items-center gap-2">
+				<span class="text-lg">📦</span>
 				<div class="flex items-baseline gap-1">
-					<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
-					<span class="text-xs text-muted-foreground">ready</span>
+					<span class="text-xl font-bold">{$archivedAgents.length}</span>
+					<span class="text-xs text-muted-foreground">archive</span>
 				</div>
-				{#if $beads.blocked_issues > 0}
-					<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
-				{/if}
 			</div>
-		{/if}
+			<div class="h-4 w-px bg-border"></div>
+			<div class="flex items-center gap-2">
+				<span class="text-lg">❌</span>
+				<div class="flex items-baseline gap-1">
+					<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+					<span class="text-xs text-muted-foreground">errors</span>
+				</div>
+			</div>
+		</div>
+		<!-- Secondary indicators group -->
+		<div class="flex items-center gap-4">
+			{#if $focus?.has_focus}
+				<div class="flex items-center gap-2" data-testid="focus-indicator" title={$focus.goal || 'Focus set'}>
+					<span class="text-lg">{getDriftEmoji($focus)}</span>
+					<div class="flex items-baseline gap-1">
+						<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
+							{$focus.is_drifting ? 'drifting' : 'focused'}
+						</span>
+					</div>
+				</div>
+			{/if}
+			{#if $servers}
+				<div class="flex items-center gap-2" data-testid="servers-indicator" title="{$servers.running_count} running, {$servers.stopped_count} stopped">
+					<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+					<div class="flex items-baseline gap-1">
+						<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
+						<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+					</div>
+				</div>
+			{/if}
+			{#if $beads}
+				<div class="flex items-center gap-2" data-testid="beads-indicator" title="{$beads.ready_issues} ready, {$beads.blocked_issues} blocked, {$beads.open_issues} open">
+					<span class="text-lg">📋</span>
+					<div class="flex items-baseline gap-1">
+						<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
+						<span class="text-xs text-muted-foreground">ready</span>
+					</div>
+					{#if $beads.blocked_issues > 0}
+						<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
+					{/if}
+				</div>
+			{/if}
+		</div>
+		<!-- Connection button - pushed to end -->
 		<div class="ml-auto flex items-center gap-2">
 			<Button
 				variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
