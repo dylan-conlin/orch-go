@@ -1077,11 +1077,23 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 }
 
+// formatSessionTitle formats the session title to include beads ID for matching.
+// Format: "workspace-name [beads-id]" (e.g., "og-debug-orch-status-23dec [orch-go-v4mw]")
+// This allows extractBeadsIDFromTitle to find agents in orch status.
+func formatSessionTitle(workspaceName, beadsID string) string {
+	if beadsID == "" {
+		return workspaceName
+	}
+	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
+}
+
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Spawn opencode session
 	client := opencode.NewClient(serverURL)
-	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName, cfg.Model)
+	// Format title with beads ID so orch status can match sessions
+	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
+	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
 	cmd.Stderr = os.Stderr
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
@@ -1154,7 +1166,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	// Build opencode command using CLI (like inline mode) to support model selection
 	// The HTTP API ignores model parameter - only CLI mode honors --model flag
-	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName, cfg.Model)
+	// Format title with beads ID so orch status can match sessions
+	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
+	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")

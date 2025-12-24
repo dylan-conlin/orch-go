@@ -233,6 +233,44 @@ func TestAbandonNonExistentAgent(t *testing.T) {
 	}
 }
 
+// TestFormatSessionTitle tests formatting session titles with beads ID.
+func TestFormatSessionTitle(t *testing.T) {
+	tests := []struct {
+		name          string
+		workspaceName string
+		beadsID       string
+		want          string
+	}{
+		{
+			name:          "with beads ID",
+			workspaceName: "og-debug-orch-status-23dec",
+			beadsID:       "orch-go-v4mw",
+			want:          "og-debug-orch-status-23dec [orch-go-v4mw]",
+		},
+		{
+			name:          "empty beads ID",
+			workspaceName: "og-feat-something-23dec",
+			beadsID:       "",
+			want:          "og-feat-something-23dec",
+		},
+		{
+			name:          "different project beads ID",
+			workspaceName: "og-inv-test-23dec",
+			beadsID:       "snap-abc1",
+			want:          "og-inv-test-23dec [snap-abc1]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatSessionTitle(tt.workspaceName, tt.beadsID)
+			if got != tt.want {
+				t.Errorf("formatSessionTitle(%q, %q) = %q, want %q", tt.workspaceName, tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestExtractBeadsIDFromTitle tests extracting beads ID from session titles.
 func TestExtractBeadsIDFromTitle(t *testing.T) {
 	tests := []struct {
