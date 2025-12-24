@@ -54,6 +54,32 @@ func ExtractSessionID(events []string) (string, error) {
 	return "", ErrNoSessionID
 }
 
+// ExtractSessionIDFromReader reads from a reader until it finds a session ID.
+// Returns as soon as a session ID is found, leaving remaining data unread.
+// This is useful for headless spawns where we need the session ID quickly
+// but don't want to block waiting for the process to complete.
+func ExtractSessionIDFromReader(r io.Reader) (string, error) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		event, err := ParseEvent(line)
+		if err != nil {
+			// Skip non-JSON lines
+			continue
+		}
+		if event.SessionID != "" {
+			return event.SessionID, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("scanner error: %w", err)
+	}
+	return "", ErrNoSessionID
+}
+
 // ProcessOutput processes the output from opencode command.
 func ProcessOutput(r io.Reader) (*Result, error) {
 	result := &Result{}

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1144,27 +1145,55 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	return nil
 }
 
-// runSpawnHeadless spawns the agent via HTTP API without a TUI.
+// runSpawnHeadless spawns the agent using CLI subprocess without a TUI.
 // This is useful for automation and daemon-driven spawns.
-// The agent is registered with window_id='headless' for tracking.
+// Uses opencode CLI with --format json to properly support model selection
+// (the HTTP API ignores the model parameter).
 func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	client := opencode.NewClient(serverURL)
 
-	// Create session via HTTP API
-	sessionResp, err := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir, cfg.Model)
+	// Build opencode command using CLI (like inline mode) to support model selection
+	// The HTTP API ignores model parameter - only CLI mode honors --model flag
+	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName, cfg.Model)
+	cmd.Dir = cfg.ProjectDir
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create session: %w", err)
+		return fmt.Errorf("failed to get stdout: %w", err)
 	}
 
-	// Send the prompt to start the agent (pass model per-message)
-	if err := client.SendPrompt(sessionResp.ID, minimalPrompt, cfg.Model); err != nil {
-		return fmt.Errorf("failed to send prompt: %w", err)
+	// Discard stderr in headless mode (no TUI to display it)
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start opencode: %w", err)
+	}
+
+	// Process stdout to extract session ID, then let the process run in background
+	// We need to read at least until we get the session ID, then spawn a goroutine
+	// to continue processing in the background
+	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
+	if err != nil {
+		// Try to kill the process if we couldn't get session ID
+		cmd.Process.Kill()
+		return fmt.Errorf("failed to extract session ID: %w", err)
 	}
 
 	// Write session ID to workspace file for later lookups
-	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionResp.ID); err != nil {
+	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
+
+	// Spawn goroutine to continue reading stdout and wait for process
+	// This prevents the stdout pipe from blocking the opencode process
+	go func() {
+		// Drain remaining stdout
+		io.Copy(io.Discard, stdout)
+		// Wait for process to complete (cleanup)
+		cmd.Wait()
+	}()
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -1173,7 +1202,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		"task":                task,
 		"workspace":           cfg.WorkspaceName,
 		"beads_id":            beadsID,
-		"session_id":          sessionResp.ID,
+		"session_id":          sessionID,
 		"spawn_mode":          "headless",
 		"model":               cfg.Model,
 		"no_track":            cfg.NoTrack,
@@ -1184,7 +1213,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	}
 	event := events.Event{
 		Type:      "session.spawned",
-		SessionID: sessionResp.ID,
+		SessionID: sessionID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	}
@@ -1194,7 +1223,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	// Print spawn summary
 	fmt.Printf("Spawned agent (headless):\n")
-	fmt.Printf("  Session ID: %s\n", sessionResp.ID)
+	fmt.Printf("  Session ID: %s\n", sessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
 	fmt.Printf("  Model:      %s\n", cfg.Model)

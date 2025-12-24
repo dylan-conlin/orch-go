@@ -106,6 +106,60 @@ func TestExtractSessionID(t *testing.T) {
 	}
 }
 
+func TestExtractSessionIDFromReader(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantID  string
+		wantErr bool
+	}{
+		{
+			name:    "sessionID in first event",
+			input:   `{"type":"step_start","sessionID":"ses_abc123"}` + "\n" + `{"type":"text","content":"hello"}` + "\n",
+			wantID:  "ses_abc123",
+			wantErr: false,
+		},
+		{
+			name:    "sessionID in second event",
+			input:   `{"type":"init"}` + "\n" + `{"type":"step_start","sessionID":"ses_xyz789"}` + "\n",
+			wantID:  "ses_xyz789",
+			wantErr: false,
+		},
+		{
+			name:    "no sessionID in output",
+			input:   `{"type":"text","content":"hello"}` + "\n",
+			wantID:  "",
+			wantErr: true,
+		},
+		{
+			name:    "empty input",
+			input:   "",
+			wantID:  "",
+			wantErr: true,
+		},
+		{
+			name:    "mixed valid and invalid lines",
+			input:   "invalid line\n" + `{"type":"init"}` + "\n" + `{"type":"step_start","sessionID":"ses_mixed"}` + "\n",
+			wantID:  "ses_mixed",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := bytes.NewBufferString(tt.input)
+			id, err := ExtractSessionIDFromReader(reader)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ExtractSessionIDFromReader() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if id != tt.wantID {
+				t.Errorf("ExtractSessionIDFromReader() = %v, want %v", id, tt.wantID)
+			}
+		})
+	}
+}
+
 func TestProcessOutput(t *testing.T) {
 	// Use actual opencode format with sessionID at top level
 	events := []string{
