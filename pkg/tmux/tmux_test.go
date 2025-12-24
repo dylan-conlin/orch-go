@@ -502,3 +502,85 @@ func TestFindWindowByWorkspaceNameAllSessions(t *testing.T) {
 		t.Errorf("Expected not to find nonexistent workspace, but got %+v", notFound)
 	}
 }
+
+// TestBuildRunCommandEnv verifies ORCH_WORKER=1 is set in the command environment.
+func TestBuildRunCommandEnv(t *testing.T) {
+	cfg := &RunConfig{
+		ProjectDir: "/test/project",
+		Model:      "anthropic/claude-opus",
+		Title:      "test-title",
+		Prompt:     "test prompt",
+	}
+
+	cmd := BuildRunCommand(cfg)
+
+	// Check that ORCH_WORKER=1 is in the environment
+	hasOrchWorker := false
+	for _, env := range cmd.Env {
+		if env == "ORCH_WORKER=1" {
+			hasOrchWorker = true
+			break
+		}
+	}
+
+	if !hasOrchWorker {
+		t.Errorf("BuildRunCommand() should set ORCH_WORKER=1 in environment, got env: %v", cmd.Env)
+	}
+}
+
+// TestBuildSpawnCommandEnv verifies ORCH_WORKER=1 is set in the command environment.
+func TestBuildSpawnCommandEnv(t *testing.T) {
+	cfg := &SpawnConfig{
+		ServerURL:     "http://127.0.0.1:4096",
+		Prompt:        "test prompt",
+		Title:         "test-title",
+		ProjectDir:    "/test/project",
+		WorkspaceName: "og-inv-test-23dec",
+	}
+
+	cmd := BuildSpawnCommand(cfg)
+
+	// Check that ORCH_WORKER=1 is in the environment
+	hasOrchWorker := false
+	for _, env := range cmd.Env {
+		if env == "ORCH_WORKER=1" {
+			hasOrchWorker = true
+			break
+		}
+	}
+
+	if !hasOrchWorker {
+		t.Errorf("BuildSpawnCommand() should set ORCH_WORKER=1 in environment, got env: %v", cmd.Env)
+	}
+}
+
+// TestBuildOpencodeAttachCommandEnv verifies ORCH_WORKER=1 is prefixed in the command string.
+func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
+	cfg := &OpencodeAttachConfig{
+		ServerURL:  "http://127.0.0.1:4096",
+		ProjectDir: "/home/user/project",
+		Model:      "anthropic/claude-opus",
+	}
+
+	cmd := BuildOpencodeAttachCommand(cfg)
+
+	// Check that the command starts with ORCH_WORKER=1
+	if !strings.HasPrefix(cmd, "ORCH_WORKER=1 ") {
+		t.Errorf("BuildOpencodeAttachCommand() should start with 'ORCH_WORKER=1 ', got: %q", cmd)
+	}
+}
+
+// TestBuildStandaloneCommandEnv verifies ORCH_WORKER=1 is prefixed in the command string.
+func TestBuildStandaloneCommandEnv(t *testing.T) {
+	cfg := &StandaloneConfig{
+		ProjectDir: "/test/project",
+		Model:      "anthropic/claude-opus",
+	}
+
+	cmd := BuildStandaloneCommand(cfg)
+
+	// Check that the command starts with ORCH_WORKER=1
+	if !strings.HasPrefix(cmd, "ORCH_WORKER=1 ") {
+		t.Errorf("BuildStandaloneCommand() should start with 'ORCH_WORKER=1 ', got: %q", cmd)
+	}
+}

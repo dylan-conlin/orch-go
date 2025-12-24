@@ -12,6 +12,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -158,7 +159,7 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 			return "", fmt.Errorf("session not found: %s", identifier)
 		}
 
-		// The session title is the workspace name - use it to find the workspace
+		// Try 1: Session title is the workspace name - use it to find the workspace directly
 		workspaceName := session.Title
 		workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 
@@ -171,7 +172,28 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 			}
 		}
 
-		return "", fmt.Errorf("session %s exists but workspace %s has no beads ID in SPAWN_CONTEXT.md", identifier, workspaceName)
+		// Try 2: Scan all workspaces for matching .session_id file
+		// This handles cases where session title doesn't match workspace name
+		workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+		entries, _ := os.ReadDir(workspaceDir)
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			wp := filepath.Join(workspaceDir, entry.Name())
+			if storedSessionID := spawn.ReadSessionID(wp); storedSessionID == identifier {
+				// Found workspace with matching session ID
+				spawnContext := filepath.Join(wp, "SPAWN_CONTEXT.md")
+				if data, err := os.ReadFile(spawnContext); err == nil {
+					content := string(data)
+					if beadsID := extractBeadsIDFromSpawnContext(content); beadsID != "" {
+						return beadsID, nil
+					}
+				}
+			}
+		}
+
+		return "", fmt.Errorf("session %s exists but no workspace found with matching beads ID", identifier)
 	}
 
 	// Strategy 3: Look for workspace by name and extract beads ID from SPAWN_CONTEXT.md

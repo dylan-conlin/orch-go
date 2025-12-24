@@ -54,6 +54,8 @@ func BuildRunCommand(cfg *RunConfig) *exec.Cmd {
 	}
 	cmd := exec.Command(opencodeBin, args...)
 	cmd.Dir = cfg.ProjectDir
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 	return cmd
 }
 
@@ -72,9 +74,10 @@ func BuildStandaloneCommand(cfg *StandaloneConfig) string {
 		opencodeBin = bin
 	}
 
-	// Build command: opencode {project_dir} --model {model}
+	// Build command: ORCH_WORKER=1 opencode {project_dir} --model {model}
 	// Quote project dir in case it has spaces
-	return fmt.Sprintf("%s %q --model %q", opencodeBin, cfg.ProjectDir, cfg.Model)
+	// Prefix with ORCH_WORKER=1 so the spawned agent knows it's an orch-managed worker
+	return fmt.Sprintf("ORCH_WORKER=1 %s %q --model %q", opencodeBin, cfg.ProjectDir, cfg.Model)
 }
 
 // OpencodeAttachConfig holds configuration for spawning an agent in attach mode.
@@ -89,13 +92,15 @@ type OpencodeAttachConfig struct {
 
 // BuildOpencodeAttachCommand creates the opencode attach mode command string.
 // Attach mode: opencode attach {server_url} --dir {project_dir} --model {model}
+// Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	opencodeBin := "opencode"
 	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
 		opencodeBin = bin
 	}
 
-	cmd := fmt.Sprintf("%s attach %s --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
+	// Prefix with ORCH_WORKER=1 so the spawned agent knows it's an orch-managed worker
+	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %s --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
 	if cfg.Model != "" {
 		cmd += fmt.Sprintf(" --model %q", cfg.Model)
 	}
@@ -191,6 +196,8 @@ func BuildSpawnCommand(cfg *SpawnConfig) *exec.Cmd {
 	}
 	cmd := exec.Command("opencode", args...)
 	cmd.Dir = cfg.ProjectDir
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 	return cmd
 }
 

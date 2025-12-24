@@ -1056,6 +1056,7 @@ func TestCreateSession(t *testing.T) {
 	model := "anthropic/claude-opus-4"
 
 	var receivedRequest CreateSessionRequest
+	var receivedHeaders http.Header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("Expected POST method, got %s", r.Method)
@@ -1063,6 +1064,9 @@ func TestCreateSession(t *testing.T) {
 		if r.URL.Path != "/session" {
 			t.Errorf("Expected path /session, got %s", r.URL.Path)
 		}
+
+		// Capture headers
+		receivedHeaders = r.Header.Clone()
 
 		// Decode request body
 		if err := json.NewDecoder(r.Body).Decode(&receivedRequest); err != nil {
@@ -1105,6 +1109,11 @@ func TestCreateSession(t *testing.T) {
 	if receivedRequest.Model != model {
 		t.Errorf("receivedRequest.Model = %s, want %s", receivedRequest.Model, model)
 	}
+
+	// Verify ORCH_WORKER header is set
+	if orchWorker := receivedHeaders.Get("x-opencode-env-ORCH_WORKER"); orchWorker != "1" {
+		t.Errorf("x-opencode-env-ORCH_WORKER header = %q, want \"1\"", orchWorker)
+	}
 }
 
 // TestCreateSessionWithoutModel tests CreateSession without model parameter.
@@ -1142,7 +1151,7 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 	}
 }
 
-// TestSendMessageAsyncWithModel tests that SendMessageAsync includes model parameter in payload.
+// TestSendMessageAsyncWithModel tests that SendMessageAsync includes model parameter as an object in payload.
 func TestSendMessageAsyncWithModel(t *testing.T) {
 	sessionID := "ses_test123"
 	content := "test message"
@@ -1173,9 +1182,16 @@ func TestSendMessageAsyncWithModel(t *testing.T) {
 		t.Fatalf("SendMessageAsync() error = %v", err)
 	}
 
-	// Verify model is included in payload
-	if receivedPayload["model"] != model {
-		t.Errorf("receivedPayload[\"model\"] = %v, want %s", receivedPayload["model"], model)
+	// Verify model is included in payload as an object with providerID and modelID
+	modelObj, ok := receivedPayload["model"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("receivedPayload[\"model\"] is not an object, got %T: %v", receivedPayload["model"], receivedPayload["model"])
+	}
+	if modelObj["providerID"] != "anthropic" {
+		t.Errorf("model.providerID = %v, want anthropic", modelObj["providerID"])
+	}
+	if modelObj["modelID"] != "claude-opus-4" {
+		t.Errorf("model.modelID = %v, want claude-opus-4", modelObj["modelID"])
 	}
 
 	// Verify parts are included
@@ -1190,6 +1206,73 @@ func TestSendMessageAsyncWithModel(t *testing.T) {
 	// Verify agent is included
 	if receivedPayload["agent"] != "build" {
 		t.Errorf("receivedPayload[\"agent\"] = %v, want build", receivedPayload["agent"])
+	}
+}
+
+// TestParseModelSpec tests the parseModelSpec helper function.
+func TestParseModelSpec(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantNil  bool
+		provider string
+		modelID  string
+	}{
+		{
+			name:     "valid provider/modelID format",
+			input:    "google/gemini-2.5-flash",
+			wantNil:  false,
+			provider: "google",
+			modelID:  "gemini-2.5-flash",
+		},
+		{
+			name:     "valid anthropic model",
+			input:    "anthropic/claude-opus-4-5-20251101",
+			wantNil:  false,
+			provider: "anthropic",
+			modelID:  "claude-opus-4-5-20251101",
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			wantNil: true,
+		},
+		{
+			name:    "no slash",
+			input:   "claude-opus-4",
+			wantNil: true,
+		},
+		{
+			name:    "empty provider",
+			input:   "/modelID",
+			wantNil: true,
+		},
+		{
+			name:    "empty modelID",
+			input:   "provider/",
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseModelSpec(tt.input)
+			if tt.wantNil {
+				if result != nil {
+					t.Errorf("parseModelSpec(%q) = %v, want nil", tt.input, result)
+				}
+				return
+			}
+			if result == nil {
+				t.Fatalf("parseModelSpec(%q) = nil, want non-nil", tt.input)
+			}
+			if result["providerID"] != tt.provider {
+				t.Errorf("providerID = %v, want %v", result["providerID"], tt.provider)
+			}
+			if result["modelID"] != tt.modelID {
+				t.Errorf("modelID = %v, want %v", result["modelID"], tt.modelID)
+			}
+		})
 	}
 }
 

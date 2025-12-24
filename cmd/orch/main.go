@@ -867,7 +867,8 @@ func ensureOpenCodeRunning() error {
 
 	// Start OpenCode server in background, fully detached via shell
 	// This ensures the process survives even if the parent is killed
-	cmd := exec.Command("sh", "-c", "opencode serve --port 4096 </dev/null >/dev/null 2>&1 &")
+	// Set ORCH_WORKER=1 so agents spawned by this server know they are orch-managed workers
+	cmd := exec.Command("sh", "-c", "ORCH_WORKER=1 opencode serve --port 4096 </dev/null >/dev/null 2>&1 &")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to start OpenCode: %w", err)
 	}
@@ -1082,6 +1083,8 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	cmd := client.BuildSpawnCommand(minimalPrompt, cfg.WorkspaceName, cfg.Model)
 	cmd.Stderr = os.Stderr
 	cmd.Dir = cfg.ProjectDir
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

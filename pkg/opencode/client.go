@@ -155,14 +155,19 @@ func (c *Client) BuildAskCommand(sessionID, prompt string) *exec.Cmd {
 
 // SendMessageAsync sends a message to an existing session asynchronously.
 // The model parameter is optional - if empty, OpenCode will use the default model.
+// Model should be in "provider/modelID" format (e.g., "google/gemini-2.5-flash").
 func (c *Client) SendMessageAsync(sessionID, content, model string) error {
 	payload := map[string]any{
 		"parts": []map[string]string{{"type": "text", "text": content}},
 		"agent": "build",
 	}
 	// Include model if provided (per-message model in OpenCode)
+	// OpenCode expects model as an object with providerID and modelID fields
 	if model != "" {
-		payload["model"] = model
+		modelObj := parseModelSpec(model)
+		if modelObj != nil {
+			payload["model"] = modelObj
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -176,9 +181,29 @@ func (c *Client) SendMessageAsync(sessionID, content, model string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
+}
+
+// parseModelSpec parses a model string in "provider/modelID" format
+// and returns a map suitable for the OpenCode API.
+// Returns nil if the model string is empty or invalid.
+func parseModelSpec(model string) map[string]string {
+	if model == "" {
+		return nil
+	}
+	// Expected format: "provider/modelID" (e.g., "google/gemini-2.5-flash")
+	idx := strings.Index(model, "/")
+	if idx <= 0 || idx >= len(model)-1 {
+		// Invalid format - no slash or empty provider/model
+		return nil
+	}
+	return map[string]string{
+		"providerID": model[:idx],
+		"modelID":    model[idx+1:],
+	}
 }
 
 // ListSessions fetches all sessions from the OpenCode API.
@@ -299,6 +324,10 @@ func (c *Client) CreateSession(title, directory, model string) (*CreateSessionRe
 	if directory != "" {
 		req.Header.Set("x-opencode-directory", directory)
 	}
+
+	// Set ORCH_WORKER=1 header to signal this is an orch-managed worker session
+	// This allows the session-context plugin to skip loading orchestrator skill
+	req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
