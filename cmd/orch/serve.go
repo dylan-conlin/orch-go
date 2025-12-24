@@ -355,6 +355,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				phaseStatus := verify.ParsePhaseFromComments(comments)
 				if phaseStatus.Found {
 					agents[i].Phase = phaseStatus.Phase
+					// Update status to completed if phase is Complete
+					if strings.EqualFold(phaseStatus.Phase, "Complete") {
+						agents[i].Status = "completed"
+					}
 				}
 			}
 		}
