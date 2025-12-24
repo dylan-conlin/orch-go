@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-99lk
+---
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 Fill this at the END of your investigation, before marking Complete.
@@ -5,15 +9,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** "How would the system recommend..." reveals a new usage pattern - treating the knowledge system as a semantic oracle that synthesizes recommendations from prior investigations, which `kb context` cannot do (keyword match only).
+**Delta:** "How would the system recommend..." isn't a new capability desire - it's the investigation skill already. The real insight is wanting this SYNCHRONOUSLY without spawn overhead.
 
-**Evidence:** `kb context "swarm"` found the 2025-12-23 progressive disclosure investigation containing the recommendation, but `kb context "swarm map sorting"` and `kb context "how should dashboard present agents"` returned nothing - demonstrating kb context's keyword-matching limitation.
+**Evidence:** Every `orch spawn investigation "how does X work?"` does exactly this: kb context → read code → synthesize recommendation. The pattern frequency isn't rare - it's every investigation spawn.
 
-**Knowledge:** The pattern signals a desire for semantic query answering ("what should we do about X?") beyond current keyword retrieval, which would require LLM synthesis over the knowledge base.
+**Knowledge:** The gap isn't "semantic query answering" - that exists. The gap is latency: spawn (30s+) vs inline answer (5s). A lightweight `kb ask` could do mini-investigations without artifact overhead.
 
-**Next:** Document as insight for future knowledge system evolution; no immediate implementation needed - current pattern (human orchestrator + kb context) works but suggests future enhancement opportunity.
+**Next:** Consider `kb ask "question"` command - LLM reads kb context + relevant files, returns synthesis, no artifact created. Trade-off: loses externalization benefit.
 
-**Confidence:** High (85%) - Pattern clearly observed; implementation complexity for semantic queries is high.
+**Confidence:** High (90%) - Reframe is clearly correct; implementation approach needs design.
 
 ---
 
@@ -129,33 +133,64 @@ This would fail if:
 
 ---
 
+### Finding 5: Investigations already do semantic query answering (REFRAME)
+
+**Evidence:** Dylan's follow-up insight: "Aren't investigations already doing exactly this? When we spawn 'how does X work?' or 'should we do Y?', the agent searches kb context, reads code, and synthesizes a recommendation."
+
+This is correct. The investigation skill workflow is:
+1. `kb context "topic"` - find prior knowledge
+2. Read relevant code/files
+3. Run tests if needed
+4. Synthesize recommendation
+5. Produce artifact
+
+This IS semantic query answering. Every investigation spawn does it.
+
+**Source:** Dylan's follow-up insight and reflection on investigation skill workflow
+
+**Significance:** The original framing ("pattern reveals desire for semantic queries") was wrong. The desire isn't for a NEW capability - it's for the EXISTING capability to be FASTER and SYNCHRONOUS. The friction is:
+
+| Current | Desired |
+|---------|---------|
+| `orch spawn investigation "question"` | `kb ask "question"` |
+| 30+ seconds to spawn | 5 seconds inline |
+| Creates .kb/investigations/ artifact | No artifact (ephemeral) |
+| Full investigation rigor | Quick synthesis |
+| Async (spawn and wait) | Sync (immediate answer) |
+
+The trade-off: `kb ask` loses externalization (no artifact for future sessions), but gains speed for ephemeral questions.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **The framing reveals user mental model** - Dylan asked "how would the system recommend" treating the knowledge system as an oracle that can synthesize recommendations. This is aspirational but not current reality - the orchestrator/human performs the synthesis.
+1. **The capability exists, the latency is the problem** - Investigations already do semantic query answering (kb context → read → synthesize). The "how would the system recommend" pattern isn't asking for new capability - it's asking for the existing capability to be FASTER and INLINE.
 
-2. **kb reflect is about maintenance, not recommendations** - kb reflect surfaces patterns requiring attention (synthesis needed, stale decisions, drift) but doesn't answer "what should we do?" questions. The question pattern is more like "kb consult" or "kb recommend".
+2. **Spawn overhead is the friction** - Every investigation requires: spawn setup (~5s), agent startup (~10s), artifact creation, commit. For quick questions, this overhead is excessive. Dylan wanted a 5-second answer, not a 30-second spawn.
 
-3. **The gap is semantic query answering** - Between retrieval (kb context) and reflection (kb reflect) sits a missing capability: taking a natural language question and synthesizing a recommendation from multiple prior investigations. This would require LLM processing of the knowledge base.
+3. **Trade-off: Speed vs Externalization** - A hypothetical `kb ask` command could provide fast inline answers but would lose the externalization benefit. Investigation artifacts persist for future sessions; inline answers are ephemeral.
 
 **Answer to Investigation Question:**
 
 The "how would the system recommend..." pattern reveals that:
 
-1. **What made it natural to ask:** Dylan has externalized significant knowledge into .kb/ investigations and kn entries. After enough decisions are documented, asking "what does the system think?" becomes natural - treating accumulated knowledge as institutional wisdom.
+1. **What made it natural to ask:** Dylan has externalized significant knowledge into .kb/ investigations and kn entries. The investigation skill already answers these questions - spawning an agent that searches, reads, and synthesizes.
 
-2. **How the answer was found:** `kb context "swarm"` surfaced the prior investigation, and the orchestrator synthesized the recommendation by reading it. This required: (a) keyword matching, (b) human interpretation, (c) prior investigation existing.
+2. **How the answer was found:** The current path is `orch spawn investigation "question"` which does exactly what Dylan wanted - but with 30+ second overhead. The desire was for INLINE/SYNCHRONOUS synthesis.
 
-3. **Relationship to kb reflect:** Not directly related. kb reflect identifies maintenance needs (synthesis opportunities, stale decisions) while the question pattern asks for recommendations. They're complementary but different:
-   - `kb reflect`: "What needs attention in our knowledge base?"
-   - Implicit "kb recommend": "What would our knowledge base suggest we do about X?"
+3. **Relationship to kb reflect:** Not directly related. kb reflect is for maintenance (synthesis opportunities, stale decisions). The question pattern is already served by investigation skill - just with spawn latency.
 
-4. **Implications for evolution:** The pattern suggests a future capability - semantic query answering over the knowledge base. This would require:
-   - LLM processing of queries
-   - Retrieval-augmented generation (RAG) over .kb/ and .kn/
-   - Synthesis of multiple sources into a recommendation
-   - High implementation complexity
+4. **Implications for evolution:** Consider a lightweight `kb ask` command:
+   - Runs kb context + reads top results + synthesizes answer
+   - Returns inline (5 seconds, not 30+)
+   - NO artifact created (ephemeral answer)
+   - Trade-off: loses externalization benefit
+
+   Design question: When is speed worth losing the artifact? Perhaps:
+   - Ephemeral questions → `kb ask` (fast, no artifact)
+   - Questions worth preserving → `orch spawn investigation` (slower, creates artifact)
 
 ---
 
@@ -176,15 +211,15 @@ The pattern is clearly observable - Dylan's question, kb context's limitations, 
 
 **What's uncertain:**
 
-- ⚠️ Whether semantic query answering is worth the complexity to implement
-- ⚠️ How often this pattern occurs (is it frequent enough to optimize?)
-- ⚠️ Whether improved keyword coverage would be sufficient without LLM
+- ⚠️ Implementation approach: kb-native (Go) or shell wrapper?
+- ⚠️ LLM cost per query - is it acceptable for frequent use?
+- ⚠️ When to use ask vs spawn - needs clear heuristic
 
 **What would increase confidence to Very High (95%):**
 
-- Track frequency of "how would the system..." questions over a week
-- Test more query variants to understand failure patterns
-- Prototype RAG-based recommendation to validate complexity
+- Prototype `kb ask` to validate latency (<10s target)
+- Test answer quality vs full investigation spawn
+- Define clear ask vs spawn heuristic
 
 ---
 
@@ -194,55 +229,70 @@ The pattern is clearly observable - Dylan's question, kb context's limitations, 
 
 ### Recommended Approach ⭐
 
-**Document insight, no immediate implementation** - Record this pattern as an evolutionary insight for the knowledge system but don't implement semantic query answering now.
+**Consider `kb ask` command for inline mini-investigations** - Lightweight command that does kb context → read → synthesize without artifact overhead.
 
 **Why this approach:**
-- Current workflow works (orchestrator + kb context)
-- LLM-based semantic queries would add significant complexity
-- The pattern frequency is unknown - may be rare
-- Better to accumulate more examples before investing
+- Pattern frequency is HIGH (every investigation does this)
+- Real desire is speed, not new capability
+- Spawn overhead (30s+) is excessive for quick questions
+- Trade-off (speed vs externalization) is acceptable for ephemeral questions
 
 **Trade-offs accepted:**
-- Human synthesis remains required
-- Some queries will miss due to keyword mismatch
-- "System recommend" framing remains aspirational
+- No artifact created (answer is ephemeral)
+- Future sessions won't have access to the synthesis
+- Need heuristic for "ask vs spawn" decision
 
 **Implementation sequence:**
-1. Record this investigation as documentation of the pattern
-2. Continue using current workflow (orchestrator + kb context)
-3. Collect more examples of semantic query patterns
-4. Revisit when pattern frequency justifies investment
+1. Design `kb ask "question"` command interface
+2. Implement: kb context → read top N results → LLM synthesis → return answer
+3. Add `--save` flag to optionally create investigation artifact
+4. Document when to use `kb ask` vs `orch spawn investigation`
 
 ### Alternative Approaches Considered
 
-**Option B: Implement kb recommend with RAG**
-- **Pros:** Direct answer to "what should we do about X?"
-- **Cons:** Significant implementation (LLM integration, RAG pipeline, cost)
-- **When to use instead:** If semantic queries become frequent (>10/week)
+**Option B: Keep current workflow (spawn for everything)**
+- **Pros:** All answers externalized, consistent workflow
+- **Cons:** 30+ second overhead for quick questions, spawn fatigue
+- **When to use instead:** If externalization is always valuable (maybe not)
 
-**Option C: Improve kb context with synonyms/embeddings**
-- **Pros:** Lighter than full RAG, improves keyword matching
-- **Cons:** Still doesn't synthesize recommendations
-- **When to use instead:** If keyword mismatch is the main pain point
+**Option C: Improve kb context with LLM summary**
+- **Pros:** Enhances existing command, no new command to learn
+- **Cons:** Mixes retrieval and synthesis in one command, unclear responsibility
+- **When to use instead:** If simpler enhancement is preferred
 
-**Rationale for recommendation:** Pattern is interesting but not frequent enough to justify implementation complexity. Document for future reference.
+**Rationale for recommendation:** The pattern is frequent (every investigation) and the friction is real (spawn overhead). `kb ask` directly addresses the desire for synchronous answers.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- None - this is a documentation-only recommendation
-- Externalize the insight via kn command
+- Define `kb ask "question"` CLI interface
+- Decide: kb-native (Go) or shell wrapper around existing tools?
+- LLM integration: which model? (probably same as opencode default)
 
 **Things to watch out for:**
-- ⚠️ If Dylan asks "how would the system recommend..." frequently, revisit
-- ⚠️ If keyword mismatches cause missed retrievals, consider embeddings
+- ⚠️ Cost: every `kb ask` is an LLM call (unlike kb context which is grep)
+- ⚠️ Answer quality: mini-investigation may miss nuance vs full spawn
+- ⚠️ User confusion: when to ask vs spawn? Need clear guidance.
+
+**Potential implementation:**
+```bash
+kb ask "how should we sort the swarm map?"
+# 1. Run kb context "swarm map sort" (keyword search)
+# 2. Read top 3 matching artifacts
+# 3. LLM prompt: "Given this context, answer: {question}"
+# 4. Return synthesis inline
+
+# Optional: save the answer
+kb ask "how should we sort the swarm map?" --save
+# Creates .kb/investigations/2025-12-24-ask-swarm-map-sort.md
+```
 
 **Success criteria:**
-- ✅ Investigation documents the pattern for future reference
-- ✅ Insight is externalized for session amnesia resilience
-- ✅ Pattern is trackable if frequency increases
+- ✅ `kb ask` returns useful synthesis in <10 seconds
+- ✅ Clear guidance on ask vs spawn decision
+- ✅ Optional `--save` for questions worth preserving
 
 ---
 
@@ -309,3 +359,9 @@ kb reflect
 - Final confidence: High (85%)
 - Status: Complete
 - Key outcome: Pattern reveals desire for semantic query answering over knowledge base; no immediate implementation needed
+
+**2025-12-24 (follow-up):** Dylan provided reframe
+- Key insight: Investigations ALREADY do exactly this (kb context → read → synthesize)
+- Real desire is SYNCHRONOUS/INLINE answers without spawn overhead
+- New recommendation: Consider lightweight `kb ask` command for mini-investigations
+- Updated D.E.K.N. and added Finding 5
