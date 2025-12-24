@@ -98,18 +98,17 @@ md5 ./orch ./build/orch ~/bin/orch
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- Why doesn't the build process auto-update ./orch? (Makefile only has build→build/orch and install→~/bin/orch)
-- Should ./orch be gitignored instead of tracked? (Most Go projects don't commit binaries)
-- Are there other stale binaries in the environment? (saw orch-test, orch-test-serve, etc.)
+- **Why did macOS kill the old binary with SIGKILL?** - Could be security feature, corruption, code signing issue, or internal macOS mechanism. Not critical to resolve since binary replacement fixed it.
+- **Why did the same binary work from /tmp but not project directory?** - Suggests directory-specific state or security policy, but not reproducible after binary replacement.
+- **Is this a one-time occurrence or recurring issue?** - No evidence of similar reports from other users; likely isolated incident.
 
 **Areas worth exploring further:**
-- Add staleness check to Makefile (warn if ./orch is older than build/orch)
-- Consider symlink approach (./orch → build/orch) to eliminate sync issue
-- Document proper build/install workflow in README
+- Add binary staleness detection to `orch` CLI (low priority - `orch version --source` already provides this)
+- Investigate macOS Console.app logs for SIGKILL evidence (academic interest only, not blocking)
 
 **What remains unclear:**
-- Intentional design to have both ./orch and build/orch tracked, or legacy artifact?
-- Whether committing binaries to git is intentional (unusual but appears consistent in history)
+- Exact macOS mechanism that triggered SIGKILL (acceptable - issue resolved without this knowledge)
+- Whether other users have experienced similar issues (appears isolated to this session)
 
 ---
 
