@@ -19,7 +19,7 @@ test.describe('Agent Filtering and Sorting', () => {
 		
 		// Check options exist
 		const options = statusFilter.locator('option');
-		await expect(options).toHaveCount(4); // All, Active, Completed, Abandoned
+		await expect(options).toHaveCount(5); // All, Active, Idle, Completed, Abandoned
 	});
 
 	test('should have sort dropdown', async ({ page }) => {
@@ -28,12 +28,12 @@ test.describe('Agent Filtering and Sorting', () => {
 		const sortSelect = page.getByTestId('sort-select');
 		await expect(sortSelect).toBeVisible();
 		
-		// Check default value is "newest"
-		await expect(sortSelect).toHaveValue('newest');
+		// Check default value is "recent-activity"
+		await expect(sortSelect).toHaveValue('recent-activity');
 		
 		// Check options exist
 		const options = sortSelect.locator('option');
-		await expect(options).toHaveCount(3); // Newest, Oldest, A-Z
+		await expect(options).toHaveCount(6); // Recent Activity, Newest, Oldest, By Project, By Phase, A-Z
 	});
 
 	test('should display agent count', async ({ page }) => {
@@ -85,8 +85,11 @@ test.describe('Agent Filtering and Sorting', () => {
 	test('should show clear filters button when filters are active', async ({ page }) => {
 		await page.goto('/');
 		
+		// Get the clear button in the filter bar specifically
+		const filterBar = page.getByTestId('filter-bar');
+		const clearButton = filterBar.getByRole('button', { name: 'Clear' });
+		
 		// Initially no clear button (default filters)
-		const clearButton = page.getByRole('button', { name: 'Clear' });
 		await expect(clearButton).not.toBeVisible();
 		
 		// Change status filter
@@ -102,10 +105,11 @@ test.describe('Agent Filtering and Sorting', () => {
 		await expect(clearButton).not.toBeVisible();
 	});
 
-	test('should render agent grid', async ({ page }) => {
+	test('should render agent sections', async ({ page }) => {
 		await page.goto('/');
 		
-		const agentGrid = page.getByTestId('agent-grid');
-		await expect(agentGrid).toBeVisible();
+		// With progressive disclosure, we now have agent-sections container
+		const agentSections = page.getByTestId('agent-sections');
+		await expect(agentSections).toBeVisible();
 	});
 });

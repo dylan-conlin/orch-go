@@ -16,6 +16,7 @@ export interface Agent {
 	id: string;
 	session_id?: string;
 	beads_id?: string;
+	beads_title?: string;
 	window_id?: string;
 	window?: string;
 	status: AgentState;
@@ -28,6 +29,12 @@ export interface Agent {
 	skill?: string;
 	primary_artifact?: string;
 	is_interactive?: boolean;
+	// New fields from enhanced API
+	phase?: string; // "Planning", "Implementing", "Complete", etc.
+	task?: string; // Task description from beads issue
+	project?: string; // Project name (orch-go, skillc, etc.)
+	runtime?: string; // Formatted duration
+	is_processing?: boolean; // True if actively generating response
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	// Real-time activity tracking
 	current_activity?: {
@@ -107,6 +114,31 @@ export const completedAgents = derived(agents, ($agents) =>
 export const abandonedAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'abandoned')
 );
+
+// Time-based thresholds for progressive disclosure
+const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Progressive disclosure groups
+// Active: status === 'active' (agents actively processing)
+// Recent: idle/completed within 24 hours
+// Archive: idle/completed older than 24 hours
+export const recentAgents = derived(agents, ($agents) => {
+	const now = Date.now();
+	return $agents.filter((a) => {
+		if (a.status === 'active' || a.status === 'deleted') return false;
+		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+		return now - updatedAt < RECENT_THRESHOLD_MS;
+	});
+});
+
+export const archivedAgents = derived(agents, ($agents) => {
+	const now = Date.now();
+	return $agents.filter((a) => {
+		if (a.status === 'active' || a.status === 'deleted') return false;
+		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+		return now - updatedAt >= RECENT_THRESHOLD_MS;
+	});
+});
 
 // SSE event stream
 function createSSEStore() {

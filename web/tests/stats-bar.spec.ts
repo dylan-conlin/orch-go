@@ -10,17 +10,14 @@ test.describe('Stats Bar Visibility', () => {
 		// Check for active count
 		await expect(statsBar.getByText('active')).toBeVisible();
 		
-		// Check for completed count
-		await expect(statsBar.getByText('done')).toBeVisible();
+		// Check for recent count (progressive disclosure)
+		await expect(statsBar.getByText('recent')).toBeVisible();
 		
-		// Check for abandoned count
-		await expect(statsBar.getByText('stuck')).toBeVisible();
+		// Check for archive count (progressive disclosure)
+		await expect(statsBar.getByText('archive')).toBeVisible();
 		
-		// Check for error count (new feature)
+		// Check for error count
 		await expect(statsBar.getByText('errors')).toBeVisible();
-		
-		// Check for events count
-		await expect(statsBar.getByText('events')).toBeVisible();
 	});
 	
 	test('should display error count', async ({ page }) => {

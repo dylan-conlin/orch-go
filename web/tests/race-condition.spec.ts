@@ -69,20 +69,20 @@ test.describe('Race Condition Fix', () => {
 		expect(countText).toMatch(/\d+ agents?/);
 	});
 
-	test('should show agents in grid after SSE connects', async ({ page }) => {
+	test('should show agents sections after SSE connects', async ({ page }) => {
 		await page.goto('http://localhost:5188');
 
 		// Wait for stats bar
 		await page.waitForSelector('[data-testid="stats-bar"]', { timeout: 5000 });
 
-		// Wait for agent grid to load
-		const agentGrid = await page.locator('[data-testid="agent-grid"]');
-		await expect(agentGrid).toBeVisible();
+		// Wait for agent sections container to load (progressive disclosure)
+		const agentSections = await page.locator('[data-testid="agent-sections"]');
+		await expect(agentSections).toBeVisible();
 
-		// Should either show agents or "no agents" message (not empty/broken)
-		const agentCount = await agentGrid.locator('.agent-card').count();
-		const emptyMessageCount = await agentGrid.locator('text=No agents').count();
+		// Should either show collapsible sections or "no agents" message (not empty/broken)
+		const sectionToggleCount = await agentSections.locator('[data-testid^="section-toggle-"]').count();
+		const emptyMessageCount = await agentSections.locator('text=No agents').count();
 
-		expect(agentCount > 0 || emptyMessageCount > 0).toBe(true);
+		expect(sectionToggleCount > 0 || emptyMessageCount > 0).toBe(true);
 	});
 });

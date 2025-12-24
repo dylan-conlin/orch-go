@@ -4,9 +4,12 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { AgentCard } from '$lib/components/agent-card';
+	import { CollapsibleSection } from '$lib/components/collapsible-section';
 	import {
 		agents,
 		activeAgents,
+		recentAgents,
+		archivedAgents,
 		completedAgents,
 		abandonedAgents,
 		sseEvents,
@@ -27,8 +30,45 @@
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
 	let skillFilter: string = 'all';
-	let sortBy: 'newest' | 'oldest' | 'alphabetical' = 'newest';
+	let sortBy: 'recent-activity' | 'newest' | 'oldest' | 'alphabetical' | 'project' | 'phase' = 'recent-activity';
 	let activeOnly: boolean = false;
+
+	// Section collapse state with localStorage persistence
+	const STORAGE_KEY = 'orch-dashboard-sections';
+	let sectionState = {
+		active: true,   // Active always expanded by default
+		recent: false,  // Recent collapsed by default
+		archive: false  // Archive collapsed by default
+	};
+
+	// Load section state from localStorage on mount
+	function loadSectionState() {
+		if (typeof window === 'undefined') return;
+		try {
+			const stored = localStorage.getItem(STORAGE_KEY);
+			if (stored) {
+				const parsed = JSON.parse(stored);
+				sectionState = { ...sectionState, ...parsed };
+			}
+		} catch (e) {
+			console.warn('Failed to load section state:', e);
+		}
+	}
+
+	// Save section state to localStorage
+	function saveSectionState() {
+		if (typeof window === 'undefined') return;
+		try {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(sectionState));
+		} catch (e) {
+			console.warn('Failed to save section state:', e);
+		}
+	}
+
+	// Reactive saving when state changes
+	$: if (typeof window !== 'undefined') {
+		saveSectionState();
+	}
 
 	// Get unique skills from agents
 	$: uniqueSkills = [...new Set($agents.map(a => a.skill).filter(Boolean))] as string[];
@@ -55,6 +95,14 @@
 		// Apply sorting
 		result = [...result].sort((a, b) => {
 			switch (sortBy) {
+				case 'recent-activity':
+					// Sort by most recently active (updated_at), with processing agents first
+					if (a.is_processing !== b.is_processing) {
+						return a.is_processing ? -1 : 1;
+					}
+					const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+					const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+					return bUpdated - aUpdated;
 				case 'newest':
 					const bTime = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
 					const aTime = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
@@ -65,6 +113,35 @@
 					return aTimeOld - bTimeOld;
 				case 'alphabetical':
 					return a.id.localeCompare(b.id);
+				case 'project':
+					// Group by project, then by recent activity within project
+					const projectA = a.project || 'zzz'; // No project sorts last
+					const projectB = b.project || 'zzz';
+					if (projectA !== projectB) {
+						return projectA.localeCompare(projectB);
+					}
+					// Within same project, sort by recent activity
+					const bProjUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+					const aProjUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+					return bProjUpdated - aProjUpdated;
+				case 'phase':
+					// Sort by phase priority: active phases first, then complete
+					const phaseOrder: Record<string, number> = {
+						'Implementing': 1,
+						'Implementation': 1,
+						'Planning': 2,
+						'Validating': 3,
+						'Complete': 4,
+					};
+					const phaseA = phaseOrder[a.phase || ''] || 5;
+					const phaseB = phaseOrder[b.phase || ''] || 5;
+					if (phaseA !== phaseB) {
+						return phaseA - phaseB;
+					}
+					// Within same phase, sort by recent activity
+					const bPhaseUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+					const aPhaseUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+					return bPhaseUpdated - aPhaseUpdated;
 				default:
 					return 0;
 			}
@@ -74,6 +151,9 @@
 	})();
 
 	onMount(() => {
+		// Load section state from localStorage
+		loadSectionState();
+
 		// Connect to SSE - this will trigger initial fetch when connection opens
 		// Removes race condition from parallel fetch + SSE connect
 		connectSSE();
@@ -154,18 +234,84 @@
 	function clearFilters() {
 		statusFilter = 'all';
 		skillFilter = 'all';
-		sortBy = 'newest';
+		sortBy = 'recent-activity';
 		activeOnly = false;
 	}
 
-	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'newest' || activeOnly;
+	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
+
+	// Helper function to apply sorting to agent arrays
+	function sortAgents(agentList: Agent[]): Agent[] {
+		return [...agentList].sort((a, b) => {
+			switch (sortBy) {
+				case 'recent-activity':
+					if (a.is_processing !== b.is_processing) {
+						return a.is_processing ? -1 : 1;
+					}
+					const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+					const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+					return bUpdated - aUpdated;
+				case 'newest':
+					const bTime = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+					const aTime = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+					return bTime - aTime;
+				case 'oldest':
+					const aTimeOld = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+					const bTimeOld = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+					return aTimeOld - bTimeOld;
+				case 'alphabetical':
+					return a.id.localeCompare(b.id);
+				case 'project':
+					const projectA = a.project || 'zzz';
+					const projectB = b.project || 'zzz';
+					if (projectA !== projectB) {
+						return projectA.localeCompare(projectB);
+					}
+					const bProjUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+					const aProjUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+					return bProjUpdated - aProjUpdated;
+				case 'phase':
+					const phaseOrder: Record<string, number> = {
+						'Implementing': 1,
+						'Implementation': 1,
+						'Planning': 2,
+						'Validating': 3,
+						'Complete': 4,
+					};
+					const phaseA = phaseOrder[a.phase || ''] || 5;
+					const phaseB = phaseOrder[b.phase || ''] || 5;
+					if (phaseA !== phaseB) {
+						return phaseA - phaseB;
+					}
+					const bPhaseUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+					const aPhaseUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+					return bPhaseUpdated - aPhaseUpdated;
+				default:
+					return 0;
+			}
+		});
+	}
+
+	// Apply skill filter to any agent list
+	function applySkillFilter(agentList: Agent[]): Agent[] {
+		if (skillFilter === 'all') return agentList;
+		return agentList.filter(a => a.skill === skillFilter);
+	}
+
+	// Progressive disclosure: sorted and filtered agents per section
+	$: sortedActiveAgents = sortAgents(applySkillFilter($activeAgents));
+	$: sortedRecentAgents = sortAgents(applySkillFilter($recentAgents));
+	$: sortedArchivedAgents = sortAgents(applySkillFilter($archivedAgents));
+
+	// Total visible agents across all sections (for filter count)
+	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
 <div class="space-y-3">
 	<!-- Compact Stats Bar -->
 	<div class="flex items-center gap-4 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
 		<div class="flex items-center gap-2">
-			<span class="text-lg">🐝</span>
+			<span class="text-lg">🟢</span>
 			<div class="flex items-baseline gap-1">
 				<span class="text-xl font-bold">{$activeAgents.length}</span>
 				<span class="text-xs text-muted-foreground">active</span>
@@ -173,18 +319,18 @@
 		</div>
 		<div class="h-4 w-px bg-border"></div>
 		<div class="flex items-center gap-2">
-			<span class="text-lg">✅</span>
+			<span class="text-lg">🕐</span>
 			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold">{$completedAgents.length}</span>
-				<span class="text-xs text-muted-foreground">done</span>
+				<span class="text-xl font-bold">{$recentAgents.length}</span>
+				<span class="text-xs text-muted-foreground">recent</span>
 			</div>
 		</div>
 		<div class="h-4 w-px bg-border"></div>
 		<div class="flex items-center gap-2">
-			<span class="text-lg">⚠️</span>
+			<span class="text-lg">📦</span>
 			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold">{$abandonedAgents.length}</span>
-				<span class="text-xs text-muted-foreground">stuck</span>
+				<span class="text-xl font-bold">{$archivedAgents.length}</span>
+				<span class="text-xs text-muted-foreground">archive</span>
 			</div>
 		</div>
 		<div class="h-4 w-px bg-border"></div>
@@ -193,14 +339,6 @@
 			<div class="flex items-baseline gap-1">
 				<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
 				<span class="text-xs text-muted-foreground">errors</span>
-			</div>
-		</div>
-		<div class="h-4 w-px bg-border"></div>
-		<div class="flex items-center gap-2">
-			<span class="text-lg">📋</span>
-			<div class="flex items-baseline gap-1">
-				<span class="text-xl font-bold">{$agentlogEvents.length}</span>
-				<span class="text-xs text-muted-foreground">events</span>
 			</div>
 		</div>
 		<div class="ml-auto flex items-center gap-2">
@@ -278,8 +416,11 @@
 					class="h-6 rounded border border-input bg-background px-1.5 text-xs"
 					data-testid="sort-select"
 				>
-					<option value="newest">Newest</option>
-					<option value="oldest">Oldest</option>
+					<option value="recent-activity">Recent Activity</option>
+					<option value="newest">Newest Spawned</option>
+					<option value="oldest">Oldest Spawned</option>
+					<option value="project">By Project</option>
+					<option value="phase">By Phase</option>
 					<option value="alphabetical">A-Z</option>
 				</select>
 
@@ -290,29 +431,96 @@
 				{/if}
 
 				<span class="ml-auto text-muted-foreground" data-testid="filter-count">
-					{filteredAgents.length} agent{filteredAgents.length === 1 ? '' : 's'}
+					{totalVisibleAgents} agent{totalVisibleAgents === 1 ? '' : 's'}
 				</span>
 			</div>
 
-			<!-- Dense Agent Grid -->
-			<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
-				{#each filteredAgents as agent, idx (idx)}
-					<AgentCard {agent} />
-				{:else}
-					<div class="col-span-full rounded border border-dashed p-6 text-center">
-						{#if hasActiveFilters}
-							<p class="text-sm text-muted-foreground">No agents match filters</p>
-							<Button variant="link" onclick={clearFilters} class="mt-1 h-auto p-0 text-xs">
-								Clear filters
-							</Button>
+			<!-- Progressive Disclosure: Collapsible Sections -->
+			<div class="space-y-2" data-testid="agent-sections">
+				{#if activeOnly}
+					<!-- Active Only mode: show flat grid of active agents -->
+					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
+						{#each sortedActiveAgents as agent (agent.id)}
+							<AgentCard {agent} />
 						{:else}
-							<p class="text-sm text-muted-foreground">No agents in the swarm</p>
-							<p class="mt-1 text-xs text-muted-foreground">
-								Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
-							</p>
-						{/if}
+							<div class="col-span-full rounded border border-dashed p-6 text-center">
+								<p class="text-sm text-muted-foreground">No active agents</p>
+								<p class="mt-1 text-xs text-muted-foreground">
+									Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+								</p>
+							</div>
+						{/each}
 					</div>
-				{/each}
+				{:else}
+					<!-- Progressive disclosure mode: collapsible sections -->
+					<!-- Active Section (always visible when agents exist) -->
+					{#if sortedActiveAgents.length > 0 || (sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0)}
+						<CollapsibleSection
+							title="Active"
+							icon="🟢"
+							agents={sortedActiveAgents}
+							bind:expanded={sectionState.active}
+							variant="active"
+						>
+							<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								{#each sortedActiveAgents as agent (agent.id)}
+									<AgentCard {agent} />
+								{/each}
+							</div>
+						</CollapsibleSection>
+					{/if}
+
+					<!-- Recent Section (idle/completed within 24h) -->
+					{#if sortedRecentAgents.length > 0}
+						<CollapsibleSection
+							title="Recent"
+							icon="🕐"
+							agents={sortedRecentAgents}
+							bind:expanded={sectionState.recent}
+							variant="recent"
+						>
+							<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								{#each sortedRecentAgents as agent (agent.id)}
+									<AgentCard {agent} />
+								{/each}
+							</div>
+						</CollapsibleSection>
+					{/if}
+
+					<!-- Archive Section (older than 24h) -->
+					{#if sortedArchivedAgents.length > 0}
+						<CollapsibleSection
+							title="Archive"
+							icon="📦"
+							agents={sortedArchivedAgents}
+							bind:expanded={sectionState.archive}
+							variant="archive"
+						>
+							<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+								{#each sortedArchivedAgents as agent (agent.id)}
+									<AgentCard {agent} />
+								{/each}
+							</div>
+						</CollapsibleSection>
+					{/if}
+
+					<!-- Empty state when no agents at all -->
+					{#if sortedActiveAgents.length === 0 && sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0}
+						<div class="rounded border border-dashed p-6 text-center">
+							{#if hasActiveFilters}
+								<p class="text-sm text-muted-foreground">No agents match filters</p>
+								<Button variant="link" onclick={clearFilters} class="mt-1 h-auto p-0 text-xs">
+									Clear filters
+								</Button>
+							{:else}
+								<p class="text-sm text-muted-foreground">No agents in the swarm</p>
+								<p class="mt-1 text-xs text-muted-foreground">
+									Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+								</p>
+							{/if}
+						</div>
+					{/if}
+				{/if}
 			</div>
 		</div>
 	</div>
