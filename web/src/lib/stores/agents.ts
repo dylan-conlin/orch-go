@@ -46,6 +46,7 @@ export interface Agent {
 
 // SSE Event types from OpenCode
 export interface SSEEvent {
+	id: string; // Unique ID for keyed rendering
 	type: string;
 	properties?: {
 		sessionID?: string;
@@ -53,8 +54,22 @@ export interface SSEEvent {
 			type: string;
 		};
 		message?: unknown;
+		part?: {
+			type: string;
+			text?: string;
+			tool?: string;
+			function?: string;
+		};
 	};
 	timestamp?: number;
+}
+
+// Counter for generating unique event IDs
+let sseEventIdCounter = 0;
+
+// Generate a unique SSE event ID
+function generateSSEEventId(): string {
+	return `sse-${Date.now()}-${++sseEventIdCounter}`;
 }
 
 // API configuration
@@ -146,9 +161,9 @@ function createSSEStore() {
 
 	return {
 		subscribe,
-		addEvent: (event: SSEEvent) => {
+		addEvent: (event: Omit<SSEEvent, 'id'>) => {
 			update((events) => {
-				const newEvents = [...events, event];
+				const newEvents = [...events, { ...event, id: generateSSEEventId() }];
 				// Keep last 100 events
 				return newEvents.slice(-100);
 			});
@@ -270,12 +285,11 @@ export function connectSSE(): void {
 }
 
 function handleSSEEvent(data: any) {
-	const sseEvent: SSEEvent = {
+	sseEvents.addEvent({
 		type: data.type || 'unknown',
 		properties: data.properties,
 		timestamp: Date.now()
-	};
-	sseEvents.addEvent(sseEvent);
+	});
 
 	// Handle message.part events - update agent activity and processing state in real-time
 	if (data.type === 'message.part' && data.properties) {

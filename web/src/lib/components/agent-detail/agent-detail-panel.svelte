@@ -266,7 +266,7 @@
 					{/if}
 
 					<div class="max-h-40 space-y-1 overflow-y-auto font-mono text-xs">
-						{#each agentEvents.slice().reverse() as event, i (i)}
+						{#each agentEvents.slice().reverse() as event (event.id)}
 							{@const part = event.properties?.part}
 							{#if part}
 								<div class="flex items-start gap-1 py-0.5 text-muted-foreground">

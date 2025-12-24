@@ -561,7 +561,7 @@
 				</Button>
 			</div>
 			<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
-				{#each $agentlogEvents.slice().reverse().slice(0, 20) as event, i (i)}
+				{#each $agentlogEvents.slice().reverse().slice(0, 20) as event (event.id)}
 					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
 						<span>{getEventIcon(event.type)}</span>
 						<span class="opacity-60">{formatUnixTime(event.timestamp)}</span>
@@ -597,7 +597,7 @@
 				<span class="text-xs text-muted-foreground">{$sseEvents.length} events</span>
 			</div>
 			<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
-				{#each $sseEvents.slice().reverse().slice(0, 20) as event, i (i)}
+				{#each $sseEvents.slice().reverse().slice(0, 20) as event (event.id)}
 					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
 						<span class="opacity-60">{formatTime(event.timestamp)}</span>
 						<span class="text-foreground">{event.type}</span>

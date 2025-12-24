@@ -2,6 +2,7 @@ import { writable, derived } from 'svelte/store';
 
 // Agent lifecycle event from events.jsonl
 export interface AgentLogEvent {
+	id: string; // Unique ID for keyed rendering
 	type: string; // session.spawned, session.completed, session.error, session.status
 	session_id?: string;
 	timestamp: number; // Unix timestamp
@@ -11,6 +12,14 @@ export interface AgentLogEvent {
 		error?: string;
 		status?: string;
 	};
+}
+
+// Counter for generating unique event IDs
+let eventIdCounter = 0;
+
+// Generate a unique event ID
+function generateEventId(): string {
+	return `evt-${Date.now()}-${++eventIdCounter}`;
 }
 
 // API configuration
@@ -24,9 +33,9 @@ function createAgentlogStore() {
 		subscribe,
 		set,
 		update,
-		addEvent: (event: AgentLogEvent) => {
+		addEvent: (event: Omit<AgentLogEvent, 'id'>) => {
 			update((events) => {
-				const newEvents = [...events, event];
+				const newEvents = [...events, { ...event, id: generateEventId() }];
 				// Keep last 100 events
 				return newEvents.slice(-100);
 			});
@@ -42,7 +51,12 @@ function createAgentlogStore() {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
 				const data = await response.json();
-				set(data || []);
+				// Assign unique IDs to fetched events
+				const eventsWithIds = (data || []).map((e: Omit<AgentLogEvent, 'id'>) => ({
+					...e,
+					id: generateEventId()
+				}));
+				set(eventsWithIds);
 			} catch (error) {
 				console.error('Failed to fetch agentlog:', error);
 				throw error;
