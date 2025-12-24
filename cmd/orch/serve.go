@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -88,6 +90,15 @@ func runServe(portNum int) error {
 	// GET /api/usage - returns Claude Max usage stats
 	mux.HandleFunc("/api/usage", corsHandler(handleUsage))
 
+	// GET /api/focus - returns current focus and drift status
+	mux.HandleFunc("/api/focus", corsHandler(handleFocus))
+
+	// GET /api/beads - returns beads stats (ready, blocked, open issues)
+	mux.HandleFunc("/api/beads", corsHandler(handleBeads))
+
+	// GET /api/servers - returns servers status across projects
+	mux.HandleFunc("/api/servers", corsHandler(handleServers))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -102,6 +113,9 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events (supports ?follow=true for SSE)")
 	fmt.Println("  GET /api/usage     - Claude Max usage stats")
+	fmt.Println("  GET /api/focus     - Current focus and drift status")
+	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
+	fmt.Println("  GET /api/servers   - Servers status across projects")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -702,4 +716,219 @@ func lookupAccountName(email string) string {
 	}
 
 	return ""
+}
+
+// FocusAPIResponse is the JSON structure returned by /api/focus.
+type FocusAPIResponse struct {
+	Goal       string `json:"goal,omitempty"`
+	BeadsID    string `json:"beads_id,omitempty"`
+	SetAt      string `json:"set_at,omitempty"`
+	IsDrifting bool   `json:"is_drifting"`
+	HasFocus   bool   `json:"has_focus"`
+}
+
+// handleFocus returns current focus and drift status.
+func handleFocus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	store, err := focus.New("")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load focus: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	resp := FocusAPIResponse{}
+
+	f := store.Get()
+	if f != nil {
+		resp.HasFocus = true
+		resp.Goal = f.Goal
+		resp.BeadsID = f.BeadsID
+		resp.SetAt = f.SetAt
+
+		// Check drift by getting active agents from current sessions
+		client := opencode.NewClient(serverURL)
+		sessions, _ := client.ListSessions("")
+
+		var activeIssues []string
+		for _, s := range sessions {
+			if beadsID := extractBeadsIDFromTitle(s.Title); beadsID != "" {
+				activeIssues = append(activeIssues, beadsID)
+			}
+		}
+
+		drift := store.CheckDrift(activeIssues)
+		resp.IsDrifting = drift.IsDrifting
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode focus: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// BeadsAPIResponse is the JSON structure returned by /api/beads.
+type BeadsAPIResponse struct {
+	TotalIssues    int     `json:"total_issues"`
+	OpenIssues     int     `json:"open_issues"`
+	InProgress     int     `json:"in_progress_issues"`
+	BlockedIssues  int     `json:"blocked_issues"`
+	ReadyIssues    int     `json:"ready_issues"`
+	ClosedIssues   int     `json:"closed_issues"`
+	AvgLeadTimeHrs float64 `json:"avg_lead_time_hours,omitempty"`
+	Error          string  `json:"error,omitempty"`
+}
+
+// handleBeads returns beads stats by shelling out to `bd stats --json`.
+func handleBeads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Shell out to bd stats --json
+	cmd := exec.Command("bd", "stats", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to run bd stats: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Parse the bd stats JSON output
+	var bdStats struct {
+		Summary struct {
+			TotalIssues      int     `json:"total_issues"`
+			OpenIssues       int     `json:"open_issues"`
+			InProgressIssues int     `json:"in_progress_issues"`
+			ClosedIssues     int     `json:"closed_issues"`
+			BlockedIssues    int     `json:"blocked_issues"`
+			ReadyIssues      int     `json:"ready_issues"`
+			AvgLeadTimeHours float64 `json:"average_lead_time_hours"`
+		} `json:"summary"`
+	}
+
+	if err := json.Unmarshal(output, &bdStats); err != nil {
+		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to parse bd stats: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := BeadsAPIResponse{
+		TotalIssues:    bdStats.Summary.TotalIssues,
+		OpenIssues:     bdStats.Summary.OpenIssues,
+		InProgress:     bdStats.Summary.InProgressIssues,
+		BlockedIssues:  bdStats.Summary.BlockedIssues,
+		ReadyIssues:    bdStats.Summary.ReadyIssues,
+		ClosedIssues:   bdStats.Summary.ClosedIssues,
+		AvgLeadTimeHrs: bdStats.Summary.AvgLeadTimeHours,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode beads: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// ServerPortInfo represents a port allocation for a server.
+type ServerPortInfo struct {
+	Service string `json:"service"`
+	Port    int    `json:"port"`
+	Purpose string `json:"purpose,omitempty"`
+}
+
+// ServerProjectInfo represents a project's server status.
+type ServerProjectInfo struct {
+	Project string           `json:"project"`
+	Ports   []ServerPortInfo `json:"ports"`
+	Running bool             `json:"running"`
+	Session string           `json:"session,omitempty"` // tmux session name
+}
+
+// ServersAPIResponse is the JSON structure returned by /api/servers.
+type ServersAPIResponse struct {
+	Projects     []ServerProjectInfo `json:"projects"`
+	TotalCount   int                 `json:"total_count"`
+	RunningCount int                 `json:"running_count"`
+	StoppedCount int                 `json:"stopped_count"`
+}
+
+// handleServers returns servers status across projects.
+func handleServers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Load port registry
+	reg, err := port.New("")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load port registry: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	allocs := reg.List()
+
+	// Group allocations by project
+	projectMap := make(map[string][]port.Allocation)
+	for _, alloc := range allocs {
+		projectMap[alloc.Project] = append(projectMap[alloc.Project], alloc)
+	}
+
+	// Get list of running workers sessions
+	runningSessions, _ := tmux.ListWorkersSessions()
+	runningSessionSet := make(map[string]bool)
+	for _, sess := range runningSessions {
+		runningSessionSet[sess] = true
+	}
+
+	// Build project info list
+	var projects []ServerProjectInfo
+	runningCount := 0
+
+	for projectName, projectPorts := range projectMap {
+		sessionName := tmux.GetWorkersSessionName(projectName)
+		running := runningSessionSet[sessionName]
+
+		// Convert port allocations
+		var ports []ServerPortInfo
+		for _, p := range projectPorts {
+			ports = append(ports, ServerPortInfo{
+				Service: p.Service,
+				Port:    p.Port,
+				Purpose: p.Purpose,
+			})
+		}
+
+		projects = append(projects, ServerProjectInfo{
+			Project: projectName,
+			Ports:   ports,
+			Running: running,
+			Session: sessionName,
+		})
+
+		if running {
+			runningCount++
+		}
+	}
+
+	resp := ServersAPIResponse{
+		Projects:     projects,
+		TotalCount:   len(projects),
+		RunningCount: runningCount,
+		StoppedCount: len(projects) - runningCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode servers: %v", err), http.StatusInternalServerError)
+		return
+	}
 }

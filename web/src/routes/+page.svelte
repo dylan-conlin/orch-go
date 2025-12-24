@@ -28,6 +28,9 @@
 		errorEvents
 	} from '$lib/stores/agentlog';
 	import { usage, getUsageColor, getUsageEmoji } from '$lib/stores/usage';
+	import { focus, getDriftEmoji } from '$lib/stores/focus';
+	import { servers } from '$lib/stores/servers';
+	import { beads } from '$lib/stores/beads';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -161,12 +164,18 @@
 		connectSSE();
 		connectAgentlogSSE();
 
-		// Fetch usage data
+		// Fetch usage, focus, servers, and beads data
 		usage.fetch();
+		focus.fetch();
+		servers.fetch();
+		beads.fetch();
 
-		// Refresh usage every 60 seconds
+		// Refresh usage, focus, servers, and beads every 60 seconds
 		const usageInterval = setInterval(() => {
 			usage.fetch();
+			focus.fetch();
+			servers.fetch();
+			beads.fetch();
 		}, 60000);
 
 		// Clean up connections before page unload to avoid Firefox network errors
@@ -352,6 +361,40 @@
 				<span class="text-xs text-muted-foreground">errors</span>
 			</div>
 		</div>
+		{#if $focus?.has_focus}
+			<div class="h-4 w-px bg-border"></div>
+			<div class="flex items-center gap-2" data-testid="focus-indicator" title={$focus.goal || 'Focus set'}>
+				<span class="text-lg">{getDriftEmoji($focus)}</span>
+				<div class="flex items-baseline gap-1">
+					<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
+						{$focus.is_drifting ? 'drifting' : 'focused'}
+					</span>
+				</div>
+			</div>
+		{/if}
+		{#if $servers}
+			<div class="h-4 w-px bg-border"></div>
+			<div class="flex items-center gap-2" data-testid="servers-indicator" title="{$servers.running_count} running, {$servers.stopped_count} stopped">
+				<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+				<div class="flex items-baseline gap-1">
+					<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
+					<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+				</div>
+			</div>
+		{/if}
+		{#if $beads}
+			<div class="h-4 w-px bg-border"></div>
+			<div class="flex items-center gap-2" data-testid="beads-indicator" title="{$beads.ready_issues} ready, {$beads.blocked_issues} blocked, {$beads.open_issues} open">
+				<span class="text-lg">📋</span>
+				<div class="flex items-baseline gap-1">
+					<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
+					<span class="text-xs text-muted-foreground">ready</span>
+				</div>
+				{#if $beads.blocked_issues > 0}
+					<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
+				{/if}
+			</div>
+		{/if}
 		<div class="ml-auto flex items-center gap-2">
 			<Button
 				variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
