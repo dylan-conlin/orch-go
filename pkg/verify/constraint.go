@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // ConstraintType indicates whether a constraint is required or optional.
@@ -115,13 +118,23 @@ func ExtractConstraintsFromReader(file *os.File) ([]Constraint, error) {
 // VerifyConstraints checks if all constraints are satisfied in the project directory.
 // Required constraints must have at least one matching file.
 // Optional constraints are informational only.
+// This function does NOT filter by spawn time - use VerifyConstraintsWithSpawnTime for that.
 func VerifyConstraints(constraints []Constraint, projectDir string) ConstraintVerificationResult {
+	return VerifyConstraintsWithSpawnTime(constraints, projectDir, time.Time{})
+}
+
+// VerifyConstraintsWithSpawnTime checks if all constraints are satisfied in the project directory.
+// If spawnTime is non-zero, only files with mtime >= spawnTime are considered matches.
+// This prevents constraints from matching files created by previous spawns.
+// Required constraints must have at least one matching file.
+// Optional constraints are informational only.
+func VerifyConstraintsWithSpawnTime(constraints []Constraint, projectDir string, spawnTime time.Time) ConstraintVerificationResult {
 	result := ConstraintVerificationResult{
 		Passed: true,
 	}
 
 	for _, c := range constraints {
-		cr := verifyConstraint(c, projectDir)
+		cr := verifyConstraintWithSpawnTime(c, projectDir, spawnTime)
 		result.Results = append(result.Results, cr)
 
 		if c.Type == ConstraintRequired {
@@ -144,7 +157,14 @@ func VerifyConstraints(constraints []Constraint, projectDir string) ConstraintVe
 }
 
 // verifyConstraint checks if a single constraint is satisfied.
+// Does not filter by spawn time - for backward compatibility.
 func verifyConstraint(c Constraint, projectDir string) ConstraintResult {
+	return verifyConstraintWithSpawnTime(c, projectDir, time.Time{})
+}
+
+// verifyConstraintWithSpawnTime checks if a single constraint is satisfied.
+// If spawnTime is non-zero, only files with mtime >= spawnTime are considered matches.
+func verifyConstraintWithSpawnTime(c Constraint, projectDir string, spawnTime time.Time) ConstraintResult {
 	cr := ConstraintResult{
 		Constraint: c,
 	}
@@ -160,6 +180,22 @@ func verifyConstraint(c Constraint, projectDir string) ConstraintResult {
 	if err != nil {
 		cr.Error = fmt.Errorf("invalid glob pattern: %w", err)
 		return cr
+	}
+
+	// Filter by spawn time if provided
+	if !spawnTime.IsZero() {
+		var filteredMatches []string
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err != nil {
+				continue // Skip files we can't stat
+			}
+			// Only include files modified at or after spawn time
+			if !info.ModTime().Before(spawnTime) {
+				filteredMatches = append(filteredMatches, match)
+			}
+		}
+		matches = filteredMatches
 	}
 
 	cr.MatchedFiles = matches
@@ -195,6 +231,7 @@ func PatternToGlob(pattern string) string {
 
 // VerifyConstraintsForCompletion is a convenience function that extracts and verifies
 // constraints from a workspace's SPAWN_CONTEXT.md against the project directory.
+// It reads the spawn time from the workspace and only matches files created during this spawn.
 func VerifyConstraintsForCompletion(workspacePath, projectDir string) (ConstraintVerificationResult, error) {
 	constraints, err := ExtractConstraints(workspacePath)
 	if err != nil {
@@ -206,5 +243,9 @@ func VerifyConstraintsForCompletion(workspacePath, projectDir string) (Constrain
 		return ConstraintVerificationResult{Passed: true}, nil
 	}
 
-	return VerifyConstraints(constraints, projectDir), nil
+	// Read spawn time from workspace to scope constraint matching
+	// If no spawn time file exists (legacy workspace), all files will match (zero time = no filtering)
+	spawnTime := spawn.ReadSpawnTime(workspacePath)
+
+	return VerifyConstraintsWithSpawnTime(constraints, projectDir, spawnTime), nil
 }

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // SessionIDFilename is the name of the file storing the session ID in the workspace.
@@ -100,4 +102,54 @@ func ReadTier(workspacePath string) string {
 // TierPath returns the path to the tier file for a workspace.
 func TierPath(workspacePath string) string {
 	return filepath.Join(workspacePath, TierFilename)
+}
+
+// SpawnTimeFilename is the name of the file storing the spawn timestamp in the workspace.
+const SpawnTimeFilename = ".spawn_time"
+
+// WriteSpawnTime writes the spawn timestamp to the workspace directory.
+// The timestamp is stored as Unix epoch nanoseconds for precision.
+// Uses atomic write (temp file + rename) to prevent partial reads.
+// The workspace directory must already exist.
+func WriteSpawnTime(workspacePath string, t time.Time) error {
+	spawnTimeFile := filepath.Join(workspacePath, SpawnTimeFilename)
+	tmpFile := spawnTimeFile + ".tmp"
+
+	// Store as Unix nanoseconds for precision
+	content := strconv.FormatInt(t.UnixNano(), 10) + "\n"
+
+	// Write to temp file first
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write spawn time temp file: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpFile, spawnTimeFile); err != nil {
+		os.Remove(tmpFile) // Clean up temp file on error
+		return fmt.Errorf("failed to rename spawn time file: %w", err)
+	}
+
+	return nil
+}
+
+// ReadSpawnTime reads the spawn timestamp from the workspace directory.
+// Returns zero time if the file doesn't exist or is invalid.
+func ReadSpawnTime(workspacePath string) time.Time {
+	spawnTimeFile := filepath.Join(workspacePath, SpawnTimeFilename)
+	data, err := os.ReadFile(spawnTimeFile)
+	if err != nil {
+		return time.Time{} // Return zero time if file doesn't exist
+	}
+
+	nanos, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return time.Time{} // Return zero time if parse fails
+	}
+
+	return time.Unix(0, nanos)
+}
+
+// SpawnTimePath returns the path to the spawn time file for a workspace.
+func SpawnTimePath(workspacePath string) string {
+	return filepath.Join(workspacePath, SpawnTimeFilename)
 }

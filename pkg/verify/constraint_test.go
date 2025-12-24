@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 func TestPatternToGlob(t *testing.T) {
@@ -404,6 +407,209 @@ func TestConstraintWithSimpleFolder(t *testing.T) {
 
 		if !result.Passed {
 			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
+		}
+	})
+}
+
+func TestVerifyConstraintsWithSpawnTime(t *testing.T) {
+	t.Run("filters out files created before spawn time", func(t *testing.T) {
+		projectDir := t.TempDir()
+
+		// Create investigation directory
+		kbDir := filepath.Join(projectDir, ".kb", "investigations")
+		if err := os.MkdirAll(kbDir, 0755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+
+		// Create a file that exists before spawn time
+		oldFilePath := filepath.Join(kbDir, "2025-12-22-inv-old.md")
+		if err := os.WriteFile(oldFilePath, []byte("# Old Investigation"), 0644); err != nil {
+			t.Fatalf("failed to write old file: %v", err)
+		}
+
+		// Set spawn time to now
+		spawnTime := time.Now()
+
+		// Wait a tiny bit to ensure mtime difference
+		time.Sleep(10 * time.Millisecond)
+
+		// Create a file after spawn time
+		newFilePath := filepath.Join(kbDir, "2025-12-23-inv-new.md")
+		if err := os.WriteFile(newFilePath, []byte("# New Investigation"), 0644); err != nil {
+			t.Fatalf("failed to write new file: %v", err)
+		}
+
+		constraints := []Constraint{
+			{Type: ConstraintRequired, Pattern: ".kb/investigations/{date}-inv-*.md", Description: "Investigation file"},
+		}
+
+		result := VerifyConstraintsWithSpawnTime(constraints, projectDir, spawnTime)
+
+		if !result.Passed {
+			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
+		}
+
+		// Should only match the new file
+		if len(result.Results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(result.Results))
+		}
+		if len(result.Results[0].MatchedFiles) != 1 {
+			t.Errorf("expected 1 matched file, got %d: %v", len(result.Results[0].MatchedFiles), result.Results[0].MatchedFiles)
+		}
+		if result.Results[0].MatchedFiles[0] != newFilePath {
+			t.Errorf("expected %s, got %s", newFilePath, result.Results[0].MatchedFiles[0])
+		}
+	})
+
+	t.Run("fails when only old files exist", func(t *testing.T) {
+		projectDir := t.TempDir()
+
+		// Create investigation directory
+		kbDir := filepath.Join(projectDir, ".kb", "investigations")
+		if err := os.MkdirAll(kbDir, 0755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+
+		// Create a file that exists before spawn time
+		oldFilePath := filepath.Join(kbDir, "2025-12-22-inv-old.md")
+		if err := os.WriteFile(oldFilePath, []byte("# Old Investigation"), 0644); err != nil {
+			t.Fatalf("failed to write old file: %v", err)
+		}
+
+		// Wait and set spawn time to now (after file creation)
+		time.Sleep(10 * time.Millisecond)
+		spawnTime := time.Now()
+
+		constraints := []Constraint{
+			{Type: ConstraintRequired, Pattern: ".kb/investigations/{date}-inv-*.md", Description: "Investigation file"},
+		}
+
+		result := VerifyConstraintsWithSpawnTime(constraints, projectDir, spawnTime)
+
+		if result.Passed {
+			t.Error("expected verification to fail when only old files exist")
+		}
+		if len(result.Errors) != 1 {
+			t.Errorf("expected 1 error, got %d: %v", len(result.Errors), result.Errors)
+		}
+	})
+
+	t.Run("zero spawn time matches all files (backward compatibility)", func(t *testing.T) {
+		projectDir := t.TempDir()
+
+		// Create investigation directory
+		kbDir := filepath.Join(projectDir, ".kb", "investigations")
+		if err := os.MkdirAll(kbDir, 0755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+
+		// Create a file
+		if err := os.WriteFile(filepath.Join(kbDir, "2025-12-22-inv-test.md"), []byte("# Test"), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		constraints := []Constraint{
+			{Type: ConstraintRequired, Pattern: ".kb/investigations/{date}-inv-*.md", Description: "Investigation file"},
+		}
+
+		// Zero time should not filter any files
+		result := VerifyConstraintsWithSpawnTime(constraints, projectDir, time.Time{})
+
+		if !result.Passed {
+			t.Errorf("expected verification to pass with zero spawn time, got errors: %v", result.Errors)
+		}
+	})
+}
+
+func TestVerifyConstraintsForCompletionWithSpawnTime(t *testing.T) {
+	t.Run("uses spawn time from workspace", func(t *testing.T) {
+		// Setup workspace with SPAWN_CONTEXT.md
+		workspace := t.TempDir()
+		spawnContext := `TASK: Create investigation
+
+<!-- SKILL-CONSTRAINTS -->
+<!-- required: .kb/investigations/{date}-inv-*.md | Investigation file -->
+<!-- /SKILL-CONSTRAINTS -->
+`
+		if err := os.WriteFile(filepath.Join(workspace, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Setup project dir with a file that was created BEFORE spawn time
+		projectDir := t.TempDir()
+		kbDir := filepath.Join(projectDir, ".kb", "investigations")
+		if err := os.MkdirAll(kbDir, 0755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(kbDir, "2025-12-22-inv-old.md"), []byte("# Old"), 0644); err != nil {
+			t.Fatalf("failed to write old investigation: %v", err)
+		}
+
+		// Write spawn time AFTER the old file was created
+		time.Sleep(10 * time.Millisecond)
+		spawnTime := time.Now()
+		if err := spawn.WriteSpawnTime(workspace, spawnTime); err != nil {
+			t.Fatalf("failed to write spawn time: %v", err)
+		}
+
+		// Verification should fail because old file is filtered out
+		result, err := VerifyConstraintsForCompletion(workspace, projectDir)
+		if err != nil {
+			t.Fatalf("VerifyConstraintsForCompletion failed: %v", err)
+		}
+
+		if result.Passed {
+			t.Error("expected verification to fail when only old files exist")
+		}
+
+		// Now create a new file after spawn time
+		time.Sleep(10 * time.Millisecond)
+		if err := os.WriteFile(filepath.Join(kbDir, "2025-12-23-inv-new.md"), []byte("# New"), 0644); err != nil {
+			t.Fatalf("failed to write new investigation: %v", err)
+		}
+
+		// Verification should now pass
+		result, err = VerifyConstraintsForCompletion(workspace, projectDir)
+		if err != nil {
+			t.Fatalf("VerifyConstraintsForCompletion failed: %v", err)
+		}
+
+		if !result.Passed {
+			t.Errorf("expected verification to pass with new file, got errors: %v", result.Errors)
+		}
+	})
+
+	t.Run("legacy workspace without spawn time matches all files", func(t *testing.T) {
+		// Setup workspace with SPAWN_CONTEXT.md but NO .spawn_time file
+		workspace := t.TempDir()
+		spawnContext := `TASK: Create investigation
+
+<!-- SKILL-CONSTRAINTS -->
+<!-- required: .kb/investigations/{date}-inv-*.md | Investigation file -->
+<!-- /SKILL-CONSTRAINTS -->
+`
+		if err := os.WriteFile(filepath.Join(workspace, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Setup project dir with a file
+		projectDir := t.TempDir()
+		kbDir := filepath.Join(projectDir, ".kb", "investigations")
+		if err := os.MkdirAll(kbDir, 0755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(kbDir, "2025-12-22-inv-test.md"), []byte("# Test"), 0644); err != nil {
+			t.Fatalf("failed to write investigation: %v", err)
+		}
+
+		// Verification should pass (no spawn time = no filtering)
+		result, err := VerifyConstraintsForCompletion(workspace, projectDir)
+		if err != nil {
+			t.Fatalf("VerifyConstraintsForCompletion failed: %v", err)
+		}
+
+		if !result.Passed {
+			t.Errorf("expected verification to pass for legacy workspace, got errors: %v", result.Errors)
 		}
 	})
 }

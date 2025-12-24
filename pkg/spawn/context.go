@@ -285,6 +285,12 @@ func WriteContext(cfg *Config) error {
 		return fmt.Errorf("failed to write tier file: %w", err)
 	}
 
+	// Write spawn time for constraint verification scoping
+	// Constraints should only match files created after this spawn, not pre-existing files
+	if err := WriteSpawnTime(workspacePath, time.Now()); err != nil {
+		return fmt.Errorf("failed to write spawn time file: %w", err)
+	}
+
 	return nil
 }
 

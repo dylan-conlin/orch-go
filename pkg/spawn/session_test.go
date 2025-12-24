@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestWriteReadSessionID(t *testing.T) {
@@ -143,5 +144,77 @@ func TestTierPath(t *testing.T) {
 	got := TierPath(workspace)
 	if got != expected {
 		t.Errorf("TierPath returned %q, want %q", got, expected)
+	}
+}
+
+func TestWriteReadSpawnTime(t *testing.T) {
+	// Create temp directory as workspace
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use a specific time to test precision
+	spawnTime := time.Date(2025, 12, 23, 14, 30, 45, 123456789, time.UTC)
+
+	// Write spawn time
+	if err := WriteSpawnTime(tmpDir, spawnTime); err != nil {
+		t.Fatalf("WriteSpawnTime failed: %v", err)
+	}
+
+	// Verify file exists
+	spawnTimeFile := filepath.Join(tmpDir, SpawnTimeFilename)
+	if _, err := os.Stat(spawnTimeFile); os.IsNotExist(err) {
+		t.Fatalf("spawn time file not created")
+	}
+
+	// Read spawn time
+	readTime := ReadSpawnTime(tmpDir)
+	if !readTime.Equal(spawnTime) {
+		t.Errorf("ReadSpawnTime returned %v, want %v", readTime, spawnTime)
+	}
+}
+
+func TestReadSpawnTime_NoFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Reading from non-existent file should return zero time
+	readTime := ReadSpawnTime(tmpDir)
+	if !readTime.IsZero() {
+		t.Errorf("ReadSpawnTime returned %v for non-existent file, want zero time", readTime)
+	}
+}
+
+func TestReadSpawnTime_InvalidContent(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write invalid content
+	spawnTimeFile := filepath.Join(tmpDir, SpawnTimeFilename)
+	if err := os.WriteFile(spawnTimeFile, []byte("not-a-number\n"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	// Reading invalid content should return zero time
+	readTime := ReadSpawnTime(tmpDir)
+	if !readTime.IsZero() {
+		t.Errorf("ReadSpawnTime returned %v for invalid content, want zero time", readTime)
+	}
+}
+
+func TestSpawnTimePath(t *testing.T) {
+	workspace := "/some/workspace/path"
+	expected := filepath.Join(workspace, SpawnTimeFilename)
+	got := SpawnTimePath(workspace)
+	if got != expected {
+		t.Errorf("SpawnTimePath returned %q, want %q", got, expected)
 	}
 }
