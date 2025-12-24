@@ -379,8 +379,8 @@
 					</span>
 					<span class="text-xs text-muted-foreground">wk</span>
 				</div>
-				{#if $usage.account}
-					<span class="text-xs text-muted-foreground hidden sm:inline">{$usage.account.split('@')[0]}</span>
+				{#if $usage.account_name || $usage.account}
+					<span class="text-xs text-muted-foreground hidden sm:inline">{$usage.account_name || $usage.account.split('@')[0]}</span>
 				{/if}
 			</div>
 		{/if}

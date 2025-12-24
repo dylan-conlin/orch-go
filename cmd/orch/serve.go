@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
@@ -635,11 +636,12 @@ func getProjectAPIPort() int {
 
 // UsageAPIResponse is the JSON structure returned by /api/usage.
 type UsageAPIResponse struct {
-	Account    string  `json:"account"`                       // Account email
-	FiveHour   float64 `json:"five_hour_percent"`             // 5-hour session usage %
-	Weekly     float64 `json:"weekly_percent"`                // 7-day weekly usage %
-	WeeklyOpus float64 `json:"weekly_opus_percent,omitempty"` // 7-day Opus-specific usage %
-	Error      string  `json:"error,omitempty"`               // Error message if any
+	Account     string  `json:"account"`                       // Account email
+	AccountName string  `json:"account_name,omitempty"`        // Account name from accounts.yaml (e.g., "personal", "work")
+	FiveHour    float64 `json:"five_hour_percent"`             // 5-hour session usage %
+	Weekly      float64 `json:"weekly_percent"`                // 7-day weekly usage %
+	WeeklyOpus  float64 `json:"weekly_opus_percent,omitempty"` // 7-day Opus-specific usage %
+	Error       string  `json:"error,omitempty"`               // Error message if any
 }
 
 // handleUsage returns Claude Max usage stats.
@@ -657,6 +659,7 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 		resp.Error = info.Error
 	} else {
 		resp.Account = info.Email
+		resp.AccountName = lookupAccountName(info.Email)
 		if info.FiveHour != nil {
 			resp.FiveHour = info.FiveHour.Utilization
 		}
@@ -673,4 +676,26 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode usage: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// lookupAccountName finds the account name from ~/.orch/accounts.yaml by matching email.
+// Returns the account name (e.g., "personal", "work") if found, empty string otherwise.
+func lookupAccountName(email string) string {
+	if email == "" {
+		return ""
+	}
+
+	cfg, err := account.LoadConfig()
+	if err != nil {
+		return ""
+	}
+
+	// Find account by matching email
+	for name, acc := range cfg.Accounts {
+		if acc.Email == email {
+			return name
+		}
+	}
+
+	return ""
 }

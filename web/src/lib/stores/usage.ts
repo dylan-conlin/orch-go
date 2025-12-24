@@ -6,6 +6,7 @@ const API_BASE = 'http://127.0.0.1:3348';
 // Usage response from /api/usage
 export interface UsageInfo {
 	account: string;
+	account_name?: string; // Account name from accounts.yaml (e.g., "personal", "work")
 	five_hour_percent: number;
 	weekly_percent: number;
 	weekly_opus_percent?: number;
