@@ -89,6 +89,35 @@ func TestNextIssue_SkipsBlockedIssues(t *testing.T) {
 	}
 }
 
+func TestNextIssue_IncludesInProgressIssues(t *testing.T) {
+	// This test verifies that in_progress issues are included in processing.
+	// The daemon should use bd ready which returns both open and in_progress issues.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "In Progress", Priority: 0, IssueType: "feature", Status: "in_progress", Labels: []string{"triage:ready"}},
+				{ID: "proj-2", Title: "Open", Priority: 1, IssueType: "feature", Status: "open", Labels: []string{"triage:ready"}},
+			}, nil
+		},
+		Config: Config{Label: "triage:ready"},
+	}
+
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("NextIssue() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssue() expected issue, got nil")
+	}
+	// Should return the in_progress issue since it has higher priority (0 vs 1)
+	if issue.ID != "proj-1" {
+		t.Errorf("NextIssue() = %q, want 'proj-1' (in_progress with higher priority)", issue.ID)
+	}
+	if issue.Status != "in_progress" {
+		t.Errorf("NextIssue() status = %q, want 'in_progress'", issue.Status)
+	}
+}
+
 func TestIsSpawnableType(t *testing.T) {
 	tests := []struct {
 		issueType string

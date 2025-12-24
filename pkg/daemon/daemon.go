@@ -109,7 +109,7 @@ func New() *Daemon {
 func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
 		Config:          config,
-		listIssuesFunc:  ListOpenIssues,
+		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
 	}
@@ -126,7 +126,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	return &Daemon{
 		Config:          config,
 		Pool:            pool,
-		listIssuesFunc:  ListOpenIssues,
+		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
 	}
@@ -142,6 +142,10 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
+	if d.Config.Verbose {
+		fmt.Printf("  DEBUG: Found %d open issues\n", len(issues))
+	}
+
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].Priority < issues[j].Priority
@@ -150,15 +154,27 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 	for _, issue := range issues {
 		// Skip non-spawnable types
 		if !IsSpawnableType(issue.IssueType) {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (type %s not spawnable)\n", issue.ID, issue.IssueType)
+			}
 			continue
 		}
 		// Skip blocked issues
 		if issue.Status == "blocked" {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (blocked)\n", issue.ID)
+			}
 			continue
 		}
 		// Skip issues without required label (if filter is set)
 		if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (missing label %s, has %v)\n", issue.ID, d.Config.Label, issue.Labels)
+			}
 			continue
+		}
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Selected %s (type=%s, labels=%v)\n", issue.ID, issue.IssueType, issue.Labels)
 		}
 		return &issue, nil
 	}
@@ -291,13 +307,13 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// ListOpenIssues retrieves open issues from beads.
+// ListReadyIssues retrieves ready issues from beads (open or in_progress, no blockers).
 // This is the default implementation that shells out to bd.
-func ListOpenIssues() ([]Issue, error) {
-	cmd := exec.Command("bd", "list", "--status", "open", "--json")
+func ListReadyIssues() ([]Issue, error) {
+	cmd := exec.Command("bd", "ready", "--json")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to run bd list: %w", err)
+		return nil, fmt.Errorf("failed to run bd ready: %w", err)
 	}
 
 	var issues []Issue
@@ -308,10 +324,16 @@ func ListOpenIssues() ([]Issue, error) {
 	return issues, nil
 }
 
-// SpawnWork spawns work on a beads issue using orch-go work command.
-// This is the default implementation that shells out to orch-go.
+// ListOpenIssues is an alias for ListReadyIssues for backward compatibility.
+// Deprecated: Use ListReadyIssues instead.
+func ListOpenIssues() ([]Issue, error) {
+	return ListReadyIssues()
+}
+
+// SpawnWork spawns work on a beads issue using orch work command.
+// This is the default implementation that shells out to orch.
 func SpawnWork(beadsID string) error {
-	cmd := exec.Command("orch-go", "work", beadsID)
+	cmd := exec.Command("orch", "work", beadsID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to spawn work: %w: %s", err, string(output))
