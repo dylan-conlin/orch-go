@@ -2,11 +2,18 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { connectionStatus } from '$lib/stores/agents';
+	import { usage } from '$lib/stores/usage';
 	import { theme } from '$lib/stores/theme';
 	import { ThemeToggle } from '$lib/components/theme-toggle';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
+
+	function getUsageColor(percent: number): 'green' | 'yellow' | 'red' {
+		if (percent < 60) return 'green';
+		if (percent < 80) return 'yellow';
+		return 'red';
+	}
 
 	let statusColor = $derived.by(() => {
 		switch ($connectionStatus) {
@@ -35,6 +42,31 @@
 				</a>
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-3">
+				{#if $usage && !$usage.error}
+					<div class="flex items-center gap-2 text-xs">
+						<span
+							class="font-medium"
+							class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
+							class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
+							class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
+						>
+							{$usage.five_hour_percent.toFixed(0)}%
+						</span>
+						<span class="text-muted-foreground">5h</span>
+						<span
+							class="font-medium"
+							class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
+							class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
+							class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
+						>
+							{$usage.weekly_percent.toFixed(0)}%
+						</span>
+						<span class="text-muted-foreground">wk</span>
+						{#if $usage.account_name || $usage.account}
+							<span class="text-muted-foreground">{$usage.account_name || $usage.account.split('@')[0]}</span>
+						{/if}
+					</div>
+				{/if}
 				<div class="flex items-center gap-1.5 text-xs text-muted-foreground">
 					<span class={`h-1.5 w-1.5 rounded-full ${statusColor}`}></span>
 					{$connectionStatus}

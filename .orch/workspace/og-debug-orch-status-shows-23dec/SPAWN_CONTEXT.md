@@ -1,4 +1,4 @@
-TASK: orch status shows 0 active agents when agents are running. OpenCode API returns status: null for all sessions. Investigate: is there a different field to check? Can we use tmux window state as fallback? See: curl -s http://127.0.0.1:4096/session | jq '.[-1]' shows status: null
+TASK: orch status shows headless agents as 'phantom' instead of 'active/idle'. IsSessionProcessing() was added in 8e52211 but the result isn't being used correctly in classification. Find where phantom vs active/idle is determined and wire up the IsProcessing boolean. Test: spawn headless agent, orch status --all should show 'active' while processing, 'idle' when done.
 
 SPAWN TIER: full
 
@@ -18,6 +18,8 @@ SPAWN TIER: full
 ### Related Investigations
 - [Investigation Title]
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-investigate-orch-status-showing-stale.md
+- Orch Status Shows Active Agents
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-orch-status-shows-active-agents.md
 - Spawn Tracking Verification
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/archived/2025-12-22-inv-test-spawn-tracking-works.md
 - Test Spawn Works After Phantom Fix
@@ -29,7 +31,7 @@ SPAWN TIER: full
 
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via `bd comment orch-go-v4mw "Phase: Planning - [brief description]"`
+1. Report via `bd comment orch-go-yzyo "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -40,7 +42,7 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 After your final commit, BEFORE typing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: `bd comment orch-go-v4mw "Phase: Complete - [1-2 sentence summary of deliverables]"`
+2. Run: `bd comment orch-go-yzyo "Phase: Complete - [1-2 sentence summary of deliverables]"`
 3. Run: `/exit` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
@@ -76,12 +78,12 @@ AUTHORITY:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
-2. **SET UP investigation file:** Run `kb create investigation orch-status-shows-active-agents` to create from template
-   - This creates: `.kb/investigations/simple/YYYY-MM-DD-orch-status-shows-active-agents.md`
+2. **SET UP investigation file:** Run `kb create investigation orch-status-shows-headless-agents` to create from template
+   - This creates: `.kb/investigations/simple/YYYY-MM-DD-orch-status-shows-headless-agents.md`
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
    - **IMPORTANT:** After running `kb create`, report the actual path via:
-     `bd comment orch-go-v4mw "investigation_path: /path/to/file.md"`
+     `bd comment orch-go-yzyo "investigation_path: /path/to/file.md"`
      (This allows orch complete to verify the correct file)
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
@@ -106,21 +108,21 @@ Signal orchestrator when blocked:
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
-You were spawned from beads issue: **orch-go-v4mw**
+You were spawned from beads issue: **orch-go-yzyo**
 
 **Use `bd comment` for progress updates instead of workspace-only tracking:**
 
 ```bash
 # Report progress at phase transitions
-bd comment orch-go-v4mw "Phase: Planning - Analyzing codebase structure"
-bd comment orch-go-v4mw "Phase: Implementing - Adding authentication middleware"
-bd comment orch-go-v4mw "Phase: Complete - All tests passing, ready for review"
+bd comment orch-go-yzyo "Phase: Planning - Analyzing codebase structure"
+bd comment orch-go-yzyo "Phase: Implementing - Adding authentication middleware"
+bd comment orch-go-yzyo "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment orch-go-v4mw "BLOCKED: Need clarification on API contract"
+bd comment orch-go-yzyo "BLOCKED: Need clarification on API contract"
 
 # Report questions
-bd comment orch-go-v4mw "QUESTION: Should we use JWT or session-based auth?"
+bd comment orch-go-yzyo "QUESTION: Should we use JWT or session-based auth?"
 ```
 
 **When to comment:**
@@ -129,7 +131,7 @@ bd comment orch-go-v4mw "QUESTION: Should we use JWT or session-based auth?"
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-v4mw`.
+**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-yzyo`.
 
 ⛔ **NEVER run `bd close`** - Only the orchestrator closes issues via `orch complete`.
    - Workers report `Phase: Complete`, orchestrator verifies and closes
@@ -145,7 +147,7 @@ Simply follow the guidance provided below.
 ---
 
 <!-- AUTO-GENERATED by skillc -->
-<!-- Checksum: 5090abe0f8b8 -->
+<!-- Checksum: 9d6f26dd59fd -->
 <!-- DO NOT EDIT THIS FILE DIRECTLY -->
 <!-- Source: /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc -->
 <!-- Deployed to: /Users/dylanconlin/.claude/skills/worker/systematic-debugging/SKILL.md -->
@@ -166,7 +168,7 @@ To modify this context:
 **Source:** /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc
 **Deployed to:** /Users/dylanconlin/.claude/skills/worker/systematic-debugging/SKILL.md
 **Build command:** skillc deploy --target <target-dir>
-**Last compiled:** 2025-12-23 18:52:35
+**Last compiled:** 2025-12-23 20:11:19
 
 ---
 
@@ -560,8 +562,8 @@ CONTEXT AVAILABLE:
 **Status:** running
 
 **Ports:**
-- **api:** http://localhost:3348
 - **web:** http://localhost:5188
+- **api:** http://localhost:3348
 
 **Quick commands:**
 - Start servers: `orch servers start orch-go`
@@ -574,7 +576,7 @@ CONTEXT AVAILABLE:
 After your final commit, BEFORE doing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. `bd comment orch-go-v4mw "Phase: Complete - [1-2 sentence summary]"`
+2. `bd comment orch-go-yzyo "Phase: Complete - [1-2 sentence summary]"`
 3. `/exit`
 
 ⚠️ Your work is NOT complete until you run these commands.

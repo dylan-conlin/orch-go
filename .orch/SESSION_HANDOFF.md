@@ -1,95 +1,68 @@
-# Session Handoff - 2025-12-24 (Late Night)
+# Session Handoff - Dec 24, 2025
 
-## Theme: Observability Stack Fixed
+## Session Focus
+Dashboard improvements for the swarm UI - went from cluttered flat list to polished progressive disclosure.
 
-Major stabilization session. The core orchestration tools now work reliably.
+## What We Built
 
-## What Was Fixed
+### Features Shipped
+- **NaNm fix** - `formatDuration()` returns `-` for missing timestamps (`06955b6`)
+- **Progressive disclosure** - Active/Recent/Archive collapsible sections with localStorage (`1fba8ed`)
+- **Human-readable titles** - TLDR for completed, task for active agents (`7da7ee5`)
+- **Usage display** - 5h%, weekly% in stats bar with color coding (`74cce06`)
+- **Auto-account-switching** - Switches before hitting rate limits (`6f9539c`)
+- **Filtering** - Only shows spawned agents, not interactive sessions
+- **New sort options** - Recent Activity (default), By Project, By Phase
 
-| Issue | Before | After | Commit |
-|-------|--------|-------|--------|
-| Headless spawn model | Always sonnet | Correct model | 7598101 |
-| orch status speed | 11s | 1.5s | 15603d8 |
-| kb context speed | 50s | 72ms | cbf2d36 (kb-cli) |
-| orch status detection | 0 active always | Shows running/idle | 561c493 |
-| Session titles | No beads ID | Includes [beads-id] | 23650cc |
+### Investigations Completed
+- **Send vs spawn boundaries** - No TTL, completed agents accept Q&A, use task relatedness heuristic
+- **"System recommend" pattern** - Reframed as latency issue → `kb ask` proposal created
+- **Meta-orchestration maturity** - 80% ready, orch-go is the orchestration home
+- **Agent card click** - Slide-out panel design documented
+- **Dashboard integrations** - Beads + Focus high priority, KB/KN skip
 
-### Key Changes
+### Knowledge Captured
+- `kn-c75a03` - Auto-rebuild after Go changes
+- `kn-e2b865` - Send vs spawn question  
+- `kn-581d4b` - Session transition at 75-80% context
+- Orchestrator skill updated with "orch-go as orchestration home" section
 
-**Headless spawn:** Switched from HTTP API to CLI subprocess (`opencode run --format json --model`). OpenCode API ignores model param - this is the workaround.
+## Open Issues Created
 
-**orch status:** 
-- Batched beads CLI calls (was N sequential calls)
-- Parallelized comment fetching
-- Uses messages endpoint to detect active vs idle (OpenCode API returns `status: null`)
-- OpenCode agents now show "running/idle" instead of "phantom"
+| Issue | Description | Priority |
+|-------|-------------|----------|
+| `orch-go-qmmf` | `kb ask` inline mini-investigations | triage:review |
+| `orch-go-3t8p` | Completed agents shouldn't count against concurrency | triage:ready |
+| `orch-go-ctvw` | Auto-rebuild after Go changes | triage:ready |
+| `orch-go-6qsq` | Card should show processing after send | triage:ready |
+| `orch-go-wa8z` | Archive sort broken (no updated_at) | triage:ready |
 
-**kb context:** Added `--stale` flag to make stale detection opt-in. The stale check was calling `bd show` (~5s each) for every beads ID.
+## State to Resume From
 
-## Current State
-
-### All Spawn Modes Working
+### Rebuild Required
+After this session, run:
 ```bash
-orch spawn SKILL "task"           # Headless (default) ✅
-orch spawn --tmux SKILL "task"    # Tmux window ✅
-orch spawn --inline SKILL "task"  # Blocking TUI ✅
+cd ~/Documents/personal/orch-go
+make install
+pkill -f "orch serve" && orch serve &
 ```
 
-### Observability
-- `orch status` - 1.5s, shows running/idle/phantom correctly
-- `kb context` - 72ms (use `--stale` for stale warnings, adds ~50s)
-- Dashboard at http://localhost:5188 - has known issues (see epic below)
+### Dashboard URL
+http://localhost:5188
 
-### Binary Install Note
-Two `kb` binaries exist: `~/bin/kb` and `~/go/bin/kb`. PATH uses `~/bin/` first. After `go install`, copy to `~/bin/`:
-```bash
-cp ~/go/bin/kb ~/bin/kb
-```
-Issue `orch-go-23fh` tracks standardizing this.
+### Current Account Usage
+- Personal: ~12% (5h: 34%, weekly: 11%)
 
-## Ready Queue
+## What's Next (Suggested)
 
-### Dashboard Bugs (Epic: orch-go-mhec)
-Created from playwright audit - 4 ready, 1 needs review:
-- `orch-go-mhec.1` - Status filter test expects 4 options, UI has 5
-- `orch-go-mhec.2` - Duplicate 'Clear' button selector ambiguity
-- `orch-go-mhec.3` - Race-condition tests hardcoded port
-- `orch-go-mhec.4` - Agent grid uses index as key (stale data)
-- `orch-go-mhec.5` - Svelte 5 runes standardization (triage:review)
+1. **Quick wins** - Fix archive sort (`orch-go-wa8z`), concurrency counting (`orch-go-3t8p`)
+2. **Card interaction** - Implement slide-out panel from `orch-go-m5k7` design
+3. **Dashboard integrations** - Add beads ready count, focus/drift per `orch-go-w0bm` design
+4. **`kb ask`** - Review and potentially implement `orch-go-qmmf`
 
-### Other P2s
-```bash
-bd ready | head -10
-```
-- Template sync tasks (orch-go-hdrc, tsx5, rtym)
-- kb extract/supersede commands (jgc1, p73c)
-- orch clean messaging bug (i1cm)
-
-## Skill Audit
-
-Audited recent skill changes (Dec 20-23). **No degradation found.**
-- SYNTHESIS compliance ~80%+ when required
-- "Missing" synthesis files are intentional light-tier spawns
-- Progressive disclosure reduced feature-impl 77% without quality loss
-
-## Account Status
-- personal: 1% used
-- work: 22% used (resets in 6d 14h)
-
-## Commands to Start
-
-```bash
-orch status                    # Verify observability works
-bd ready | head -10            # Check queue
-bd show orch-go-mhec           # Dashboard epic details
-```
-
-## Recent Commits
-```
-3460d69 investigation: audit recent skill changes (Dec 20-23)
-561c493 fix: headless agents show running/idle instead of phantom
-8e52211 feat: detect active sessions via messages endpoint
-23650cc fix: include beads ID in OpenCode session titles
-15603d8 perf: optimize orch status from 12s to 1s
-7598101 fix: use CLI subprocess for headless spawns
-```
+## Session Stats
+- Duration: ~3 hours
+- Agents spawned: 12
+- Commits: 12
+- Issues created: 5
+- Context used: 78% (156k tokens)

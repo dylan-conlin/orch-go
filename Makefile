@@ -37,6 +37,7 @@ install: build
 	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
 	@mkdir -p $(INSTALL_DIR)
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+	@codesign --force --sign - $(INSTALL_DIR)/$(BINARY_NAME)
 	@echo "Installed to $(INSTALL_DIR)/$(BINARY_NAME)"
 
 # Clean build artifacts

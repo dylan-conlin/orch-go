@@ -571,6 +571,27 @@ func FindWindowByWorkspaceNameAllSessions(workspaceName string) (*WindowInfo, st
 	return nil, "", nil
 }
 
+// FindWindowByBeadsIDAllSessions searches all workers sessions for a window with the given beads ID.
+// This is useful when we don't know which project session the window is in.
+// Returns the window info and session name, or nil if not found.
+func FindWindowByBeadsIDAllSessions(beadsID string) (*WindowInfo, string, error) {
+	sessions, err := ListWorkersSessions()
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, sessionName := range sessions {
+		window, err := FindWindowByBeadsID(sessionName, beadsID)
+		if err != nil {
+			continue // Skip sessions that fail
+		}
+		if window != nil {
+			return window, sessionName, nil
+		}
+	}
+	return nil, "", nil
+}
+
 // WindowExistsByID checks if a tmux window exists by its unique ID (e.g., "@1234").
 // Returns true if the window is still present in any tmux session.
 func WindowExistsByID(windowID string) bool {
