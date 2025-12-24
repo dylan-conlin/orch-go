@@ -133,103 +133,44 @@ All spawn paths identified and modified. Tests written and passing. Build compil
 
 ---
 
-## Implementation Recommendations
+## Implementation (Complete)
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+### Changes Made
 
-### Recommended Approach ⭐
+1. **cmd/orch/main.go:870** - Added `ORCH_WORKER=1` prefix to opencode serve command
+2. **cmd/orch/main.go:1086** - Added `cmd.Env = append(os.Environ(), "ORCH_WORKER=1")` for inline spawn
+3. **pkg/tmux/tmux.go:56** - Added cmd.Env for BuildRunCommand
+4. **pkg/tmux/tmux.go:98** - Added `ORCH_WORKER=1` prefix for BuildOpencodeAttachCommand
+5. **pkg/tmux/tmux.go:77** - Added `ORCH_WORKER=1` prefix for BuildStandaloneCommand
+6. **pkg/tmux/tmux.go:194** - Added cmd.Env for BuildSpawnCommand
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+### Tests Added
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- TestBuildRunCommandEnv
+- TestBuildSpawnCommandEnv
+- TestBuildOpencodeAttachCommandEnv
+- TestBuildStandaloneCommandEnv
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+All tests pass.
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
-
-**Commands Run:**
-```bash
-# [Command description]
-[command]
-
-# [Command description]
-[command]
-```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+**Files Modified:**
+- cmd/orch/main.go - ensureOpenCodeRunning and runSpawnInline
+- pkg/tmux/tmux.go - All command builders
+- pkg/tmux/tmux_test.go - New tests for env var
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-23:** Investigation started
+- Initial question: Where to set ORCH_WORKER=1 in headless spawn
+- Context: Need to distinguish orch-managed workers from manual OpenCode sessions
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-23:** Implementation complete
+- Final confidence: High (90%)
+- Status: Complete
+- Key outcome: ORCH_WORKER=1 set in all spawn paths with tests
