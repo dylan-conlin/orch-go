@@ -3062,11 +3062,38 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 	fmt.Printf("  Workspaces track %d session IDs\n", len(trackedSessionIDs))
 
 	// Find orphaned sessions (disk sessions not tracked in workspaces)
+	// IMPORTANT: Exclude sessions that are actively processing (e.g., the current orchestrator session)
+	// The orchestrator/interactive sessions don't have workspace .session_id files, but they're
+	// still valid sessions that should not be deleted.
+	//
+	// We use two heuristics to detect active sessions (no extra API calls needed):
+	// 1. Recently updated sessions (within last 5 minutes) - likely in use
+	// 2. Sessions that are currently processing (expensive check, only if recently updated)
 	var orphanedSessions []opencode.Session
+	var skippedActive int
+	now := time.Now()
+	const recentActivityThreshold = 5 * time.Minute
+
 	for _, session := range diskSessions {
 		if !trackedSessionIDs[session.ID] {
+			// First, quick check: was this session recently active? (using data we already have)
+			updatedAt := time.Unix(session.Time.Updated/1000, 0)
+			isRecentlyActive := now.Sub(updatedAt) <= recentActivityThreshold
+
+			if isRecentlyActive {
+				// Session is recently active - check if it's actually processing
+				// This is the expensive check, but we only do it for recently active sessions
+				if client.IsSessionProcessing(session.ID) {
+					skippedActive++
+					continue
+				}
+			}
 			orphanedSessions = append(orphanedSessions, session)
 		}
+	}
+
+	if skippedActive > 0 {
+		fmt.Printf("  Skipped %d active sessions (currently processing)\n", skippedActive)
 	}
 
 	if len(orphanedSessions) == 0 {
