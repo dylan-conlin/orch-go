@@ -33,6 +33,52 @@
 				return 'outline';
 		}
 	}
+
+	/**
+	 * Get a brief, human-readable task description for an agent
+	 */
+	function getAgentSummary(agent: Agent): string {
+		// For completed agents with TLDR, use first sentence
+		if (agent.synthesis?.tldr) {
+			const firstSentence = agent.synthesis.tldr.split(/[.!?]/)[0].trim();
+			return firstSentence.length > 40 ? firstSentence.substring(0, 40) + '…' : firstSentence;
+		}
+		
+		// Use task description if available
+		if (agent.task) {
+			return agent.task.length > 40 ? agent.task.substring(0, 40) + '…' : agent.task;
+		}
+		
+		// Fall back to cleaned workspace name
+		let cleaned = agent.id
+			.replace(/\s*\[[^\]]+\]$/, '') // Remove beads ID suffix
+			.replace(/^[a-z]+-/, '') // Remove project prefix
+			.replace(/-\d{1,2}[a-z]{3}$/, '') // Remove date suffix
+			.replace(/^(feat|fix|inv|debug|research|design)-/, '') // Remove skill prefixes
+			.replace(/-/g, ' ')
+			.trim();
+		
+		cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+		return cleaned.length > 40 ? cleaned.substring(0, 40) + '…' : cleaned;
+	}
+
+	/**
+	 * Get preview text for collapsed section header
+	 * Shows first 1-2 agent tasks when collapsed
+	 */
+	function getCollapsedPreview(agents: Agent[]): string {
+		if (agents.length === 0) return '';
+		
+		const summaries = agents.slice(0, 2).map(getAgentSummary);
+		
+		if (agents.length <= 2) {
+			return summaries.join(', ');
+		}
+		
+		return `${summaries.join(', ')} +${agents.length - 2}`;
+	}
+
+	$: collapsedPreview = getCollapsedPreview(agents);
 </script>
 
 <div class="rounded-lg border {getVariantStyles(variant)}">
@@ -42,14 +88,19 @@
 		aria-expanded={expanded}
 		data-testid="section-toggle-{variant}"
 	>
-		<div class="flex items-center gap-2">
-			<span class="text-sm">{icon}</span>
-			<span class="text-sm font-medium">{title}</span>
-			<Badge variant={getBadgeVariant(variant)} class="h-5 px-1.5 text-xs">
+		<div class="flex items-center gap-2 min-w-0 flex-1">
+			<span class="text-sm flex-shrink-0">{icon}</span>
+			<span class="text-sm font-medium flex-shrink-0">{title}</span>
+			<Badge variant={getBadgeVariant(variant)} class="h-5 px-1.5 text-xs flex-shrink-0">
 				{agents.length}
 			</Badge>
+			{#if !expanded && collapsedPreview && agents.length > 0}
+				<span class="text-xs text-muted-foreground truncate" data-testid="section-preview-{variant}">
+					— {collapsedPreview}
+				</span>
+			{/if}
 		</div>
-		<span class="text-muted-foreground transition-transform {expanded ? 'rotate-180' : ''}">
+		<span class="text-muted-foreground transition-transform flex-shrink-0 {expanded ? 'rotate-180' : ''}">
 			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<polyline points="6 9 12 15 18 9"></polyline>
 			</svg>
