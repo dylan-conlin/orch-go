@@ -43,27 +43,30 @@
 			</div>
 			<div class="flex flex-1 items-center justify-end gap-3">
 				{#if $usage && !$usage.error}
-					<div class="flex items-center gap-2 text-xs">
+					<div class="flex items-center gap-2 text-xs" title="Claude Max usage limits">
 						<span
-							class="font-medium"
+							class="font-medium cursor-help"
 							class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
 							class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
 							class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
+							title="5-hour rolling usage: {$usage.five_hour_percent.toFixed(0)}% of limit"
 						>
 							{$usage.five_hour_percent.toFixed(0)}%
 						</span>
-						<span class="text-muted-foreground">5h</span>
+						<span class="text-muted-foreground cursor-help" title="5-hour rolling window">5hr</span>
+						<span class="text-muted-foreground">|</span>
 						<span
-							class="font-medium"
+							class="font-medium cursor-help"
 							class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
 							class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
 							class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
+							title="Weekly usage: {$usage.weekly_percent.toFixed(0)}% of limit"
 						>
 							{$usage.weekly_percent.toFixed(0)}%
 						</span>
-						<span class="text-muted-foreground">wk</span>
+						<span class="text-muted-foreground cursor-help" title="Weekly limit (resets Monday)">week</span>
 						{#if $usage.account_name || $usage.account}
-							<span class="text-muted-foreground">{$usage.account_name || $usage.account.split('@')[0]}</span>
+							<span class="text-muted-foreground" title="Active Claude Max account">@{$usage.account_name || $usage.account.split('@')[0]}</span>
 						{/if}
 					</div>
 				{/if}
