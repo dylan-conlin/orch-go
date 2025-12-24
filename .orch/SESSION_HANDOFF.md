@@ -1,46 +1,40 @@
-# Session Handoff - Dec 24, 2025
+# Session Handoff - Dec 24, 2025 (Evening)
 
 ## Session Focus
-Dashboard improvements for the swarm UI - went from cluttered flat list to polished progressive disclosure.
+Dashboard bug fixes and UX improvements, plus clarifying the investigation-to-implementation gap.
 
 ## What We Built
 
 ### Features Shipped
-- **NaNm fix** - `formatDuration()` returns `-` for missing timestamps (`06955b6`)
-- **Progressive disclosure** - Active/Recent/Archive collapsible sections with localStorage (`1fba8ed`)
-- **Human-readable titles** - TLDR for completed, task for active agents (`7da7ee5`)
-- **Usage display** - 5h%, weekly% in stats bar with color coding (`74cce06`)
-- **Auto-account-switching** - Switches before hitting rate limits (`6f9539c`)
-- **Filtering** - Only shows spawned agents, not interactive sessions
-- **New sort options** - Recent Activity (default), By Project, By Phase
+- **Concurrency fix** - Phase: Complete agents excluded from limit (`d0eae36`)
+- **Archive sort fix** - Parse workspace date suffix for proper sorting (`344deef`)
+- **Clean messaging** - Accurate description of report-only behavior (`9c2d399`)
+- **Auto-rebuild** - Go changes trigger `make install` + restart serve (`530f1a0`)
+- **Slide-out panel** - Agent card click reveals detail panel (`159b588`)
+- **Processing indicator** - SSE-driven yellow pulse for active agents (`3f5c75d`)
+- **Account name display** - Shows "personal/work" instead of email (`28caaec`)
+- **Status fix** - Phase: Complete agents show "completed" status (`e0b524f`)
+- **Usage in nav bar** - Moved from stats bar to header for cleaner layout (`25cda72`)
 
-### Investigations Completed
-- **Send vs spawn boundaries** - No TTL, completed agents accept Q&A, use task relatedness heuristic
-- **"System recommend" pattern** - Reframed as latency issue → `kb ask` proposal created
-- **Meta-orchestration maturity** - 80% ready, orch-go is the orchestration home
-- **Agent card click** - Slide-out panel design documented
-- **Dashboard integrations** - Beads + Focus high priority, KB/KN skip
+### Key Clarifications
+- **Skillc/Orch boundary** - Skillc declares constraints, orch enforces at runtime. The interplay IS the composition - no separate L4 layer needed.
+- **Investigation-to-implementation gap** - `ok-je0` was closed without prompting being implemented. SYNTHESIS.md is parsed but `orch complete` doesn't prompt for follow-up issues. This is orch-go work, not skillc work.
 
-### Knowledge Captured
-- `kn-c75a03` - Auto-rebuild after Go changes
-- `kn-e2b865` - Send vs spawn question  
-- `kn-581d4b` - Session transition at 75-80% context
-- Orchestrator skill updated with "orch-go as orchestration home" section
-
-## Open Issues Created
-
-| Issue | Description | Priority |
-|-------|-------------|----------|
-| `orch-go-qmmf` | `kb ask` inline mini-investigations | triage:review |
-| `orch-go-3t8p` | Completed agents shouldn't count against concurrency | triage:ready |
-| `orch-go-ctvw` | Auto-rebuild after Go changes | triage:ready |
-| `orch-go-6qsq` | Card should show processing after send | triage:ready |
-| `orch-go-wa8z` | Archive sort broken (no updated_at) | triage:ready |
+### Issues Created This Session
+| Issue | Description |
+|-------|-------------|
+| `orch-go-gru5` | Slide-out detail panel (completed) |
+| `orch-go-qeeo` | Gate on visual verification for web/ changes |
+| `orch-go-7z6r` | Prompt for follow-up issues from investigation recommendations |
+| `orch-go-u49q` | Status reflects Phase: Complete (completed) |
+| `orch-go-uxhf` | Show account name instead of email (completed) |
+| `orch-go-awfr` | Exclude closed beads issues from active count |
+| `orch-go-38c6` | Cross-project beads comment visibility |
+| `orch-go-391i` | Better workspace naming for differentiation |
 
 ## State to Resume From
 
 ### Rebuild Required
-After this session, run:
 ```bash
 cd ~/Documents/personal/orch-go
 make install
@@ -51,18 +45,40 @@ pkill -f "orch serve" && orch serve &
 http://localhost:5188
 
 ### Current Account Usage
-- Personal: ~12% (5h: 34%, weekly: 11%)
+- Personal: 17% weekly, 76% 5h (resets in 6d 9h)
+- Auto-switch threshold: 80% (5h) / 90% (weekly)
 
 ## What's Next (Suggested)
 
-1. **Quick wins** - Fix archive sort (`orch-go-wa8z`), concurrency counting (`orch-go-3t8p`)
-2. **Card interaction** - Implement slide-out panel from `orch-go-m5k7` design
-3. **Dashboard integrations** - Add beads ready count, focus/drift per `orch-go-w0bm` design
-4. **`kb ask`** - Review and potentially implement `orch-go-qmmf`
+### Quick Wins
+1. `orch-go-awfr` - Exclude closed beads issues from status (small fix)
+2. `orch-go-mhec.*` - Dashboard bug fixes from audit (4 issues ready)
+
+### Medium Priority
+3. `orch-go-7z6r` - Finish ok-je0: prompt for follow-up issues in orch complete
+4. `orch-go-qeeo` - Visual verification gating in orch complete
+5. `orch-go-38c6` - Cross-project beads visibility
+
+### Skillc Validation (from merged session)
+- `skillc-mmq` - L2 Phase Gates validated (completed)
+- `skillc-9te` - L3 Context Injection (next)
+- `skillc-zpa` - Migrate production skills (after validation)
+
+## Patterns Discovered
+
+### Investigation → Implementation Gap
+Investigations complete with recommendations but no beads issue created. The "Discovered Work Check" in skills covers incidental findings, not the primary recommendation.
+
+**Fix belongs in `orch complete`:**
+1. Parse SYNTHESIS.md (already done)
+2. Detect recommendation type (new)
+3. Prompt for issue creation (new - `ok-je0` unfinished)
+
+### Cross-Project Visibility Gap
+When viewing agents from different projects (e.g., skillc from orch-go dashboard), beads comments aren't found because bd commands run in current directory. Agents from other projects show no phase info.
 
 ## Session Stats
 - Duration: ~3 hours
-- Agents spawned: 12
+- Agents spawned: 8
 - Commits: 12
-- Issues created: 5
-- Context used: 78% (156k tokens)
+- Issues created: 8
