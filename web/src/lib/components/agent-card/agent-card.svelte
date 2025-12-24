@@ -134,12 +134,19 @@
 
 	/**
 	 * Get display title for agent card
-	 * - Completed agents: TLDR first sentence (truncated)
+	 * - Completed agents: TLDR first sentence (truncated), or close_reason fallback
 	 * - Active agents: task field, or cleaned workspace name
 	 */
 	function getDisplayTitle(agent: Agent): string {
-		if (agent.status === 'completed' && agent.synthesis?.tldr) {
-			return truncateTldr(agent.synthesis.tldr);
+		if (agent.status === 'completed') {
+			// First try synthesis TLDR
+			if (agent.synthesis?.tldr) {
+				return truncateTldr(agent.synthesis.tldr);
+			}
+			// Fallback to close_reason for light-tier agents
+			if (agent.close_reason) {
+				return truncateTldr(agent.close_reason, 60);
+			}
 		}
 		
 		if (agent.task) {
@@ -155,8 +162,8 @@
 	 * (when display title differs from workspace name)
 	 */
 	function shouldShowWorkspaceSubtitle(agent: Agent): boolean {
-		// For completed agents with TLDR, always show workspace
-		if (agent.status === 'completed' && agent.synthesis?.tldr) {
+		// For completed agents with TLDR or close_reason, always show workspace
+		if (agent.status === 'completed' && (agent.synthesis?.tldr || agent.close_reason)) {
 			return true;
 		}
 		// For agents with task, show workspace if task is displayed
@@ -245,15 +252,20 @@
 		</div>
 	{/if}
 
-	<!-- Synthesis for completed agents -->
-	{#if agent.status === 'completed' && agent.synthesis}
+	<!-- Synthesis for completed agents (with close_reason fallback) -->
+	<!-- Only show section if there's actual content to display -->
+	{#if agent.status === 'completed' && (agent.synthesis?.tldr || agent.synthesis?.outcome || agent.close_reason)}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if agent.synthesis.tldr}
+			{#if agent.synthesis?.tldr}
 				<p class="text-[10px] leading-tight text-muted-foreground">
 					{agent.synthesis.tldr}
 				</p>
+			{:else if agent.close_reason}
+				<p class="text-[10px] leading-tight text-muted-foreground">
+					{agent.close_reason}
+				</p>
 			{/if}
-			{#if agent.synthesis.outcome}
+			{#if agent.synthesis?.outcome}
 				<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="mt-1 h-4 px-1 text-[10px]">
 					{agent.synthesis.outcome}
 				</Badge>
