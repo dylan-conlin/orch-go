@@ -2583,21 +2583,30 @@ var (
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Clean up completed/abandoned agents",
-	Long: `Clean up completed and abandoned agents.
+	Short: "List completed agents and optionally close their resources",
+	Long: `List completed agents and optionally clean up their resources.
 
-This command uses derived lookups (Phase 2 pattern):
-1. Scans .orch/workspace/ for workspaces with SYNTHESIS.md (completed)
-2. Cross-references with beads issue status (closed = completed)
-3. Checks tmux/OpenCode liveness for active windows
-4. Registry is updated for backwards compatibility but not required
+By default, this command only REPORTS what could be cleaned - it does not delete
+anything. Workspace directories are always preserved for investigation reference.
+
+What counts as "completed":
+- Workspaces with SYNTHESIS.md file
+- Workspaces whose beads issue is closed
+
+Optional cleanup actions:
+  --windows         Close tmux windows for completed agents
+  --phantoms        Close phantom tmux windows (beads ID but no active session)
+  --verify-opencode Delete orphaned OpenCode disk sessions (not tracked in workspaces)
+
+Note: This command never deletes workspace directories - they are kept for 
+investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
 
 Examples:
-  orch-go clean                   # Clean completed agents (reports only)
-  orch-go clean --dry-run         # Show what would be cleaned (no changes)
-  orch-go clean --windows         # Also close tmux windows for completed agents
-  orch-go clean --phantoms        # Close all phantom tmux windows (stale agent windows)
-  orch-go clean --verify-opencode # Also check OpenCode disk sessions`,
+  orch-go clean                   # List completed agents (no changes)
+  orch-go clean --dry-run         # Preview mode (same as default)
+  orch-go clean --windows         # Close tmux windows for completed agents
+  orch-go clean --phantoms        # Close phantom tmux windows
+  orch-go clean --verify-opencode # Delete orphaned OpenCode disk sessions`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms)
 	},
@@ -2767,52 +2776,42 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Find cleanable workspaces using derived lookups
+	// Find completed workspaces using derived lookups
 	fmt.Println("Scanning workspaces for completed agents...")
 	beadsChecker := NewDefaultBeadsStatusChecker()
 	cleanableWorkspaces := findCleanableWorkspaces(projectDir, beadsChecker)
 
-	fmt.Printf("\nFound %d cleanable workspaces\n", len(cleanableWorkspaces))
+	fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
 
-	if len(cleanableWorkspaces) == 0 && !verifyOpenCode {
-		fmt.Println("No agents to clean")
+	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms {
+		fmt.Println("No completed agents found")
 		return nil
 	}
 
 	// Track cleanup stats
-	workspacesCleaned := 0
 	windowsClosed := 0
 
-	// Clean workspaces found via derived lookup
+	// List completed workspaces
 	if len(cleanableWorkspaces) > 0 {
-		fmt.Printf("\nWorkspaces to clean:\n")
+		fmt.Printf("\nCompleted workspaces:\n")
 		for _, ws := range cleanableWorkspaces {
-			if dryRun {
-				fmt.Printf("  [DRY-RUN] Would clean: %s (%s)\n", ws.Name, ws.Reason)
-				// Also check if window would be closed
-				if closeWindows {
-					if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
-						fmt.Printf("  [DRY-RUN] Would close window: %s in session %s\n", window.Name, sessionName)
+			fmt.Printf("  %s (%s)\n", ws.Name, ws.Reason)
+
+			// Close tmux window if --windows flag is set
+			if closeWindows && !dryRun {
+				if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
+					if err := tmux.KillWindow(window.Target); err != nil {
+						fmt.Fprintf(os.Stderr, "    Warning: failed to close window %s: %v\n", window.Name, err)
+					} else {
+						fmt.Printf("    Closed window: %s in session %s\n", window.Name, sessionName)
+						windowsClosed++
 					}
 				}
-			} else {
-				fmt.Printf("  Cleaning: %s (%s)\n", ws.Name, ws.Reason)
-				// Note: We don't delete the workspace directory itself
-				// Workspaces are kept for investigation reference
-
-				// Close tmux window if --windows flag is set
-				if closeWindows {
-					if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
-						if err := tmux.KillWindow(window.Target); err != nil {
-							fmt.Fprintf(os.Stderr, "    Warning: failed to close window %s: %v\n", window.Name, err)
-						} else {
-							fmt.Printf("    Closed window: %s in session %s\n", window.Name, sessionName)
-							windowsClosed++
-						}
-					}
+			} else if closeWindows && dryRun {
+				if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
+					fmt.Printf("    [DRY-RUN] Would close window: %s in session %s\n", window.Name, sessionName)
 				}
 			}
-			workspacesCleaned++
 		}
 	}
 
@@ -2834,62 +2833,75 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	// Check if any cleanup actions were taken or would be taken
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode
+
 	if dryRun {
-		fmt.Printf("\nDry run complete. Would clean %d items", workspacesCleaned)
-		if closeWindows {
-			// Count potential windows to close
-			windowCount := 0
-			for _, ws := range cleanableWorkspaces {
-				if window, _, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
-					windowCount++
+		if hasCleanupActions {
+			fmt.Printf("\nDry run complete.")
+			if closeWindows {
+				// Count potential windows to close
+				windowCount := 0
+				for _, ws := range cleanableWorkspaces {
+					if window, _, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
+						windowCount++
+					}
+				}
+				if windowCount > 0 {
+					fmt.Printf(" Would close %d tmux windows.", windowCount)
 				}
 			}
-			if windowCount > 0 {
-				fmt.Printf(", %d tmux windows", windowCount)
+			if cleanPhantoms && phantomsClosed > 0 {
+				fmt.Printf(" Would close %d phantom windows.", phantomsClosed)
 			}
+			if verifyOpenCode && diskSessionsDeleted > 0 {
+				fmt.Printf(" Would delete %d orphaned disk sessions.", diskSessionsDeleted)
+			}
+			fmt.Println()
 		}
-		if cleanPhantoms && phantomsClosed > 0 {
-			fmt.Printf(", %d phantom windows", phantomsClosed)
-		}
-		if verifyOpenCode {
-			fmt.Printf(", %d orphaned disk sessions", diskSessionsDeleted)
-		}
-		fmt.Println(".")
 		return nil
 	}
 
-	// Log the cleanup
-	projectName := filepath.Base(projectDir)
-	logger := events.NewLogger(events.DefaultLogPath())
-	event := events.Event{
-		Type:      "agents.cleaned",
-		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"workspaces_cleaned":    workspacesCleaned,
-			"windows_closed":        windowsClosed,
-			"phantoms_closed":       phantomsClosed,
-			"disk_sessions_deleted": diskSessionsDeleted,
-			"project":               projectName,
-			"verify_opencode":       verifyOpenCode,
-			"close_windows":         closeWindows,
-			"clean_phantoms":        cleanPhantoms,
-		},
-	}
-	if err := logger.Log(event); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	// Log if any cleanup actions were taken
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
+		projectName := filepath.Base(projectDir)
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "agents.cleaned",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"completed_workspaces":  len(cleanableWorkspaces),
+				"windows_closed":        windowsClosed,
+				"phantoms_closed":       phantomsClosed,
+				"disk_sessions_deleted": diskSessionsDeleted,
+				"project":               projectName,
+				"verify_opencode":       verifyOpenCode,
+				"close_windows":         closeWindows,
+				"clean_phantoms":        cleanPhantoms,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+		}
 	}
 
-	fmt.Printf("\nCleaned %d workspaces", workspacesCleaned)
-	if closeWindows && windowsClosed > 0 {
-		fmt.Printf(", closed %d tmux windows", windowsClosed)
+	// Print summary of actions taken (not misleading "cleaned X workspaces")
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
+		fmt.Println()
+		if windowsClosed > 0 {
+			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
+		}
+		if phantomsClosed > 0 {
+			fmt.Printf("Closed %d phantom windows\n", phantomsClosed)
+		}
+		if diskSessionsDeleted > 0 {
+			fmt.Printf("Deleted %d orphaned disk sessions\n", diskSessionsDeleted)
+		}
+	} else if !hasCleanupActions {
+		// Default: just listing completed workspaces
+		fmt.Printf("\nNote: Workspace directories are preserved. Use --windows, --phantoms, or --verify-opencode to clean up resources.\n")
 	}
-	if cleanPhantoms && phantomsClosed > 0 {
-		fmt.Printf(", closed %d phantom windows", phantomsClosed)
-	}
-	if verifyOpenCode && diskSessionsDeleted > 0 {
-		fmt.Printf(", deleted %d orphaned disk sessions", diskSessionsDeleted)
-	}
-	fmt.Println()
+
 	return nil
 }
 
