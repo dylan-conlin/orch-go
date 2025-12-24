@@ -276,31 +276,51 @@
 <div class="space-y-3">
 	<!-- Compact Stats Bar -->
 	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
-		<!-- Agent counts group -->
+		<!-- Usage progress bars -->
 		<div class="flex items-center gap-4">
-			<div class="flex items-center gap-2">
-				<span class="text-lg">🟢</span>
-				<div class="flex items-baseline gap-1">
-					<span class="text-xl font-bold">{$activeAgents.length}</span>
-					<span class="text-xs text-muted-foreground">active</span>
+			{#if $usage}
+				<!-- Hourly usage -->
+				<div class="flex items-center gap-2" title="5-hour session limit{$usage.five_hour_reset ? ` • Resets in ${$usage.five_hour_reset}` : ''}">
+					<span class="text-sm text-muted-foreground">Hourly</span>
+					<div class="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
+						<div 
+							class="h-full transition-all duration-300" 
+							class:bg-green-500={$usage.five_hour_percent < 60}
+							class:bg-yellow-500={$usage.five_hour_percent >= 60 && $usage.five_hour_percent < 80}
+							class:bg-red-500={$usage.five_hour_percent >= 80}
+							style="width: {Math.min($usage.five_hour_percent, 100)}%"
+						></div>
+					</div>
+					<span class="text-xs font-medium" class:text-green-500={$usage.five_hour_percent < 60} class:text-yellow-500={$usage.five_hour_percent >= 60 && $usage.five_hour_percent < 80} class:text-red-500={$usage.five_hour_percent >= 80}>
+						{Math.round($usage.five_hour_percent)}%
+					</span>
+					{#if $usage.five_hour_reset}
+						<span class="text-xs text-muted-foreground">({$usage.five_hour_reset})</span>
+					{/if}
 				</div>
-			</div>
-			<div class="h-4 w-px bg-border"></div>
-			<div class="flex items-center gap-2">
-				<span class="text-lg">🕐</span>
-				<div class="flex items-baseline gap-1">
-					<span class="text-xl font-bold">{$recentAgents.length}</span>
-					<span class="text-xs text-muted-foreground">recent</span>
+				<div class="h-4 w-px bg-border"></div>
+				<!-- Weekly usage -->
+				<div class="flex items-center gap-2" title="7-day weekly limit{$usage.weekly_reset ? ` • Resets in ${$usage.weekly_reset}` : ''}">
+					<span class="text-sm text-muted-foreground">Weekly</span>
+					<div class="relative h-2 w-20 overflow-hidden rounded-full bg-muted">
+						<div 
+							class="h-full transition-all duration-300" 
+							class:bg-green-500={$usage.weekly_percent < 60}
+							class:bg-yellow-500={$usage.weekly_percent >= 60 && $usage.weekly_percent < 80}
+							class:bg-red-500={$usage.weekly_percent >= 80}
+							style="width: {Math.min($usage.weekly_percent, 100)}%"
+						></div>
+					</div>
+					<span class="text-xs font-medium" class:text-green-500={$usage.weekly_percent < 60} class:text-yellow-500={$usage.weekly_percent >= 60 && $usage.weekly_percent < 80} class:text-red-500={$usage.weekly_percent >= 80}>
+						{Math.round($usage.weekly_percent)}%
+					</span>
+					{#if $usage.weekly_reset}
+						<span class="text-xs text-muted-foreground">({$usage.weekly_reset})</span>
+					{/if}
 				</div>
-			</div>
-			<div class="h-4 w-px bg-border"></div>
-			<div class="flex items-center gap-2">
-				<span class="text-lg">📦</span>
-				<div class="flex items-baseline gap-1">
-					<span class="text-xl font-bold">{$archivedAgents.length}</span>
-					<span class="text-xs text-muted-foreground">archive</span>
-				</div>
-			</div>
+			{:else}
+				<span class="text-xs text-muted-foreground">Loading usage...</span>
+			{/if}
 			<div class="h-4 w-px bg-border"></div>
 			<div class="flex items-center gap-2">
 				<span class="text-lg">❌</span>

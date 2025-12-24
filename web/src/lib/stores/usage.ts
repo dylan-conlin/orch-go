@@ -8,8 +8,11 @@ export interface UsageInfo {
 	account: string;
 	account_name?: string; // Account name from accounts.yaml (e.g., "personal", "work")
 	five_hour_percent: number;
+	five_hour_reset?: string; // Human-readable time until 5-hour reset
 	weekly_percent: number;
+	weekly_reset?: string; // Human-readable time until weekly reset
 	weekly_opus_percent?: number;
+	weekly_opus_reset?: string; // Human-readable time until Opus weekly reset
 	error?: string;
 }
 

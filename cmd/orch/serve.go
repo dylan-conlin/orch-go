@@ -139,6 +139,7 @@ type AgentAPIResponse struct {
 	SpawnedAt    string             `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
 	UpdatedAt    string             `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
+	CloseReason  string             `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
 }
 
 // SynthesisResponse is a condensed version of verify.Synthesis for the API.
@@ -279,7 +280,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add completed workspaces (those with SYNTHESIS.md)
+	// Add completed workspaces (those with SYNTHESIS.md or light-tier completions)
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	if entries, err := os.ReadDir(workspaceDir); err == nil {
 		for _, entry := range entries {
@@ -287,81 +288,129 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			workspacePath := filepath.Join(workspaceDir, entry.Name())
-			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
-
-			// Check if SYNTHESIS.md exists (indicates completion)
-			if _, err := os.Stat(synthesisPath); err == nil {
-				// Check if already in active list
-				alreadyIn := false
-				for _, a := range agents {
-					if a.ID == entry.Name() {
-						alreadyIn = true
-						break
-					}
-				}
-
-				if !alreadyIn {
-					agent := AgentAPIResponse{
-						ID:     entry.Name(),
-						Status: "completed",
-					}
-
-					// Set updated_at from workspace name date suffix or file modification time
-					// This ensures proper sorting in archive section
-					if parsedDate := extractDateFromWorkspaceName(entry.Name()); !parsedDate.IsZero() {
-						agent.UpdatedAt = parsedDate.Format(time.RFC3339)
-					} else {
-						// Fallback to file modification time of SYNTHESIS.md
-						if info, err := os.Stat(synthesisPath); err == nil {
-							agent.UpdatedAt = info.ModTime().Format(time.RFC3339)
-						}
-					}
-
-					// Read session ID from workspace
-					if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
-						agent.SessionID = sessionID
-					}
-
-					// Parse synthesis
-					if synthesis, err := verify.ParseSynthesis(workspacePath); err == nil {
-						agent.Synthesis = &SynthesisResponse{
-							TLDR:           synthesis.TLDR,
-							Outcome:        synthesis.Outcome,
-							Recommendation: synthesis.Recommendation,
-							DeltaSummary:   summarizeDelta(synthesis.Delta),
-							NextActions:    synthesis.NextActions,
-						}
-					}
-
-					// Derive beadsID from workspace name
-					agent.BeadsID = extractBeadsIDFromTitle(entry.Name())
-					agent.Skill = extractSkillFromTitle(entry.Name())
-
-					agents = append(agents, agent)
+			// Check if already in active list
+			alreadyIn := false
+			for _, a := range agents {
+				if a.ID == entry.Name() {
+					alreadyIn = true
+					break
 				}
 			}
+
+			if alreadyIn {
+				continue
+			}
+
+			workspacePath := filepath.Join(workspaceDir, entry.Name())
+			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+			hasSynthesis := false
+
+			// Check if SYNTHESIS.md exists (indicates full-tier completion)
+			if _, err := os.Stat(synthesisPath); err == nil {
+				hasSynthesis = true
+			}
+
+			// Only add workspaces that have SYNTHESIS.md for now
+			// Light-tier completions will be detected via Phase: Complete in beads comments
+			if !hasSynthesis {
+				// For light-tier, check if there's a SPAWN_CONTEXT.md (indicates it's a valid spawn)
+				spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+				if _, err := os.Stat(spawnContextPath); err != nil {
+					continue // Not a valid spawn workspace
+				}
+			}
+
+			agent := AgentAPIResponse{
+				ID:     entry.Name(),
+				Status: "completed",
+			}
+
+			// Set updated_at from workspace name date suffix or file modification time
+			// This ensures proper sorting in archive section
+			if parsedDate := extractDateFromWorkspaceName(entry.Name()); !parsedDate.IsZero() {
+				agent.UpdatedAt = parsedDate.Format(time.RFC3339)
+			} else if hasSynthesis {
+				// Fallback to file modification time of SYNTHESIS.md
+				if info, err := os.Stat(synthesisPath); err == nil {
+					agent.UpdatedAt = info.ModTime().Format(time.RFC3339)
+				}
+			} else {
+				// For light-tier, use SPAWN_CONTEXT.md modification time
+				spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+				if info, err := os.Stat(spawnContextPath); err == nil {
+					agent.UpdatedAt = info.ModTime().Format(time.RFC3339)
+				}
+			}
+
+			// Read session ID from workspace
+			if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
+				agent.SessionID = sessionID
+			}
+
+			// Parse synthesis (only for full-tier)
+			if hasSynthesis {
+				if synthesis, err := verify.ParseSynthesis(workspacePath); err == nil {
+					agent.Synthesis = &SynthesisResponse{
+						TLDR:           synthesis.TLDR,
+						Outcome:        synthesis.Outcome,
+						Recommendation: synthesis.Recommendation,
+						DeltaSummary:   summarizeDelta(synthesis.Delta),
+						NextActions:    synthesis.NextActions,
+					}
+				}
+			}
+
+			// Extract beadsID from workspace SPAWN_CONTEXT.md (more reliable than parsing name)
+			agent.BeadsID = extractBeadsIDFromWorkspace(workspacePath)
+			// Fallback to extracting from workspace name if SPAWN_CONTEXT.md doesn't have it
+			if agent.BeadsID == "" {
+				agent.BeadsID = extractBeadsIDFromTitle(entry.Name())
+			}
+			agent.Skill = extractSkillFromTitle(entry.Name())
+
+			// Collect beads ID for batch fetch (to get close_reason for light-tier)
+			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
+				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
+				seenBeadsIDs[agent.BeadsID] = true
+			}
+
+			agents = append(agents, agent)
 		}
 	}
 
-	// Batch fetch beads data (phase from comments, task from issues)
+	// Batch fetch beads data (phase from comments, task from issues, close_reason for completed)
 	// This is the same pattern used by orch status for efficiency
 	if len(beadsIDsToFetch) > 0 {
 		// Fetch all open issues in one call
 		openIssues, _ := verify.ListOpenIssues()
 
+		// Batch fetch all issues (including closed) for close_reason
+		// Uses bd show which works for any issue status
+		allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
+
 		// Batch fetch comments for all beads IDs
 		commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
 
-		// Populate phase and task for each agent
+		// Populate phase, task, and close_reason for each agent
 		for i := range agents {
 			if agents[i].BeadsID == "" {
 				continue
 			}
 
-			// Get task from issue title
+			// Get task from open issue title first
 			if issue, ok := openIssues[agents[i].BeadsID]; ok {
 				agents[i].Task = truncate(issue.Title, 60)
+			}
+
+			// If not in open issues, try all issues (for closed ones)
+			if agents[i].Task == "" {
+				if issue, ok := allIssues[agents[i].BeadsID]; ok {
+					agents[i].Task = truncate(issue.Title, 60)
+					// For completed agents without synthesis, use close_reason as fallback
+					if agents[i].Synthesis == nil && issue.CloseReason != "" {
+						agents[i].CloseReason = issue.CloseReason
+					}
+				}
 			}
 
 			// Get phase from comments
@@ -373,6 +422,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					if strings.EqualFold(phaseStatus.Phase, "Complete") {
 						agents[i].Status = "completed"
 					}
+				}
+			}
+
+			// For completed agents, also check close_reason if synthesis is null
+			if agents[i].Status == "completed" && agents[i].Synthesis == nil && agents[i].CloseReason == "" {
+				if issue, ok := allIssues[agents[i].BeadsID]; ok && issue.CloseReason != "" {
+					agents[i].CloseReason = issue.CloseReason
 				}
 			}
 		}
@@ -654,12 +710,15 @@ func getProjectAPIPort() int {
 
 // UsageAPIResponse is the JSON structure returned by /api/usage.
 type UsageAPIResponse struct {
-	Account     string  `json:"account"`                       // Account email
-	AccountName string  `json:"account_name,omitempty"`        // Account name from accounts.yaml (e.g., "personal", "work")
-	FiveHour    float64 `json:"five_hour_percent"`             // 5-hour session usage %
-	Weekly      float64 `json:"weekly_percent"`                // 7-day weekly usage %
-	WeeklyOpus  float64 `json:"weekly_opus_percent,omitempty"` // 7-day Opus-specific usage %
-	Error       string  `json:"error,omitempty"`               // Error message if any
+	Account         string  `json:"account"`                       // Account email
+	AccountName     string  `json:"account_name,omitempty"`        // Account name from accounts.yaml (e.g., "personal", "work")
+	FiveHour        float64 `json:"five_hour_percent"`             // 5-hour session usage %
+	FiveHourReset   string  `json:"five_hour_reset,omitempty"`     // Human-readable time until 5-hour reset
+	Weekly          float64 `json:"weekly_percent"`                // 7-day weekly usage %
+	WeeklyReset     string  `json:"weekly_reset,omitempty"`        // Human-readable time until weekly reset
+	WeeklyOpus      float64 `json:"weekly_opus_percent,omitempty"` // 7-day Opus-specific usage %
+	WeeklyOpusReset string  `json:"weekly_opus_reset,omitempty"`   // Human-readable time until Opus weekly reset
+	Error           string  `json:"error,omitempty"`               // Error message if any
 }
 
 // handleUsage returns Claude Max usage stats.
@@ -680,12 +739,15 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 		resp.AccountName = lookupAccountName(info.Email)
 		if info.FiveHour != nil {
 			resp.FiveHour = info.FiveHour.Utilization
+			resp.FiveHourReset = info.FiveHour.TimeUntilReset()
 		}
 		if info.SevenDay != nil {
 			resp.Weekly = info.SevenDay.Utilization
+			resp.WeeklyReset = info.SevenDay.TimeUntilReset()
 		}
 		if info.SevenDayOpus != nil {
 			resp.WeeklyOpus = info.SevenDayOpus.Utilization
+			resp.WeeklyOpusReset = info.SevenDayOpus.TimeUntilReset()
 		}
 	}
 
