@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestGetMaxAgentsDefault tests that getMaxAgents returns the default when no flag or env var is set.
@@ -957,5 +958,140 @@ func TestEnsureOrchScaffoldingExistingBeads(t *testing.T) {
 	err = ensureOrchScaffolding(tempDir, false, false)
 	if err != nil {
 		t.Errorf("ensureOrchScaffolding() should succeed with existing .beads, got error: %v", err)
+	}
+}
+
+// TestExtractDateFromWorkspaceName tests parsing date suffix from workspace names.
+func TestExtractDateFromWorkspaceName(t *testing.T) {
+	// Use a fixed reference time for testing year boundary logic
+	currentYear := time.Now().Year()
+
+	tests := []struct {
+		name      string
+		workspace string
+		wantZero  bool
+		wantMonth time.Month
+		wantDay   int
+	}{
+		{
+			name:      "standard december date",
+			workspace: "og-feat-add-feature-24dec",
+			wantZero:  false,
+			wantMonth: time.December,
+			wantDay:   24,
+		},
+		{
+			name:      "single digit day",
+			workspace: "og-debug-fix-bug-5jan",
+			wantZero:  false,
+			wantMonth: time.January,
+			wantDay:   5,
+		},
+		{
+			name:      "november date",
+			workspace: "og-inv-explore-15nov",
+			wantZero:  false,
+			wantMonth: time.November,
+			wantDay:   15,
+		},
+		{
+			name:      "february date",
+			workspace: "og-arch-design-28feb",
+			wantZero:  false,
+			wantMonth: time.February,
+			wantDay:   28,
+		},
+		{
+			name:      "no date suffix",
+			workspace: "og-feat-add-feature",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "invalid month",
+			workspace: "og-feat-test-20xyz",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "invalid day too high",
+			workspace: "og-feat-test-32dec",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "invalid day zero",
+			workspace: "og-feat-test-0dec",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "suffix too short",
+			workspace: "og-feat-test-1a",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "suffix too long",
+			workspace: "og-feat-test-100december",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "empty workspace name",
+			workspace: "",
+			wantZero:  true,
+			wantMonth: 0,
+			wantDay:   0,
+		},
+		{
+			name:      "uppercase month",
+			workspace: "og-feat-test-24DEC",
+			wantZero:  false,
+			wantMonth: time.December,
+			wantDay:   24,
+		},
+		{
+			name:      "mixed case month",
+			workspace: "og-feat-test-24Dec",
+			wantZero:  false,
+			wantMonth: time.December,
+			wantDay:   24,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractDateFromWorkspaceName(tt.workspace)
+
+			if tt.wantZero {
+				if !got.IsZero() {
+					t.Errorf("extractDateFromWorkspaceName(%q) = %v, want zero time", tt.workspace, got)
+				}
+				return
+			}
+
+			if got.IsZero() {
+				t.Errorf("extractDateFromWorkspaceName(%q) = zero time, want non-zero", tt.workspace)
+				return
+			}
+
+			if got.Month() != tt.wantMonth {
+				t.Errorf("extractDateFromWorkspaceName(%q) month = %v, want %v", tt.workspace, got.Month(), tt.wantMonth)
+			}
+			if got.Day() != tt.wantDay {
+				t.Errorf("extractDateFromWorkspaceName(%q) day = %d, want %d", tt.workspace, got.Day(), tt.wantDay)
+			}
+			// Year should be current year (or previous year if date is in future)
+			if got.Year() != currentYear && got.Year() != currentYear-1 {
+				t.Errorf("extractDateFromWorkspaceName(%q) year = %d, want %d or %d", tt.workspace, got.Year(), currentYear, currentYear-1)
+			}
+		})
 	}
 }

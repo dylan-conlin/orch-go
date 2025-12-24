@@ -292,6 +292,17 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						Status: "completed",
 					}
 
+					// Set updated_at from workspace name date suffix or file modification time
+					// This ensures proper sorting in archive section
+					if parsedDate := extractDateFromWorkspaceName(entry.Name()); !parsedDate.IsZero() {
+						agent.UpdatedAt = parsedDate.Format(time.RFC3339)
+					} else {
+						// Fallback to file modification time of SYNTHESIS.md
+						if info, err := os.Stat(synthesisPath); err == nil {
+							agent.UpdatedAt = info.ModTime().Format(time.RFC3339)
+						}
+					}
+
 					// Read session ID from workspace
 					if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
 						agent.SessionID = sessionID
