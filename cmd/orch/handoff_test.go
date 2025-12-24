@@ -188,6 +188,7 @@ func TestGenerateHandoffMarkdown(t *testing.T) {
 			{ID: "issue-1", Title: "Test issue", Priority: "P0"},
 		},
 		NextPriority: []string{"Check test-123"},
+		DEKN:         &DEKNSummary{}, // Empty DEKN for prompts
 	}
 
 	markdown, err := generateHandoffMarkdown(data)
@@ -200,6 +201,11 @@ func TestGenerateHandoffMarkdown(t *testing.T) {
 		"# Session Handoff - 21 Dec 2025",
 		"## TLDR",
 		"Test session with active agents.",
+		"## D.E.K.N. Summary",
+		"**Delta:**",
+		"**Evidence:**",
+		"**Knowledge:**",
+		"**Next:**",
 		"## Agents Still Running",
 		"**test-123**",
 		"## Next Session Priorities",
@@ -210,6 +216,56 @@ func TestGenerateHandoffMarkdown(t *testing.T) {
 	for _, section := range sections {
 		if !strings.Contains(markdown, section) {
 			t.Errorf("generateHandoffMarkdown() missing section %q", section)
+		}
+	}
+}
+
+// TestGenerateHandoffMarkdownWithDEKN verifies markdown generation with filled D.E.K.N.
+func TestGenerateHandoffMarkdownWithDEKN(t *testing.T) {
+	data := &HandoffData{
+		Date: "24 Dec 2025",
+		TLDR: "Session with D.E.K.N. summary.",
+		DEKN: &DEKNSummary{
+			Delta:     "Built authentication system",
+			Evidence:  "15 commits, all tests passing",
+			Knowledge: "OAuth requires refresh tokens",
+			Next:      "Integrate with user service",
+		},
+		ActiveAgents:  []ActiveAgent{},
+		PendingIssues: []PendingIssue{},
+		NextPriority:  []string{},
+	}
+
+	markdown, err := generateHandoffMarkdown(data)
+	if err != nil {
+		t.Fatalf("generateHandoffMarkdown() error = %v", err)
+	}
+
+	// Verify D.E.K.N. content is rendered
+	deknContent := []string{
+		"**Delta:** Built authentication system",
+		"**Evidence:** 15 commits, all tests passing",
+		"**Knowledge:** OAuth requires refresh tokens",
+		"**Next:** Integrate with user service",
+	}
+
+	for _, content := range deknContent {
+		if !strings.Contains(markdown, content) {
+			t.Errorf("generateHandoffMarkdown() missing D.E.K.N. content %q", content)
+		}
+	}
+
+	// Verify placeholder text is NOT present when content is filled
+	placeholders := []string{
+		"describe the transformation",
+		"Proof of work",
+		"What was learned",
+		"Recommended next",
+	}
+
+	for _, placeholder := range placeholders {
+		if strings.Contains(markdown, placeholder) {
+			t.Errorf("generateHandoffMarkdown() should not contain placeholder %q when D.E.K.N. is filled", placeholder)
 		}
 	}
 }
@@ -352,6 +408,153 @@ func TestLocalStateInfoStructure(t *testing.T) {
 
 	if state.Branch != "feature/test" {
 		t.Errorf("Expected branch 'feature/test', got %q", state.Branch)
+	}
+}
+
+// TestDEKNSummaryStructure verifies DEKNSummary initialization.
+func TestDEKNSummaryStructure(t *testing.T) {
+	dekn := &DEKNSummary{
+		Delta:     "Built new authentication system",
+		Evidence:  "12 commits, +500 lines, all tests passing",
+		Knowledge: "OAuth flow requires refresh token handling",
+		Next:      "Integrate with user service",
+	}
+
+	if dekn.Delta != "Built new authentication system" {
+		t.Errorf("Expected Delta 'Built new authentication system', got %q", dekn.Delta)
+	}
+	if dekn.Evidence != "12 commits, +500 lines, all tests passing" {
+		t.Errorf("Expected Evidence '12 commits, +500 lines, all tests passing', got %q", dekn.Evidence)
+	}
+}
+
+// TestIsDEKNPlaceholder verifies placeholder detection.
+func TestIsDEKNPlaceholder(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected bool
+	}{
+		{"empty string", "", true},
+		{"whitespace only", "   ", true},
+		{"bracketed placeholder", "[What changed this session]", true},
+		{"contains TODO", "TODO: fill this in", true},
+		{"contains FILL IN", "Please FILL IN this section", true},
+		{"default Delta prompt", "describe the transformation", true},
+		{"default Evidence prompt", "Proof of work - X commits", true},
+		{"default Knowledge prompt", "What was learned - new patterns", true},
+		{"default Next prompt", "Recommended next actions", true},
+		{"actual content", "Built authentication middleware with JWT support", false},
+		{"actual evidence", "15 commits, +2000/-500 lines, CI green", false},
+		{"actual knowledge", "Rate limiting requires Redis for distributed state", false},
+		{"actual next", "Deploy to staging and run load tests", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isDEKNPlaceholder(tt.text)
+			if result != tt.expected {
+				t.Errorf("isDEKNPlaceholder(%q) = %v, want %v", tt.text, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestValidateDEKN verifies D.E.K.N. validation logic.
+func TestValidateDEKN(t *testing.T) {
+	tests := []struct {
+		name        string
+		dekn        *DEKNSummary
+		expectError bool
+		errContains string
+	}{
+		{
+			name:        "nil DEKN",
+			dekn:        nil,
+			expectError: true,
+			errContains: "D.E.K.N. summary is required",
+		},
+		{
+			name: "all empty",
+			dekn: &DEKNSummary{
+				Delta:     "",
+				Evidence:  "",
+				Knowledge: "",
+				Next:      "",
+			},
+			expectError: true,
+			errContains: "Delta, Evidence, Knowledge, Next",
+		},
+		{
+			name: "all placeholders",
+			dekn: &DEKNSummary{
+				Delta:     "[What changed]",
+				Evidence:  "[Proof of work]",
+				Knowledge: "[What was learned]",
+				Next:      "[Recommended next]",
+			},
+			expectError: true,
+			errContains: "Delta, Evidence, Knowledge, Next",
+		},
+		{
+			name: "partial - missing Delta",
+			dekn: &DEKNSummary{
+				Delta:     "",
+				Evidence:  "5 commits, tests passing",
+				Knowledge: "Learned about caching",
+				Next:      "Deploy to production",
+			},
+			expectError: true,
+			errContains: "Delta",
+		},
+		{
+			name: "partial - missing Evidence",
+			dekn: &DEKNSummary{
+				Delta:     "Built feature X",
+				Evidence:  "[TODO]",
+				Knowledge: "Learned about caching",
+				Next:      "Deploy to production",
+			},
+			expectError: true,
+			errContains: "Evidence",
+		},
+		{
+			name: "all filled with actual content",
+			dekn: &DEKNSummary{
+				Delta:     "Built authentication middleware with JWT support",
+				Evidence:  "15 commits, +2000/-500 lines, CI green",
+				Knowledge: "Rate limiting requires Redis for distributed state",
+				Next:      "Deploy to staging and run load tests",
+			},
+			expectError: false,
+		},
+		{
+			name: "minimal but valid content",
+			dekn: &DEKNSummary{
+				Delta:     "Fixed bug",
+				Evidence:  "1 commit",
+				Knowledge: "Edge case in parser",
+				Next:      "Monitor errors",
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDEKN(tt.dekn)
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got nil")
+				} else if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("Expected error to contain %q, got %q", tt.errContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
 	}
 }
 

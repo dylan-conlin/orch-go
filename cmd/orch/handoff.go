@@ -70,6 +70,18 @@ type HandoffData struct {
 	RecentWork    []RecentWorkItem `json:"recent_work"`
 	LocalState    *LocalStateInfo  `json:"local_state,omitempty"`
 	NextPriority  []string         `json:"next_priorities"`
+
+	// D.E.K.N. sections - human-authored session summary
+	DEKN *DEKNSummary `json:"dekn,omitempty"`
+}
+
+// DEKNSummary contains the Delta, Evidence, Knowledge, Next sections.
+// These are prompts for the human/orchestrator to fill in before handoff.
+type DEKNSummary struct {
+	Delta     string `json:"delta"`     // What changed this session
+	Evidence  string `json:"evidence"`  // Proof of work (commits, tests, validation)
+	Knowledge string `json:"knowledge"` // What was learned
+	Next      string `json:"next"`      // Recommended next actions
 }
 
 // FocusInfo contains current focus information.
@@ -134,6 +146,11 @@ func runHandoff() error {
 
 	// Write to file if output specified
 	if handoffOutput != "" {
+		// Validate D.E.K.N. sections when writing to file
+		if err := validateDEKN(data.DEKN); err != nil {
+			return fmt.Errorf("D.E.K.N. validation failed: %w\n\nTo generate a draft without D.E.K.N. content, omit the -o flag and review the output.\nFill in the D.E.K.N. Summary section with actual session details before saving.", err)
+		}
+
 		outputPath := handoffOutput
 		// If output is a directory, append filename
 		if info, err := os.Stat(handoffOutput); err == nil && info.IsDir() {
@@ -169,6 +186,66 @@ func runHandoff() error {
 	return nil
 }
 
+// validateDEKN validates that D.E.K.N. sections are filled in with actual content.
+// Returns an error if any section is empty or still contains placeholder text.
+func validateDEKN(dekn *DEKNSummary) error {
+	if dekn == nil {
+		return fmt.Errorf("D.E.K.N. summary is required when writing to file")
+	}
+
+	var missing []string
+
+	// Check each field for empty or placeholder content
+	if isDEKNPlaceholder(dekn.Delta) {
+		missing = append(missing, "Delta")
+	}
+	if isDEKNPlaceholder(dekn.Evidence) {
+		missing = append(missing, "Evidence")
+	}
+	if isDEKNPlaceholder(dekn.Knowledge) {
+		missing = append(missing, "Knowledge")
+	}
+	if isDEKNPlaceholder(dekn.Next) {
+		missing = append(missing, "Next")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing or placeholder content in sections: %s", strings.Join(missing, ", "))
+	}
+
+	return nil
+}
+
+// isDEKNPlaceholder returns true if the text is empty or contains placeholder markers.
+func isDEKNPlaceholder(text string) bool {
+	text = strings.TrimSpace(text)
+
+	// Empty is definitely placeholder
+	if text == "" {
+		return true
+	}
+
+	// Check for common placeholder patterns
+	placeholderPatterns := []string{
+		"[",                // Bracketed placeholder like "[What changed...]"
+		"TODO",             // TODO markers
+		"FILL IN",          // Explicit fill-in markers
+		"describe the",     // Part of default prompt text
+		"Proof of work",    // Part of default prompt text
+		"What was learned", // Part of default prompt text
+		"Recommended next", // Part of default prompt text
+	}
+
+	textLower := strings.ToLower(text)
+	for _, pattern := range placeholderPatterns {
+		if strings.Contains(textLower, strings.ToLower(pattern)) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func gatherHandoffData() (*HandoffData, error) {
 	now := time.Now()
 	data := &HandoffData{
@@ -177,6 +254,7 @@ func gatherHandoffData() (*HandoffData, error) {
 		PendingIssues: []PendingIssue{},
 		RecentWork:    []RecentWorkItem{},
 		NextPriority:  []string{},
+		DEKN:          &DEKNSummary{}, // Initialize empty for prompts
 	}
 
 	// Get current project directory
@@ -549,6 +627,32 @@ const handoffTemplate = `# Session Handoff - {{.Date}}
 ## TLDR
 
 {{.TLDR}}
+
+---
+
+## D.E.K.N. Summary
+
+{{- if .DEKN}}
+
+**Delta:** {{if .DEKN.Delta}}{{.DEKN.Delta}}{{else}}[What changed this session - describe the transformation, what was built/fixed/improved]{{end}}
+
+**Evidence:** {{if .DEKN.Evidence}}{{.DEKN.Evidence}}{{else}}[Proof of work - X commits, +Y/-Z lines, tests passing, validation results]{{end}}
+
+**Knowledge:** {{if .DEKN.Knowledge}}{{.DEKN.Knowledge}}{{else}}[What was learned - new patterns, key insights, things discovered]{{end}}
+
+**Next:** {{if .DEKN.Next}}{{.DEKN.Next}}{{else}}[Recommended next actions - what should the next session prioritize]{{end}}
+
+{{- else}}
+
+**Delta:** [What changed this session - describe the transformation, what was built/fixed/improved]
+
+**Evidence:** [Proof of work - X commits, +Y/-Z lines, tests passing, validation results]
+
+**Knowledge:** [What was learned - new patterns, key insights, things discovered]
+
+**Next:** [Recommended next actions - what should the next session prioritize]
+
+{{- end}}
 
 ---
 
