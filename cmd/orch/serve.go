@@ -16,6 +16,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -83,6 +84,9 @@ func runServe(portNum int) error {
 	// GET /api/agentlog - returns agent lifecycle events from events.jsonl
 	mux.HandleFunc("/api/agentlog", corsHandler(handleAgentlog))
 
+	// GET /api/usage - returns Claude Max usage stats
+	mux.HandleFunc("/api/usage", corsHandler(handleUsage))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -96,6 +100,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events (supports ?follow=true for SSE)")
+	fmt.Println("  GET /api/usage     - Claude Max usage stats")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -104,17 +109,21 @@ func runServe(portNum int) error {
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID         string             `json:"id"`
-	SessionID  string             `json:"session_id,omitempty"`
-	BeadsID    string             `json:"beads_id,omitempty"`
-	BeadsTitle string             `json:"beads_title,omitempty"`
-	Skill      string             `json:"skill,omitempty"`
-	Status     string             `json:"status"` // "active", "completed", etc.
-	Runtime    string             `json:"runtime,omitempty"`
-	Window     string             `json:"window,omitempty"`
-	SpawnedAt  string             `json:"spawned_at,omitempty"` // ISO 8601 timestamp
-	UpdatedAt  string             `json:"updated_at,omitempty"` // ISO 8601 timestamp
-	Synthesis  *SynthesisResponse `json:"synthesis,omitempty"`
+	ID           string             `json:"id"`
+	SessionID    string             `json:"session_id,omitempty"`
+	BeadsID      string             `json:"beads_id,omitempty"`
+	BeadsTitle   string             `json:"beads_title,omitempty"`
+	Skill        string             `json:"skill,omitempty"`
+	Status       string             `json:"status"`            // "active", "idle", "completed", etc.
+	Phase        string             `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task         string             `json:"task,omitempty"`    // Task description from beads issue
+	Project      string             `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime      string             `json:"runtime,omitempty"`
+	Window       string             `json:"window,omitempty"`
+	IsProcessing bool               `json:"is_processing,omitempty"` // True if actively generating response
+	SpawnedAt    string             `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt    string             `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
 }
 
 // SynthesisResponse is a condensed version of verify.Synthesis for the API.
@@ -152,11 +161,15 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
 
+	// Collect beads IDs for batch fetching
+	var beadsIDsToFetch []string
+	seenBeadsIDs := make(map[string]bool)
+
 	// Add active sessions from OpenCode
 	// Filter: only show sessions updated in the last 10 minutes as "active"
-	// Only include sessions from last 24h (or active) to avoid showing hundreds of stale sessions
+	// Only include sessions from last 30 minutes to match orch status behavior
 	activeThreshold := 10 * time.Minute
-	displayThreshold := 6 * time.Hour
+	displayThreshold := 30 * time.Minute
 
 	for _, s := range sessions {
 		createdAt := time.Unix(s.Time.Created/1000, 0)
@@ -170,24 +183,41 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			status = "idle" // Session exists but hasn't had recent activity
 		}
 
-		// Skip sessions older than 24h unless they're active
+		// Skip sessions older than displayThreshold unless they're active
 		if status == "idle" && timeSinceUpdate > displayThreshold {
 			continue
 		}
 
+		// Check if session is actively processing (generating response)
+		isProcessing := client.IsSessionProcessing(s.ID)
+
 		agent := AgentAPIResponse{
-			ID:        s.Title,
-			SessionID: s.ID,
-			Status:    status,
-			Runtime:   formatDuration(runtime),
-			SpawnedAt: createdAt.Format(time.RFC3339),
-			UpdatedAt: updatedAt.Format(time.RFC3339),
+			ID:           s.Title,
+			SessionID:    s.ID,
+			Status:       status,
+			Runtime:      formatDuration(runtime),
+			SpawnedAt:    createdAt.Format(time.RFC3339),
+			UpdatedAt:    updatedAt.Format(time.RFC3339),
+			IsProcessing: isProcessing,
 		}
 
 		// Derive beadsID and skill from session title
 		if s.Title != "" {
 			agent.BeadsID = extractBeadsIDFromTitle(s.Title)
 			agent.Skill = extractSkillFromTitle(s.Title)
+			agent.Project = extractProjectFromBeadsID(agent.BeadsID)
+
+			// Collect beads ID for batch fetch
+			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
+				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
+				seenBeadsIDs[agent.BeadsID] = true
+			}
+		}
+
+		// Only include sessions that were spawned via orch spawn (have beads ID)
+		// This filters out interactive/ad-hoc OpenCode sessions
+		if agent.BeadsID == "" {
+			continue
 		}
 
 		agents = append(agents, agent)
@@ -204,6 +234,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 			beadsID := extractBeadsIDFromWindowName(win.Name)
 			skill := extractSkillFromWindowName(win.Name)
+			project := extractProjectFromBeadsID(beadsID)
 
 			// Check if already in agents list
 			alreadyIn := false
@@ -219,9 +250,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					ID:      win.Name,
 					BeadsID: beadsID,
 					Skill:   skill,
+					Project: project,
 					Status:  "active",
 					Window:  win.Target,
 				})
+
+				// Collect beads ID for batch fetch
+				if beadsID != "" && !seenBeadsIDs[beadsID] {
+					beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+					seenBeadsIDs[beadsID] = true
+				}
 			}
 		}
 	}
@@ -275,6 +313,36 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					agent.Skill = extractSkillFromTitle(entry.Name())
 
 					agents = append(agents, agent)
+				}
+			}
+		}
+	}
+
+	// Batch fetch beads data (phase from comments, task from issues)
+	// This is the same pattern used by orch status for efficiency
+	if len(beadsIDsToFetch) > 0 {
+		// Fetch all open issues in one call
+		openIssues, _ := verify.ListOpenIssues()
+
+		// Batch fetch comments for all beads IDs
+		commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
+
+		// Populate phase and task for each agent
+		for i := range agents {
+			if agents[i].BeadsID == "" {
+				continue
+			}
+
+			// Get task from issue title
+			if issue, ok := openIssues[agents[i].BeadsID]; ok {
+				agents[i].Task = truncate(issue.Title, 60)
+			}
+
+			// Get phase from comments
+			if comments, ok := commentsMap[agents[i].BeadsID]; ok {
+				phaseStatus := verify.ParsePhaseFromComments(comments)
+				if phaseStatus.Found {
+					agents[i].Phase = phaseStatus.Phase
 				}
 			}
 		}
@@ -552,4 +620,46 @@ func getProjectAPIPort() int {
 	}
 
 	return alloc.Port
+}
+
+// UsageAPIResponse is the JSON structure returned by /api/usage.
+type UsageAPIResponse struct {
+	Account    string  `json:"account"`                       // Account email
+	FiveHour   float64 `json:"five_hour_percent"`             // 5-hour session usage %
+	Weekly     float64 `json:"weekly_percent"`                // 7-day weekly usage %
+	WeeklyOpus float64 `json:"weekly_opus_percent,omitempty"` // 7-day Opus-specific usage %
+	Error      string  `json:"error,omitempty"`               // Error message if any
+}
+
+// handleUsage returns Claude Max usage stats.
+func handleUsage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	info := usage.FetchUsage()
+
+	resp := UsageAPIResponse{}
+
+	if info.Error != "" {
+		resp.Error = info.Error
+	} else {
+		resp.Account = info.Email
+		if info.FiveHour != nil {
+			resp.FiveHour = info.FiveHour.Utilization
+		}
+		if info.SevenDay != nil {
+			resp.Weekly = info.SevenDay.Utilization
+		}
+		if info.SevenDayOpus != nil {
+			resp.WeeklyOpus = info.SevenDayOpus.Utilization
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode usage: %v", err), http.StatusInternalServerError)
+		return
+	}
 }

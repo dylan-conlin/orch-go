@@ -26,6 +26,7 @@
 		disconnectAgentlogSSE,
 		errorEvents
 	} from '$lib/stores/agentlog';
+	import { usage, getUsageColor, getUsageEmoji } from '$lib/stores/usage';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -159,6 +160,14 @@
 		connectSSE();
 		connectAgentlogSSE();
 
+		// Fetch usage data
+		usage.fetch();
+
+		// Refresh usage every 60 seconds
+		const usageInterval = setInterval(() => {
+			usage.fetch();
+		}, 60000);
+
 		// Clean up connections before page unload to avoid Firefox network errors
 		const handleBeforeUnload = () => {
 			disconnectSSE();
@@ -168,6 +177,7 @@
 
 		return () => {
 			window.removeEventListener('beforeunload', handleBeforeUnload);
+			clearInterval(usageInterval);
 		};
 	});
 
@@ -341,6 +351,38 @@
 				<span class="text-xs text-muted-foreground">errors</span>
 			</div>
 		</div>
+		{#if $usage && !$usage.error}
+			<div class="h-4 w-px bg-border"></div>
+			<div class="flex items-center gap-3" title={$usage.account || 'Claude Max Usage'}>
+				<div class="flex items-center gap-1">
+					<span class="text-sm">{getUsageEmoji($usage.five_hour_percent)}</span>
+					<span
+						class="text-sm font-medium"
+						class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
+						class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
+						class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
+					>
+						{$usage.five_hour_percent.toFixed(0)}%
+					</span>
+					<span class="text-xs text-muted-foreground">5h</span>
+				</div>
+				<div class="flex items-center gap-1">
+					<span class="text-sm">{getUsageEmoji($usage.weekly_percent)}</span>
+					<span
+						class="text-sm font-medium"
+						class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
+						class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
+						class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
+					>
+						{$usage.weekly_percent.toFixed(0)}%
+					</span>
+					<span class="text-xs text-muted-foreground">wk</span>
+				</div>
+				{#if $usage.account}
+					<span class="text-xs text-muted-foreground hidden sm:inline">{$usage.account.split('@')[0]}</span>
+				{/if}
+			</div>
+		{/if}
 		<div class="ml-auto flex items-center gap-2">
 			<Button
 				variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
