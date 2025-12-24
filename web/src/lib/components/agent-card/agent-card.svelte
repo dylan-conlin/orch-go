@@ -31,8 +31,23 @@
 		}
 	}
 
-	function formatDuration(isoDate: string): string {
-		const ms = Date.now() - new Date(isoDate).getTime();
+	function getPhaseVariant(phase?: string): 'default' | 'secondary' | 'outline' {
+		if (!phase) return 'outline';
+		switch (phase.toLowerCase()) {
+			case 'complete':
+				return 'default';
+			case 'implementing':
+				return 'secondary';
+			default:
+				return 'outline';
+		}
+	}
+
+	function formatDuration(isoDate: string | undefined): string {
+		if (!isoDate) return '-';
+		const date = new Date(isoDate);
+		if (isNaN(date.getTime())) return '-';
+		const ms = Date.now() - date.getTime();
 		const minutes = Math.floor(ms / 60000);
 		const hours = Math.floor(minutes / 60);
 		if (hours > 0) {
@@ -75,16 +90,25 @@
 	<!-- Status indicator bar at top -->
 	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${getStatusColor(agent.status)}`}></div>
 
-	<!-- Header: Status + Duration -->
+	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">
-		<Badge variant={getStatusVariant(agent.status)} class="h-4 px-1.5 text-[10px]">
-			{agent.status}
-		</Badge>
-		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-			{#if agent.status === 'active'}
-				<span class="h-1 w-1 animate-pulse rounded-full bg-green-500"></span>
+		<div class="flex items-center gap-1">
+			<Badge variant={getStatusVariant(agent.status)} class="h-4 px-1.5 text-[10px]">
+				{agent.status}
+			</Badge>
+			{#if agent.phase}
+				<Badge variant={getPhaseVariant(agent.phase)} class="h-4 px-1 text-[10px]">
+					{agent.phase}
+				</Badge>
 			{/if}
-			{formatDuration(agent.spawned_at)}
+		</div>
+		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+			{#if agent.is_processing}
+				<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500" title="Generating response"></span>
+			{:else if agent.status === 'active'}
+				<span class="h-1 w-1 rounded-full bg-green-500"></span>
+			{/if}
+			{agent.runtime || formatDuration(agent.spawned_at)}
 		</span>
 	</div>
 
@@ -93,8 +117,20 @@
 		{agent.id}
 	</p>
 
-	<!-- Skill + Beads -->
+	<!-- Task (from beads issue) -->
+	{#if agent.task}
+		<p class="mt-0.5 truncate text-[10px] text-muted-foreground" title={agent.task}>
+			{agent.task}
+		</p>
+	{/if}
+
+	<!-- Project + Skill + Beads -->
 	<div class="mt-1 flex flex-wrap items-center gap-1">
+		{#if agent.project}
+			<Badge variant="secondary" class="h-4 px-1 text-[10px]">
+				{agent.project}
+			</Badge>
+		{/if}
 		{#if agent.skill}
 			<Badge variant="outline" class="h-4 px-1 text-[10px]">
 				{agent.skill}
