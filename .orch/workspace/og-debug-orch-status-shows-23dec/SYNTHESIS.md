@@ -1,49 +1,45 @@
 # Session Synthesis
 
 **Agent:** og-debug-orch-status-shows-23dec
-**Issue:** orch-go-v4mw
-**Duration:** 2025-12-23 ~45 minutes
+**Issue:** orch-go-yzyo
+**Duration:** 2025-12-24T04:48 → 2025-12-24T05:15
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Fixed `orch status` showing 0 active agents by adding beads ID to OpenCode session titles. The issue was that session titles were just workspace names (e.g., "og-debug-orch-status-23dec") without the `[beads-id]` pattern that the matching logic expected.
+Fixed `orch status` showing headless agents as "phantom" instead of "running/idle". OpenCode agents with sessions were incorrectly marked phantom based on beads issue existence; now correctly set to non-phantom since having a session means the agent is running.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Modified
-- `cmd/orch/main.go` - Added `formatSessionTitle()` helper, updated spawn functions to include beads ID in title
-- `cmd/orch/main_test.go` - Added test for `formatSessionTitle()`
+- `cmd/orch/main.go` - Fixed isPhantom logic for OpenCode agents (lines 1940-1948)
 
 ### Commits
-- (pending) Add beads ID to OpenCode session titles for orch status matching
+- (pending) - fix: headless agents show running/idle instead of phantom in orch status
 
 ---
 
 ## Evidence (What Was Observed)
 
-- OpenCode API returns 55 sessions, but `extractBeadsIDFromTitle()` returns empty for all (titles lack `[beads-id]` pattern)
-- Tmux windows use format: `🐛 og-debug-orch-status-shows-23dec [orch-go-v4mw]` - with beads ID
-- OpenCode titles use format: `og-debug-orch-status-23dec` or `Reading SPAWN_CONTEXT.md...` - no beads ID
-- Prior investigation `.kb/investigations/2025-12-21-inv-investigate-orch-status-showing-stale.md` identified four-layer architecture but didn't identify this specific matching bug
+- Before fix: `orch status --json` showed `is_phantom: true` AND `is_processing: true` for same agent - logically impossible
+- Root cause: OpenCode agents set `isPhantom := !issueExists` based on beads list, not session existence
+- Phantom definition (`IsPhantom: True if beads issue open but agent not running`) contradicts having an OpenCode session
 
 ### Tests Run
 ```bash
-# Build verification
-go build ./cmd/orch 
-# Build successful
+# Build and unit tests
+go build ./cmd/orch/...  # PASS
+go test ./cmd/orch/...   # PASS
 
-# All unit tests
-go test ./... 
-# PASS: all tests passing
-
-# Specific extract tests
-go test ./cmd/orch/... -run "TestExtract" -v
-# PASS: TestExtractBeadsIDFromTitle, TestFormatSessionTitle, etc.
+# Smoke test with live agents
+orch status  
+# OUTPUT: 
+# SWARM STATUS: Active: 4 (running: 1, idle: 3), Phantom: 42
+# Agents now show "running" or "idle" correctly
 ```
 
 ---
@@ -51,16 +47,14 @@ go test ./cmd/orch/... -run "TestExtract" -v
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-23-inv-orch-status-shows-active-agents.md` - Root cause analysis of status matching bug
+- `.kb/investigations/2025-12-23-inv-orch-status-shows-headless-agents.md` - Root cause analysis and fix
 
 ### Decisions Made
-- Decision: Include beads ID in session title (not workspace name lookup) because it's consistent with tmux window format and requires minimal code changes
+- OpenCode agents always set `isPhantom = false` because having a session means running
 
 ### Constraints Discovered
-- OpenCode session titles may be overwritten by Claude's first response (e.g., "Reading SPAWN_CONTEXT.md...") - needs verification if this breaks the fix
-
-### Externalized via `kn`
-- None needed - findings documented in investigation file
+- Phantom only applies to tmux windows without active OpenCode sessions
+- OpenCode agents are running by definition (they have sessions)
 
 ---
 
@@ -69,24 +63,25 @@ go test ./cmd/orch/... -run "TestExtract" -v
 **Recommendation:** close
 
 ### If Close
-- [x] All deliverables complete (fix implemented, tests pass)
-- [x] Tests passing (go test ./...)
+- [x] All deliverables complete
+- [x] Tests passing
 - [x] Investigation file has `**Phase:** Complete`
-- [x] Ready for `orch complete orch-go-v4mw`
+- [x] Ready for `orch complete orch-go-yzyo`
 
 ---
 
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- Does OpenCode preserve the initial title or overwrite it with Claude's response summary? - Could affect fix effectiveness
-- Should we also match by workspace name pattern as fallback? - Would help with backward compatibility
+- `bd list --status "open,in_progress,blocked"` returns 0 results while individual status queries work - possible beads bug with comma-separated statuses
+- Edge case: what happens when an OpenCode session becomes truly stale (>30 min idle)?
+
+**Areas worth exploring further:**
+- Consolidating phantom detection logic between tmux and OpenCode paths
+- Verifying behavior after agent exits and session becomes historical
 
 **What remains unclear:**
-- Whether existing phantom agents will remain phantom until respawned
-- Long-term behavior if Claude overwrites title
-
-*(These are minor concerns - the fix addresses the root cause for new spawns)*
+- Whether the 30-minute idle threshold is appropriate for all use cases
 
 ---
 
@@ -95,5 +90,5 @@ go test ./cmd/orch/... -run "TestExtract" -v
 **Skill:** systematic-debugging
 **Model:** opus
 **Workspace:** `.orch/workspace/og-debug-orch-status-shows-23dec/`
-**Investigation:** `.kb/investigations/2025-12-23-inv-orch-status-shows-active-agents.md`
-**Beads:** `bd show orch-go-v4mw`
+**Investigation:** `.kb/investigations/2025-12-23-inv-orch-status-shows-headless-agents.md`
+**Beads:** `bd show orch-go-yzyo`

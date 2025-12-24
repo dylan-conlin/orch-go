@@ -1937,12 +1937,15 @@ func runStatus(serverURL string) error {
 		createdAt := time.Unix(oa.session.Time.Created/1000, 0)
 		runtime := formatDuration(now.Sub(createdAt))
 
-		// Check if beads issue is open (determines phantom status)
-		issue, issueExists := openIssues[oa.beadsID]
-		isPhantom := !issueExists // If issue is not in open list, it might be phantom
+		// OpenCode agents are NOT phantom because they have a running session.
+		// Phantom means "beads issue open but agent not running" - but these agents ARE running.
+		isPhantom := false
 
 		// Check if the session is actively processing (has pending response)
 		isProcessing := client.IsSessionProcessing(oa.session.ID)
+
+		// Get issue for task info
+		issue := openIssues[oa.beadsID]
 
 		// Get phase from pre-fetched comments
 		var phase, task string
