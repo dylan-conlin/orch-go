@@ -1141,3 +1141,81 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 		t.Errorf("receivedRequest.Model = %s, want empty string", receivedRequest.Model)
 	}
 }
+
+// TestSendMessageAsyncWithModel tests that SendMessageAsync includes model parameter in payload.
+func TestSendMessageAsyncWithModel(t *testing.T) {
+	sessionID := "ses_test123"
+	content := "test message"
+	model := "anthropic/claude-opus-4"
+
+	var receivedPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST method, got %s", r.Method)
+		}
+		expectedPath := "/session/" + sessionID + "/prompt_async"
+		if r.URL.Path != expectedPath {
+			t.Errorf("Expected path %s, got %s", expectedPath, r.URL.Path)
+		}
+
+		// Decode request body
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("Failed to decode request: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.SendMessageAsync(sessionID, content, model)
+	if err != nil {
+		t.Fatalf("SendMessageAsync() error = %v", err)
+	}
+
+	// Verify model is included in payload
+	if receivedPayload["model"] != model {
+		t.Errorf("receivedPayload[\"model\"] = %v, want %s", receivedPayload["model"], model)
+	}
+
+	// Verify parts are included
+	parts, ok := receivedPayload["parts"].([]interface{})
+	if !ok {
+		t.Fatalf("receivedPayload[\"parts\"] is not an array")
+	}
+	if len(parts) != 1 {
+		t.Fatalf("Expected 1 part, got %d", len(parts))
+	}
+
+	// Verify agent is included
+	if receivedPayload["agent"] != "build" {
+		t.Errorf("receivedPayload[\"agent\"] = %v, want build", receivedPayload["agent"])
+	}
+}
+
+// TestSendMessageAsyncWithoutModel tests that SendMessageAsync excludes model when empty.
+func TestSendMessageAsyncWithoutModel(t *testing.T) {
+	sessionID := "ses_test123"
+	content := "test message"
+	model := "" // Empty model
+
+	var receivedPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("Failed to decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.SendMessageAsync(sessionID, content, model)
+	if err != nil {
+		t.Fatalf("SendMessageAsync() error = %v", err)
+	}
+
+	// Verify model is NOT included in payload when empty
+	if _, hasModel := receivedPayload["model"]; hasModel {
+		t.Errorf("receivedPayload should not include 'model' field when empty, but got: %v", receivedPayload["model"])
+	}
+}

@@ -1153,8 +1153,8 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 
-	// Send the prompt to start the agent
-	if err := client.SendPrompt(sessionResp.ID, minimalPrompt); err != nil {
+	// Send the prompt to start the agent (pass model per-message)
+	if err := client.SendPrompt(sessionResp.ID, minimalPrompt, cfg.Model); err != nil {
 		return fmt.Errorf("failed to send prompt: %w", err)
 	}
 
@@ -1592,8 +1592,8 @@ func sendViaOpenCodeAPI(client *opencode.Client, sessionID, identifier, message 
 	}
 
 	if sendAsync {
-		// Send message asynchronously (non-blocking)
-		if err := client.SendMessageAsync(sessionID, message); err != nil {
+		// Send message asynchronously (non-blocking, no model for Q&A)
+		if err := client.SendMessageAsync(sessionID, message, ""); err != nil {
 			return fmt.Errorf("failed to send message asynchronously: %w", err)
 		}
 		fmt.Printf("✓ Message sent to session %s (via API)\n", sessionID)

@@ -154,10 +154,15 @@ func (c *Client) BuildAskCommand(sessionID, prompt string) *exec.Cmd {
 }
 
 // SendMessageAsync sends a message to an existing session asynchronously.
-func (c *Client) SendMessageAsync(sessionID, content string) error {
+// The model parameter is optional - if empty, OpenCode will use the default model.
+func (c *Client) SendMessageAsync(sessionID, content, model string) error {
 	payload := map[string]any{
 		"parts": []map[string]string{{"type": "text", "text": content}},
 		"agent": "build",
+	}
+	// Include model if provided (per-message model in OpenCode)
+	if model != "" {
+		payload["model"] = model
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -316,8 +321,9 @@ func (c *Client) CreateSession(title, directory, model string) (*CreateSessionRe
 
 // SendPrompt sends a prompt to a session via HTTP API (async).
 // This is used for headless spawns to send the initial prompt.
-func (c *Client) SendPrompt(sessionID, prompt string) error {
-	return c.SendMessageAsync(sessionID, prompt)
+// The model parameter is optional - if empty, OpenCode will use the default model.
+func (c *Client) SendPrompt(sessionID, prompt, model string) error {
+	return c.SendMessageAsync(sessionID, prompt, model)
 }
 
 // GetMessages fetches all messages for a session from the OpenCode API.
@@ -511,8 +517,8 @@ func (c *Client) DeleteSession(sessionID string) error {
 // It sends the message via the async API, then connects to SSE to stream text events
 // until the session becomes idle. Text content is written to the provided writer.
 func (c *Client) SendMessageWithStreaming(sessionID, content string, streamTo io.Writer) error {
-	// Send the message via async API first
-	if err := c.SendMessageAsync(sessionID, content); err != nil {
+	// Send the message via async API first (no model specified for Q&A)
+	if err := c.SendMessageAsync(sessionID, content, ""); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 

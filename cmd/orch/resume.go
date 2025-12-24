@@ -94,9 +94,9 @@ func runResume(beadsID string) error {
 	// Generate the resume prompt
 	prompt := GenerateResumePrompt(agentID, projectDir, beadsID)
 
-	// Send the resume message via OpenCode API
+	// Send the resume message via OpenCode API (no model for resume)
 	client := opencode.NewClient(serverURL)
-	if err := client.SendMessageAsync(sessionID, prompt); err != nil {
+	if err := client.SendMessageAsync(sessionID, prompt, ""); err != nil {
 		return fmt.Errorf("failed to send resume prompt: %w", err)
 	}
 
