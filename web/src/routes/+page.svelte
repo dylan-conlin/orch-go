@@ -78,83 +78,6 @@
 	// Get unique skills from agents
 	$: uniqueSkills = [...new Set($agents.map(a => a.skill).filter(Boolean))] as string[];
 
-	// Filtered and sorted agents
-	$: filteredAgents = (() => {
-		let result = $agents.filter(a => a.status !== 'deleted');
-
-		// Apply active-only filter
-		if (activeOnly) {
-			result = result.filter(a => a.status === 'active');
-		}
-
-		// Apply status filter
-		if (statusFilter !== 'all') {
-			result = result.filter(a => a.status === statusFilter);
-		}
-
-		// Apply skill filter
-		if (skillFilter !== 'all') {
-			result = result.filter(a => a.skill === skillFilter);
-		}
-
-		// Apply sorting
-		result = [...result].sort((a, b) => {
-			switch (sortBy) {
-				case 'recent-activity':
-					// Sort by most recently active (updated_at), with processing agents first
-					if (a.is_processing !== b.is_processing) {
-						return a.is_processing ? -1 : 1;
-					}
-					const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-					const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-					return bUpdated - aUpdated;
-				case 'newest':
-					const bTime = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
-					const aTime = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
-					return bTime - aTime;
-				case 'oldest':
-					const aTimeOld = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
-					const bTimeOld = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
-					return aTimeOld - bTimeOld;
-				case 'alphabetical':
-					return a.id.localeCompare(b.id);
-				case 'project':
-					// Group by project, then by recent activity within project
-					const projectA = a.project || 'zzz'; // No project sorts last
-					const projectB = b.project || 'zzz';
-					if (projectA !== projectB) {
-						return projectA.localeCompare(projectB);
-					}
-					// Within same project, sort by recent activity
-					const bProjUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-					const aProjUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-					return bProjUpdated - aProjUpdated;
-				case 'phase':
-					// Sort by phase priority: active phases first, then complete
-					const phaseOrder: Record<string, number> = {
-						'Implementing': 1,
-						'Implementation': 1,
-						'Planning': 2,
-						'Validating': 3,
-						'Complete': 4,
-					};
-					const phaseA = phaseOrder[a.phase || ''] || 5;
-					const phaseB = phaseOrder[b.phase || ''] || 5;
-					if (phaseA !== phaseB) {
-						return phaseA - phaseB;
-					}
-					// Within same phase, sort by recent activity
-					const bPhaseUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-					const aPhaseUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-					return bPhaseUpdated - aPhaseUpdated;
-				default:
-					return 0;
-			}
-		});
-
-		return result;
-	})();
-
 	onMount(() => {
 		// Load section state from localStorage
 		loadSectionState();
@@ -261,12 +184,21 @@
 	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
 
 	// Helper function to apply sorting to agent arrays
-	function sortAgents(agentList: Agent[]): Agent[] {
+	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
+	// to prevent constant reordering of active agents as they receive SSE updates
+	function sortAgents(agentList: Agent[], useStableSort: boolean = false): Agent[] {
 		return [...agentList].sort((a, b) => {
 			switch (sortBy) {
 				case 'recent-activity':
 					if (a.is_processing !== b.is_processing) {
 						return a.is_processing ? -1 : 1;
+					}
+					// For stable sort (active agents), use spawned_at to maintain grid positions
+					// For volatile sort (recent/archive), use updated_at for recency ordering
+					if (useStableSort) {
+						const bSpawned = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+						const aSpawned = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+						return bSpawned - aSpawned;
 					}
 					const bUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
 					const aUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
@@ -287,6 +219,12 @@
 					if (projectA !== projectB) {
 						return projectA.localeCompare(projectB);
 					}
+					// Same stable sort logic for project grouping
+					if (useStableSort) {
+						const bProjSpawned = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+						const aProjSpawned = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+						return bProjSpawned - aProjSpawned;
+					}
 					const bProjUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
 					const aProjUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 					return bProjUpdated - aProjUpdated;
@@ -302,6 +240,12 @@
 					const phaseB = phaseOrder[b.phase || ''] || 5;
 					if (phaseA !== phaseB) {
 						return phaseA - phaseB;
+					}
+					// Same stable sort logic for phase grouping
+					if (useStableSort) {
+						const bPhaseSpawned = b.spawned_at ? new Date(b.spawned_at).getTime() : 0;
+						const aPhaseSpawned = a.spawned_at ? new Date(a.spawned_at).getTime() : 0;
+						return bPhaseSpawned - aPhaseSpawned;
 					}
 					const bPhaseUpdated = b.updated_at ? new Date(b.updated_at).getTime() : 0;
 					const aPhaseUpdated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
@@ -319,9 +263,11 @@
 	}
 
 	// Progressive disclosure: sorted and filtered agents per section
-	$: sortedActiveAgents = sortAgents(applySkillFilter($activeAgents));
-	$: sortedRecentAgents = sortAgents(applySkillFilter($recentAgents));
-	$: sortedArchivedAgents = sortAgents(applySkillFilter($archivedAgents));
+	// Active agents use stable sort (spawned_at) to prevent constant reordering from SSE updates
+	// Recent/Archive agents use volatile sort (updated_at) for recency ordering
+	$: sortedActiveAgents = sortAgents(applySkillFilter($activeAgents), true);
+	$: sortedRecentAgents = sortAgents(applySkillFilter($recentAgents), false);
+	$: sortedArchivedAgents = sortAgents(applySkillFilter($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
 	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
