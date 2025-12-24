@@ -84,6 +84,80 @@
 		const hours = Math.floor(minutes / 60);
 		return `${hours}h ago`;
 	}
+
+	/**
+	 * Clean workspace name into human-readable format
+	 * e.g., "og-feat-improve-agent-card-24dec [orch-go-uu9v]" -> "Improve agent card"
+	 */
+	function cleanWorkspaceName(id: string): string {
+		// Remove beads ID suffix like " [orch-go-uu9v]"
+		let cleaned = id.replace(/\s*\[[^\]]+\]$/, '');
+		
+		// Remove common prefixes like og-, proj-, etc. and date suffixes
+		cleaned = cleaned
+			.replace(/^[a-z]+-/, '') // Remove project prefix (og-, sk-, etc.)
+			.replace(/-\d{1,2}[a-z]{3}$/, '') // Remove date suffix (24dec, 5jan, etc.)
+			.replace(/^(feat|fix|inv|debug|research|design)-/, '') // Remove skill prefixes
+			.replace(/-/g, ' ') // Replace hyphens with spaces
+			.trim();
+		
+		// Capitalize first letter
+		return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+	}
+
+	/**
+	 * Extract first sentence from TLDR, truncated to ~50 chars
+	 */
+	function truncateTldr(tldr: string, maxLen: number = 50): string {
+		// Get first sentence
+		const firstSentence = tldr.split(/[.!?]/)[0].trim();
+		
+		if (firstSentence.length <= maxLen) {
+			return firstSentence;
+		}
+		
+		// Truncate at word boundary
+		const truncated = firstSentence.substring(0, maxLen);
+		const lastSpace = truncated.lastIndexOf(' ');
+		if (lastSpace > maxLen * 0.6) {
+			return truncated.substring(0, lastSpace) + '…';
+		}
+		return truncated + '…';
+	}
+
+	/**
+	 * Get display title for agent card
+	 * - Completed agents: TLDR first sentence (truncated)
+	 * - Active agents: task field, or cleaned workspace name
+	 */
+	function getDisplayTitle(agent: Agent): string {
+		if (agent.status === 'completed' && agent.synthesis?.tldr) {
+			return truncateTldr(agent.synthesis.tldr);
+		}
+		
+		if (agent.task) {
+			// Task is usually a good title, truncate if needed
+			return truncateTldr(agent.task, 60);
+		}
+		
+		return cleanWorkspaceName(agent.id);
+	}
+
+	/**
+	 * Check if we should show workspace as subtitle
+	 * (when display title differs from workspace name)
+	 */
+	function shouldShowWorkspaceSubtitle(agent: Agent): boolean {
+		// For completed agents with TLDR, always show workspace
+		if (agent.status === 'completed' && agent.synthesis?.tldr) {
+			return true;
+		}
+		// For agents with task, show workspace if task is displayed
+		if (agent.task) {
+			return true;
+		}
+		return false;
+	}
 </script>
 
 <div class="group relative rounded border bg-card p-2 transition-all hover:border-primary/50 hover:shadow-sm">
@@ -112,15 +186,15 @@
 		</span>
 	</div>
 
-	<!-- Agent ID -->
-	<p class="mt-1 truncate font-mono text-xs font-medium" title={agent.id}>
-		{agent.id}
+	<!-- Title (human-readable) -->
+	<p class="mt-1 truncate text-xs font-medium" title={agent.synthesis?.tldr || agent.task || agent.id}>
+		{getDisplayTitle(agent)}
 	</p>
 
-	<!-- Task (from beads issue) -->
-	{#if agent.task}
-		<p class="mt-0.5 truncate text-[10px] text-muted-foreground" title={agent.task}>
-			{agent.task}
+	<!-- Workspace ID (as subtitle when title differs) -->
+	{#if shouldShowWorkspaceSubtitle(agent)}
+		<p class="truncate font-mono text-[10px] text-muted-foreground" title={agent.id}>
+			{agent.id}
 		</p>
 	{/if}
 
