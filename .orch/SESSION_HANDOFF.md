@@ -1,92 +1,95 @@
-# Session Handoff - 2025-12-24 (Early AM)
+# Session Handoff - 2025-12-24 (Late Night)
 
-## What Happened This Session
+## Theme: Observability Stack Fixed
 
-### Theme: Stabilization & Cleanup
-Fixed all P1 bugs from previous session, investigated OpenCode API quirks, audited and cleaned codebase.
+Major stabilization session. The core orchestration tools now work reliably.
 
-### P1 Bugs Fixed
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| orch-go-6tdr | CLI hang was stale binary, not code bug | N/A - reinstalled |
-| orch-go-kive | Model format in SendMessageAsync (string→object) | a6f20a1 |
-| orch-go-4ufh | orch wait now resolves session IDs to beads IDs | fe775e9 |
-| orch-go-y222 | ORCH_WORKER=1 added to all spawn modes | 8e2a43a |
+## What Was Fixed
 
-### Codebase Audit & Cleanup
-- Removed legacy `main.go` at root (duplicate of `legacy/main.go`)
-- Removed `debug_sse.go` (unused)
-- Removed `.bak` files from `cmd/orch/`
-- Updated `.gitignore` to prevent future artifact accumulation
-- Commits: b82c43c, 6d814ab
+| Issue | Before | After | Commit |
+|-------|--------|-------|--------|
+| Headless spawn model | Always sonnet | Correct model | 7598101 |
+| orch status speed | 11s | 1.5s | 15603d8 |
+| kb context speed | 50s | 72ms | cbf2d36 (kb-cli) |
+| orch status detection | 0 active always | Shows running/idle | 561c493 |
+| Session titles | No beads ID | Includes [beads-id] | 23650cc |
 
-### OpenCode API Investigation (orch-go-16vb)
-**Finding:** OpenCode proxies unknown routes to `desktop.opencode.ai`. Routes like `/health` fail because they get proxied to a web app that returns HTML.
-- `/session/*` routes work (handled locally)
-- `/health`, root `/prompt_async` fail (proxied upstream)
-- **Not an orch-go bug** - our code uses correct paths
+### Key Changes
 
-### Knowledge Management
-- Ran `kb chronicle "headless"` - synthesized 57 entries on headless spawn journey
-- Archived 17 one-off test investigations to `.kb/investigations/archived/`
-- Ran `kb reflect` to surface synthesis opportunities
+**Headless spawn:** Switched from HTTP API to CLI subprocess (`opencode run --format json --model`). OpenCode API ignores model param - this is the workaround.
+
+**orch status:** 
+- Batched beads CLI calls (was N sequential calls)
+- Parallelized comment fetching
+- Uses messages endpoint to detect active vs idle (OpenCode API returns `status: null`)
+- OpenCode agents now show "running/idle" instead of "phantom"
+
+**kb context:** Added `--stale` flag to make stale detection opt-in. The stale check was calling `bd show` (~5s each) for every beads ID.
 
 ## Current State
 
-### CLI Status: Working
-All commands functional after binary rebuild. Use `make build && make install` if issues recur.
+### All Spawn Modes Working
+```bash
+orch spawn SKILL "task"           # Headless (default) ✅
+orch spawn --tmux SKILL "task"    # Tmux window ✅
+orch spawn --inline SKILL "task"  # Blocking TUI ✅
+```
 
-### Spawn Modes
-| Mode | Command | Status |
-|------|---------|--------|
-| Headless (default) | `orch spawn SKILL "task"` | Working |
-| Tmux | `orch spawn --tmux SKILL "task"` | Working |
-| Inline | `orch spawn --inline SKILL "task"` | Working |
+### Observability
+- `orch status` - 1.5s, shows running/idle/phantom correctly
+- `kb context` - 72ms (use `--stale` for stale warnings, adds ~50s)
+- Dashboard at http://localhost:5188 - has known issues (see epic below)
 
-### OpenCode Quirk
-`/health` endpoint returns 500 - this is expected (proxied upstream). Don't use it for health checks.
+### Binary Install Note
+Two `kb` binaries exist: `~/bin/kb` and `~/go/bin/kb`. PATH uses `~/bin/` first. After `go install`, copy to `~/bin/`:
+```bash
+cp ~/go/bin/kb ~/bin/kb
+```
+Issue `orch-go-23fh` tracks standardizing this.
 
 ## Ready Queue
 
+### Dashboard Bugs (Epic: orch-go-mhec)
+Created from playwright audit - 4 ready, 1 needs review:
+- `orch-go-mhec.1` - Status filter test expects 4 options, UI has 5
+- `orch-go-mhec.2` - Duplicate 'Clear' button selector ambiguity
+- `orch-go-mhec.3` - Race-condition tests hardcoded port
+- `orch-go-mhec.4` - Agent grid uses index as key (stale data)
+- `orch-go-mhec.5` - Svelte 5 runes standardization (triage:review)
+
+### Other P2s
 ```bash
 bd ready | head -10
 ```
+- Template sync tasks (orch-go-hdrc, tsx5, rtym)
+- kb extract/supersede commands (jgc1, p73c)
+- orch clean messaging bug (i1cm)
 
-P2 issues remain open:
-- orch-go-k0mg: Separate orch serve from servers command
-- orch-go-iv07: Dashboard progressive disclosure UI
-- orch-go-fwka: Design source of truth for agent tracking
-- orch-go-qkbw: Research LLM landscape
-- orch-go-9k1l: Pre-spawn token estimation
-- orch-go-fqdt: Dashboard project filter
-- orch-go-bozf: KB context token limit
+## Skill Audit
 
-## kb reflect Findings
+Audited recent skill changes (Dec 20-23). **No degradation found.**
+- SYNTHESIS compliance ~80%+ when required
+- "Missing" synthesis files are intentional light-tier spawns
+- Progressive disclosure reduced feature-impl 77% without quality loss
 
-### Synthesis Opportunities (top clusters)
-- "orch" - 21 investigations (CLI commands)
-- "implement" - 17 investigations
-- "add" - 16 investigations
-- "headless" - 6 investigations (chronicle done)
-
-### Open Action Items
-13 investigations have placeholder metadata (`[Investigation Title]`). These represent completed features that need their Status updated to Complete.
+## Account Status
+- personal: 1% used
+- work: 22% used (resets in 6d 14h)
 
 ## Commands to Start
 
 ```bash
-# Check status
-orch status
-
-# Check ready queue
-bd ready | head -10
-
-# Check drift from focus
-orch drift
-
-# Run kb reflect for synthesis opportunities
-kb reflect --type synthesis
+orch status                    # Verify observability works
+bd ready | head -10            # Check queue
+bd show orch-go-mhec           # Dashboard epic details
 ```
 
-## Account Status
-- work: ~5% used (resets in 6d 19h)
+## Recent Commits
+```
+3460d69 investigation: audit recent skill changes (Dec 20-23)
+561c493 fix: headless agents show running/idle instead of phantom
+8e52211 feat: detect active sessions via messages endpoint
+23650cc fix: include beads ID in OpenCode session titles
+15603d8 perf: optimize orch status from 12s to 1s
+7598101 fix: use CLI subprocess for headless spawns
+```
