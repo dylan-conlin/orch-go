@@ -2531,6 +2531,22 @@ func runComplete(beadsID string) error {
 		}
 	}
 
+	// Auto-rebuild if agent committed Go changes
+	if hasGoChangesInRecentCommits(projectDir) {
+		fmt.Println("Detected Go file changes in recent commits")
+		if err := runAutoRebuild(projectDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed: %v\n", err)
+		} else {
+			fmt.Println("Auto-rebuild completed: make install")
+			// Restart orch serve if running
+			if restarted, err := restartOrchServe(projectDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to restart orch serve: %v\n", err)
+			} else if restarted {
+				fmt.Println("Restarted orch serve")
+			}
+		}
+	}
+
 	// Log the completion
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -2547,6 +2563,109 @@ func runComplete(beadsID string) error {
 	}
 
 	return nil
+}
+
+// hasGoChangesInRecentCommits checks if any of the last 5 commits contain changes
+// to cmd/orch/*.go or pkg/*.go files.
+func hasGoChangesInRecentCommits(projectDir string) bool {
+	// Get changed files from last 5 commits
+	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// If git command fails (e.g., not enough commits), try last 1 commit
+		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return false
+		}
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Check if file matches cmd/orch/*.go or pkg/*.go or pkg/**/*.go
+		if strings.HasPrefix(line, "cmd/orch/") && strings.HasSuffix(line, ".go") {
+			return true
+		}
+		if strings.HasPrefix(line, "pkg/") && strings.HasSuffix(line, ".go") {
+			return true
+		}
+	}
+	return false
+}
+
+// runAutoRebuild runs make install in the project directory.
+func runAutoRebuild(projectDir string) error {
+	cmd := exec.Command("make", "install")
+	cmd.Dir = projectDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// restartOrchServe checks if orch serve is running and restarts it.
+// Returns true if it was restarted, false if it wasn't running.
+func restartOrchServe(projectDir string) (bool, error) {
+	// Find the orch serve process
+	// We look for processes matching "orch serve" or "orch-go serve"
+	cmd := exec.Command("pgrep", "-f", "orch.*serve")
+	output, err := cmd.Output()
+	if err != nil {
+		// No process found - that's fine, just means serve isn't running
+		return false, nil
+	}
+
+	pids := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(pids) == 0 || pids[0] == "" {
+		return false, nil
+	}
+
+	// Get the current PID to avoid killing ourselves
+	currentPID := os.Getpid()
+
+	// Kill the serve process(es)
+	var killedAny bool
+	for _, pidStr := range pids {
+		pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
+		if err != nil {
+			continue
+		}
+		// Don't kill ourselves
+		if pid == currentPID {
+			continue
+		}
+		// Send SIGTERM for graceful shutdown
+		killCmd := exec.Command("kill", "-TERM", pidStr)
+		if err := killCmd.Run(); err == nil {
+			killedAny = true
+		}
+	}
+
+	if !killedAny {
+		return false, nil
+	}
+
+	// Wait a moment for the process to stop
+	time.Sleep(500 * time.Millisecond)
+
+	// Start orch serve in the background
+	// We use nohup to ensure it survives after we exit
+	serveCmd := exec.Command("nohup", "orch", "serve")
+	serveCmd.Dir = projectDir
+	// Redirect output to files to avoid blocking
+	devNull, _ := os.OpenFile("/dev/null", os.O_WRONLY, 0)
+	serveCmd.Stdout = devNull
+	serveCmd.Stderr = devNull
+	if err := serveCmd.Start(); err != nil {
+		return true, fmt.Errorf("killed old serve but failed to start new: %w", err)
+	}
+
+	return true, nil
 }
 
 func runMonitor(serverURL string) error {

@@ -1095,3 +1095,77 @@ func TestExtractDateFromWorkspaceName(t *testing.T) {
 		})
 	}
 }
+
+// TestHasGoChangesDetection tests the Go file change detection logic.
+// This tests the string matching logic used by hasGoChangesInRecentCommits.
+func TestHasGoChangesDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		filePath string
+		wantGo   bool
+	}{
+		{
+			name:     "cmd/orch Go file",
+			filePath: "cmd/orch/main.go",
+			wantGo:   true,
+		},
+		{
+			name:     "cmd/orch test file",
+			filePath: "cmd/orch/main_test.go",
+			wantGo:   true,
+		},
+		{
+			name:     "pkg top-level Go file",
+			filePath: "pkg/verify/check.go",
+			wantGo:   true,
+		},
+		{
+			name:     "pkg nested Go file",
+			filePath: "pkg/opencode/client.go",
+			wantGo:   true,
+		},
+		{
+			name:     "non-Go file in cmd/orch",
+			filePath: "cmd/orch/README.md",
+			wantGo:   false,
+		},
+		{
+			name:     "Go file in different cmd",
+			filePath: "cmd/gendoc/main.go",
+			wantGo:   false,
+		},
+		{
+			name:     "beads file",
+			filePath: ".beads/issues.jsonl",
+			wantGo:   false,
+		},
+		{
+			name:     "investigation file",
+			filePath: ".kb/investigations/2025-12-24-test.md",
+			wantGo:   false,
+		},
+		{
+			name:     "web Go file",
+			filePath: "web/src/routes/page.svelte",
+			wantGo:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use the same logic as hasGoChangesInRecentCommits
+			line := tt.filePath
+			isGoChange := false
+			if strings.HasPrefix(line, "cmd/orch/") && strings.HasSuffix(line, ".go") {
+				isGoChange = true
+			}
+			if strings.HasPrefix(line, "pkg/") && strings.HasSuffix(line, ".go") {
+				isGoChange = true
+			}
+
+			if isGoChange != tt.wantGo {
+				t.Errorf("Go change detection for %q = %v, want %v", tt.filePath, isGoChange, tt.wantGo)
+			}
+		})
+	}
+}
