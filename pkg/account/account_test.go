@@ -323,3 +323,85 @@ func TestCapacityError(t *testing.T) {
 		t.Errorf("CapacityError.Error() = %q, want %q", got, "test error message")
 	}
 }
+
+// ============================================================================
+// Auto-Switch Tests
+// ============================================================================
+
+func TestDefaultAutoSwitchThresholds(t *testing.T) {
+	thresholds := DefaultAutoSwitchThresholds()
+
+	if thresholds.FiveHourThreshold != 80 {
+		t.Errorf("FiveHourThreshold = %v, want 80", thresholds.FiveHourThreshold)
+	}
+
+	if thresholds.WeeklyThreshold != 90 {
+		t.Errorf("WeeklyThreshold = %v, want 90", thresholds.WeeklyThreshold)
+	}
+
+	if thresholds.MinHeadroomDelta != 10 {
+		t.Errorf("MinHeadroomDelta = %v, want 10", thresholds.MinHeadroomDelta)
+	}
+}
+
+func TestAutoSwitchResult_NoSwitch(t *testing.T) {
+	result := &AutoSwitchResult{
+		Switched: false,
+		Reason:   "current account healthy",
+	}
+
+	if result.Switched {
+		t.Error("Switched should be false")
+	}
+
+	if result.ToAccount != "" {
+		t.Errorf("ToAccount should be empty, got %q", result.ToAccount)
+	}
+}
+
+func TestAutoSwitchResult_WithSwitch(t *testing.T) {
+	result := &AutoSwitchResult{
+		Switched:    true,
+		FromAccount: "personal",
+		ToAccount:   "work",
+		Reason:      "switching due to low headroom",
+		FromCapacity: &CapacityInfo{
+			FiveHourUsed: 85,
+			SevenDayUsed: 92,
+		},
+		ToCapacity: &CapacityInfo{
+			FiveHourUsed: 20,
+			SevenDayUsed: 30,
+		},
+	}
+
+	if !result.Switched {
+		t.Error("Switched should be true")
+	}
+
+	if result.FromAccount != "personal" {
+		t.Errorf("FromAccount = %q, want %q", result.FromAccount, "personal")
+	}
+
+	if result.ToAccount != "work" {
+		t.Errorf("ToAccount = %q, want %q", result.ToAccount, "work")
+	}
+}
+
+func TestMin(t *testing.T) {
+	tests := []struct {
+		a, b, want float64
+	}{
+		{10, 20, 10},
+		{20, 10, 10},
+		{15, 15, 15},
+		{0, 100, 0},
+		{-10, 10, -10},
+	}
+
+	for _, tt := range tests {
+		if got := min(tt.a, tt.b); got != tt.want {
+			t.Errorf("min(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.want)
+		}
+	}
+}

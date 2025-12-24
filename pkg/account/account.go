@@ -736,3 +736,195 @@ func FindBestAccount() (string, *CapacityInfo, error) {
 
 	return bestName, bestCapacity, nil
 }
+
+// ============================================================================
+// Auto Account Switching
+// ============================================================================
+
+// AutoSwitchThresholds configures when to auto-switch accounts.
+type AutoSwitchThresholds struct {
+	// FiveHourThreshold is the 5-hour usage % above which to consider switching (default 80).
+	FiveHourThreshold float64
+	// WeeklyThreshold is the weekly usage % above which to consider switching (default 90).
+	WeeklyThreshold float64
+	// MinHeadroomDelta is the minimum additional headroom an alternate account must have
+	// over the current account to justify switching (default 10%).
+	MinHeadroomDelta float64
+}
+
+// DefaultAutoSwitchThresholds returns sensible defaults.
+func DefaultAutoSwitchThresholds() AutoSwitchThresholds {
+	return AutoSwitchThresholds{
+		FiveHourThreshold: 80,
+		WeeklyThreshold:   90,
+		MinHeadroomDelta:  10,
+	}
+}
+
+// AutoSwitchResult describes the outcome of an auto-switch check.
+type AutoSwitchResult struct {
+	// Switched is true if an account switch occurred.
+	Switched bool
+	// FromAccount is the previous account (if switched).
+	FromAccount string
+	// ToAccount is the new account (if switched).
+	ToAccount string
+	// FromCapacity is the capacity of the previous account.
+	FromCapacity *CapacityInfo
+	// ToCapacity is the capacity of the new account.
+	ToCapacity *CapacityInfo
+	// Reason explains why a switch did or didn't happen.
+	Reason string
+}
+
+// ShouldAutoSwitch checks if the current account usage exceeds thresholds
+// and if an alternate account has more headroom. Does NOT perform the switch.
+func ShouldAutoSwitch(thresholds AutoSwitchThresholds) (*AutoSwitchResult, error) {
+	result := &AutoSwitchResult{}
+
+	// Get current account capacity
+	currentCapacity, err := GetCurrentCapacity()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current capacity: %w", err)
+	}
+
+	if currentCapacity.Error != "" {
+		return nil, &CapacityError{Message: currentCapacity.Error}
+	}
+
+	// Check if current account is over thresholds
+	fiveHourUsed := currentCapacity.FiveHourUsed
+	weeklyUsed := currentCapacity.SevenDayUsed
+
+	result.FromCapacity = currentCapacity
+
+	overFiveHour := fiveHourUsed > thresholds.FiveHourThreshold
+	overWeekly := weeklyUsed > thresholds.WeeklyThreshold
+
+	if !overFiveHour && !overWeekly {
+		result.Switched = false
+		result.Reason = fmt.Sprintf("current account healthy (5h: %.1f%%, weekly: %.1f%%)", fiveHourUsed, weeklyUsed)
+		return result, nil
+	}
+
+	// Current account is over threshold - check alternates
+	cfg, err := LoadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load accounts: %w", err)
+	}
+
+	// Find the current account name by matching email
+	var currentName string
+	for name, acc := range cfg.Accounts {
+		if acc.Email == currentCapacity.Email && acc.Source == "saved" {
+			currentName = name
+			result.FromAccount = name
+			break
+		}
+	}
+
+	// If we couldn't identify the current account, log and continue
+	if currentName == "" {
+		// Try to identify by refresh token from OpenCode auth
+		auth, authErr := LoadOpenCodeAuth()
+		if authErr == nil {
+			for name, acc := range cfg.Accounts {
+				if acc.RefreshToken == auth.Anthropic.Refresh && acc.Source == "saved" {
+					currentName = name
+					result.FromAccount = name
+					break
+				}
+			}
+		}
+	}
+
+	// Find best alternate account
+	var bestName string
+	var bestCapacity *CapacityInfo
+	var bestHeadroom float64 = -1
+
+	// Calculate current headroom (use the tighter constraint)
+	currentFiveHourHeadroom := 100.0 - currentCapacity.FiveHourUsed
+	currentWeeklyHeadroom := 100.0 - currentCapacity.SevenDayUsed
+	currentHeadroom := min(currentFiveHourHeadroom, currentWeeklyHeadroom)
+
+	for name, acc := range cfg.Accounts {
+		if acc.Source != "saved" {
+			continue
+		}
+
+		// Skip the current account
+		if name == currentName {
+			continue
+		}
+
+		capacity, err := GetAccountCapacity(name)
+		if err != nil {
+			continue
+		}
+
+		if capacity.Error != "" {
+			continue
+		}
+
+		// Calculate headroom for this account
+		fiveHourHeadroom := 100.0 - capacity.FiveHourUsed
+		weeklyHeadroom := 100.0 - capacity.SevenDayUsed
+		headroom := min(fiveHourHeadroom, weeklyHeadroom)
+
+		// Must have more headroom than current + delta
+		if headroom > bestHeadroom && headroom > currentHeadroom+thresholds.MinHeadroomDelta {
+			bestName = name
+			bestCapacity = capacity
+			bestHeadroom = headroom
+		}
+	}
+
+	if bestName == "" {
+		result.Switched = false
+		result.Reason = fmt.Sprintf("no alternate account has enough headroom (current: %.1f%%, need: %.1f%% more)",
+			currentHeadroom, thresholds.MinHeadroomDelta)
+		return result, nil
+	}
+
+	result.Switched = true
+	result.ToAccount = bestName
+	result.ToCapacity = bestCapacity
+	result.Reason = fmt.Sprintf("switching from %s (%.1f%% headroom) to %s (%.1f%% headroom)",
+		currentName, currentHeadroom, bestName, bestHeadroom)
+
+	return result, nil
+}
+
+// AutoSwitchIfNeeded checks usage and switches to a better account if needed.
+// Returns the result of the check/switch operation.
+func AutoSwitchIfNeeded(thresholds AutoSwitchThresholds) (*AutoSwitchResult, error) {
+	result, err := ShouldAutoSwitch(thresholds)
+	if err != nil {
+		return nil, err
+	}
+
+	if !result.Switched {
+		return result, nil
+	}
+
+	// Perform the actual switch
+	email, err := SwitchAccount(result.ToAccount)
+	if err != nil {
+		result.Switched = false
+		result.Reason = fmt.Sprintf("switch failed: %v", err)
+		return result, fmt.Errorf("auto-switch to %s failed: %w", result.ToAccount, err)
+	}
+
+	// Update reason with successful switch info
+	result.Reason = fmt.Sprintf("switched to %s (%s)", result.ToAccount, email)
+
+	return result, nil
+}
+
+func min(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
