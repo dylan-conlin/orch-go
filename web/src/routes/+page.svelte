@@ -263,10 +263,10 @@
 	}
 
 	// Progressive disclosure: sorted and filtered agents per section
-	// Active agents use stable sort (spawned_at) to prevent constant reordering from SSE updates
-	// Recent/Archive agents use volatile sort (updated_at) for recency ordering
+	// Active and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
+	// Archive uses volatile sort (updated_at) since historical recency matters more there
 	$: sortedActiveAgents = sortAgents(applySkillFilter($activeAgents), true);
-	$: sortedRecentAgents = sortAgents(applySkillFilter($recentAgents), false);
+	$: sortedRecentAgents = sortAgents(applySkillFilter($recentAgents), true);
 	$: sortedArchivedAgents = sortAgents(applySkillFilter($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
