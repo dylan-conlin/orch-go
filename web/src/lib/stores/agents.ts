@@ -164,6 +164,15 @@ export const sseEvents = createSSEStore();
 // Connection status
 export const connectionStatus = writable<'connected' | 'disconnected' | 'connecting'>('disconnected');
 
+// Selected agent for detail panel
+export const selectedAgentId = writable<string | null>(null);
+
+// Derived store for the selected agent
+export const selectedAgent = derived([agents, selectedAgentId], ([$agents, $selectedAgentId]) => {
+	if (!$selectedAgentId) return null;
+	return $agents.find((a) => a.id === $selectedAgentId) || null;
+});
+
 // SSE connection manager
 let eventSource: EventSource | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;

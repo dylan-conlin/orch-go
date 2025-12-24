@@ -4,6 +4,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { AgentCard } from '$lib/components/agent-card';
+	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
 	import {
 		agents,
@@ -649,3 +650,6 @@
 		</div>
 	</div>
 </div>
+
+<!-- Agent Detail Slide-out Panel -->
+<AgentDetailPanel />

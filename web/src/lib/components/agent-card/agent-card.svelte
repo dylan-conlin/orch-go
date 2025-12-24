@@ -2,8 +2,15 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { SynthesisCard } from '$lib/components/synthesis-card';
 	import type { Agent } from '$lib/stores/agents';
+	import { selectedAgentId } from '$lib/stores/agents';
 
 	export let agent: Agent;
+
+	$: isSelected = $selectedAgentId === agent.id;
+
+	function handleClick() {
+		selectedAgentId.set(agent.id);
+	}
 
 	function getStatusVariant(status: Agent['status']) {
 		switch (status) {
@@ -160,7 +167,11 @@
 	}
 </script>
 
-<div class="group relative rounded border bg-card p-2 transition-all hover:border-primary/50 hover:shadow-sm {agent.is_processing ? 'border-yellow-500 animate-pulse shadow-md shadow-yellow-500/20' : ''}">
+<button
+	type="button"
+	onclick={handleClick}
+	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all hover:border-primary/50 hover:shadow-sm {agent.is_processing ? 'border-yellow-500 animate-pulse shadow-md shadow-yellow-500/20' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
+>
 	<!-- Status indicator bar at top - yellow when processing -->
 	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${agent.is_processing ? 'bg-yellow-500' : getStatusColor(agent.status)}`}></div>
 
@@ -249,4 +260,4 @@
 			{/if}
 		</div>
 	{/if}
-</div>
+</button>
