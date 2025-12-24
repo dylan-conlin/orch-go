@@ -160,9 +160,9 @@
 	}
 </script>
 
-<div class="group relative rounded border bg-card p-2 transition-all hover:border-primary/50 hover:shadow-sm">
-	<!-- Status indicator bar at top -->
-	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${getStatusColor(agent.status)}`}></div>
+<div class="group relative rounded border bg-card p-2 transition-all hover:border-primary/50 hover:shadow-sm {agent.is_processing ? 'border-yellow-500 animate-pulse shadow-md shadow-yellow-500/20' : ''}">
+	<!-- Status indicator bar at top - yellow when processing -->
+	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${agent.is_processing ? 'bg-yellow-500' : getStatusColor(agent.status)}`}></div>
 
 	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">

@@ -268,24 +268,51 @@ function handleSSEEvent(data: any) {
 	};
 	sseEvents.addEvent(sseEvent);
 
-	// Handle message.part events - update agent activity in real-time
+	// Handle message.part events - update agent activity and processing state in real-time
 	if (data.type === 'message.part' && data.properties) {
 		const sessionID = data.properties.sessionID;
 		const part = data.properties.part;
 		
 		if (sessionID && part && part.type) {
-			// Update agent activity based on message part
+			// Update agent activity and set is_processing=true (agent is actively responding)
 			agents.update((agentList) => {
 				return agentList.map((agent) => {
 					// Match by session_id
 					if (agent.session_id === sessionID) {
 						return {
 							...agent,
+							is_processing: true, // Agent is actively generating response
 							current_activity: {
 								type: part.type,
 								text: part.text || extractActivityText(part),
 								timestamp: Date.now()
 							}
+						};
+					}
+					return agent;
+				});
+			});
+		}
+	}
+
+	// Handle session.status events - update is_processing based on busy/idle state
+	if (data.type === 'session.status' && data.properties) {
+		const sessionID = data.properties.sessionID;
+		const statusType = data.properties.status?.type;
+		
+		if (sessionID && statusType) {
+			// Update is_processing based on status type
+			// "busy" = processing, "idle" = not processing
+			const isProcessing = statusType === 'busy';
+			
+			agents.update((agentList) => {
+				return agentList.map((agent) => {
+					if (agent.session_id === sessionID) {
+						return {
+							...agent,
+							is_processing: isProcessing,
+							// Clear activity when idle (agent finished)
+							current_activity: isProcessing ? agent.current_activity : undefined
 						};
 					}
 					return agent;
