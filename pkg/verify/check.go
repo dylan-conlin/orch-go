@@ -444,3 +444,97 @@ func GetIssue(beadsID string) (*Issue, error) {
 
 	return &issues[0], nil
 }
+
+// GetIssuesBatch retrieves multiple issues in a single bd show call.
+// Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
+func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
+	if len(beadsIDs) == 0 {
+		return make(map[string]*Issue), nil
+	}
+
+	// Build command: bd show id1 id2 id3 --json
+	args := append(beadsIDs, "--json")
+	cmd := exec.Command("bd", append([]string{"show"}, args...)...)
+	output, err := cmd.Output()
+	if err != nil {
+		// bd show may fail if some IDs are invalid; try to parse what we can
+		// or return empty if total failure
+		if len(output) == 0 {
+			return make(map[string]*Issue), nil
+		}
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	}
+
+	result := make(map[string]*Issue, len(issues))
+	for i := range issues {
+		result[issues[i].ID] = &issues[i]
+	}
+	return result, nil
+}
+
+// ListOpenIssues retrieves all open issues in a single call.
+// Returns a map from beadsID to Issue.
+func ListOpenIssues() (map[string]*Issue, error) {
+	cmd := exec.Command("bd", "list", "--status", "open,in_progress,blocked", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list issues: %w", err)
+	}
+
+	// Handle null/empty response
+	if strings.TrimSpace(string(output)) == "null" || strings.TrimSpace(string(output)) == "[]" {
+		return make(map[string]*Issue), nil
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	}
+
+	result := make(map[string]*Issue, len(issues))
+	for i := range issues {
+		result[issues[i].ID] = &issues[i]
+	}
+	return result, nil
+}
+
+// CommentResult holds comments for a single issue
+type CommentResult struct {
+	BeadsID  string
+	Comments []Comment
+	Err      error
+}
+
+// GetCommentsBatch fetches comments for multiple issues in parallel.
+// Returns a map from beadsID to comments. Errors are silently skipped.
+func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
+	if len(beadsIDs) == 0 {
+		return make(map[string][]Comment)
+	}
+
+	// Use a channel to collect results
+	results := make(chan CommentResult, len(beadsIDs))
+
+	// Launch goroutines for each beads ID
+	for _, id := range beadsIDs {
+		go func(beadsID string) {
+			comments, err := GetComments(beadsID)
+			results <- CommentResult{BeadsID: beadsID, Comments: comments, Err: err}
+		}(id)
+	}
+
+	// Collect results
+	commentMap := make(map[string][]Comment, len(beadsIDs))
+	for i := 0; i < len(beadsIDs); i++ {
+		r := <-results
+		if r.Err == nil {
+			commentMap[r.BeadsID] = r.Comments
+		}
+	}
+
+	return commentMap
+}

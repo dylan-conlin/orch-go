@@ -1749,12 +1749,53 @@ type StatusOutput struct {
 func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
-	projectDir, _ := os.Getwd()
 
 	agents := make([]AgentInfo, 0)
 	seenBeadsIDs := make(map[string]bool)
 
+	// === OPTIMIZED: Batch fetch all data upfront ===
+	// 1. Fetch all OpenCode sessions in one call (already fast, ~15ms)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	// Build a map of session ID -> session for quick lookup
+	sessionMap := make(map[string]*opencode.Session)
+	// Also build a map of beadsID -> session for matching
+	beadsToSession := make(map[string]*opencode.Session)
+	const maxIdleTime = 30 * time.Minute
+
+	for i := range sessions {
+		s := &sessions[i]
+		sessionMap[s.ID] = s
+
+		// Only consider recently active sessions for beads matching
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) <= maxIdleTime {
+			beadsID := extractBeadsIDFromTitle(s.Title)
+			if beadsID != "" {
+				beadsToSession[beadsID] = s
+			}
+		}
+	}
+
+	// 2. Fetch all open beads issues in one call (single bd list invocation)
+	openIssues, _ := verify.ListOpenIssues()
+
+	// 3. Collect all beads IDs we need comments for
+	var beadsIDsToFetch []string
+
 	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
+	type tmuxAgent struct {
+		beadsID string
+		skill   string
+		project string
+		window  string
+		title   string
+	}
+	var tmuxAgents []tmuxAgent
+
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
 		windows, _ := tmux.ListWindows(sessionName)
@@ -1764,156 +1805,144 @@ func runStatus(serverURL string) error {
 				continue
 			}
 
-			// Derive beads ID from window name (format: "... [beads-id]")
 			beadsID := extractBeadsIDFromWindowName(w.Name)
-
-			// Skip windows without parseable beadsID - these are not orch-spawned agents
-			// (e.g., docker, frontend, logs, console, tests windows in workers sessions)
 			if beadsID == "" {
 				continue
 			}
 
-			skill := extractSkillFromWindowName(w.Name)
-			project := extractProjectFromBeadsID(beadsID)
+			tmuxAgents = append(tmuxAgents, tmuxAgent{
+				beadsID: beadsID,
+				skill:   extractSkillFromWindowName(w.Name),
+				project: extractProjectFromBeadsID(beadsID),
+				window:  w.Target,
+				title:   w.Name,
+			})
 
-			// Use state.GetLiveness() for accurate liveness check
-			var liveness state.LivenessResult
-			if beadsID != "" {
-				liveness = state.GetLiveness(beadsID, serverURL, projectDir)
+			if beadsID != "" && !seenBeadsIDs[beadsID] {
+				beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 				seenBeadsIDs[beadsID] = true
 			}
-
-			// Get phase from beads comments if we have a beads ID
-			var phase, task string
-			if beadsID != "" {
-				phase, task = getPhaseAndTask(beadsID)
-			}
-
-			// Calculate runtime from OpenCode session if available
-			runtime := "unknown"
-			if liveness.SessionID != "" {
-				if session, err := client.GetSession(liveness.SessionID); err == nil {
-					createdAt := time.Unix(session.Time.Created/1000, 0)
-					runtime = formatDuration(now.Sub(createdAt))
-				}
-			}
-
-			// Determine if this is a phantom agent:
-			// - Has beadsID (orch-spawned) but no live OpenCode session = phantom
-			// - Cross-project agents we can't verify liveness for = assume active if tmux exists
-			isPhantom := !liveness.OpencodeLive && !liveness.TmuxLive
-			// If tmux window exists but no OpenCode session, it's stalled (variant of phantom)
-			if liveness.SessionID == "" && beadsID != "" {
-				// Window exists but session is dead - mark as phantom/stalled
-				isPhantom = true
-			}
-
-			agent := AgentInfo{
-				SessionID: liveness.SessionID,
-				BeadsID:   beadsID,
-				Skill:     skill,
-				Title:     w.Name,
-				Runtime:   runtime,
-				Window:    w.Target,
-				Phase:     phase,
-				Task:      task,
-				Project:   project,
-				IsPhantom: isPhantom,
-			}
-
-			// If no OpenCode session found, note it's tmux-only
-			if agent.SessionID == "" {
-				agent.SessionID = "tmux-stalled"
-			}
-
-			agents = append(agents, agent)
 		}
 	}
 
-	// Phase 2: Collect agents from OpenCode sessions (headless mode agents)
-	// NOTE: ListSessions("") returns ALL persisted sessions (339+), not just active ones.
-	// We filter by activity time to only show sessions updated within the last 30 minutes.
-	sessions, err := client.ListSessions("")
-	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
+	// Phase 2: Collect beads IDs from active OpenCode sessions
+	type opcodeAgent struct {
+		session *opencode.Session
+		beadsID string
+		skill   string
+		project string
 	}
-
-	// Maximum idle time to consider a session "active"
-	const maxIdleTime = 30 * time.Minute
+	var opcodeAgents []opcodeAgent
 
 	for _, s := range sessions {
-		// Calculate runtime and idle time
-		createdAt := time.Unix(s.Time.Created/1000, 0)
-		runtime := now.Sub(createdAt)
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		idleTime := now.Sub(updatedAt)
-
-		// Early filter: skip sessions idle longer than maxIdleTime
-		// This prevents 339 stale sessions from appearing as active
-		if idleTime > maxIdleTime {
+		if now.Sub(updatedAt) > maxIdleTime {
 			continue
 		}
 
 		beadsID := extractBeadsIDFromTitle(s.Title)
-
-		// Skip sessions without parseable beadsID - these are not orch-spawned agents
-		// (e.g., manual OpenCode sessions, test sessions, etc.)
 		if beadsID == "" {
 			continue
 		}
-
-		skill := extractSkillFromTitle(s.Title)
-		project := extractProjectFromBeadsID(beadsID)
 
 		// Skip if already tracked via tmux
 		if seenBeadsIDs[beadsID] {
 			continue
 		}
 
-		// Use state.GetLiveness() to check if this is actually live
-		liveness := state.GetLiveness(beadsID, serverURL, projectDir)
+		sessionCopy := s // Copy to avoid closure issues
+		opcodeAgents = append(opcodeAgents, opcodeAgent{
+			session: &sessionCopy,
+			beadsID: beadsID,
+			skill:   extractSkillFromTitle(s.Title),
+			project: extractProjectFromBeadsID(beadsID),
+		})
+
+		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 		seenBeadsIDs[beadsID] = true
+	}
 
-		// Get phase from beads comments if we have a beads ID
+	// 4. Batch fetch all comments in parallel (the slow part, but now parallelized)
+	commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
+
+	// === Now build agents from collected data ===
+
+	// Process tmux agents
+	for _, ta := range tmuxAgents {
+		// Check if there's an active OpenCode session for this beads ID
+		session := beadsToSession[ta.beadsID]
+		sessionID := ""
+		runtime := "unknown"
+		isPhantom := true
+
+		if session != nil {
+			sessionID = session.ID
+			createdAt := time.Unix(session.Time.Created/1000, 0)
+			runtime = formatDuration(now.Sub(createdAt))
+			isPhantom = false
+		} else {
+			sessionID = "tmux-stalled"
+		}
+
+		// Get phase from pre-fetched comments
 		var phase, task string
-		if beadsID != "" {
-			phase, task = getPhaseAndTask(beadsID)
-		}
-
-		// Skip if not alive (neither tmux nor OpenCode)
-		if !liveness.IsAlive() && beadsID != "" {
-			// Not alive but has beads ID - might be phantom
-			if liveness.IsPhantom() {
-				// Include phantom agents in the list
-				agent := AgentInfo{
-					SessionID: s.ID,
-					Title:     s.Title,
-					Runtime:   formatDuration(runtime),
-					BeadsID:   beadsID,
-					Skill:     skill,
-					Phase:     phase,
-					Task:      task,
-					Project:   project,
-					IsPhantom: true,
-				}
-				agents = append(agents, agent)
+		if comments, ok := commentsMap[ta.beadsID]; ok {
+			phaseStatus := verify.ParsePhaseFromComments(comments)
+			if phaseStatus.Found {
+				phase = phaseStatus.Phase
 			}
-			continue
+		}
+		// Get task from pre-fetched issues
+		if issue, ok := openIssues[ta.beadsID]; ok {
+			task = truncate(issue.Title, 40)
 		}
 
-		agent := AgentInfo{
-			SessionID: s.ID,
-			Title:     s.Title,
-			Runtime:   formatDuration(runtime),
-			BeadsID:   beadsID,
-			Skill:     skill,
+		agents = append(agents, AgentInfo{
+			SessionID: sessionID,
+			BeadsID:   ta.beadsID,
+			Skill:     ta.skill,
+			Title:     ta.title,
+			Runtime:   runtime,
+			Window:    ta.window,
 			Phase:     phase,
 			Task:      task,
-			Project:   project,
-			IsPhantom: liveness.IsPhantom(),
+			Project:   ta.project,
+			IsPhantom: isPhantom,
+		})
+	}
+
+	// Process OpenCode agents (not in tmux)
+	for _, oa := range opcodeAgents {
+		createdAt := time.Unix(oa.session.Time.Created/1000, 0)
+		runtime := formatDuration(now.Sub(createdAt))
+
+		// Check if beads issue is open (determines phantom status)
+		issue, issueExists := openIssues[oa.beadsID]
+		isPhantom := !issueExists // If issue is not in open list, it might be phantom
+
+		// Get phase from pre-fetched comments
+		var phase, task string
+		if comments, ok := commentsMap[oa.beadsID]; ok {
+			phaseStatus := verify.ParsePhaseFromComments(comments)
+			if phaseStatus.Found {
+				phase = phaseStatus.Phase
+			}
+		}
+		if issue != nil {
+			task = truncate(issue.Title, 40)
 		}
 
-		agents = append(agents, agent)
+		agents = append(agents, AgentInfo{
+			SessionID: oa.session.ID,
+			Title:     oa.session.Title,
+			Runtime:   runtime,
+			BeadsID:   oa.beadsID,
+			Skill:     oa.skill,
+			Phase:     phase,
+			Task:      task,
+			Project:   oa.project,
+			IsPhantom: isPhantom,
+		})
 	}
 
 	// Phase 3: Filter agents based on flags
