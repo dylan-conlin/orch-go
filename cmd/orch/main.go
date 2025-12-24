@@ -1723,10 +1723,12 @@ func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
 
 // SwarmStatus represents aggregate swarm information.
 type SwarmStatus struct {
-	Active    int `json:"active"`
-	Phantom   int `json:"phantom,omitempty"` // Agents with open beads issue but not running
-	Queued    int `json:"queued"`
-	Completed int `json:"completed_today"`
+	Active     int `json:"active"`
+	Processing int `json:"processing,omitempty"` // Agents actively generating response
+	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
+	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
+	Queued     int `json:"queued"`
+	Completed  int `json:"completed_today"`
 }
 
 // AccountUsage represents usage info for a single account.
@@ -1740,17 +1742,18 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID string `json:"session_id"`
-	BeadsID   string `json:"beads_id,omitempty"`
-	Skill     string `json:"skill,omitempty"`
-	Account   string `json:"account,omitempty"`
-	Runtime   string `json:"runtime"`
-	Title     string `json:"title,omitempty"`
-	Window    string `json:"window,omitempty"`
-	Phase     string `json:"phase,omitempty"`      // Current phase from beads comments
-	Task      string `json:"task,omitempty"`       // Task description (truncated)
-	Project   string `json:"project,omitempty"`    // Project name derived from beads ID or workspace
-	IsPhantom bool   `json:"is_phantom,omitempty"` // True if beads issue open but agent not running
+	SessionID    string `json:"session_id"`
+	BeadsID      string `json:"beads_id,omitempty"`
+	Skill        string `json:"skill,omitempty"`
+	Account      string `json:"account,omitempty"`
+	Runtime      string `json:"runtime"`
+	Title        string `json:"title,omitempty"`
+	Window       string `json:"window,omitempty"`
+	Phase        string `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string `json:"task,omitempty"`          // Task description (truncated)
+	Project      string `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	IsPhantom    bool   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool   `json:"is_processing,omitempty"` // True if session is actively generating a response
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -1888,12 +1891,15 @@ func runStatus(serverURL string) error {
 		sessionID := ""
 		runtime := "unknown"
 		isPhantom := true
+		isProcessing := false
 
 		if session != nil {
 			sessionID = session.ID
 			createdAt := time.Unix(session.Time.Created/1000, 0)
 			runtime = formatDuration(now.Sub(createdAt))
 			isPhantom = false
+			// Check if the session is actively processing (has pending response)
+			isProcessing = client.IsSessionProcessing(session.ID)
 		} else {
 			sessionID = "tmux-stalled"
 		}
@@ -1912,16 +1918,17 @@ func runStatus(serverURL string) error {
 		}
 
 		agents = append(agents, AgentInfo{
-			SessionID: sessionID,
-			BeadsID:   ta.beadsID,
-			Skill:     ta.skill,
-			Title:     ta.title,
-			Runtime:   runtime,
-			Window:    ta.window,
-			Phase:     phase,
-			Task:      task,
-			Project:   ta.project,
-			IsPhantom: isPhantom,
+			SessionID:    sessionID,
+			BeadsID:      ta.beadsID,
+			Skill:        ta.skill,
+			Title:        ta.title,
+			Runtime:      runtime,
+			Window:       ta.window,
+			Phase:        phase,
+			Task:         task,
+			Project:      ta.project,
+			IsPhantom:    isPhantom,
+			IsProcessing: isProcessing,
 		})
 	}
 
@@ -1933,6 +1940,9 @@ func runStatus(serverURL string) error {
 		// Check if beads issue is open (determines phantom status)
 		issue, issueExists := openIssues[oa.beadsID]
 		isPhantom := !issueExists // If issue is not in open list, it might be phantom
+
+		// Check if the session is actively processing (has pending response)
+		isProcessing := client.IsSessionProcessing(oa.session.ID)
 
 		// Get phase from pre-fetched comments
 		var phase, task string
@@ -1947,15 +1957,16 @@ func runStatus(serverURL string) error {
 		}
 
 		agents = append(agents, AgentInfo{
-			SessionID: oa.session.ID,
-			Title:     oa.session.Title,
-			Runtime:   runtime,
-			BeadsID:   oa.beadsID,
-			Skill:     oa.skill,
-			Phase:     phase,
-			Task:      task,
-			Project:   oa.project,
-			IsPhantom: isPhantom,
+			SessionID:    oa.session.ID,
+			Title:        oa.session.Title,
+			Runtime:      runtime,
+			BeadsID:      oa.beadsID,
+			Skill:        oa.skill,
+			Phase:        phase,
+			Task:         task,
+			Project:      oa.project,
+			IsPhantom:    isPhantom,
+			IsProcessing: isProcessing,
 		})
 	}
 
@@ -1975,20 +1986,29 @@ func runStatus(serverURL string) error {
 
 	// Phase 4: Build swarm status (counts before filtering)
 	activeCount := 0
+	processingCount := 0
+	idleCount := 0
 	phantomCount := 0
 	for _, agent := range agents {
 		if agent.IsPhantom {
 			phantomCount++
 		} else {
 			activeCount++
+			if agent.IsProcessing {
+				processingCount++
+			} else {
+				idleCount++
+			}
 		}
 	}
 
 	swarm := SwarmStatus{
-		Active:    activeCount,
-		Phantom:   phantomCount,
-		Queued:    0, // TODO: implement queuing system
-		Completed: 0, // No longer tracked via registry
+		Active:     activeCount,
+		Processing: processingCount,
+		Idle:       idleCount,
+		Phantom:    phantomCount,
+		Queued:     0, // TODO: implement queuing system
+		Completed:  0, // No longer tracked via registry
 	}
 
 	// Fetch account usage information
@@ -2099,8 +2119,11 @@ func getAccountUsage() []AccountUsage {
 
 // printSwarmStatus prints the swarm status in human-readable format.
 func printSwarmStatus(output StatusOutput, showPhantoms bool) {
-	// Print swarm summary header
+	// Print swarm summary header with processing breakdown
 	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
+	if output.Swarm.Active > 0 {
+		fmt.Printf(" (running: %d, idle: %d)", output.Swarm.Processing, output.Swarm.Idle)
+	}
 	if output.Swarm.Phantom > 0 {
 		fmt.Printf(", Phantom: %d", output.Swarm.Phantom)
 		if !showPhantoms {
@@ -2137,9 +2160,9 @@ func printSwarmStatus(output StatusOutput, showPhantoms bool) {
 	// Print agents table
 	if len(output.Agents) > 0 {
 		fmt.Println("AGENTS")
-		// New column layout: BEADS ID (full), PHASE, TASK, SKILL, RUNTIME
-		fmt.Printf("  %-18s %-12s %-40s %-20s %s\n", "BEADS ID", "PHASE", "TASK", "SKILL", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 100))
+		// New column layout: BEADS ID (full), STATUS, PHASE, TASK, SKILL, RUNTIME
+		fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME")
+		fmt.Printf("  %s\n", strings.Repeat("-", 105))
 
 		for _, agent := range output.Agents {
 			beadsID := agent.BeadsID
@@ -2159,16 +2182,21 @@ func printSwarmStatus(output StatusOutput, showPhantoms bool) {
 				skill = "-"
 			}
 
-			// Add phantom indicator to phase
+			// Determine status based on processing state
+			status := "idle"
+			if agent.IsProcessing {
+				status = "running"
+			}
 			if agent.IsPhantom {
-				phase = "⚠ " + phase
+				status = "phantom"
 			}
 
-			fmt.Printf("  %-18s %-12s %-40s %-20s %s\n",
+			fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n",
 				beadsID,
+				status,
 				truncate(phase, 10),
-				truncate(task, 38),
-				truncate(skill, 18),
+				truncate(task, 33),
+				truncate(skill, 16),
 				agent.Runtime)
 		}
 	} else {

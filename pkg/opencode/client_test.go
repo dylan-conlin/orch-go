@@ -1356,3 +1356,159 @@ func TestSendMessageAsyncWithoutModel(t *testing.T) {
 		t.Errorf("receivedPayload should not include 'model' field when empty, but got: %v", receivedPayload["model"])
 	}
 }
+
+// TestIsSessionProcessing tests the IsSessionProcessing method.
+func TestIsSessionProcessing(t *testing.T) {
+	sessionID := "ses_test123"
+	nowMs := time.Now().UnixMilli()
+
+	tests := []struct {
+		name           string
+		messages       string
+		wantProcessing bool
+	}{
+		{
+			name: "processing - assistant message with null finish",
+			messages: fmt.Sprintf(`[
+				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
+				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":0},"finish":""},"parts":[]}
+			]`, sessionID, nowMs-1000, sessionID, nowMs),
+			wantProcessing: true,
+		},
+		{
+			name: "idle - assistant message with finish stop",
+			messages: fmt.Sprintf(`[
+				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
+				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]}
+			]`, sessionID, nowMs-2000, sessionID, nowMs-1000, nowMs-500),
+			wantProcessing: false,
+		},
+		{
+			name: "idle - assistant message with finish tool-calls",
+			messages: fmt.Sprintf(`[
+				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
+				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"tool-calls"},"parts":[]}
+			]`, sessionID, nowMs-2000, sessionID, nowMs-1000, nowMs-500),
+			wantProcessing: false,
+		},
+		{
+			name: "processing - user message just sent (within 30s)",
+			messages: fmt.Sprintf(`[
+				{"info":{"id":"msg_1","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]},
+				{"info":{"id":"msg_2","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]}
+			]`, sessionID, nowMs-2000, nowMs-1500, sessionID, nowMs-5000), // 5 seconds ago
+			wantProcessing: true,
+		},
+		{
+			name: "idle - user message old (more than 30s ago)",
+			messages: fmt.Sprintf(`[
+				{"info":{"id":"msg_1","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]},
+				{"info":{"id":"msg_2","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]}
+			]`, sessionID, nowMs-60000, nowMs-59000, sessionID, nowMs-35000), // 35 seconds ago
+			wantProcessing: false,
+		},
+		{
+			name:           "no messages",
+			messages:       "[]",
+			wantProcessing: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.messages))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL)
+			isProcessing := client.IsSessionProcessing(sessionID)
+			if isProcessing != tt.wantProcessing {
+				t.Errorf("IsSessionProcessing() = %v, want %v", isProcessing, tt.wantProcessing)
+			}
+		})
+	}
+}
+
+// TestIsSessionProcessingServerError tests IsSessionProcessing with server error.
+func TestIsSessionProcessingServerError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	isProcessing := client.IsSessionProcessing(sessionID)
+	if isProcessing {
+		t.Error("Expected false when server returns error")
+	}
+}
+
+// TestGetLastMessage tests the GetLastMessage method.
+func TestGetLastMessage(t *testing.T) {
+	sessionID := "ses_test123"
+	mockMessages := `[
+		{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user","time":{"created":1766282439689}},"parts":[]},
+		{"info":{"id":"msg_2","sessionID":"ses_test123","role":"assistant","time":{"created":1766282440000,"completed":1766282441000},"finish":"stop"},"parts":[]}
+	]`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(mockMessages))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	msg, err := client.GetLastMessage(sessionID)
+	if err != nil {
+		t.Fatalf("GetLastMessage() error = %v", err)
+	}
+	if msg == nil {
+		t.Fatal("GetLastMessage() returned nil")
+	}
+	if msg.Info.ID != "msg_2" {
+		t.Errorf("GetLastMessage().Info.ID = %s, want msg_2", msg.Info.ID)
+	}
+	if msg.Info.Finish != "stop" {
+		t.Errorf("GetLastMessage().Info.Finish = %s, want stop", msg.Info.Finish)
+	}
+}
+
+// TestGetLastMessageEmpty tests GetLastMessage with no messages.
+func TestGetLastMessageEmpty(t *testing.T) {
+	sessionID := "ses_empty"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	msg, err := client.GetLastMessage(sessionID)
+	if err != nil {
+		t.Fatalf("GetLastMessage() error = %v", err)
+	}
+	if msg != nil {
+		t.Errorf("GetLastMessage() = %v, want nil for empty session", msg)
+	}
+}
+
+// TestGetLastMessageError tests GetLastMessage with server error.
+func TestGetLastMessageError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetLastMessage(sessionID)
+	if err == nil {
+		t.Error("Expected error for server error response")
+	}
+}

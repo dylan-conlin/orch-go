@@ -312,6 +312,50 @@ func (c *Client) IsSessionActive(sessionID string, maxIdleTime time.Duration) bo
 	return idleTime <= maxIdleTime
 }
 
+// IsSessionProcessing checks if a session is actively processing (has a pending assistant response).
+// This is the most reliable signal for detecting truly active agents because it checks
+// whether the last assistant message has finished (finish != "" and completed != 0).
+// Returns true if the session is currently generating a response, false if idle.
+func (c *Client) IsSessionProcessing(sessionID string) bool {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil || len(messages) == 0 {
+		return false
+	}
+
+	// Find the last message
+	lastMsg := messages[len(messages)-1]
+
+	// Session is processing if:
+	// 1. Last message is from assistant AND
+	// 2. It hasn't finished yet (finish is empty and completed is 0)
+	if lastMsg.Info.Role == "assistant" {
+		return lastMsg.Info.Finish == "" && lastMsg.Info.Time.Completed == 0
+	}
+
+	// If last message is from user, check if there's an assistant response being generated
+	// This happens when user sends a message and assistant hasn't started responding yet
+	// In this case, we consider the session as processing (waiting for response)
+	if lastMsg.Info.Role == "user" {
+		// If the user message was sent recently (within last 30 seconds), consider it processing
+		createdAt := time.Unix(lastMsg.Info.Time.Created/1000, 0)
+		return time.Since(createdAt) < 30*time.Second
+	}
+
+	return false
+}
+
+// GetLastMessage returns the last message in a session, or nil if the session has no messages.
+func (c *Client) GetLastMessage(sessionID string) (*Message, error) {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	return &messages[len(messages)-1], nil
+}
+
 // CreateSessionRequest represents the request body for creating a new session.
 type CreateSessionRequest struct {
 	Title     string `json:"title,omitempty"`
