@@ -915,6 +915,7 @@ func checkConcurrencyLimit() error {
 	// Filter to only count active ORCH-SPAWNED sessions:
 	// 1. Updated within last 30 minutes (not stale)
 	// 2. Has parseable beadsID (is orch-spawned, not manual OpenCode session)
+	// 3. Has not reported Phase: Complete (completed agents are idle)
 	now := time.Now()
 	staleThreshold := 30 * time.Minute
 	activeCount := 0
@@ -928,6 +929,10 @@ func checkConcurrencyLimit() error {
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		if beadsID == "" {
 			continue // not an orch-spawned agent
+		}
+		// Exclude completed agents (Phase: Complete) - they're idle and not consuming resources
+		if isComplete, _ := verify.IsPhaseComplete(beadsID); isComplete {
+			continue // completed agent, don't count against limit
 		}
 		activeCount++
 	}
@@ -2132,6 +2137,66 @@ func extractProjectFromBeadsID(beadsID string) string {
 	}
 	// The last part should be the 4-char hash, join everything else
 	return strings.Join(parts[:len(parts)-1], "-")
+}
+
+// extractDateFromWorkspaceName parses the date suffix from a workspace name.
+// Workspace names follow format: prefix-description-DDmon (e.g., og-feat-add-feature-24dec)
+// Returns zero time if no valid date found.
+func extractDateFromWorkspaceName(name string) time.Time {
+	// Month abbreviations (lowercase)
+	months := map[string]time.Month{
+		"jan": time.January,
+		"feb": time.February,
+		"mar": time.March,
+		"apr": time.April,
+		"may": time.May,
+		"jun": time.June,
+		"jul": time.July,
+		"aug": time.August,
+		"sep": time.September,
+		"oct": time.October,
+		"nov": time.November,
+		"dec": time.December,
+	}
+
+	// Get the last segment after the final hyphen
+	parts := strings.Split(name, "-")
+	if len(parts) == 0 {
+		return time.Time{}
+	}
+	lastPart := strings.ToLower(parts[len(parts)-1])
+
+	// Pattern: 1-2 digits followed by 3-letter month abbreviation (e.g., "24dec", "5jan")
+	if len(lastPart) < 4 || len(lastPart) > 5 {
+		return time.Time{}
+	}
+
+	// Extract the month abbreviation (last 3 chars)
+	monthStr := lastPart[len(lastPart)-3:]
+	month, ok := months[monthStr]
+	if !ok {
+		return time.Time{}
+	}
+
+	// Extract the day (remaining digits)
+	dayStr := lastPart[:len(lastPart)-3]
+	day, err := strconv.Atoi(dayStr)
+	if err != nil || day < 1 || day > 31 {
+		return time.Time{}
+	}
+
+	// Use current year, adjusting for year boundary
+	// (if the date is in the future within this calendar, it's probably from last year)
+	now := time.Now()
+	year := now.Year()
+	parsedDate := time.Date(year, month, day, 12, 0, 0, 0, time.Local)
+
+	// If the parsed date is more than a week in the future, assume it's from last year
+	if parsedDate.After(now.AddDate(0, 0, 7)) {
+		parsedDate = time.Date(year-1, month, day, 12, 0, 0, 0, time.Local)
+	}
+
+	return parsedDate
 }
 
 // getPhaseAndTask retrieves the current phase and task description from beads.
