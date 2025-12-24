@@ -134,6 +134,10 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis after processing (default: true)")
 	// Mark max-agents as hidden since --concurrency is the preferred name
 	daemonRunCmd.Flags().MarkHidden("max-agents")
+
+	// Add label filter to preview and once commands (share the same variable)
+	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+	daemonOnceCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 }
 
 func runDaemonLoop() error {
@@ -242,9 +246,10 @@ func runDaemonLoop() error {
 			}
 
 			if !result.Processed {
-				// No more issues
+				// No more issues or spawn blocked (capacity, error, etc.)
 				if daemonVerbose && spawnedThisCycle == 0 {
-					fmt.Printf("[%s] No spawnable issues found\n", timestamp)
+					// Use the message from Once() which indicates why processing stopped
+					fmt.Printf("[%s] %s\n", timestamp, result.Message)
 				}
 				break
 			}
