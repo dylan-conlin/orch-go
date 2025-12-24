@@ -2283,7 +2283,7 @@ func runComplete(beadsID string) error {
 			fmt.Printf("Workspace: %s\n", agentName)
 		}
 
-		result, err := verify.VerifyCompletion(beadsID, workspacePath)
+		result, err := verify.VerifyCompletionFull(beadsID, workspacePath, projectDir, "")
 		if err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}
@@ -2296,6 +2296,11 @@ func runComplete(beadsID string) error {
 			fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
 			fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
 			return fmt.Errorf("verification failed")
+		}
+
+		// Print constraint warnings
+		for _, w := range result.Warnings {
+			fmt.Fprintf(os.Stderr, "⚠️  %s\n", w)
 		}
 
 		// Print phase info

@@ -124,7 +124,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 
 		// Check verification status if we have a beads ID
 		if beadsID != "" {
-			result, err := verify.VerifyCompletion(beadsID, dirPath)
+			result, err := verify.VerifyCompletionFull(beadsID, dirPath, projectDir, "")
 			if err != nil {
 				info.VerifyError = fmt.Sprintf("verification error: %v", err)
 				info.VerifyOK = false

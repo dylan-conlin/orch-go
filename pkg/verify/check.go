@@ -327,6 +327,48 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 	return VerifyCompletionWithTier(beadsID, workspacePath, "")
 }
 
+// VerifyCompletionFull checks if an agent is ready for completion including skill constraints.
+// This extends VerifyCompletion with constraint verification from SPAWN_CONTEXT.md.
+// The projectDir is used to verify that constraint patterns match actual files.
+func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
+	// First run standard verification
+	result, err := VerifyCompletionWithTier(beadsID, workspacePath, tier)
+	if err != nil {
+		return result, err
+	}
+
+	// If standard verification failed, no need to check constraints
+	if !result.Passed {
+		return result, nil
+	}
+
+	// Skip constraint verification if no workspace
+	if workspacePath == "" {
+		return result, nil
+	}
+
+	// Skip constraint verification if no project dir
+	if projectDir == "" {
+		return result, nil
+	}
+
+	// Verify skill constraints from SPAWN_CONTEXT.md
+	constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
+		return result, nil
+	}
+
+	// Merge constraint results
+	if !constraintResult.Passed {
+		result.Passed = false
+		result.Errors = append(result.Errors, constraintResult.Errors...)
+	}
+	result.Warnings = append(result.Warnings, constraintResult.Warnings...)
+
+	return result, nil
+}
+
 // VerifyCompletionWithTier checks if an agent is ready for completion.
 // The tier parameter specifies the spawn tier ("light" or "full").
 // If tier is empty, it will be read from the workspace's .tier file.
