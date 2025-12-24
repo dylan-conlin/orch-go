@@ -98,50 +98,38 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Environment inheritance** - Setting env var on OpenCode server process propagates to all agents it spawns for headless mode.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Different mechanisms** - exec.Cmd uses cmd.Env; shell command strings use prefix `ORCH_WORKER=1 command`.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Comprehensive coverage** - Updated 4 places: ensureOpenCodeRunning, runSpawnInline, BuildOpencodeAttachCommand, BuildStandaloneCommand, BuildSpawnCommand, BuildRunCommand.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+ORCH_WORKER=1 is now set in all spawn paths:
+1. Headless: Prefix `opencode serve` command with `ORCH_WORKER=1` in ensureOpenCodeRunning
+2. Inline: Add `ORCH_WORKER=1` to cmd.Env
+3. Tmux: Prefix shell command strings with `ORCH_WORKER=1`
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** High (90%)
 
 **Why this level?**
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+All spawn paths identified and modified. Tests written and passing. Build compiles without errors.
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ All 4 spawn command builders updated
+- ✅ Tests verify ORCH_WORKER=1 is set in all cases
+- ✅ Build passes with no errors
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-
-**What would increase confidence to [next level]:**
-
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-
-**Confidence levels guide:**
-- **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
-- **High (80-94%):** Solid evidence, minor uncertainties, confident to act
-- **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
-- **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
-- **Very Low (<40%):** Highly speculative, more investigation needed
+- ⚠️ OpenCode server may already have been started without env var (existing servers won't restart automatically)
 
 ---
 
