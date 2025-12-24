@@ -245,11 +245,11 @@
 		</div>
 	{/if}
 
-	<!-- Compact Synthesis for completed agents -->
+	<!-- Synthesis for completed agents -->
 	{#if agent.status === 'completed' && agent.synthesis}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
 			{#if agent.synthesis.tldr}
-				<p class="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
+				<p class="text-[10px] leading-tight text-muted-foreground">
 					{agent.synthesis.tldr}
 				</p>
 			{/if}
