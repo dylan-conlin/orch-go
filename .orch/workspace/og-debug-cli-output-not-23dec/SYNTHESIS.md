@@ -16,14 +16,14 @@ Investigated why `orch status` produced no output. Root cause: stale local binar
 ## Delta (What Changed)
 
 ### Files Created
-- `.kb/investigations/2025-12-23-inv-cli-output-not-appearing.md` - Investigation documenting root cause analysis
-- `.orch/workspace/og-debug-cli-output-not-23dec/SYNTHESIS.md` - This synthesis document
+- `.kb/investigations/2025-12-23-inv-cli-output-not-appearing-orch.md` - Full investigation documenting the debugging process with D.E.K.N. summary
 
 ### Files Modified
-- `./orch` - Updated binary from Dec 22 → Dec 23 build (copied from build/orch)
+- `./orch` - Replaced stale binary (MD5: e275f...) with fresh build (MD5: 27c4...)
+- `~/bin/orch` - Updated via `make install` to ensure PATH binary is current
 
 ### Commits
-- (Pending) Investigation file and updated binary
+- No code commits needed (issue was binary-related, not code-related)
 
 ---
 
@@ -87,11 +87,14 @@ md5 ./orch ./build/orch ~/bin/orch
 
 ### If Close
 - [x] All deliverables complete
-- [x] Tests passing (smoke test: ./orch status works)
-- [x] Investigation file created and documented
-- [x] SYNTHESIS.md created
-- [ ] Commits complete
-- [ ] Ready for `orch complete orch-go-kbi6`
+  - [x] Investigation file created and filled out
+  - [x] Stale binary replaced with fresh build
+  - [x] PATH binary updated via `make install`
+  - [x] Root cause documented with evidence
+- [x] Tests passing (verified `./orch status` produces correct output)
+- [x] Investigation file has `**Phase:** Complete`
+- [x] SYNTHESIS.md created and completed
+- [x] Ready for `orch complete orch-go-pkko`
 
 ---
 
@@ -115,7 +118,7 @@ md5 ./orch ./build/orch ~/bin/orch
 ## Session Metadata
 
 **Skill:** systematic-debugging
-**Model:** claude-opus-4
+**Model:** anthropic/claude-opus-4-5-20251101
 **Workspace:** `.orch/workspace/og-debug-cli-output-not-23dec/`
-**Investigation:** `.kb/investigations/2025-12-23-inv-cli-output-not-appearing.md`
-**Beads:** `bd show orch-go-kbi6`
+**Investigation:** `.kb/investigations/2025-12-23-inv-cli-output-not-appearing-orch.md`
+**Beads:** `bd show orch-go-pkko`
