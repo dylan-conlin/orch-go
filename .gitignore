@@ -2,6 +2,16 @@
 orch-go
 build/
 
+# Test/dev executables at root
+/orch
+/orch-new
+/orch-test
+/orch-test-*
+/test-*
+
+# Backup files
+*.bak
+
 # macOS
 .DS_Store
 
