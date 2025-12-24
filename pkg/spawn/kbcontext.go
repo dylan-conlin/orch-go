@@ -3,11 +3,13 @@ package spawn
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // OrchEcosystemRepos defines the allowlist of repos that are relevant for orchestration work.
@@ -125,17 +127,23 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 }
 
 // runKBContextQuery runs a single kb context query with optional --global flag.
+// Uses a 5-second timeout to prevent infinite hangs from kb context --global
+// scanning large directories like ~/Documents.
 func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
+	// Create context with timeout to prevent hangs
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	var cmd *exec.Cmd
 	if global {
-		cmd = exec.Command("kb", "context", "--global", query)
+		cmd = exec.CommandContext(ctx, "kb", "context", "--global", query)
 	} else {
-		cmd = exec.Command("kb", "context", query)
+		cmd = exec.CommandContext(ctx, "kb", "context", query)
 	}
 
 	output, err := cmd.Output()
 	if err != nil {
-		// If kb command fails (not found, no matches, etc.), return nil
+		// If kb command fails (not found, no matches, timeout, etc.), return nil
 		// This is not an error - just means no context available
 		return nil, nil
 	}
