@@ -391,6 +391,17 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 		result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
 	}
 
+	// Verify visual verification for web/ changes
+	// This gates completion when web files are modified without visual verification evidence
+	visualResult := VerifyVisualVerificationForCompletion(beadsID, workspacePath, projectDir)
+	if visualResult != nil {
+		if !visualResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, visualResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, visualResult.Warnings...)
+	}
+
 	return result, nil
 }
 

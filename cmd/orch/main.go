@@ -1883,6 +1883,7 @@ type AgentInfo struct {
 	Project      string `json:"project,omitempty"`       // Project name derived from beads ID or workspace
 	IsPhantom    bool   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
 	IsProcessing bool   `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool   `json:"is_completed,omitempty"`  // True if beads issue is closed
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -1926,8 +1927,8 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// 2. Fetch all open beads issues in one call (single bd list invocation)
-	openIssues, _ := verify.ListOpenIssues()
+	// 2. Collect beads IDs first, then batch fetch issues later
+	// (openIssues removed - we now use allIssues to check both open and closed status)
 
 	// 3. Collect all beads IDs we need comments for
 	var beadsIDsToFetch []string
@@ -2011,6 +2012,10 @@ func runStatus(serverURL string) error {
 	// 4. Batch fetch all comments in parallel (the slow part, but now parallelized)
 	commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
 
+	// 5. Batch fetch issue details to check closed status
+	// This also provides task info for closed issues (not returned by ListOpenIssues)
+	allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
+
 	// === Now build agents from collected data ===
 
 	// Process tmux agents
@@ -2035,15 +2040,17 @@ func runStatus(serverURL string) error {
 
 		// Get phase from pre-fetched comments
 		var phase, task string
+		var isCompleted bool
 		if comments, ok := commentsMap[ta.beadsID]; ok {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
 				phase = phaseStatus.Phase
 			}
 		}
-		// Get task from pre-fetched issues
-		if issue, ok := openIssues[ta.beadsID]; ok {
+		// Get task and check closed status from pre-fetched issues
+		if issue, ok := allIssues[ta.beadsID]; ok {
 			task = truncate(issue.Title, 40)
+			isCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
 		agents = append(agents, AgentInfo{
@@ -2058,6 +2065,7 @@ func runStatus(serverURL string) error {
 			Project:      ta.project,
 			IsPhantom:    isPhantom,
 			IsProcessing: isProcessing,
+			IsCompleted:  isCompleted,
 		})
 	}
 
@@ -2073,11 +2081,12 @@ func runStatus(serverURL string) error {
 		// Check if the session is actively processing (has pending response)
 		isProcessing := client.IsSessionProcessing(oa.session.ID)
 
-		// Get issue for task info
-		issue := openIssues[oa.beadsID]
+		// Get issue for task and closed status
+		issue := allIssues[oa.beadsID]
 
 		// Get phase from pre-fetched comments
 		var phase, task string
+		var isCompleted bool
 		if comments, ok := commentsMap[oa.beadsID]; ok {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
@@ -2086,6 +2095,7 @@ func runStatus(serverURL string) error {
 		}
 		if issue != nil {
 			task = truncate(issue.Title, 40)
+			isCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
 		agents = append(agents, AgentInfo{
@@ -2099,6 +2109,7 @@ func runStatus(serverURL string) error {
 			Project:      oa.project,
 			IsPhantom:    isPhantom,
 			IsProcessing: isProcessing,
+			IsCompleted:  isCompleted,
 		})
 	}
 
@@ -2113,6 +2124,10 @@ func runStatus(serverURL string) error {
 		if agent.IsPhantom && !statusAll {
 			continue
 		}
+		// Filter completed agents (beads issue closed) unless --all is set
+		if agent.IsCompleted && !statusAll {
+			continue
+		}
 		filteredAgents = append(filteredAgents, agent)
 	}
 
@@ -2121,9 +2136,13 @@ func runStatus(serverURL string) error {
 	processingCount := 0
 	idleCount := 0
 	phantomCount := 0
+	completedCount := 0
 	for _, agent := range agents {
 		if agent.IsPhantom {
 			phantomCount++
+		} else if agent.IsCompleted {
+			// Completed agents (beads issue closed) don't count as active
+			completedCount++
 		} else {
 			activeCount++
 			if agent.IsProcessing {
@@ -2139,8 +2158,8 @@ func runStatus(serverURL string) error {
 		Processing: processingCount,
 		Idle:       idleCount,
 		Phantom:    phantomCount,
-		Queued:     0, // TODO: implement queuing system
-		Completed:  0, // No longer tracked via registry
+		Queued:     0,              // TODO: implement queuing system
+		Completed:  completedCount, // Agents with closed beads issues
 	}
 
 	// Fetch account usage information
@@ -2310,15 +2329,21 @@ func getAccountUsage() []AccountUsage {
 }
 
 // printSwarmStatus prints the swarm status in human-readable format.
-func printSwarmStatus(output StatusOutput, showPhantoms bool) {
+func printSwarmStatus(output StatusOutput, showAll bool) {
 	// Print swarm summary header with processing breakdown
 	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
 	if output.Swarm.Active > 0 {
 		fmt.Printf(" (running: %d, idle: %d)", output.Swarm.Processing, output.Swarm.Idle)
 	}
+	if output.Swarm.Completed > 0 {
+		fmt.Printf(", Completed: %d", output.Swarm.Completed)
+		if !showAll {
+			fmt.Printf(" (use --all to show)")
+		}
+	}
 	if output.Swarm.Phantom > 0 {
 		fmt.Printf(", Phantom: %d", output.Swarm.Phantom)
-		if !showPhantoms {
+		if !showAll {
 			fmt.Printf(" (use --all to show)")
 		}
 	}
@@ -2374,13 +2399,16 @@ func printSwarmStatus(output StatusOutput, showPhantoms bool) {
 				skill = "-"
 			}
 
-			// Determine status based on processing state
+			// Determine status based on processing state and completion
 			status := "idle"
 			if agent.IsProcessing {
 				status = "running"
 			}
 			if agent.IsPhantom {
 				status = "phantom"
+			}
+			if agent.IsCompleted {
+				status = "completed"
 			}
 
 			fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n",
@@ -2543,6 +2571,62 @@ func runComplete(beadsID string) error {
 			}
 
 			fmt.Println("Proceeding with completion despite liveness warning...")
+		}
+	}
+
+	// Get workspace path for synthesis parsing
+	workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
+
+	// Check synthesis for follow-up recommendations (only if workspace exists)
+	if workspacePath != "" {
+		synthesis, err := verify.ParseSynthesis(workspacePath)
+		if err == nil && synthesis != nil {
+			// Check if there are follow-up recommendations to surface
+			hasFollowUp := false
+			if synthesis.Recommendation == "spawn-follow-up" || synthesis.Recommendation == "escalate" || synthesis.Recommendation == "resume" {
+				hasFollowUp = true
+			}
+			if len(synthesis.NextActions) > 0 {
+				hasFollowUp = true
+			}
+
+			if hasFollowUp {
+				fmt.Println("\n--- Follow-up Recommendations ---")
+
+				if synthesis.Recommendation != "" && synthesis.Recommendation != "close" {
+					fmt.Printf("Recommendation: %s\n", synthesis.Recommendation)
+				}
+
+				if len(synthesis.NextActions) > 0 {
+					fmt.Println("\nNext Actions:")
+					for _, action := range synthesis.NextActions {
+						fmt.Printf("  %s\n", action)
+					}
+				}
+
+				// Also surface unexplored questions if present
+				if len(synthesis.AreasToExplore) > 0 || len(synthesis.Uncertainties) > 0 {
+					fmt.Println("\nUnexplored Questions:")
+					for _, area := range synthesis.AreasToExplore {
+						fmt.Printf("  %s\n", area)
+					}
+					for _, unc := range synthesis.Uncertainties {
+						fmt.Printf("  %s\n", unc)
+					}
+				}
+
+				fmt.Println("\n---------------------------------")
+				fmt.Print("Create follow-up issues? [y/N]: ")
+				reader := bufio.NewReader(os.Stdin)
+				response, err := reader.ReadString('\n')
+				if err == nil {
+					response = strings.TrimSpace(strings.ToLower(response))
+					if response == "y" || response == "yes" {
+						fmt.Println("\nNote: Use 'bd create' to create follow-up issues from the recommendations above.")
+						fmt.Println("Example: bd create --title \"<title>\" --type task")
+					}
+				}
+			}
 		}
 	}
 
