@@ -2597,33 +2597,54 @@ func runComplete(beadsID string) error {
 					fmt.Printf("Recommendation: %s\n", synthesis.Recommendation)
 				}
 
-				if len(synthesis.NextActions) > 0 {
-					fmt.Println("\nNext Actions:")
-					for _, action := range synthesis.NextActions {
-						fmt.Printf("  %s\n", action)
-					}
-				}
+				// Collect all actionable items
+				var actionableItems []string
+				actionableItems = append(actionableItems, synthesis.NextActions...)
+				actionableItems = append(actionableItems, synthesis.AreasToExplore...)
+				actionableItems = append(actionableItems, synthesis.Uncertainties...)
 
-				// Also surface unexplored questions if present
-				if len(synthesis.AreasToExplore) > 0 || len(synthesis.Uncertainties) > 0 {
-					fmt.Println("\nUnexplored Questions:")
-					for _, area := range synthesis.AreasToExplore {
-						fmt.Printf("  %s\n", area)
-					}
-					for _, unc := range synthesis.Uncertainties {
-						fmt.Printf("  %s\n", unc)
+				if len(actionableItems) > 0 {
+					fmt.Printf("\n%d actionable items found:\n", len(actionableItems))
+					for i, action := range actionableItems {
+						fmt.Printf("  %d. %s\n", i+1, action)
 					}
 				}
 
 				fmt.Println("\n---------------------------------")
-				fmt.Print("Create follow-up issues? [y/N]: ")
-				reader := bufio.NewReader(os.Stdin)
-				response, err := reader.ReadString('\n')
-				if err == nil {
-					response = strings.TrimSpace(strings.ToLower(response))
-					if response == "y" || response == "yes" {
-						fmt.Println("\nNote: Use 'bd create' to create follow-up issues from the recommendations above.")
-						fmt.Println("Example: bd create --title \"<title>\" --type task")
+
+				// Prompt for each actionable item
+				if len(actionableItems) > 0 {
+					reader := bufio.NewReader(os.Stdin)
+					createdCount := 0
+
+					for i, action := range actionableItems {
+						fmt.Printf("\n[%d/%d] %s\n", i+1, len(actionableItems), action)
+						fmt.Print("Create issue? [y/N/q to quit]: ")
+						response, err := reader.ReadString('\n')
+						if err != nil {
+							break
+						}
+						response = strings.TrimSpace(strings.ToLower(response))
+
+						if response == "q" || response == "quit" {
+							fmt.Println("Skipping remaining items.")
+							break
+						}
+
+						if response == "y" || response == "yes" {
+							// Create the issue using beads
+							issue, err := beads.FallbackCreate(action, "", "task", 2, []string{"triage:review"})
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
+							} else {
+								fmt.Printf("  Created: %s\n", issue.ID)
+								createdCount++
+							}
+						}
+					}
+
+					if createdCount > 0 {
+						fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
 					}
 				}
 			}
