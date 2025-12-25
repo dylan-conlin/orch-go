@@ -59,13 +59,56 @@
       "priority": "medium",
       "created": "2025-12-23",
       "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md"
+    },
+    {
+      "id": "feat-007",
+      "title": "Implement pkg/beads Go RPC client",
+      "description": "Create pkg/beads/client.go with connection management to beads daemon socket. Pattern after beads internal/rpc/client.go. Include health checks, reconnect logic. Socket at .beads/bd.sock. Types from beads/internal/rpc/protocol.go. File targets: pkg/beads/client.go, pkg/beads/types.go. Out of scope: HTTP API, non-Go clients. Acceptance: Client connects to daemon socket, health check succeeds, types match beads protocol.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md"
+    },
+    {
+      "id": "feat-008",
+      "title": "Migrate daemon.ListReadyIssues to beads RPC",
+      "description": "Replace pkg/daemon/daemon.go:ListReadyIssues() subprocess call with pkg/beads client. Use OpReady operation. Fallback to CLI if daemon unavailable. Depends on feat-007. File targets: pkg/daemon/daemon.go, pkg/beads/ready.go. Acceptance: ListReadyIssues uses RPC when daemon available, falls back to CLI when not.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
+      "depends_on": ["feat-007"]
+    },
+    {
+      "id": "feat-009",
+      "title": "Migrate verify.GetIssue to beads RPC",
+      "description": "Replace pkg/verify/check.go:GetIssue() subprocess call with pkg/beads client. Use OpShow operation. Handle comments via OpCommentList. Depends on feat-007. File targets: pkg/verify/check.go, pkg/beads/show.go. Acceptance: GetIssue uses RPC when daemon available, falls back to CLI when not.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
+      "depends_on": ["feat-007"]
+    },
+    {
+      "id": "feat-010",
+      "title": "Migrate serve beads calls to RPC",
+      "description": "Replace cmd/orch/serve.go handleBeads() subprocess call with pkg/beads client. Use OpStats operation. Update BeadsAPIResponse to match. Depends on feat-007. File targets: cmd/orch/serve.go, pkg/beads/stats.go. Acceptance: handleBeads uses RPC when daemon available, falls back to CLI when not.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
+      "depends_on": ["feat-007"]
     }
   ],
   "meta": {
-    "last_updated": "2025-12-23",
-    "total_features": 6,
+    "last_updated": "2025-12-25",
+    "total_features": 10,
     "by_status": {
-      "todo": 6,
+      "todo": 10,
       "in_progress": 0,
       "done": 0
     }
