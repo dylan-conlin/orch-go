@@ -1,1 +1,2 @@
-{repos: {primary: ".", additional: ["/Users/dylanconlin/Documents/personal/beads"]}}
+repos:
+  primary: "."

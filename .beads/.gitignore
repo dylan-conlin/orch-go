@@ -5,6 +5,14 @@
 *.db-wal
 *.db-shm
 
+# Nested beads directories (multi-repo pollution prevention)
+.beads/
+
+# Backup/temporary JSONL files
+*.jsonl.backup
+*.jsonl.polluted
+interactions.jsonl
+
 # Daemon runtime files
 daemon.lock
 daemon.log
