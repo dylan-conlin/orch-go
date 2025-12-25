@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -296,5 +297,53 @@ func TestUsageAPIResponseJSONFormat(t *testing.T) {
 	}
 	if result["weekly_opus_percent"] != 15.0 {
 		t.Errorf("Expected weekly_opus_percent 15.0, got %v", result["weekly_opus_percent"])
+	}
+}
+
+func TestServeStatusWithMockServer(t *testing.T) {
+	// Create a mock server that responds to /health
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// Parse the port from the test server URL
+	// The URL is in format http://127.0.0.1:PORT
+	var testPort int
+	_, err := fmt.Sscanf(server.URL, "http://127.0.0.1:%d", &testPort)
+	if err != nil {
+		t.Fatalf("Failed to parse test server port: %v", err)
+	}
+
+	// Call runServeStatus with the test port
+	// This should succeed without error
+	err = runServeStatus(testPort)
+	if err != nil {
+		t.Errorf("Expected no error from runServeStatus, got: %v", err)
+	}
+}
+
+func TestServeStatusWithNoServer(t *testing.T) {
+	// Use a port that is unlikely to be in use
+	unusedPort := 59999
+
+	// Call runServeStatus with the unused port
+	// This should NOT return an error (it prints status and returns nil)
+	err := runServeStatus(unusedPort)
+	if err != nil {
+		t.Errorf("Expected no error from runServeStatus (should print 'not running'), got: %v", err)
+	}
+}
+
+func TestDefaultServePort(t *testing.T) {
+	// Verify the default port constant
+	if DefaultServePort != 3348 {
+		t.Errorf("Expected DefaultServePort to be 3348, got %d", DefaultServePort)
 	}
 }

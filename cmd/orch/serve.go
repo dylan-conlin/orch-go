@@ -24,6 +24,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DefaultServePort is the port orch serve listens on.
+// This is infrastructure, not a project dev server.
+const DefaultServePort = 3348
+
 var (
 	servePort int
 )
@@ -33,21 +37,99 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP API server for the beads-ui dashboard",
 	Long: `Start an HTTP API server that provides endpoints for the beads-ui dashboard.
 
+This is orchestration infrastructure (persistent monitoring), NOT a project
+dev server. Use 'orch serve status' to check if the API is running.
+
 Endpoints:
-  GET /api/agents  - Returns JSON list of active agents from OpenCode/tmux
-  GET /api/events  - Proxies the OpenCode SSE stream for real-time updates
+  GET /api/agents    - Returns JSON list of active agents from OpenCode/tmux
+  GET /api/events    - Proxies the OpenCode SSE stream for real-time updates
+  GET /api/agentlog  - Agent lifecycle events
+  GET /api/usage     - Claude Max usage stats
+  GET /api/focus     - Current focus and drift status
+  GET /api/beads     - Beads stats (ready, blocked, open)
+  GET /api/servers   - Servers status across projects
+  GET /health        - Health check
 
 Examples:
   orch-go serve              # Start server on port 3348
-  orch-go serve --port 8080  # Override with explicit port`,
+  orch-go serve --port 8080  # Override with explicit port
+  orch-go serve status       # Check if server is running`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe(servePort)
 	},
 }
 
+var serveStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Check if the orch serve API is running",
+	Long: `Check if the orch serve API server is running and accessible.
+
+This command checks if the API server is listening on the expected port
+and returns its status. The API server is orchestration infrastructure,
+separate from project dev servers managed by 'orch servers'.
+
+Examples:
+  orch-go serve status           # Check status on default port
+  orch-go serve status -p 8080   # Check status on custom port`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runServeStatus(servePort)
+	},
+}
+
 func init() {
-	serveCmd.Flags().IntVarP(&servePort, "port", "p", 3348, "Port to listen on")
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check/listen on")
+	serveStatusCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check")
+
+	serveCmd.AddCommand(serveStatusCmd)
 	rootCmd.AddCommand(serveCmd)
+}
+
+// runServeStatus checks if the orch serve API is running on the given port.
+func runServeStatus(portNum int) error {
+	addr := fmt.Sprintf("http://127.0.0.1:%d/health", portNum)
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	resp, err := client.Get(addr)
+	if err != nil {
+		fmt.Printf("❌ API server is NOT running on port %d\n", portNum)
+		fmt.Println()
+		fmt.Println("Start it with: orch serve")
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("⚠️  API server on port %d returned status %d\n", portNum, resp.StatusCode)
+		return nil
+	}
+
+	// Parse the health response
+	var health struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		fmt.Printf("✅ API server is running on port %d (health check responded)\n", portNum)
+		return nil
+	}
+
+	fmt.Printf("✅ API server is running on port %d\n", portNum)
+	fmt.Printf("   Status: %s\n", health.Status)
+	fmt.Printf("   URL:    http://127.0.0.1:%d\n", portNum)
+	fmt.Println()
+	fmt.Println("Endpoints:")
+	fmt.Println("  GET /api/agents    - Active agents")
+	fmt.Println("  GET /api/events    - SSE event stream")
+	fmt.Println("  GET /api/agentlog  - Agent lifecycle events")
+	fmt.Println("  GET /api/usage     - Claude Max usage")
+	fmt.Println("  GET /api/focus     - Focus and drift status")
+	fmt.Println("  GET /api/beads     - Beads stats")
+	fmt.Println("  GET /api/servers   - Project servers status")
+	fmt.Println("  GET /health        - Health check")
+
+	return nil
 }
 
 func runServe(portNum int) error {
