@@ -30,6 +30,11 @@ const MinMatchesForLocalSearch = 3
 // MaxMatchesPerCategory limits results per category to prevent context flood.
 const MaxMatchesPerCategory = 20
 
+// MaxKBContextChars limits the total KB context size to prevent token bloat.
+// Set to ~80k chars which is approximately 20k tokens (using 4 chars/token ratio).
+// This leaves room for other spawn context elements (skills, CLAUDE.md, template).
+const MaxKBContextChars = 80000
+
 // KBContextMatch represents a match from kb context.
 type KBContextMatch struct {
 	Type        string // "constraint", "decision", "investigation", "guide"
@@ -46,6 +51,16 @@ type KBContextResult struct {
 	HasMatches bool
 	Matches    []KBContextMatch
 	RawOutput  string
+}
+
+// KBContextFormatResult holds the formatted context and truncation information.
+type KBContextFormatResult struct {
+	Content           string   // Formatted KB context for SPAWN_CONTEXT.md
+	WasTruncated      bool     // Whether context was truncated due to token limit
+	OriginalMatches   int      // Original number of matches before truncation
+	TruncatedMatches  int      // Number of matches after truncation
+	EstimatedTokens   int      // Estimated token count of the formatted content
+	OmittedCategories []string // Categories that were partially or fully omitted
 }
 
 // ExtractKeywords extracts meaningful keywords from a task description for kb context query.
@@ -420,19 +435,114 @@ func DisplayContextAndPrompt(result *KBContextResult) bool {
 }
 
 // FormatContextForSpawn formats kb context matches for inclusion in SPAWN_CONTEXT.md.
+// This is a convenience wrapper around FormatContextForSpawnWithLimit that uses
+// the default MaxKBContextChars limit.
 func FormatContextForSpawn(result *KBContextResult) string {
-	if result == nil || !result.HasMatches {
-		return ""
+	formatResult := FormatContextForSpawnWithLimit(result, MaxKBContextChars)
+	return formatResult.Content
+}
+
+// FormatContextForSpawnWithLimit formats kb context with a character limit to prevent token bloat.
+// Returns detailed information about the formatting including truncation status.
+// Priority order for truncation: investigations (lowest) → decisions → constraints (highest).
+func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBContextFormatResult {
+	emptyResult := &KBContextFormatResult{
+		Content:          "",
+		WasTruncated:     false,
+		OriginalMatches:  0,
+		TruncatedMatches: 0,
+		EstimatedTokens:  0,
 	}
 
-	var sb strings.Builder
-	sb.WriteString("## PRIOR KNOWLEDGE (from kb context)\n\n")
-	sb.WriteString(fmt.Sprintf("**Query:** %q\n\n", result.Query))
+	if result == nil || !result.HasMatches {
+		return emptyResult
+	}
 
-	// Group by type for cleaner output
+	originalMatchCount := len(result.Matches)
+
+	// Group by type for prioritized truncation
 	constraints := filterByType(result.Matches, "constraint")
 	decisions := filterByType(result.Matches, "decision")
 	investigations := filterByType(result.Matches, "investigation")
+
+	// Try to format with all matches first
+	content := formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+
+	// Check if we need to truncate
+	if len(content) <= maxChars {
+		return &KBContextFormatResult{
+			Content:          content,
+			WasTruncated:     false,
+			OriginalMatches:  originalMatchCount,
+			TruncatedMatches: originalMatchCount,
+			EstimatedTokens:  EstimateTokens(len(content)),
+		}
+	}
+
+	// Need to truncate - apply priority-based reduction
+	// Priority: constraints (keep most) > decisions > investigations (drop first)
+	var omittedCategories []string
+	truncatedMatches := originalMatchCount
+
+	// First, try removing investigations one at a time
+	for len(content) > maxChars && len(investigations) > 0 {
+		investigations = investigations[:len(investigations)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+	}
+	if len(filterByType(result.Matches, "investigation")) > len(investigations) {
+		omittedCategories = append(omittedCategories, "investigation")
+	}
+
+	// If still too large, remove decisions one at a time
+	for len(content) > maxChars && len(decisions) > 0 {
+		decisions = decisions[:len(decisions)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+	}
+	if len(filterByType(result.Matches, "decision")) > len(decisions) {
+		omittedCategories = append(omittedCategories, "decision")
+	}
+
+	// If STILL too large, remove constraints one at a time (last resort)
+	for len(content) > maxChars && len(constraints) > 0 {
+		constraints = constraints[:len(constraints)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+	}
+	if len(filterByType(result.Matches, "constraint")) > len(constraints) {
+		omittedCategories = append(omittedCategories, "constraint")
+	}
+
+	// Add truncation warning to content
+	omittedCount := originalMatchCount - truncatedMatches
+	if omittedCount > 0 {
+		estimatedMaxTokens := EstimateTokens(maxChars)
+		truncationNote := fmt.Sprintf("⚠️ **KB context truncated:** %d of %d matches omitted to stay within token budget (~%dk tokens).\n\n",
+			omittedCount, originalMatchCount, estimatedMaxTokens/1000)
+		content = formatKBContextContent(result.Query, constraints, decisions, investigations, &truncationNote)
+	}
+
+	return &KBContextFormatResult{
+		Content:           content,
+		WasTruncated:      omittedCount > 0,
+		OriginalMatches:   originalMatchCount,
+		TruncatedMatches:  truncatedMatches,
+		EstimatedTokens:   EstimateTokens(len(content)),
+		OmittedCategories: omittedCategories,
+	}
+}
+
+// formatKBContextContent generates the formatted KB context markdown.
+// If truncationNote is provided, it's inserted after the query line.
+func formatKBContextContent(query string, constraints, decisions, investigations []KBContextMatch, truncationNote *string) string {
+	var sb strings.Builder
+	sb.WriteString("## PRIOR KNOWLEDGE (from kb context)\n\n")
+	sb.WriteString(fmt.Sprintf("**Query:** %q\n\n", query))
+
+	if truncationNote != nil {
+		sb.WriteString(*truncationNote)
+	}
 
 	if len(constraints) > 0 {
 		sb.WriteString("### Constraints (MUST respect)\n")

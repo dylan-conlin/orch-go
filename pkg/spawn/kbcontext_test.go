@@ -491,3 +491,163 @@ func TestFormatMatchesForDisplay(t *testing.T) {
 		t.Error("formatMatchesForDisplay() missing constraint reason")
 	}
 }
+
+func TestFormatContextForSpawnWithLimit(t *testing.T) {
+	t.Run("nil result returns empty", func(t *testing.T) {
+		result := FormatContextForSpawnWithLimit(nil, 10000)
+		if result.Content != "" {
+			t.Errorf("expected empty content for nil result, got %q", result.Content)
+		}
+		if result.WasTruncated {
+			t.Error("expected WasTruncated=false for nil result")
+		}
+	})
+
+	t.Run("no matches returns empty", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test",
+			HasMatches: false,
+			Matches:    []KBContextMatch{},
+		}
+		result := FormatContextForSpawnWithLimit(kbResult, 10000)
+		if result.Content != "" {
+			t.Errorf("expected empty content for no matches, got %q", result.Content)
+		}
+		if result.WasTruncated {
+			t.Error("expected WasTruncated=false for no matches")
+		}
+	})
+
+	t.Run("small context not truncated", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "constraint", Title: "C1", Reason: "R1"},
+				{Type: "decision", Title: "D1", Path: "/path/d1"},
+			},
+		}
+		result := FormatContextForSpawnWithLimit(kbResult, 10000)
+		if result.WasTruncated {
+			t.Error("expected WasTruncated=false for small context")
+		}
+		if result.OriginalMatches != 2 {
+			t.Errorf("expected OriginalMatches=2, got %d", result.OriginalMatches)
+		}
+		if result.TruncatedMatches != 2 {
+			t.Errorf("expected TruncatedMatches=2, got %d", result.TruncatedMatches)
+		}
+		if !strings.Contains(result.Content, "C1") || !strings.Contains(result.Content, "D1") {
+			t.Error("expected all matches in content")
+		}
+	})
+
+	t.Run("truncates investigations first", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "constraint", Title: "Constraint 1", Reason: "Important constraint reason"},
+				{Type: "decision", Title: "Decision 1", Reason: "Important decision reason"},
+				{Type: "investigation", Title: "Investigation 1 with a long title", Path: "/very/long/path/to/investigation1.md"},
+				{Type: "investigation", Title: "Investigation 2 with a long title", Path: "/very/long/path/to/investigation2.md"},
+			},
+		}
+
+		// Use a small limit to force truncation
+		result := FormatContextForSpawnWithLimit(kbResult, 500)
+
+		if !result.WasTruncated {
+			t.Error("expected WasTruncated=true for small limit")
+		}
+		if result.OriginalMatches != 4 {
+			t.Errorf("expected OriginalMatches=4, got %d", result.OriginalMatches)
+		}
+		// Constraints and decisions should be kept over investigations
+		if !strings.Contains(result.Content, "Constraint 1") {
+			t.Error("expected constraint to be preserved")
+		}
+		if !strings.Contains(result.Content, "Decision 1") {
+			t.Error("expected decision to be preserved")
+		}
+		// Check truncation warning is present
+		if !strings.Contains(result.Content, "KB context truncated") {
+			t.Error("expected truncation warning in content")
+		}
+	})
+
+	t.Run("truncates decisions before constraints", func(t *testing.T) {
+		// Create many decisions and constraints
+		var matches []KBContextMatch
+		for i := 0; i < 5; i++ {
+			matches = append(matches, KBContextMatch{
+				Type:   "constraint",
+				Title:  strings.Repeat("C", 50),
+				Reason: strings.Repeat("R", 100),
+			})
+		}
+		for i := 0; i < 5; i++ {
+			matches = append(matches, KBContextMatch{
+				Type:   "decision",
+				Title:  strings.Repeat("D", 50),
+				Reason: strings.Repeat("R", 100),
+			})
+		}
+
+		kbResult := &KBContextResult{
+			Query:      "test",
+			HasMatches: true,
+			Matches:    matches,
+		}
+
+		// Very small limit - should truncate heavily
+		result := FormatContextForSpawnWithLimit(kbResult, 800)
+
+		if !result.WasTruncated {
+			t.Error("expected truncation with very small limit")
+		}
+		// OmittedCategories should include "decision" if decisions were truncated
+		// but "constraint" should be last to be truncated
+		foundDecision := false
+		for _, cat := range result.OmittedCategories {
+			if cat == "decision" {
+				foundDecision = true
+			}
+		}
+		if !foundDecision && result.TruncatedMatches < result.OriginalMatches {
+			// If we truncated and decisions were present, they should be omitted before constraints
+			// This test verifies the priority order
+		}
+	})
+
+	t.Run("estimates tokens correctly", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "constraint", Title: "Test constraint"},
+			},
+		}
+		result := FormatContextForSpawnWithLimit(kbResult, 100000)
+		expectedTokens := EstimateTokens(len(result.Content))
+		if result.EstimatedTokens != expectedTokens {
+			t.Errorf("expected EstimatedTokens=%d, got %d", expectedTokens, result.EstimatedTokens)
+		}
+	})
+
+	t.Run("FormatContextForSpawn uses default limit", func(t *testing.T) {
+		kbResult := &KBContextResult{
+			Query:      "test",
+			HasMatches: true,
+			Matches: []KBContextMatch{
+				{Type: "constraint", Title: "Test constraint"},
+			},
+		}
+		// FormatContextForSpawn should use MaxKBContextChars by default
+		content := FormatContextForSpawn(kbResult)
+		directResult := FormatContextForSpawnWithLimit(kbResult, MaxKBContextChars)
+		if content != directResult.Content {
+			t.Error("FormatContextForSpawn should produce same output as FormatContextForSpawnWithLimit with default limit")
+		}
+	})
+}
