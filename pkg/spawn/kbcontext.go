@@ -35,6 +35,10 @@ const MaxMatchesPerCategory = 20
 // This leaves room for other spawn context elements (skills, CLAUDE.md, template).
 const MaxKBContextChars = 80000
 
+// CharsPerToken is a conservative estimate for token calculation.
+// Claude typically uses ~4 chars per token for English text.
+const CharsPerToken = 4
+
 // KBContextMatch represents a match from kb context.
 type KBContextMatch struct {
 	Type        string // "constraint", "decision", "investigation", "guide"

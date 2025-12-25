@@ -1166,6 +1166,16 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		IncludeServers:    spawn.DefaultIncludeServersForSkill(skillName),
 	}
 
+	// Pre-spawn token estimation and validation
+	if err := spawn.ValidateContextSize(cfg); err != nil {
+		return fmt.Errorf("pre-spawn validation failed: %w", err)
+	}
+
+	// Warn about large contexts (but don't block)
+	if shouldWarn, warning := spawn.ShouldWarnAboutSize(cfg); shouldWarn {
+		fmt.Fprintf(os.Stderr, "%s", warning)
+	}
+
 	// Write SPAWN_CONTEXT.md
 	if err := spawn.WriteContext(cfg); err != nil {
 		return fmt.Errorf("failed to write spawn context: %w", err)
