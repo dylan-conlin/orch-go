@@ -25,7 +25,10 @@ func TestResolve_Aliases(t *testing.T) {
 		// Google aliases
 		{"flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"flash-2.5", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
+		{"flash3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
+		{"FLASH3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"flash-3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
+		{"flash-3.0", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"pro", ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}},
 	}
 
