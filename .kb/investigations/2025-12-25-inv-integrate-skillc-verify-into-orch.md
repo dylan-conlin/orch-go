@@ -1,87 +1,66 @@
-<!--
-D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
--->
-
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented skill output verification in pkg/verify that checks outputs.required from skill.yaml during orch complete.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** All 16 new tests pass; build succeeds; investigation skill has outputs.required defined with pattern `.kb/investigations/{date}-inv-*.md`.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The skillc verify command doesn't exist as a CLI command, but skill.yaml files have outputs.required sections that can be parsed and verified. Integration into VerifyCompletionFull provides automated verification.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - implementation complete with tests.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Confidence: High (85%) - small sample size (5 sessions).
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Confidence:** High (90%) - Full test coverage for new functionality; graceful skip for skills without outputs.required.
 
 ---
 
 # Investigation: Integrate Skillc Verify Into Orch
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How can we integrate skill output verification into orch complete so agents can't complete without producing required outputs?
 
 **Started:** 2025-12-25
 **Updated:** 2025-12-25
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Agent og-feat-integrate-skillc-verify-25dec
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (90%)
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: skillc verify CLI command doesn't exist
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Running `skillc verify --help` returns error; `skillc --help` shows available commands which don't include verify.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `skillc --help` output, `skillc verify --help` returns "no check help"
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** We can't shell out to `skillc verify`. Instead, we need to implement the verification logic in Go by parsing skill.yaml files directly.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Skill manifests have outputs.required section
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** investigation skill.yaml has:
+```yaml
+outputs:
+  required:
+    - pattern: ".kb/investigations/{date}-inv-*.md"
+      description: "Investigation file with findings"
+```
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `~/orch-knowledge/skills/src/worker/investigation/.skillc/skill.yaml`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This is the data we need to parse. The pattern format uses `{date}` variable that needs to be converted to a glob wildcard `*`.
+
+---
+
+### Finding 3: Existing constraint system provides pattern matching
+
+**Evidence:** `pkg/verify/constraint.go` already has `PatternToGlob()` function that converts `{date}`, `{workspace}`, `{beads}` patterns to glob wildcards.
+
+**Source:** `pkg/verify/constraint.go:207-230`
+
+**Significance:** We can reuse this pattern conversion for skill output verification.
 
 ---
 
@@ -89,150 +68,101 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **No skillc CLI dependency needed** - The skill.yaml files can be parsed directly using Go's yaml package.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Graceful skip pattern works well** - Skills without outputs.required defined should pass verification silently, which allows incremental adoption.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Spawn time filtering prevents false positives** - Only files created after the spawn time are counted as matches, preventing pre-existing files from satisfying constraints.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Skill output verification was implemented by:
+1. Creating `pkg/verify/skill_outputs.go` with functions to parse skill.yaml and verify outputs
+2. Integrating into `VerifyCompletionFull` to check skill outputs alongside existing constraint verification
+3. Using the existing `PatternToGlob()` function for pattern matching
+4. Adding spawn time filtering to only match files created during this spawn
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** High (90%)
 
 **Why this level?**
-
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+- All 16 new tests pass
+- Build succeeds
+- Integration verified via code review
+- Graceful handling of edge cases (missing skill, no outputs, etc.)
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ Skill output parsing works for investigation skill format
+- ✅ Pattern matching converts `{date}` to `*` correctly
+- ✅ Spawn time filtering works correctly
+- ✅ Graceful skip when skill has no outputs.required
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ Haven't tested with a live orch complete run
+- ⚠️ Error messages may need tuning based on user feedback
 
-**What would increase confidence to [next level]:**
+**What would increase confidence to Very High (95%+):**
 
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-
-**Confidence levels guide:**
-- **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
-- **High (80-94%):** Solid evidence, minor uncertainties, confident to act
-- **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
-- **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
-- **Very Low (<40%):** Highly speculative, more investigation needed
+- Run `orch complete` on a real investigation workspace that has/hasn't produced output
+- Verify error messages are clear and actionable
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Implementation is complete.
 
-### Recommended Approach ⭐
+### Implemented Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Skill Output Verification** - Added new verification step in VerifyCompletionFull that parses skill.yaml and checks outputs.required patterns.
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**Files created/modified:**
+- `pkg/verify/skill_outputs.go` - New file with SkillManifest parsing, output verification
+- `pkg/verify/skill_outputs_test.go` - 16 tests covering all scenarios
+- `pkg/verify/check.go` - Added call to VerifySkillOutputsForCompletion in VerifyCompletionFull
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `pkg/verify/check.go` - Existing verification logic
+- `pkg/verify/constraint.go` - Pattern matching utilities
+- `~/orch-knowledge/skills/src/worker/investigation/.skillc/skill.yaml` - Skill manifest format
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check skillc CLI
+skillc --help
+skillc verify --help
 
-# [Command description]
-[command]
+# Build and test
+go build ./pkg/verify/...
+go test ./pkg/verify/... -v
+make build
 ```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-25 10:20:** Investigation started
+- Initial question: How to integrate skillc verify into orch complete
+- Context: Issue orch-go-loh8 describes the gap
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-25 10:25:** Discovery - skillc verify doesn't exist
+- Need to implement verification in Go
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-25 10:35:** Implementation complete
+- Created skill_outputs.go and tests
+- Integrated into VerifyCompletionFull
+
+**2025-12-25 10:45:** Investigation completed
+- Final confidence: High (90%)
+- Status: Complete
+- Key outcome: Skill output verification integrated into orch complete
