@@ -121,3 +121,9 @@ go test ./... -short
 - Final confidence: High (90%)
 - Status: Complete
 - Key outcome: Added follow-up prompting to `orch complete` using existing synthesis parsing
+
+**2025-12-25:** Enhanced with interactive issue creation
+- Added per-item prompting instead of batch y/n
+- Now creates beads issues directly via beads.FallbackCreate
+- Supports [y/N/q] for each actionable item
+- Issues created with P2 priority and triage:review label
