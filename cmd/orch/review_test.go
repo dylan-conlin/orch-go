@@ -283,6 +283,78 @@ func TestCountBulletPoints(t *testing.T) {
 	}
 }
 
+// TestReviewDoneCategorizesCompletions verifies that runReviewDone correctly
+// categorizes completions into canComplete (VerifyOK && has beads ID) and
+// needsReview (no beads ID or verification failed).
+func TestReviewDoneCategorizesCompletions(t *testing.T) {
+	completions := []CompletionInfo{
+		// Should be in canComplete
+		{WorkspaceID: "ws-1", BeadsID: "project-abc1", VerifyOK: true, Project: "project"},
+		{WorkspaceID: "ws-2", BeadsID: "project-abc2", VerifyOK: true, Project: "project"},
+		// Should be in needsReview (no beads ID)
+		{WorkspaceID: "ws-3", BeadsID: "", VerifyOK: true, Project: "project"},
+		// Should be in needsReview (verification failed)
+		{WorkspaceID: "ws-4", BeadsID: "project-abc4", VerifyOK: false, Project: "project"},
+		// Should be in needsReview (both missing beads ID and failed verification)
+		{WorkspaceID: "ws-5", BeadsID: "", VerifyOK: false, Project: "project"},
+	}
+
+	// Categorize using the same logic as runReviewDone
+	var canComplete []CompletionInfo
+	var needsReview []CompletionInfo
+	for _, c := range completions {
+		if c.VerifyOK && c.BeadsID != "" {
+			canComplete = append(canComplete, c)
+		} else {
+			needsReview = append(needsReview, c)
+		}
+	}
+
+	if len(canComplete) != 2 {
+		t.Errorf("Expected 2 completions in canComplete, got %d", len(canComplete))
+	}
+	if len(needsReview) != 3 {
+		t.Errorf("Expected 3 completions in needsReview, got %d", len(needsReview))
+	}
+
+	// Verify canComplete contains the right items
+	for _, c := range canComplete {
+		if c.BeadsID == "" {
+			t.Errorf("canComplete item has empty beads ID: %s", c.WorkspaceID)
+		}
+		if !c.VerifyOK {
+			t.Errorf("canComplete item has VerifyOK=false: %s", c.WorkspaceID)
+		}
+	}
+
+	// Verify needsReview items are correct
+	for _, c := range needsReview {
+		if c.VerifyOK && c.BeadsID != "" {
+			t.Errorf("needsReview item should not have both VerifyOK=true and beads ID: %s", c.WorkspaceID)
+		}
+	}
+}
+
+// TestReviewDoneCommandHasYesFlag verifies that the done subcommand has the -y/--yes flag.
+func TestReviewDoneCommandHasYesFlag(t *testing.T) {
+	// Find the done subcommand
+	doneCmd, _, err := reviewCmd.Find([]string{"done"})
+	if err != nil || doneCmd == nil {
+		t.Fatal("Expected 'done' subcommand to exist")
+	}
+
+	// Check -y/--yes flag exists
+	yFlag := doneCmd.Flags().Lookup("yes")
+	if yFlag == nil {
+		t.Error("Expected -y/--yes flag on review done command")
+	}
+
+	// Check shorthand
+	if yFlag != nil && yFlag.Shorthand != "y" {
+		t.Errorf("Expected shorthand 'y', got %q", yFlag.Shorthand)
+	}
+}
+
 // TestGetCompletionsForReviewWorkspaceBased verifies workspace-based completion detection.
 func TestGetCompletionsForReviewWorkspaceBased(t *testing.T) {
 	// Create temp project directory

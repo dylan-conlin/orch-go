@@ -2,12 +2,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -16,6 +20,7 @@ var (
 	// Review command flags
 	reviewProject     string
 	reviewNeedsReview bool
+	reviewDoneYes     bool
 )
 
 var reviewCmd = &cobra.Command{
@@ -49,13 +54,17 @@ Examples:
 
 var reviewDoneCmd = &cobra.Command{
 	Use:   "done [project]",
-	Short: "Mark project completions as reviewed",
-	Long: `Mark all completed agents for a project as reviewed.
+	Short: "Complete all agents for a project",
+	Long: `Complete all agents for a project by closing their beads issues.
 
-Use this after reviewing completions and verifying the work is acceptable.
+This runs the completion workflow for each agent with Phase: Complete status,
+closing the beads issue and cleaning up resources.
+
+Agents that fail verification (no Phase: Complete) will be skipped.
 
 Examples:
-  orch-go review done orch-cli     # Mark orch-cli completions as reviewed`,
+  orch-go review done orch-cli     # Complete all orch-cli agents (with confirmation)
+  orch-go review done orch-cli -y  # Skip confirmation`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runReviewDone(args[0])
@@ -65,6 +74,7 @@ Examples:
 func init() {
 	reviewCmd.Flags().StringVarP(&reviewProject, "project", "p", "", "Filter by project")
 	reviewCmd.Flags().BoolVar(&reviewNeedsReview, "needs-review", false, "Show failures only")
+	reviewDoneCmd.Flags().BoolVarP(&reviewDoneYes, "yes", "y", false, "Skip confirmation prompt")
 	reviewCmd.AddCommand(reviewDoneCmd)
 }
 
@@ -356,7 +366,7 @@ func runReview(projectFilter string, needsReviewOnly bool) error {
 	fmt.Printf("Total: %d completions (%d OK, %d need review)\n", totalOK+totalFailed, totalOK, totalFailed)
 
 	if totalOK > 0 {
-		fmt.Printf("\nTo mark completions as reviewed:\n")
+		fmt.Printf("\nTo complete agents and close beads issues:\n")
 		for _, project := range projects {
 			fmt.Printf("  orch-go review done %s\n", project)
 		}
@@ -390,31 +400,142 @@ func runReviewDone(project string) error {
 		return nil
 	}
 
-	// Mark each as reviewed (we just print - no persistent state needed since
-	// workspaces with SYNTHESIS.md are the source of truth for completion)
-	marked := 0
+	// Count by verification status
+	var canComplete []CompletionInfo
+	var needsReview []CompletionInfo
 	for _, c := range projectCompletions {
-		fmt.Printf("Marked as reviewed: %s", c.WorkspaceID)
-		if c.BeadsID != "" {
-			fmt.Printf(" (%s)", c.BeadsID)
-		}
-		fmt.Println()
-		marked++
-	}
-
-	fmt.Printf("\nMarked %d completions as reviewed for %s\n", marked, project)
-
-	// Check if there are failures that weren't addressed
-	failedCount := 0
-	for _, c := range projectCompletions {
-		if !c.VerifyOK {
-			failedCount++
+		if c.VerifyOK && c.BeadsID != "" {
+			canComplete = append(canComplete, c)
+		} else {
+			needsReview = append(needsReview, c)
 		}
 	}
 
-	if failedCount > 0 {
-		fmt.Fprintf(os.Stderr, "\nWarning: %d completions had verification failures.\n", failedCount)
-		fmt.Fprintf(os.Stderr, "Consider reviewing these issues manually.\n")
+	// Show summary before proceeding
+	fmt.Printf("Project: %s\n", project)
+	fmt.Printf("  Ready to complete: %d\n", len(canComplete))
+	fmt.Printf("  Needs manual review: %d\n", len(needsReview))
+
+	if len(canComplete) == 0 {
+		fmt.Println("\nNo agents ready to complete (need Phase: Complete and valid beads ID)")
+		if len(needsReview) > 0 {
+			fmt.Println("\nAgents needing manual review:")
+			for _, c := range needsReview {
+				reason := "missing beads ID"
+				if c.BeadsID != "" {
+					reason = "verification failed"
+					if c.VerifyError != "" {
+						reason = c.VerifyError
+					}
+				}
+				fmt.Printf("  - %s: %s\n", c.WorkspaceID, reason)
+			}
+		}
+		return nil
+	}
+
+	// Confirmation prompt unless --yes flag is set
+	if !reviewDoneYes {
+		fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
+		fmt.Print("Continue? [y/N]: ")
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read response: %w", err)
+		}
+
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "y" && response != "yes" {
+			return fmt.Errorf("aborted")
+		}
+	}
+
+	// Process each completion
+	completed := 0
+	var completionErrors []string
+
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	logger := events.NewLogger(events.DefaultLogPath())
+
+	for _, c := range canComplete {
+		fmt.Printf("\nCompleting: %s (%s)\n", c.WorkspaceID, c.BeadsID)
+
+		// Check if already closed
+		issue, err := verify.GetIssue(c.BeadsID)
+		if err != nil {
+			completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to get issue: %v", c.BeadsID, err))
+			continue
+		}
+		if issue.Status == "closed" {
+			fmt.Printf("  Already closed, skipping beads close\n")
+		} else {
+			// Determine close reason from phase summary
+			reason := "Completed via orch review done"
+			if c.Summary != "" {
+				reason = c.Summary
+			}
+
+			// Close the beads issue
+			if err := verify.CloseIssue(c.BeadsID, reason); err != nil {
+				completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to close: %v", c.BeadsID, err))
+				continue
+			}
+			fmt.Printf("  Closed beads issue\n")
+		}
+
+		// Clean up tmux window if it exists
+		if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(c.BeadsID); err == nil && window != nil {
+			if err := tmux.KillWindow(window.Target); err != nil {
+				fmt.Printf("  Warning: failed to close tmux window: %v\n", err)
+			} else {
+				fmt.Printf("  Closed tmux window: %s:%s\n", sessionName, window.Name)
+			}
+		}
+
+		// Log the completion
+		event := events.Event{
+			Type:      "agent.completed",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id":    c.BeadsID,
+				"workspace":   c.WorkspaceID,
+				"reason":      c.Summary,
+				"batch":       true,
+				"source":      "review_done",
+				"project_dir": projectDir,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Printf("  Warning: failed to log event: %v\n", err)
+		}
+
+		completed++
+	}
+
+	// Summary
+	fmt.Printf("\n---\n")
+	fmt.Printf("Completed: %d/%d agents\n", completed, len(canComplete))
+
+	if len(completionErrors) > 0 {
+		fmt.Fprintf(os.Stderr, "\nErrors (%d):\n", len(completionErrors))
+		for _, e := range completionErrors {
+			fmt.Fprintf(os.Stderr, "  - %s\n", e)
+		}
+	}
+
+	if len(needsReview) > 0 {
+		fmt.Printf("\nAgents needing manual review (%d):\n", len(needsReview))
+		for _, c := range needsReview {
+			reason := "missing beads ID"
+			if c.BeadsID != "" {
+				reason = "verification failed"
+			}
+			fmt.Printf("  - %s: %s\n", c.WorkspaceID, reason)
+		}
 	}
 
 	return nil
