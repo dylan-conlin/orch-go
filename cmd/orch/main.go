@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -992,6 +993,12 @@ func checkAndAutoSwitchAccount() error {
 	if err != nil {
 		// Log warning but don't block spawn - continue with current account
 		fmt.Fprintf(os.Stderr, "Warning: auto-switch check failed: %v\n", err)
+
+		// Check if the underlying error is a TokenRefreshError and provide guidance
+		var tokenErr *account.TokenRefreshError
+		if errors.As(err, &tokenErr) {
+			fmt.Fprintf(os.Stderr, "  → %s\n", tokenErr.ActionableGuidance())
+		}
 		return nil
 	}
 
@@ -3333,6 +3340,12 @@ func runAccountList() error {
 func runAccountSwitch(name string) error {
 	email, err := account.SwitchAccount(name)
 	if err != nil {
+		// Check if it's a token refresh error to provide actionable guidance
+		if tokenErr, ok := err.(*account.TokenRefreshError); ok {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", tokenErr.Error())
+			fmt.Fprintf(os.Stderr, "\n%s\n", tokenErr.ActionableGuidance())
+			return fmt.Errorf("token refresh failed for account '%s'", name)
+		}
 		return err
 	}
 

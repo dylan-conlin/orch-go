@@ -324,6 +324,37 @@ func TestCapacityError(t *testing.T) {
 	}
 }
 
+func TestTokenRefreshError(t *testing.T) {
+	// Test basic error
+	err := &TokenRefreshError{Message: "token expired"}
+	if got := err.Error(); got != "token expired" {
+		t.Errorf("TokenRefreshError.Error() = %q, want %q", got, "token expired")
+	}
+
+	// Test WithAccount
+	errWithAccount := err.WithAccount("personal")
+	if errWithAccount.AccountName != "personal" {
+		t.Errorf("WithAccount().AccountName = %q, want %q", errWithAccount.AccountName, "personal")
+	}
+	if errWithAccount.Message != "token expired" {
+		t.Errorf("WithAccount().Message = %q, want %q", errWithAccount.Message, "token expired")
+	}
+
+	// Test ActionableGuidance with account name
+	guidance := errWithAccount.ActionableGuidance()
+	expected := "To re-authorize: orch account remove personal && orch account add personal"
+	if guidance != expected {
+		t.Errorf("ActionableGuidance() = %q, want %q", guidance, expected)
+	}
+
+	// Test ActionableGuidance without account name
+	guidanceNoAccount := err.ActionableGuidance()
+	expectedNoAccount := "To re-authorize: orch account remove <name> && orch account add <name>"
+	if guidanceNoAccount != expectedNoAccount {
+		t.Errorf("ActionableGuidance() without account = %q, want %q", guidanceNoAccount, expectedNoAccount)
+	}
+}
+
 // ============================================================================
 // Auto-Switch Tests
 // ============================================================================

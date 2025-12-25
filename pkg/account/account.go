@@ -43,11 +43,28 @@ type TokenInfo struct {
 
 // TokenRefreshError is returned when token refresh fails.
 type TokenRefreshError struct {
-	Message string
+	Message     string
+	AccountName string // The account name, if known (for actionable guidance)
 }
 
 func (e *TokenRefreshError) Error() string {
 	return e.Message
+}
+
+// WithAccount returns a new TokenRefreshError with the account name set.
+func (e *TokenRefreshError) WithAccount(name string) *TokenRefreshError {
+	return &TokenRefreshError{
+		Message:     e.Message,
+		AccountName: name,
+	}
+}
+
+// ActionableGuidance returns a string with actionable guidance for resolving the error.
+func (e *TokenRefreshError) ActionableGuidance() string {
+	if e.AccountName != "" {
+		return fmt.Sprintf("To re-authorize: orch account remove %s && orch account add %s", e.AccountName, e.AccountName)
+	}
+	return "To re-authorize: orch account remove <name> && orch account add <name>"
 }
 
 // Account represents a saved account configuration.
@@ -362,6 +379,10 @@ func SwitchAccount(name string) (email string, err error) {
 	// Exchange refresh token for new tokens
 	tokenInfo, err := RefreshOAuthToken(acc.RefreshToken)
 	if err != nil {
+		// If it's a TokenRefreshError, attach the account name for actionable guidance
+		if tokenErr, ok := err.(*TokenRefreshError); ok {
+			return "", tokenErr.WithAccount(name)
+		}
 		return "", fmt.Errorf("failed to refresh token for '%s': %w", name, err)
 	}
 
@@ -529,6 +550,10 @@ func GetAccountCapacity(name string) (*CapacityInfo, error) {
 	// Refresh the token to get a temporary access token
 	tokenInfo, err := RefreshOAuthToken(acc.RefreshToken)
 	if err != nil {
+		// If it's a TokenRefreshError, attach the account name for actionable guidance
+		if tokenErr, ok := err.(*TokenRefreshError); ok {
+			return &CapacityInfo{Error: fmt.Sprintf("token refresh failed: %v", err)}, tokenErr.WithAccount(name)
+		}
 		return &CapacityInfo{Error: fmt.Sprintf("token refresh failed: %v", err)}, err
 	}
 
