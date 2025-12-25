@@ -9,15 +9,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
-// Comment represents a beads issue comment.
-type Comment struct {
-	ID        int64  `json:"id"`
-	Text      string `json:"text"`
-	Author    string `json:"author"`
-	CreatedAt string `json:"created_at"`
-}
+// Comment is an alias for beads.Comment for compatibility.
+type Comment = beads.Comment
 
 // Issue represents a beads issue with comments.
 type Issue struct {
@@ -37,26 +34,25 @@ type PhaseStatus struct {
 	Found   bool   // Whether a Phase: comment was found
 }
 
-// GetComments retrieves comments for a beads issue using the bd CLI.
+// GetComments retrieves comments for a beads issue.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func GetComments(beadsID string) ([]Comment, error) {
-	cmd := exec.Command("bd", "comments", beadsID, "--json")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get comments: %w", err)
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			comments, err := client.Comments(beadsID)
+			if err == nil {
+				return comments, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
-	// Handle null response (no comments)
-	if strings.TrimSpace(string(output)) == "null" {
-		return []Comment{}, nil
-	}
-
-	var comments []Comment
-	if err := json.Unmarshal(output, &comments); err != nil {
-		return nil, fmt.Errorf("failed to parse comments: %w", err)
-	}
-
-	return comments, nil
+	// Fallback to CLI
+	return beads.FallbackComments(beadsID)
 }
 
 // ParsePhaseFromComments extracts the latest Phase status from comments.
@@ -570,44 +566,39 @@ func ListOpenIssues() (map[string]*Issue, error) {
 	return result, nil
 }
 
-// CommentResult holds comments for a single issue
-type CommentResult struct {
-	BeadsID  string
-	Comments []Comment
-	Err      error
-}
-
-// GetCommentsBatch fetches comments for multiple issues with limited concurrency.
+// GetCommentsBatch fetches comments for multiple issues sequentially.
 // Returns a map from beadsID to comments. Errors are silently skipped.
+// Uses the beads RPC client which handles serialization, so no concurrency control needed.
 func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 	if len(beadsIDs) == 0 {
 		return make(map[string][]Comment)
 	}
 
-	// Limit concurrency to prevent overwhelming the system with bd processes
-	const maxConcurrent = 10
+	commentMap := make(map[string][]Comment, len(beadsIDs))
 
-	// Use a channel to collect results
-	results := make(chan CommentResult, len(beadsIDs))
-	// Semaphore to limit concurrent goroutines
-	sem := make(chan struct{}, maxConcurrent)
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
 
-	// Launch goroutines for each beads ID
-	for _, id := range beadsIDs {
-		go func(beadsID string) {
-			sem <- struct{}{}        // Acquire semaphore
-			defer func() { <-sem }() // Release semaphore
-			comments, err := GetComments(beadsID)
-			results <- CommentResult{BeadsID: beadsID, Comments: comments, Err: err}
-		}(id)
+			// Fetch comments sequentially via RPC
+			for _, beadsID := range beadsIDs {
+				comments, err := client.Comments(beadsID)
+				if err == nil {
+					commentMap[beadsID] = comments
+				}
+			}
+			return commentMap
+		}
 	}
 
-	// Collect results
-	commentMap := make(map[string][]Comment, len(beadsIDs))
-	for i := 0; i < len(beadsIDs); i++ {
-		r := <-results
-		if r.Err == nil {
-			commentMap[r.BeadsID] = r.Comments
+	// Fallback to CLI for each issue
+	for _, beadsID := range beadsIDs {
+		comments, err := beads.FallbackComments(beadsID)
+		if err == nil {
+			commentMap[beadsID] = comments
 		}
 	}
 

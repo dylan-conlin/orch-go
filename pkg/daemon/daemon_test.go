@@ -4,6 +4,8 @@ package daemon
 import (
 	"fmt"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
 func TestNextIssue_EmptyQueue(t *testing.T) {
@@ -827,4 +829,83 @@ func TestDaemon_ReleaseSlot_NoPool(t *testing.T) {
 
 	// Should not panic
 	d.ReleaseSlot(&Slot{ID: 1})
+}
+
+// Tests for beads RPC client integration
+
+func TestConvertBeadsIssues_Empty(t *testing.T) {
+	var beadsIssues []beads.Issue
+	result := convertBeadsIssues(beadsIssues)
+
+	if len(result) != 0 {
+		t.Errorf("convertBeadsIssues(empty) = %d issues, want 0", len(result))
+	}
+}
+
+func TestConvertBeadsIssues_ConvertsAllFields(t *testing.T) {
+	beadsIssues := []beads.Issue{
+		{
+			ID:          "proj-123",
+			Title:       "Test Issue",
+			Description: "Test description",
+			Priority:    1,
+			Status:      "open",
+			IssueType:   "feature",
+			Labels:      []string{"triage:ready", "P1"},
+		},
+	}
+
+	result := convertBeadsIssues(beadsIssues)
+
+	if len(result) != 1 {
+		t.Fatalf("convertBeadsIssues() = %d issues, want 1", len(result))
+	}
+
+	got := result[0]
+	if got.ID != "proj-123" {
+		t.Errorf("ID = %q, want 'proj-123'", got.ID)
+	}
+	if got.Title != "Test Issue" {
+		t.Errorf("Title = %q, want 'Test Issue'", got.Title)
+	}
+	if got.Description != "Test description" {
+		t.Errorf("Description = %q, want 'Test description'", got.Description)
+	}
+	if got.Priority != 1 {
+		t.Errorf("Priority = %d, want 1", got.Priority)
+	}
+	if got.Status != "open" {
+		t.Errorf("Status = %q, want 'open'", got.Status)
+	}
+	if got.IssueType != "feature" {
+		t.Errorf("IssueType = %q, want 'feature'", got.IssueType)
+	}
+	if len(got.Labels) != 2 || got.Labels[0] != "triage:ready" || got.Labels[1] != "P1" {
+		t.Errorf("Labels = %v, want [triage:ready P1]", got.Labels)
+	}
+}
+
+func TestConvertBeadsIssues_MultipleIssues(t *testing.T) {
+	beadsIssues := []beads.Issue{
+		{ID: "proj-1", Title: "First", IssueType: "bug"},
+		{ID: "proj-2", Title: "Second", IssueType: "feature"},
+		{ID: "proj-3", Title: "Third", IssueType: "task"},
+	}
+
+	result := convertBeadsIssues(beadsIssues)
+
+	if len(result) != 3 {
+		t.Fatalf("convertBeadsIssues() = %d issues, want 3", len(result))
+	}
+
+	// Verify order is preserved
+	if result[0].ID != "proj-1" {
+		t.Errorf("result[0].ID = %q, want 'proj-1'", result[0].ID)
+	}
+	if result[1].ID != "proj-2" {
+		t.Errorf("result[1].ID = %q, want 'proj-2'", result[1].ID)
+	}
+	if result[2].ID != "proj-3" {
+		t.Errorf("result[2].ID = %q, want 'proj-3'", result[2].ID)
+	}
 }

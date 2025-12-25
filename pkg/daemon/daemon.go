@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
 // Config holds configuration for the daemon.
@@ -308,8 +310,29 @@ func truncate(s string, maxLen int) string {
 }
 
 // ListReadyIssues retrieves ready issues from beads (open or in_progress, no blockers).
-// This is the default implementation that shells out to bd.
+// It uses the beads RPC daemon if available, falling back to the bd CLI if not.
 func ListReadyIssues() ([]Issue, error) {
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			beadsIssues, err := client.Ready(nil)
+			if err == nil {
+				return convertBeadsIssues(beadsIssues), nil
+			}
+			// Fall through to CLI fallback on Ready() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI if daemon unavailable
+	return listReadyIssuesCLI()
+}
+
+// listReadyIssuesCLI retrieves ready issues by shelling out to bd CLI.
+func listReadyIssuesCLI() ([]Issue, error) {
 	cmd := exec.Command("bd", "ready", "--json")
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
@@ -323,6 +346,23 @@ func ListReadyIssues() ([]Issue, error) {
 	}
 
 	return issues, nil
+}
+
+// convertBeadsIssues converts beads.Issue slice to daemon.Issue slice.
+func convertBeadsIssues(beadsIssues []beads.Issue) []Issue {
+	issues := make([]Issue, len(beadsIssues))
+	for i, bi := range beadsIssues {
+		issues[i] = Issue{
+			ID:          bi.ID,
+			Title:       bi.Title,
+			Description: bi.Description,
+			Priority:    bi.Priority,
+			Status:      bi.Status,
+			IssueType:   bi.IssueType,
+			Labels:      bi.Labels,
+		}
+	}
+	return issues
 }
 
 // ListOpenIssues is an alias for ListReadyIssues for backward compatibility.
