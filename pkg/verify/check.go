@@ -540,8 +540,9 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 // ListOpenIssues retrieves all open issues in a single call.
 // Returns a map from beadsID to Issue.
 func ListOpenIssues() (map[string]*Issue, error) {
-	// Note: bd list requires multiple -s flags for multiple statuses
-	cmd := exec.Command("bd", "list", "-s", "open", "-s", "in_progress", "-s", "blocked", "--json")
+	// Note: bd list -s only accepts a single status, not multiple
+	// So we fetch all issues and filter in Go
+	cmd := exec.Command("bd", "list", "--json")
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
@@ -558,9 +559,13 @@ func ListOpenIssues() (map[string]*Issue, error) {
 		return nil, fmt.Errorf("failed to parse issues: %w", err)
 	}
 
-	result := make(map[string]*Issue, len(issues))
+	// Filter to open/in_progress/blocked statuses
+	result := make(map[string]*Issue)
 	for i := range issues {
-		result[issues[i].ID] = &issues[i]
+		status := strings.ToLower(issues[i].Status)
+		if status == "open" || status == "in_progress" || status == "blocked" {
+			result[issues[i].ID] = &issues[i]
+		}
 	}
 	return result, nil
 }
@@ -572,19 +577,26 @@ type CommentResult struct {
 	Err      error
 }
 
-// GetCommentsBatch fetches comments for multiple issues in parallel.
+// GetCommentsBatch fetches comments for multiple issues with limited concurrency.
 // Returns a map from beadsID to comments. Errors are silently skipped.
 func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 	if len(beadsIDs) == 0 {
 		return make(map[string][]Comment)
 	}
 
+	// Limit concurrency to prevent overwhelming the system with bd processes
+	const maxConcurrent = 10
+
 	// Use a channel to collect results
 	results := make(chan CommentResult, len(beadsIDs))
+	// Semaphore to limit concurrent goroutines
+	sem := make(chan struct{}, maxConcurrent)
 
 	// Launch goroutines for each beads ID
 	for _, id := range beadsIDs {
 		go func(beadsID string) {
+			sem <- struct{}{}        // Acquire semaphore
+			defer func() { <-sem }() // Release semaphore
 			comments, err := GetComments(beadsID)
 			results <- CommentResult{BeadsID: beadsID, Comments: comments, Err: err}
 		}(id)

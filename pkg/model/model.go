@@ -38,7 +38,9 @@ var Aliases = map[string]ModelSpec{
 	// Google models (Gemini)
 	"flash":     {Provider: "google", ModelID: "gemini-2.5-flash"},
 	"flash-2.5": {Provider: "google", ModelID: "gemini-2.5-flash"},
+	"flash3":    {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"flash-3":   {Provider: "google", ModelID: "gemini-3-flash-preview"},
+	"flash-3.0": {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"pro":       {Provider: "google", ModelID: "gemini-2.5-pro"},
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
 }
@@ -98,6 +100,6 @@ func ListAliases() []string {
 
 	return append(
 		[]string{"Anthropic: opus, sonnet, haiku (also -4.5 variants)"},
-		"Google: flash, flash-2.5, flash-3, pro, pro-2.5",
+		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
 	)
 }
