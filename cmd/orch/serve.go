@@ -854,11 +854,12 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try RPC client first
+	// Try RPC client first, using sourceDir (build-time) as the base directory
+	// since serve may run from any working directory
 	var stats *beads.Stats
 	var err error
 
-	socketPath, socketErr := beads.FindSocketPath("")
+	socketPath, socketErr := beads.FindSocketPath(sourceDir)
 	if socketErr == nil {
 		client := beads.NewClient(socketPath)
 		if connErr := client.Connect(); connErr == nil {

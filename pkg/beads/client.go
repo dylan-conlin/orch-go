@@ -313,6 +313,15 @@ func (c *Client) Stats() (*Stats, error) {
 		return nil, err
 	}
 
+	// RPC returns flat stats (no "summary" wrapper), CLI returns wrapped.
+	// Try flat format first (RPC), then wrapped format (CLI fallback compatibility).
+	var summary StatsSummary
+	if err := json.Unmarshal(resp.Data, &summary); err == nil && summary.TotalIssues > 0 {
+		// RPC format: flat StatsSummary
+		return &Stats{Summary: summary}, nil
+	}
+
+	// Try wrapped format (CLI format)
 	var stats Stats
 	if err := json.Unmarshal(resp.Data, &stats); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal stats: %w", err)
