@@ -10,10 +10,10 @@
         - generic [ref=e9]: Swarm
       - generic [ref=e10]:
         - generic "Claude Max usage limits" [ref=e11]:
-          - 'generic "5-hour rolling usage: 30% of limit" [ref=e12]': 30%
+          - 'generic "5-hour rolling usage: 6% of limit" [ref=e12]': 6%
           - generic "5-hour rolling window" [ref=e13]: 5hr
           - generic [ref=e14]: "|"
-          - 'generic "Weekly usage: 4% of limit" [ref=e15]': 4%
+          - 'generic "Weekly usage: 13% of limit" [ref=e15]': 13%
           - generic "Weekly limit (resets Monday)" [ref=e16]: week
           - generic "Active Claude Max account" [ref=e17]: "@work"
         - generic [ref=e18]: connected
@@ -23,32 +23,32 @@
     - generic [ref=e23]:
       - generic [ref=e24]:
         - generic [ref=e25]:
-          - generic "5-hour session limit • Resets in 1h 38m" [ref=e26]:
+          - generic "5-hour session limit • Resets in 4h 23m" [ref=e26]:
             - generic [ref=e27]: Hourly
-            - generic [ref=e30]: 30%
-            - generic [ref=e31]: (1h 38m)
-          - generic "7-day weekly limit • Resets in 6d 20h" [ref=e33]:
+            - generic [ref=e30]: 6%
+            - generic [ref=e31]: (4h 23m)
+          - generic "7-day weekly limit • Resets in 6d 18h" [ref=e33]:
             - generic [ref=e34]: Weekly
-            - generic [ref=e37]: 4%
-            - generic [ref=e38]: (6d 20h)
+            - generic [ref=e37]: 13%
+            - generic [ref=e38]: (6d 18h)
           - generic [ref=e40]:
             - generic [ref=e41]: ❌
             - generic [ref=e42]:
               - generic [ref=e43]: "0"
               - generic [ref=e44]: errors
         - generic [ref=e45]:
-          - generic "System stability and hardening" [ref=e46]:
+          - generic "Backlog reduction - close/triage to <50 open issues" [ref=e46]:
             - generic [ref=e47]: 🎯
             - generic [ref=e49]: focused
-          - generic "0 running, 24 stopped" [ref=e50]:
-            - generic [ref=e51]: 💤
+          - generic "3 running, 21 stopped" [ref=e50]:
+            - generic [ref=e51]: 🖥️
             - generic [ref=e52]:
-              - generic [ref=e53]: "0"
+              - generic [ref=e53]: "3"
               - generic [ref=e54]: /24 servers
-          - generic "186 ready, 17 blocked, 203 open" [ref=e55]:
+          - generic "175 ready, 17 blocked, 192 open" [ref=e55]:
             - generic [ref=e56]: 📋
             - generic [ref=e57]:
-              - generic [ref=e58]: "186"
+              - generic [ref=e58]: "175"
               - generic [ref=e59]: ready
             - generic [ref=e60]: (17 blocked)
         - button "Disconnect" [ref=e62] [cursor=pointer]
@@ -68,198 +68,131 @@
               - option "Completed"
               - option "Abandoned"
             - combobox [ref=e75]:
-              - option "All skills" [selected]
-              - option "feature-impl"
-              - option "architect"
-              - option "codebase-audit"
-              - option "systematic-debugging"
-              - option "investigation"
-              - option "research"
-            - combobox [ref=e76]:
               - option "Recent Activity" [selected]
               - option "Newest Spawned"
               - option "Oldest Spawned"
               - option "By Project"
               - option "By Phase"
               - option "A-Z"
-            - generic [ref=e77]: 399 agents
-          - generic [ref=e78]:
-            - generic [ref=e79]:
-              - button "🟢 Active 3" [expanded] [ref=e80] [cursor=pointer]:
-                - generic [ref=e81]:
-                  - generic [ref=e82]: 🟢
-                  - generic [ref=e83]: Active
-                  - generic [ref=e84]: "3"
-                - img [ref=e86]
-              - generic [ref=e89]:
-                - 'button "active Planning Generating response 48s Dashboard: Add project filter to show only current projec og-feat-dashboard-add-project-25dec [orch-go-fqdt] orch-go feature-impl orch-go-fqdt" [ref=e90] [cursor=pointer]':
-                  - generic [ref=e92]:
-                    - generic [ref=e93]:
-                      - generic [ref=e94]: active
-                      - generic [ref=e95]: Planning
-                    - generic [ref=e96]:
-                      - generic "Generating response" [ref=e97]
-                      - text: 48s
-                  - paragraph [ref=e98]: "Dashboard: Add project filter to show only current projec"
-                  - paragraph [ref=e99]: og-feat-dashboard-add-project-25dec [orch-go-fqdt]
-                  - generic [ref=e100]:
-                    - generic [ref=e101]: orch-go
-                    - generic [ref=e102]: feature-impl
-                    - generic "Beads Issue" [ref=e103]: orch-go-fqdt
-                - button "active Planning Generating response 1m 11s Dashboard progressive disclosure - Active/Recent/Archive og-feat-dashboard-progressive-disclosure-25dec [orch-go-iv07] orch-go feature-impl orch-go-iv07" [ref=e104] [cursor=pointer]:
-                  - generic [ref=e106]:
-                    - generic [ref=e107]:
-                      - generic [ref=e108]: active
-                      - generic [ref=e109]: Planning
-                    - generic [ref=e110]:
-                      - generic "Generating response" [ref=e111]
-                      - text: 1m 11s
-                  - paragraph [ref=e112]: Dashboard progressive disclosure - Active/Recent/Archive
-                  - paragraph [ref=e113]: og-feat-dashboard-progressive-disclosure-25dec [orch-go-iv07]
-                  - generic [ref=e114]:
-                    - generic [ref=e115]: orch-go
-                    - generic [ref=e116]: feature-impl
-                    - generic "Beads Issue" [ref=e117]: orch-go-iv07
-                - button "active Planning Generating response 1m 25s Integrate skillc verify into orch complete og-feat-integrate-skillc-verify-25dec [orch-go-loh8] orch-go feature-impl orch-go-loh8" [ref=e118] [cursor=pointer]:
-                  - generic [ref=e120]:
-                    - generic [ref=e121]:
-                      - generic [ref=e122]: active
-                      - generic [ref=e123]: Planning
-                    - generic [ref=e124]:
-                      - generic "Generating response" [ref=e125]
-                      - text: 1m 25s
-                  - paragraph [ref=e126]: Integrate skillc verify into orch complete
-                  - paragraph [ref=e127]: og-feat-integrate-skillc-verify-25dec [orch-go-loh8]
-                  - generic [ref=e128]:
-                    - generic [ref=e129]: orch-go
-                    - generic [ref=e130]: feature-impl
-                    - generic "Beads Issue" [ref=e131]: orch-go-loh8
-            - button "🕐 Recent 86 — Designed beads integration strategy for …, Investigated daemon autostart race condi… +84" [ref=e133] [cursor=pointer]:
-              - generic [ref=e134]:
-                - generic [ref=e135]: 🕐
-                - generic [ref=e136]: Recent
-                - generic [ref=e137]: "86"
-                - generic [ref=e138]: — Designed beads integration strategy for …, Investigated daemon autostart race condi… +84
-              - img [ref=e140]
-            - button "📦 Archive 310 — Analyzed swarm dashboard session display…, Audited orch-go codebase structure for o… +308" [ref=e143] [cursor=pointer]:
-              - generic [ref=e144]:
-                - generic [ref=e145]: 📦
-                - generic [ref=e146]: Archive
-                - generic [ref=e147]: "310"
-                - generic [ref=e148]: — Analyzed swarm dashboard session display…, Audited orch-go codebase structure for o… +308
-              - img [ref=e150]
-      - generic [ref=e152]:
-        - generic [ref=e153]:
-          - generic [ref=e154]:
-            - generic [ref=e155]:
-              - heading "Agent Lifecycle" [level=3] [ref=e156]
-              - generic [ref=e157]: ~/.orch/events.jsonl
-            - button "Stop" [ref=e158] [cursor=pointer]
-          - generic [ref=e159]:
-            - generic [ref=e160]:
-              - generic [ref=e161]: 🚀
-              - generic [ref=e162]: 10:20:56 AM
-              - generic [ref=e163]: Spawned
-              - generic [ref=e164]: ses_4a94
-            - generic [ref=e165]:
-              - generic [ref=e166]: 🚀
-              - generic [ref=e167]: 10:20:32 AM
-              - generic [ref=e168]: Spawned
-              - generic [ref=e169]: ses_4a94
-            - generic [ref=e170]:
-              - generic [ref=e171]: 🚀
-              - generic [ref=e172]: 10:20:17 AM
-              - generic [ref=e173]: Spawned
-              - generic [ref=e174]: ses_4a94
-            - generic [ref=e175]:
-              - generic [ref=e176]: 📝
-              - generic [ref=e177]: 9:27:52 AM
-              - generic [ref=e178]: agent.completed
-            - generic [ref=e179]:
-              - generic [ref=e180]: 🚀
-              - generic [ref=e181]: 9:12:19 AM
-              - generic [ref=e182]: Spawned
-              - generic [ref=e183]: ses_4a98
-            - generic [ref=e184]:
-              - generic [ref=e185]: 📝
-              - generic [ref=e186]: 8:50:37 AM
-              - generic [ref=e187]: agent.completed
-            - generic [ref=e188]:
-              - generic [ref=e189]: 🚀
-              - generic [ref=e190]: 8:33:24 AM
-              - generic [ref=e191]: Spawned
-              - generic [ref=e192]: ses_4a9a
-            - generic [ref=e193]:
-              - generic [ref=e194]: 📝
-              - generic [ref=e195]: 7:59:07 AM
-              - generic [ref=e196]: agent.completed
-            - generic [ref=e197]:
-              - generic [ref=e198]: 🚀
-              - generic [ref=e199]: 7:53:32 AM
-              - generic [ref=e200]: Spawned
-              - generic [ref=e201]: ses_4a9c
-            - generic [ref=e202]:
-              - generic [ref=e203]: 🚀
-              - generic [ref=e204]: 7:53:31 AM
-              - generic [ref=e205]: Spawned
-              - generic [ref=e206]: ses_4a9c
-            - generic [ref=e207]:
-              - generic [ref=e208]: 📝
-              - generic [ref=e209]: 7:53:15 AM
-              - generic [ref=e210]: agent.completed
-            - generic [ref=e211]:
-              - generic [ref=e212]: 🚀
-              - generic [ref=e213]: 7:44:11 AM
-              - generic [ref=e214]: Spawned
-              - generic [ref=e215]: ses_4a9d
-            - generic [ref=e216]:
-              - generic [ref=e217]: 📝
-              - generic [ref=e218]: 7:43:37 AM
-              - generic [ref=e219]: agent.completed
-            - generic [ref=e220]:
-              - generic [ref=e221]: 📝
-              - generic [ref=e222]: 7:31:53 AM
-              - generic [ref=e223]: agent.completed
-            - generic [ref=e224]:
-              - generic [ref=e225]: 🚀
-              - generic [ref=e226]: 7:27:47 AM
-              - generic [ref=e227]: Spawned
-              - generic [ref=e228]: ses_4a9e
-            - generic [ref=e229]:
-              - generic [ref=e230]: 🚀
-              - generic [ref=e231]: 7:23:02 AM
-              - generic [ref=e232]: Spawned
-              - generic [ref=e233]: ses_4a9e
-            - generic [ref=e234]:
-              - generic [ref=e235]: 🚀
-              - generic [ref=e236]: 11:02:28 PM
-              - generic [ref=e237]: Spawned
-              - generic [ref=e238]: ses_4aba
-            - generic [ref=e239]:
-              - generic [ref=e240]: 🚀
-              - generic [ref=e241]: 10:47:10 PM
-              - generic [ref=e242]: Spawned
-              - generic [ref=e243]: ses_4abb
-            - generic [ref=e244]:
-              - generic [ref=e245]: 🚀
-              - generic [ref=e246]: 10:27:35 PM
-              - generic [ref=e247]: Spawned
-              - generic [ref=e248]: ses_4abc
-            - generic [ref=e249]:
-              - generic [ref=e250]: 📝
-              - generic [ref=e251]: 10:03:18 PM
-              - generic [ref=e252]: agent.completed
-        - generic [ref=e253]:
-          - generic [ref=e254]:
-            - generic [ref=e255]:
-              - heading "SSE Stream" [level=3] [ref=e256]
-              - generic [ref=e257]: OpenCode events
-            - generic [ref=e258]: 2 events
-          - generic [ref=e259]:
-            - generic [ref=e260]:
-              - generic [ref=e261]: 10:21:39 AM
-              - generic [ref=e262]: server.connected
-            - generic [ref=e263]:
-              - generic [ref=e264]: 10:21:39 AM
-              - generic [ref=e265]: proxy.connected
+            - generic [ref=e76]: 0 agents
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - button "🟢 Active 0" [expanded] [ref=e79] [cursor=pointer]:
+                - generic [ref=e80]:
+                  - generic [ref=e81]: 🟢
+                  - generic [ref=e82]: Active
+                  - generic [ref=e83]: "0"
+                - img [ref=e85]
+              - generic [ref=e87]: No active agents
+            - generic [ref=e88]:
+              - paragraph [ref=e89]: No agents in the swarm
+              - paragraph [ref=e90]:
+                - text: Spawn with
+                - code [ref=e91]: orch spawn
+      - generic [ref=e92]:
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - heading "Agent Lifecycle" [level=3] [ref=e96]
+              - generic [ref=e97]: ~/.orch/events.jsonl
+            - button "Stop" [ref=e98] [cursor=pointer]
+          - generic [ref=e99]:
+            - generic [ref=e100]:
+              - generic [ref=e101]: 📝
+              - generic [ref=e102]: 12:35:12 PM
+              - generic [ref=e103]: focus.set
+            - generic [ref=e104]:
+              - generic [ref=e105]: 📝
+              - generic [ref=e106]: 12:20:38 PM
+              - generic [ref=e107]: agent.completed
+            - generic [ref=e108]:
+              - generic [ref=e109]: 📝
+              - generic [ref=e110]: 12:20:30 PM
+              - generic [ref=e111]: agent.wait.complete
+            - generic [ref=e112]:
+              - generic [ref=e113]: 🚀
+              - generic [ref=e114]: 12:20:25 PM
+              - generic [ref=e115]: Spawned
+              - generic [ref=e116]: ses_4a8d
+            - generic [ref=e117]:
+              - generic [ref=e118]: 📝
+              - generic [ref=e119]: 12:12:49 PM
+              - generic [ref=e120]: agent.completed
+            - generic [ref=e121]:
+              - generic [ref=e122]: 📝
+              - generic [ref=e123]: 12:12:48 PM
+              - generic [ref=e124]: agent.completed
+            - generic [ref=e125]:
+              - generic [ref=e126]: 📝
+              - generic [ref=e127]: 12:12:47 PM
+              - generic [ref=e128]: agent.completed
+            - generic [ref=e129]:
+              - generic [ref=e130]: 🚀
+              - generic [ref=e131]: 12:10:21 PM
+              - generic [ref=e132]: Spawned
+              - generic [ref=e133]: ses_4a8d
+            - generic [ref=e134]:
+              - generic [ref=e135]: 📝
+              - generic [ref=e136]: 12:09:52 PM
+              - generic [ref=e137]: agent.completed
+            - generic [ref=e138]:
+              - generic [ref=e139]: 📝
+              - generic [ref=e140]: 12:09:51 PM
+              - generic [ref=e141]: agent.completed
+            - generic [ref=e142]:
+              - generic [ref=e143]: 📝
+              - generic [ref=e144]: 12:09:49 PM
+              - generic [ref=e145]: agent.completed
+            - generic [ref=e146]:
+              - generic [ref=e147]: 📝
+              - generic [ref=e148]: 12:09:48 PM
+              - generic [ref=e149]: agent.completed
+            - generic [ref=e150]:
+              - generic [ref=e151]: 📝
+              - generic [ref=e152]: 12:09:28 PM
+              - generic [ref=e153]: agent.completed
+            - generic [ref=e154]:
+              - generic [ref=e155]: 🚀
+              - generic [ref=e156]: 12:03:18 PM
+              - generic [ref=e157]: Spawned
+              - generic [ref=e158]: ses_4a8e
+            - generic [ref=e159]:
+              - generic [ref=e160]: 📝
+              - generic [ref=e161]: 11:57:25 AM
+              - generic [ref=e162]: agent.completed
+            - generic [ref=e163]:
+              - generic [ref=e164]: 📝
+              - generic [ref=e165]: 11:57:23 AM
+              - generic [ref=e166]: agent.completed
+            - generic [ref=e167]:
+              - generic [ref=e168]: 📝
+              - generic [ref=e169]: 11:57:23 AM
+              - generic [ref=e170]: agent.completed
+            - generic [ref=e171]:
+              - generic [ref=e172]: 🚀
+              - generic [ref=e173]: 11:50:28 AM
+              - generic [ref=e174]: Spawned
+              - generic [ref=e175]: ses_4a8f
+            - generic [ref=e176]:
+              - generic [ref=e177]: 🚀
+              - generic [ref=e178]: 11:48:03 AM
+              - generic [ref=e179]: Spawned
+              - generic [ref=e180]: ses_4a8f
+            - generic [ref=e181]:
+              - generic [ref=e182]: 📝
+              - generic [ref=e183]: 11:44:22 AM
+              - generic [ref=e184]: agent.completed
+        - generic [ref=e185]:
+          - generic [ref=e186]:
+            - generic [ref=e187]:
+              - heading "SSE Stream" [level=3] [ref=e188]
+              - generic [ref=e189]: OpenCode events
+            - generic [ref=e190]: 2 events
+          - generic [ref=e191]:
+            - generic [ref=e192]:
+              - generic [ref=e193]: 12:36:51 PM
+              - generic [ref=e194]: server.connected
+            - generic [ref=e195]:
+              - generic [ref=e196]: 12:36:51 PM
+              - generic [ref=e197]: proxy.connected
 ```

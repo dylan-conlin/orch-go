@@ -106,4 +106,27 @@ Here’s what’s inside:
 In 2026, a lot of smart people armed with LLMs and formal tools will ship convincing-looking but wrong work faster than many of our teams can audit it. That’s the risk. What I’m putting together here is your early warning radar so you see it coming!
 
 Let’s dig in.
+* web ui design
+** dashboard design
+look at the web-ui from my perspective: /Users/dylanconlin/Screenshots/screenshot_2025-12-25_11-00-36.png
+
+
+
+** slide-out pane:
+this is the slide-out pane i see when i click on an agent card:
+/Users/dylanconlin/Screenshots/screenshot_2025-12-25_10-46-54.png
+
+design question: when are slide-outs preferred over modals? (in this case it seems like they act the same, but the slide-out gives us less horizontal space)
+
+the most valuable information (what i can't glean from the agent card) is this /Users/dylanconlin/Screenshots/screenshot_2025-12-25_10-50-19.png
+
+it has multiple issues:
+- duplication
+- tiny little window
+- poor formatting
+- etc.
+
+concerning the "copy identifiers" features, copying is useful because it help me easily sync with the orchestrator session, but we should think about how to do this more compactly.
+** human review step?
+
 
