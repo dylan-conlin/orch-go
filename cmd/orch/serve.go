@@ -7,12 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -854,45 +854,42 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Shell out to bd stats --json
-	cmd := exec.Command("bd", "stats", "--json")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	var stats *beads.Stats
+	var err error
+
+	socketPath, socketErr := beads.FindSocketPath("")
+	if socketErr == nil {
+		client := beads.NewClient(socketPath)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			stats, err = client.Stats()
+			if err != nil {
+				// Fall through to CLI fallback on RPC error
+				stats, err = beads.FallbackStats()
+			}
+		} else {
+			stats, err = beads.FallbackStats()
+		}
+	} else {
+		stats, err = beads.FallbackStats()
+	}
+
 	if err != nil {
-		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to run bd stats: %v", err)}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Parse the bd stats JSON output
-	var bdStats struct {
-		Summary struct {
-			TotalIssues      int     `json:"total_issues"`
-			OpenIssues       int     `json:"open_issues"`
-			InProgressIssues int     `json:"in_progress_issues"`
-			ClosedIssues     int     `json:"closed_issues"`
-			BlockedIssues    int     `json:"blocked_issues"`
-			ReadyIssues      int     `json:"ready_issues"`
-			AvgLeadTimeHours float64 `json:"average_lead_time_hours"`
-		} `json:"summary"`
-	}
-
-	if err := json.Unmarshal(output, &bdStats); err != nil {
-		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to parse bd stats: %v", err)}
+		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err)}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
 	resp := BeadsAPIResponse{
-		TotalIssues:    bdStats.Summary.TotalIssues,
-		OpenIssues:     bdStats.Summary.OpenIssues,
-		InProgress:     bdStats.Summary.InProgressIssues,
-		BlockedIssues:  bdStats.Summary.BlockedIssues,
-		ReadyIssues:    bdStats.Summary.ReadyIssues,
-		ClosedIssues:   bdStats.Summary.ClosedIssues,
-		AvgLeadTimeHrs: bdStats.Summary.AvgLeadTimeHours,
+		TotalIssues:    stats.Summary.TotalIssues,
+		OpenIssues:     stats.Summary.OpenIssues,
+		InProgress:     stats.Summary.InProgressIssues,
+		BlockedIssues:  stats.Summary.BlockedIssues,
+		ReadyIssues:    stats.Summary.ReadyIssues,
+		ClosedIssues:   stats.Summary.ClosedIssues,
+		AvgLeadTimeHrs: stats.Summary.AvgLeadTimeHours,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

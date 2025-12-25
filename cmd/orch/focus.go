@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -374,52 +374,36 @@ func runNext() error {
 }
 
 // getReadyIssues returns beads issues that are ready for work.
-// Calls `bd ready` to get the list.
-// Output format from bd ready:
-//
-//	📋 Ready work (3 issues with no blockers):
-//
-//	1. [P0] orch-go-o7x: Full HTTP API integration...
-//	2. [P2] orch-go-e0u: [orch-go] investigation...
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func getReadyIssues() []string {
-	// Get current directory for project context
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return nil
-	}
-
-	cmd := exec.Command("bd", "ready")
-	cmd.Dir = projectDir
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	var issues []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// Skip empty lines, headers (start with emoji), and "No" messages
-		if line == "" || strings.HasPrefix(line, "📋") || strings.HasPrefix(line, "No ") {
-			continue
-		}
-		// Look for lines starting with "N. " (numbered list)
-		// Format: "1. [P0] issue-id: title..."
-		if len(line) >= 3 && line[0] >= '0' && line[0] <= '9' && line[1] == '.' {
-			// Extract issue ID after the priority marker
-			// Format after number: " [P0] issue-id: title"
-			parts := strings.Fields(line)
-			// parts[0] = "1.", parts[1] = "[P0]", parts[2] = "issue-id:"
-			if len(parts) >= 3 {
-				issueWithColon := parts[2]
-				// Remove trailing colon if present
-				issueID := strings.TrimSuffix(issueWithColon, ":")
-				if issueID != "" {
-					issues = append(issues, issueID)
+
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			readyIssues, err := client.Ready(nil)
+			if err == nil {
+				for _, issue := range readyIssues {
+					issues = append(issues, issue.ID)
 				}
+				return issues
 			}
+			// Fall through to CLI fallback on RPC error
 		}
+	}
+
+	// Fallback to CLI
+	readyIssues, err := beads.FallbackReady()
+	if err != nil {
+		return nil
+	}
+
+	for _, issue := range readyIssues {
+		issues = append(issues, issue.ID)
 	}
 
 	return issues

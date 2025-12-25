@@ -311,14 +311,13 @@ func TestComment_JSON(t *testing.T) {
 
 func TestStats_JSON(t *testing.T) {
 	stats := Stats{
-		Total:   100,
-		Open:    80,
-		Closed:  20,
-		Blocked: 5,
-		Ready:   10,
-		ByStatus: map[string]int{
-			"open":   80,
-			"closed": 20,
+		Summary: StatsSummary{
+			TotalIssues:      100,
+			OpenIssues:       80,
+			ClosedIssues:     20,
+			BlockedIssues:    5,
+			ReadyIssues:      10,
+			InProgressIssues: 5,
 		},
 	}
 
@@ -332,11 +331,11 @@ func TestStats_JSON(t *testing.T) {
 		t.Fatalf("failed to unmarshal stats: %v", err)
 	}
 
-	if decoded.Total != 100 {
-		t.Errorf("Total = %d, want %d", decoded.Total, 100)
+	if decoded.Summary.TotalIssues != 100 {
+		t.Errorf("TotalIssues = %d, want %d", decoded.Summary.TotalIssues, 100)
 	}
-	if decoded.Ready != 10 {
-		t.Errorf("Ready = %d, want %d", decoded.Ready, 10)
+	if decoded.Summary.ReadyIssues != 10 {
+		t.Errorf("ReadyIssues = %d, want %d", decoded.Summary.ReadyIssues, 10)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -382,33 +383,36 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 }
 
 // getInProgressBeadsIDs returns a set of beads IDs that are currently in_progress.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func getInProgressBeadsIDs() map[string]bool {
 	result := make(map[string]bool)
 
-	cmd := exec.Command("bd", "list", "--status", "in_progress")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			issues, err := client.List(&beads.ListArgs{Status: "in_progress"})
+			if err == nil {
+				for _, issue := range issues {
+					result[issue.ID] = true
+				}
+				return result
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	issues, err := beads.FallbackList("in_progress")
 	if err != nil {
 		return result
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Parse lines like "orch-go-hey6 [P2] [task] in_progress - description"
-		// The beads ID is the first field
-		parts := strings.Fields(line)
-		if len(parts) >= 1 {
-			beadsID := parts[0]
-			// Validate it looks like a beads ID (contains hyphen and alphanumeric)
-			if strings.Contains(beadsID, "-") && len(beadsID) > 3 {
-				result[beadsID] = true
-			}
-		}
+	for _, issue := range issues {
+		result[issue.ID] = true
 	}
 
 	return result
@@ -417,52 +421,42 @@ func getInProgressBeadsIDs() map[string]bool {
 func gatherPendingIssues() []PendingIssue {
 	var issues []PendingIssue
 
-	// Run bd ready to get pending issues
-	cmd := exec.Command("bd", "ready")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			readyIssues, err := client.Ready(nil)
+			if err == nil {
+				for _, issue := range readyIssues {
+					priority := fmt.Sprintf("P%d", issue.Priority)
+					issues = append(issues, PendingIssue{
+						ID:       issue.ID,
+						Title:    issue.Title,
+						Priority: priority,
+					})
+				}
+				return issues
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	readyIssues, err := beads.FallbackReady()
 	if err != nil {
 		return issues
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// Skip empty lines, headers, and "No" messages
-		if line == "" || strings.HasPrefix(line, "📋") || strings.HasPrefix(line, "No ") {
-			continue
-		}
-
-		// Parse lines like "1. [P2] [feature] orch-go-xwh: Iterate on Swarm Dashboard UI/UX"
-		// Format: {num}. [{priority}] [{type}] {beads-id}: {title}
-		if len(line) >= 3 && line[0] >= '0' && line[0] <= '9' && line[1] == '.' {
-			parts := strings.Fields(line)
-			if len(parts) >= 4 {
-				// parts[0] is "1.", parts[1] is "[P2]", parts[2] is "[feature]", parts[3] is "orch-go-xwh:"
-				priority := strings.Trim(parts[1], "[]")
-
-				// Find the beads ID - it's the field that ends with ":"
-				var beadsID, title string
-				for i := 2; i < len(parts); i++ {
-					if strings.HasSuffix(parts[i], ":") {
-						beadsID = strings.TrimSuffix(parts[i], ":")
-						// Title is everything after the beads ID
-						if i+1 < len(parts) {
-							title = strings.Join(parts[i+1:], " ")
-						}
-						break
-					}
-				}
-
-				if beadsID != "" {
-					issues = append(issues, PendingIssue{
-						ID:       beadsID,
-						Title:    title,
-						Priority: priority,
-					})
-				}
-			}
-		}
+	for _, issue := range readyIssues {
+		priority := fmt.Sprintf("P%d", issue.Priority)
+		issues = append(issues, PendingIssue{
+			ID:       issue.ID,
+			Title:    issue.Title,
+			Priority: priority,
+		})
 	}
 
 	return issues
@@ -471,51 +465,52 @@ func gatherPendingIssues() []PendingIssue {
 func gatherRecentWork() []RecentWorkItem {
 	var work []RecentWorkItem
 
-	// Get recently closed issues from beads (today)
-	cmd := exec.Command("bd", "list", "--status", "closed")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			issues, err := client.List(&beads.ListArgs{Status: "closed"})
+			if err == nil {
+				// Limit to most recent 5
+				count := 0
+				for _, issue := range issues {
+					if count >= 5 {
+						break
+					}
+					description := fmt.Sprintf("[%s] %s", issue.ID, issue.Title)
+					work = append(work, RecentWorkItem{
+						Type:        "completed",
+						Description: description,
+					})
+					count++
+				}
+				return work
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	issues, err := beads.FallbackList("closed")
 	if err != nil {
 		return work
 	}
 
-	// Parse closed issues (limited to most recent 5)
-	// Format: "orch-go-66n [P0] [task] closed [triage:ready] - Implement Synthesis Protocol..."
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	// Limit to most recent 5
 	count := 0
-	for _, line := range lines {
+	for _, issue := range issues {
 		if count >= 5 {
 			break
 		}
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "📋") || strings.HasPrefix(line, "No ") {
-			continue
-		}
-
-		// Find the " - " separator that precedes the title
-		if idx := strings.Index(line, " - "); idx > 0 {
-			// Extract beads ID (first field)
-			parts := strings.Fields(line[:idx])
-			beadsID := ""
-			if len(parts) >= 1 {
-				beadsID = parts[0]
-			}
-
-			// Title is everything after " - "
-			title := line[idx+3:]
-
-			// Construct a more useful description
-			description := title
-			if beadsID != "" {
-				description = fmt.Sprintf("[%s] %s", beadsID, title)
-			}
-
-			work = append(work, RecentWorkItem{
-				Type:        "completed",
-				Description: description,
-			})
-			count++
-		}
+		description := fmt.Sprintf("[%s] %s", issue.ID, issue.Title)
+		work = append(work, RecentWorkItem{
+			Type:        "completed",
+			Description: description,
+		})
+		count++
 	}
 
 	return work

@@ -2,13 +2,13 @@
 package spawn
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
 // RequiresContext represents the context requirements declared by a skill.
@@ -244,41 +244,78 @@ func gatherBeadsIssueContext(beadsID string) string {
 	return sb.String()
 }
 
-// getBeadsIssue retrieves issue details from beads using the bd CLI.
+// getBeadsIssue retrieves issue details from beads.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func getBeadsIssue(beadsID string) (*beadsIssue, error) {
-	cmd := exec.Command("bd", "show", "--json", beadsID)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				return &beadsIssue{
+					ID:          issue.ID,
+					Title:       issue.Title,
+					Description: issue.Description,
+					IssueType:   issue.IssueType,
+					Status:      issue.Status,
+				}, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	issue, err := beads.FallbackShow(beadsID)
 	if err != nil {
-		return nil, fmt.Errorf("bd show failed: %w", err)
+		return nil, err
 	}
 
-	var issue beadsIssue
-	if err := json.Unmarshal(output, &issue); err != nil {
-		return nil, fmt.Errorf("failed to parse issue: %w", err)
-	}
-
-	return &issue, nil
+	return &beadsIssue{
+		ID:          issue.ID,
+		Title:       issue.Title,
+		Description: issue.Description,
+		IssueType:   issue.IssueType,
+		Status:      issue.Status,
+	}, nil
 }
 
-// getBeadsComments retrieves comments for a beads issue using the bd CLI.
+// getBeadsComments retrieves comments for a beads issue.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func getBeadsComments(beadsID string) ([]beadsComment, error) {
-	cmd := exec.Command("bd", "show", "--json", "--comments", beadsID)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			comments, err := client.Comments(beadsID)
+			if err == nil {
+				result := make([]beadsComment, len(comments))
+				for i, c := range comments {
+					result[i] = beadsComment{Text: c.Text}
+				}
+				return result, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	comments, err := beads.FallbackComments(beadsID)
 	if err != nil {
-		return nil, fmt.Errorf("bd show --comments failed: %w", err)
+		return nil, err
 	}
 
-	// Parse the full response which includes comments
-	var response struct {
-		Comments []beadsComment `json:"comments"`
+	result := make([]beadsComment, len(comments))
+	for i, c := range comments {
+		result[i] = beadsComment{Text: c.Text}
 	}
-	if err := json.Unmarshal(output, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse comments: %w", err)
-	}
-
-	return response.Comments, nil
+	return result, nil
 }
 
 // gatherPriorWorkContext loads files matching patterns and extracts TLDRs.

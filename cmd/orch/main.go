@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -1494,37 +1495,37 @@ func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTr
 }
 
 // createBeadsIssue creates a new beads issue for tracking the agent.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func createBeadsIssue(projectName, skillName, task string) (string, error) {
 	// Build issue title
 	title := fmt.Sprintf("[%s] %s: %s", projectName, skillName, truncate(task, 50))
 
-	// Run bd create command
-	cmd := exec.Command("bd", "create", title)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("bd create failed: %w", err)
-	}
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
 
-	// Parse issue ID from output (search all lines for "issue: <id>")
-	outputStr := strings.TrimSpace(string(output))
-	lines := strings.Split(outputStr, "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// Look for "issue:" in the line and extract the ID after it
-		parts := strings.Fields(line)
-		for i, part := range parts {
-			if strings.Contains(part, "issue:") {
-				// Issue ID should be the next word after "issue:"
-				if i+1 < len(parts) {
-					return parts[i+1], nil
-				}
+			issue, err := client.Create(&beads.CreateArgs{
+				Title:     title,
+				IssueType: "task",
+				Priority:  2, // Default P2
+			})
+			if err == nil {
+				return issue.ID, nil
 			}
+			// Fall through to CLI fallback on RPC error
 		}
 	}
 
-	return "", fmt.Errorf("could not parse issue ID from: %s", outputStr)
+	// Fallback to CLI
+	issue, err := beads.FallbackCreate(title, "", "task", 2, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return issue.ID, nil
 }
 
 // truncate truncates a string to maxLen characters.

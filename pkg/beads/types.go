@@ -129,13 +129,33 @@ type Comment struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// StatsSummary represents the summary section of beads statistics.
+type StatsSummary struct {
+	TotalIssues      int     `json:"total_issues"`
+	OpenIssues       int     `json:"open_issues"`
+	InProgressIssues int     `json:"in_progress_issues"`
+	ClosedIssues     int     `json:"closed_issues"`
+	BlockedIssues    int     `json:"blocked_issues"`
+	DeferredIssues   int     `json:"deferred_issues"`
+	ReadyIssues      int     `json:"ready_issues"`
+	TombstoneIssues  int     `json:"tombstone_issues"`
+	PinnedIssues     int     `json:"pinned_issues"`
+	AvgLeadTimeHours float64 `json:"average_lead_time_hours"`
+}
+
+// StatsRecentActivity represents recent activity in beads.
+type StatsRecentActivity struct {
+	HoursTracked   int `json:"hours_tracked"`
+	CommitCount    int `json:"commit_count"`
+	IssuesCreated  int `json:"issues_created"`
+	IssuesClosed   int `json:"issues_closed"`
+	IssuesUpdated  int `json:"issues_updated"`
+	IssuesReopened int `json:"issues_reopened"`
+	TotalChanges   int `json:"total_changes"`
+}
+
 // Stats represents beads statistics.
 type Stats struct {
-	Total    int            `json:"total"`
-	Open     int            `json:"open"`
-	Closed   int            `json:"closed"`
-	Blocked  int            `json:"blocked"`
-	Ready    int            `json:"ready"`
-	ByStatus map[string]int `json:"by_status,omitempty"`
-	ByType   map[string]int `json:"by_type,omitempty"`
+	Summary        StatsSummary        `json:"summary"`
+	RecentActivity StatsRecentActivity `json:"recent_activity,omitempty"`
 }

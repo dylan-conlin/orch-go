@@ -3,12 +3,11 @@ package opencode
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 )
@@ -143,30 +142,59 @@ func extractBeadsIDFromTitle(title string) string {
 
 // updateBeadsPhase adds a "Phase: Complete" comment to the beads issue.
 // This is a backup for cases where the agent didn't report completion properly.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func (s *CompletionService) updateBeadsPhase(beadsID string) error {
-	// Check if Phase: Complete is already reported
-	cmd := exec.Command("bd", "comments", beadsID, "--json")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	var comments []beads.Comment
+	var err error
+
+	// Try RPC client first for getting comments
+	socketPath, socketErr := beads.FindSocketPath("")
+	if socketErr == nil {
+		client := beads.NewClient(socketPath)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+
+			comments, err = client.Comments(beadsID)
+			if err != nil {
+				// Fall through to CLI fallback on RPC error
+				comments, err = beads.FallbackComments(beadsID)
+			}
+		} else {
+			comments, err = beads.FallbackComments(beadsID)
+		}
+	} else {
+		comments, err = beads.FallbackComments(beadsID)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to get comments: %w", err)
 	}
 
 	// Check if Phase: Complete is already in comments
-	if containsPhaseComplete(string(output)) {
-		// Already has Phase: Complete, skip
-		return nil
+	for _, c := range comments {
+		if containsPhaseComplete(c.Text) {
+			// Already has Phase: Complete, skip
+			return nil
+		}
 	}
 
 	// Add Phase: Complete comment
 	comment := "Phase: Complete - Session finished (detected via SSE monitor)"
-	cmd = exec.Command("bd", "comment", beadsID, comment)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	if _, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to add completion comment: %w", err)
+
+	// Try RPC client first for adding comment
+	if socketErr == nil {
+		client := beads.NewClient(socketPath)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			if err := client.AddComment(beadsID, "", comment); err == nil {
+				return nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
-	return nil
+	// Fallback to CLI
+	return beads.FallbackAddComment(beadsID, comment)
 }
 
 // containsPhaseComplete checks if the comments JSON contains "Phase: Complete".

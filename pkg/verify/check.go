@@ -2,7 +2,6 @@
 package verify
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -451,23 +450,28 @@ func ReadTierFromWorkspace(workspacePath string) string {
 }
 
 // CloseIssue closes a beads issue with the given reason.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func CloseIssue(beadsID, reason string) error {
-	args := []string{"close", beadsID}
-	if reason != "" {
-		args = append(args, "--reason", reason)
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			if err := client.CloseIssue(beadsID, reason); err == nil {
+				return nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
 	}
 
-	cmd := exec.Command("bd", args...)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to close issue: %w: %s", err, string(output))
-	}
-
-	return nil
+	// Fallback to CLI
+	return beads.FallbackClose(beadsID, reason)
 }
 
 // UpdateIssueStatus updates the status of a beads issue.
+// NOTE: The beads RPC client does not currently support status updates,
+// so this function still uses the bd CLI directly.
 func UpdateIssueStatus(beadsID, status string) error {
 	args := []string{"update", beadsID, "--status", status}
 	cmd := exec.Command("bd", args...)
@@ -480,89 +484,159 @@ func UpdateIssueStatus(beadsID, status string) error {
 }
 
 // GetIssue retrieves issue details from beads.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func GetIssue(beadsID string) (*Issue, error) {
-	cmd := exec.Command("bd", "show", beadsID, "--json")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				// Convert beads.Issue to verify.Issue
+				return &Issue{
+					ID:          issue.ID,
+					Title:       issue.Title,
+					Description: issue.Description,
+					Status:      issue.Status,
+					IssueType:   issue.IssueType,
+					CloseReason: issue.CloseReason,
+					// Comments are not populated via Show() - use GetComments() if needed
+				}, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	issue, err := beads.FallbackShow(beadsID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get issue: %w", err)
+		return nil, err
 	}
 
-	// bd show returns an array with one element
-	var issues []Issue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse issue: %w", err)
-	}
-
-	if len(issues) == 0 {
-		return nil, fmt.Errorf("issue not found: %s", beadsID)
-	}
-
-	return &issues[0], nil
+	return &Issue{
+		ID:          issue.ID,
+		Title:       issue.Title,
+		Description: issue.Description,
+		Status:      issue.Status,
+		IssueType:   issue.IssueType,
+		CloseReason: issue.CloseReason,
+	}, nil
 }
 
-// GetIssuesBatch retrieves multiple issues in a single bd show call.
+// GetIssuesBatch retrieves multiple issues in a single call.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	if len(beadsIDs) == 0 {
 		return make(map[string]*Issue), nil
 	}
 
-	// Build command: bd show id1 id2 id3 --json
-	args := append(beadsIDs, "--json")
-	cmd := exec.Command("bd", append([]string{"show"}, args...)...)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
-	if err != nil {
-		// bd show may fail if some IDs are invalid; try to parse what we can
-		// or return empty if total failure
-		if len(output) == 0 {
-			return make(map[string]*Issue), nil
+	result := make(map[string]*Issue, len(beadsIDs))
+
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			// Fetch each issue via RPC
+			for _, beadsID := range beadsIDs {
+				issue, err := client.Show(beadsID)
+				if err == nil {
+					result[issue.ID] = &Issue{
+						ID:          issue.ID,
+						Title:       issue.Title,
+						Description: issue.Description,
+						Status:      issue.Status,
+						IssueType:   issue.IssueType,
+						CloseReason: issue.CloseReason,
+					}
+				}
+				// Silently skip invalid IDs
+			}
+			return result, nil
 		}
 	}
 
-	var issues []Issue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	// Fallback to CLI - fetch each issue individually
+	for _, beadsID := range beadsIDs {
+		issue, err := beads.FallbackShow(beadsID)
+		if err == nil {
+			result[issue.ID] = &Issue{
+				ID:          issue.ID,
+				Title:       issue.Title,
+				Description: issue.Description,
+				Status:      issue.Status,
+				IssueType:   issue.IssueType,
+				CloseReason: issue.CloseReason,
+			}
+		}
+		// Silently skip invalid IDs
 	}
 
-	result := make(map[string]*Issue, len(issues))
-	for i := range issues {
-		result[issues[i].ID] = &issues[i]
-	}
 	return result, nil
 }
 
 // ListOpenIssues retrieves all open issues in a single call.
 // Returns a map from beadsID to Issue.
+// It uses the beads RPC client when available, falling back to the bd CLI.
 func ListOpenIssues() (map[string]*Issue, error) {
-	// Note: bd list -s only accepts a single status, not multiple
-	// So we fetch all issues and filter in Go
-	cmd := exec.Command("bd", "list", "--json")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	result := make(map[string]*Issue)
+
+	// Try RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			// List all issues via RPC
+			issues, err := client.List(nil)
+			if err == nil {
+				// Filter to open/in_progress/blocked statuses
+				for i := range issues {
+					status := strings.ToLower(issues[i].Status)
+					if status == "open" || status == "in_progress" || status == "blocked" {
+						result[issues[i].ID] = &Issue{
+							ID:          issues[i].ID,
+							Title:       issues[i].Title,
+							Description: issues[i].Description,
+							Status:      issues[i].Status,
+							IssueType:   issues[i].IssueType,
+							CloseReason: issues[i].CloseReason,
+						}
+					}
+				}
+				return result, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback to CLI
+	issues, err := beads.FallbackList("")
 	if err != nil {
-		return nil, fmt.Errorf("failed to list issues: %w", err)
-	}
-
-	// Handle null/empty response
-	if strings.TrimSpace(string(output)) == "null" || strings.TrimSpace(string(output)) == "[]" {
-		return make(map[string]*Issue), nil
-	}
-
-	var issues []Issue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse issues: %w", err)
+		return nil, err
 	}
 
 	// Filter to open/in_progress/blocked statuses
-	result := make(map[string]*Issue)
 	for i := range issues {
 		status := strings.ToLower(issues[i].Status)
 		if status == "open" || status == "in_progress" || status == "blocked" {
-			result[issues[i].ID] = &issues[i]
+			result[issues[i].ID] = &Issue{
+				ID:          issues[i].ID,
+				Title:       issues[i].Title,
+				Description: issues[i].Description,
+				Status:      issues[i].Status,
+				IssueType:   issues[i].IssueType,
+				CloseReason: issues[i].CloseReason,
+			}
 		}
 	}
+
 	return result, nil
 }
 
