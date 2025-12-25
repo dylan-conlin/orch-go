@@ -3,6 +3,7 @@ package opencode
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -145,6 +146,7 @@ func extractBeadsIDFromTitle(title string) string {
 func (s *CompletionService) updateBeadsPhase(beadsID string) error {
 	// Check if Phase: Complete is already reported
 	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to get comments: %w", err)
@@ -159,6 +161,7 @@ func (s *CompletionService) updateBeadsPhase(beadsID string) error {
 	// Add Phase: Complete comment
 	comment := "Phase: Complete - Session finished (detected via SSE monitor)"
 	cmd = exec.Command("bd", "comment", beadsID, comment)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	if _, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add completion comment: %w", err)
 	}

@@ -40,6 +40,7 @@ type PhaseStatus struct {
 // GetComments retrieves comments for a beads issue using the bd CLI.
 func GetComments(beadsID string) ([]Comment, error) {
 	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w", err)
@@ -461,6 +462,7 @@ func CloseIssue(beadsID, reason string) error {
 	}
 
 	cmd := exec.Command("bd", args...)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to close issue: %w: %s", err, string(output))
@@ -473,6 +475,7 @@ func CloseIssue(beadsID, reason string) error {
 func UpdateIssueStatus(beadsID, status string) error {
 	args := []string{"update", beadsID, "--status", status}
 	cmd := exec.Command("bd", args...)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to update issue status: %w: %s", err, string(output))
@@ -483,6 +486,7 @@ func UpdateIssueStatus(beadsID, status string) error {
 // GetIssue retrieves issue details from beads.
 func GetIssue(beadsID string) (*Issue, error) {
 	cmd := exec.Command("bd", "show", beadsID, "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get issue: %w", err)
@@ -511,6 +515,7 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	// Build command: bd show id1 id2 id3 --json
 	args := append(beadsIDs, "--json")
 	cmd := exec.Command("bd", append([]string{"show"}, args...)...)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		// bd show may fail if some IDs are invalid; try to parse what we can
@@ -537,6 +542,7 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 func ListOpenIssues() (map[string]*Issue, error) {
 	// Note: bd list requires multiple -s flags for multiple statuses
 	cmd := exec.Command("bd", "list", "-s", "open", "-s", "in_progress", "-s", "blocked", "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w", err)

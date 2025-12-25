@@ -856,6 +856,7 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 
 	// Shell out to bd stats --json
 	cmd := exec.Command("bd", "stats", "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to run bd stats: %v", err)}

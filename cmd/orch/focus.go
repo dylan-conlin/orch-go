@@ -390,6 +390,7 @@ func getReadyIssues() []string {
 
 	cmd := exec.Command("bd", "ready")
 	cmd.Dir = projectDir
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil

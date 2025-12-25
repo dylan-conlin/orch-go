@@ -230,6 +230,7 @@ func collectSwarmIssues() ([]daemon.Issue, error) {
 // getSwarmReadyIssues fetches issues from bd list with triage:ready label.
 func getSwarmReadyIssues() ([]daemon.Issue, error) {
 	cmd := exec.Command("bd", "list", "--status", "open", "--label", "triage:ready", "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd list: %w", err)

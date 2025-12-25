@@ -386,6 +386,7 @@ func getInProgressBeadsIDs() map[string]bool {
 	result := make(map[string]bool)
 
 	cmd := exec.Command("bd", "list", "--status", "in_progress")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return result
@@ -418,6 +419,7 @@ func gatherPendingIssues() []PendingIssue {
 
 	// Run bd ready to get pending issues
 	cmd := exec.Command("bd", "ready")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return issues
@@ -471,6 +473,7 @@ func gatherRecentWork() []RecentWorkItem {
 
 	// Get recently closed issues from beads (today)
 	cmd := exec.Command("bd", "list", "--status", "closed")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return work

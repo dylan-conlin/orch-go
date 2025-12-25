@@ -311,6 +311,7 @@ func truncate(s string, maxLen int) string {
 // This is the default implementation that shells out to bd.
 func ListReadyIssues() ([]Issue, error) {
 	cmd := exec.Command("bd", "ready", "--json")
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready: %w", err)

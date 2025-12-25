@@ -247,6 +247,7 @@ func gatherBeadsIssueContext(beadsID string) string {
 // getBeadsIssue retrieves issue details from beads using the bd CLI.
 func getBeadsIssue(beadsID string) (*beadsIssue, error) {
 	cmd := exec.Command("bd", "show", "--json", beadsID)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd show failed: %w", err)
@@ -263,6 +264,7 @@ func getBeadsIssue(beadsID string) (*beadsIssue, error) {
 // getBeadsComments retrieves comments for a beads issue using the bd CLI.
 func getBeadsComments(beadsID string) ([]beadsComment, error) {
 	cmd := exec.Command("bd", "show", "--json", "--comments", beadsID)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd show --comments failed: %w", err)

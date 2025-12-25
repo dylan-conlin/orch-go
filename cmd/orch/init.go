@@ -335,6 +335,7 @@ func initBeads(projectDir, prefix string) error {
 
 	cmd := exec.Command("bd", args...)
 	cmd.Dir = projectDir
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

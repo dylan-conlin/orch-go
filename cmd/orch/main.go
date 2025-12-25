@@ -1500,6 +1500,7 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 
 	// Run bd create command
 	cmd := exec.Command("bd", "create", title)
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("bd create failed: %w", err)
