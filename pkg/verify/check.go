@@ -328,6 +328,7 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // and phase gates. This extends VerifyCompletion with:
 // 1. Constraint verification from SPAWN_CONTEXT.md (file patterns must match)
 // 2. Phase gate verification (required phases must be reported via beads comments)
+// 3. Skill output verification from skill.yaml outputs.required section
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
@@ -374,6 +375,20 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 	} else if !phaseGateResult.Passed {
 		result.Passed = false
 		result.Errors = append(result.Errors, phaseGateResult.Errors...)
+	}
+
+	// Verify skill outputs from skill.yaml outputs.required section
+	// This is the "skillc verify" integration - checks that required skill outputs exist
+	skillOutputResult, err := VerifySkillOutputsForCompletion(workspacePath, projectDir)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify skill outputs: %v", err))
+	} else if skillOutputResult != nil {
+		// Only add results if skill had outputs.required defined
+		if !skillOutputResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, skillOutputResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
 	}
 
 	return result, nil

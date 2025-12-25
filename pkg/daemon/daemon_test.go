@@ -91,9 +91,9 @@ func TestNextIssue_SkipsBlockedIssues(t *testing.T) {
 	}
 }
 
-func TestNextIssue_IncludesInProgressIssues(t *testing.T) {
-	// This test verifies that in_progress issues are included in processing.
-	// The daemon should use bd ready which returns both open and in_progress issues.
+func TestNextIssue_SkipsInProgressIssues(t *testing.T) {
+	// This test verifies that in_progress issues are SKIPPED to prevent duplicate spawns.
+	// Even though bd ready returns both open and in_progress issues, we only spawn for open ones.
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
@@ -111,12 +111,12 @@ func TestNextIssue_IncludesInProgressIssues(t *testing.T) {
 	if issue == nil {
 		t.Fatal("NextIssue() expected issue, got nil")
 	}
-	// Should return the in_progress issue since it has higher priority (0 vs 1)
-	if issue.ID != "proj-1" {
-		t.Errorf("NextIssue() = %q, want 'proj-1' (in_progress with higher priority)", issue.ID)
+	// Should skip in_progress and return the open issue
+	if issue.ID != "proj-2" {
+		t.Errorf("NextIssue() = %q, want 'proj-2' (should skip in_progress)", issue.ID)
 	}
-	if issue.Status != "in_progress" {
-		t.Errorf("NextIssue() status = %q, want 'in_progress'", issue.Status)
+	if issue.Status != "open" {
+		t.Errorf("NextIssue() status = %q, want 'open'", issue.Status)
 	}
 }
 

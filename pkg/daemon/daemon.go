@@ -168,6 +168,13 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 			}
 			continue
 		}
+		// Skip in_progress issues (already being worked on)
+		if issue.Status == "in_progress" {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (already in_progress)\n", issue.ID)
+			}
+			continue
+		}
 		// Skip issues without required label (if filter is set)
 		if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
 			if d.Config.Verbose {

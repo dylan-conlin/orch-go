@@ -1092,6 +1092,27 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		fmt.Println("Skipping beads tracking (--no-track)")
 	}
 
+	// Check if issue is already being worked on (prevent duplicate spawns)
+	if !spawnNoTrack && spawnIssue != "" {
+		if issue, err := verify.GetIssue(beadsID); err == nil {
+			if issue.Status == "closed" {
+				return fmt.Errorf("issue %s is already closed", beadsID)
+			}
+			if issue.Status == "in_progress" {
+				// Check if there's an active agent for this issue
+				client := opencode.NewClient(serverURL)
+				sessions, _ := client.ListSessions("")
+				for _, s := range sessions {
+					if strings.Contains(s.Title, beadsID) {
+						return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
+					}
+				}
+				// In progress but no active agent - warn but allow respawn
+				fmt.Fprintf(os.Stderr, "Warning: issue %s is in_progress but no active agent found. Respawning.\n", beadsID)
+			}
+		}
+	}
+
 	// Update beads issue status to in_progress (only if tracking a real issue)
 	if !spawnNoTrack && spawnIssue != "" {
 		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
