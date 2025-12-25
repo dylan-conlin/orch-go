@@ -275,9 +275,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	// Add active sessions from OpenCode
 	// Filter: only show sessions updated in the last 10 minutes as "active"
-	// Only include sessions from last 30 minutes to match orch status behavior
+	// Sessions idle > 30 min are filtered out AFTER checking beads Phase status
+	// (completed agents should still be shown regardless of activity time)
 	activeThreshold := 10 * time.Minute
 	displayThreshold := 30 * time.Minute
+
+	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
+	// These will be filtered out after Phase check unless Phase: Complete
+	pendingFilterByBeadsID := make(map[string]bool)
 
 	for _, s := range sessions {
 		createdAt := time.Unix(s.Time.Created/1000, 0)
@@ -289,11 +294,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		status := "active"
 		if timeSinceUpdate > activeThreshold {
 			status = "idle" // Session exists but hasn't had recent activity
-		}
-
-		// Skip sessions older than displayThreshold unless they're active
-		if status == "idle" && timeSinceUpdate > displayThreshold {
-			continue
 		}
 
 		// Check if session is actively processing (generating response)
@@ -326,6 +326,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// This filters out interactive/ad-hoc OpenCode sessions
 		if agent.BeadsID == "" {
 			continue
+		}
+
+		// Track if this agent should be filtered after Phase check
+		// Don't filter yet - we need to check beads Phase: Complete first
+		if status == "idle" && timeSinceUpdate > displayThreshold {
+			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
 		agents = append(agents, agent)
@@ -526,6 +532,19 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+
+		// Post-Phase filtering: remove agents that were idle > displayThreshold
+		// and are NOT Phase: Complete. This deferred filtering ensures completed
+		// agents are shown regardless of activity time.
+		filtered := make([]AgentAPIResponse, 0, len(agents))
+		for _, agent := range agents {
+			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" {
+				// Skip idle agents that are not completed
+				continue
+			}
+			filtered = append(filtered, agent)
+		}
+		agents = filtered
 	}
 
 	w.Header().Set("Content-Type", "application/json")
