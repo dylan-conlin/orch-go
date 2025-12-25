@@ -102,13 +102,23 @@
       "created": "2025-12-25",
       "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
       "depends_on": ["feat-007"]
+    },
+    {
+      "id": "feat-011",
+      "title": "Add completion lifecycle section to orchestrator skill",
+      "description": "Add explicit 'Orchestrator Completion Lifecycle' section with mode-aware (Active vs Triage) completion workflow, work-type-specific checklists, mental model sync prompts, and follow-up extraction guidance. Update orch-knowledge/skills/src/meta/orchestrator/.skillc/SKILL.md.template. Rebuild with skillc build. File targets: SKILL.md.template, phases/post-completion.md (new). Out of scope: Automated tooling enforcement. Acceptance: Orchestrator skill has explicit completion workflow, distinguishes Active vs Triage modes, provides work-type matrix.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-design-orchestrator-completion-lifecycle-two.md"
     }
   ],
   "meta": {
     "last_updated": "2025-12-25",
-    "total_features": 10,
+    "total_features": 11,
     "by_status": {
-      "todo": 10,
+      "todo": 11,
       "in_progress": 0,
       "done": 0
     }
