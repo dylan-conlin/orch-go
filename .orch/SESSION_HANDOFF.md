@@ -1,84 +1,87 @@
-# Session Handoff - Dec 24, 2025 (Evening)
+# Session Handoff - Dec 25, 2025
 
 ## Session Focus
-Dashboard bug fixes and UX improvements, plus clarifying the investigation-to-implementation gap.
+Fixed dashboard phase display bug (agent cards showing null phases) and added Gemini 3 Flash model support.
 
-## What We Built
+## What We Fixed
 
-### Features Shipped
-- **Concurrency fix** - Phase: Complete agents excluded from limit (`d0eae36`)
-- **Archive sort fix** - Parse workspace date suffix for proper sorting (`344deef`)
-- **Clean messaging** - Accurate description of report-only behavior (`9c2d399`)
-- **Auto-rebuild** - Go changes trigger `make install` + restart serve (`530f1a0`)
-- **Slide-out panel** - Agent card click reveals detail panel (`159b588`)
-- **Processing indicator** - SSE-driven yellow pulse for active agents (`3f5c75d`)
-- **Account name display** - Shows "personal/work" instead of email (`28caaec`)
-- **Status fix** - Phase: Complete agents show "completed" status (`e0b524f`)
-- **Usage in nav bar** - Moved from stats bar to header for cleaner layout (`25cda72`)
+### 1. Dashboard Phase Display Bug (Critical)
+**Symptom:** Agent cards in web UI showed null for phase/task despite beads having comments.
 
-### Key Clarifications
-- **Skillc/Orch boundary** - Skillc declares constraints, orch enforces at runtime. The interplay IS the composition - no separate L4 layer needed.
-- **Investigation-to-implementation gap** - `ok-je0` was closed without prompting being implemented. SYNTHESIS.md is parsed but `orch complete` doesn't prompt for follow-up issues. This is orch-go work, not skillc work.
+**Root causes discovered:**
+1. `ListOpenIssues()` used `bd list -s open -s in_progress -s blocked` - beads CLI only uses the LAST `-s` flag
+2. `GetCommentsBatch()` spawned 300+ concurrent `bd` processes, overwhelming system and silently failing
 
-### Issues Created This Session
-| Issue | Description |
-|-------|-------------|
-| `orch-go-gru5` | Slide-out detail panel (completed) |
-| `orch-go-qeeo` | Gate on visual verification for web/ changes |
-| `orch-go-7z6r` | Prompt for follow-up issues from investigation recommendations |
-| `orch-go-u49q` | Status reflects Phase: Complete (completed) |
-| `orch-go-uxhf` | Show account name instead of email (completed) |
-| `orch-go-awfr` | Exclude closed beads issues from active count |
-| `orch-go-38c6` | Cross-project beads comment visibility |
-| `orch-go-391i` | Better workspace naming for differentiation |
+**Fixes (commit `6d75de9`):**
+- `pkg/verify/check.go`: Fetch all issues, filter in Go
+- `pkg/verify/check.go`: Semaphore limiting to max 10 concurrent `bd` processes
 
-## State to Resume From
-
-### Rebuild Required
-```bash
-cd ~/Documents/personal/orch-go
-make install
-pkill -f "orch serve" && orch serve &
+### 2. Gemini 3 Flash Support
+Added aliases to `pkg/model/model.go`:
+```
+flash3    → google/gemini-3-flash-preview
+flash-3   → google/gemini-3-flash-preview
+flash-3.0 → google/gemini-3-flash-preview
 ```
 
-### Dashboard URL
-http://localhost:5188
+Usage: `orch spawn --model flash3 investigation "task"`
+For orchestrator: `opencode -m google/gemini-3-flash-preview`
 
-### Current Account Usage
-- Personal: 17% weekly, 76% 5h (resets in 6d 9h)
-- Auto-switch threshold: 80% (5h) / 90% (weekly)
+### 3. Beads Daemon Race Condition
+Rebuilt `bd` binary with fix from beads repo (`aa401428`):
+- `killDuplicateDaemons()` sanity check after acquiring flock
+- Prevents process accumulation that caused CPU spikes
 
-## What's Next (Suggested)
+**Note:** Fix is on `fix-repo-empty-config` branch, not merged to main.
 
-### Quick Wins
-1. `orch-go-awfr` - Exclude closed beads issues from status (small fix)
-2. `orch-go-mhec.*` - Dashboard bug fixes from audit (4 issues ready)
+## Completed Agents
 
-### Medium Priority
-3. `orch-go-7z6r` - Finish ok-je0: prompt for follow-up issues in orch complete
-4. `orch-go-qeeo` - Visual verification gating in orch complete
-5. `orch-go-38c6` - Cross-project beads visibility
+| Issue | Outcome |
+|-------|---------|
+| `bd-5dup` | ✅ Fixed - daemon race condition (rebuild bd applied) |
+| `orch-go-6x36` | Refocused - was architecture investigation, now scoped to model aliases |
 
-### Skillc Validation (from merged session)
-- `skillc-mmq` - L2 Phase Gates validated (completed)
-- `skillc-9te` - L3 Context Injection (next)
-- `skillc-zpa` - Migrate production skills (after validation)
+## Uncommitted Work
 
-## Patterns Discovered
+### beads repo (`~/Documents/personal/beads`)
+- Branch: `fix-repo-empty-config` (13 commits ahead)
+- Daemon fix committed but NOT merged to main
+- Should merge or cherry-pick `aa401428` to main
 
-### Investigation → Implementation Gap
-Investigations complete with recommendations but no beads issue created. The "Discovered Work Check" in skills covers incidental findings, not the primary recommendation.
+## System State
 
-**Fix belongs in `orch complete`:**
-1. Parse SYNTHESIS.md (already done)
-2. Detect recommendation type (new)
-3. Prompt for issue creation (new - `ok-je0` unfinished)
+- `orch serve` running with fixed binary
+- `bd daemon` will auto-start with fixed binary on next command
+- No active agents
+- Work account: 1% usage (resets in ~7 days)
 
-### Cross-Project Visibility Gap
-When viewing agents from different projects (e.g., skillc from orch-go dashboard), beads comments aren't found because bd commands run in current directory. Agents from other projects show no phase info.
+## Ready Work
 
-## Session Stats
-- Duration: ~3 hours
-- Agents spawned: 8
-- Commits: 12
-- Issues created: 8
+```bash
+bd ready | head -5
+```
+
+1. **[P1] `bd-5dup`** - Close it (fix done, just needs issue closure)
+2. **[P2] `orch-go-6x36`** - Add DeepSeek/OpenRouter aliases (Gemini done)
+3. **[P2] `orch-go-ndgj`** - Research: LLM psychosis article
+4. **[P2] `orch-go-xe2j`** - Web-to-markdown MCP for research
+5. **[P2] `orch-go-k0mg`** - Separate orch serve from orch servers
+
+## Quick Resume
+
+```bash
+# Check status
+orch status && bd ready | head -5
+
+# Close daemon race issue
+bd close bd-5dup --reason "Fixed: killDuplicateDaemons() sanity check added"
+
+# Continue model aliases (add DeepSeek)
+orch spawn feature-impl "add DeepSeek model aliases" --issue orch-go-6x36
+```
+
+## Key Learnings
+
+1. **beads `-s` flag** - Only accepts ONE status, not multiple. Use `bd list --json | jq` for filtering.
+2. **Concurrent bd processes** - Limit to ~10 max or system gets overwhelmed.
+3. **launchd auto-restart** - `com.orch-go.serve` respawns serve; must rebuild before kill or old binary respawns.
