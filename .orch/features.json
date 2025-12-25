@@ -112,15 +112,36 @@
       "priority": "high",
       "created": "2025-12-25",
       "source": ".kb/investigations/2025-12-25-design-orchestrator-completion-lifecycle-two.md"
+    },
+    {
+      "id": "feat-012",
+      "title": "Add optional requires.servers field to skill.yaml",
+      "description": "Extend skill.yaml schema with optional requires.servers: true field. When present, spawn includes server context from .orch/config.yaml. Replaces hardcoded UIFocusedSkills list in pkg/spawn/config.go. File targets: skillc/pkg/compiler/manifest.go, pkg/spawn/config.go, pkg/skills/loader.go. Out of scope: Changing spawn template structure. Acceptance: Skills can declare server requirements; spawn honors the declaration.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-design-should-we-evolve-skills-where.md",
+      "notes": "Incremental improvement from epic pause decision - adds specific value without full migration"
     }
   ],
   "meta": {
     "last_updated": "2025-12-25",
-    "total_features": 11,
+    "total_features": 12,
     "by_status": {
-      "todo": 11,
+      "todo": 12,
       "in_progress": 0,
       "done": 0
     }
+  },
+  "epics": {
+    "paused": [
+      {
+        "id": "orch-go-erdw",
+        "title": "Skill-Manifest-Driven Orchestration",
+        "status": "paused",
+        "reason": "Investigation 2025-12-25-design-should-we-evolve-skills-where.md found current architecture is sound. Separation between skill-domain (procedures, workflows) and orchestrator-domain (beads tracking, phase reporting) is correct. Epic would move orchestration INTO skills, increasing coupling without solving a real problem."
+      }
+    ]
   }
 }
