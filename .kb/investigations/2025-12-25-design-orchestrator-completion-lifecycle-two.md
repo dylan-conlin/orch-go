@@ -5,11 +5,11 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Designed explicit completion lifecycle for two orchestration modes (Active/Triage) with work-type-specific requirements.
+**Delta:** Designed explicit completion lifecycle for two orchestration modes (Active/Triage) with work-type-specific requirements. Clarified actor model: Dylan ↔ AI Orchestrator ↔ Worker Agents.
 
 **Evidence:** Analyzed existing code (verify.go, review.go, SYNTHESIS.md template), orchestrator skill, prior investigations (synthesis-protocol, single-agent-review).
 
-**Knowledge:** Completion depth should vary by work type and orchestration mode - not one-size-fits-all. Mental model sync is the critical gap.
+**Knowledge:** Completion depth should vary by work type and orchestration mode - not one-size-fits-all. Mental model sync is bidirectional: Agent→Orchestrator (via SYNTHESIS.md), Orchestrator→Dylan (via conversation).
 
 **Next:** Add completion lifecycle section to orchestrator skill with mode/work-type matrix.
 
@@ -37,11 +37,22 @@ Fill this at the END of your investigation, before marking Complete.
 
 Two process modes have emerged in orchestration practice:
 
-1. **Active Orchestration:** Dylan spawns agents directly, monitors them, completes them in real-time. High engagement, immediate synthesis.
+1. **Active Orchestration:** AI Orchestrator spawns agents directly via `orch spawn`, monitors them, completes them in real-time. High engagement, immediate synthesis.
 
-2. **Triage Orchestration:** Daemon spawns agents overnight, orchestrator synthesizes in batch next morning. Lower engagement, deferred synthesis.
+2. **Triage Orchestration:** Daemon spawns agents overnight, AI Orchestrator synthesizes in batch next morning. Lower engagement, deferred synthesis.
 
 These modes have different completion needs, but the current skill and tooling treat them identically.
+
+**Actor Model Clarification:**
+```
+Dylan ↔ AI Orchestrator ↔ Worker Agents
+         (Claude)
+```
+- **Dylan** interacts with the **AI Orchestrator** (Claude running with orchestrator skill)
+- **AI Orchestrator** spawns and completes **Worker Agents** (Claude instances with worker skills)
+- Mental model sync is bidirectional:
+  - Agent → Orchestrator: via SYNTHESIS.md artifacts
+  - Orchestrator → Dylan: via conversation and presentations
 
 ### What "Completion" Actually Means
 
@@ -116,7 +127,7 @@ The prior decision record (`.kb/decisions/2025-12-21-single-agent-review-command
 
 ---
 
-### Finding 4: Mental model sync is the critical gap
+### Finding 4: Mental model sync is the critical gap (bidirectional)
 
 **Evidence:** Current SYNTHESIS.md template has sections for:
 - Delta (what changed) ✓
@@ -124,17 +135,33 @@ The prior decision record (`.kb/decisions/2025-12-21-single-agent-review-command
 - Knowledge (what was learned) ✓
 - Next (what should happen) ✓
 
-But there's no prompt asking: "Did this change Dylan's mental model of the system?"
+But there's no prompt asking: "Did this change understanding of the system?"
 
-Examples where mental model sync matters:
+**Mental model sync is bidirectional:**
+
+1. **Agent → Orchestrator (via SYNTHESIS.md):**
+   - Agent produces structured synthesis artifact
+   - Orchestrator reads and internalizes findings
+   - This step is partially automated but requires orchestrator attention
+
+2. **Orchestrator → Dylan (via conversation):**
+   - Orchestrator presents synthesis to Dylan
+   - Dylan asks questions, orchestrator clarifies
+   - Dylan's understanding gets updated
+   - This step is purely conversational
+
+**Examples where sync matters:**
 - Agent discovers a constraint Dylan didn't know existed
-- Agent implements feature differently than Dylan expected
-- Agent's investigation reveals architecture Dylan misunderstood
-- Agent makes a design decision Dylan needs to know about
+- Agent implements feature differently than expected
+- Agent's investigation reveals architecture misunderstanding
+- Agent makes a design decision that needs propagation
 
 **Source:** `.orch/templates/SYNTHESIS.md`
 
-**Significance:** Without explicit mental model sync, Dylan can become disconnected from the system state. This is especially true in Triage mode where he didn't watch the work happen.
+**Significance:** Without explicit mental model sync at BOTH levels, system understanding can diverge:
+- Orchestrator might not read SYNTHESIS.md (Agent → Orchestrator gap)
+- Orchestrator might not present findings to Dylan (Orchestrator → Dylan gap)
+This is especially true in Triage mode where Dylan didn't watch the work happen.
 
 ---
 
@@ -167,9 +194,11 @@ Unexplored Questions section captures this conceptually but it's passive (agent 
 
 2. **Work type determines completion depth** - Bug fixes need "did it work?" verification. Architecture decisions need "do I understand this?" synthesis. UI features need "does it look right?" validation.
 
-3. **Mental model sync is the underserved need** - The system captures what changed but doesn't prompt for whether understanding was updated. This is especially critical after Triage mode batches.
+3. **Mental model sync is bidirectional and underserved** - The system captures what changed (Agent → Orchestrator via SYNTHESIS.md) but doesn't prompt for whether understanding was updated at either level. The Orchestrator → Dylan flow is purely conversational and easily skipped. This is especially critical after Triage mode batches.
 
 4. **Follow-up triage needs a forcing function** - Agents discover issues. Without explicit capture at completion time, they get lost.
+
+5. **Actor model clarity** - Dylan interacts with AI Orchestrators, who spawn and complete Worker Agents. The orchestrator is the actor doing completion, not Dylan directly.
 
 ### Completion Lifecycle Framework
 
@@ -183,11 +212,17 @@ Unexplored Questions section captures this conceptually but it's passive (agent 
 - Active Mode: Quick scan of TLDR + recommendation
 - Triage Mode: Full review of SYNTHESIS.md sections
 
-**Phase 3: Mental Model Sync (Work-Type Dependent)**
-- UI Feature: Browser verification, visual confirmation
-- Architecture: Decision understood, recommendation approved
-- Investigation: Conclusions internalized, constraints noted
-- Bug Fix/Refactor: Skip (low mental model impact)
+**Phase 3: Mental Model Sync (Work-Type Dependent, Bidirectional)**
+
+*Agent → Orchestrator:*
+- Orchestrator reads SYNTHESIS.md, internalizes findings
+- Orchestrator updates own understanding
+
+*Orchestrator → Dylan (for high-impact work):*
+- UI Feature: Present visual changes, confirm Dylan sees expected behavior
+- Architecture: Present decision and trade-offs, get Dylan's approval
+- Investigation: Present conclusions, capture Dylan's reactions/questions
+- Bug Fix/Refactor: Skip (low mental model impact, no Dylan presentation needed)
 
 **Phase 4: Follow-up Triage (Always)**
 - Extract Unexplored Questions
@@ -269,12 +304,12 @@ Add explicit completion lifecycle section to orchestrator skill that:
 
 ### Mode Detection
 
-Before completing, identify your mode:
+Before completing, AI Orchestrator identifies the mode:
 
 | Mode | Indicators | Attention Budget |
 |------|------------|------------------|
-| **Active** | You spawned this agent, watched it work | High (immediate synthesis) |
-| **Triage** | Daemon spawned, you're reviewing batch | Medium (efficient review) |
+| **Active** | Orchestrator spawned this agent directly, watched it work | High (immediate synthesis) |
+| **Triage** | Daemon spawned, orchestrator is reviewing batch | Medium (efficient review) |
 
 ### Completion Workflow by Work Type
 
@@ -288,11 +323,17 @@ Before completing, identify your mode:
 
 ### Mental Model Sync Questions
 
-For high-impact work, ask yourself:
-- Did this reveal something I didn't know?
+For high-impact work, the AI Orchestrator asks:
+
+**Agent → Orchestrator (self-check):**
+- Did this reveal something I (orchestrator) didn't know?
 - Does my understanding of the system need updating?
 - Did the agent make a choice I need to remember?
-- Should I update CLAUDE.md or create a decision record?
+
+**Orchestrator → Dylan (presentation checklist):**
+- Does Dylan need to know about this change?
+- Should I present the synthesis findings to Dylan?
+- Should we update CLAUDE.md or create a decision record together?
 
 ### Follow-up Extraction
 
@@ -306,7 +347,8 @@ For every completion:
 **Things to watch out for:**
 - ⚠️ Don't over-engineer - this is guidance, not enforcement
 - ⚠️ Mode detection should be quick (seconds, not analysis)
-- ⚠️ Mental model sync is for orchestrator, not agents
+- ⚠️ Mental model sync has two levels: Agent→Orchestrator (automated via SYNTHESIS.md) and Orchestrator→Dylan (conversational, not automated)
+- ⚠️ The AI Orchestrator does the completion, not Dylan directly - Dylan provides approval/guidance when needed
 
 **Success criteria:**
 - ✅ Orchestrator knows which completion workflow to use without thinking
