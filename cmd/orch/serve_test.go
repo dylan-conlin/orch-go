@@ -347,3 +347,86 @@ func TestDefaultServePort(t *testing.T) {
 		t.Errorf("Expected DefaultServePort to be 3348, got %d", DefaultServePort)
 	}
 }
+
+func TestCheckWorkspaceSynthesisForCompletion(t *testing.T) {
+	// Create a temporary project directory with workspace
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+
+	// Test 1: Workspace with SYNTHESIS.md should indicate completion
+	t.Run("workspace with SYNTHESIS.md", func(t *testing.T) {
+		workspaceName := "og-feat-test-25dec"
+		workspacePath := filepath.Join(workspaceDir, workspaceName)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("Failed to create workspace dir: %v", err)
+		}
+
+		// Create SYNTHESIS.md
+		synthesisContent := `# Session Synthesis
+TLDR: Test completed successfully
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+			t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
+		}
+
+		// Check if synthesis exists
+		synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+		if _, err := os.Stat(synthesisPath); err != nil {
+			t.Errorf("Expected SYNTHESIS.md to exist, got error: %v", err)
+		}
+	})
+
+	// Test 2: Workspace without SYNTHESIS.md should not indicate completion
+	t.Run("workspace without SYNTHESIS.md", func(t *testing.T) {
+		workspaceName := "og-feat-no-synthesis-25dec"
+		workspacePath := filepath.Join(workspaceDir, workspaceName)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("Failed to create workspace dir: %v", err)
+		}
+
+		// Create only SPAWN_CONTEXT.md (no SYNTHESIS.md)
+		spawnContextContent := `TASK: Test task
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContextContent), 0644); err != nil {
+			t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Check that synthesis does NOT exist
+		synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+		if _, err := os.Stat(synthesisPath); err == nil {
+			t.Errorf("Expected SYNTHESIS.md to NOT exist")
+		}
+	})
+}
+
+func TestCheckWorkspaceSynthesis(t *testing.T) {
+	// Create a temporary workspace
+	tmpDir := t.TempDir()
+
+	// Test case 1: No SYNTHESIS.md
+	exists := checkWorkspaceSynthesis(tmpDir)
+	if exists {
+		t.Error("Expected checkWorkspaceSynthesis to return false for empty workspace")
+	}
+
+	// Test case 2: With SYNTHESIS.md
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+	if err := os.WriteFile(synthesisPath, []byte("# Synthesis\nTLDR: Test\n"), 0644); err != nil {
+		t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+	}
+
+	exists = checkWorkspaceSynthesis(tmpDir)
+	if !exists {
+		t.Error("Expected checkWorkspaceSynthesis to return true when SYNTHESIS.md exists")
+	}
+
+	// Test case 3: With empty SYNTHESIS.md
+	if err := os.WriteFile(synthesisPath, []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to write empty SYNTHESIS.md: %v", err)
+	}
+
+	exists = checkWorkspaceSynthesis(tmpDir)
+	if exists {
+		t.Error("Expected checkWorkspaceSynthesis to return false for empty SYNTHESIS.md")
+	}
+}

@@ -525,6 +525,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// For agents not yet marked completed, check workspace for SYNTHESIS.md
+			// This handles untracked agents (--no-track) which have fake beads IDs
+			// and won't have Phase: Complete in beads comments
+			if agents[i].Status != "completed" {
+				workspacePath, _ := findWorkspaceByBeadsID(projectDir, agents[i].BeadsID)
+				if checkWorkspaceSynthesis(workspacePath) {
+					agents[i].Status = "completed"
+				}
+			}
+
 			// For completed agents, also check close_reason if synthesis is null
 			if agents[i].Status == "completed" && agents[i].Synthesis == nil && agents[i].CloseReason == "" {
 				if issue, ok := allIssues[agents[i].BeadsID]; ok && issue.CloseReason != "" {
@@ -1105,4 +1115,20 @@ func handleServers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode servers: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// checkWorkspaceSynthesis checks if a workspace has a non-empty SYNTHESIS.md file.
+// This is used to detect completion for untracked agents (--no-track) where
+// there's no beads issue to check Phase: Complete.
+func checkWorkspaceSynthesis(workspacePath string) bool {
+	if workspacePath == "" {
+		return false
+	}
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	info, err := os.Stat(synthesisPath)
+	if err != nil {
+		return false
+	}
+	// SYNTHESIS.md must exist and be non-empty
+	return info.Size() > 0
 }
