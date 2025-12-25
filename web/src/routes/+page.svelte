@@ -35,6 +35,7 @@
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
 	let skillFilter: string = 'all';
+	let projectFilter: string = 'all';
 	let sortBy: 'recent-activity' | 'newest' | 'oldest' | 'alphabetical' | 'project' | 'phase' = 'recent-activity';
 	let activeOnly: boolean = false;
 
@@ -77,6 +78,9 @@
 
 	// Get unique skills from agents
 	$: uniqueSkills = [...new Set($agents.map(a => a.skill).filter(Boolean))] as string[];
+
+	// Get unique projects from agents
+	$: uniqueProjects = [...new Set($agents.map(a => a.project).filter(Boolean))].sort() as string[];
 
 	onMount(() => {
 		// Load section state from localStorage
@@ -177,11 +181,12 @@
 	function clearFilters() {
 		statusFilter = 'all';
 		skillFilter = 'all';
+		projectFilter = 'all';
 		sortBy = 'recent-activity';
 		activeOnly = false;
 	}
 
-	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
+	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
 
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
@@ -262,12 +267,23 @@
 		return agentList.filter(a => a.skill === skillFilter);
 	}
 
+	// Apply project filter to any agent list
+	function applyProjectFilter(agentList: Agent[]): Agent[] {
+		if (projectFilter === 'all') return agentList;
+		return agentList.filter(a => a.project === projectFilter);
+	}
+
+	// Apply all filters (skill + project)
+	function applyFilters(agentList: Agent[]): Agent[] {
+		return applyProjectFilter(applySkillFilter(agentList));
+	}
+
 	// Progressive disclosure: sorted and filtered agents per section
 	// Active and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
 	// Archive uses volatile sort (updated_at) since historical recency matters more there
-	$: sortedActiveAgents = sortAgents(applySkillFilter($activeAgents), true);
-	$: sortedRecentAgents = sortAgents(applySkillFilter($recentAgents), true);
-	$: sortedArchivedAgents = sortAgents(applySkillFilter($archivedAgents), false);
+	$: sortedActiveAgents = sortAgents(applyFilters($activeAgents), true);
+	$: sortedRecentAgents = sortAgents(applyFilters($recentAgents), true);
+	$: sortedArchivedAgents = sortAgents(applyFilters($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
 	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
@@ -430,6 +446,20 @@
 						<option value="all">All skills</option>
 						{#each uniqueSkills as skill}
 							<option value={skill}>{skill}</option>
+						{/each}
+					</select>
+				{/if}
+
+				{#if uniqueProjects.length > 0}
+					<select
+						id="project-filter"
+						bind:value={projectFilter}
+						class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+						data-testid="project-filter"
+					>
+						<option value="all">All projects</option>
+						{#each uniqueProjects as project}
+							<option value={project}>{project}</option>
 						{/each}
 					</select>
 				{/if}
