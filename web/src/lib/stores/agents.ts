@@ -50,7 +50,7 @@ export interface SSEEvent {
 	id: string; // Unique ID for keyed rendering
 	type: string;
 	properties?: {
-		sessionID?: string;
+		sessionID?: string; // Present on session.* events
 		status?: {
 			type: string;
 		};
@@ -60,6 +60,7 @@ export interface SSEEvent {
 			text?: string;
 			tool?: string;
 			function?: string;
+			sessionID?: string; // Present on message.part events
 			state?: {
 				title?: string;
 				status?: string;

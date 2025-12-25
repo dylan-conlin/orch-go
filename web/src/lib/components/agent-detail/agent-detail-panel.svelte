@@ -91,11 +91,15 @@
 	}
 
 	// Filter SSE events for this agent's session
+	// Note: For message.part events, sessionID is nested at properties.part.sessionID
+	// For session.* events, sessionID is at properties.sessionID
 	$: agentEvents = $selectedAgent?.session_id 
-		? $sseEvents.filter(e => 
-			e.properties?.sessionID === $selectedAgent?.session_id && 
-			(e.type === 'message.part' || e.type === 'message.part.updated')
-		).slice(-20)
+		? $sseEvents.filter(e => {
+			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
+			// sessionID is inside the part object for message.part events
+			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
+			return eventSessionId === $selectedAgent?.session_id;
+		}).slice(-20)
 		: [];
 
 	onMount(() => {
