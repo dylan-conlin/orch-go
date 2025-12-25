@@ -535,7 +535,8 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 // ListOpenIssues retrieves all open issues in a single call.
 // Returns a map from beadsID to Issue.
 func ListOpenIssues() (map[string]*Issue, error) {
-	cmd := exec.Command("bd", "list", "--status", "open,in_progress,blocked", "--json")
+	// Note: bd list requires multiple -s flags for multiple statuses
+	cmd := exec.Command("bd", "list", "-s", "open", "-s", "in_progress", "-s", "blocked", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w", err)

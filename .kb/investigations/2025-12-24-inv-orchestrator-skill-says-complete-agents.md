@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-m4rl
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Documented guidance fails because signal ratio is 4:1 against autonomy (56 "ask permission" patterns vs 13 "act autonomously" patterns), plus an internal contradiction between "Always Act (Silent)" and "Propose-and-Act" examples.

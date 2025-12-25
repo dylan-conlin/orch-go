@@ -60,6 +60,12 @@ export interface SSEEvent {
 			text?: string;
 			tool?: string;
 			function?: string;
+			state?: {
+				title?: string;
+				status?: string;
+				input?: unknown;
+				output?: string;
+			};
 		};
 	};
 	timestamp?: number;

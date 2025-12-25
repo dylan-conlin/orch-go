@@ -94,7 +94,7 @@
 	$: agentEvents = $selectedAgent?.session_id 
 		? $sseEvents.filter(e => 
 			e.properties?.sessionID === $selectedAgent?.session_id && 
-			e.type === 'message.part'
+			(e.type === 'message.part' || e.type === 'message.part.updated')
 		).slice(-20)
 		: [];
 
@@ -272,7 +272,7 @@
 								<div class="flex items-start gap-1 py-0.5 text-muted-foreground">
 									<span>{getActivityIcon(part.type)}</span>
 									<span class="flex-1 break-all">
-										{part.text || (part.tool ? `Using ${part.tool}` : part.type)}
+										{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
 									</span>
 								</div>
 							{/if}
