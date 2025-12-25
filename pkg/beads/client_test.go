@@ -285,7 +285,8 @@ func TestIssue_JSON(t *testing.T) {
 
 func TestComment_JSON(t *testing.T) {
 	comment := Comment{
-		ID:        "comment-1",
+		ID:        1,
+		IssueID:   "issue-1",
 		Author:    "agent",
 		Text:      "Phase: Complete",
 		CreatedAt: "2025-01-01T00:00:00Z",

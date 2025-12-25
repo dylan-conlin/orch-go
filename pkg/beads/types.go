@@ -123,7 +123,8 @@ type Issue struct {
 
 // Comment represents a comment on a beads issue.
 type Comment struct {
-	ID        string `json:"id"`
+	ID        int    `json:"id"`
+	IssueID   string `json:"issue_id,omitempty"`
 	Author    string `json:"author"`
 	Text      string `json:"text"`
 	CreatedAt string `json:"created_at"`
