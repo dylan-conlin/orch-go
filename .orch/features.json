@@ -123,13 +123,25 @@
       "created": "2025-12-25",
       "source": ".kb/investigations/2025-12-25-design-should-we-evolve-skills-where.md",
       "notes": "Incremental improvement from epic pause decision - adds specific value without full migration"
+    },
+    {
+      "id": "feat-013",
+      "title": "Implement 'kb ask' command for inline mini-investigations",
+      "description": "Add 'kb ask' command to kb-cli that composes kb context with LLM synthesis for quick knowledge base queries. Ephemeral by default with tiered save options (--kn for quick kn entry, --save for full investigation). Strict provenance enforcement: no context = no answer. Uses OpenCode for LLM integration. Interface: kb ask \"question\" [--kn|--save] [--global] [--model flash]. File targets: kb-cli/cmd/kb/ask.go. Out of scope: Direct SDK integration, caching. Acceptance: kb ask returns synthesized answer from context, empty context shows guidance (not hallucination), --kn creates kn entry, --save creates investigation.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-kb-ask-command-inline.md",
+      "repo": "kb-cli",
+      "notes": "Implementation sequence: 1) Basic ask with context piping, 2) No-context gate, 3) --kn flag, 4) --save flag, 5) --model flag"
     }
   ],
   "meta": {
     "last_updated": "2025-12-25",
-    "total_features": 12,
+    "total_features": 13,
     "by_status": {
-      "todo": 12,
+      "todo": 13,
       "in_progress": 0,
       "done": 0
     }
