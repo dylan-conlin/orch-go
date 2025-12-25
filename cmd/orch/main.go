@@ -1107,7 +1107,12 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 						return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
 					}
 				}
-				// In progress but no active agent - warn but allow respawn
+				// No active session - check if Phase: Complete was reported
+				// If so, orchestrator needs to run 'orch complete' before respawning
+				if complete, err := verify.IsPhaseComplete(beadsID); err == nil && complete {
+					return fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
+				}
+				// In progress but no active agent and not Phase: Complete - warn but allow respawn
 				fmt.Fprintf(os.Stderr, "Warning: issue %s is in_progress but no active agent found. Respawning.\n", beadsID)
 			}
 		}
