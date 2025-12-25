@@ -51,6 +51,12 @@ func init() {
 }
 
 func runServe(portNum int) error {
+	// Set default directory for beads socket discovery
+	// This is needed because serve may run from any working directory
+	if sourceDir != "" && sourceDir != "unknown" {
+		beads.DefaultDir = sourceDir
+	}
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -162,7 +168,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectDir, _ := os.Getwd()
+	// Use sourceDir (set at build time) since serve may run from any working directory
+	projectDir := sourceDir
+	if projectDir == "" || projectDir == "unknown" {
+		projectDir, _ = os.Getwd()
+	}
 	client := opencode.NewClient(serverURL)
 
 	// Get active sessions from OpenCode

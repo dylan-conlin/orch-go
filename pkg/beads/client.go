@@ -16,6 +16,11 @@ import (
 // Should match the bd CLI version for compatibility.
 var ClientVersion = "0.1.0"
 
+// DefaultDir is the default directory to search for .beads/bd.sock
+// when FindSocketPath is called with an empty string. Set this at
+// startup if the process may run from a different working directory.
+var DefaultDir string
+
 // Client represents a beads RPC client that connects to the daemon.
 type Client struct {
 	mu         sync.Mutex
@@ -57,12 +62,17 @@ func NewClient(socketPath string, opts ...Option) *Client {
 
 // FindSocketPath finds the beads socket path for a directory.
 // It looks for .beads/bd.sock in the given directory or walks up to find it.
+// If dir is empty, uses DefaultDir if set, otherwise uses current working directory.
 func FindSocketPath(dir string) (string, error) {
 	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("failed to get working directory: %w", err)
+		if DefaultDir != "" {
+			dir = DefaultDir
+		} else {
+			var err error
+			dir, err = os.Getwd()
+			if err != nil {
+				return "", fmt.Errorf("failed to get working directory: %w", err)
+			}
 		}
 	}
 
