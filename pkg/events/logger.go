@@ -20,6 +20,8 @@ const (
 	EventTypeSessionError = "session.error"
 	// EventTypeSessionStatus indicates a session status change (busy/idle).
 	EventTypeSessionStatus = "session.status"
+	// EventTypeAutoCompleted indicates a session was auto-completed by the daemon.
+	EventTypeAutoCompleted = "session.auto_completed"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -124,6 +126,19 @@ func (l *Logger) LogStatusChange(sessionID, status string) error {
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
 			"status": status,
+		},
+	})
+}
+
+// LogAutoCompleted logs an auto-completion event (daemon closed the issue).
+func (l *Logger) LogAutoCompleted(beadsID, closeReason string) error {
+	return l.Log(Event{
+		Type:      EventTypeAutoCompleted,
+		SessionID: beadsID, // Using beads ID as session identifier
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"beads_id":     beadsID,
+			"close_reason": closeReason,
 		},
 	})
 }
