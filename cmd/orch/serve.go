@@ -32,6 +32,10 @@ const DefaultServePort = 3348
 
 var (
 	servePort int
+
+	// beadsClient is a persistent RPC client for beads operations.
+	// Initialized at startup with auto-reconnect enabled.
+	beadsClient *beads.Client
 )
 
 var serveCmd = &cobra.Command{
@@ -150,6 +154,18 @@ func runServe(portNum int) error {
 	// This is needed because serve may run from any working directory
 	if sourceDir != "" && sourceDir != "unknown" {
 		beads.DefaultDir = sourceDir
+	}
+
+	// Initialize persistent beads client with auto-reconnect.
+	// This avoids per-request connection overhead and handles daemon restarts.
+	socketPath, err := beads.FindSocketPath(sourceDir)
+	if err == nil {
+		beadsClient = beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if connErr := beadsClient.Connect(); connErr != nil {
+			// Non-fatal: handlers will fallback to CLI if client is nil
+			fmt.Printf("Warning: beads daemon not available, using CLI fallback: %v\n", connErr)
+			beadsClient = nil
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -1316,22 +1332,14 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try RPC client first, using sourceDir (build-time) as the base directory
-	// since serve may run from any working directory
+	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var stats *beads.Stats
 	var err error
 
-	socketPath, socketErr := beads.FindSocketPath(sourceDir)
-	if socketErr == nil {
-		client := beads.NewClient(socketPath)
-		if connErr := client.Connect(); connErr == nil {
-			defer client.Close()
-			stats, err = client.Stats()
-			if err != nil {
-				// Fall through to CLI fallback on RPC error
-				stats, err = beads.FallbackStats()
-			}
-		} else {
+	if beadsClient != nil {
+		stats, err = beadsClient.Stats()
+		if err != nil {
+			// Fall through to CLI fallback on RPC error
 			stats, err = beads.FallbackStats()
 		}
 	} else {
@@ -1386,21 +1394,14 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try RPC client first, then fallback to CLI
+	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var issues []beads.Issue
 	var err error
 
-	socketPath, socketErr := beads.FindSocketPath(sourceDir)
-	if socketErr == nil {
-		client := beads.NewClient(socketPath)
-		if connErr := client.Connect(); connErr == nil {
-			defer client.Close()
-			issues, err = client.Ready(nil)
-			if err != nil {
-				// Fall through to CLI fallback on RPC error
-				issues, err = beads.FallbackReady()
-			}
-		} else {
+	if beadsClient != nil {
+		issues, err = beadsClient.Ready(nil)
+		if err != nil {
+			// Fall through to CLI fallback on RPC error
 			issues, err = beads.FallbackReady()
 		}
 	} else {
@@ -1665,26 +1666,21 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try RPC client first, then fallback to CLI
+	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var issue *beads.Issue
 	var err error
 
-	socketPath, socketErr := beads.FindSocketPath(sourceDir)
-	if socketErr == nil {
-		client := beads.NewClient(socketPath)
-		if connErr := client.Connect(); connErr == nil {
-			defer client.Close()
-			issue, err = client.Create(&beads.CreateArgs{
-				Title:       req.Title,
-				Description: req.Description,
-				IssueType:   req.IssueType,
-				Priority:    req.Priority,
-				Labels:      req.Labels,
-			})
-		}
+	if beadsClient != nil {
+		issue, err = beadsClient.Create(&beads.CreateArgs{
+			Title:       req.Title,
+			Description: req.Description,
+			IssueType:   req.IssueType,
+			Priority:    req.Priority,
+			Labels:      req.Labels,
+		})
 	}
 
-	// Fallback to CLI if RPC failed
+	// Fallback to CLI if RPC failed or client unavailable
 	if issue == nil && err == nil {
 		issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
 	}
