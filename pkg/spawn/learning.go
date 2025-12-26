@@ -249,14 +249,16 @@ func (t *GapTracker) RecordGap(analysis *GapAnalysis, skill, task string) {
 	}
 }
 
-// RecordResolution updates the most recent matching gap event with resolution info.
+// RecordResolution updates ALL unresolved events matching this query with resolution info.
+// When a gap is resolved, all occurrences of that gap should be marked as resolved,
+// otherwise they continue to appear in suggestions.
 func (t *GapTracker) RecordResolution(query string, resolution string, details string) {
-	// Find the most recent unresolved event for this query
-	for i := len(t.Events) - 1; i >= 0; i-- {
-		if t.Events[i].Query == query && t.Events[i].Resolution == "" {
+	normalizedQuery := normalizeQuery(query)
+	for i := range t.Events {
+		eventNormalized := normalizeQuery(t.Events[i].Query)
+		if eventNormalized == normalizedQuery && t.Events[i].Resolution == "" {
 			t.Events[i].Resolution = resolution
 			t.Events[i].ResolutionDetails = details
-			break
 		}
 	}
 }
@@ -289,10 +291,15 @@ func (t *GapTracker) countGapsForQuery(query string) int {
 }
 
 // FindRecurringGaps identifies gaps that have occurred RecurrenceThreshold+ times.
+// Only counts UNRESOLVED events - resolved gaps are excluded from suggestions.
 func (t *GapTracker) FindRecurringGaps() []LearningSuggestion {
-	// Group events by normalized query
+	// Group UNRESOLVED events by normalized query
 	queryGroups := make(map[string][]GapEvent)
 	for _, e := range t.Events {
+		// Skip resolved events - they shouldn't count toward recurrence
+		if e.Resolution != "" {
+			continue
+		}
 		normalized := normalizeQuery(e.Query)
 		queryGroups[normalized] = append(queryGroups[normalized], e)
 	}

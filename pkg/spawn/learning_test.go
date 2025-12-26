@@ -69,27 +69,37 @@ func TestGapTrackerRecordResolution(t *testing.T) {
 		Events: []GapEvent{
 			{
 				Timestamp: time.Now().Add(-time.Hour),
-				Query:     "old query",
+				Query:     "test query", // Same query, older event
 			},
 			{
 				Timestamp: time.Now(),
-				Query:     "test query",
+				Query:     "test query", // Same query, newer event
+			},
+			{
+				Timestamp: time.Now(),
+				Query:     "different query", // Different query, should not be affected
 			},
 		},
 	}
 
 	tracker.RecordResolution("test query", "added_knowledge", "kn decide added")
 
-	// Should update the most recent matching event
+	// Should update ALL matching events, not just the most recent
+	if tracker.Events[0].Resolution != "added_knowledge" {
+		t.Errorf("expected older event resolution 'added_knowledge', got %q", tracker.Events[0].Resolution)
+	}
+	if tracker.Events[0].ResolutionDetails != "kn decide added" {
+		t.Errorf("expected older event resolution details, got %q", tracker.Events[0].ResolutionDetails)
+	}
 	if tracker.Events[1].Resolution != "added_knowledge" {
-		t.Errorf("expected resolution 'added_knowledge', got %q", tracker.Events[1].Resolution)
+		t.Errorf("expected newer event resolution 'added_knowledge', got %q", tracker.Events[1].Resolution)
 	}
 	if tracker.Events[1].ResolutionDetails != "kn decide added" {
-		t.Errorf("expected resolution details, got %q", tracker.Events[1].ResolutionDetails)
+		t.Errorf("expected newer event resolution details, got %q", tracker.Events[1].ResolutionDetails)
 	}
-	// Old event should be unchanged
-	if tracker.Events[0].Resolution != "" {
-		t.Errorf("expected old event to have empty resolution, got %q", tracker.Events[0].Resolution)
+	// Different query event should be unchanged
+	if tracker.Events[2].Resolution != "" {
+		t.Errorf("expected different query event to have empty resolution, got %q", tracker.Events[2].Resolution)
 	}
 }
 
@@ -134,6 +144,86 @@ func TestGapTrackerFindRecurringGaps(t *testing.T) {
 		}
 		if s.Priority != "high" {
 			t.Errorf("expected priority 'high' for critical gaps, got %q", s.Priority)
+		}
+	}
+}
+
+func TestGapTrackerFindRecurringGapsExcludesResolved(t *testing.T) {
+	tracker := &GapTracker{Events: []GapEvent{}}
+
+	// Add 4 events for same query, but resolve them all
+	for i := 0; i < 4; i++ {
+		tracker.Events = append(tracker.Events, GapEvent{
+			Timestamp:         time.Now(),
+			Query:             "resolved gap",
+			GapType:           string(GapTypeNoContext),
+			Severity:          string(GapSeverityCritical),
+			ContextQuality:    0,
+			Resolution:        "added_knowledge",
+			ResolutionDetails: "fixed it",
+		})
+	}
+
+	// Add 3 unresolved events for different query
+	for i := 0; i < 3; i++ {
+		tracker.Events = append(tracker.Events, GapEvent{
+			Timestamp:      time.Now(),
+			Query:          "unresolved gap",
+			GapType:        string(GapTypeNoContext),
+			Severity:       string(GapSeverityCritical),
+			ContextQuality: 0,
+			// No Resolution set
+		})
+	}
+
+	suggestions := tracker.FindRecurringGaps()
+
+	// Should only find the unresolved gap, not the resolved one
+	if len(suggestions) != 1 {
+		t.Errorf("expected 1 recurring gap suggestion, got %d", len(suggestions))
+	}
+
+	if len(suggestions) > 0 {
+		s := suggestions[0]
+		if s.Query != "unresolved gap" {
+			t.Errorf("expected query 'unresolved gap', got %q", s.Query)
+		}
+	}
+}
+
+func TestGapTrackerRecordResolutionRemovesFromSuggestions(t *testing.T) {
+	tracker := &GapTracker{Events: []GapEvent{}}
+
+	// Add 3 events for same query (meets threshold)
+	for i := 0; i < 3; i++ {
+		tracker.Events = append(tracker.Events, GapEvent{
+			Timestamp:      time.Now(),
+			Query:          "test gap",
+			GapType:        string(GapTypeNoContext),
+			Severity:       string(GapSeverityCritical),
+			ContextQuality: 0,
+		})
+	}
+
+	// Verify gap appears in suggestions before resolution
+	suggestions := tracker.FindRecurringGaps()
+	if len(suggestions) != 1 {
+		t.Errorf("before resolution: expected 1 suggestion, got %d", len(suggestions))
+	}
+
+	// Resolve the gap
+	tracker.RecordResolution("test gap", "added_knowledge", "kn entry added")
+
+	// Verify gap no longer appears in suggestions
+	suggestions = tracker.FindRecurringGaps()
+	if len(suggestions) != 0 {
+		t.Errorf("after resolution: expected 0 suggestions, got %d", len(suggestions))
+	}
+
+	// Verify all events were marked as resolved
+	for i, e := range tracker.Events {
+		if e.Resolution != "added_knowledge" {
+			t.Errorf("event %d: expected resolution 'added_knowledge', got %q", i, e.Resolution)
 		}
 	}
 }
