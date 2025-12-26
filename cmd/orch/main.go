@@ -28,6 +28,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -2496,8 +2497,33 @@ func getAccountUsage() []AccountUsage {
 	return accounts
 }
 
+// Terminal width thresholds for adaptive output
+const (
+	termWidthWide   = 120 // Full table with all columns
+	termWidthNarrow = 100 // Drop TASK column, abbreviate SKILL
+	termWidthMin    = 80  // Minimum supported width (vertical card format)
+)
+
+// getTerminalWidth returns the current terminal width, or a default if detection fails.
+// Returns the width and whether we're outputting to a real terminal.
+func getTerminalWidth() (int, bool) {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		// Not a terminal (piped output) - use wide format
+		return termWidthWide + 1, false
+	}
+	return width, true
+}
+
 // printSwarmStatus prints the swarm status in human-readable format.
+// Adapts output format based on terminal width.
 func printSwarmStatus(output StatusOutput, showAll bool) {
+	width, _ := getTerminalWidth()
+	printSwarmStatusWithWidth(output, showAll, width)
+}
+
+// printSwarmStatusWithWidth prints swarm status with explicit width (for testing).
+func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int) {
 	// Print swarm summary header with processing breakdown
 	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
 	if output.Swarm.Active > 0 {
@@ -2542,54 +2568,150 @@ func printSwarmStatus(output StatusOutput, showAll bool) {
 		fmt.Println()
 	}
 
-	// Print agents table
+	// Print agents in format appropriate for terminal width
 	if len(output.Agents) > 0 {
 		fmt.Println("AGENTS")
-		// New column layout: BEADS ID (full), STATUS, PHASE, TASK, SKILL, RUNTIME
-		fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME")
-		fmt.Printf("  %s\n", strings.Repeat("-", 105))
-
-		for _, agent := range output.Agents {
-			beadsID := agent.BeadsID
-			if beadsID == "" {
-				beadsID = "-"
-			}
-			phase := agent.Phase
-			if phase == "" {
-				phase = "-"
-			}
-			task := agent.Task
-			if task == "" {
-				task = "-"
-			}
-			skill := agent.Skill
-			if skill == "" {
-				skill = "-"
-			}
-
-			// Determine status based on processing state and completion
-			status := "idle"
-			if agent.IsProcessing {
-				status = "running"
-			}
-			if agent.IsPhantom {
-				status = "phantom"
-			}
-			if agent.IsCompleted {
-				status = "completed"
-			}
-
-			fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n",
-				beadsID,
-				status,
-				truncate(phase, 10),
-				truncate(task, 33),
-				truncate(skill, 16),
-				agent.Runtime)
+		if termWidth < termWidthMin {
+			printAgentsCardFormat(output.Agents)
+		} else if termWidth < termWidthNarrow {
+			printAgentsNarrowFormat(output.Agents)
+		} else {
+			printAgentsWideFormat(output.Agents)
 		}
 	} else {
 		fmt.Println("No active agents")
 	}
+}
+
+// printAgentsWideFormat prints agents in full table format (>120 chars).
+// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME
+func printAgentsWideFormat(agents []AgentInfo) {
+	fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME")
+	fmt.Printf("  %s\n", strings.Repeat("-", 105))
+
+	for _, agent := range agents {
+		beadsID := agent.BeadsID
+		if beadsID == "" {
+			beadsID = "-"
+		}
+		phase := agent.Phase
+		if phase == "" {
+			phase = "-"
+		}
+		task := agent.Task
+		if task == "" {
+			task = "-"
+		}
+		skill := agent.Skill
+		if skill == "" {
+			skill = "-"
+		}
+		status := getAgentStatus(agent)
+
+		fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n",
+			beadsID,
+			status,
+			truncate(phase, 10),
+			truncate(task, 33),
+			truncate(skill, 16),
+			agent.Runtime)
+	}
+}
+
+// printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
+// Drops TASK column, abbreviates SKILL.
+// Columns: BEADS ID, STATUS, PHASE, SKILL, RUNTIME
+func printAgentsNarrowFormat(agents []AgentInfo) {
+	fmt.Printf("  %-18s %-8s %-12s %-12s %s\n", "BEADS ID", "STATUS", "PHASE", "SKILL", "RUNTIME")
+	fmt.Printf("  %s\n", strings.Repeat("-", 60))
+
+	for _, agent := range agents {
+		beadsID := agent.BeadsID
+		if beadsID == "" {
+			beadsID = "-"
+		}
+		phase := agent.Phase
+		if phase == "" {
+			phase = "-"
+		}
+		skill := abbreviateSkill(agent.Skill)
+		if skill == "" {
+			skill = "-"
+		}
+		status := getAgentStatus(agent)
+
+		fmt.Printf("  %-18s %-8s %-12s %-12s %s\n",
+			beadsID,
+			status,
+			truncate(phase, 10),
+			truncate(skill, 10),
+			agent.Runtime)
+	}
+}
+
+// printAgentsCardFormat prints agents in vertical card format (<80 chars).
+// Each agent is a multi-line block for readability on very narrow terminals.
+func printAgentsCardFormat(agents []AgentInfo) {
+	for i, agent := range agents {
+		if i > 0 {
+			fmt.Println()
+		}
+		beadsID := agent.BeadsID
+		if beadsID == "" {
+			beadsID = "-"
+		}
+		phase := agent.Phase
+		if phase == "" {
+			phase = "-"
+		}
+		task := agent.Task
+		if task == "" {
+			task = "-"
+		}
+		skill := agent.Skill
+		if skill == "" {
+			skill = "-"
+		}
+		status := getAgentStatus(agent)
+
+		fmt.Printf("  %s [%s]\n", beadsID, status)
+		fmt.Printf("    Phase: %s | Skill: %s\n", phase, skill)
+		fmt.Printf("    Task: %s\n", truncate(task, 50))
+		fmt.Printf("    Runtime: %s\n", agent.Runtime)
+	}
+}
+
+// getAgentStatus returns a status string based on agent state.
+func getAgentStatus(agent AgentInfo) string {
+	if agent.IsCompleted {
+		return "completed"
+	}
+	if agent.IsPhantom {
+		return "phantom"
+	}
+	if agent.IsProcessing {
+		return "running"
+	}
+	return "idle"
+}
+
+// abbreviateSkill returns a shortened version of skill names for narrow displays.
+func abbreviateSkill(skill string) string {
+	abbreviations := map[string]string{
+		"feature-impl":         "feat",
+		"investigation":        "inv",
+		"systematic-debugging": "debug",
+		"architect":            "arch",
+		"codebase-audit":       "audit",
+		"reliability-testing":  "rel-test",
+		"issue-creation":       "issue",
+		"design-session":       "design",
+		"research":             "research",
+	}
+	if abbr, ok := abbreviations[skill]; ok {
+		return abbr
+	}
+	return skill
 }
 
 // findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
@@ -4097,14 +4219,9 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 		return gcr
 	}
 
-	// Display results and prompt for acknowledgment
-	if !spawn.DisplayContextAndPrompt(result) {
-		fmt.Println("Context declined - proceeding without prior knowledge.")
-		return gcr
-	}
-
-	// Format context for inclusion in SPAWN_CONTEXT.md
-	fmt.Println("Including prior knowledge in spawn context.")
+	// Always include kb context in spawn - the orchestrator has already decided to spawn
+	// No interactive prompt needed; context is automatically included
+	fmt.Printf("Found %d relevant context entries - including in spawn context.\n", len(result.Matches))
 
 	// Include gap summary in spawn context if there are significant gaps
 	contextContent := spawn.FormatContextForSpawn(result)

@@ -2,10 +2,8 @@
 package spawn
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -405,37 +403,6 @@ func extractSource(line string) string {
 		return "kb"
 	}
 	return "unknown"
-}
-
-// DisplayContextAndPrompt displays kb context results and prompts for acknowledgment.
-// Returns true if user acknowledges (y) or no matches, false if user declines (n).
-func DisplayContextAndPrompt(result *KBContextResult) bool {
-	if result == nil || !result.HasMatches {
-		return true
-	}
-
-	fmt.Printf("\n=== KB Context Found for: %q ===\n\n", result.Query)
-	fmt.Println(result.RawOutput)
-	fmt.Println()
-	fmt.Println("=== End KB Context ===")
-
-	fmt.Printf("Found %d relevant context entries.\n", len(result.Matches))
-	fmt.Print("Include this context in SPAWN_CONTEXT.md? [Y/n]: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		// On error, default to yes (include context)
-		return true
-	}
-
-	response = strings.TrimSpace(strings.ToLower(response))
-	// Default to yes if empty response
-	if response == "" || response == "y" || response == "yes" {
-		return true
-	}
-
-	return false
 }
 
 // FormatContextForSpawn formats kb context matches for inclusion in SPAWN_CONTEXT.md.
