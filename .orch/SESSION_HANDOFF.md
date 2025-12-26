@@ -1,105 +1,114 @@
-# Session Handoff - Dec 26, 2025 (Morning)
+# Session Handoff - Dec 26, 2025 (Afternoon)
 
 ## Session Focus
-Started: "Clear completion backlog - fix verification criteria to stop false positives"
-Evolved: Dashboard stability, daemon fixes, cross-project visibility, account management
+Started: "Review completion backlog, understand warning symbols on dashboard"
+Evolved: Gap learning system exploration, infrastructure fixes, synthesis review gap identified
 
 ## What We Accomplished
 
-### 1. Dashboard Fixes (5 issues)
-- **Gold border flashing** - Added debounced processing state clear
-- **Tooltip hydration error** - Fixed with bits-ui child snippet pattern
-- **Active/Complete mismatch** - Phase: Complete agents now properly marked completed
-- **Jostling sort** - Skip is_processing in stable sort
-- **Load tests** - 13 Playwright tests for 50+ agents
+### 1. Gap Learning System Deep Dive
+- Walked through `orch learn` - understood how it tracks context gaps
+- Identified limitation: suggests `kn constrain` for all gaps, but not all gaps need constraints
+- Created `orch-go-mxfc` for smarter remediation type suggestions
+- Resolved "load test dashboard" gap as `wont_fix` (completed work doesn't need constraint)
+- Captured open question: "Could we derive CLAUDE.md empirically from orch learn gaps?"
 
-### 2. Daemon Fixes (2 critical)
-- **Stale capacity count** - Added `Pool.Reconcile()` that syncs with OpenCode on each poll
-- **bd show JSON parsing** - Already fixed in prior commit, daemon needed restart
+### 2. Critical Infrastructure Fix
+- **OpenCode launchd plist created** - `~/Library/LaunchAgents/com.opencode.serve.plist`
+- OpenCode now auto-starts at login and auto-restarts on crash (KeepAlive: true)
+- This was blocking everything - when OpenCode died, daemon stalled
+- Verified auto-restart works: killed process, came back automatically
 
-**Overnight run failed** (0/14 issues) due to these bugs. Now fixed.
+### 3. OAuth Investigation
+- Spawned `orch-go-zz42` to investigate auto-refresh
+- **Finding:** OpenCode already handles OAuth auto-refresh via anthropic-auth plugin
+- The "redirected too many times" error is NOT auth-related (different root cause, still unclear)
 
-### 3. Cross-Project Visibility
-- **Architect design complete** - Use OpenCode session.Directory for dynamic project discovery
-- **Implementation in progress** (`orch-go-702d`) - Multi-project workspace aggregation
+### 4. Synthesis Review Gap Identified
+- Discovered completed agents were batch-closed without orchestrator reviewing SYNTHESIS.md
+- `orch-go-7yrh.10` had 4 follow-up issues recommended - none were created before batch close
+- Created `orch-go-zxy5` for **Synthesis Review View** in dashboard
+- Extracted 4 follow-up issues from beads integration design that were previously lost
 
-### 4. Account Management Issues Found
-- **OAuth scope bug** (`orch-go-h35c` in progress) - `orch account add` missing `user:inference` scope
-- **Workaround:** Use `opencode auth login` instead of `orch account add`
-- **Auto-switch not implemented** - Created `orch-go-1qwt` for future
+### 5. Dashboard Data Surfacing
+- Identified data in `~/.orch/` that should be surfaced in web UI
+- Created issues for: `/api/gaps`, `/api/reflect`, `/api/errors` endpoints
 
-### 5. Designs Completed
-- **Daemon UI visibility** - File-based status + /api/daemon endpoint (features created)
-- **Max subscription arbitrage** - Don't build, violates ToS. Use API credits for colleagues.
-- **Snap evaluation** - Complete MVP, ready for visual verification integration
+### 6. Agent Completions (7 issues closed)
+- `orch-go-ni8q` - Fixed kn command minimum reason length (20+ chars)
+- `orch-go-4kjf` - Daemon status file writing implemented
+- `orch-go-oxke` - Complete --force investigation (unable to reproduce)
+- `orch-go-zz42` - OAuth refresh investigation (OpenCode handles it)
+- `orch-go-mpen` - Terminal width adaptive output for orch status
+- `orch-go-hr61` - Removed fake kb context prompt
+- `orch-go-6e5a` - Fixed session accumulation memory leak
 
 ## Decisions Made
 
 | Decision | Reason |
 |----------|--------|
-| Use snap for simple screenshots | Playwright MCP costs ~5-10k tokens for tool defs |
-| Don't build Max proxy | Account sharing violates Anthropic ToS |
-| Cross-project uses session.Directory | Dynamic discovery, no static registry needed |
-
-## Agents Still Running
-
-| Agent | Task | Account |
-|-------|------|---------|
-| `orch-go-h35c` | OAuth scope fix | work |
-| `orch-go-702d` | Cross-project visibility | work |
+| OpenCode via launchd with KeepAlive | Foundation service - orch daemon and serve depend on it |
+| Go RPC client for beads (not CLI) | Type safety, performance, proper error handling |
+| Synthesis Review View needed | Batch close loses valuable follow-up work from SYNTHESIS.md |
 
 ## Current State
 
 ```
-Open:        53
-In Progress: 14
-Ready:       52
-Closed:      500
+Open:        59
+In Progress: 15
+Ready:       58
+Closed:      511
 ```
 
-**Commits today:** 15 (+8277/-337 lines)
+**Usage:** 38% weekly (62% remaining), daemon running autonomously
 
-## Gaps / Friction Noticed
+## Key Issues Created
 
-1. **Account switching broken** - Wrong OAuth scopes. Use `opencode auth login` workaround.
-2. **No auto-switch** - Hit rate limit, agent stalled. Manual switch required.
-3. **Untracked agents linger** - No clean way to remove idle untracked agents from status.
-4. **Dashboard cross-project** - Shows "Waiting for activity" for other project's agents.
+| Issue | Description | Priority |
+|-------|-------------|----------|
+| `orch-go-zxy5` | Synthesis Review View for dashboard | P1 |
+| `orch-go-iw2i` | `orch doctor` command (service health check) | P2 |
+| `orch-go-mxfc` | Gap remediation type improvement | P2 |
+| `orch-go-3pxw` | Implement pkg/beads Go RPC client | P2 |
+| `orch-go-3cq4` | Migrate daemon.ListReadyIssues to beads RPC | P2 |
+| `orch-go-xh2d` | Migrate verify.GetIssue to beads RPC | P2 |
+| `orch-go-9zf6` | Migrate serve beads calls to RPC | P2 |
+| `orch-go-vb5j` | /api/gaps endpoint | P2 |
+| `orch-go-05ws` | /api/reflect endpoint | P2 |
+| `orch-go-j2he` | /api/errors endpoint | P2 |
+
+## Gaps / Friction Still Present
+
+1. **Untracked agents linger** - `orch abandon` fails for untracked agents (no beads ID)
+2. **"Redirected too many times"** - Root cause still unclear (not auth-related per investigation)
+3. **Batch close loses value** - Until Synthesis Review View is built, manually review SYNTHESIS.md
 
 ## Resume Instructions
 
 ```bash
-# Check running agents
+# Check daemon is running (should be via launchd)
+launchctl list | grep -E "orch|opencode"
+
+# Check swarm status
 orch status
 
-# Complete if done
-orch complete orch-go-h35c
-orch complete orch-go-702d
+# Complete any idle agents
+orch complete <id> --force
 
-# Test daemon overnight run
-orch daemon run
-
-# Check account status
-orch usage
-orch account list
+# High-value next work
+bd show orch-go-zxy5  # Synthesis Review View - addresses review gap
+bd show orch-go-3pxw  # beads RPC client - performance improvement
 ```
 
-## Daemon Queue (triage:ready)
+## Infrastructure Services (All via launchd)
 
-High priority features waiting:
-- `orch-go-4kjf` - Daemon writes status file
-- `orch-go-6su0` - /api/daemon endpoint
-- `orch-go-r3op` - Dashboard daemon indicator
-- `orch-go-1qwt` - Auto-switch accounts on low capacity
-- `orch-go-a85k` - Snap CLI integration for visual verification
-
-## Usage
-
-- **Work account:** 34% weekly, 99% session (active)
-- **Personal account:** 16% weekly, 61% session (was rate limited)
+| Service | Plist | Status |
+|---------|-------|--------|
+| OpenCode serve | `com.opencode.serve` | **NEW** - auto-restarts |
+| orch daemon | `com.orch.daemon` | Running, spawning from backlog |
+| orch serve | `com.orch-go.serve` | Running on port 3333 |
 
 ## Git State
 
-- All work committed locally on `master`
-- 136 uncommitted changes (staged?)
-- Check with `git status`
+- All work committed locally on `master` (no remote configured)
+- Clean working tree
