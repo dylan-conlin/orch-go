@@ -113,6 +113,14 @@ let fetchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 // - CPU: With 3 agents sending events, 500ms debounce reduces refetches by ~80%
 const FETCH_DEBOUNCE_MS = 500;
 
+// Processing state debounce - tracks pending "idle" state transitions per session
+// When an agent goes idle, we delay the visual update to prevent rapid flapping
+// between busy/idle states (which causes gold border flashing)
+const processingClearTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+// Delay before clearing is_processing state. 1000ms prevents most flapping while
+// still being responsive when agent truly stops processing.
+const PROCESSING_CLEAR_DELAY_MS = 1000;
+
 // Agent store
 function createAgentStore() {
 	const { subscribe, set, update } = writable<Agent[]>([]);
@@ -453,34 +461,58 @@ function handleSSEEvent(data: any) {
 	}
 
 	// Handle session.status events - update is_processing based on busy/idle state
+	// Uses debounced clear to prevent rapid flapping between busy/idle states
 	if (data.type === 'session.status' && data.properties) {
 		const sessionID = data.properties.sessionID;
 		const statusType = data.properties.status?.type;
 		
 		if (sessionID && statusType) {
-			// Update is_processing based on status type
-			// "busy" = processing, "idle" = not processing
 			const isProcessing = statusType === 'busy';
 			
-			agents.update((agentList) => {
-				return agentList.map((agent) => {
-					if (agent.session_id === sessionID) {
-						// Only set is_processing=true for active agents
-						// But always allow clearing is_processing (to clean up stale state)
-						// This prevents late SSE events from causing pulsing on completed agents
-						if (isProcessing && agent.status !== 'active') {
-							return agent; // Don't set processing on non-active agents
+			if (isProcessing) {
+				// Setting to busy: immediate, and cancel any pending clear timer
+				const pendingClear = processingClearTimers.get(sessionID);
+				if (pendingClear) {
+					clearTimeout(pendingClear);
+					processingClearTimers.delete(sessionID);
+				}
+				
+				agents.update((agentList) => {
+					return agentList.map((agent) => {
+						if (agent.session_id === sessionID && agent.status === 'active') {
+							return { ...agent, is_processing: true };
 						}
-						return {
-							...agent,
-							is_processing: isProcessing,
-							// Clear activity when idle (agent finished)
-							current_activity: isProcessing ? agent.current_activity : undefined
-						};
-					}
-					return agent;
+						return agent;
+					});
 				});
-			});
+			} else {
+				// Setting to idle: debounced to prevent rapid flapping
+				// Cancel any existing timer first
+				const existingTimer = processingClearTimers.get(sessionID);
+				if (existingTimer) {
+					clearTimeout(existingTimer);
+				}
+				
+				// Set new timer for delayed clear
+				const timer = setTimeout(() => {
+					processingClearTimers.delete(sessionID);
+					agents.update((agentList) => {
+						return agentList.map((agent) => {
+							if (agent.session_id === sessionID) {
+								return {
+									...agent,
+									is_processing: false,
+									// Clear activity when idle (agent finished)
+									current_activity: undefined
+								};
+							}
+							return agent;
+						});
+					});
+				}, PROCESSING_CLEAR_DELAY_MS);
+				
+				processingClearTimers.set(sessionID, timer);
+			}
 		}
 	}
 
@@ -538,5 +570,8 @@ export function disconnectSSE(): void {
 	}
 	// Cancel any pending fetch operations
 	agents.cancelPending();
+	// Clear all pending processing clear timers to prevent memory leaks
+	processingClearTimers.forEach((timer) => clearTimeout(timer));
+	processingClearTimers.clear();
 	connectionStatus.set('disconnected');
 }
