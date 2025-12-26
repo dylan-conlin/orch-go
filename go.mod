@@ -1,6 +1,8 @@
 module github.com/dylan-conlin/orch-go
 
-go 1.23.5
+go 1.24.0
+
+toolchain go1.24.11
 
 require (
 	github.com/gen2brain/beeep v0.11.2
@@ -23,5 +25,6 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/term v0.38.0 // indirect
 )
