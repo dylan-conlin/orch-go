@@ -6,9 +6,10 @@
       "description": "Add dedicated command to check if 'orch serve' API is running. Uses port listening check on 3348 via net.Dial with short timeout. Separates infrastructure status from project server status.",
       "status": "todo",
       "skill": "feature-impl",
-      "priority": "medium",
+      "priority": "low",
       "created": "2025-12-23",
-      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md",
+      "notes": "Consider merging with feat-018 (orch doctor) which provides broader infrastructure health checking."
     },
     {
       "id": "feat-002",
@@ -178,13 +179,24 @@
       "created": "2025-12-26",
       "completed": "2025-12-26",
       "source": ".kb/investigations/2025-12-26-inv-design-proper-cross-project-agent.md"
+    },
+    {
+      "id": "feat-018",
+      "title": "Implement 'orch doctor' infrastructure health check command",
+      "description": "Add 'orch doctor' command to check orch ecosystem infrastructure health. Checks: 1) OpenCode server responding (http://127.0.0.1:4096/healthz), 2) orch serve API responding (http://127.0.0.1:3348/api/sessions), 3) orch daemon process running (launchctl list | grep com.orch.daemon), 4) Required plists present (~/Library/LaunchAgents/com.{opencode,orch-go,orch}.*.plist). Output: Green/Red status per check, overall health score. File targets: cmd/orch/doctor.go (new). Out of scope: Auto-repair, plist generation, project server checks (use 'orch servers' for that). Acceptance: 'orch doctor' shows infrastructure health, detects when services are down.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-two-infrastructure-failures-revealed-missing.md",
+      "notes": "Reactive detection (not proactive prevention) per Pressure Over Compensation principle. Add checks as services fail, not proactively."
     }
   ],
   "meta": {
     "last_updated": "2025-12-26",
-    "total_features": 17,
+    "total_features": 18,
     "by_status": {
-      "todo": 16,
+      "todo": 17,
       "in_progress": 0,
       "done": 1
     }
