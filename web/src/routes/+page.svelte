@@ -7,6 +7,7 @@
 	import { AgentCard } from '$lib/components/agent-card';
 	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
+	import { PendingReviewsSection } from '$lib/components/pending-reviews-section';
 	import {
 		agents,
 		activeAgents,
@@ -31,8 +32,9 @@
 	import { usage } from '$lib/stores/usage';
 	import { focus, getDriftEmoji } from '$lib/stores/focus';
 	import { servers } from '$lib/stores/servers';
-	import { beads } from '$lib/stores/beads';
+	import { beads, readyIssues } from '$lib/stores/beads';
 	import { daemon, getDaemonEmoji, getDaemonCapacity } from '$lib/stores/daemon';
+	import { pendingReviews } from '$lib/stores/pending-reviews';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -46,7 +48,9 @@
 	let sectionState = {
 		active: true,   // Active always expanded by default
 		recent: false,  // Recent collapsed by default
-		archive: false  // Archive collapsed by default
+		archive: false, // Archive collapsed by default
+		readyQueue: false, // Ready queue collapsed by default
+		pendingReviews: true // Pending reviews expanded by default (actionable)
 	};
 
 	// Load section state from localStorage on mount
@@ -93,20 +97,24 @@
 		connectSSE();
 		connectAgentlogSSE();
 
-		// Fetch usage, focus, servers, beads, and daemon data
+		// Fetch usage, focus, servers, beads, readyIssues, daemon, and pendingReviews data
 		usage.fetch();
 		focus.fetch();
 		servers.fetch();
 		beads.fetch();
+		readyIssues.fetch();
 		daemon.fetch();
+		pendingReviews.fetch();
 
-		// Refresh usage, focus, servers, beads, and daemon every 60 seconds
+		// Refresh usage, focus, servers, beads, readyIssues, daemon, and pendingReviews every 60 seconds
 		const usageInterval = setInterval(() => {
 			usage.fetch();
 			focus.fetch();
 			servers.fetch();
 			beads.fetch();
+			readyIssues.fetch();
 			daemon.fetch();
+			pendingReviews.fetch();
 		}, 60000);
 
 		// Clean up connections before page unload to avoid Firefox network errors
@@ -366,12 +374,17 @@
 				</Tooltip.Root>
 			{/if}
 
-			<!-- Beads indicator -->
+			<!-- Beads indicator (clickable to expand ready queue) -->
 			{#if $beads}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="beads-indicator">
+							<button
+								{...props}
+								class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
+								onclick={() => { sectionState.readyQueue = !sectionState.readyQueue; }}
+								data-testid="beads-indicator"
+							>
 								<span class="text-lg">📋</span>
 								<span class="inline-flex items-baseline gap-1">
 									<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
@@ -380,12 +393,18 @@
 								{#if $beads.blocked_issues > 0}
 									<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
 								{/if}
-							</span>
+								<span class="text-muted-foreground transition-transform {sectionState.readyQueue ? 'rotate-180' : ''}">
+									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<polyline points="6 9 12 15 18 9"></polyline>
+									</svg>
+								</span>
+							</button>
 						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>{$beads.ready_issues} ready to work on</p>
 						<p class="text-xs text-muted-foreground">{$beads.blocked_issues} blocked • {$beads.open_issues} total open</p>
+						<p class="text-xs text-muted-foreground mt-1">Click to {sectionState.readyQueue ? 'collapse' : 'expand'} queue</p>
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
@@ -464,6 +483,76 @@
 			</Tooltip.Root>
 		</div>
 	</div>
+
+	<!-- Ready Queue (Expandable below stats bar) -->
+	{#if sectionState.readyQueue && $readyIssues}
+		<div class="rounded-lg border border-blue-500/30 bg-blue-500/5" data-testid="ready-queue-section">
+			<div class="flex items-center justify-between border-b px-3 py-2">
+				<div class="flex items-center gap-2">
+					<span class="text-sm">📋</span>
+					<h3 class="text-sm font-semibold">Ready Queue</h3>
+					<Badge variant="secondary" class="h-5 px-1.5 text-xs">
+						{$readyIssues.count}
+					</Badge>
+				</div>
+				<button
+					class="text-xs text-muted-foreground hover:text-foreground"
+					onclick={() => { sectionState.readyQueue = false; }}
+				>
+					Collapse
+				</button>
+			</div>
+			<div class="p-2">
+				{#if $readyIssues.issues.length === 0}
+					<p class="py-4 text-center text-sm text-muted-foreground">No ready issues</p>
+				{:else}
+					<div class="space-y-1">
+						{#each $readyIssues.issues as issue (issue.id)}
+							<div class="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/50" data-testid="ready-issue-{issue.id}">
+								<!-- Priority indicator -->
+								<span class="flex-shrink-0 text-xs font-medium"
+									class:text-red-500={issue.priority === 0}
+									class:text-orange-500={issue.priority === 1}
+									class:text-yellow-500={issue.priority === 2}
+									class:text-muted-foreground={issue.priority > 2}
+								>
+									P{issue.priority}
+								</span>
+								<!-- Issue title (truncated) -->
+								<span class="flex-1 truncate" title={issue.title}>
+									{issue.title}
+								</span>
+								<!-- Issue type -->
+								<Badge variant="outline" class="h-5 px-1.5 text-xs flex-shrink-0">
+									{issue.issue_type}
+								</Badge>
+								<!-- Labels (show first 2, max) -->
+								{#if issue.labels && issue.labels.length > 0}
+									{#each issue.labels.slice(0, 2) as label}
+										<Badge variant="secondary" class="h-5 px-1.5 text-xs flex-shrink-0">
+											{label}
+										</Badge>
+									{/each}
+									{#if issue.labels.length > 2}
+										<span class="text-xs text-muted-foreground">+{issue.labels.length - 2}</span>
+									{/if}
+								{/if}
+								<!-- Issue ID -->
+								<span class="text-xs text-muted-foreground flex-shrink-0 font-mono">
+									{issue.id}
+								</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		</div>
+	{/if}
+
+	<!-- Pending Reviews Section -->
+	<PendingReviewsSection
+		bind:expanded={sectionState.pendingReviews}
+	/>
 
 	<!-- Swarm Map (Primary Focus) -->
 	<div class="rounded-lg border bg-card">

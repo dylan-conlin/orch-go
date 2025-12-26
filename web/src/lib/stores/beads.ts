@@ -15,6 +15,23 @@ export interface BeadsStats {
 	error?: string;
 }
 
+// Ready issue from /api/beads/ready
+export interface ReadyIssue {
+	id: string;
+	title: string;
+	priority: number;
+	issue_type: string;
+	labels?: string[];
+	created_at?: string;
+}
+
+// Ready issues response from /api/beads/ready
+export interface BeadsReadyResponse {
+	issues: ReadyIssue[];
+	count: number;
+	error?: string;
+}
+
 // Beads store
 function createBeadsStore() {
 	const { subscribe, set } = writable<BeadsStats | null>(null);
@@ -47,4 +64,33 @@ function createBeadsStore() {
 	};
 }
 
+// Ready issues store for dashboard queue visibility
+function createReadyIssuesStore() {
+	const { subscribe, set } = writable<BeadsReadyResponse | null>(null);
+
+	return {
+		subscribe,
+		set,
+		// Fetch ready issues from orch-go API
+		async fetch(): Promise<void> {
+			try {
+				const response = await fetch(`${API_BASE}/api/beads/ready`);
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				}
+				const data = await response.json();
+				set(data);
+			} catch (error) {
+				console.error('Failed to fetch ready issues:', error);
+				set({
+					issues: [],
+					count: 0,
+					error: String(error)
+				});
+			}
+		}
+	};
+}
+
 export const beads = createBeadsStore();
+export const readyIssues = createReadyIssuesStore();
