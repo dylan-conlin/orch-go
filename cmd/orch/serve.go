@@ -312,8 +312,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			status = "idle" // Session exists but hasn't had recent activity
 		}
 
-		// Check if session is actively processing (generating response)
-		isProcessing := client.IsSessionProcessing(s.ID)
+		// NOTE: IsProcessing is now populated client-side via SSE session.status events.
+		// Previously we called client.IsSessionProcessing(s.ID) here, but that makes
+		// an HTTP call per session which caused 125% CPU when dashboard polled frequently.
+		// The frontend already receives busy/idle state from OpenCode SSE and updates
+		// is_processing in real-time, so we don't need to fetch it here.
 
 		agent := AgentAPIResponse{
 			ID:           s.Title,
@@ -322,7 +325,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			Runtime:      formatDuration(runtime),
 			SpawnedAt:    createdAt.Format(time.RFC3339),
 			UpdatedAt:    updatedAt.Format(time.RFC3339),
-			IsProcessing: isProcessing,
+			IsProcessing: false, // Populated client-side via SSE
 		}
 
 		// Derive beadsID and skill from session title
