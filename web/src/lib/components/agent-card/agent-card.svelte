@@ -235,19 +235,17 @@
 		{/if}
 	</div>
 
-	<!-- Current Activity (for active agents) -->
+	<!-- Current Activity Summary (for active agents) - simplified, click for full log -->
 	{#if agent.status === 'active' && agent.current_activity}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			<div class="flex items-start gap-1">
+			<div class="flex items-center gap-1">
 				<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
-				<div class="flex-1 min-w-0">
-					<p class="line-clamp-2 text-[10px] leading-tight text-muted-foreground">
-						{agent.current_activity.text || 'Working...'}
-					</p>
-					<span class="text-[9px] text-muted-foreground/70">
-						{formatActivityAge(agent.current_activity.timestamp)}
-					</span>
-				</div>
+				<p class="flex-1 truncate text-[10px] text-muted-foreground">
+					{agent.current_activity.text || 'Working...'}
+				</p>
+				<span class="text-[9px] text-muted-foreground/70 shrink-0">
+					{formatActivityAge(agent.current_activity.timestamp)}
+				</span>
 			</div>
 		</div>
 	{/if}
