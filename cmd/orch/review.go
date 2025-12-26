@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,6 +24,7 @@ var (
 	reviewDoneYes     bool
 	reviewStale       bool
 	reviewAll         bool
+	reviewNoPrompt    bool
 )
 
 // StaleThreshold defines how long an agent must be in a non-Complete phase to be considered stale.
@@ -71,11 +73,20 @@ var reviewDoneCmd = &cobra.Command{
 This runs the completion workflow for each agent with Phase: Complete status,
 closing the beads issue and cleaning up resources.
 
+For each agent with synthesis recommendations (NextActions in SYNTHESIS.md),
+you'll be prompted to create follow-up issues:
+  - y: Create beads issues for all recommendations
+  - n: Skip this agent's recommendations
+  - skip-all: Skip prompts for all remaining agents
+
+Use --no-prompt to skip all recommendation prompts (for automation/scripting).
+
 Agents that fail verification (no Phase: Complete) will be skipped.
 
 Examples:
-  orch-go review done orch-cli     # Complete all orch-cli agents (with confirmation)
-  orch-go review done orch-cli -y  # Skip confirmation`,
+  orch-go review done orch-cli           # Complete with recommendation prompts
+  orch-go review done orch-cli -y        # Skip initial confirmation
+  orch-go review done orch-cli --no-prompt  # Skip recommendation prompts`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runReviewDone(args[0])
@@ -88,6 +99,7 @@ func init() {
 	reviewCmd.Flags().BoolVar(&reviewStale, "stale", false, "Show stale/untracked agents only")
 	reviewCmd.Flags().BoolVar(&reviewAll, "all", false, "Show all agents including stale/untracked")
 	reviewDoneCmd.Flags().BoolVarP(&reviewDoneYes, "yes", "y", false, "Skip confirmation prompt")
+	reviewDoneCmd.Flags().BoolVar(&reviewNoPrompt, "no-prompt", false, "Skip recommendation prompts (auto-close without reviewing synthesis)")
 	reviewCmd.AddCommand(reviewDoneCmd)
 }
 
@@ -585,6 +597,7 @@ func runReviewDone(project string) error {
 	// Process each completion
 	completed := 0
 	var completionErrors []string
+	skipAllPrompts := reviewNoPrompt // Start with flag value
 
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -592,9 +605,55 @@ func runReviewDone(project string) error {
 	}
 
 	logger := events.NewLogger(events.DefaultLogPath())
+	reader := bufio.NewReader(os.Stdin)
 
 	for _, c := range canComplete {
 		fmt.Printf("\nCompleting: %s (%s)\n", c.WorkspaceID, c.BeadsID)
+
+		// Prompt for recommendations unless --no-prompt or user chose skip-all
+		if !skipAllPrompts && c.Synthesis != nil && len(c.Synthesis.NextActions) > 0 {
+			fmt.Printf("\n  Has %d recommendations:\n", len(c.Synthesis.NextActions))
+			for i, action := range c.Synthesis.NextActions {
+				// Truncate long actions for display
+				display := action
+				if len(display) > 100 {
+					display = display[:97] + "..."
+				}
+				fmt.Printf("    %d. %s\n", i+1, display)
+			}
+			fmt.Print("\n  Create follow-up issues? [y/n/skip-all]: ")
+
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				fmt.Printf("  Warning: failed to read response, skipping prompts: %v\n", err)
+				skipAllPrompts = true
+			} else {
+				response = strings.TrimSpace(strings.ToLower(response))
+				switch response {
+				case "y", "yes":
+					// Create beads issues for each recommendation
+					for _, action := range c.Synthesis.NextActions {
+						title := action
+						if len(title) > 80 {
+							title = title[:77] + "..."
+						}
+						fmt.Printf("  Creating issue: %s\n", title)
+						// Use bd create to create follow-up issue
+						if err := createFollowUpIssue(title, c.WorkspaceID); err != nil {
+							fmt.Printf("    Warning: failed to create issue: %v\n", err)
+						}
+					}
+				case "skip-all", "s":
+					fmt.Println("  Skipping prompts for remaining agents")
+					skipAllPrompts = true
+				case "n", "no", "":
+					// Skip this agent's recommendations, continue to close
+					fmt.Println("  Skipping recommendations")
+				default:
+					fmt.Printf("  Unknown response '%s', skipping recommendations\n", response)
+				}
+			}
+		}
 
 		// Check if already closed
 		issue, err := verify.GetIssue(c.BeadsID)
@@ -797,4 +856,55 @@ func countBulletPoints(content, sectionHeader string) int {
 	}
 
 	return count
+}
+
+// createFollowUpIssue creates a beads issue for a synthesis recommendation.
+// Uses bd create command to create the issue with appropriate labels.
+func createFollowUpIssue(title string, sourceWorkspace string) error {
+	// Clean up the title - remove leading bullet markers
+	title = strings.TrimPrefix(title, "- ")
+	title = strings.TrimPrefix(title, "* ")
+	title = strings.TrimSpace(title)
+
+	// Create description linking back to source
+	description := fmt.Sprintf("Follow-up from synthesis review of %s", sourceWorkspace)
+
+	// Find bd command
+	bdPath, err := findBdCommand()
+	if err != nil {
+		return fmt.Errorf("bd command not found: %w", err)
+	}
+
+	// Run bd create with triage:review label (needs orchestrator review before spawning)
+	args := []string{"create", title, "-d", description, "-l", "triage:review"}
+	cmd := exec.Command(bdPath, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd create failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// findBdCommand locates the bd binary.
+func findBdCommand() (string, error) {
+	// Try common locations
+	paths := []string{
+		filepath.Join(os.Getenv("HOME"), "bin", "bd"),
+		filepath.Join(os.Getenv("HOME"), "go", "bin", "bd"),
+		filepath.Join(os.Getenv("HOME"), ".local", "bin", "bd"),
+	}
+
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	// Try PATH
+	if path, err := exec.LookPath("bd"); err == nil {
+		return path, nil
+	}
+
+	return "", fmt.Errorf("bd not found in common locations or PATH")
 }
