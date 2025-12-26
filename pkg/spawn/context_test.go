@@ -745,3 +745,124 @@ func TestGenerateContext_WithoutServerContext(t *testing.T) {
 		t.Error("expected content to NOT contain server context when disabled")
 	}
 }
+
+func TestGenerateContext_NoTrack(t *testing.T) {
+	t.Run("excludes beads instructions when NoTrack is true", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick ad-hoc task",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-26dec",
+			NoTrack:       true,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain no-track indicator
+		if !strings.Contains(content, "AD-HOC SPAWN (--no-track)") {
+			t.Error("expected content to contain ad-hoc spawn indicator")
+		}
+
+		// Should NOT contain beads tracking section
+		if strings.Contains(content, "## BEADS PROGRESS TRACKING") {
+			t.Error("expected content to NOT contain beads tracking section for --no-track spawn")
+		}
+
+		// Should NOT contain bd comment instructions (backtick-quoted command examples)
+		// Note: The informational message "Progress tracking via bd comment is NOT available" is OK
+		if strings.Contains(content, "`bd comment") {
+			t.Error("expected content to NOT contain bd comment command instructions for --no-track spawn")
+		}
+
+		// Should NOT contain bd close warning
+		if strings.Contains(content, "bd close") {
+			t.Error("expected content to NOT contain bd close warning for --no-track spawn")
+		}
+
+		// Should still contain /exit instruction
+		if !strings.Contains(content, "/exit") {
+			t.Error("expected content to contain /exit instruction")
+		}
+
+		// Should still contain SYNTHESIS.md requirement for full tier
+		if !strings.Contains(content, "SYNTHESIS.md") {
+			t.Error("expected content to contain SYNTHESIS.md requirement for full tier")
+		}
+	})
+
+	t.Run("includes beads instructions when NoTrack is false", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "tracked task",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-26dec",
+			BeadsID:       "test-123",
+			NoTrack:       false,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain no-track indicator
+		if strings.Contains(content, "AD-HOC SPAWN (--no-track)") {
+			t.Error("expected content to NOT contain ad-hoc spawn indicator for tracked spawn")
+		}
+
+		// Should contain beads tracking section
+		if !strings.Contains(content, "## BEADS PROGRESS TRACKING") {
+			t.Error("expected content to contain beads tracking section for tracked spawn")
+		}
+
+		// Should contain bd comment instructions with correct beads ID
+		if !strings.Contains(content, "bd comment test-123") {
+			t.Error("expected content to contain bd comment instructions with beads ID")
+		}
+
+		// Should contain bd close warning
+		if !strings.Contains(content, "NEVER run `bd close`") {
+			t.Error("expected content to contain bd close warning")
+		}
+	})
+
+	t.Run("light tier no-track omits SYNTHESIS.md requirement", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick fix",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-26dec",
+			NoTrack:       true,
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should indicate SYNTHESIS.md is not required
+		if !strings.Contains(content, "SYNTHESIS.md is NOT required") {
+			t.Error("expected content to indicate SYNTHESIS.md is not required for light tier")
+		}
+
+		// Final protocol should only have /exit
+		// Check that the final protocol section doesn't mention bd comment
+		finalIdx := strings.LastIndex(content, "FINAL STEP - SESSION COMPLETE PROTOCOL")
+		if finalIdx == -1 {
+			t.Fatal("expected content to contain final step protocol")
+		}
+		finalSection := content[finalIdx:]
+		if strings.Contains(finalSection, "bd comment") {
+			t.Error("final protocol should not contain bd comment for --no-track spawn")
+		}
+	})
+}

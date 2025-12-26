@@ -29,6 +29,22 @@ SPAWN TIER: {{.Tier}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .NoTrack}}
+📋 AD-HOC SPAWN (--no-track):
+This is an ad-hoc spawn without beads issue tracking.
+Progress tracking via bd comment is NOT available.
+
+🚨 SESSION COMPLETE PROTOCOL:
+After your final commit, BEFORE typing anything else:
+{{if eq .Tier "light"}}
+1. Run: ` + "`/exit`" + ` to close the agent session
+
+⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
+{{else}}
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. Run: ` + "`/exit`" + ` to close the agent session
+{{end}}
+{{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
 1. Report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - [brief description]\"`" + `
@@ -52,7 +68,7 @@ After your final commit, BEFORE typing anything else:
 {{end}}
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
-
+{{end}}
 
 CONTEXT: [See task description]
 
@@ -87,9 +103,11 @@ DELIVERABLES (REQUIRED):
    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
+{{if not .NoTrack}}
    - **IMPORTANT:** After running ` + "`kb create`" + `, report the actual path via:
      ` + "`bd comment {{.BeadsID}} \"investigation_path: /path/to/file.md\"`" + `
      (This allows orch complete to verify the correct file)
+{{end}}
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
    - Fill sections: What I tried → What I observed → Test performed
@@ -112,6 +130,7 @@ Update Status: field in your investigation file:
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
+{{if not .NoTrack}}
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
@@ -143,6 +162,7 @@ bd comment {{.BeadsID}} "QUESTION: Should we use JWT or session-based auth?"
 ⛔ **NEVER run ` + "`bd close`" + `** - Only the orchestrator closes issues via ` + "`orch complete`" + `.
    - Workers report ` + "`Phase: Complete`" + `, orchestrator verifies and closes
    - Running ` + "`bd close`" + ` bypasses verification and breaks tracking
+{{end}}
 
 {{if .SkillContent}}
 ## SKILL GUIDANCE ({{.SkillName}})
@@ -182,6 +202,16 @@ CONTEXT AVAILABLE:
 {{end}}
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
+{{if .NoTrack}}
+{{if eq .Tier "light"}}
+1. ` + "`/exit`" + `
+
+⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
+{{else}}
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. ` + "`/exit`" + `
+{{end}}
+{{else}}
 {{if eq .Tier "light"}}
 1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
 2. ` + "`/exit`" + `
@@ -191,6 +221,7 @@ After your final commit, BEFORE doing anything else:
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
 2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
 3. ` + "`/exit`" + `
+{{end}}
 {{end}}
 ⚠️ Your work is NOT complete until you run these commands.
 `
@@ -211,6 +242,7 @@ type contextData struct {
 	KBContext         string
 	Tier              string
 	ServerContext     string
+	NoTrack           bool // When true, omit beads instructions from spawn context
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -244,6 +276,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		KBContext:         cfg.KBContext,
 		Tier:              cfg.Tier,
 		ServerContext:     serverContext,
+		NoTrack:           cfg.NoTrack,
 	}
 
 	var buf bytes.Buffer
