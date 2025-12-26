@@ -218,6 +218,12 @@ func runServe(portNum int) error {
 	// GET /api/errors - returns error pattern analysis
 	mux.HandleFunc("/api/errors", corsHandler(handleErrors))
 
+	// GET /api/pending-reviews - returns agents with unreviewed synthesis recommendations
+	mux.HandleFunc("/api/pending-reviews", corsHandler(handlePendingReviews))
+
+	// POST /api/dismiss-review - dismiss a specific recommendation
+	mux.HandleFunc("/api/dismiss-review", corsHandler(handleDismissReview))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -244,6 +250,8 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
+	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
+	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
