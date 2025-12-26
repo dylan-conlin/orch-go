@@ -1,85 +1,105 @@
-# Session Handoff - Dec 25, 2025 (Evening)
+# Session Handoff - Dec 26, 2025 (Morning)
 
 ## Session Focus
-Backlog reduction: 203 → 46 open issues. Fixed beads database pollution.
+Started: "Clear completion backlog - fix verification criteria to stop false positives"
+Evolved: Dashboard stability, daemon fixes, cross-project visibility, account management
 
 ## What We Accomplished
 
-### 1. Beads Pollution Fix (Critical)
-**Problem:** orch-go's `.beads/` contained 786 beads-repo issues + 18 kb-cli issues that shouldn't be there.
+### 1. Dashboard Fixes (5 issues)
+- **Gold border flashing** - Added debounced processing state clear
+- **Tooltip hydration error** - Fixed with bits-ui child snippet pattern
+- **Active/Complete mismatch** - Phase: Complete agents now properly marked completed
+- **Jostling sort** - Skip is_processing in stable sort
+- **Load tests** - 13 Playwright tests for 50+ agents
 
-**Root cause:** `config.yaml` had `additional: ["/Users/.../beads"]` which imported all issues from beads repo.
+### 2. Daemon Fixes (2 critical)
+- **Stale capacity count** - Added `Pool.Reconcile()` that syncs with OpenCode on each poll
+- **bd show JSON parsing** - Already fixed in prior commit, daemon needed restart
 
-**Fix:**
-- Filtered issues.jsonl to orch-go-* prefix only
-- Removed nested `.beads/.beads/` directory
-- Updated .gitignore to prevent recurrence
-- Commits: `5fdb0ca` (orch-go)
+**Overnight run failed** (0/14 issues) due to these bugs. Now fixed.
 
-**Also fixed kb-cli** - same issue with 235 orphaned dependencies.
+### 3. Cross-Project Visibility
+- **Architect design complete** - Use OpenCode session.Directory for dynamic project discovery
+- **Implementation in progress** (`orch-go-702d`) - Multi-project workspace aggregation
 
-### 2. Backlog Reduction: 203 → 46 open
-Closed:
-- `orch-go-erdw` epic + 5 children (paused - architecture is sound)
-- `orch-go-mhec` epic (dashboard bugs) - 6→2 test failures
-- `orch-go-7yrh` epic (bd CLI hardening) - core issues addressed
-- Duplicates, stale issues, test spawns
-- `bd-5dup` daemon race condition (fixed)
+### 4. Account Management Issues Found
+- **OAuth scope bug** (`orch-go-h35c` in progress) - `orch account add` missing `user:inference` scope
+- **Workaround:** Use `opencode auth login` instead of `orch account add`
+- **Auto-switch not implemented** - Created `orch-go-1qwt` for future
 
-**Target achieved:** <50 open issues ✅
+### 5. Designs Completed
+- **Daemon UI visibility** - File-based status + /api/daemon endpoint (features created)
+- **Max subscription arbitrage** - Don't build, violates ToS. Use API credits for colleagues.
+- **Snap evaluation** - Complete MVP, ready for visual verification integration
 
-### 3. Orchestrator Skill Update
-Added "Context Gathering vs Investigation" section:
-- Orchestrators can do brief context gathering (<5 min) for spawn prompts
-- Deep investigation (>5 min, reading code to understand) → delegate
-- Commit in orch-knowledge: `3401441`
+## Decisions Made
 
-### 4. Dashboard Untracked Completion Fix
-- Added SYNTHESIS.md check as fallback for untracked agents
-- Commit: `128e889`
-- Note: Cross-project spawns (`--workdir`) still show as idle
+| Decision | Reason |
+|----------|--------|
+| Use snap for simple screenshots | Playwright MCP costs ~5-10k tokens for tool defs |
+| Don't build Max proxy | Account sharing violates Anthropic ToS |
+| Cross-project uses session.Directory | Dynamic discovery, no static registry needed |
+
+## Agents Still Running
+
+| Agent | Task | Account |
+|-------|------|---------|
+| `orch-go-h35c` | OAuth scope fix | work |
+| `orch-go-702d` | Cross-project visibility | work |
 
 ## Current State
 
 ```
-Open:        46
-In Progress: 13
-Blocked:     3
-Ready:       43
-Closed:      443
+Open:        53
+In Progress: 14
+Ready:       52
+Closed:      500
 ```
 
-**Focus:** "Backlog reduction - close/triage to <50 open issues" ✅
+**Commits today:** 15 (+8277/-337 lines)
+
+## Gaps / Friction Noticed
+
+1. **Account switching broken** - Wrong OAuth scopes. Use `opencode auth login` workaround.
+2. **No auto-switch** - Hit rate limit, agent stalled. Manual switch required.
+3. **Untracked agents linger** - No clean way to remove idle untracked agents from status.
+4. **Dashboard cross-project** - Shows "Waiting for activity" for other project's agents.
 
 ## Resume Instructions
 
 ```bash
-# Check current state
-bd stats && bd ready | head -10
+# Check running agents
+orch status
 
-# See open issues
-bd list --status open | head -30
+# Complete if done
+orch complete orch-go-h35c
+orch complete orch-go-702d
 
-# Continue closing stale/duplicate issues
-bd close <id> --reason "reason"
+# Test daemon overnight run
+orch daemon run
 
-# Or spawn for ready work
-orch spawn SKILL "task" --issue <id>
+# Check account status
+orch usage
+orch account list
 ```
 
-## Known Issues
-1. Cross-project untracked spawns still show as "idle" in dashboard
-2. 1 epic ready to close (check `bd stats`)
-3. No git remote configured for orch-go (changes are local only)
+## Daemon Queue (triage:ready)
 
-## Constraints Learned
-- Beads multi-repo config (`additional:`) imports ALL issues - dangerous without guardrails
-- Pre-spawn context gathering (<5 min) is allowed; deep investigation (>5 min) should be delegated
-
-## Git State
-- All work committed locally
-- Last commit: `449e17f` sync: beads and kn state
-- No remote - push manually when ready
+High priority features waiting:
+- `orch-go-4kjf` - Daemon writes status file
+- `orch-go-6su0` - /api/daemon endpoint
+- `orch-go-r3op` - Dashboard daemon indicator
+- `orch-go-1qwt` - Auto-switch accounts on low capacity
+- `orch-go-a85k` - Snap CLI integration for visual verification
 
 ## Usage
-- Work account: 15% weekly (resets in 6d 17h)
+
+- **Work account:** 34% weekly, 99% session (active)
+- **Personal account:** 16% weekly, 61% session (was rate limited)
+
+## Git State
+
+- All work committed locally on `master`
+- 136 uncommitted changes (staged?)
+- Check with `git status`
