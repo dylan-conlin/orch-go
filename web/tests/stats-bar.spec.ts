@@ -10,8 +10,8 @@ test.describe('Stats Bar Visibility', () => {
 		// Check for error count
 		await expect(statsBar.getByText('errors')).toBeVisible();
 		
-		// Check for connection button
-		await expect(statsBar.getByRole('button', { name: /Connect|Disconnect/ })).toBeVisible();
+		// Check for connection button (get the actual button text, not the tooltip trigger)
+		await expect(statsBar.getByRole('button', { name: /Connect|Disconnect/ }).first()).toBeVisible();
 	});
 	
 	test('should display error count', async ({ page }) => {
@@ -31,7 +31,8 @@ test.describe('Stats Bar Visibility', () => {
 		await page.goto('/');
 		
 		const statsBar = page.getByTestId('stats-bar');
-		const connectButton = statsBar.getByRole('button', { name: /Connect|Disconnect/ });
+		// Get the actual button (first one), not the tooltip trigger wrapper
+		const connectButton = statsBar.getByRole('button', { name: /Connect|Disconnect/ }).first();
 		
 		await expect(connectButton).toBeVisible();
 	});

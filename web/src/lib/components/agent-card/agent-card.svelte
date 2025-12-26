@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { SynthesisCard } from '$lib/components/synthesis-card';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Agent } from '$lib/stores/agents';
 	import { selectedAgentId } from '$lib/stores/agents';
 
@@ -219,27 +220,73 @@
 		</div>
 		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
 			{#if contextIndicator}
-				<span class={contextIndicator.colorClass} title={contextIndicator.label}>{contextIndicator.emoji}</span>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class={contextIndicator.colorClass}>{contextIndicator.emoji}</span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>{contextIndicator.label}</p>
+						{#if agent.gap_analysis}
+							<p class="text-xs text-muted-foreground mt-1">
+								Found: {agent.gap_analysis.match_count ?? 0} matches
+								({agent.gap_analysis.constraints ?? 0} constraints,
+								{agent.gap_analysis.decisions ?? 0} decisions,
+								{agent.gap_analysis.investigations ?? 0} investigations)
+							</p>
+						{/if}
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
 			{#if agent.is_processing}
-				<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500" title="Generating response"></span>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>Generating response</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{:else if agent.status === 'active'}
 				<span class="h-1 w-1 rounded-full bg-green-500"></span>
 			{/if}
-			{agent.runtime || formatDuration(agent.spawned_at)}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<span class="cursor-default">{agent.runtime || formatDuration(agent.spawned_at)}</span>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<p>Spawned: {agent.spawned_at ? new Date(agent.spawned_at).toLocaleString() : 'Unknown'}</p>
+					{#if agent.updated_at}
+						<p class="text-xs text-muted-foreground">Last update: {new Date(agent.updated_at).toLocaleString()}</p>
+					{/if}
+				</Tooltip.Content>
+			</Tooltip.Root>
 		</span>
 	</div>
 
 	<!-- Title (human-readable) -->
-	<p class="mt-1 truncate text-xs font-medium" title={agent.synthesis?.tldr || agent.task || agent.id}>
-		{getDisplayTitle(agent)}
-	</p>
+	<Tooltip.Root>
+		<Tooltip.Trigger class="w-full text-left">
+			<p class="mt-1 truncate text-xs font-medium">
+				{getDisplayTitle(agent)}
+			</p>
+		</Tooltip.Trigger>
+		<Tooltip.Content class="max-w-xs">
+			<p>{agent.synthesis?.tldr || agent.task || agent.id}</p>
+		</Tooltip.Content>
+	</Tooltip.Root>
 
 	<!-- Workspace ID (as subtitle when title differs) -->
 	{#if shouldShowWorkspaceSubtitle(agent)}
-		<p class="truncate font-mono text-[10px] text-muted-foreground" title={agent.id}>
-			{agent.id}
-		</p>
+		<Tooltip.Root>
+			<Tooltip.Trigger class="w-full text-left">
+				<p class="truncate font-mono text-[10px] text-muted-foreground">
+					{agent.id}
+				</p>
+			</Tooltip.Trigger>
+			<Tooltip.Content>
+				<p class="font-mono text-xs">{agent.id}</p>
+			</Tooltip.Content>
+		</Tooltip.Root>
 	{/if}
 
 	<!-- Project + Skill + Beads -->
@@ -255,9 +302,17 @@
 			</Badge>
 		{/if}
 		{#if agent.beads_id}
-			<span class="text-[10px] text-muted-foreground" title="Beads Issue">
-				{agent.beads_id}
-			</span>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<span class="text-[10px] text-muted-foreground cursor-default">
+						{agent.beads_id}
+					</span>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<p>Beads Issue: {agent.beads_id}</p>
+					<p class="text-xs text-muted-foreground">Run <code>bd show {agent.beads_id}</code> for details</p>
+				</Tooltip.Content>
+			</Tooltip.Root>
 		{/if}
 	</div>
 

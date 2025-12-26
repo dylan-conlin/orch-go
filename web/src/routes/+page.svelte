@@ -3,6 +3,7 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { AgentCard } from '$lib/components/agent-card';
 	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
@@ -294,61 +295,116 @@
 	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
 		<!-- Secondary indicators group -->
 		<div class="flex items-center gap-4">
-			<div class="flex items-center gap-2">
-				<span class="text-lg">❌</span>
-				<div class="flex items-baseline gap-1">
-					<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
-					<span class="text-xs text-muted-foreground">errors</span>
-				</div>
-			</div>
+			<!-- Errors indicator -->
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<div class="flex items-center gap-2 cursor-default">
+						<span class="text-lg">❌</span>
+						<div class="flex items-baseline gap-1">
+							<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+							<span class="text-xs text-muted-foreground">errors</span>
+						</div>
+					</div>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<p>{$errorEvents.length === 0 ? 'No errors logged' : `${$errorEvents.length} agent error${$errorEvents.length === 1 ? '' : 's'} logged`}</p>
+				</Tooltip.Content>
+			</Tooltip.Root>
+
+			<!-- Focus indicator -->
 			{#if $focus?.has_focus}
-				<div class="flex items-center gap-2" data-testid="focus-indicator" title={$focus.goal || 'Focus set'}>
-					<span class="text-lg">{getDriftEmoji($focus)}</span>
-					<div class="flex items-baseline gap-1">
-						<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
-							{$focus.is_drifting ? 'drifting' : 'focused'}
-						</span>
-					</div>
-				</div>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<div class="flex items-center gap-2 cursor-default" data-testid="focus-indicator">
+							<span class="text-lg">{getDriftEmoji($focus)}</span>
+							<div class="flex items-baseline gap-1">
+								<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
+									{$focus.is_drifting ? 'drifting' : 'focused'}
+								</span>
+							</div>
+						</div>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class="font-medium">{$focus.goal || 'Focus set'}</p>
+						{#if $focus.is_drifting}
+							<p class="text-xs text-muted-foreground mt-1">Current work may not align with focus</p>
+						{/if}
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
+
+			<!-- Servers indicator -->
 			{#if $servers}
-				<div class="flex items-center gap-2" data-testid="servers-indicator" title="{$servers.running_count} running, {$servers.stopped_count} stopped">
-					<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
-					<div class="flex items-baseline gap-1">
-						<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
-						<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
-					</div>
-				</div>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<div class="flex items-center gap-2 cursor-default" data-testid="servers-indicator">
+							<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+							<div class="flex items-baseline gap-1">
+								<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
+								<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+							</div>
+						</div>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>{$servers.running_count} running, {$servers.stopped_count} stopped</p>
+						<p class="text-xs text-muted-foreground mt-1">Local development servers</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
+
+			<!-- Beads indicator -->
 			{#if $beads}
-				<div class="flex items-center gap-2" data-testid="beads-indicator" title="{$beads.ready_issues} ready, {$beads.blocked_issues} blocked, {$beads.open_issues} open">
-					<span class="text-lg">📋</span>
-					<div class="flex items-baseline gap-1">
-						<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
-						<span class="text-xs text-muted-foreground">ready</span>
-					</div>
-					{#if $beads.blocked_issues > 0}
-						<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
-					{/if}
-				</div>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<div class="flex items-center gap-2 cursor-default" data-testid="beads-indicator">
+							<span class="text-lg">📋</span>
+							<div class="flex items-baseline gap-1">
+								<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
+								<span class="text-xs text-muted-foreground">ready</span>
+							</div>
+							{#if $beads.blocked_issues > 0}
+								<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
+							{/if}
+						</div>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>{$beads.ready_issues} ready to work on</p>
+						<p class="text-xs text-muted-foreground">{$beads.blocked_issues} blocked • {$beads.open_issues} total open</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
 		</div>
 		<!-- Connection button - pushed to end -->
 		<div class="ml-auto flex items-center gap-2">
-			<Button
-				variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
-				size="sm"
-				onclick={handleConnectClick}
-				class="h-7 text-xs"
-			>
-				{#if $connectionStatus === 'connecting'}
-					...
-				{:else if $connectionStatus === 'connected'}
-					Disconnect
-				{:else}
-					Connect
-				{/if}
-			</Button>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<Button
+						variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
+						size="sm"
+						onclick={handleConnectClick}
+						class="h-7 text-xs"
+					>
+						{#if $connectionStatus === 'connecting'}
+							...
+						{:else if $connectionStatus === 'connected'}
+							Disconnect
+						{:else}
+							Connect
+						{/if}
+					</Button>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					{#if $connectionStatus === 'connected'}
+						<p>Disconnect from SSE stream</p>
+						<p class="text-xs text-muted-foreground">Stop receiving real-time agent updates</p>
+					{:else if $connectionStatus === 'connecting'}
+						<p>Connecting to SSE stream...</p>
+					{:else}
+						<p>Connect to SSE stream</p>
+						<p class="text-xs text-muted-foreground">Receive real-time agent updates</p>
+					{/if}
+				</Tooltip.Content>
+			</Tooltip.Root>
 		</div>
 	</div>
 
@@ -541,20 +597,34 @@
 					<h3 class="text-xs font-semibold">Agent Lifecycle</h3>
 					<span class="text-xs text-muted-foreground">~/.orch/events.jsonl</span>
 				</div>
-				<Button
-					variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'ghost'}
-					size="sm"
-					onclick={handleAgentlogConnectClick}
-					class="h-5 px-2 text-xs"
-				>
-					{#if $agentlogConnectionStatus === 'connecting'}
-						...
-					{:else if $agentlogConnectionStatus === 'connected'}
-						Stop
+				<Tooltip.Root>
+				<Tooltip.Trigger>
+					<Button
+						variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'ghost'}
+						size="sm"
+						onclick={handleAgentlogConnectClick}
+						class="h-5 px-2 text-xs"
+					>
+						{#if $agentlogConnectionStatus === 'connecting'}
+							...
+						{:else if $agentlogConnectionStatus === 'connected'}
+							Stop
+						{:else}
+							Follow
+						{/if}
+					</Button>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					{#if $agentlogConnectionStatus === 'connected'}
+						<p>Stop following agent lifecycle events</p>
+					{:else if $agentlogConnectionStatus === 'connecting'}
+						<p>Connecting to event stream...</p>
 					{:else}
-						Follow
+						<p>Follow agent lifecycle events</p>
+						<p class="text-xs text-muted-foreground">Watch spawns, completions, and errors</p>
 					{/if}
-				</Button>
+				</Tooltip.Content>
+			</Tooltip.Root>
 			</div>
 			<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
 				{#each $agentlogEvents.slice().reverse().slice(0, 20) as event (event.id)}
