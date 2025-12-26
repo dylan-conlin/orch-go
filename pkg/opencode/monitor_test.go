@@ -303,3 +303,104 @@ func TestMonitorNoCompletionForDirectIdle(t *testing.T) {
 	}
 	mu.Unlock()
 }
+
+// TestMonitorSessionCleanupAfterCompletion tests that sessions are removed from the map after completion.
+// This prevents memory leaks in long-running daemons.
+func TestMonitorSessionCleanupAfterCompletion(t *testing.T) {
+	monitor := &Monitor{
+		sessions: make(map[string]*SessionState),
+		handlers: make([]CompletionHandler, 0),
+		done:     make(chan struct{}),
+	}
+
+	var completions []string
+	var mu sync.Mutex
+	monitor.OnCompletion(func(sessionID string) {
+		mu.Lock()
+		completions = append(completions, sessionID)
+		mu.Unlock()
+	})
+
+	// Session goes busy then idle (completes)
+	monitor.handleEvent(SSEEvent{
+		Event: "session.status",
+		Data:  `{"status":"busy","session_id":"ses_cleanup"}`,
+	})
+
+	// Verify session is in the map
+	if len(monitor.sessions) != 1 {
+		t.Fatalf("Expected 1 session in map, got %d", len(monitor.sessions))
+	}
+
+	// Transition to idle (triggers completion)
+	monitor.handleEvent(SSEEvent{
+		Event: "session.status",
+		Data:  `{"status":"idle","session_id":"ses_cleanup"}`,
+	})
+
+	// Wait for async handler
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify completion was triggered
+	mu.Lock()
+	if len(completions) != 1 {
+		t.Errorf("Expected 1 completion, got %d", len(completions))
+	}
+	mu.Unlock()
+
+	// CRITICAL: Verify session was removed from the map to prevent memory leak
+	if len(monitor.sessions) != 0 {
+		t.Errorf("Expected 0 sessions in map after completion (memory leak!), got %d", len(monitor.sessions))
+	}
+}
+
+// TestMonitorSessionCleanupMultipleSessions tests cleanup with multiple sessions.
+func TestMonitorSessionCleanupMultipleSessions(t *testing.T) {
+	monitor := &Monitor{
+		sessions: make(map[string]*SessionState),
+		handlers: make([]CompletionHandler, 0),
+		done:     make(chan struct{}),
+	}
+
+	// Create 3 sessions
+	for i := 1; i <= 3; i++ {
+		monitor.handleEvent(SSEEvent{
+			Event: "session.status",
+			Data:  `{"status":"busy","session_id":"ses_` + string(rune('a'+i-1)) + `"}`,
+		})
+	}
+
+	if len(monitor.sessions) != 3 {
+		t.Fatalf("Expected 3 sessions, got %d", len(monitor.sessions))
+	}
+
+	// Complete first session
+	monitor.handleEvent(SSEEvent{
+		Event: "session.status",
+		Data:  `{"status":"idle","session_id":"ses_a"}`,
+	})
+
+	time.Sleep(50 * time.Millisecond)
+
+	if len(monitor.sessions) != 2 {
+		t.Errorf("Expected 2 sessions after first completion, got %d", len(monitor.sessions))
+	}
+
+	// Complete second session
+	monitor.handleEvent(SSEEvent{
+		Event: "session.status",
+		Data:  `{"status":"idle","session_id":"ses_b"}`,
+	})
+
+	time.Sleep(50 * time.Millisecond)
+
+	if len(monitor.sessions) != 1 {
+		t.Errorf("Expected 1 session after second completion, got %d", len(monitor.sessions))
+	}
+
+	// Third session still busy - should remain in map
+	state := monitor.GetSessionState("ses_c")
+	if state == nil || state.Status != "busy" {
+		t.Error("Session ses_c should still be busy")
+	}
+}

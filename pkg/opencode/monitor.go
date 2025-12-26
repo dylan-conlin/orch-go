@@ -71,13 +71,54 @@ func (m *Monitor) Stop() {
 func (m *Monitor) run(ctx context.Context) {
 	defer close(m.done)
 
+	// Use a loop for reconnection instead of spawning new goroutines
+	// This prevents goroutine leaks on reconnection
+	reconnectDelay := 5 * time.Second
+
+	for {
+		// Check if we should stop before connecting
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Connect and process events
+		err := m.connectAndProcess(ctx)
+		if err != nil {
+			// Check if context was cancelled
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			fmt.Printf("SSE connection error: %v, reconnecting in %v\n", err, reconnectDelay)
+
+			// Wait before reconnecting
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(reconnectDelay):
+				continue
+			}
+		}
+	}
+}
+
+// connectAndProcess connects to SSE and processes events until disconnection.
+// Returns an error if the connection fails or is lost.
+func (m *Monitor) connectAndProcess(ctx context.Context) error {
 	events := make(chan SSEEvent, 100)
 	errChan := make(chan error, 1)
 
 	// Start SSE connection in a goroutine
 	go func() {
 		if err := m.sseClient.Connect(events); err != nil {
-			errChan <- err
+			select {
+			case errChan <- err:
+			default:
+			}
 		}
 		close(events)
 	}()
@@ -85,52 +126,17 @@ func (m *Monitor) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case event, ok := <-events:
 			if !ok {
-				// Connection closed, try to reconnect
-				m.reconnect(ctx, events, errChan)
-				continue
+				// Connection closed, return to trigger reconnection
+				return fmt.Errorf("SSE connection closed")
 			}
 			m.handleEvent(event)
 		case err := <-errChan:
-			fmt.Printf("SSE connection error: %v\n", err)
-			// Try to reconnect after a delay
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(5 * time.Second):
-				m.reconnect(ctx, events, errChan)
-			}
+			return err
 		}
 	}
-}
-
-// reconnect attempts to reconnect to the SSE stream.
-func (m *Monitor) reconnect(ctx context.Context, events chan SSEEvent, errChan chan error) {
-	// Create a new events channel since the old one is closed
-	newEvents := make(chan SSEEvent, 100)
-
-	go func() {
-		if err := m.sseClient.Connect(newEvents); err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
-		}
-		close(newEvents)
-	}()
-
-	// Forward events from new channel to main loop
-	go func() {
-		for event := range newEvents {
-			select {
-			case events <- event:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 }
 
 // handleEvent processes an SSE event and detects completions.
@@ -183,8 +189,9 @@ func (m *Monitor) handleEvent(event SSEEvent) {
 			}
 		}(sessionID)
 
-		// Reset WasBusy for next run in same session
-		state.WasBusy = false
+		// Clean up session from map to prevent memory leak.
+		// Sessions that complete shouldn't stay in memory forever.
+		delete(m.sessions, sessionID)
 	}
 }
 
