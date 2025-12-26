@@ -2847,6 +2847,11 @@ func runComplete(beadsID string) error {
 
 			fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
 
+			// Check if stdin is a terminal for interactive prompting
+			if !term.IsTerminal(int(os.Stdin.Fd())) {
+				return fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
+			}
+
 			// Prompt user for confirmation
 			fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
 			reader := bufio.NewReader(os.Stdin)
@@ -2902,39 +2907,43 @@ func runComplete(beadsID string) error {
 
 				fmt.Println("\n---------------------------------")
 
-				// Prompt for each actionable item
+				// Prompt for each actionable item (only if stdin is a terminal)
 				if len(actionableItems) > 0 {
-					reader := bufio.NewReader(os.Stdin)
-					createdCount := 0
+					if !term.IsTerminal(int(os.Stdin.Fd())) {
+						fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
+					} else {
+						reader := bufio.NewReader(os.Stdin)
+						createdCount := 0
 
-					for i, action := range actionableItems {
-						fmt.Printf("\n[%d/%d] %s\n", i+1, len(actionableItems), action)
-						fmt.Print("Create issue? [y/N/q to quit]: ")
-						response, err := reader.ReadString('\n')
-						if err != nil {
-							break
-						}
-						response = strings.TrimSpace(strings.ToLower(response))
-
-						if response == "q" || response == "quit" {
-							fmt.Println("Skipping remaining items.")
-							break
-						}
-
-						if response == "y" || response == "yes" {
-							// Create the issue using beads
-							issue, err := beads.FallbackCreate(action, "", "task", 2, []string{"triage:review"})
+						for i, action := range actionableItems {
+							fmt.Printf("\n[%d/%d] %s\n", i+1, len(actionableItems), action)
+							fmt.Print("Create issue? [y/N/q to quit]: ")
+							response, err := reader.ReadString('\n')
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
-							} else {
-								fmt.Printf("  Created: %s\n", issue.ID)
-								createdCount++
+								break
+							}
+							response = strings.TrimSpace(strings.ToLower(response))
+
+							if response == "q" || response == "quit" {
+								fmt.Println("Skipping remaining items.")
+								break
+							}
+
+							if response == "y" || response == "yes" {
+								// Create the issue using beads
+								issue, err := beads.FallbackCreate(action, "", "task", 2, []string{"triage:review"})
+								if err != nil {
+									fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
+								} else {
+									fmt.Printf("  Created: %s\n", issue.ID)
+									createdCount++
+								}
 							}
 						}
-					}
 
-					if createdCount > 0 {
-						fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+						if createdCount > 0 {
+							fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+						}
 					}
 				}
 			}
