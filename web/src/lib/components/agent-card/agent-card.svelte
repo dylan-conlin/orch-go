@@ -261,39 +261,64 @@
 		{/if}
 	</div>
 
-	<!-- Current Activity Summary (for active agents) - simplified, click for full log -->
-	{#if agent.status === 'active' && agent.current_activity}
+	<!-- Current Activity Summary (for active agents) - always reserve space to prevent height jitter -->
+	{#if agent.status === 'active'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			<div class="flex items-center gap-1">
-				<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
-				<p class="flex-1 truncate text-[10px] text-muted-foreground">
-					{agent.current_activity.text || 'Working...'}
-				</p>
-				<span class="text-[9px] text-muted-foreground/70 shrink-0">
-					{formatActivityAge(agent.current_activity.timestamp)}
-				</span>
-			</div>
+			{#if agent.current_activity}
+				<div class="flex items-center gap-1">
+					<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
+					<p class="flex-1 truncate text-[10px] text-muted-foreground">
+						{agent.current_activity.text || 'Working...'}
+					</p>
+					<span class="text-[9px] text-muted-foreground/70 shrink-0">
+						{formatActivityAge(agent.current_activity.timestamp)}
+					</span>
+				</div>
+			{:else}
+				<!-- Placeholder to maintain consistent card height -->
+				<div class="flex items-center gap-1">
+					<span class="text-[10px] text-muted-foreground/50">⏳</span>
+					<p class="flex-1 truncate text-[10px] text-muted-foreground/50">
+						Waiting for activity...
+					</p>
+				</div>
+			{/if}
 		</div>
 	{/if}
 
-	<!-- Synthesis for completed agents (with close_reason fallback) -->
-	<!-- Only show section if there's actual content to display -->
-	{#if agent.status === 'completed' && (agent.synthesis?.tldr || agent.synthesis?.outcome || agent.close_reason)}
+	<!-- Synthesis for completed agents - always reserve space to prevent height jitter -->
+	{#if agent.status === 'completed'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if agent.synthesis?.tldr}
-				<p class="text-[10px] leading-tight text-muted-foreground">
-					{agent.synthesis.tldr}
-				</p>
-			{:else if agent.close_reason}
-				<p class="text-[10px] leading-tight text-muted-foreground">
-					{agent.close_reason}
+			{#if agent.synthesis?.tldr || agent.close_reason}
+				{#if agent.synthesis?.tldr}
+					<p class="text-[10px] leading-tight text-muted-foreground">
+						{agent.synthesis.tldr}
+					</p>
+				{:else if agent.close_reason}
+					<p class="text-[10px] leading-tight text-muted-foreground">
+						{agent.close_reason}
+					</p>
+				{/if}
+				{#if agent.synthesis?.outcome}
+					<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="mt-1 h-4 px-1 text-[10px]">
+						{agent.synthesis.outcome}
+					</Badge>
+				{/if}
+			{:else}
+				<!-- Placeholder to maintain consistent card height -->
+				<p class="text-[10px] leading-tight text-muted-foreground/50">
+					No synthesis available
 				</p>
 			{/if}
-			{#if agent.synthesis?.outcome}
-				<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="mt-1 h-4 px-1 text-[10px]">
-					{agent.synthesis.outcome}
-				</Badge>
-			{/if}
+		</div>
+	{/if}
+
+	<!-- Abandoned agents footer - reserve space for consistency -->
+	{#if agent.status === 'abandoned'}
+		<div class="mt-1.5 border-t border-border/50 pt-1.5">
+			<p class="text-[10px] leading-tight text-red-500/70">
+				{agent.close_reason || 'Agent was abandoned'}
+			</p>
 		</div>
 	{/if}
 </button>
