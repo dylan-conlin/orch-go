@@ -7,17 +7,11 @@ test.describe('Stats Bar Visibility', () => {
 		const statsBar = page.getByTestId('stats-bar');
 		await expect(statsBar).toBeVisible();
 		
-		// Check for active count
-		await expect(statsBar.getByText('active')).toBeVisible();
-		
-		// Check for recent count (progressive disclosure)
-		await expect(statsBar.getByText('recent')).toBeVisible();
-		
-		// Check for archive count (progressive disclosure)
-		await expect(statsBar.getByText('archive')).toBeVisible();
-		
 		// Check for error count
 		await expect(statsBar.getByText('errors')).toBeVisible();
+		
+		// Check for connection button
+		await expect(statsBar.getByRole('button', { name: /Connect|Disconnect/ })).toBeVisible();
 	});
 	
 	test('should display error count', async ({ page }) => {

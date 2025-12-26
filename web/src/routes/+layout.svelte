@@ -49,22 +49,20 @@
 							class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
 							class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
 							class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
-							title="5-hour rolling usage: {$usage.five_hour_percent.toFixed(0)}% of limit"
+							title="5-hour rolling usage: {$usage.five_hour_percent.toFixed(0)}% of limit{$usage.five_hour_reset ? ` • Resets in ${$usage.five_hour_reset}` : ''}"
 						>
-							{$usage.five_hour_percent.toFixed(0)}%
+							{$usage.five_hour_percent.toFixed(0)}%{#if $usage.five_hour_reset} <span class="text-muted-foreground font-normal">({$usage.five_hour_reset})</span>{/if}
 						</span>
-						<span class="text-muted-foreground cursor-help" title="5-hour rolling window">5hr</span>
 						<span class="text-muted-foreground">|</span>
 						<span
 							class="font-medium cursor-help"
 							class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
 							class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
 							class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
-							title="Weekly usage: {$usage.weekly_percent.toFixed(0)}% of limit"
+							title="Weekly usage: {$usage.weekly_percent.toFixed(0)}% of limit{$usage.weekly_reset ? ` • Resets in ${$usage.weekly_reset}` : ''}"
 						>
-							{$usage.weekly_percent.toFixed(0)}%
+							{$usage.weekly_percent.toFixed(0)}%{#if $usage.weekly_reset} <span class="text-muted-foreground font-normal">({$usage.weekly_reset})</span>{/if}
 						</span>
-						<span class="text-muted-foreground cursor-help" title="Weekly limit (resets Monday)">week</span>
 						{#if $usage.account_name || $usage.account}
 							<span class="text-muted-foreground" title="Active Claude Max account">@{$usage.account_name || $usage.account.split('@')[0]}</span>
 						{/if}
