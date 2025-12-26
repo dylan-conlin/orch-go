@@ -721,12 +721,12 @@ func TestValidateCommand(t *testing.T) {
 		// Valid commands
 		{
 			name:    "valid_kn_decide",
-			input:   `kn decide "auth" --reason "test reason"`,
+			input:   `kn decide "auth" --reason "This is a valid reason with 20+ characters"`,
 			wantErr: false,
 		},
 		{
 			name:    "valid_kn_constrain",
-			input:   `kn constrain "no magic numbers" --reason "code quality"`,
+			input:   `kn constrain "no magic numbers" --reason "Code quality requires consistent style"`,
 			wantErr: false,
 		},
 		{
@@ -805,6 +805,16 @@ func TestValidateCommand(t *testing.T) {
 			name:    "unterminated_quote",
 			input:   `kn decide "test`,
 			wantErr: true,
+		},
+		{
+			name:    "kn_reason_too_short",
+			input:   `kn decide "auth" --reason "short"`,
+			wantErr: true,
+		},
+		{
+			name:    "kn_reason_exactly_20_chars",
+			input:   `kn decide "auth" --reason "exactly twenty chars"`,
+			wantErr: false,
 		},
 	}
 
@@ -950,6 +960,41 @@ func TestGenerateReasonFromGaps(t *testing.T) {
 				if !strings.Contains(result, want) {
 					t.Errorf("expected result to contain %q, got %q", want, result)
 				}
+			}
+		})
+	}
+}
+
+func TestGenerateReasonFromGapsMinLength(t *testing.T) {
+	// Test that generateReasonFromGaps always produces at least MinReasonLength chars
+	tests := []struct {
+		name   string
+		query  string
+		events []GapEvent
+	}{
+		{
+			name:   "no_skill_no_task_3_events",
+			query:  "auth",
+			events: []GapEvent{{}, {}, {}},
+		},
+		{
+			name:   "no_skill_no_task_1_event",
+			query:  "x",
+			events: []GapEvent{{}},
+		},
+		{
+			name:   "short_query",
+			query:  "a",
+			events: []GapEvent{{}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := generateReasonFromGaps(tc.query, tc.events)
+
+			if len(result) < MinReasonLength {
+				t.Errorf("expected reason length >= %d, got %d: %q", MinReasonLength, len(result), result)
 			}
 		})
 	}

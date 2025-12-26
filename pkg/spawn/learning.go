@@ -420,7 +420,11 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 		fmt.Sprintf(`orch spawn investigation "why does %s lack context"`, query)
 }
 
+// MinReasonLength is the minimum length required by kn for --reason argument.
+const MinReasonLength = 20
+
 // generateReasonFromGaps creates a meaningful reason string from gap event context.
+// Ensures the reason is at least MinReasonLength characters to satisfy kn validation.
 func generateReasonFromGaps(query string, events []GapEvent) string {
 	if len(events) == 0 {
 		return "No context available for this topic"
@@ -478,7 +482,15 @@ func generateReasonFromGaps(query string, events []GapEvent) string {
 		parts = append(parts, fmt.Sprintf("Tasks: %s", strings.Join(shortTasks, "; ")))
 	}
 
-	return strings.Join(parts, ". ")
+	reason := strings.Join(parts, ". ")
+
+	// Ensure minimum length for kn validation (requires at least 20 chars)
+	if len(reason) < MinReasonLength {
+		// Pad with query context to meet minimum
+		reason = fmt.Sprintf("Recurring gap for topic: %s. %s", query, reason)
+	}
+
+	return reason
 }
 
 // AnalyzePatterns provides comprehensive analysis of gap patterns.
@@ -752,10 +764,16 @@ func validateKnCommand(args []string) error {
 		if len(args) < 3 {
 			return fmt.Errorf("kn %s requires a description", args[1])
 		}
-		// Check for --reason flag value
+		// Check for --reason flag value and validate minimum length
 		for i, arg := range args {
-			if arg == "--reason" && i == len(args)-1 {
-				return fmt.Errorf("--reason flag requires a value")
+			if arg == "--reason" {
+				if i == len(args)-1 {
+					return fmt.Errorf("--reason flag requires a value")
+				}
+				reasonValue := args[i+1]
+				if len(reasonValue) < MinReasonLength {
+					return fmt.Errorf("--reason must be at least %d characters (got %d)", MinReasonLength, len(reasonValue))
+				}
 			}
 		}
 	case "question":
