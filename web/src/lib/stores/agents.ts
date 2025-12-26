@@ -84,12 +84,21 @@ export interface SSEEvent {
 	timestamp?: number;
 }
 
-// Counter for generating unique event IDs
+// Counter for generating unique event IDs (fallback for events without part.id)
 let sseEventIdCounter = 0;
 
 // Generate a unique SSE event ID
 function generateSSEEventId(): string {
 	return `sse-${Date.now()}-${++sseEventIdCounter}`;
+}
+
+// Extract stable ID from SSE event data
+// For message.part and message.part.updated events, use the part.id for deduplication
+function extractEventId(data: any): string | null {
+	if (data?.properties?.part?.id) {
+		return data.properties.part.id;
+	}
+	return null;
 }
 
 // API configuration
@@ -175,12 +184,44 @@ export const archivedAgents = derived(agents, ($agents) => {
 	});
 });
 
-// SSE event stream
+// SSE event stream with deduplication
+// Events with the same part.id are updated in place rather than added as duplicates
 function createSSEStore() {
 	const { subscribe, update } = writable<SSEEvent[]>([]);
 
 	return {
 		subscribe,
+		// Add or update an event - data is the raw parsed SSE event from OpenCode
+		addOrUpdateEvent: (data: any) => {
+			// Extract stable ID from part.id if available (for message.part events)
+			const partId = extractEventId(data);
+			
+			update((events) => {
+				const eventWithId: SSEEvent = {
+					id: partId || generateSSEEventId(),
+					type: data.type || 'unknown',
+					properties: data.properties,
+					timestamp: Date.now()
+				};
+				
+				// If we have a stable part.id, try to update existing event
+				if (partId) {
+					const existingIndex = events.findIndex(e => e.id === partId);
+					if (existingIndex !== -1) {
+						// Update in place - this replaces the old version with new data
+						const newEvents = [...events];
+						newEvents[existingIndex] = eventWithId;
+						return newEvents;
+					}
+				}
+				
+				// New event - add to list
+				const newEvents = [...events, eventWithId];
+				// Keep last 100 events
+				return newEvents.slice(-100);
+			});
+		},
+		// Legacy addEvent for backwards compatibility
 		addEvent: (event: Omit<SSEEvent, 'id'>) => {
 			update((events) => {
 				const newEvents = [...events, { ...event, id: generateSSEEventId() }];
@@ -305,16 +346,17 @@ export function connectSSE(): void {
 }
 
 function handleSSEEvent(data: any) {
-	sseEvents.addEvent({
-		type: data.type || 'unknown',
-		properties: data.properties,
-		timestamp: Date.now()
-	});
+	// Use addOrUpdateEvent for proper deduplication of streaming events
+	// Events with the same part.id will update in place rather than duplicate
+	sseEvents.addOrUpdateEvent(data);
 
-	// Handle message.part events - update agent activity and processing state in real-time
-	if (data.type === 'message.part' && data.properties) {
-		const sessionID = data.properties.sessionID;
+	// Handle message.part and message.part.updated events - update agent activity in real-time
+	// message.part: text streaming (incremental text chunks)
+	// message.part.updated: tool state changes (running -> completed)
+	if ((data.type === 'message.part' || data.type === 'message.part.updated') && data.properties) {
 		const part = data.properties.part;
+		// sessionID is nested inside the part object
+		const sessionID = part?.sessionID;
 		
 		if (sessionID && part && part.type) {
 			// Update agent activity and set is_processing=true (agent is actively responding)
