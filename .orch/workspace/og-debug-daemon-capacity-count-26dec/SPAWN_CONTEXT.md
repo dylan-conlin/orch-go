@@ -1,4 +1,4 @@
-TASK: Daemon capacity count goes stale - shows 3/3 active but orch status shows 0. Daemon never reconciles with actual OpenCode sessions. Check pkg/daemon/ for capacity counting logic - needs to query OpenCode sessions on each poll, not just track spawns. This blocked overnight daemon run.
+TASK: Daemon capacity count stale after initial spawn cycle. Untracked agents counting toward capacity. Evidence: daemon says 3/3 but orch status shows 3 running + 2 idle untracked. Reconcile() exists but untracked may not be filtered.
 
 SPAWN TIER: full
 
@@ -9,78 +9,17 @@ SPAWN TIER: full
 
 ## PRIOR KNOWLEDGE (from kb context)
 
-**Query:** "daemon"
-
-### Constraints (MUST respect)
-- OpenCode serve requires --port 4096 flag
-  - Reason: Default is random port. Daemon, orch CLI, and dashboard all expect 4096.
-
-### Prior Decisions
-- Use build/orch for serve daemon
-  - Reason: Prevents SIGKILL during make install
-- bd exec.Command calls in orch-go are concurrency-safe
-  - Reason: Beads daemon serializes database access via Unix socket, GetCommentsBatch has semaphore limiting to 10 concurrent
-- pkg/beads uses direct RPC with CLI fallback
-  - Reason: Performance gains from skipping process spawn, graceful degradation when daemon unavailable
-- RPC-first fallback pattern for beads operations
-  - Reason: Sequential RPC calls through single connection are simpler than concurrent CLI subprocess spawning; daemon handles serialization so semaphore pattern is unnecessary
-- beads RPC client fallback pattern
-  - Reason: Try RPC client first, fallback to CLI on error - provides performance when daemon running, compatibility when not
-- Daemon completion polling preferred over SSE detection
-  - Reason: SSE busy->idle triggers false positives during normal agent operation; Phase: Complete is only reliable signal
-- Daemon completion uses beads polling not SSE
-  - Reason: SSE busy->idle detection has false positives during tool loading; Phase: Complete in beads comments is only reliable signal
-- Daemon-first for batch work
-  - Reason: Label issues triage:ready + skill:X, daemon auto-spawns. Orchestrator focuses on triage, labeling, synthesis, completion review. Manual orch spawn for single urgent items only.
-- kn entries can accumulate into skill changes
-  - Reason: Pattern: multiple related constraints/decisions on same topic → skill update. Example: daemon kn entries → skill launchd docs + daemon-first workflow. Not yet automated - manual recognition required.
-- kb reflect Command Interface
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-21-kb-reflect-command-interface.md
-- Orchestrator System Resource Visibility
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-25-orchestrator-system-resource-visibility.md
-- BEADS_NO_DAEMON=1 in .zshrc only
+**Query:** "daemon capacity count"
 
 ### Related Investigations
-- Add CLI Commands for Focus, Drift, and Next
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-cli-commands-focus-drift.md
-- Add --dry-run flag to daemon run command
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-dry-run-flag-daemon.md
-- Add orch review command for batch completion workflow
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-orch-review-command-batch.md
-- Add Usage/Capacity Tracking to Account Package
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-usage-capacity-tracking-account.md
-- Add Wait Command to orch-go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-wait-command-orch.md
-- Compare orch-cli (Python) vs orch-go Features
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-compare-orch-cli-python-orch.md
-- Enhance status command with swarm progress
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-enhance-status-command-swarm-progress.md
-- Make Headless Mode Default for Spawn
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-make-headless-mode-default-deprecate.md
-- Migrate orch-go from tmux to HTTP API
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-migrate-orch-go-tmux-http.md
-- Daemon Command Implementation
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-orch-add-daemon-command.md
-- Final Sanity Check of orch-go Commands
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-perform-final-sanity-check-orch.md
-- Refactoring pkg/registry as Beads Issue State Cache
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-plan-refactoring-pkg-registry-act.md
-- Scope Out Headless Swarm Implementation
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-scope-out-headless-swarm-implementation.md
-- Concurrent tmux spawn test (delta)
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-tmux-concurrent-delta.md
-- orch spawn vs Native OpenCode Agents
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-research-orch-spawn-vs-opencode-agents.md
-- Design: kb reflect Command Specification
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-design-kb-reflect-command-specification.md
-- Add --tmux flag to orch spawn
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-add-tmux-flag-orch-spawn.md
-- Agents Being Marked Completed in Registry Prematurely
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-agents-being-marked-completed-registry.md
-- Registry Usage Audit in orch-go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-audit-all-registry-usage-orch.md
-- Cross-Project Epic Orchestration Patterns
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-cross-project-epic-orchestration-patterns.md
+- Daemon Capacity Count Goes Stale
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md
+- Daemon Capacity Count Stuck While
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md
+- [orch-go] Daemon Capacity Count Goes Stale
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md
+- [orch-go] Daemon Capacity Count Stuck While
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
 
@@ -88,7 +27,7 @@ SPAWN TIER: full
 
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via `bd comment orch-go-s2j7 "Phase: Planning - [brief description]"`
+1. Report via `bd comment orch-go-59m3 "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -99,7 +38,7 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 After your final commit, BEFORE typing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: `bd comment orch-go-s2j7 "Phase: Complete - [1-2 sentence summary of deliverables]"`
+2. Run: `bd comment orch-go-59m3 "Phase: Complete - [1-2 sentence summary of deliverables]"`
 3. Run: `/exit` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
@@ -135,12 +74,12 @@ AUTHORITY:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
-2. **SET UP investigation file:** Run `kb create investigation daemon-capacity-count-goes-stale` to create from template
-   - This creates: `.kb/investigations/simple/YYYY-MM-DD-daemon-capacity-count-goes-stale.md`
+2. **SET UP investigation file:** Run `kb create investigation daemon-capacity-count-stale-after` to create from template
+   - This creates: `.kb/investigations/simple/YYYY-MM-DD-daemon-capacity-count-stale-after.md`
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
    - **IMPORTANT:** After running `kb create`, report the actual path via:
-     `bd comment orch-go-s2j7 "investigation_path: /path/to/file.md"`
+     `bd comment orch-go-59m3 "investigation_path: /path/to/file.md"`
      (This allows orch complete to verify the correct file)
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
@@ -165,21 +104,21 @@ Signal orchestrator when blocked:
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
-You were spawned from beads issue: **orch-go-s2j7**
+You were spawned from beads issue: **orch-go-59m3**
 
 **Use `bd comment` for progress updates instead of workspace-only tracking:**
 
 ```bash
 # Report progress at phase transitions
-bd comment orch-go-s2j7 "Phase: Planning - Analyzing codebase structure"
-bd comment orch-go-s2j7 "Phase: Implementing - Adding authentication middleware"
-bd comment orch-go-s2j7 "Phase: Complete - All tests passing, ready for review"
+bd comment orch-go-59m3 "Phase: Planning - Analyzing codebase structure"
+bd comment orch-go-59m3 "Phase: Implementing - Adding authentication middleware"
+bd comment orch-go-59m3 "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment orch-go-s2j7 "BLOCKED: Need clarification on API contract"
+bd comment orch-go-59m3 "BLOCKED: Need clarification on API contract"
 
 # Report questions
-bd comment orch-go-s2j7 "QUESTION: Should we use JWT or session-based auth?"
+bd comment orch-go-59m3 "QUESTION: Should we use JWT or session-based auth?"
 ```
 
 **When to comment:**
@@ -188,7 +127,7 @@ bd comment orch-go-s2j7 "QUESTION: Should we use JWT or session-based auth?"
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-s2j7`.
+**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-59m3`.
 
 ⛔ **NEVER run `bd close`** - Only the orchestrator closes issues via `orch complete`.
    - Workers report `Phase: Complete`, orchestrator verifies and closes
@@ -620,7 +559,7 @@ CONTEXT AVAILABLE:
 After your final commit, BEFORE doing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. `bd comment orch-go-s2j7 "Phase: Complete - [1-2 sentence summary]"`
+2. `bd comment orch-go-59m3 "Phase: Complete - [1-2 sentence summary]"`
 3. `/exit`
 
 ⚠️ Your work is NOT complete until you run these commands.
