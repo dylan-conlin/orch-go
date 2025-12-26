@@ -204,11 +204,19 @@ func runDaemonLoop() error {
 		timestamp := time.Now().Format("15:04:05")
 		pollTime := time.Now()
 
+		// Reconcile pool with actual OpenCode sessions FIRST.
+		// This prevents stale capacity counts when agents complete without
+		// the daemon knowing (overnight runs, crashes, manual kills).
+		// Must happen before status write so status shows accurate counts.
+		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
+			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
+		}
+
 		// Get ready issues count for status
 		readyIssues, _ := daemon.ListReadyIssues()
 		readyCount := len(readyIssues)
 
-		// Write daemon status file at start of each poll cycle
+		// Write daemon status file AFTER reconciliation so counts are accurate
 		status := daemon.DaemonStatus{
 			Capacity: daemon.CapacityStatus{
 				Max:       config.MaxAgents,
@@ -222,13 +230,6 @@ func runDaemonLoop() error {
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
-		}
-
-		// Reconcile pool with actual OpenCode sessions at start of each cycle.
-		// This prevents stale capacity counts when agents complete without
-		// the daemon knowing (overnight runs, crashes, manual kills).
-		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
-			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
 		}
 
 		// Check capacity before polling

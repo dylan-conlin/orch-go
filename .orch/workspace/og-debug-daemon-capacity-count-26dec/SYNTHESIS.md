@@ -9,41 +9,50 @@
 
 ## TLDR
 
-Fixed daemon capacity tracking bug where the WorkerPool's internal count became stale after agents completed, blocking new spawns. Added `Pool.Reconcile()` method that syncs with actual OpenCode sessions on each poll cycle.
+Daemon capacity count stuck at 3/3 because `DefaultActiveCount()` counted ALL 26 OpenCode sessions (including old/stale ones) instead of just active ones. Fixed by filtering to sessions updated within last 30 minutes, and reordering daemon loop to reconcile before writing status.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Modified
-- `pkg/daemon/pool.go` - Added `Reconcile(actualCount int) int` method to sync internal count with external reality
-- `pkg/daemon/daemon.go` - Added `ReconcileWithOpenCode() int` method that calls DefaultActiveCount and reconciles pool
-- `cmd/orch/daemon.go` - Added call to `ReconcileWithOpenCode()` at start of each poll cycle with verbose logging
-- `pkg/daemon/pool_test.go` - Added 7 tests for Reconcile behavior (stale slots, all gone, more actual, same count, empty pool, wakes waiters)
-- `pkg/daemon/daemon_test.go` - Added 2 tests for ReconcileWithOpenCode (no pool, with pool)
+- `pkg/daemon/daemon.go:416-444` - Updated `DefaultActiveCount()` to filter sessions by `time.updated` field, counting only sessions active within 30 minutes (matching `orch status` threshold)
+- `cmd/orch/daemon.go:203-227` - Reordered daemon loop to call `ReconcileWithOpenCode()` BEFORE `WriteStatusFile()` so status shows accurate counts
 
 ### Commits
-- Pending commit with fix and tests
+- Pending commit: "fix: filter OpenCode sessions by recency in DefaultActiveCount()"
 
 ---
 
 ## Evidence (What Was Observed)
 
-- `pkg/daemon/daemon.go:450-486` - `Once()` acquires slots via `pool.TryAcquire()` but never releases them
-- `pkg/daemon/daemon.go:400-426` - `DefaultActiveCount()` exists and correctly queries OpenCode API
-- `pkg/daemon/daemon.go:220-238` - `AtCapacity()` uses Pool.Active() when pool exists, bypassing accurate count
-- Pool's internal `activeCount` only ever increases, never decreases for completed agents
+- `curl http://127.0.0.1:4096/session | jq 'length'` returns 26 (many stale sessions from Dec 20-26)
+- Only 1 session had activity within 30 minutes (verified with jq filter)
+- `Reconcile(actualCount)` requires actualCount < poolCount to free slots
+- With actualCount=26 and poolCount=3, 26 >= 3 is true, so prior fix never freed slots
+- Prior investigation added `Pool.Reconcile()` but didn't account for stale sessions in OpenCode API response
+
+### Root Cause Chain
+1. Daemon spawns 3 agents, Pool.activeCount = 3
+2. Agents complete, OpenCode sessions remain (stale)
+3. New poll cycle calls `ReconcileWithOpenCode()`
+4. `DefaultActiveCount()` queries OpenCode API, returns 26 (all sessions)
+5. `Reconcile(26)` sees 26 >= 3, does nothing
+6. Pool stays at 3/3 forever
 
 ### Tests Run
 ```bash
-go test ./pkg/daemon/... -v -run 'Reconcile'
-# All 8 new tests pass
+# Run daemon package tests
+go test ./pkg/daemon/... -count=1
+# ok  	github.com/dylan-conlin/orch-go/pkg/daemon	0.150s
 
-go test ./pkg/daemon/...
-# PASS: ok  github.com/dylan-conlin/orch-go/pkg/daemon  0.152s
-
+# Build verification
 go build ./cmd/orch
-# Builds successfully
+# Success, no errors
+
+# Verify session filtering logic
+curl -s http://127.0.0.1:4096/session | jq '[.[] | select((.time.updated / 1000) > (now - 1800))] | length'
+# Returns 1 (only active sessions)
 ```
 
 ---
@@ -51,18 +60,16 @@ go build ./cmd/orch
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md` - Full investigation with D.E.K.N. summary
+- `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md` - Full root cause analysis (extends prior investigation)
 
 ### Decisions Made
-- Decision: Use simple reconciliation over CompletionService integration because it's minimal code change, uses existing infrastructure, and is self-healing
-- Decision: Reconcile at start of poll cycle (not end) so stale capacity is cleared before trying to spawn
+- Filter by 30-minute threshold: Matches `orch status` agent matching threshold for consistency across orch commands
+- Reorder reconcile before status write: Ensures status file reflects post-reconciliation counts, not stale pre-reconciliation counts
 
 ### Constraints Discovered
-- Long-running daemons must periodically reconcile internal state with external sources of truth
-- OpenCode sessions are the source of truth for active agents, not daemon's internal tracking
-
-### Externalized via `kn`
-- None needed - this is a bug fix, not a new constraint or decision pattern
+- **OpenCode sessions persist indefinitely**: Sessions don't auto-close when agents complete or exit
+- **Session count != active agent count**: Must filter by recency to distinguish active vs abandoned sessions
+- **Order matters in daemon loop**: Status snapshot must happen after state mutations
 
 ---
 
@@ -72,23 +79,25 @@ go build ./cmd/orch
 
 ### If Close
 - [x] All deliverables complete
-- [x] Tests passing (8 new tests, all daemon tests green)
-- [x] Investigation file has `**Status:** Complete`
-- [ ] Ready for `orch complete orch-go-s2j7`
+- [x] Tests passing
+- [x] Investigation file has `**Phase:** Complete`
+- [x] Ready for `orch complete orch-go-s2j7`
 
 ---
 
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- Should CompletionService be integrated for real-time tracking? (not needed for current use case)
-- Should we add metrics/logging for reconciliation events in production? (could help debugging)
+- Why doesn't OpenCode clean up old sessions automatically?
+- Should there be a session cleanup command in orch (`orch cleanup-sessions`)?
 
 **Areas worth exploring further:**
-- Behavior when OpenCode API is temporarily unavailable (currently returns 0, may cause premature slot release)
+- Add metrics/logging for reconciliation events to monitor in production
+- Consider explicit session ID tracking instead of time-based filtering for precision
 
 **What remains unclear:**
-- Whether overnight runs will surface edge cases not covered by tests
+- Behavior when sessions are streaming but no user input (may appear stale with >30 min idle time)
+- Edge case when OpenCode API is unavailable (currently returns 0, may cause aggressive slot release)
 
 ---
 
@@ -97,5 +106,5 @@ go build ./cmd/orch
 **Skill:** systematic-debugging
 **Model:** Claude
 **Workspace:** `.orch/workspace/og-debug-daemon-capacity-count-26dec/`
-**Investigation:** `.kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md`
+**Investigation:** `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md`
 **Beads:** `bd show orch-go-s2j7`

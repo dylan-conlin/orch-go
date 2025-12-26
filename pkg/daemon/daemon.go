@@ -414,7 +414,8 @@ func SpawnWork(beadsID string) error {
 }
 
 // DefaultActiveCount returns the number of active agents by querying OpenCode API.
-// Counts all in-memory sessions, which represent active agents.
+// Counts only recently-active sessions (updated within the last 30 minutes) to avoid
+// counting stale sessions that persist indefinitely in OpenCode.
 func DefaultActiveCount() int {
 	// Use OpenCode API to count active sessions
 	// The default server URL is used; this works because the daemon runs
@@ -432,15 +433,30 @@ func DefaultActiveCount() int {
 	defer resp.Body.Close()
 
 	var sessions []struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Time struct {
+			Updated int64 `json:"updated"` // Unix timestamp in milliseconds
+		} `json:"time"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		return 0
 	}
 
-	// All active OpenCode sessions are considered active agents
-	// The daemon polls at 60s intervals, so this is acceptable overhead
-	return len(sessions)
+	// Only count sessions that have been active recently.
+	// OpenCode sessions persist indefinitely (including old test sessions),
+	// so we filter to sessions updated within the last 30 minutes.
+	// This matches the same threshold used in orch status for agent matching.
+	const maxIdleTime = 30 * time.Minute
+	now := time.Now()
+	activeCount := 0
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) <= maxIdleTime {
+			activeCount++
+		}
+	}
+
+	return activeCount
 }
 
 // Once processes a single issue from the queue and returns.
