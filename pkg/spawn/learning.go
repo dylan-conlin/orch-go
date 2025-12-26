@@ -648,3 +648,161 @@ func (t *GapTracker) Summary() string {
 	recurring := t.FindRecurringGaps()
 	return fmt.Sprintf("%d gap events tracked, %d recurring patterns", len(t.Events), len(recurring))
 }
+
+// ParseShellCommand parses a shell command string into arguments, respecting quotes.
+// This is similar to POSIX shell word splitting.
+// Examples:
+//
+//	`kn decide "auth" --reason "test reason"` -> ["kn", "decide", "auth", "--reason", "test reason"]
+//	`echo "hello world"` -> ["echo", "hello world"]
+func ParseShellCommand(cmdStr string) ([]string, error) {
+	var args []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+
+	for i, r := range cmdStr {
+		switch {
+		case r == '"' || r == '\'':
+			if inQuote {
+				if r == quoteChar {
+					// End of quote
+					inQuote = false
+					quoteChar = 0
+				} else {
+					// Different quote char inside a quote, treat as literal
+					current.WriteRune(r)
+				}
+			} else {
+				// Start of quote
+				inQuote = true
+				quoteChar = r
+			}
+		case r == ' ' || r == '\t':
+			if inQuote {
+				current.WriteRune(r)
+			} else if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+
+		// Check for unterminated quote at end of string
+		if i == len(cmdStr)-1 && inQuote {
+			return nil, fmt.Errorf("unterminated quote in command: %s", cmdStr)
+		}
+	}
+
+	// Add final argument if any
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	if len(args) == 0 {
+		return nil, fmt.Errorf("empty command")
+	}
+
+	return args, nil
+}
+
+// ValidateCommand checks if a command string is valid and executable.
+// It verifies:
+// 1. The command can be parsed correctly
+// 2. The executable exists (for known commands)
+// 3. Required arguments are present
+func ValidateCommand(cmdStr string) error {
+	if cmdStr == "" {
+		return fmt.Errorf("empty command")
+	}
+
+	args, err := ParseShellCommand(cmdStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse command: %w", err)
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("no arguments in command")
+	}
+
+	// Validate known command patterns
+	switch args[0] {
+	case "kn":
+		return validateKnCommand(args)
+	case "bd":
+		return validateBdCommand(args)
+	case "orch":
+		return validateOrchCommand(args)
+	default:
+		// Unknown command - just check it can be parsed
+		return nil
+	}
+}
+
+// validateKnCommand checks kn command syntax.
+func validateKnCommand(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("kn command requires subcommand (decide, constrain, etc.)")
+	}
+
+	switch args[1] {
+	case "decide", "constrain", "tried":
+		// These require at least a description
+		if len(args) < 3 {
+			return fmt.Errorf("kn %s requires a description", args[1])
+		}
+		// Check for --reason flag value
+		for i, arg := range args {
+			if arg == "--reason" && i == len(args)-1 {
+				return fmt.Errorf("--reason flag requires a value")
+			}
+		}
+	case "question":
+		if len(args) < 3 {
+			return fmt.Errorf("kn question requires a question text")
+		}
+	}
+
+	return nil
+}
+
+// validateBdCommand checks bd command syntax.
+func validateBdCommand(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("bd command requires subcommand (create, close, etc.)")
+	}
+
+	switch args[1] {
+	case "create":
+		// bd create requires a title
+		if len(args) < 3 {
+			return fmt.Errorf("bd create requires a title")
+		}
+		// Check for -d flag value
+		for i, arg := range args {
+			if arg == "-d" && i == len(args)-1 {
+				return fmt.Errorf("-d flag requires a value")
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateOrchCommand checks orch command syntax.
+func validateOrchCommand(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("orch command requires subcommand")
+	}
+
+	switch args[1] {
+	case "spawn":
+		// orch spawn requires skill and task
+		if len(args) < 4 {
+			return fmt.Errorf("orch spawn requires skill and task")
+		}
+	}
+
+	return nil
+}

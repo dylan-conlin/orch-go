@@ -336,12 +336,17 @@ func runLearnAct(indexStr string) error {
 		return nil
 	}
 
+	// Validate the command before running
+	if err := spawn.ValidateCommand(s.Command); err != nil {
+		return fmt.Errorf("invalid command: %w", err)
+	}
+
 	fmt.Printf("Running: %s\n\n", s.Command)
 
-	// Parse and execute the command
-	parts := strings.Fields(s.Command)
-	if len(parts) == 0 {
-		return fmt.Errorf("empty command")
+	// Parse and execute the command using shell-aware parsing
+	parts, err := spawn.ParseShellCommand(s.Command)
+	if err != nil {
+		return fmt.Errorf("failed to parse command: %w", err)
 	}
 
 	cmd := exec.Command(parts[0], parts[1:]...)

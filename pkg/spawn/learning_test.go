@@ -606,6 +606,287 @@ func TestLoadTrackerNoFile(t *testing.T) {
 	}
 }
 
+func TestParseShellCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+		wantErr  bool
+	}{
+		{
+			name:     "simple_command",
+			input:    "echo hello",
+			expected: []string{"echo", "hello"},
+		},
+		{
+			name:     "double_quoted_string",
+			input:    `kn decide "auth" --reason "test reason"`,
+			expected: []string{"kn", "decide", "auth", "--reason", "test reason"},
+		},
+		{
+			name:     "single_quoted_string",
+			input:    `kn decide 'auth config' --reason 'test reason'`,
+			expected: []string{"kn", "decide", "auth config", "--reason", "test reason"},
+		},
+		{
+			name:     "mixed_quotes",
+			input:    `kn decide "auth" --reason 'test reason with "quotes"'`,
+			expected: []string{"kn", "decide", "auth", "--reason", `test reason with "quotes"`},
+		},
+		{
+			name:     "complex_reason_with_colons",
+			input:    `kn decide "auth" --reason "Used by: investigation, feature-impl. Occurred 5 times"`,
+			expected: []string{"kn", "decide", "auth", "--reason", "Used by: investigation, feature-impl. Occurred 5 times"},
+		},
+		{
+			name:     "bd_create_command",
+			input:    `bd create "Establish patterns for auth" -d "Used by: investigation. Occurred 3 times. Tasks: analyze flow"`,
+			expected: []string{"bd", "create", "Establish patterns for auth", "-d", "Used by: investigation. Occurred 3 times. Tasks: analyze flow"},
+		},
+		{
+			name:     "orch_spawn_command",
+			input:    `orch spawn investigation "why does auth lack context"`,
+			expected: []string{"orch", "spawn", "investigation", "why does auth lack context"},
+		},
+		{
+			name:     "multiple_spaces",
+			input:    "echo    hello    world",
+			expected: []string{"echo", "hello", "world"},
+		},
+		{
+			name:     "tabs_as_separators",
+			input:    "echo\thello\tworld",
+			expected: []string{"echo", "hello", "world"},
+		},
+		{
+			name:    "empty_command",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "only_whitespace",
+			input:   "   \t   ",
+			wantErr: true,
+		},
+		{
+			name:    "unterminated_double_quote",
+			input:   `echo "hello`,
+			wantErr: true,
+		},
+		{
+			name:    "unterminated_single_quote",
+			input:   `echo 'hello`,
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ParseShellCommand(tc.input)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error for input %q, got none", tc.input)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error for input %q: %v", tc.input, err)
+				return
+			}
+
+			if len(result) != len(tc.expected) {
+				t.Errorf("length mismatch for %q: got %d, expected %d\n  got: %v\n  expected: %v",
+					tc.input, len(result), len(tc.expected), result, tc.expected)
+				return
+			}
+
+			for i, arg := range result {
+				if arg != tc.expected[i] {
+					t.Errorf("argument %d mismatch for %q: got %q, expected %q",
+						i, tc.input, arg, tc.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestValidateCommand(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		// Valid commands
+		{
+			name:    "valid_kn_decide",
+			input:   `kn decide "auth" --reason "test reason"`,
+			wantErr: false,
+		},
+		{
+			name:    "valid_kn_constrain",
+			input:   `kn constrain "no magic numbers" --reason "code quality"`,
+			wantErr: false,
+		},
+		{
+			name:    "valid_kn_question",
+			input:   `kn question "should we use JWT?"`,
+			wantErr: false,
+		},
+		{
+			name:    "valid_bd_create",
+			input:   `bd create "Fix auth bug" -d "description"`,
+			wantErr: false,
+		},
+		{
+			name:    "valid_orch_spawn",
+			input:   `orch spawn investigation "analyze auth"`,
+			wantErr: false,
+		},
+		{
+			name:    "unknown_command_valid",
+			input:   `echo "hello world"`,
+			wantErr: false,
+		},
+
+		// Invalid commands
+		{
+			name:    "empty_command",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "kn_no_subcommand",
+			input:   "kn",
+			wantErr: true,
+		},
+		{
+			name:    "kn_decide_no_description",
+			input:   "kn decide",
+			wantErr: true,
+		},
+		{
+			name:    "kn_decide_reason_no_value",
+			input:   `kn decide "test" --reason`,
+			wantErr: true,
+		},
+		{
+			name:    "bd_no_subcommand",
+			input:   "bd",
+			wantErr: true,
+		},
+		{
+			name:    "bd_create_no_title",
+			input:   "bd create",
+			wantErr: true,
+		},
+		{
+			name:    "bd_create_d_no_value",
+			input:   `bd create "title" -d`,
+			wantErr: true,
+		},
+		{
+			name:    "orch_no_subcommand",
+			input:   "orch",
+			wantErr: true,
+		},
+		{
+			name:    "orch_spawn_no_skill",
+			input:   "orch spawn",
+			wantErr: true,
+		},
+		{
+			name:    "orch_spawn_no_task",
+			input:   "orch spawn investigation",
+			wantErr: true,
+		},
+		{
+			name:    "unterminated_quote",
+			input:   `kn decide "test`,
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateCommand(tc.input)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error for input %q, got none", tc.input)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for input %q: %v", tc.input, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDetermineSuggestionGeneratesValidCommands(t *testing.T) {
+	// Test that all generated commands can be parsed and validated
+	tests := []struct {
+		name   string
+		events []GapEvent
+	}{
+		{
+			name: "no_context_gaps",
+			events: []GapEvent{
+				{GapType: string(GapTypeNoContext), Skill: "investigation", Task: "analyze auth"},
+			},
+		},
+		{
+			name: "no_constraints_gaps",
+			events: []GapEvent{
+				{GapType: string(GapTypeNoConstraints), Skill: "feature-impl", Task: "add feature"},
+			},
+		},
+		{
+			name: "no_decisions_gaps",
+			events: []GapEvent{
+				{GapType: string(GapTypeNoDecisions), Skill: "architect", Task: "design system"},
+			},
+		},
+		{
+			name: "default_gaps",
+			events: []GapEvent{
+				{GapType: string(GapTypeSparseContext), Skill: "investigation"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, command := determineSuggestion("test query", tc.events)
+
+			if command == "" {
+				t.Error("expected non-empty command")
+				return
+			}
+
+			// Command should be parseable
+			parts, err := ParseShellCommand(command)
+			if err != nil {
+				t.Errorf("generated command should be parseable: %q, error: %v", command, err)
+				return
+			}
+
+			// Command should be valid
+			if err := ValidateCommand(command); err != nil {
+				t.Errorf("generated command should be valid: %q, error: %v", command, err)
+				return
+			}
+
+			// Command should have at least 3 parts (executable, subcommand, arg)
+			if len(parts) < 3 {
+				t.Errorf("command should have at least 3 parts: %q, got %d parts", command, len(parts))
+			}
+		})
+	}
+}
+
 func TestGenerateReasonFromGaps(t *testing.T) {
 	tests := []struct {
 		name         string
