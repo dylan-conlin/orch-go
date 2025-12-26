@@ -32,6 +32,7 @@
 	import { focus, getDriftEmoji } from '$lib/stores/focus';
 	import { servers } from '$lib/stores/servers';
 	import { beads } from '$lib/stores/beads';
+	import { daemon, getDaemonEmoji, getDaemonCapacity } from '$lib/stores/daemon';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -92,18 +93,20 @@
 		connectSSE();
 		connectAgentlogSSE();
 
-		// Fetch usage, focus, servers, and beads data
+		// Fetch usage, focus, servers, beads, and daemon data
 		usage.fetch();
 		focus.fetch();
 		servers.fetch();
 		beads.fetch();
+		daemon.fetch();
 
-		// Refresh usage, focus, servers, and beads every 60 seconds
+		// Refresh usage, focus, servers, beads, and daemon every 60 seconds
 		const usageInterval = setInterval(() => {
 			usage.fetch();
 			focus.fetch();
 			servers.fetch();
 			beads.fetch();
+			daemon.fetch();
 		}, 60000);
 
 		// Clean up connections before page unload to avoid Firefox network errors
@@ -383,6 +386,44 @@
 					<Tooltip.Content>
 						<p>{$beads.ready_issues} ready to work on</p>
 						<p class="text-xs text-muted-foreground">{$beads.blocked_issues} blocked • {$beads.open_issues} total open</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
+
+			<!-- Daemon indicator -->
+			{#if $daemon}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="daemon-indicator">
+								<span class="text-lg">{getDaemonEmoji($daemon)}</span>
+								<span class="inline-flex items-baseline gap-1">
+									{#if $daemon.running}
+										<span class="text-xl font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
+										<span class="text-xs text-muted-foreground">slots</span>
+									{:else}
+										<span class="text-xs text-muted-foreground">daemon</span>
+									{/if}
+								</span>
+							</span>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						{#if $daemon.running}
+							<p class="font-medium">Daemon {$daemon.status}</p>
+							<p class="text-xs text-muted-foreground">
+								{$daemon.capacity_used}/{$daemon.capacity_max} agents • {$daemon.ready_count} ready
+							</p>
+							{#if $daemon.last_poll_ago}
+								<p class="text-xs text-muted-foreground">Last poll: {$daemon.last_poll_ago}</p>
+							{/if}
+							{#if $daemon.last_spawn_ago}
+								<p class="text-xs text-muted-foreground">Last spawn: {$daemon.last_spawn_ago}</p>
+							{/if}
+						{:else}
+							<p>Daemon not running</p>
+							<p class="text-xs text-muted-foreground">Start with: orch daemon run</p>
+						{/if}
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}

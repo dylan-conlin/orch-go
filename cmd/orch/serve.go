@@ -14,6 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -49,6 +50,7 @@ Endpoints:
   GET /api/focus     - Current focus and drift status
   GET /api/beads     - Beads stats (ready, blocked, open)
   GET /api/servers   - Servers status across projects
+  GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /health        - Health check
 
 Examples:
@@ -128,6 +130,8 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/focus     - Focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats")
 	fmt.Println("  GET /api/servers   - Project servers status")
+	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
+	fmt.Println("  GET /api/daemon    - Daemon status (running, capacity, last poll)")
 	fmt.Println("  GET /health        - Health check")
 
 	return nil
@@ -154,7 +158,7 @@ func runServe(portNum int) error {
 					w.Header().Set("Access-Control-Allow-Origin", "*")
 				}
 			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
 
 			// Handle preflight
@@ -188,6 +192,12 @@ func runServe(portNum int) error {
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
 
+	// POST /api/issues - creates a new beads issue (for follow-up from synthesis)
+	mux.HandleFunc("/api/issues", corsHandler(handleIssues))
+
+	// GET /api/daemon - returns daemon status (running, capacity, last poll)
+	mux.HandleFunc("/api/daemon", corsHandler(handleDaemon))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -209,6 +219,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/focus     - Current focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
+	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -1413,6 +1424,175 @@ func handleServers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode servers: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// DaemonAPIResponse is the JSON structure returned by /api/daemon.
+type DaemonAPIResponse struct {
+	Running       bool   `json:"running"`                   // Whether the daemon is currently running
+	Status        string `json:"status,omitempty"`          // "running", "stalled", or empty if not running
+	LastPoll      string `json:"last_poll,omitempty"`       // ISO 8601 timestamp of last poll
+	LastPollAgo   string `json:"last_poll_ago,omitempty"`   // Human-readable time since last poll
+	LastSpawn     string `json:"last_spawn,omitempty"`      // ISO 8601 timestamp of last spawn
+	LastSpawnAgo  string `json:"last_spawn_ago,omitempty"`  // Human-readable time since last spawn
+	ReadyCount    int    `json:"ready_count"`               // Number of issues ready to process
+	CapacityMax   int    `json:"capacity_max"`              // Maximum concurrent agents
+	CapacityUsed  int    `json:"capacity_used"`             // Currently active agents
+	CapacityFree  int    `json:"capacity_free"`             // Available slots for spawning
+	IssuesPerHour int    `json:"issues_per_hour,omitempty"` // Approximate processing rate (future)
+}
+
+// handleDaemon returns the daemon status from ~/.orch/daemon-status.json.
+// If the daemon is not running (file doesn't exist), returns running: false.
+func handleDaemon(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	resp := DaemonAPIResponse{
+		Running: false,
+	}
+
+	// Try to read daemon status file
+	status, err := daemon.ReadStatusFile()
+	if err == nil && status != nil {
+		resp.Running = true
+		resp.Status = status.Status
+		resp.ReadyCount = status.ReadyCount
+		resp.CapacityMax = status.Capacity.Max
+		resp.CapacityUsed = status.Capacity.Active
+		resp.CapacityFree = status.Capacity.Available
+
+		// Format timestamps
+		if !status.LastPoll.IsZero() {
+			resp.LastPoll = status.LastPoll.Format(time.RFC3339)
+			resp.LastPollAgo = formatDurationAgo(time.Since(status.LastPoll))
+		}
+		if !status.LastSpawn.IsZero() {
+			resp.LastSpawn = status.LastSpawn.Format(time.RFC3339)
+			resp.LastSpawnAgo = formatDurationAgo(time.Since(status.LastSpawn))
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode daemon status: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// formatDurationAgo formats a duration into a human-readable "X ago" string.
+func formatDurationAgo(d time.Duration) string {
+	if d < time.Minute {
+		return "just now"
+	}
+	if d < time.Hour {
+		mins := int(d.Minutes())
+		if mins == 1 {
+			return "1 min ago"
+		}
+		return fmt.Sprintf("%d mins ago", mins)
+	}
+	if d < 24*time.Hour {
+		hours := int(d.Hours())
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	}
+	days := int(d.Hours() / 24)
+	if days == 1 {
+		return "1 day ago"
+	}
+	return fmt.Sprintf("%d days ago", days)
+}
+
+// CreateIssueRequest is the JSON request body for POST /api/issues.
+type CreateIssueRequest struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	IssueType   string   `json:"issue_type,omitempty"` // task, bug, etc.
+	Priority    int      `json:"priority,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
+	ParentID    string   `json:"parent_id,omitempty"` // Optional parent issue for follow-ups
+}
+
+// CreateIssueResponse is the JSON response for POST /api/issues.
+type CreateIssueResponse struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleIssues handles POST /api/issues - creates a new beads issue.
+// This is used by the dashboard to create follow-up issues from synthesis recommendations.
+func handleIssues(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req CreateIssueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := CreateIssueResponse{Success: false, Error: fmt.Sprintf("Invalid request body: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Validate title
+	if req.Title == "" {
+		resp := CreateIssueResponse{Success: false, Error: "Title is required"}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Try RPC client first, then fallback to CLI
+	var issue *beads.Issue
+	var err error
+
+	socketPath, socketErr := beads.FindSocketPath(sourceDir)
+	if socketErr == nil {
+		client := beads.NewClient(socketPath)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			issue, err = client.Create(&beads.CreateArgs{
+				Title:       req.Title,
+				Description: req.Description,
+				IssueType:   req.IssueType,
+				Priority:    req.Priority,
+				Labels:      req.Labels,
+			})
+		}
+	}
+
+	// Fallback to CLI if RPC failed
+	if issue == nil && err == nil {
+		issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+	}
+
+	if err != nil {
+		resp := CreateIssueResponse{Success: false, Error: fmt.Sprintf("Failed to create issue: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := CreateIssueResponse{
+		ID:      issue.ID,
+		Title:   issue.Title,
+		Success: true,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // checkWorkspaceSynthesis checks if a workspace has a non-empty SYNTHESIS.md file.
