@@ -25,6 +25,7 @@ var (
 	reviewStale       bool
 	reviewAll         bool
 	reviewNoPrompt    bool
+	reviewLimit       int
 )
 
 // StaleThreshold defines how long an agent must be in a non-Complete phase to be considered stale.
@@ -49,19 +50,20 @@ Single-agent review shows:
   - Artifacts produced (investigations, design docs)
 
 Examples:
-  orch-go review                    # Actionable completions only (excludes stale/untracked)
-  orch-go review --all              # Show everything including stale/untracked
-  orch-go review --stale            # Show only stale/untracked agents
-  orch-go review orch-go-3anf       # Single agent: detailed review
-  orch-go review -p orch-cli        # Filter by project
-  orch-go review --needs-review     # Show failures only`,
+  orch review                       # Actionable completions only (excludes stale/untracked)
+  orch review --limit 5             # Show at most 5 completions
+  orch review --all                 # Show everything including stale/untracked
+  orch review --stale               # Show only stale/untracked agents
+  orch review orch-go-3anf          # Single agent: detailed review
+  orch review -p orch-cli           # Filter by project
+  orch review --needs               # Show failures only (shorthand for --needs-review)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Single-agent mode if beads ID provided
 		if len(args) > 0 {
 			return runReviewSingle(args[0])
 		}
 		// Batch mode
-		return runReview(reviewProject, reviewNeedsReview, reviewStale, reviewAll)
+		return runReview(reviewProject, reviewNeedsReview, reviewStale, reviewAll, reviewLimit)
 	},
 }
 
@@ -96,8 +98,10 @@ Examples:
 func init() {
 	reviewCmd.Flags().StringVarP(&reviewProject, "project", "p", "", "Filter by project")
 	reviewCmd.Flags().BoolVar(&reviewNeedsReview, "needs-review", false, "Show failures only")
+	reviewCmd.Flags().BoolVar(&reviewNeedsReview, "needs", false, "Show failures only (shorthand for --needs-review)")
 	reviewCmd.Flags().BoolVar(&reviewStale, "stale", false, "Show stale/untracked agents only")
 	reviewCmd.Flags().BoolVar(&reviewAll, "all", false, "Show all agents including stale/untracked")
+	reviewCmd.Flags().IntVarP(&reviewLimit, "limit", "l", 0, "Maximum number of completions to show (0 = no limit)")
 	reviewDoneCmd.Flags().BoolVarP(&reviewDoneYes, "yes", "y", false, "Skip confirmation prompt")
 	reviewDoneCmd.Flags().BoolVar(&reviewNoPrompt, "no-prompt", false, "Skip recommendation prompts (auto-close without reviewing synthesis)")
 	reviewCmd.AddCommand(reviewDoneCmd)
@@ -348,7 +352,7 @@ func runReviewSingle(beadsID string) error {
 	return nil
 }
 
-func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showAll bool) error {
+func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showAll bool, limit int) error {
 	completions, err := getCompletionsForReview()
 	if err != nil {
 		return err
@@ -413,6 +417,14 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 			}
 		}
 		completions = filtered
+	}
+
+	// Track total after filters for limit messaging
+	totalAfterFilters := len(completions)
+
+	// Apply limit if specified (after all filters)
+	if limit > 0 && len(completions) > limit {
+		completions = completions[:limit]
 	}
 
 	if len(completions) == 0 {
@@ -492,6 +504,11 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 	// Print summary
 	fmt.Printf("\n---\n")
 	fmt.Printf("Total: %d completions (%d OK, %d need review)\n", totalOK+totalFailed, totalOK, totalFailed)
+
+	// Show truncation notice if limit was applied
+	if limit > 0 && totalAfterFilters > limit {
+		fmt.Printf("Showing: %d of %d (use --limit 0 or remove --limit to see all)\n", limit, totalAfterFilters)
+	}
 
 	// Show hidden counts if not showing all
 	if !showAll && !staleOnly {

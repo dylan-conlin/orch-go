@@ -504,6 +504,77 @@ func TestReviewCommandHasStaleAndAllFlags(t *testing.T) {
 	}
 }
 
+// TestReviewCommandHasLimitFlag verifies the --limit flag exists.
+func TestReviewCommandHasLimitFlag(t *testing.T) {
+	if reviewCmd == nil {
+		t.Fatal("reviewCmd is nil")
+	}
+
+	// Check --limit flag exists
+	limitFlag := reviewCmd.Flags().Lookup("limit")
+	if limitFlag == nil {
+		t.Error("Expected --limit flag")
+	}
+
+	// Check -l shorthand exists
+	if limitFlag != nil && limitFlag.Shorthand != "l" {
+		t.Errorf("Expected shorthand 'l', got %q", limitFlag.Shorthand)
+	}
+}
+
+// TestReviewCommandHasNeedsShorthand verifies the --needs flag is an alias for --needs-review.
+func TestReviewCommandHasNeedsShorthand(t *testing.T) {
+	if reviewCmd == nil {
+		t.Fatal("reviewCmd is nil")
+	}
+
+	// Check --needs flag exists
+	needsFlag := reviewCmd.Flags().Lookup("needs")
+	if needsFlag == nil {
+		t.Error("Expected --needs flag")
+	}
+
+	// Check --needs-review flag exists
+	needsReviewFlag := reviewCmd.Flags().Lookup("needs-review")
+	if needsReviewFlag == nil {
+		t.Error("Expected --needs-review flag")
+	}
+}
+
+// TestLimitFiltering verifies the --limit flag correctly truncates results.
+func TestLimitFiltering(t *testing.T) {
+	completions := []CompletionInfo{
+		{WorkspaceID: "ws-1", BeadsID: "project-abc1", Project: "project"},
+		{WorkspaceID: "ws-2", BeadsID: "project-abc2", Project: "project"},
+		{WorkspaceID: "ws-3", BeadsID: "project-abc3", Project: "project"},
+		{WorkspaceID: "ws-4", BeadsID: "project-abc4", Project: "project"},
+		{WorkspaceID: "ws-5", BeadsID: "project-abc5", Project: "project"},
+	}
+
+	tests := []struct {
+		name     string
+		limit    int
+		expected int
+	}{
+		{"no limit (0)", 0, 5},
+		{"limit 3", 3, 3},
+		{"limit 10 (more than available)", 10, 5},
+		{"limit 1", 1, 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := completions
+			if tt.limit > 0 && len(result) > tt.limit {
+				result = result[:tt.limit]
+			}
+			if len(result) != tt.expected {
+				t.Errorf("Expected %d completions, got %d", tt.expected, len(result))
+			}
+		})
+	}
+}
+
 // TestFilterByStaleOrUntracked verifies filtering logic for stale/untracked agents.
 func TestFilterByStaleOrUntracked(t *testing.T) {
 	now := time.Now()

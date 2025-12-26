@@ -40,7 +40,7 @@ func TestGenerateResumePrompt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := GenerateResumePrompt(tt.workspaceName, tt.projectDir, tt.beadsID)
 			for _, want := range tt.wantContains {
-				if !containsString(got, want) {
+				if !stringContains(got, want) {
 					t.Errorf("GenerateResumePrompt() = %q, want to contain %q", got, want)
 				}
 			}
@@ -48,12 +48,12 @@ func TestGenerateResumePrompt(t *testing.T) {
 	}
 }
 
-// containsString checks if s contains substr.
-func containsString(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) && contains(s, substr))
+// stringContains checks if s contains substr.
+func stringContains(s, substr string) bool {
+	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) && containsSubstr(s, substr))
 }
 
-func contains(s, substr string) bool {
+func containsSubstr(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
 			return true
