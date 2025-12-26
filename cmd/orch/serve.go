@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	_ "net/http/pprof" // Enable pprof for CPU profiling
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,6 +195,10 @@ func runServe(portNum int) error {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
+	// pprof handlers for CPU profiling (useful for debugging CPU runaway)
+	// Access at: http://127.0.0.1:3348/debug/pprof/
+	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
+
 	addr := fmt.Sprintf(":%d", portNum)
 	fmt.Printf("Starting orch-go API server on http://127.0.0.1%s\n", addr)
 	fmt.Println("Endpoints:")
@@ -255,6 +260,103 @@ type SynthesisResponse struct {
 	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
 }
 
+// workspaceCache stores pre-computed workspace metadata to avoid repeated directory scans.
+// Built once per request and used for all lookups within that request.
+type workspaceCache struct {
+	// beadsToWorkspace maps beadsID → workspace path
+	beadsToWorkspace map[string]string
+	// beadsToProjectDir maps beadsID → PROJECT_DIR from SPAWN_CONTEXT.md
+	beadsToProjectDir map[string]string
+	// workspaceEntries stores directory entries for reuse
+	workspaceEntries []os.DirEntry
+	// workspaceDir is the base workspace directory path
+	workspaceDir string
+}
+
+// buildWorkspaceCache scans the workspace directory once and builds lookup maps.
+// This replaces multiple calls to findWorkspaceByBeadsID which each scanned all 400+ directories.
+func buildWorkspaceCache(projectDir string) *workspaceCache {
+	cache := &workspaceCache{
+		beadsToWorkspace:  make(map[string]string),
+		beadsToProjectDir: make(map[string]string),
+		workspaceDir:      filepath.Join(projectDir, ".orch", "workspace"),
+	}
+
+	entries, err := os.ReadDir(cache.workspaceDir)
+	if err != nil {
+		return cache // Empty cache if directory doesn't exist
+	}
+	cache.workspaceEntries = entries
+
+	// Single scan: extract beads ID and project dir from each workspace
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+		dirPath := filepath.Join(cache.workspaceDir, dirName)
+		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+
+		// Read SPAWN_CONTEXT.md once to extract both beads ID and PROJECT_DIR
+		content, err := os.ReadFile(spawnContextPath)
+		if err != nil {
+			continue // Skip workspaces without SPAWN_CONTEXT.md
+		}
+		contentStr := string(content)
+
+		var beadsID, agentProjectDir string
+
+		// Parse once, extracting both pieces of info
+		for _, line := range strings.Split(contentStr, "\n") {
+			lineTrimmed := strings.TrimSpace(line)
+
+			// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
+			if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
+				// Pattern: "spawned from beads issue: **orch-go-xxxx**"
+				// Extract the beads ID between ** markers or after the colon
+				if idx := strings.Index(line, "**"); idx != -1 {
+					rest := line[idx+2:]
+					if endIdx := strings.Index(rest, "**"); endIdx != -1 {
+						beadsID = rest[:endIdx]
+					}
+				}
+			} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
+				// Pattern: "bd comment orch-go-xxxx ..."
+				parts := strings.Fields(lineTrimmed)
+				if len(parts) >= 3 {
+					beadsID = parts[2]
+				}
+			}
+
+			// Extract PROJECT_DIR
+			if strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
+				agentProjectDir = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "PROJECT_DIR:"))
+			}
+		}
+
+		// Store in cache if beads ID found
+		if beadsID != "" {
+			cache.beadsToWorkspace[beadsID] = dirPath
+			if agentProjectDir != "" {
+				cache.beadsToProjectDir[beadsID] = agentProjectDir
+			}
+		}
+	}
+
+	return cache
+}
+
+// lookupWorkspace returns the workspace path for a beads ID (O(1) lookup).
+func (c *workspaceCache) lookupWorkspace(beadsID string) string {
+	return c.beadsToWorkspace[beadsID]
+}
+
+// lookupProjectDir returns the PROJECT_DIR for a beads ID (O(1) lookup).
+func (c *workspaceCache) lookupProjectDir(beadsID string) string {
+	return c.beadsToProjectDir[beadsID]
+}
+
 // handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
 func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -267,6 +369,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if projectDir == "" || projectDir == "unknown" {
 		projectDir, _ = os.Getwd()
 	}
+
+	// Build workspace cache once for all lookups in this request.
+	// This replaces O(n*m) scanning with O(m) scanning + O(n) lookups,
+	// where n = number of agents and m = number of workspaces (~466).
+	// Previously: 466 directory reads * ~10 agents = 4660 file operations per request
+	// Now: 466 directory reads once = 466 file operations per request
+	wsCache := buildWorkspaceCache(projectDir)
+
 	client := opencode.NewClient(serverURL)
 
 	// Get active sessions from OpenCode
@@ -339,12 +449,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 				seenBeadsIDs[agent.BeadsID] = true
 
-				// For cross-project agent visibility: find workspace and extract PROJECT_DIR
-				// This allows fetching beads comments from the correct project's database
-				if workspacePath, _ := findWorkspaceByBeadsID(projectDir, agent.BeadsID); workspacePath != "" {
-					if agentProjectDir := extractProjectDirFromWorkspace(workspacePath); agentProjectDir != "" {
-						beadsProjectDirs[agent.BeadsID] = agentProjectDir
-					}
+				// For cross-project agent visibility: use cached PROJECT_DIR
+				// This replaces expensive directory scanning with O(1) lookup
+				if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
+					beadsProjectDirs[agent.BeadsID] = agentProjectDir
 				}
 			}
 		}
@@ -401,12 +509,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 					seenBeadsIDs[beadsID] = true
 
-					// For cross-project agent visibility: find workspace and extract PROJECT_DIR
-					// This allows fetching beads comments from the correct project's database
-					if workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID); workspacePath != "" {
-						if agentProjectDir := extractProjectDirFromWorkspace(workspacePath); agentProjectDir != "" {
-							beadsProjectDirs[beadsID] = agentProjectDir
-						}
+					// For cross-project agent visibility: use cached PROJECT_DIR
+					// This replaces expensive directory scanning with O(1) lookup
+					if agentProjectDir := wsCache.lookupProjectDir(beadsID); agentProjectDir != "" {
+						beadsProjectDirs[beadsID] = agentProjectDir
 					}
 				}
 			}
@@ -414,9 +520,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add completed workspaces (those with SYNTHESIS.md or light-tier completions)
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	if entries, err := os.ReadDir(workspaceDir); err == nil {
-		for _, entry := range entries {
+	// Reuse cached workspace entries to avoid redundant directory reads
+	if len(wsCache.workspaceEntries) > 0 {
+		for _, entry := range wsCache.workspaceEntries {
 			if !entry.IsDir() {
 				continue
 			}
@@ -436,7 +542,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			workspacePath := filepath.Join(workspaceDir, entry.Name())
+			workspacePath := filepath.Join(wsCache.workspaceDir, entry.Name())
 			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 			hasSynthesis := false
 
@@ -573,7 +679,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			// This handles untracked agents (--no-track) which have fake beads IDs
 			// and won't have Phase: Complete in beads comments
 			if agents[i].Status != "completed" {
-				workspacePath, _ := findWorkspaceByBeadsID(projectDir, agents[i].BeadsID)
+				// Use cached workspace lookup instead of scanning directories
+				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
 				if checkWorkspaceSynthesis(workspacePath) {
 					agents[i].Status = "completed"
 				}
