@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { selectedAgent, selectedAgentId, sseEvents } from '$lib/stores/agents';
+	import { selectedAgent, selectedAgentId, sseEvents, createIssue } from '$lib/stores/agents';
 	import type { Agent, SSEEvent } from '$lib/stores/agents';
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { browser } from '$app/environment';
+	
+	// Issue creation state
+	let creatingIssue = false;
+	let issueCreationError: string | null = null;
+	let createdIssueId: string | null = null;
 
 	// Track which items were recently copied
 	let copiedItem: string | null = null;
@@ -42,6 +47,41 @@
 			}, 2000);
 		} catch (err) {
 			console.error('Failed to copy:', err);
+		}
+	}
+
+	// Create follow-up issue from synthesis recommendation
+	async function handleCreateIssue(action: string) {
+		creatingIssue = true;
+		issueCreationError = null;
+		createdIssueId = null;
+		
+		try {
+			// Clean up action text (remove bullet prefixes)
+			const cleanAction = action.replace(/^[-*]\s*/, '').replace(/^\d+\.\s*/, '');
+			
+			// Create issue with context about the parent agent
+			const parentContext = $selectedAgent?.beads_id 
+				? `\n\nFollow-up from: ${$selectedAgent.beads_id}`
+				: '';
+			const description = `${cleanAction}${parentContext}`;
+			
+			const result = await createIssue(cleanAction.substring(0, 100), description, ['triage:ready']);
+			if (result) {
+				createdIssueId = result.id;
+				// Auto-clear after 3 seconds
+				setTimeout(() => {
+					createdIssueId = null;
+				}, 3000);
+			}
+		} catch (error) {
+			issueCreationError = error instanceof Error ? error.message : 'Failed to create issue';
+			// Auto-clear error after 5 seconds
+			setTimeout(() => {
+				issueCreationError = null;
+			}, 5000);
+		} finally {
+			creatingIssue = false;
 		}
 	}
 
@@ -375,16 +415,33 @@
 							</div>
 						{/if}
 
-						{#if $selectedAgent.synthesis?.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
-							<div>
+					{#if $selectedAgent.synthesis?.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
+						<div>
+							<div class="flex items-center justify-between">
 								<span class="text-xs text-muted-foreground">Next Actions</span>
-								<ul class="mt-1 list-inside list-disc text-sm">
-									{#each $selectedAgent.synthesis.next_actions as action}
-										<li>{action}</li>
-									{/each}
-								</ul>
+								{#if issueCreationError}
+									<span class="text-xs text-red-500">{issueCreationError}</span>
+								{:else if createdIssueId}
+									<span class="text-xs text-green-500">Created {createdIssueId}</span>
+								{/if}
 							</div>
-						{/if}
+							<ul class="mt-1 space-y-1">
+								{#each $selectedAgent.synthesis.next_actions as action}
+									<li class="flex items-start gap-2 rounded p-1 hover:bg-muted/50 group">
+										<span class="flex-1 text-sm">{action}</span>
+										<button
+											type="button"
+											class="shrink-0 rounded border border-transparent px-2 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-foreground group-hover:opacity-100 disabled:opacity-50"
+											onclick={() => handleCreateIssue(action)}
+											disabled={creatingIssue}
+										>
+											{creatingIssue ? '...' : 'Create Issue'}
+										</button>
+									</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
 					</div>
 				</div>
 			{/if}

@@ -556,6 +556,38 @@ function extractActivityText(part: any): string {
 	return part.type.replace(/-/g, ' ');
 }
 
+// Create a new beads issue (for follow-ups from synthesis recommendations)
+export async function createIssue(title: string, description?: string, labels?: string[]): Promise<{ id: string; title: string } | null> {
+	try {
+		const response = await fetch(`${API_BASE}/api/issues`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				title,
+				description,
+				labels: labels || ['triage:ready'],
+				issue_type: 'task',
+			}),
+		});
+		
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(errorData.error || `HTTP ${response.status}`);
+		}
+		
+		const data = await response.json();
+		if (data.success) {
+			return { id: data.id, title: data.title };
+		}
+		throw new Error(data.error || 'Unknown error');
+	} catch (error) {
+		console.error('Failed to create issue:', error);
+		throw error;
+	}
+}
+
 export function disconnectSSE(): void {
 	// Increment generation to invalidate any pending reconnect timers
 	connectionGeneration++;
