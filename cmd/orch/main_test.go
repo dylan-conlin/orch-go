@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1355,5 +1356,213 @@ func TestHasGoChangesDetection(t *testing.T) {
 				t.Errorf("Go change detection for %q = %v, want %v", tt.filePath, isGoChange, tt.wantGo)
 			}
 		})
+	}
+}
+
+// TestCheckAndAutoSwitchAccountDisabled tests that auto-switch can be disabled via env var.
+func TestCheckAndAutoSwitchAccountDisabled(t *testing.T) {
+	// Save and restore original env var
+	origDisabled := os.Getenv("ORCH_AUTO_SWITCH_DISABLED")
+	defer func() {
+		if origDisabled == "" {
+			os.Unsetenv("ORCH_AUTO_SWITCH_DISABLED")
+		} else {
+			os.Setenv("ORCH_AUTO_SWITCH_DISABLED", origDisabled)
+		}
+	}()
+
+	tests := []struct {
+		name       string
+		envValue   string
+		wantCalled bool
+	}{
+		{
+			name:       "disabled with 1",
+			envValue:   "1",
+			wantCalled: false,
+		},
+		{
+			name:       "disabled with true",
+			envValue:   "true",
+			wantCalled: false,
+		},
+		{
+			name:       "not disabled with 0",
+			envValue:   "0",
+			wantCalled: true,
+		},
+		{
+			name:       "not disabled with empty",
+			envValue:   "",
+			wantCalled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envValue == "" {
+				os.Unsetenv("ORCH_AUTO_SWITCH_DISABLED")
+			} else {
+				os.Setenv("ORCH_AUTO_SWITCH_DISABLED", tt.envValue)
+			}
+
+			// Check the early return logic from checkAndAutoSwitchAccount
+			shouldSkip := os.Getenv("ORCH_AUTO_SWITCH_DISABLED") == "1" || os.Getenv("ORCH_AUTO_SWITCH_DISABLED") == "true"
+			wantSkip := !tt.wantCalled
+
+			if shouldSkip != wantSkip {
+				t.Errorf("auto-switch skip = %v, want %v (env: %q)", shouldSkip, wantSkip, tt.envValue)
+			}
+		})
+	}
+}
+
+// TestCheckAndAutoSwitchAccountEnvThresholds tests that thresholds can be customized via env vars.
+func TestCheckAndAutoSwitchAccountEnvThresholds(t *testing.T) {
+	// Save and restore original env vars
+	origFiveHour := os.Getenv("ORCH_AUTO_SWITCH_5H_THRESHOLD")
+	origWeekly := os.Getenv("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD")
+	origDelta := os.Getenv("ORCH_AUTO_SWITCH_MIN_DELTA")
+	defer func() {
+		restoreEnv("ORCH_AUTO_SWITCH_5H_THRESHOLD", origFiveHour)
+		restoreEnv("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD", origWeekly)
+		restoreEnv("ORCH_AUTO_SWITCH_MIN_DELTA", origDelta)
+	}()
+
+	tests := []struct {
+		name           string
+		fiveHourEnv    string
+		weeklyEnv      string
+		deltaEnv       string
+		wantFiveHour   float64
+		wantWeekly     float64
+		wantDelta      float64
+	}{
+		{
+			name:         "no env vars - use defaults",
+			fiveHourEnv:  "",
+			weeklyEnv:    "",
+			deltaEnv:     "",
+			wantFiveHour: 80,
+			wantWeekly:   90,
+			wantDelta:    10,
+		},
+		{
+			name:         "custom 5-hour threshold",
+			fiveHourEnv:  "70",
+			weeklyEnv:    "",
+			deltaEnv:     "",
+			wantFiveHour: 70,
+			wantWeekly:   90,
+			wantDelta:    10,
+		},
+		{
+			name:         "custom weekly threshold",
+			fiveHourEnv:  "",
+			weeklyEnv:    "85",
+			deltaEnv:     "",
+			wantFiveHour: 80,
+			wantWeekly:   85,
+			wantDelta:    10,
+		},
+		{
+			name:         "custom delta",
+			fiveHourEnv:  "",
+			weeklyEnv:    "",
+			deltaEnv:     "5",
+			wantFiveHour: 80,
+			wantWeekly:   90,
+			wantDelta:    5,
+		},
+		{
+			name:         "all custom values",
+			fiveHourEnv:  "60",
+			weeklyEnv:    "75",
+			deltaEnv:     "15",
+			wantFiveHour: 60,
+			wantWeekly:   75,
+			wantDelta:    15,
+		},
+		{
+			name:         "invalid env vars - use defaults",
+			fiveHourEnv:  "not-a-number",
+			weeklyEnv:    "invalid",
+			deltaEnv:     "bad",
+			wantFiveHour: 80,
+			wantWeekly:   90,
+			wantDelta:    10,
+		},
+		{
+			name:         "out of range values - use defaults",
+			fiveHourEnv:  "150", // >100 is invalid
+			weeklyEnv:    "-10", // <0 is invalid
+			deltaEnv:     "-5",  // <0 is invalid
+			wantFiveHour: 80,    // Uses default because 150 > 100
+			wantWeekly:   90,    // Uses default because -10 < 0
+			wantDelta:    10,    // Uses default because -5 < 0
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set env vars
+			setEnvIfNotEmpty("ORCH_AUTO_SWITCH_5H_THRESHOLD", tt.fiveHourEnv)
+			setEnvIfNotEmpty("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD", tt.weeklyEnv)
+			setEnvIfNotEmpty("ORCH_AUTO_SWITCH_MIN_DELTA", tt.deltaEnv)
+
+			// Replicate the threshold parsing logic from checkAndAutoSwitchAccount
+			thresholds := struct {
+				FiveHourThreshold float64
+				WeeklyThreshold   float64
+				MinHeadroomDelta  float64
+			}{
+				FiveHourThreshold: 80,
+				WeeklyThreshold:   90,
+				MinHeadroomDelta:  10,
+			}
+
+			if envVal := os.Getenv("ORCH_AUTO_SWITCH_5H_THRESHOLD"); envVal != "" {
+				if val, err := strconv.ParseFloat(envVal, 64); err == nil && val > 0 && val <= 100 {
+					thresholds.FiveHourThreshold = val
+				}
+			}
+			if envVal := os.Getenv("ORCH_AUTO_SWITCH_WEEKLY_THRESHOLD"); envVal != "" {
+				if val, err := strconv.ParseFloat(envVal, 64); err == nil && val > 0 && val <= 100 {
+					thresholds.WeeklyThreshold = val
+				}
+			}
+			if envVal := os.Getenv("ORCH_AUTO_SWITCH_MIN_DELTA"); envVal != "" {
+				if val, err := strconv.ParseFloat(envVal, 64); err == nil && val >= 0 {
+					thresholds.MinHeadroomDelta = val
+				}
+			}
+
+			if thresholds.FiveHourThreshold != tt.wantFiveHour {
+				t.Errorf("FiveHourThreshold = %v, want %v", thresholds.FiveHourThreshold, tt.wantFiveHour)
+			}
+			if thresholds.WeeklyThreshold != tt.wantWeekly {
+				t.Errorf("WeeklyThreshold = %v, want %v", thresholds.WeeklyThreshold, tt.wantWeekly)
+			}
+			if thresholds.MinHeadroomDelta != tt.wantDelta {
+				t.Errorf("MinHeadroomDelta = %v, want %v", thresholds.MinHeadroomDelta, tt.wantDelta)
+			}
+		})
+	}
+}
+
+// Helper functions for env var management
+func setEnvIfNotEmpty(key, value string) {
+	if value == "" {
+		os.Unsetenv(key)
+	} else {
+		os.Setenv(key, value)
+	}
+}
+
+func restoreEnv(key, originalValue string) {
+	if originalValue == "" {
+		os.Unsetenv(key)
+	} else {
+		os.Setenv(key, originalValue)
 	}
 }

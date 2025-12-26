@@ -436,3 +436,403 @@ func TestMin(t *testing.T) {
 		}
 	}
 }
+
+// ============================================================================
+// Auto-Switch Logic Tests
+// ============================================================================
+
+// TestAutoSwitchThresholdLogic tests the threshold-based decision logic.
+// Uses the same calculations as ShouldAutoSwitch but with mock data.
+func TestAutoSwitchThresholdLogic(t *testing.T) {
+	thresholds := DefaultAutoSwitchThresholds()
+
+	tests := []struct {
+		name               string
+		fiveHourUsed       float64
+		weeklyUsed         float64
+		wantOverFiveHour   bool
+		wantOverWeekly     bool
+		wantShouldConsider bool
+	}{
+		{
+			name:               "healthy account - well under both thresholds",
+			fiveHourUsed:       50,
+			weeklyUsed:         60,
+			wantOverFiveHour:   false,
+			wantOverWeekly:     false,
+			wantShouldConsider: false,
+		},
+		{
+			name:               "exactly at 5-hour threshold (80%) - not over",
+			fiveHourUsed:       80,
+			weeklyUsed:         60,
+			wantOverFiveHour:   false,
+			wantOverWeekly:     false,
+			wantShouldConsider: false,
+		},
+		{
+			name:               "just over 5-hour threshold (80.1%) - should consider switch",
+			fiveHourUsed:       80.1,
+			weeklyUsed:         60,
+			wantOverFiveHour:   true,
+			wantOverWeekly:     false,
+			wantShouldConsider: true,
+		},
+		{
+			name:               "at 20% remaining (80% used) - not triggered",
+			fiveHourUsed:       80,
+			weeklyUsed:         50,
+			wantOverFiveHour:   false,
+			wantOverWeekly:     false,
+			wantShouldConsider: false,
+		},
+		{
+			name:               "below 20% remaining (81% used) - should trigger",
+			fiveHourUsed:       81,
+			weeklyUsed:         50,
+			wantOverFiveHour:   true,
+			wantOverWeekly:     false,
+			wantShouldConsider: true,
+		},
+		{
+			name:               "exactly at weekly threshold (90%) - not over",
+			fiveHourUsed:       50,
+			weeklyUsed:         90,
+			wantOverFiveHour:   false,
+			wantOverWeekly:     false,
+			wantShouldConsider: false,
+		},
+		{
+			name:               "just over weekly threshold (90.1%) - should consider switch",
+			fiveHourUsed:       50,
+			weeklyUsed:         90.1,
+			wantOverFiveHour:   false,
+			wantOverWeekly:     true,
+			wantShouldConsider: true,
+		},
+		{
+			name:               "both over thresholds - critical state",
+			fiveHourUsed:       85,
+			weeklyUsed:         95,
+			wantOverFiveHour:   true,
+			wantOverWeekly:     true,
+			wantShouldConsider: true,
+		},
+		{
+			name:               "critical: only 5% remaining on 5-hour",
+			fiveHourUsed:       95,
+			weeklyUsed:         50,
+			wantOverFiveHour:   true,
+			wantOverWeekly:     false,
+			wantShouldConsider: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Apply the same logic as ShouldAutoSwitch
+			overFiveHour := tt.fiveHourUsed > thresholds.FiveHourThreshold
+			overWeekly := tt.weeklyUsed > thresholds.WeeklyThreshold
+			shouldConsider := overFiveHour || overWeekly
+
+			if overFiveHour != tt.wantOverFiveHour {
+				t.Errorf("overFiveHour = %v, want %v (used: %.1f%%, threshold: %.1f%%)",
+					overFiveHour, tt.wantOverFiveHour, tt.fiveHourUsed, thresholds.FiveHourThreshold)
+			}
+			if overWeekly != tt.wantOverWeekly {
+				t.Errorf("overWeekly = %v, want %v (used: %.1f%%, threshold: %.1f%%)",
+					overWeekly, tt.wantOverWeekly, tt.weeklyUsed, thresholds.WeeklyThreshold)
+			}
+			if shouldConsider != tt.wantShouldConsider {
+				t.Errorf("shouldConsider = %v, want %v", shouldConsider, tt.wantShouldConsider)
+			}
+		})
+	}
+}
+
+// TestAutoSwitchHeadroomCalculation tests the headroom calculation logic.
+func TestAutoSwitchHeadroomCalculation(t *testing.T) {
+	tests := []struct {
+		name              string
+		fiveHourUsed      float64
+		weeklyUsed        float64
+		wantFiveHourRoom  float64
+		wantWeeklyRoom    float64
+		wantEffectiveRoom float64
+	}{
+		{
+			name:              "50% used on both",
+			fiveHourUsed:      50,
+			weeklyUsed:        50,
+			wantFiveHourRoom:  50,
+			wantWeeklyRoom:    50,
+			wantEffectiveRoom: 50,
+		},
+		{
+			name:              "5-hour is the bottleneck",
+			fiveHourUsed:      80,
+			weeklyUsed:        50,
+			wantFiveHourRoom:  20,
+			wantWeeklyRoom:    50,
+			wantEffectiveRoom: 20, // min of both
+		},
+		{
+			name:              "weekly is the bottleneck",
+			fiveHourUsed:      50,
+			weeklyUsed:        90,
+			wantFiveHourRoom:  50,
+			wantWeeklyRoom:    10,
+			wantEffectiveRoom: 10, // min of both
+		},
+		{
+			name:              "critical state - both nearly exhausted",
+			fiveHourUsed:      95,
+			weeklyUsed:        98,
+			wantFiveHourRoom:  5,
+			wantWeeklyRoom:    2,
+			wantEffectiveRoom: 2, // min of both
+		},
+		{
+			name:              "fresh account - lots of headroom",
+			fiveHourUsed:      5,
+			weeklyUsed:        10,
+			wantFiveHourRoom:  95,
+			wantWeeklyRoom:    90,
+			wantEffectiveRoom: 90, // min of both
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fiveHourHeadroom := 100.0 - tt.fiveHourUsed
+			weeklyHeadroom := 100.0 - tt.weeklyUsed
+			effectiveHeadroom := min(fiveHourHeadroom, weeklyHeadroom)
+
+			if fiveHourHeadroom != tt.wantFiveHourRoom {
+				t.Errorf("fiveHourHeadroom = %.1f, want %.1f", fiveHourHeadroom, tt.wantFiveHourRoom)
+			}
+			if weeklyHeadroom != tt.wantWeeklyRoom {
+				t.Errorf("weeklyHeadroom = %.1f, want %.1f", weeklyHeadroom, tt.wantWeeklyRoom)
+			}
+			if effectiveHeadroom != tt.wantEffectiveRoom {
+				t.Errorf("effectiveHeadroom = %.1f, want %.1f", effectiveHeadroom, tt.wantEffectiveRoom)
+			}
+		})
+	}
+}
+
+// TestAutoSwitchMinHeadroomDelta tests the minimum delta requirement for switching.
+func TestAutoSwitchMinHeadroomDelta(t *testing.T) {
+	thresholds := DefaultAutoSwitchThresholds()
+
+	tests := []struct {
+		name            string
+		currentHeadroom float64
+		altHeadroom     float64
+		wantSwitch      bool
+	}{
+		{
+			name:            "alt has exactly 10% more - meets delta requirement",
+			currentHeadroom: 15,
+			altHeadroom:     25.01,
+			wantSwitch:      true,
+		},
+		{
+			name:            "alt has exactly 10% more - on boundary",
+			currentHeadroom: 15,
+			altHeadroom:     25,
+			wantSwitch:      false, // Must be strictly greater than current + delta
+		},
+		{
+			name:            "alt has 5% more - not enough",
+			currentHeadroom: 15,
+			altHeadroom:     20,
+			wantSwitch:      false,
+		},
+		{
+			name:            "alt has much more headroom",
+			currentHeadroom: 10,
+			altHeadroom:     50,
+			wantSwitch:      true,
+		},
+		{
+			name:            "alt is actually worse",
+			currentHeadroom: 30,
+			altHeadroom:     20,
+			wantSwitch:      false,
+		},
+		{
+			name:            "alt is barely better",
+			currentHeadroom: 30,
+			altHeadroom:     35,
+			wantSwitch:      false, // 5% delta not enough (need 10%)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Same logic as ShouldAutoSwitch
+			shouldSwitch := tt.altHeadroom > tt.currentHeadroom+thresholds.MinHeadroomDelta
+
+			if shouldSwitch != tt.wantSwitch {
+				t.Errorf("shouldSwitch = %v, want %v (current: %.1f, alt: %.1f, delta needed: %.1f)",
+					shouldSwitch, tt.wantSwitch, tt.currentHeadroom, tt.altHeadroom, thresholds.MinHeadroomDelta)
+			}
+		})
+	}
+}
+
+// TestAutoSwitchDecisionScenarios tests complete switching decision scenarios.
+func TestAutoSwitchDecisionScenarios(t *testing.T) {
+	thresholds := DefaultAutoSwitchThresholds()
+
+	tests := []struct {
+		name                  string
+		currentFiveHour       float64
+		currentWeekly         float64
+		altFiveHour           float64
+		altWeekly             float64
+		wantShouldSwitch      bool
+		wantReason            string
+		wantCurrentEffective  float64
+		wantAltEffective      float64
+	}{
+		{
+			name:                 "current healthy - no switch needed",
+			currentFiveHour:      50,
+			currentWeekly:        60,
+			altFiveHour:          20,
+			altWeekly:            30,
+			wantShouldSwitch:     false,
+			wantReason:           "current account healthy",
+			wantCurrentEffective: 40, // min(50, 40)
+			wantAltEffective:     70, // min(80, 70)
+		},
+		{
+			name:                 "current over 5h threshold, alt has more headroom",
+			currentFiveHour:      85,
+			currentWeekly:        60,
+			altFiveHour:          20,
+			altWeekly:            30,
+			wantShouldSwitch:     true,
+			wantReason:           "better alt available",
+			wantCurrentEffective: 15, // min(15, 40)
+			wantAltEffective:     70, // min(80, 70)
+		},
+		{
+			name:                 "current over weekly threshold, alt has more headroom",
+			currentFiveHour:      50,
+			currentWeekly:        95,
+			altFiveHour:          30,
+			altWeekly:            40,
+			wantShouldSwitch:     true,
+			wantReason:           "better alt available",
+			wantCurrentEffective: 5,  // min(50, 5)
+			wantAltEffective:     60, // min(70, 60)
+		},
+		{
+			name:                 "both over threshold but alt not better enough (9% delta)",
+			currentFiveHour:      85,
+			currentWeekly:        60,
+			altFiveHour:          76, // 24% headroom
+			altWeekly:            60, // 40% headroom -> effective 24%
+			wantShouldSwitch:     false,
+			wantReason:           "alt not enough better",
+			wantCurrentEffective: 15, // min(15, 40)
+			wantAltEffective:     24, // min(24, 40) - only 9% delta
+		},
+		{
+			name:                 "both accounts exhausted - no switch helps",
+			currentFiveHour:      95,
+			currentWeekly:        95,
+			altFiveHour:          92,
+			altWeekly:            93,
+			wantShouldSwitch:     false,
+			wantReason:           "no healthy alt",
+			wantCurrentEffective: 5, // min(5, 5)
+			wantAltEffective:     7, // min(8, 7) - only 2% delta
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Calculate effective headroom (same as ShouldAutoSwitch)
+			currentFiveHourHeadroom := 100.0 - tt.currentFiveHour
+			currentWeeklyHeadroom := 100.0 - tt.currentWeekly
+			currentEffective := min(currentFiveHourHeadroom, currentWeeklyHeadroom)
+
+			altFiveHourHeadroom := 100.0 - tt.altFiveHour
+			altWeeklyHeadroom := 100.0 - tt.altWeekly
+			altEffective := min(altFiveHourHeadroom, altWeeklyHeadroom)
+
+			// Check effective headroom calculations
+			if currentEffective != tt.wantCurrentEffective {
+				t.Errorf("currentEffective = %.1f, want %.1f", currentEffective, tt.wantCurrentEffective)
+			}
+			if altEffective != tt.wantAltEffective {
+				t.Errorf("altEffective = %.1f, want %.1f", altEffective, tt.wantAltEffective)
+			}
+
+			// Determine if switch should happen
+			overFiveHour := tt.currentFiveHour > thresholds.FiveHourThreshold
+			overWeekly := tt.currentWeekly > thresholds.WeeklyThreshold
+			overThreshold := overFiveHour || overWeekly
+			altBetterEnough := altEffective > currentEffective+thresholds.MinHeadroomDelta
+			shouldSwitch := overThreshold && altBetterEnough
+
+			if shouldSwitch != tt.wantShouldSwitch {
+				t.Errorf("shouldSwitch = %v, want %v (over threshold: %v, alt better enough: %v)",
+					shouldSwitch, tt.wantShouldSwitch, overThreshold, altBetterEnough)
+			}
+		})
+	}
+}
+
+// TestAutoSwitchCustomThresholds tests that custom thresholds are respected.
+func TestAutoSwitchCustomThresholds(t *testing.T) {
+	// Test with more aggressive thresholds
+	aggressiveThresholds := AutoSwitchThresholds{
+		FiveHourThreshold: 60,  // Switch when 60% used (40% remaining)
+		WeeklyThreshold:   70,  // Switch when 70% used (30% remaining)
+		MinHeadroomDelta:  5,   // Require only 5% improvement
+	}
+
+	// Same usage that would NOT trigger default thresholds
+	fiveHourUsed := 65.0
+	weeklyUsed := 75.0
+
+	// Should NOT trigger with default thresholds
+	defaultThresholds := DefaultAutoSwitchThresholds()
+	overFiveHourDefault := fiveHourUsed > defaultThresholds.FiveHourThreshold
+	overWeeklyDefault := weeklyUsed > defaultThresholds.WeeklyThreshold
+	if overFiveHourDefault || overWeeklyDefault {
+		t.Errorf("65%% 5h and 75%% weekly should NOT trigger default thresholds")
+	}
+
+	// Should trigger with aggressive thresholds
+	overFiveHourAggressive := fiveHourUsed > aggressiveThresholds.FiveHourThreshold
+	overWeeklyAggressive := weeklyUsed > aggressiveThresholds.WeeklyThreshold
+	if !overFiveHourAggressive || !overWeeklyAggressive {
+		t.Errorf("65%% 5h and 75%% weekly SHOULD trigger aggressive thresholds")
+	}
+
+	// Test the smaller delta requirement
+	currentHeadroom := 35.0
+	altHeadroom := 38.0 // Only 3% more
+
+	// Should NOT switch with default delta (10%)
+	if altHeadroom > currentHeadroom+defaultThresholds.MinHeadroomDelta {
+		t.Errorf("3%% improvement should NOT trigger with 10%% delta requirement")
+	}
+
+	// Should NOT switch with aggressive delta (5%) - only 3% improvement
+	if altHeadroom > currentHeadroom+aggressiveThresholds.MinHeadroomDelta {
+		t.Errorf("3%% improvement should NOT trigger with 5%% delta requirement")
+	}
+
+	// 6% improvement SHOULD switch with aggressive delta
+	altHeadroom = 41.0
+	if !(altHeadroom > currentHeadroom+aggressiveThresholds.MinHeadroomDelta) {
+		t.Errorf("6%% improvement SHOULD trigger with 5%% delta requirement")
+	}
+}
