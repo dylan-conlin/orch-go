@@ -390,3 +390,62 @@ func TestCloseArgs_JSON(t *testing.T) {
 		t.Errorf("Reason = %q, want %q", decoded.Reason, "Fixed in commit abc123")
 	}
 }
+
+func TestBdShowArrayFormat(t *testing.T) {
+	// bd show --json always returns an array, even for a single issue
+	// This test verifies we can correctly parse the array format
+
+	// Test case 1: Single issue (most common case)
+	singleIssueJSON := `[
+  {
+    "id": "test-abc",
+    "title": "Test Issue",
+    "status": "open",
+    "priority": 0,
+    "issue_type": "task"
+  }
+]`
+	var issues []Issue
+	if err := json.Unmarshal([]byte(singleIssueJSON), &issues); err != nil {
+		t.Fatalf("failed to unmarshal single issue array: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Errorf("expected 1 issue, got %d", len(issues))
+	}
+	if issues[0].ID != "test-abc" {
+		t.Errorf("ID = %q, want %q", issues[0].ID, "test-abc")
+	}
+
+	// Test case 2: Epic child with dependencies (parent) - includes extra fields
+	epicChildJSON := `[
+  {
+    "id": "proj-ph1.9",
+    "title": "Go CLI: Project scaffolding",
+    "status": "closed",
+    "priority": 1,
+    "issue_type": "task",
+    "dependencies": [
+      {
+        "id": "proj-ph1",
+        "title": "Epic: Parent Epic",
+        "status": "closed",
+        "priority": 1,
+        "issue_type": "epic",
+        "dependency_type": "parent-child"
+      }
+    ]
+  }
+]`
+	var childIssues []Issue
+	if err := json.Unmarshal([]byte(epicChildJSON), &childIssues); err != nil {
+		t.Fatalf("failed to unmarshal epic child array: %v", err)
+	}
+	if len(childIssues) != 1 {
+		t.Errorf("expected 1 issue, got %d", len(childIssues))
+	}
+	if childIssues[0].ID != "proj-ph1.9" {
+		t.Errorf("ID = %q, want %q", childIssues[0].ID, "proj-ph1.9")
+	}
+	// Note: The dependencies field is parsed but our Issue type doesn't have it
+	// This is fine - json.Unmarshal ignores unknown fields by default
+}

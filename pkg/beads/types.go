@@ -106,19 +106,23 @@ type CommentAddArgs struct {
 }
 
 // Issue represents a beads issue.
+// Note: Dependencies field uses json.RawMessage because bd show returns
+// full Issue objects with dependency_type field for epic children,
+// while RPC may return just string IDs. We don't need to parse dependencies
+// for orch-go's use cases - just being able to unmarshal the response is enough.
 type Issue struct {
-	ID           string   `json:"id"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description,omitempty"`
-	Status       string   `json:"status"`
-	Priority     int      `json:"priority"`
-	IssueType    string   `json:"issue_type"`
-	Labels       []string `json:"labels,omitempty"`
-	Dependencies []string `json:"dependencies,omitempty"`
-	CreatedAt    string   `json:"created_at,omitempty"`
-	UpdatedAt    string   `json:"updated_at,omitempty"`
-	ClosedAt     string   `json:"closed_at,omitempty"`
-	CloseReason  string   `json:"close_reason,omitempty"`
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Description  string          `json:"description,omitempty"`
+	Status       string          `json:"status"`
+	Priority     int             `json:"priority"`
+	IssueType    string          `json:"issue_type"`
+	Labels       []string        `json:"labels,omitempty"`
+	Dependencies json.RawMessage `json:"dependencies,omitempty"`
+	CreatedAt    string          `json:"created_at,omitempty"`
+	UpdatedAt    string          `json:"updated_at,omitempty"`
+	ClosedAt     string          `json:"closed_at,omitempty"`
+	CloseReason  string          `json:"close_reason,omitempty"`
 }
 
 // Comment represents a comment on a beads issue.

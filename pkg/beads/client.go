@@ -419,6 +419,8 @@ func FallbackReady() ([]Issue, error) {
 }
 
 // FallbackShow retrieves an issue via bd CLI.
+// Note: bd show --json always returns an array, even for a single issue.
+// We unmarshal the array and return the first element.
 func FallbackShow(id string) (*Issue, error) {
 	cmd := exec.Command("bd", "show", id, "--json")
 	output, err := cmd.Output()
@@ -426,12 +428,17 @@ func FallbackShow(id string) (*Issue, error) {
 		return nil, fmt.Errorf("bd show failed: %w", err)
 	}
 
-	var issue Issue
-	if err := json.Unmarshal(output, &issue); err != nil {
+	// bd show returns an array even for a single issue
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
 		return nil, fmt.Errorf("failed to parse bd show output: %w", err)
 	}
 
-	return &issue, nil
+	if len(issues) == 0 {
+		return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
+	}
+
+	return &issues[0], nil
 }
 
 // FallbackList retrieves issues via bd CLI.
