@@ -1,4 +1,4 @@
-TASK: Dashboard Active section not showing daemon-spawned agents. orch status shows 3 active but dashboard shows 1. Agent Lifecycle panel shows daemon.spawn events so data is arriving, but agents don't appear in Active grid. Check web/src/lib/stores/ and +page.svelte for filtering logic - likely agents missing a field that the Active filter requires, or status not being set correctly for daemon-spawned sessions.
+TASK: Dashboard Active section shows agents with both 'active' and 'Complete' badges. These are completed agents whose OpenCode sessions still exist but are no longer running. Check web/src/routes/+page.svelte - the Active filter is checking session existence, not session.status==='active'. Should filter to: session exists AND session.status==='active'. The 'completed' status derived from beads/SYNTHESIS should move agents to Recent, not coexist with 'active' badge.
 
 SPAWN TIER: full
 
@@ -7,93 +7,17 @@ SPAWN TIER: full
 
 
 
+⚠️ Limited context (27/100) - agent may need to discover patterns during work
+
 ## PRIOR KNOWLEDGE (from kb context)
 
-**Query:** "dashboard"
-
-### Constraints (MUST respect)
-- Dashboard event panels max-h-64 for visibility without overwhelming layout
-  - Reason: Doubled from 32px provides better event scanning while preserving agent grid visibility
-- Dashboard must be fully usable at 666px width (half MacBook Pro screen). No horizontal scrolling. All critical info visible without scrolling.
-  - Reason: Primary workflow is orchestrator CLI + dashboard side-by-side on MacBook Pro. Minimum width constraint - should expand gracefully on larger displays.
-- OpenCode serve requires --port 4096 flag
-  - Reason: Default is random port. Daemon, orch CLI, and dashboard all expect 4096.
-
-### Prior Decisions
-- Dashboard should use progressive disclosure (Active/Recent/Archive sections) for session management
-  - Reason: Balances operational visibility (active work always visible) with historical debugging (expand sections as needed) and UI clarity (collapsed sections reduce clutter). Only approach that satisfies all three user contexts: development focus, debugging history, and health monitoring.
-- orch serve displayThreshold should match orch status (30min)
-  - Reason: 6h threshold showed 25 stale sessions while orch status showed 0, causing dashboard noise
-- kb context uses keyword matching, not semantic understanding - 'how would the system recommend...' questions require orchestrator synthesis
-  - Reason: Tested kb context with various query formats: keyword queries (swarm, dashboard) returned results, but semantic queries (swarm map sorting, how should dashboard present agents) returned nothing. The pattern reveals desire for semantic query answering that would require LLM-based RAG.
-- 24-hour threshold for Recent vs Archive in dashboard
-  - Reason: Balances operational focus (recent work visible) with history access (older work collapsed but accessible)
-- Usage display color thresholds: green <60%, yellow 60-80%, red >80%
-  - Reason: Matches established UX patterns for warning levels, consistent with how other dashboards signal utilization
-- Dashboard integrations tiered: Beads+Focus high, Servers medium, KB/KN skip
-  - Reason: Operational awareness purpose means actionable work queue > reference material
-- Dashboard account name lookup uses email reverse-mapping from accounts.yaml
-  - Reason: Provides meaningful account identifier (personal/work) instead of ambiguous email prefix
-- Dashboard agent status derived from beads phase, not session time
-  - Reason: Phase: Complete from beads comments is authoritative for completion status, session idle time is secondary
-- Dashboard beads stats use bd stats --json API call
-  - Reason: Provides comprehensive issue statistics with ready/blocked/open counts in single call
-- Dashboard panel additions follow pattern: API endpoint in serve.go -> Svelte store -> page.svelte integration
-  - Reason: Established during focus/beads/servers panel additions Dec 24
-- Active agents should use stable sort (spawned_at) to prevent grid reordering from SSE updates
-  - Reason: updated_at changes every second for active agents, causing constant visual churn in the dashboard grid
-- Dashboard progressive disclosure is already fully implemented
-  - Reason: Active/Recent/Archive sections with 24h threshold, localStorage persistence, count badges, and preview text all exist in current codebase
-- Dashboard project filter follows skill filter pattern - state var, unique extraction, apply function, dropdown UI
-  - Reason: Consistent pattern makes future filter additions predictable and maintainable
-- Dashboard uses SYNTHESIS.md as fallback for untracked agent completion detection
-  - Reason: Untracked agents have fake beads IDs that won't match real issues, so Phase: Complete check fails - workspace-based detection is the reliable fallback
-- Dashboard is_processing visual indicators require status === 'active' check
-  - Reason: SSE session.status events may not clear is_processing flag when agent completes, causing stale pulsing animation. Defensive check ensures only active agents show processing state.
-- Orchestrator System Resource Visibility
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-25-orchestrator-system-resource-visibility.md
+**Query:** "dashboard active section"
 
 ### Related Investigations
-- Legacy Artifacts Synthesis Protocol Alignment
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-audit-legacy-artifacts-synthesis-protocol.md
-- Add /api/agentlog endpoint to serve.go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-api-agentlog-endpoint-serve.md
-- Add Usage/Capacity Tracking to Account Package
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-add-usage-capacity-tracking-account.md
-- Implement Synthesis Card Display in Swarm Dashboard
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-implement-synthesis-card-display-swarm.md
-- Scaffold beads-ui v2 (Bun + SvelteKit 5 + shadcn-svelte)
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-scaffold-beads-ui-v2-bun.md
-- Tmux Concurrent Epsilon Spawn Capability
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-tmux-concurrent-epsilon.md
-- Dashboard Agent Activity Visibility
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-dashboard-needs-better-agent-activity.md
-- Deep Post-Mortem on 24 Hours of Development Chaos
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-deep-post-mortem-last-24.md
-- Failure Mode Artifacts
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-failure-mode-artifacts.md
-- Dashboard Shows 0 Agents Despite API Returning 209
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-debug-dashboard-shows-0-agents-despite-api-returning-209.md
-- Dashboard Agent Activity Visibility
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-inv-dashboard-agent-activity-visibility.md
-- Ideal Cross-Repo Setup for Dylan's Orchestration Ecosystem
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-inv-design-ideal-cross-repo-setup.md
-- orch handoff generates stale/incorrect data
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-inv-orch-handoff-generates-stale-incorrect.md
-- Review 18 Open Investigations from kb reflect
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-inv-review-19-open-investigations-kb.md
-- Audit Swarm Dashboard Web UI
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-audit-swarm-dashboard-web-ui.md
-- Design Question Should Orch Servers
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md
-- Design Question Should Swarm Dashboard
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md
-- Explore Options Centralized Server Management
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-explore-options-centralized-server-management.md
-- Add Api Usage Endpoint Serve
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-24-inv-add-api-usage-endpoint-serve.md
-- Add Beads Stats Dashboard Stats
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-24-inv-add-beads-stats-dashboard-stats.md
+- Dashboard Active Section Not Showing Daemon-Spawned Agents
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-dashboard-active-section-not-showing.md
+- [orch-go] Dashboard Active Section Not Showing Daemon-Spawned Agents
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-dashboard-active-section-not-showing.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
 
@@ -101,7 +25,7 @@ SPAWN TIER: full
 
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via `bd comment orch-go-6xya "Phase: Planning - [brief description]"`
+1. Report via `bd comment orch-go-yz06 "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -112,7 +36,7 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 After your final commit, BEFORE typing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: `bd comment orch-go-6xya "Phase: Complete - [1-2 sentence summary of deliverables]"`
+2. Run: `bd comment orch-go-yz06 "Phase: Complete - [1-2 sentence summary of deliverables]"`
 3. Run: `/exit` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
@@ -148,12 +72,12 @@ AUTHORITY:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
-2. **SET UP investigation file:** Run `kb create investigation dashboard-active-section-not-showing` to create from template
-   - This creates: `.kb/investigations/simple/YYYY-MM-DD-dashboard-active-section-not-showing.md`
+2. **SET UP investigation file:** Run `kb create investigation dashboard-active-section-shows-agents` to create from template
+   - This creates: `.kb/investigations/simple/YYYY-MM-DD-dashboard-active-section-shows-agents.md`
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
    - **IMPORTANT:** After running `kb create`, report the actual path via:
-     `bd comment orch-go-6xya "investigation_path: /path/to/file.md"`
+     `bd comment orch-go-yz06 "investigation_path: /path/to/file.md"`
      (This allows orch complete to verify the correct file)
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
@@ -178,21 +102,21 @@ Signal orchestrator when blocked:
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
-You were spawned from beads issue: **orch-go-6xya**
+You were spawned from beads issue: **orch-go-yz06**
 
 **Use `bd comment` for progress updates instead of workspace-only tracking:**
 
 ```bash
 # Report progress at phase transitions
-bd comment orch-go-6xya "Phase: Planning - Analyzing codebase structure"
-bd comment orch-go-6xya "Phase: Implementing - Adding authentication middleware"
-bd comment orch-go-6xya "Phase: Complete - All tests passing, ready for review"
+bd comment orch-go-yz06 "Phase: Planning - Analyzing codebase structure"
+bd comment orch-go-yz06 "Phase: Implementing - Adding authentication middleware"
+bd comment orch-go-yz06 "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment orch-go-6xya "BLOCKED: Need clarification on API contract"
+bd comment orch-go-yz06 "BLOCKED: Need clarification on API contract"
 
 # Report questions
-bd comment orch-go-6xya "QUESTION: Should we use JWT or session-based auth?"
+bd comment orch-go-yz06 "QUESTION: Should we use JWT or session-based auth?"
 ```
 
 **When to comment:**
@@ -201,7 +125,7 @@ bd comment orch-go-6xya "QUESTION: Should we use JWT or session-based auth?"
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-6xya`.
+**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-yz06`.
 
 ⛔ **NEVER run `bd close`** - Only the orchestrator closes issues via `orch complete`.
    - Workers report `Phase: Complete`, orchestrator verifies and closes
@@ -633,7 +557,7 @@ CONTEXT AVAILABLE:
 After your final commit, BEFORE doing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. `bd comment orch-go-6xya "Phase: Complete - [1-2 sentence summary]"`
+2. `bd comment orch-go-yz06 "Phase: Complete - [1-2 sentence summary]"`
 3. `/exit`
 
 ⚠️ Your work is NOT complete until you run these commands.
