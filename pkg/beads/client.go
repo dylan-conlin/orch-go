@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,11 +24,13 @@ var DefaultDir string
 
 // Client represents a beads RPC client that connects to the daemon.
 type Client struct {
-	mu         sync.Mutex
-	conn       net.Conn
-	socketPath string
-	timeout    time.Duration
-	cwd        string // Working directory for operations
+	mu            sync.Mutex
+	conn          net.Conn
+	socketPath    string
+	timeout       time.Duration
+	cwd           string // Working directory for operations
+	autoReconnect bool   // Whether to automatically reconnect on connection errors
+	maxRetries    int    // Maximum number of reconnection attempts
 }
 
 // Option is a functional option for configuring the Client.
@@ -44,6 +47,15 @@ func WithTimeout(timeout time.Duration) Option {
 func WithCwd(cwd string) Option {
 	return func(c *Client) {
 		c.cwd = cwd
+	}
+}
+
+// WithAutoReconnect enables automatic reconnection on connection errors.
+// maxRetries specifies the maximum number of reconnection attempts (0 = no retries).
+func WithAutoReconnect(maxRetries int) Option {
+	return func(c *Client) {
+		c.autoReconnect = true
+		c.maxRetries = maxRetries
 	}
 }
 
@@ -103,7 +115,11 @@ func (c *Client) Connect() error {
 func (c *Client) ConnectWithTimeout(dialTimeout time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.connectLocked(dialTimeout)
+}
 
+// connectLocked performs the actual connection (caller must hold lock).
+func (c *Client) connectLocked(dialTimeout time.Duration) error {
 	// Check if socket exists
 	if _, err := os.Stat(c.socketPath); os.IsNotExist(err) {
 		return fmt.Errorf("daemon not running: socket not found at %s", c.socketPath)
@@ -161,15 +177,69 @@ func (c *Client) Reconnect() error {
 }
 
 // execute sends an RPC request and returns the response.
+// If autoReconnect is enabled, it will attempt to reconnect on connection errors.
 func (c *Client) execute(operation string, args interface{}) (*Response, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.conn == nil {
-		return nil, fmt.Errorf("not connected to daemon")
+		if !c.autoReconnect {
+			return nil, fmt.Errorf("not connected to daemon")
+		}
+		// Try to connect if autoReconnect is enabled
+		if err := c.connectLocked(200 * time.Millisecond); err != nil {
+			return nil, fmt.Errorf("failed to connect: %w", err)
+		}
 	}
 
-	return c.executeLocked(operation, args)
+	resp, err := c.executeLocked(operation, args)
+	if err != nil && c.autoReconnect && isConnectionError(err) {
+		// Connection error, attempt to reconnect and retry
+		for attempt := 0; attempt <= c.maxRetries; attempt++ {
+			// Close existing connection
+			if c.conn != nil {
+				c.conn.Close()
+				c.conn = nil
+			}
+
+			// Wait with exponential backoff before reconnecting
+			if attempt > 0 {
+				backoff := time.Duration(1<<uint(attempt-1)) * 100 * time.Millisecond
+				if backoff > 2*time.Second {
+					backoff = 2 * time.Second
+				}
+				time.Sleep(backoff)
+			}
+
+			// Try to reconnect
+			if err := c.connectLocked(200 * time.Millisecond); err != nil {
+				continue // Retry
+			}
+
+			// Retry the operation
+			resp, err = c.executeLocked(operation, args)
+			if err == nil || !isConnectionError(err) {
+				break
+			}
+		}
+	}
+
+	return resp, err
+}
+
+// isConnectionError returns true if the error indicates a connection problem
+// that might be resolved by reconnecting.
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "failed to read response") ||
+		strings.Contains(errStr, "failed to write request") ||
+		strings.Contains(errStr, "i/o timeout")
 }
 
 // executeLocked performs the actual RPC call (caller must hold lock).
@@ -397,6 +467,164 @@ func (c *Client) Create(args *CreateArgs) (*Issue, error) {
 	}
 
 	return &issue, nil
+}
+
+// Update updates an existing issue.
+func (c *Client) Update(args *UpdateArgs) (*Issue, error) {
+	if args == nil {
+		return nil, fmt.Errorf("update args required")
+	}
+
+	resp, err := c.execute(OpUpdate, args)
+	if err != nil {
+		return nil, err
+	}
+
+	var issue Issue
+	if err := json.Unmarshal(resp.Data, &issue); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal updated issue: %w", err)
+	}
+
+	return &issue, nil
+}
+
+// Delete deletes one or more issues.
+func (c *Client) Delete(args *DeleteArgs) error {
+	if args == nil {
+		return fmt.Errorf("delete args required")
+	}
+
+	_, err := c.execute(OpDelete, args)
+	return err
+}
+
+// Stale retrieves stale issues.
+func (c *Client) Stale(args *StaleArgs) ([]Issue, error) {
+	if args == nil {
+		args = &StaleArgs{}
+	}
+
+	resp, err := c.execute(OpStale, args)
+	if err != nil {
+		return nil, err
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(resp.Data, &issues); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal stale issues: %w", err)
+	}
+
+	return issues, nil
+}
+
+// Count counts issues matching the given criteria.
+func (c *Client) Count(args *CountArgs) (*CountResponse, error) {
+	if args == nil {
+		args = &CountArgs{}
+	}
+
+	resp, err := c.execute(OpCount, args)
+	if err != nil {
+		return nil, err
+	}
+
+	var countResp CountResponse
+	if err := json.Unmarshal(resp.Data, &countResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal count response: %w", err)
+	}
+
+	return &countResp, nil
+}
+
+// Status retrieves daemon status metadata.
+func (c *Client) Status() (*StatusResponse, error) {
+	resp, err := c.execute(OpStatus, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var status StatusResponse
+	if err := json.Unmarshal(resp.Data, &status); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal status response: %w", err)
+	}
+
+	return &status, nil
+}
+
+// Ping sends a ping to verify the daemon is alive.
+func (c *Client) Ping() error {
+	_, err := c.execute(OpPing, nil)
+	return err
+}
+
+// Shutdown sends a graceful shutdown request to the daemon.
+func (c *Client) Shutdown() error {
+	_, err := c.execute(OpShutdown, nil)
+	return err
+}
+
+// AddLabel adds a label to an issue.
+func (c *Client) AddLabel(id, label string) error {
+	args := LabelAddArgs{
+		ID:    id,
+		Label: label,
+	}
+
+	_, err := c.execute(OpLabelAdd, args)
+	return err
+}
+
+// RemoveLabel removes a label from an issue.
+func (c *Client) RemoveLabel(id, label string) error {
+	args := LabelRemoveArgs{
+		ID:    id,
+		Label: label,
+	}
+
+	_, err := c.execute(OpLabelRemove, args)
+	return err
+}
+
+// AddDependency adds a dependency between issues.
+func (c *Client) AddDependency(fromID, toID, depType string) error {
+	args := DepAddArgs{
+		FromID:  fromID,
+		ToID:    toID,
+		DepType: depType,
+	}
+
+	_, err := c.execute(OpDepAdd, args)
+	return err
+}
+
+// RemoveDependency removes a dependency between issues.
+func (c *Client) RemoveDependency(fromID, toID, depType string) error {
+	args := DepRemoveArgs{
+		FromID:  fromID,
+		ToID:    toID,
+		DepType: depType,
+	}
+
+	_, err := c.execute(OpDepRemove, args)
+	return err
+}
+
+// ResolveID resolves a partial issue ID to a full ID.
+func (c *Client) ResolveID(partialID string) (string, error) {
+	args := ResolveIDArgs{ID: partialID}
+
+	resp, err := c.execute(OpResolveID, args)
+	if err != nil {
+		return "", err
+	}
+
+	// The response data is the resolved ID as a string
+	var resolvedID string
+	if err := json.Unmarshal(resp.Data, &resolvedID); err != nil {
+		return "", fmt.Errorf("failed to unmarshal resolved ID: %w", err)
+	}
+
+	return resolvedID, nil
 }
 
 // Fallback functions for when daemon is not available.

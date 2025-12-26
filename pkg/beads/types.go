@@ -9,14 +9,25 @@ import "encoding/json"
 const (
 	OpPing        = "ping"
 	OpHealth      = "health"
+	OpStatus      = "status"
 	OpCreate      = "create"
+	OpUpdate      = "update"
 	OpClose       = "close"
+	OpDelete      = "delete"
 	OpList        = "list"
+	OpCount       = "count"
 	OpShow        = "show"
 	OpReady       = "ready"
+	OpStale       = "stale"
 	OpStats       = "stats"
+	OpDepAdd      = "dep_add"
+	OpDepRemove   = "dep_remove"
+	OpLabelAdd    = "label_add"
+	OpLabelRemove = "label_remove"
 	OpCommentList = "comment_list"
 	OpCommentAdd  = "comment_add"
+	OpResolveID   = "resolve_id"
+	OpShutdown    = "shutdown"
 )
 
 // Request represents an RPC request to the beads daemon.
@@ -163,4 +174,106 @@ type StatsRecentActivity struct {
 type Stats struct {
 	Summary        StatsSummary        `json:"summary"`
 	RecentActivity StatsRecentActivity `json:"recent_activity,omitempty"`
+}
+
+// UpdateArgs represents arguments for updating an issue.
+type UpdateArgs struct {
+	ID                 string   `json:"id"`
+	Title              *string  `json:"title,omitempty"`
+	Description        *string  `json:"description,omitempty"`
+	Status             *string  `json:"status,omitempty"`
+	Priority           *int     `json:"priority,omitempty"`
+	Design             *string  `json:"design,omitempty"`
+	AcceptanceCriteria *string  `json:"acceptance_criteria,omitempty"`
+	Notes              *string  `json:"notes,omitempty"`
+	Assignee           *string  `json:"assignee,omitempty"`
+	ExternalRef        *string  `json:"external_ref,omitempty"`
+	EstimatedMinutes   *int     `json:"estimated_minutes,omitempty"`
+	IssueType          *string  `json:"issue_type,omitempty"`
+	AddLabels          []string `json:"add_labels,omitempty"`
+	RemoveLabels       []string `json:"remove_labels,omitempty"`
+	SetLabels          []string `json:"set_labels,omitempty"`
+}
+
+// DeleteArgs represents arguments for deleting issues.
+type DeleteArgs struct {
+	IDs     []string `json:"ids"`
+	Force   bool     `json:"force,omitempty"`
+	DryRun  bool     `json:"dry_run,omitempty"`
+	Cascade bool     `json:"cascade,omitempty"`
+	Reason  string   `json:"reason,omitempty"`
+}
+
+// StaleArgs represents arguments for the stale command.
+type StaleArgs struct {
+	Days   int    `json:"days,omitempty"`
+	Status string `json:"status,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
+// DepAddArgs represents arguments for adding a dependency.
+type DepAddArgs struct {
+	FromID  string `json:"from_id"`
+	ToID    string `json:"to_id"`
+	DepType string `json:"dep_type"`
+}
+
+// DepRemoveArgs represents arguments for removing a dependency.
+type DepRemoveArgs struct {
+	FromID  string `json:"from_id"`
+	ToID    string `json:"to_id"`
+	DepType string `json:"dep_type,omitempty"`
+}
+
+// LabelAddArgs represents arguments for adding a label.
+type LabelAddArgs struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// LabelRemoveArgs represents arguments for removing a label.
+type LabelRemoveArgs struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// ResolveIDArgs represents arguments for resolving a partial ID.
+type ResolveIDArgs struct {
+	ID string `json:"id"`
+}
+
+// CountArgs represents arguments for the count operation.
+type CountArgs struct {
+	Query     string   `json:"query,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	Priority  *int     `json:"priority,omitempty"`
+	IssueType string   `json:"issue_type,omitempty"`
+	Assignee  string   `json:"assignee,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	LabelsAny []string `json:"labels_any,omitempty"`
+	GroupBy   string   `json:"group_by,omitempty"`
+}
+
+// CountResponse represents the response for a count operation.
+type CountResponse struct {
+	Count  int            `json:"count,omitempty"`
+	Groups map[string]int `json:"groups,omitempty"`
+}
+
+// StatusResponse represents the daemon status metadata.
+type StatusResponse struct {
+	Version             string  `json:"version"`
+	WorkspacePath       string  `json:"workspace_path"`
+	DatabasePath        string  `json:"database_path"`
+	SocketPath          string  `json:"socket_path"`
+	PID                 int     `json:"pid"`
+	UptimeSeconds       float64 `json:"uptime_seconds"`
+	LastActivityTime    string  `json:"last_activity_time"`
+	ExclusiveLockActive bool    `json:"exclusive_lock_active"`
+	ExclusiveLockHolder string  `json:"exclusive_lock_holder,omitempty"`
+	AutoCommit          bool    `json:"auto_commit"`
+	AutoPush            bool    `json:"auto_push"`
+	LocalMode           bool    `json:"local_mode"`
+	SyncInterval        string  `json:"sync_interval"`
+	DaemonMode          string  `json:"daemon_mode"`
 }

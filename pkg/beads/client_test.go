@@ -841,3 +841,318 @@ func TestMultiLevelChildID(t *testing.T) {
 		t.Errorf("ID = %q, want %q", issues[0].ID, "proj-epic.1.2")
 	}
 }
+
+// TestWithAutoReconnect tests the WithAutoReconnect option.
+func TestWithAutoReconnect(t *testing.T) {
+	c := NewClient("/path/to/bd.sock", WithAutoReconnect(3))
+	if !c.autoReconnect {
+		t.Error("autoReconnect should be true")
+	}
+	if c.maxRetries != 3 {
+		t.Errorf("maxRetries = %d, want %d", c.maxRetries, 3)
+	}
+}
+
+// TestIsConnectionError tests the isConnectionError function.
+func TestIsConnectionError(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+	}{
+		{nil, false},
+		{fmt.Errorf("some random error"), false},
+		{fmt.Errorf("connection reset by peer"), true},
+		{fmt.Errorf("broken pipe"), true},
+		{fmt.Errorf("connection refused"), true},
+		{fmt.Errorf("failed to read response: EOF"), true},
+		{fmt.Errorf("failed to write request: broken pipe"), true},
+		{fmt.Errorf("i/o timeout"), true},
+	}
+
+	for _, tt := range tests {
+		result := isConnectionError(tt.err)
+		if result != tt.expected {
+			t.Errorf("isConnectionError(%v) = %v, want %v", tt.err, result, tt.expected)
+		}
+	}
+}
+
+// TestClient_AutoReconnect tests that autoReconnect enables lazy connection.
+func TestClient_AutoReconnect(t *testing.T) {
+	// Create a mock daemon
+	socketPath, cleanup := mockDaemon(t, func(conn net.Conn) {
+		defer conn.Close()
+
+		// Handle multiple requests
+		for {
+			buf := make([]byte, 4096)
+			n, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+
+			var req Request
+			if err := json.Unmarshal(buf[:n], &req); err != nil {
+				return
+			}
+
+			var resp Response
+
+			switch req.Operation {
+			case OpHealth:
+				healthData, _ := json.Marshal(HealthResponse{
+					Status:  "healthy",
+					Version: "1.0.0",
+					Uptime:  1.0,
+				})
+				resp = Response{
+					Success: true,
+					Data:    healthData,
+				}
+			case OpPing:
+				resp = Response{
+					Success: true,
+					Data:    json.RawMessage(`{"message":"pong"}`),
+				}
+			default:
+				resp = Response{
+					Success: false,
+					Error:   "unknown operation",
+				}
+			}
+
+			respJSON, _ := json.Marshal(resp)
+			conn.Write(append(respJSON, '\n'))
+		}
+	})
+	defer cleanup()
+
+	// Create client with autoReconnect but don't explicitly connect
+	c := NewClient(socketPath, WithAutoReconnect(3))
+
+	// Client should not be connected yet
+	if c.IsConnected() {
+		t.Error("client should not be connected before first operation")
+	}
+
+	// Ping should auto-connect
+	if err := c.Ping(); err != nil {
+		t.Errorf("Ping failed: %v", err)
+	}
+
+	// Client should now be connected
+	if !c.IsConnected() {
+		t.Error("client should be connected after successful operation")
+	}
+
+	c.Close()
+}
+
+// TestUpdateArgs_JSON tests JSON marshaling of UpdateArgs.
+func TestUpdateArgs_JSON(t *testing.T) {
+	title := "New Title"
+	priority := 2
+	args := UpdateArgs{
+		ID:       "issue-123",
+		Title:    &title,
+		Priority: &priority,
+		AddLabels: []string{"urgent"},
+	}
+
+	data, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("failed to marshal UpdateArgs: %v", err)
+	}
+
+	var decoded UpdateArgs
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal UpdateArgs: %v", err)
+	}
+
+	if decoded.ID != "issue-123" {
+		t.Errorf("ID = %q, want %q", decoded.ID, "issue-123")
+	}
+	if decoded.Title == nil || *decoded.Title != "New Title" {
+		t.Errorf("Title = %v, want %q", decoded.Title, "New Title")
+	}
+	if decoded.Priority == nil || *decoded.Priority != 2 {
+		t.Errorf("Priority = %v, want %d", decoded.Priority, 2)
+	}
+	if len(decoded.AddLabels) != 1 || decoded.AddLabels[0] != "urgent" {
+		t.Errorf("AddLabels = %v, want %v", decoded.AddLabels, []string{"urgent"})
+	}
+}
+
+// TestDeleteArgs_JSON tests JSON marshaling of DeleteArgs.
+func TestDeleteArgs_JSON(t *testing.T) {
+	args := DeleteArgs{
+		IDs:    []string{"issue-1", "issue-2"},
+		Force:  true,
+		Reason: "cleanup",
+	}
+
+	data, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("failed to marshal DeleteArgs: %v", err)
+	}
+
+	var decoded DeleteArgs
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal DeleteArgs: %v", err)
+	}
+
+	if len(decoded.IDs) != 2 {
+		t.Errorf("IDs count = %d, want %d", len(decoded.IDs), 2)
+	}
+	if !decoded.Force {
+		t.Error("Force should be true")
+	}
+	if decoded.Reason != "cleanup" {
+		t.Errorf("Reason = %q, want %q", decoded.Reason, "cleanup")
+	}
+}
+
+// TestStaleArgs_JSON tests JSON marshaling of StaleArgs.
+func TestStaleArgs_JSON(t *testing.T) {
+	args := StaleArgs{
+		Days:   30,
+		Status: "open",
+		Limit:  10,
+	}
+
+	data, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("failed to marshal StaleArgs: %v", err)
+	}
+
+	var decoded StaleArgs
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal StaleArgs: %v", err)
+	}
+
+	if decoded.Days != 30 {
+		t.Errorf("Days = %d, want %d", decoded.Days, 30)
+	}
+	if decoded.Status != "open" {
+		t.Errorf("Status = %q, want %q", decoded.Status, "open")
+	}
+}
+
+// TestLabelArgs_JSON tests JSON marshaling of label operation args.
+func TestLabelArgs_JSON(t *testing.T) {
+	addArgs := LabelAddArgs{ID: "issue-1", Label: "urgent"}
+	removeArgs := LabelRemoveArgs{ID: "issue-2", Label: "low-priority"}
+
+	data, err := json.Marshal(addArgs)
+	if err != nil {
+		t.Fatalf("failed to marshal LabelAddArgs: %v", err)
+	}
+	var decodedAdd LabelAddArgs
+	if err := json.Unmarshal(data, &decodedAdd); err != nil {
+		t.Fatalf("failed to unmarshal LabelAddArgs: %v", err)
+	}
+	if decodedAdd.ID != "issue-1" || decodedAdd.Label != "urgent" {
+		t.Errorf("LabelAddArgs = %+v, want ID=issue-1 Label=urgent", decodedAdd)
+	}
+
+	data, err = json.Marshal(removeArgs)
+	if err != nil {
+		t.Fatalf("failed to marshal LabelRemoveArgs: %v", err)
+	}
+	var decodedRemove LabelRemoveArgs
+	if err := json.Unmarshal(data, &decodedRemove); err != nil {
+		t.Fatalf("failed to unmarshal LabelRemoveArgs: %v", err)
+	}
+	if decodedRemove.ID != "issue-2" || decodedRemove.Label != "low-priority" {
+		t.Errorf("LabelRemoveArgs = %+v, want ID=issue-2 Label=low-priority", decodedRemove)
+	}
+}
+
+// TestDepArgs_JSON tests JSON marshaling of dependency operation args.
+func TestDepArgs_JSON(t *testing.T) {
+	addArgs := DepAddArgs{FromID: "child", ToID: "parent", DepType: "blocks"}
+	removeArgs := DepRemoveArgs{FromID: "child", ToID: "parent"}
+
+	data, err := json.Marshal(addArgs)
+	if err != nil {
+		t.Fatalf("failed to marshal DepAddArgs: %v", err)
+	}
+	var decodedAdd DepAddArgs
+	if err := json.Unmarshal(data, &decodedAdd); err != nil {
+		t.Fatalf("failed to unmarshal DepAddArgs: %v", err)
+	}
+	if decodedAdd.FromID != "child" || decodedAdd.ToID != "parent" || decodedAdd.DepType != "blocks" {
+		t.Errorf("DepAddArgs = %+v, unexpected values", decodedAdd)
+	}
+
+	data, err = json.Marshal(removeArgs)
+	if err != nil {
+		t.Fatalf("failed to marshal DepRemoveArgs: %v", err)
+	}
+	var decodedRemove DepRemoveArgs
+	if err := json.Unmarshal(data, &decodedRemove); err != nil {
+		t.Fatalf("failed to unmarshal DepRemoveArgs: %v", err)
+	}
+	if decodedRemove.FromID != "child" || decodedRemove.ToID != "parent" {
+		t.Errorf("DepRemoveArgs = %+v, unexpected values", decodedRemove)
+	}
+}
+
+// TestCountArgs_JSON tests JSON marshaling of CountArgs.
+func TestCountArgs_JSON(t *testing.T) {
+	args := CountArgs{
+		Status:  "open",
+		GroupBy: "priority",
+	}
+
+	data, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("failed to marshal CountArgs: %v", err)
+	}
+
+	var decoded CountArgs
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal CountArgs: %v", err)
+	}
+
+	if decoded.Status != "open" {
+		t.Errorf("Status = %q, want %q", decoded.Status, "open")
+	}
+	if decoded.GroupBy != "priority" {
+		t.Errorf("GroupBy = %q, want %q", decoded.GroupBy, "priority")
+	}
+}
+
+// TestStatusResponse_JSON tests JSON marshaling of StatusResponse.
+func TestStatusResponse_JSON(t *testing.T) {
+	status := StatusResponse{
+		Version:       "1.0.0",
+		WorkspacePath: "/path/to/workspace",
+		DatabasePath:  "/path/to/db",
+		SocketPath:    "/path/to/sock",
+		PID:           12345,
+		UptimeSeconds: 3600.5,
+		AutoCommit:    true,
+		LocalMode:     false,
+	}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("failed to marshal StatusResponse: %v", err)
+	}
+
+	var decoded StatusResponse
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal StatusResponse: %v", err)
+	}
+
+	if decoded.Version != "1.0.0" {
+		t.Errorf("Version = %q, want %q", decoded.Version, "1.0.0")
+	}
+	if decoded.PID != 12345 {
+		t.Errorf("PID = %d, want %d", decoded.PID, 12345)
+	}
+	if !decoded.AutoCommit {
+		t.Error("AutoCommit should be true")
+	}
+}
