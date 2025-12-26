@@ -669,7 +669,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				if phaseStatus.Found {
 					agents[i].Phase = phaseStatus.Phase
 					// Update status to completed if phase is Complete
-					if strings.EqualFold(phaseStatus.Phase, "Complete") {
+					// BUT only for non-active agents. Active OpenCode sessions should
+					// remain "active" even if Phase: Complete was reported (they may be
+					// resumptions, or the agent hasn't exited yet).
+					if strings.EqualFold(phaseStatus.Phase, "Complete") && agents[i].Status != "active" {
 						agents[i].Status = "completed"
 					}
 				}
@@ -678,7 +681,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			// For agents not yet marked completed, check workspace for SYNTHESIS.md
 			// This handles untracked agents (--no-track) which have fake beads IDs
 			// and won't have Phase: Complete in beads comments
-			if agents[i].Status != "completed" {
+			// BUT only for non-active agents - active sessions take precedence
+			if agents[i].Status != "completed" && agents[i].Status != "active" {
 				// Use cached workspace lookup instead of scanning directories
 				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
 				if checkWorkspaceSynthesis(workspacePath) {
