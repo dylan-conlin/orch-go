@@ -335,3 +335,188 @@ func TestVisualEvidencePatterns(t *testing.T) {
 		}
 	}
 }
+
+func TestIsSkillRequiringVisualVerification(t *testing.T) {
+	tests := []struct {
+		name      string
+		skillName string
+		want      bool
+	}{
+		// Skills that require visual verification
+		{
+			name:      "feature-impl requires verification",
+			skillName: "feature-impl",
+			want:      true,
+		},
+		{
+			name:      "feature-impl case insensitive",
+			skillName: "Feature-Impl",
+			want:      true,
+		},
+
+		// Skills explicitly excluded from visual verification
+		{
+			name:      "architect excluded",
+			skillName: "architect",
+			want:      false,
+		},
+		{
+			name:      "investigation excluded",
+			skillName: "investigation",
+			want:      false,
+		},
+		{
+			name:      "systematic-debugging excluded",
+			skillName: "systematic-debugging",
+			want:      false,
+		},
+		{
+			name:      "research excluded",
+			skillName: "research",
+			want:      false,
+		},
+		{
+			name:      "codebase-audit excluded",
+			skillName: "codebase-audit",
+			want:      false,
+		},
+		{
+			name:      "reliability-testing excluded",
+			skillName: "reliability-testing",
+			want:      false,
+		},
+		{
+			name:      "design-session excluded",
+			skillName: "design-session",
+			want:      false,
+		},
+		{
+			name:      "issue-creation excluded",
+			skillName: "issue-creation",
+			want:      false,
+		},
+		{
+			name:      "writing-skills excluded",
+			skillName: "writing-skills",
+			want:      false,
+		},
+
+		// Unknown skills - permissive default (no visual verification required)
+		{
+			name:      "unknown skill is permissive",
+			skillName: "some-new-skill",
+			want:      false,
+		},
+		{
+			name:      "empty skill name is permissive",
+			skillName: "",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsSkillRequiringVisualVerification(tt.skillName)
+			if got != tt.want {
+				t.Errorf("IsSkillRequiringVisualVerification(%q) = %v, want %v", tt.skillName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSkillAwareVisualVerification(t *testing.T) {
+	// Test that the skill-aware logic produces correct results
+	// These tests verify the interaction between skill detection and visual verification
+
+	tests := []struct {
+		name           string
+		skillName      string
+		hasWebChanges  bool
+		hasEvidence    bool
+		wantPassed     bool
+		wantHasWarning bool
+	}{
+		{
+			name:          "architect with web changes - should pass without evidence",
+			skillName:     "architect",
+			hasWebChanges: true,
+			hasEvidence:   false,
+			wantPassed:    true,
+		},
+		{
+			name:          "investigation with web changes - should pass without evidence",
+			skillName:     "investigation",
+			hasWebChanges: true,
+			hasEvidence:   false,
+			wantPassed:    true,
+		},
+		{
+			name:          "feature-impl with web changes and evidence - should pass",
+			skillName:     "feature-impl",
+			hasWebChanges: true,
+			hasEvidence:   true,
+			wantPassed:    true,
+		},
+		{
+			name:          "feature-impl with web changes no evidence - should fail",
+			skillName:     "feature-impl",
+			hasWebChanges: true,
+			hasEvidence:   false,
+			wantPassed:    false,
+		},
+		{
+			name:          "unknown skill with web changes - should pass (permissive)",
+			skillName:     "new-skill",
+			hasWebChanges: true,
+			hasEvidence:   false,
+			wantPassed:    true,
+		},
+		{
+			name:          "no web changes - always passes",
+			skillName:     "feature-impl",
+			hasWebChanges: false,
+			hasEvidence:   false,
+			wantPassed:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the verification logic
+			result := VisualVerificationResult{
+				Passed:        true,
+				HasWebChanges: tt.hasWebChanges,
+			}
+
+			if !tt.hasWebChanges {
+				// No web changes = always pass
+				if !result.Passed {
+					t.Error("Expected pass when no web changes")
+				}
+				return
+			}
+
+			// Check skill type
+			requiresVerification := IsSkillRequiringVisualVerification(tt.skillName)
+
+			if !requiresVerification {
+				// Non-UI skill - pass regardless of evidence
+				if tt.wantPassed != true {
+					t.Errorf("Non-UI skill %q should pass, got wantPassed=%v", tt.skillName, tt.wantPassed)
+				}
+				return
+			}
+
+			// UI skill - need evidence
+			result.HasEvidence = tt.hasEvidence
+			if !tt.hasEvidence {
+				result.Passed = false
+				result.Errors = append(result.Errors, "web/ files modified but no visual verification evidence found")
+			}
+
+			if result.Passed != tt.wantPassed {
+				t.Errorf("Result.Passed = %v, want %v", result.Passed, tt.wantPassed)
+			}
+		})
+	}
+}

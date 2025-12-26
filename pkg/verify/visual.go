@@ -7,6 +7,63 @@ import (
 	"strings"
 )
 
+// Skills that require visual verification when modifying web/ files.
+// Only skills that are explicitly about UI work should require visual verification.
+// Non-UI skills (architects, investigations, debugging) may incidentally modify web/
+// files as part of broader work - these shouldn't require visual verification.
+var skillsRequiringVisualVerification = map[string]bool{
+	"feature-impl": true, // UI features need visual verification
+	// Note: We don't include all possible UI skills - the default is permissive.
+	// If a skill is not in this list and modifies web/ files, we assume it's incidental.
+}
+
+// Skills that are explicitly excluded from visual verification requirements.
+// These skills are known to work on web/ files incidentally (not as primary UI work).
+var skillsExcludedFromVisualVerification = map[string]bool{
+	"architect":            true, // Design work may touch web/ files
+	"investigation":        true, // Research may examine/modify web/ files
+	"systematic-debugging": true, // Debugging may touch web/ files
+	"research":             true, // Research doesn't do UI work
+	"codebase-audit":       true, // Audits may touch any files
+	"reliability-testing":  true, // Testing may touch any files
+	"design-session":       true, // Design sessions don't do UI implementation
+	"issue-creation":       true, // Issue creation doesn't do UI work
+	"writing-skills":       true, // Skill writing may touch web/ examples
+}
+
+// IsSkillRequiringVisualVerification determines if a skill requires visual verification
+// for web/ file changes.
+//
+// The logic is:
+// 1. If skill is explicitly excluded (architect, investigation, etc.) -> false
+// 2. If skill is explicitly included (feature-impl) -> true
+// 3. If skill is unknown -> false (permissive default to avoid false positives)
+//
+// This approach prevents false positives from architects/investigations that modify
+// web/ files incidentally as part of broader work.
+func IsSkillRequiringVisualVerification(skillName string) bool {
+	// Empty skill name means we couldn't determine the skill - be permissive
+	if skillName == "" {
+		return false
+	}
+
+	// Normalize skill name to lowercase for comparison
+	skillName = strings.ToLower(skillName)
+
+	// Check explicit exclusions first
+	if skillsExcludedFromVisualVerification[skillName] {
+		return false
+	}
+
+	// Check explicit inclusions
+	if skillsRequiringVisualVerification[skillName] {
+		return true
+	}
+
+	// Unknown skill - be permissive to avoid false positives
+	return false
+}
+
 // VisualVerificationResult represents the result of checking for visual verification evidence.
 type VisualVerificationResult struct {
 	Passed        bool     // Whether verification passed
@@ -165,7 +222,12 @@ func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
 //
 // The verification passes if:
 // 1. No web/ files were modified in recent commits, OR
-// 2. Visual verification evidence is found in beads comments or SYNTHESIS.md
+// 2. The skill is not a UI-focused skill (architect, investigation, debugging, etc.), OR
+// 3. Visual verification evidence is found in beads comments or SYNTHESIS.md
+//
+// This skill-aware approach prevents false positives from non-UI skills that incidentally
+// modify web/ files as part of broader work. Only feature-impl (and similar UI-focused skills)
+// require visual verification for web/ changes.
 //
 // Evidence includes:
 // - Screenshots mentioned (screenshot, captured image)
@@ -182,7 +244,17 @@ func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualV
 		return result
 	}
 
-	// Web changes detected - need visual verification evidence
+	// Check skill type - only UI-focused skills require visual verification
+	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
+	if !IsSkillRequiringVisualVerification(skillName) {
+		// Non-UI skill modifying web/ files - this is incidental, not UI work
+		// Skip visual verification requirement
+		result.Warnings = append(result.Warnings,
+			"web/ files modified by non-UI skill ("+skillName+") - visual verification not required")
+		return result
+	}
+
+	// UI-focused skill (feature-impl) - need visual verification evidence
 
 	// Check beads comments for evidence
 	comments, err := GetComments(beadsID)
