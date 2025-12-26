@@ -1,7 +1,7 @@
 # Session Synthesis
 
 **Agent:** og-debug-daemon-capacity-count-26dec
-**Issue:** orch-go-s2j7
+**Issue:** orch-go-59m3
 **Duration:** 2025-12-26
 **Outcome:** success
 
@@ -9,50 +9,48 @@
 
 ## TLDR
 
-Daemon capacity count stuck at 3/3 because `DefaultActiveCount()` counted ALL 26 OpenCode sessions (including old/stale ones) instead of just active ones. Fixed by filtering to sessions updated within last 30 minutes, and reordering daemon loop to reconcile before writing status.
+Fixed daemon capacity count to exclude untracked agents (spawned with `--no-track`). The daemon now correctly reports only tracked sessions against its capacity limit by filtering out sessions with `-untracked-` in their beads ID.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Modified
-- `pkg/daemon/daemon.go:416-444` - Updated `DefaultActiveCount()` to filter sessions by `time.updated` field, counting only sessions active within 30 minutes (matching `orch status` threshold)
-- `cmd/orch/daemon.go:203-227` - Reordered daemon loop to call `ReconcileWithOpenCode()` BEFORE `WriteStatusFile()` so status shows accurate counts
+- `pkg/daemon/daemon.go:416-477` - Added `extractBeadsIDFromSessionTitle()` and `isUntrackedBeadsID()` functions; modified `DefaultActiveCount()` to filter out untracked sessions
+- `pkg/daemon/daemon_test.go` - Added tests for `TestExtractBeadsIDFromSessionTitle` and `TestIsUntrackedBeadsID`
 
 ### Commits
-- Pending commit: "fix: filter OpenCode sessions by recency in DefaultActiveCount()"
+- (to be committed) - fix: exclude untracked agents from daemon capacity count
 
 ---
 
 ## Evidence (What Was Observed)
 
-- `curl http://127.0.0.1:4096/session | jq 'length'` returns 26 (many stale sessions from Dec 20-26)
-- Only 1 session had activity within 30 minutes (verified with jq filter)
-- `Reconcile(actualCount)` requires actualCount < poolCount to free slots
-- With actualCount=26 and poolCount=3, 26 >= 3 is true, so prior fix never freed slots
-- Prior investigation added `Pool.Reconcile()` but didn't account for stale sessions in OpenCode API response
+- 9 OpenCode sessions were active within 30 minutes, but 1 was untracked (`orch-go-untracked-1766786808`)
+- Daemon was reporting 9 instead of 8, inflating capacity usage
+- Session titles contain beads ID in brackets: `workspace-name [beads-id]`
+- Untracked agents have `-untracked-` pattern in beads ID (e.g., `project-untracked-1766786808`)
 
 ### Root Cause Chain
-1. Daemon spawns 3 agents, Pool.activeCount = 3
-2. Agents complete, OpenCode sessions remain (stale)
-3. New poll cycle calls `ReconcileWithOpenCode()`
-4. `DefaultActiveCount()` queries OpenCode API, returns 26 (all sessions)
-5. `Reconcile(26)` sees 26 >= 3, does nothing
-6. Pool stays at 3/3 forever
+1. User spawns agents with `--no-track` flag
+2. `determineBeadsID()` generates beads ID like `project-untracked-{timestamp}`
+3. Session is created with title containing `[project-untracked-{timestamp}]`
+4. `DefaultActiveCount()` queries OpenCode API, counts ALL sessions
+5. Untracked sessions counted toward daemon capacity limit
+6. Daemon capacity inflated, blocking new spawns unnecessarily
 
 ### Tests Run
 ```bash
-# Run daemon package tests
-go test ./pkg/daemon/... -count=1
-# ok  	github.com/dylan-conlin/orch-go/pkg/daemon	0.150s
+# All daemon tests pass
+go test ./pkg/daemon/... -v -count=1
+# PASS: 60+ tests including new tests for extractBeadsIDFromSessionTitle and isUntrackedBeadsID
 
 # Build verification
 go build ./cmd/orch
 # Success, no errors
 
-# Verify session filtering logic
-curl -s http://127.0.0.1:4096/session | jq '[.[] | select((.time.updated / 1000) > (now - 1800))] | length'
-# Returns 1 (only active sessions)
+# Smoke test verified correct filtering
+# Total active: 9, Tracked: 8, Untracked: 1, Daemon would report: 8
 ```
 
 ---
@@ -60,16 +58,16 @@ curl -s http://127.0.0.1:4096/session | jq '[.[] | select((.time.updated / 1000)
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md` - Full root cause analysis (extends prior investigation)
+- `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stale-after.md` - Investigation documenting root cause and fix
 
 ### Decisions Made
-- Filter by 30-minute threshold: Matches `orch status` agent matching threshold for consistency across orch commands
-- Reorder reconcile before status write: Ensures status file reflects post-reconciliation counts, not stale pre-reconciliation counts
+- Filter by beads ID pattern rather than tracking session IDs explicitly (simpler, uses existing patterns)
+- Sessions without beads IDs in title are counted as tracked (conservative approach avoids false exclusions)
 
 ### Constraints Discovered
-- **OpenCode sessions persist indefinitely**: Sessions don't auto-close when agents complete or exit
-- **Session count != active agent count**: Must filter by recency to distinguish active vs abandoned sessions
-- **Order matters in daemon loop**: Status snapshot must happen after state mutations
+- `--no-track` spawns use pattern `{project}-untracked-{timestamp}` for beads ID
+- Session titles consistently include `[beads-id]` at the end
+- Untracked agents should NOT count against daemon capacity since they weren't spawned by daemon
 
 ---
 
@@ -81,30 +79,30 @@ curl -s http://127.0.0.1:4096/session | jq '[.[] | select((.time.updated / 1000)
 - [x] All deliverables complete
 - [x] Tests passing
 - [x] Investigation file has `**Phase:** Complete`
-- [x] Ready for `orch complete orch-go-s2j7`
+- [x] Ready for `orch complete orch-go-59m3`
 
 ---
 
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- Why doesn't OpenCode clean up old sessions automatically?
-- Should there be a session cleanup command in orch (`orch cleanup-sessions`)?
+- Could there be sessions without beads IDs that should be counted? (Edge case, likely very rare)
+- Should we add metrics/logging to track reconciliation events? (Nice-to-have)
 
 **Areas worth exploring further:**
-- Add metrics/logging for reconciliation events to monitor in production
-- Consider explicit session ID tracking instead of time-based filtering for precision
+- End-to-end daemon integration tests that verify capacity with mixed tracked/untracked agents
 
 **What remains unclear:**
-- Behavior when sessions are streaming but no user input (may appear stale with >30 min idle time)
-- Edge case when OpenCode API is unavailable (currently returns 0, may cause aggressive slot release)
+- Behavior when OpenCode API is temporarily unavailable (returns 0, could cause issues)
+
+*(Straightforward session overall, fix follows established patterns)*
 
 ---
 
 ## Session Metadata
 
 **Skill:** systematic-debugging
-**Model:** Claude
+**Model:** claude-opus-4
 **Workspace:** `.orch/workspace/og-debug-daemon-capacity-count-26dec/`
-**Investigation:** `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md`
-**Beads:** `bd show orch-go-s2j7`
+**Investigation:** `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stale-after.md`
+**Beads:** `bd show orch-go-59m3`

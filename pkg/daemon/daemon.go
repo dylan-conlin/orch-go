@@ -416,6 +416,7 @@ func SpawnWork(beadsID string) error {
 // DefaultActiveCount returns the number of active agents by querying OpenCode API.
 // Counts only recently-active sessions (updated within the last 30 minutes) to avoid
 // counting stale sessions that persist indefinitely in OpenCode.
+// Excludes untracked agents (spawned with --no-track) which have "-untracked-" in their beads ID.
 func DefaultActiveCount() int {
 	// Use OpenCode API to count active sessions
 	// The default server URL is used; this works because the daemon runs
@@ -433,8 +434,9 @@ func DefaultActiveCount() int {
 	defer resp.Body.Close()
 
 	var sessions []struct {
-		ID   string `json:"id"`
-		Time struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+		Time  struct {
 			Updated int64 `json:"updated"` // Unix timestamp in milliseconds
 		} `json:"time"`
 	}
@@ -451,12 +453,40 @@ func DefaultActiveCount() int {
 	activeCount := 0
 	for _, s := range sessions {
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		if now.Sub(updatedAt) <= maxIdleTime {
-			activeCount++
+		if now.Sub(updatedAt) > maxIdleTime {
+			continue
 		}
+
+		// Extract beads ID from title (format: "workspace-name [beads-id]")
+		// Skip untracked agents which have "-untracked-" in their beads ID.
+		// These are ad-hoc spawns that shouldn't count against daemon capacity.
+		beadsID := extractBeadsIDFromSessionTitle(s.Title)
+		if isUntrackedBeadsID(beadsID) {
+			continue
+		}
+
+		activeCount++
 	}
 
 	return activeCount
+}
+
+// extractBeadsIDFromSessionTitle extracts beads ID from an OpenCode session title.
+// Session titles follow format: "workspace-name [beads-id]" (e.g., "og-feat-add-feature-24dec [orch-go-3anf]")
+func extractBeadsIDFromSessionTitle(title string) string {
+	// Look for "[beads-id]" pattern at the end
+	if start := strings.LastIndex(title, "["); start != -1 {
+		if end := strings.LastIndex(title, "]"); end != -1 && end > start {
+			return strings.TrimSpace(title[start+1 : end])
+		}
+	}
+	return ""
+}
+
+// isUntrackedBeadsID returns true if the beads ID indicates an untracked agent.
+// Untracked agents are spawned with --no-track and have IDs like "project-untracked-1766695797".
+func isUntrackedBeadsID(beadsID string) bool {
+	return strings.Contains(beadsID, "-untracked-")
 }
 
 // Once processes a single issue from the queue and returns.

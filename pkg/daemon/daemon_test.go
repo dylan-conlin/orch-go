@@ -1158,3 +1158,94 @@ func TestFindWorkspaceForIssue_NoWorkspaceDir(t *testing.T) {
 		t.Errorf("findWorkspaceForIssue() = %q, want empty string for nonexistent dir", result)
 	}
 }
+
+func TestExtractBeadsIDFromSessionTitle(t *testing.T) {
+	tests := []struct {
+		name  string
+		title string
+		want  string
+	}{
+		{
+			name:  "standard format",
+			title: "og-feat-add-feature-24dec [orch-go-3anf]",
+			want:  "orch-go-3anf",
+		},
+		{
+			name:  "untracked agent",
+			title: "og-arch-review-url-markdown-26dec [orch-go-untracked-1766786808]",
+			want:  "orch-go-untracked-1766786808",
+		},
+		{
+			name:  "no beads ID",
+			title: "some-workspace-name",
+			want:  "",
+		},
+		{
+			name:  "empty title",
+			title: "",
+			want:  "",
+		},
+		{
+			name:  "brackets but no content",
+			title: "workspace []",
+			want:  "",
+		},
+		{
+			name:  "multiple brackets - use last",
+			title: "workspace [first] [second]",
+			want:  "second",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractBeadsIDFromSessionTitle(tt.title)
+			if got != tt.want {
+				t.Errorf("extractBeadsIDFromSessionTitle(%q) = %q, want %q", tt.title, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsUntrackedBeadsID(t *testing.T) {
+	tests := []struct {
+		name    string
+		beadsID string
+		want    bool
+	}{
+		{
+			name:    "tracked beads ID",
+			beadsID: "orch-go-3anf",
+			want:    false,
+		},
+		{
+			name:    "untracked beads ID",
+			beadsID: "orch-go-untracked-1766786808",
+			want:    true,
+		},
+		{
+			name:    "untracked with different project",
+			beadsID: "snap-untracked-1766770347",
+			want:    true,
+		},
+		{
+			name:    "empty string",
+			beadsID: "",
+			want:    false,
+		},
+		{
+			name:    "contains 'untracked' but not as segment",
+			beadsID: "my-untrackedfeature-xyz",
+			want:    false, // doesn't contain "-untracked-" with trailing hyphen
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isUntrackedBeadsID(tt.beadsID)
+			if got != tt.want {
+				t.Errorf("isUntrackedBeadsID(%q) = %v, want %v", tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}
