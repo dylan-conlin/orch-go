@@ -45,18 +45,15 @@ func GetComments(beadsID string) ([]Comment, error) {
 // project than the current working directory.
 // If projectDir is empty, uses the current working directory.
 func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
-	// Try RPC client first
+	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			comments, err := client.Comments(beadsID)
-			if err == nil {
-				return comments, nil
-			}
-			// Fall through to CLI fallback on RPC error
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		comments, err := client.Comments(beadsID)
+		if err == nil {
+			return comments, nil
 		}
+		// Fall through to CLI fallback on RPC error
 	}
 
 	// Fallback to CLI with project directory
@@ -504,19 +501,16 @@ func ReadTierFromWorkspace(workspacePath string) string {
 }
 
 // CloseIssue closes a beads issue with the given reason.
-// It uses the beads RPC client when available, falling back to the bd CLI.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 func CloseIssue(beadsID, reason string) error {
-	// Try RPC client first
+	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			if err := client.CloseIssue(beadsID, reason); err == nil {
-				return nil
-			}
-			// Fall through to CLI fallback on RPC error
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.CloseIssue(beadsID, reason); err == nil {
+			return nil
 		}
+		// Fall through to CLI fallback on RPC error
 	}
 
 	// Fallback to CLI
@@ -524,43 +518,48 @@ func CloseIssue(beadsID, reason string) error {
 }
 
 // UpdateIssueStatus updates the status of a beads issue.
-// NOTE: The beads RPC client does not currently support status updates,
-// so this function still uses the bd CLI directly.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 func UpdateIssueStatus(beadsID, status string) error {
-	args := []string{"update", beadsID, "--status", status}
-	cmd := exec.Command("bd", args...)
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to update issue status: %w: %s", err, string(output))
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		statusPtr := &status
+		_, err := client.Update(&beads.UpdateArgs{
+			ID:     beadsID,
+			Status: statusPtr,
+		})
+		if err == nil {
+			return nil
+		}
+		// Fall through to CLI fallback on RPC error
 	}
-	return nil
+
+	// Fallback to CLI
+	return beads.FallbackUpdate(beadsID, status)
 }
 
 // GetIssue retrieves issue details from beads.
-// It uses the beads RPC client when available, falling back to the bd CLI.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 func GetIssue(beadsID string) (*Issue, error) {
-	// Try RPC client first
+	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			issue, err := client.Show(beadsID)
-			if err == nil {
-				// Convert beads.Issue to verify.Issue
-				return &Issue{
-					ID:          issue.ID,
-					Title:       issue.Title,
-					Description: issue.Description,
-					Status:      issue.Status,
-					IssueType:   issue.IssueType,
-					CloseReason: issue.CloseReason,
-					// Comments are not populated via Show() - use GetComments() if needed
-				}, nil
-			}
-			// Fall through to CLI fallback on RPC error
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		issue, err := client.Show(beadsID)
+		if err == nil {
+			// Convert beads.Issue to verify.Issue
+			return &Issue{
+				ID:          issue.ID,
+				Title:       issue.Title,
+				Description: issue.Description,
+				Status:      issue.Status,
+				IssueType:   issue.IssueType,
+				CloseReason: issue.CloseReason,
+				// Comments are not populated via Show() - use GetComments() if needed
+			}, nil
 		}
+		// Fall through to CLI fallback on RPC error
 	}
 
 	// Fallback to CLI
@@ -581,7 +580,7 @@ func GetIssue(beadsID string) (*Issue, error) {
 
 // GetIssuesBatch retrieves multiple issues in a single call.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
-// It uses the beads RPC client when available, falling back to the bd CLI.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	if len(beadsIDs) == 0 {
 		return make(map[string]*Issue), nil
@@ -589,30 +588,30 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 
 	result := make(map[string]*Issue, len(beadsIDs))
 
-	// Try RPC client first
+	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 
-			// Fetch each issue via RPC
-			for _, beadsID := range beadsIDs {
-				issue, err := client.Show(beadsID)
-				if err == nil {
-					result[issue.ID] = &Issue{
-						ID:          issue.ID,
-						Title:       issue.Title,
-						Description: issue.Description,
-						Status:      issue.Status,
-						IssueType:   issue.IssueType,
-						CloseReason: issue.CloseReason,
-					}
+		// Fetch each issue via RPC
+		for _, beadsID := range beadsIDs {
+			issue, err := client.Show(beadsID)
+			if err == nil {
+				result[issue.ID] = &Issue{
+					ID:          issue.ID,
+					Title:       issue.Title,
+					Description: issue.Description,
+					Status:      issue.Status,
+					IssueType:   issue.IssueType,
+					CloseReason: issue.CloseReason,
 				}
-				// Silently skip invalid IDs
 			}
+			// Silently skip invalid IDs
+		}
+		if len(result) > 0 {
 			return result, nil
 		}
+		// Fall through to CLI if no results
 	}
 
 	// Fallback to CLI - fetch each issue individually
@@ -636,38 +635,35 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 
 // ListOpenIssues retrieves all open issues in a single call.
 // Returns a map from beadsID to Issue.
-// It uses the beads RPC client when available, falling back to the bd CLI.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 func ListOpenIssues() (map[string]*Issue, error) {
 	result := make(map[string]*Issue)
 
-	// Try RPC client first
+	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 
-			// List all issues via RPC
-			issues, err := client.List(nil)
-			if err == nil {
-				// Filter to open/in_progress/blocked statuses
-				for i := range issues {
-					status := strings.ToLower(issues[i].Status)
-					if status == "open" || status == "in_progress" || status == "blocked" {
-						result[issues[i].ID] = &Issue{
-							ID:          issues[i].ID,
-							Title:       issues[i].Title,
-							Description: issues[i].Description,
-							Status:      issues[i].Status,
-							IssueType:   issues[i].IssueType,
-							CloseReason: issues[i].CloseReason,
-						}
+		// List all issues via RPC
+		issues, err := client.List(nil)
+		if err == nil {
+			// Filter to open/in_progress/blocked statuses
+			for i := range issues {
+				status := strings.ToLower(issues[i].Status)
+				if status == "open" || status == "in_progress" || status == "blocked" {
+					result[issues[i].ID] = &Issue{
+						ID:          issues[i].ID,
+						Title:       issues[i].Title,
+						Description: issues[i].Description,
+						Status:      issues[i].Status,
+						IssueType:   issues[i].IssueType,
+						CloseReason: issues[i].CloseReason,
 					}
 				}
-				return result, nil
 			}
-			// Fall through to CLI fallback on RPC error
+			return result, nil
 		}
+		// Fall through to CLI fallback on RPC error
 	}
 
 	// Fallback to CLI
@@ -696,7 +692,7 @@ func ListOpenIssues() (map[string]*Issue, error) {
 
 // GetCommentsBatch fetches comments for multiple issues sequentially.
 // Returns a map from beadsID to comments. Errors are silently skipped.
-// Uses the beads RPC client which handles serialization, so no concurrency control needed.
+// Uses the beads RPC client with auto-reconnect, so no concurrency control needed.
 func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 	if len(beadsIDs) == 0 {
 		return make(map[string][]Comment)
@@ -704,22 +700,22 @@ func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 
 	commentMap := make(map[string][]Comment, len(beadsIDs))
 
-	// Try RPC client first
+	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 
-			// Fetch comments sequentially via RPC
-			for _, beadsID := range beadsIDs {
-				comments, err := client.Comments(beadsID)
-				if err == nil {
-					commentMap[beadsID] = comments
-				}
+		// Fetch comments sequentially via RPC
+		for _, beadsID := range beadsIDs {
+			comments, err := client.Comments(beadsID)
+			if err == nil {
+				commentMap[beadsID] = comments
 			}
+		}
+		if len(commentMap) > 0 {
 			return commentMap
 		}
+		// Fall through to CLI if no results
 	}
 
 	// Fallback to CLI for each issue
@@ -754,28 +750,29 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 
 	// Process each project directory group
 	for projectDir, ids := range byProjectDir {
-		// Try RPC client first
+		rpcSucceeded := false
+
+		// Try RPC client first with auto-reconnect
 		socketPath, err := beads.FindSocketPath(projectDir)
 		if err == nil {
-			client := beads.NewClient(socketPath)
-			if err := client.Connect(); err == nil {
-				// Fetch comments sequentially via RPC
-				for _, beadsID := range ids {
-					comments, err := client.Comments(beadsID)
-					if err == nil {
-						commentMap[beadsID] = comments
-					}
+			client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+			// Fetch comments sequentially via RPC
+			for _, beadsID := range ids {
+				comments, err := client.Comments(beadsID)
+				if err == nil {
+					commentMap[beadsID] = comments
+					rpcSucceeded = true
 				}
-				client.Close()
-				continue
 			}
 		}
 
-		// Fallback to CLI for each issue in this project
-		for _, beadsID := range ids {
-			comments, err := FallbackCommentsWithDir(beadsID, projectDir)
-			if err == nil {
-				commentMap[beadsID] = comments
+		// Fallback to CLI for each issue in this project if RPC didn't work
+		if !rpcSucceeded {
+			for _, beadsID := range ids {
+				comments, err := FallbackCommentsWithDir(beadsID, projectDir)
+				if err == nil {
+					commentMap[beadsID] = comments
+				}
 			}
 		}
 	}

@@ -768,3 +768,18 @@ func FallbackAddComment(id, text string) error {
 	cmd := exec.Command("bd", "comment", id, text)
 	return cmd.Run()
 }
+
+// FallbackUpdate updates an issue via bd CLI.
+// Currently supports updating the status field.
+func FallbackUpdate(id, status string) error {
+	args := []string{"update", id}
+	if status != "" {
+		args = append(args, "--status", status)
+	}
+	cmd := exec.Command("bd", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd update failed: %w: %s", err, string(output))
+	}
+	return nil
+}
