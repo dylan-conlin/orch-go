@@ -1095,9 +1095,9 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Generate workspace name
 	workspaceName := spawn.GenerateWorkspaceName(skillName, task)
 
-	// Load skill content
+	// Load skill content with dependencies (e.g., worker-base patterns)
 	loader := skills.DefaultLoader()
-	skillContent, err := loader.LoadSkillContent(skillName)
+	skillContent, err := loader.LoadSkillWithDependencies(skillName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not load skill '%s': %v\n", skillName, err)
 		skillContent = "" // Continue without skill content
