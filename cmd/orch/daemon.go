@@ -174,11 +174,15 @@ func runDaemonLoop() error {
 	logger := events.NewLogger(events.DefaultLogPath())
 	processed := 0
 	cycles := 0
+	var lastSpawn time.Time // Track last successful spawn
 
 	// Ensure reflection runs on exit if enabled
 	if daemonReflect {
 		defer runReflectionAnalysis(daemonVerbose)
 	}
+
+	// Clean up status file on shutdown
+	defer daemon.RemoveStatusFile()
 
 	fmt.Println("Starting daemon...")
 	fmt.Printf("  Poll interval:   %s\n", formatDaemonDuration(config.PollInterval))
@@ -198,6 +202,27 @@ func runDaemonLoop() error {
 
 		cycles++
 		timestamp := time.Now().Format("15:04:05")
+		pollTime := time.Now()
+
+		// Get ready issues count for status
+		readyIssues, _ := daemon.ListReadyIssues()
+		readyCount := len(readyIssues)
+
+		// Write daemon status file at start of each poll cycle
+		status := daemon.DaemonStatus{
+			Capacity: daemon.CapacityStatus{
+				Max:       config.MaxAgents,
+				Active:    d.ActiveCount(),
+				Available: d.AvailableSlots(),
+			},
+			LastPoll:   pollTime,
+			LastSpawn:  lastSpawn,
+			ReadyCount: readyCount,
+			Status:     daemon.DetermineStatus(pollTime, config.PollInterval),
+		}
+		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
+		}
 
 		// Reconcile pool with actual OpenCode sessions at start of each cycle.
 		// This prevents stale capacity counts when agents complete without
@@ -263,6 +288,7 @@ func runDaemonLoop() error {
 
 			processed++
 			spawnedThisCycle++
+			lastSpawn = time.Now()
 			fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
 				timestamp,
 				result.Issue.ID,
