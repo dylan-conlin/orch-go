@@ -109,18 +109,19 @@ func init() {
 
 // CompletionInfo holds information about a completed agent for review.
 type CompletionInfo struct {
-	WorkspaceID string // Workspace directory name
-	BeadsID     string // Beads issue ID
-	Project     string
-	VerifyOK    bool
-	VerifyError string
-	Phase       string
-	Summary     string
-	Skill       string
-	Synthesis   *verify.Synthesis
-	ModTime     time.Time // Workspace modification time
-	IsUntracked bool      // True if agent was spawned with --no-track
-	IsStale     bool      // True if agent is in non-Complete phase for >24h
+	WorkspaceID   string // Workspace directory name
+	WorkspacePath string // Full path to workspace directory
+	BeadsID       string // Beads issue ID
+	Project       string
+	VerifyOK      bool
+	VerifyError   string
+	Phase         string
+	Summary       string
+	Skill         string
+	Synthesis     *verify.Synthesis
+	ModTime       time.Time // Workspace modification time
+	IsUntracked   bool      // True if agent was spawned with --no-track
+	IsStale       bool      // True if agent is in non-Complete phase for >24h
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
@@ -168,12 +169,13 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		isUntracked := isUntrackedBeadsID(beadsID)
 
 		info := CompletionInfo{
-			WorkspaceID: dirName,
-			BeadsID:     beadsID,
-			Project:     extractProject(projectDir),
-			Skill:       skill,
-			ModTime:     modTime,
-			IsUntracked: isUntracked,
+			WorkspaceID:   dirName,
+			WorkspacePath: dirPath,
+			BeadsID:       beadsID,
+			Project:       extractProject(projectDir),
+			Skill:         skill,
+			ModTime:       modTime,
+			IsUntracked:   isUntracked,
 		}
 
 		// Check verification status if we have a beads ID
@@ -627,47 +629,93 @@ func runReviewDone(project string) error {
 	for _, c := range canComplete {
 		fmt.Printf("\nCompleting: %s (%s)\n", c.WorkspaceID, c.BeadsID)
 
-		// Prompt for recommendations unless --no-prompt or user chose skip-all
-		if !skipAllPrompts && c.Synthesis != nil && len(c.Synthesis.NextActions) > 0 {
-			fmt.Printf("\n  Has %d recommendations:\n", len(c.Synthesis.NextActions))
-			for i, action := range c.Synthesis.NextActions {
-				// Truncate long actions for display
-				display := action
-				if len(display) > 100 {
-					display = display[:97] + "..."
-				}
-				fmt.Printf("    %d. %s\n", i+1, display)
-			}
-			fmt.Print("\n  Create follow-up issues? [y/n/skip-all]: ")
+		// Track which recommendations were acted on vs dismissed for review state
+		var actedOnIndices []int
+		var dismissedIndices []int
+		totalRecommendations := 0
 
-			response, err := reader.ReadString('\n')
-			if err != nil {
-				fmt.Printf("  Warning: failed to read response, skipping prompts: %v\n", err)
-				skipAllPrompts = true
-			} else {
-				response = strings.TrimSpace(strings.ToLower(response))
-				switch response {
-				case "y", "yes":
-					// Create beads issues for each recommendation
-					for _, action := range c.Synthesis.NextActions {
-						title := action
-						if len(title) > 80 {
-							title = title[:77] + "..."
+		// Prompt for recommendations unless --no-prompt or user chose skip-all
+		if c.Synthesis != nil && len(c.Synthesis.NextActions) > 0 {
+			totalRecommendations = len(c.Synthesis.NextActions)
+
+			if !skipAllPrompts {
+				fmt.Printf("\n  Has %d recommendations:\n", totalRecommendations)
+				for i, action := range c.Synthesis.NextActions {
+					// Truncate long actions for display
+					display := action
+					if len(display) > 100 {
+						display = display[:97] + "..."
+					}
+					fmt.Printf("    %d. %s\n", i+1, display)
+				}
+				fmt.Print("\n  Create follow-up issues? [y/n/skip-all]: ")
+
+				response, err := reader.ReadString('\n')
+				if err != nil {
+					fmt.Printf("  Warning: failed to read response, skipping prompts: %v\n", err)
+					skipAllPrompts = true
+					// Mark all as dismissed when skipping due to error
+					for i := 0; i < totalRecommendations; i++ {
+						dismissedIndices = append(dismissedIndices, i)
+					}
+				} else {
+					response = strings.TrimSpace(strings.ToLower(response))
+					switch response {
+					case "y", "yes":
+						// Create beads issues for each recommendation
+						for i, action := range c.Synthesis.NextActions {
+							title := action
+							if len(title) > 80 {
+								title = title[:77] + "..."
+							}
+							fmt.Printf("  Creating issue: %s\n", title)
+							// Use bd create to create follow-up issue
+							if err := createFollowUpIssue(title, c.WorkspaceID); err != nil {
+								fmt.Printf("    Warning: failed to create issue: %v\n", err)
+								// Still count as acted on even if creation failed
+							}
+							actedOnIndices = append(actedOnIndices, i)
 						}
-						fmt.Printf("  Creating issue: %s\n", title)
-						// Use bd create to create follow-up issue
-						if err := createFollowUpIssue(title, c.WorkspaceID); err != nil {
-							fmt.Printf("    Warning: failed to create issue: %v\n", err)
+					case "skip-all", "s":
+						fmt.Println("  Skipping prompts for remaining agents")
+						skipAllPrompts = true
+						// Mark all as dismissed
+						for i := 0; i < totalRecommendations; i++ {
+							dismissedIndices = append(dismissedIndices, i)
+						}
+					case "n", "no", "":
+						// Skip this agent's recommendations, continue to close
+						fmt.Println("  Skipping recommendations")
+						// Mark all as dismissed
+						for i := 0; i < totalRecommendations; i++ {
+							dismissedIndices = append(dismissedIndices, i)
+						}
+					default:
+						fmt.Printf("  Unknown response '%s', skipping recommendations\n", response)
+						// Mark all as dismissed
+						for i := 0; i < totalRecommendations; i++ {
+							dismissedIndices = append(dismissedIndices, i)
 						}
 					}
-				case "skip-all", "s":
-					fmt.Println("  Skipping prompts for remaining agents")
-					skipAllPrompts = true
-				case "n", "no", "":
-					// Skip this agent's recommendations, continue to close
-					fmt.Println("  Skipping recommendations")
-				default:
-					fmt.Printf("  Unknown response '%s', skipping recommendations\n", response)
+				}
+			} else {
+				// --no-prompt flag: mark all as dismissed
+				for i := 0; i < totalRecommendations; i++ {
+					dismissedIndices = append(dismissedIndices, i)
+				}
+			}
+
+			// Persist review state to workspace
+			if c.WorkspacePath != "" {
+				reviewState := verify.ReviewStateFromCompletion(
+					c.WorkspaceID,
+					c.BeadsID,
+					totalRecommendations,
+					actedOnIndices,
+					dismissedIndices,
+				)
+				if err := verify.SaveReviewState(c.WorkspacePath, reviewState); err != nil {
+					fmt.Printf("  Warning: failed to save review state: %v\n", err)
 				}
 			}
 		}

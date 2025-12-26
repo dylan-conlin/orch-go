@@ -49,6 +49,7 @@ Endpoints:
   GET /api/usage     - Claude Max usage stats
   GET /api/focus     - Current focus and drift status
   GET /api/beads     - Beads stats (ready, blocked, open)
+  GET /api/beads/ready - List of ready issues for queue visibility
   GET /api/servers   - Servers status across projects
   GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
@@ -132,6 +133,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/usage     - Claude Max usage")
 	fmt.Println("  GET /api/focus     - Focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats")
+	fmt.Println("  GET /api/beads/ready - Ready issues list")
 	fmt.Println("  GET /api/servers   - Project servers status")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /api/daemon    - Daemon status (running, capacity, last poll)")
@@ -195,6 +197,9 @@ func runServe(portNum int) error {
 	// GET /api/beads - returns beads stats (ready, blocked, open issues)
 	mux.HandleFunc("/api/beads", corsHandler(handleBeads))
 
+	// GET /api/beads/ready - returns list of ready issues for dashboard queue visibility
+	mux.HandleFunc("/api/beads/ready", corsHandler(handleBeadsReady))
+
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
 
@@ -233,6 +238,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/usage     - Claude Max usage stats")
 	fmt.Println("  GET /api/focus     - Current focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
+	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
@@ -1348,6 +1354,87 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ReadyIssueResponse represents a ready issue for the dashboard queue.
+type ReadyIssueResponse struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Priority  int      `json:"priority"`
+	IssueType string   `json:"issue_type"`
+	Labels    []string `json:"labels,omitempty"`
+	CreatedAt string   `json:"created_at,omitempty"`
+}
+
+// BeadsReadyAPIResponse is the JSON structure returned by /api/beads/ready.
+type BeadsReadyAPIResponse struct {
+	Issues []ReadyIssueResponse `json:"issues"`
+	Count  int                  `json:"count"`
+	Error  string               `json:"error,omitempty"`
+}
+
+// handleBeadsReady returns list of ready issues for dashboard queue visibility.
+func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Try RPC client first, then fallback to CLI
+	var issues []beads.Issue
+	var err error
+
+	socketPath, socketErr := beads.FindSocketPath(sourceDir)
+	if socketErr == nil {
+		client := beads.NewClient(socketPath)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			issues, err = client.Ready(nil)
+			if err != nil {
+				// Fall through to CLI fallback on RPC error
+				issues, err = beads.FallbackReady()
+			}
+		} else {
+			issues, err = beads.FallbackReady()
+		}
+	} else {
+		issues, err = beads.FallbackReady()
+	}
+
+	if err != nil {
+		resp := BeadsReadyAPIResponse{
+			Issues: []ReadyIssueResponse{},
+			Count:  0,
+			Error:  fmt.Sprintf("Failed to get ready issues: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Convert beads.Issue to ReadyIssueResponse
+	readyIssues := make([]ReadyIssueResponse, 0, len(issues))
+	for _, issue := range issues {
+		readyIssues = append(readyIssues, ReadyIssueResponse{
+			ID:        issue.ID,
+			Title:     issue.Title,
+			Priority:  issue.Priority,
+			IssueType: issue.IssueType,
+			Labels:    issue.Labels,
+			CreatedAt: issue.CreatedAt,
+		})
+	}
+
+	resp := BeadsReadyAPIResponse{
+		Issues: readyIssues,
+		Count:  len(readyIssues),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode beads ready: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
 // ServerPortInfo represents a port allocation for a server.
 type ServerPortInfo struct {
 	Service string `json:"service"`
@@ -2179,4 +2266,268 @@ func suggestRemediation(pattern string) string {
 	default:
 		return "Review agent workspace for more details"
 	}
+}
+
+// PendingReviewItem represents a single synthesis recommendation pending review.
+type PendingReviewItem struct {
+	WorkspaceID string `json:"workspace_id"`
+	BeadsID     string `json:"beads_id"`
+	Index       int    `json:"index"`       // Index of the recommendation (0-based)
+	Text        string `json:"text"`        // The recommendation text
+	Reviewed    bool   `json:"reviewed"`    // Whether this item has been reviewed
+	ActedOn     bool   `json:"acted_on"`    // Whether an issue was created
+	Dismissed   bool   `json:"dismissed"`   // Whether this was dismissed
+}
+
+// PendingReviewAgent represents an agent with pending synthesis reviews.
+type PendingReviewAgent struct {
+	WorkspaceID          string              `json:"workspace_id"`
+	WorkspacePath        string              `json:"workspace_path"`
+	BeadsID              string              `json:"beads_id"`
+	TLDR                 string              `json:"tldr,omitempty"`
+	TotalRecommendations int                 `json:"total_recommendations"`
+	UnreviewedCount      int                 `json:"unreviewed_count"`
+	Items                []PendingReviewItem `json:"items"`
+}
+
+// PendingReviewsAPIResponse is the JSON structure returned by /api/pending-reviews.
+type PendingReviewsAPIResponse struct {
+	Agents           []PendingReviewAgent `json:"agents"`
+	TotalAgents      int                  `json:"total_agents"`
+	TotalUnreviewed  int                  `json:"total_unreviewed"`
+}
+
+// handlePendingReviews returns pending synthesis reviews.
+func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Scan workspaces for SYNTHESIS.md and review state
+	workspaceDir := filepath.Join(sourceDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		// No workspace directory is fine - just return empty response
+		resp := PendingReviewsAPIResponse{
+			Agents:          []PendingReviewAgent{},
+			TotalAgents:     0,
+			TotalUnreviewed: 0,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	var agents []PendingReviewAgent
+	totalUnreviewed := 0
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+		dirPath := filepath.Join(workspaceDir, dirName)
+
+		// Check for SYNTHESIS.md
+		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
+		if _, err := os.Stat(synthesisPath); os.IsNotExist(err) {
+			continue
+		}
+
+		// Parse synthesis
+		synthesis, err := verify.ParseSynthesis(dirPath)
+		if err != nil || synthesis == nil {
+			continue
+		}
+
+		// Skip if no recommendations
+		if len(synthesis.NextActions) == 0 {
+			continue
+		}
+
+		// Load review state
+		reviewState, err := verify.LoadReviewState(dirPath)
+		if err != nil {
+			reviewState = &verify.ReviewState{}
+		}
+
+		// Extract beads ID from SPAWN_CONTEXT
+		beadsID := extractBeadsIDFromWorkspace(dirPath)
+
+		// Build item list
+		var items []PendingReviewItem
+		unreviewedCount := 0
+
+		for i, action := range synthesis.NextActions {
+			actedOn := contains(reviewState.ActedOn, i)
+			dismissed := contains(reviewState.Dismissed, i)
+			reviewed := actedOn || dismissed
+
+			if !reviewed {
+				unreviewedCount++
+			}
+
+			items = append(items, PendingReviewItem{
+				WorkspaceID: dirName,
+				BeadsID:     beadsID,
+				Index:       i,
+				Text:        action,
+				Reviewed:    reviewed,
+				ActedOn:     actedOn,
+				Dismissed:   dismissed,
+			})
+		}
+
+		// Only include agents with unreviewed recommendations
+		if unreviewedCount > 0 {
+			agents = append(agents, PendingReviewAgent{
+				WorkspaceID:          dirName,
+				WorkspacePath:        dirPath,
+				BeadsID:              beadsID,
+				TLDR:                 synthesis.TLDR,
+				TotalRecommendations: len(synthesis.NextActions),
+				UnreviewedCount:      unreviewedCount,
+				Items:                items,
+			})
+			totalUnreviewed += unreviewedCount
+		}
+	}
+
+	resp := PendingReviewsAPIResponse{
+		Agents:          agents,
+		TotalAgents:     len(agents),
+		TotalUnreviewed: totalUnreviewed,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode pending reviews: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// contains checks if a slice contains a value.
+func contains(slice []int, val int) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
+// DismissReviewRequest is the request body for POST /api/dismiss-review.
+type DismissReviewRequest struct {
+	WorkspaceID string `json:"workspace_id"`
+	Index       int    `json:"index"` // Index of the recommendation to dismiss
+}
+
+// DismissReviewResponse is the response for POST /api/dismiss-review.
+type DismissReviewResponse struct {
+	Success  bool   `json:"success"`
+	Message  string `json:"message,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// handleDismissReview dismisses a synthesis recommendation.
+func handleDismissReview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req DismissReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	if req.WorkspaceID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: false,
+			Error:   "workspace_id is required",
+		})
+		return
+	}
+
+	// Build workspace path
+	workspacePath := filepath.Join(sourceDir, ".orch", "workspace", req.WorkspaceID)
+
+	// Load existing review state
+	reviewState, err := verify.LoadReviewState(workspacePath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to load review state: %v", err),
+		})
+		return
+	}
+
+	// Parse synthesis to get total recommendations
+	synthesis, err := verify.ParseSynthesis(workspacePath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to parse synthesis: %v", err),
+		})
+		return
+	}
+
+	// Validate index
+	if req.Index < 0 || req.Index >= len(synthesis.NextActions) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Invalid index %d (total recommendations: %d)", req.Index, len(synthesis.NextActions)),
+		})
+		return
+	}
+
+	// Check if already reviewed
+	if contains(reviewState.ActedOn, req.Index) || contains(reviewState.Dismissed, req.Index) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: true,
+			Message: "Already reviewed",
+		})
+		return
+	}
+
+	// Add to dismissed
+	reviewState.Dismissed = append(reviewState.Dismissed, req.Index)
+	reviewState.TotalRecommendations = len(synthesis.NextActions)
+	reviewState.WorkspaceID = req.WorkspaceID
+	if reviewState.ReviewedAt.IsZero() {
+		reviewState.ReviewedAt = time.Now()
+	}
+
+	// Extract beads ID if not set
+	if reviewState.BeadsID == "" {
+		reviewState.BeadsID = extractBeadsIDFromWorkspace(workspacePath)
+	}
+
+	// Save updated state
+	if err := verify.SaveReviewState(workspacePath, reviewState); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to save review state: %v", err),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(DismissReviewResponse{
+		Success: true,
+		Message: fmt.Sprintf("Dismissed recommendation %d", req.Index),
+	})
 }
