@@ -25,6 +25,9 @@ function generateEventId(): string {
 // API configuration
 const API_BASE = 'http://127.0.0.1:3348';
 
+// Fetch state management - prevents race conditions during rapid reloads
+let currentFetchController: AbortController | null = null;
+
 // Agentlog store
 function createAgentlogStore() {
 	const { subscribe, set, update } = writable<AgentLogEvent[]>([]);
@@ -43,10 +46,18 @@ function createAgentlogStore() {
 		clear: () => {
 			set([]);
 		},
-		// Fetch initial events from orch-go API
+		// Fetch initial events from orch-go API with abort support
 		async fetch(): Promise<void> {
+			// Cancel any in-flight request to prevent race conditions
+			if (currentFetchController) {
+				currentFetchController.abort();
+			}
+			currentFetchController = new AbortController();
+			
 			try {
-				const response = await fetch(`${API_BASE}/api/agentlog`);
+				const response = await fetch(`${API_BASE}/api/agentlog`, {
+					signal: currentFetchController.signal
+				});
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
@@ -58,8 +69,21 @@ function createAgentlogStore() {
 				}));
 				set(eventsWithIds);
 			} catch (error) {
+				// Don't log abort errors - they're expected during cleanup
+				if (error instanceof Error && error.name === 'AbortError') {
+					return;
+				}
 				console.error('Failed to fetch agentlog:', error);
 				throw error;
+			} finally {
+				currentFetchController = null;
+			}
+		},
+		// Cancel pending operations - call on disconnect
+		cancelPending(): void {
+			if (currentFetchController) {
+				currentFetchController.abort();
+				currentFetchController = null;
 			}
 		}
 	};
@@ -86,10 +110,22 @@ export const agentlogConnectionStatus = writable<'connected' | 'disconnected' | 
 // Agentlog SSE connection manager
 let agentlogEventSource: EventSource | null = null;
 let agentlogReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+// Connection generation counter - prevents stale reconnect timers from firing
+let connectionGeneration = 0;
 
 export function connectAgentlogSSE(): void {
+	// Increment generation to invalidate any pending reconnect timers
+	const thisGeneration = ++connectionGeneration;
+	
+	// Clear any pending reconnect timer from previous connection
+	if (agentlogReconnectTimeout) {
+		clearTimeout(agentlogReconnectTimeout);
+		agentlogReconnectTimeout = null;
+	}
+	
 	if (agentlogEventSource) {
 		agentlogEventSource.close();
+		agentlogEventSource = null;
 	}
 
 	agentlogConnectionStatus.set('connecting');
@@ -97,23 +133,37 @@ export function connectAgentlogSSE(): void {
 	agentlogEventSource = new EventSource(`${API_BASE}/api/agentlog?follow=true`);
 
 	agentlogEventSource.onopen = () => {
+		// Ignore if this connection is stale (newer connection started)
+		if (thisGeneration !== connectionGeneration) {
+			agentlogEventSource?.close();
+			return;
+		}
 		agentlogConnectionStatus.set('connected');
 		// Fetch initial events on connection
 		agentlogEvents.fetch().catch(console.error);
 	};
 
 	agentlogEventSource.onerror = () => {
+		// Ignore if this connection is stale (newer connection started)
+		if (thisGeneration !== connectionGeneration) {
+			return;
+		}
+		
 		// Don't log errors during page unload (expected behavior)
 		agentlogConnectionStatus.set('disconnected');
 		agentlogEventSource?.close();
 		agentlogEventSource = null;
 
 		// Auto-reconnect after 5 seconds
+		// Use generation check to prevent stale timer from firing
 		if (agentlogReconnectTimeout) {
 			clearTimeout(agentlogReconnectTimeout);
 		}
 		agentlogReconnectTimeout = setTimeout(() => {
-			connectAgentlogSSE();
+			// Only reconnect if no newer connection was started
+			if (thisGeneration === connectionGeneration) {
+				connectAgentlogSSE();
+			}
 		}, 5000);
 	};
 
@@ -123,9 +173,9 @@ export function connectAgentlogSSE(): void {
 			const data = JSON.parse((event as MessageEvent).data);
 			agentlogEvents.addEvent(data);
 
-			// Trigger agent list refresh on relevant events
+			// Trigger agent list refresh on relevant events (debounced to prevent race conditions)
 			import('./agents').then(({ agents }) => {
-				agents.fetch().catch(console.error);
+				agents.fetchDebounced();
 			});
 		} catch (e) {
 			console.error('Failed to parse agentlog event:', e);
@@ -154,6 +204,9 @@ export function connectAgentlogSSE(): void {
 }
 
 export function disconnectAgentlogSSE(): void {
+	// Increment generation to invalidate any pending reconnect timers
+	connectionGeneration++;
+	
 	if (agentlogReconnectTimeout) {
 		clearTimeout(agentlogReconnectTimeout);
 		agentlogReconnectTimeout = null;
@@ -162,5 +215,7 @@ export function disconnectAgentlogSSE(): void {
 		agentlogEventSource.close();
 		agentlogEventSource = null;
 	}
+	// Cancel any pending fetch operations
+	agentlogEvents.cancelPending();
 	agentlogConnectionStatus.set('disconnected');
 }
