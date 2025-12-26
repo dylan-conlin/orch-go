@@ -99,6 +99,30 @@
 		}
 	}
 
+	// Activity styling - different emphasis levels based on activity type
+	// High: tool usage, reasoning (active work worth highlighting)
+	// Medium: text output (communication)
+	// Low: step transitions (transient markers, not worth highlighting)
+	function getActivityStyle(type?: string): string {
+		switch (type) {
+			case 'tool':
+			case 'tool-invocation':
+			case 'reasoning':
+				// Active work - subtle blue tint (less attention-grabbing than gold)
+				return 'border-blue-500/20 bg-blue-500/5';
+			case 'text':
+				// Communication - very subtle styling
+				return 'border-muted-foreground/20 bg-muted/30';
+			case 'step-start':
+			case 'step-finish':
+				// Transient states - minimal styling, nearly invisible
+				return 'border-muted/50 bg-muted/10';
+			default:
+				// Default - neutral styling
+				return 'border-muted-foreground/20 bg-muted/20';
+		}
+	}
+
 	// Filter SSE events for this agent's session
 	// Note: For message.part events, sessionID is nested at properties.part.sessionID
 	// For session.* events, sessionID is at properties.sessionID
@@ -189,9 +213,9 @@
 					{/if}
 				</div>
 				
-				<!-- Current Activity - highlighted -->
+				<!-- Current Activity - styling varies by activity type -->
 				{#if $selectedAgent.current_activity}
-					<div class="mb-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
+					<div class="mb-3 rounded-lg border {getActivityStyle($selectedAgent.current_activity.type)} p-3">
 						<div class="flex items-start gap-2">
 							<span class="text-lg">{getActivityIcon($selectedAgent.current_activity.type)}</span>
 							<div class="flex-1 min-w-0">
