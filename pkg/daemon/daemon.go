@@ -342,11 +342,13 @@ func truncate(s string, maxLen int) string {
 
 // ListReadyIssues retrieves ready issues from beads (open or in_progress, no blockers).
 // It uses the beads RPC daemon if available, falling back to the bd CLI if not.
+// Uses WithAutoReconnect for resilience against transient connection issues.
 func ListReadyIssues() ([]Issue, error) {
 	// Try to use the beads RPC client first
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath)
+		// Use WithAutoReconnect for resilience against daemon restarts/transient issues
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
 			defer client.Close()
 			beadsIssues, err := client.Ready(nil)
