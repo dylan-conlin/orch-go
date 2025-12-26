@@ -1175,6 +1175,11 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			return err
 		}
 
+		// Record gap for learning loop (if gaps detected)
+		if gapAnalysis != nil && gapAnalysis.HasGaps {
+			recordGapForLearning(gapAnalysis, skillName, task)
+		}
+
 		// Log if skip-gap-gate was used (documents conscious bypass)
 		if spawnSkipGapGate && gapAnalysis != nil && gapAnalysis.ShouldBlockSpawn(spawnGapThreshold) {
 			fmt.Fprintf(os.Stderr, "⚠️  Bypassing gap gate (--skip-gap-gate): context quality %d\n", gapAnalysis.ContextQuality)
@@ -4132,4 +4137,40 @@ func checkGapGating(gapAnalysis *spawn.GapAnalysis, gateEnabled, skipGate bool, 
 	}
 
 	return nil
+}
+
+// recordGapForLearning records a gap event for the learning loop.
+// This builds up a history of gaps that can be used to suggest improvements.
+func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
+	// Load existing tracker
+	tracker, err := spawn.LoadTracker()
+	if err != nil {
+		// Don't fail spawn for learning loop errors
+		fmt.Fprintf(os.Stderr, "Warning: failed to load gap tracker: %v\n", err)
+		return
+	}
+
+	// Record the gap
+	tracker.RecordGap(gapAnalysis, skill, task)
+
+	// Check for recurring patterns and display suggestions
+	suggestions := tracker.FindRecurringGaps()
+	if len(suggestions) > 0 {
+		// Only show suggestions if there are high-priority ones
+		hasHighPriority := false
+		for _, s := range suggestions {
+			if s.Priority == "high" && s.Count >= spawn.RecurrenceThreshold {
+				hasHighPriority = true
+				break
+			}
+		}
+		if hasHighPriority {
+			fmt.Fprintf(os.Stderr, "%s", spawn.FormatSuggestions(suggestions))
+		}
+	}
+
+	// Save tracker
+	if err := tracker.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save gap tracker: %v\n", err)
+	}
 }
