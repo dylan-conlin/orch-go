@@ -285,6 +285,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	var beadsIDsToFetch []string
 	seenBeadsIDs := make(map[string]bool)
 
+	// Track project directories for cross-project agents
+	// Key: beadsID, Value: projectDir from workspace SPAWN_CONTEXT.md
+	beadsProjectDirs := make(map[string]string)
+
 	// Add active sessions from OpenCode
 	// Filter: only show sessions updated in the last 10 minutes as "active"
 	// Sessions idle > 30 min are filtered out AFTER checking beads Phase status
@@ -331,6 +335,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
 				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 				seenBeadsIDs[agent.BeadsID] = true
+
+				// For cross-project agent visibility: find workspace and extract PROJECT_DIR
+				// This allows fetching beads comments from the correct project's database
+				if workspacePath, _ := findWorkspaceByBeadsID(projectDir, agent.BeadsID); workspacePath != "" {
+					if agentProjectDir := extractProjectDirFromWorkspace(workspacePath); agentProjectDir != "" {
+						beadsProjectDirs[agent.BeadsID] = agentProjectDir
+					}
+				}
 			}
 		}
 
@@ -385,6 +397,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				if beadsID != "" && !seenBeadsIDs[beadsID] {
 					beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 					seenBeadsIDs[beadsID] = true
+
+					// For cross-project agent visibility: find workspace and extract PROJECT_DIR
+					// This allows fetching beads comments from the correct project's database
+					if workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID); workspacePath != "" {
+						if agentProjectDir := extractProjectDirFromWorkspace(workspacePath); agentProjectDir != "" {
+							beadsProjectDirs[beadsID] = agentProjectDir
+						}
+					}
 				}
 			}
 		}
@@ -480,10 +500,18 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 			agent.Skill = extractSkillFromTitle(entry.Name())
 
+			// Extract PROJECT_DIR from workspace for cross-project agent visibility
+			// This allows fetching beads comments from the correct project's database
+			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
+
 			// Collect beads ID for batch fetch (to get close_reason for light-tier)
 			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
 				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 				seenBeadsIDs[agent.BeadsID] = true
+				// Store project directory for cross-project comment fetching
+				if agentProjectDir != "" {
+					beadsProjectDirs[agent.BeadsID] = agentProjectDir
+				}
 			}
 
 			agents = append(agents, agent)
@@ -501,7 +529,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
 
 		// Batch fetch comments for all beads IDs
-		commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
+		// Use project-aware batch fetch for cross-project agent visibility
+		commentsMap := verify.GetCommentsBatchWithProjectDirs(beadsIDsToFetch, beadsProjectDirs)
 
 		// Populate phase, task, and close_reason for each agent
 		for i := range agents {
