@@ -332,3 +332,189 @@ func (g *GapAnalysis) ShouldWarnAboutGaps() bool {
 
 	return false
 }
+
+// Gap gating thresholds.
+const (
+	// DefaultGateThreshold is the default context quality score below which spawn is blocked.
+	// A quality score of 20 indicates very sparse or no context.
+	DefaultGateThreshold = 20
+)
+
+// ShouldBlockSpawn returns true if the context quality is too low and spawn should be blocked.
+// Threshold can be customized; default is DefaultGateThreshold.
+func (g *GapAnalysis) ShouldBlockSpawn(threshold int) bool {
+	if threshold <= 0 {
+		threshold = DefaultGateThreshold
+	}
+	return g.ContextQuality < threshold
+}
+
+// HasCriticalGaps returns true if there are any critical-severity gaps.
+func (g *GapAnalysis) HasCriticalGaps() bool {
+	for _, gap := range g.Gaps {
+		if gap.Severity == GapSeverityCritical {
+			return true
+		}
+	}
+	return false
+}
+
+// FormatGateBlockMessage returns a message explaining why spawn was blocked due to gaps.
+func (g *GapAnalysis) FormatGateBlockMessage() string {
+	var sb strings.Builder
+
+	sb.WriteString("\n")
+	sb.WriteString("╔══════════════════════════════════════════════════════════════════════════════╗\n")
+	sb.WriteString("║  🛑  SPAWN BLOCKED - CONTEXT GAP DETECTED                                    ║\n")
+	sb.WriteString("╠══════════════════════════════════════════════════════════════════════════════╣\n")
+	sb.WriteString(fmt.Sprintf("║  Context quality: %d/100 (below threshold)                                   ║\n", g.ContextQuality))
+	sb.WriteString("║                                                                              ║\n")
+
+	// List critical gaps
+	for _, gap := range g.Gaps {
+		if gap.Severity == GapSeverityCritical {
+			sb.WriteString(fmt.Sprintf("║  🚨 %s\n", truncateWithPadding(gap.Description, 72)))
+		}
+	}
+
+	sb.WriteString("║                                                                              ║\n")
+	sb.WriteString("║  To fix:                                                                     ║\n")
+	sb.WriteString("║    1. Add relevant knowledge:  kn decide / kn constrain / kb create          ║\n")
+	sb.WriteString("║    2. Or use --skip-gap-gate to proceed anyway (documents bypass)            ║\n")
+	sb.WriteString("║                                                                              ║\n")
+	sb.WriteString("║  Why gate? Agents without context compensate by guessing, creating          ║\n")
+	sb.WriteString("║  inconsistency. Better to add knowledge first.                               ║\n")
+	sb.WriteString("╚══════════════════════════════════════════════════════════════════════════════╝\n")
+
+	return sb.String()
+}
+
+// truncateWithPadding truncates a string and pads to ensure consistent formatting.
+func truncateWithPadding(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen-3] + "..."
+	}
+	return s + strings.Repeat(" ", maxLen-len(s))
+}
+
+// FormatProminentWarning formats gap analysis as a highly visible warning box.
+// This is more prominent than FormatGapWarning and designed to be hard to ignore.
+func (g *GapAnalysis) FormatProminentWarning() string {
+	if !g.HasGaps {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// Determine severity level for header
+	header := "⚠️  CONTEXT GAP WARNING"
+	if g.HasCriticalGaps() {
+		header = "🚨 CRITICAL CONTEXT GAP"
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString("┌──────────────────────────────────────────────────────────────────────────────┐\n")
+	sb.WriteString(fmt.Sprintf("│  %s                                                           │\n", header))
+	sb.WriteString("├──────────────────────────────────────────────────────────────────────────────┤\n")
+
+	// Quality score with visual bar
+	qualityBar := g.formatQualityBar()
+	sb.WriteString(fmt.Sprintf("│  Context quality: [%s] %d/100                              │\n", qualityBar, g.ContextQuality))
+
+	// Match breakdown
+	if g.MatchStats.TotalMatches > 0 {
+		sb.WriteString(fmt.Sprintf("│  Found: %d matches (constraints: %d, decisions: %d, investigations: %d)     │\n",
+			g.MatchStats.TotalMatches,
+			g.MatchStats.ConstraintCount,
+			g.MatchStats.DecisionCount,
+			g.MatchStats.InvestigationCount))
+	} else {
+		sb.WriteString("│  Found: 0 matches - no prior knowledge                                       │\n")
+	}
+
+	sb.WriteString("├──────────────────────────────────────────────────────────────────────────────┤\n")
+
+	// List gaps with severity indicators
+	for _, gap := range g.Gaps {
+		icon := "○"
+		if gap.Severity == GapSeverityCritical {
+			icon = "●"
+		} else if gap.Severity == GapSeverityWarning {
+			icon = "◐"
+		}
+		sb.WriteString(fmt.Sprintf("│  %s %s\n", icon, truncateWithPadding(gap.Description, 72)))
+	}
+
+	sb.WriteString("├──────────────────────────────────────────────────────────────────────────────┤\n")
+	sb.WriteString("│  Agent may need to compensate by discovering patterns during work.          │\n")
+	sb.WriteString("│  Consider adding knowledge first: kn decide / kn constrain                  │\n")
+	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────┘\n")
+
+	return sb.String()
+}
+
+// formatQualityBar returns a visual bar representation of context quality.
+func (g *GapAnalysis) formatQualityBar() string {
+	// 10-char bar showing quality level
+	filled := g.ContextQuality / 10
+	if filled > 10 {
+		filled = 10
+	}
+	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
+}
+
+// GapAPIResponse represents gap analysis data for API responses.
+type GapAPIResponse struct {
+	HasGaps        bool           `json:"has_gaps"`
+	ContextQuality int            `json:"context_quality"`
+	Query          string         `json:"query,omitempty"`
+	Gaps           []GapAPIDetail `json:"gaps,omitempty"`
+	MatchStats     MatchStatsAPI  `json:"match_stats,omitempty"`
+	ShouldWarn     bool           `json:"should_warn"`
+	ShouldBlock    bool           `json:"should_block"`
+}
+
+// GapAPIDetail represents a single gap for API responses.
+type GapAPIDetail struct {
+	Type        string `json:"type"`
+	Severity    string `json:"severity"`
+	Description string `json:"description"`
+	Suggestion  string `json:"suggestion,omitempty"`
+}
+
+// MatchStatsAPI represents match statistics for API responses.
+type MatchStatsAPI struct {
+	TotalMatches       int `json:"total"`
+	ConstraintCount    int `json:"constraints"`
+	DecisionCount      int `json:"decisions"`
+	InvestigationCount int `json:"investigations"`
+}
+
+// ToAPIResponse converts GapAnalysis to a JSON-serializable API response.
+func (g *GapAnalysis) ToAPIResponse() GapAPIResponse {
+	resp := GapAPIResponse{
+		HasGaps:        g.HasGaps,
+		ContextQuality: g.ContextQuality,
+		Query:          g.Query,
+		ShouldWarn:     g.ShouldWarnAboutGaps(),
+		ShouldBlock:    g.ShouldBlockSpawn(DefaultGateThreshold),
+	}
+
+	resp.MatchStats = MatchStatsAPI{
+		TotalMatches:       g.MatchStats.TotalMatches,
+		ConstraintCount:    g.MatchStats.ConstraintCount,
+		DecisionCount:      g.MatchStats.DecisionCount,
+		InvestigationCount: g.MatchStats.InvestigationCount,
+	}
+
+	for _, gap := range g.Gaps {
+		resp.Gaps = append(resp.Gaps, GapAPIDetail{
+			Type:        string(gap.Type),
+			Severity:    string(gap.Severity),
+			Description: gap.Description,
+			Suggestion:  gap.Suggestion,
+		})
+	}
+
+	return resp
+}

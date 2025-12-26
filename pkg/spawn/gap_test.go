@@ -443,3 +443,277 @@ func TestCountMatchesByType(t *testing.T) {
 		t.Errorf("GuideCount = %d, want 1", stats.GuideCount)
 	}
 }
+
+func TestGapAnalysis_ShouldBlockSpawn(t *testing.T) {
+	tests := []struct {
+		name      string
+		analysis  *GapAnalysis
+		threshold int
+		want      bool
+	}{
+		{
+			name: "no gaps - should not block",
+			analysis: &GapAnalysis{
+				HasGaps:        false,
+				ContextQuality: 75,
+			},
+			threshold: 20,
+			want:      false,
+		},
+		{
+			name: "quality below default threshold - should block",
+			analysis: &GapAnalysis{
+				HasGaps:        true,
+				ContextQuality: 10,
+			},
+			threshold: 0, // Use default
+			want:      true,
+		},
+		{
+			name: "quality at default threshold - should not block",
+			analysis: &GapAnalysis{
+				HasGaps:        true,
+				ContextQuality: 20,
+			},
+			threshold: 0, // Use default
+			want:      false,
+		},
+		{
+			name: "quality below custom threshold - should block",
+			analysis: &GapAnalysis{
+				HasGaps:        true,
+				ContextQuality: 25,
+			},
+			threshold: 30,
+			want:      true,
+		},
+		{
+			name: "quality above custom threshold - should not block",
+			analysis: &GapAnalysis{
+				HasGaps:        true,
+				ContextQuality: 35,
+			},
+			threshold: 30,
+			want:      false,
+		},
+		{
+			name: "zero quality - should always block",
+			analysis: &GapAnalysis{
+				HasGaps:        true,
+				ContextQuality: 0,
+			},
+			threshold: 20,
+			want:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.analysis.ShouldBlockSpawn(tt.threshold)
+			if got != tt.want {
+				t.Errorf("ShouldBlockSpawn(%d) = %v, want %v", tt.threshold, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGapAnalysis_HasCriticalGaps(t *testing.T) {
+	tests := []struct {
+		name     string
+		analysis *GapAnalysis
+		want     bool
+	}{
+		{
+			name: "no gaps",
+			analysis: &GapAnalysis{
+				HasGaps: false,
+				Gaps:    []Gap{},
+			},
+			want: false,
+		},
+		{
+			name: "only info gaps",
+			analysis: &GapAnalysis{
+				HasGaps: true,
+				Gaps:    []Gap{{Severity: GapSeverityInfo}},
+			},
+			want: false,
+		},
+		{
+			name: "only warning gaps",
+			analysis: &GapAnalysis{
+				HasGaps: true,
+				Gaps:    []Gap{{Severity: GapSeverityWarning}},
+			},
+			want: false,
+		},
+		{
+			name: "one critical gap",
+			analysis: &GapAnalysis{
+				HasGaps: true,
+				Gaps:    []Gap{{Severity: GapSeverityCritical}},
+			},
+			want: true,
+		},
+		{
+			name: "mixed gaps with critical",
+			analysis: &GapAnalysis{
+				HasGaps: true,
+				Gaps: []Gap{
+					{Severity: GapSeverityInfo},
+					{Severity: GapSeverityWarning},
+					{Severity: GapSeverityCritical},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.analysis.HasCriticalGaps()
+			if got != tt.want {
+				t.Errorf("HasCriticalGaps() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGapAnalysis_FormatGateBlockMessage(t *testing.T) {
+	analysis := &GapAnalysis{
+		HasGaps:        true,
+		ContextQuality: 5,
+		Query:          "test task",
+		Gaps: []Gap{
+			{
+				Type:        GapTypeNoContext,
+				Severity:    GapSeverityCritical,
+				Description: "No prior knowledge found for query",
+				Suggestion:  "Add relevant kn entries",
+			},
+		},
+	}
+
+	msg := analysis.FormatGateBlockMessage()
+
+	// Check that key elements are present
+	if msg == "" {
+		t.Error("FormatGateBlockMessage() returned empty string")
+	}
+	if !contains(msg, "SPAWN BLOCKED") {
+		t.Error("Message should contain 'SPAWN BLOCKED'")
+	}
+	if !contains(msg, "5/100") {
+		t.Error("Message should contain context quality score")
+	}
+	if !contains(msg, "--skip-gap-gate") {
+		t.Error("Message should mention --skip-gap-gate flag")
+	}
+}
+
+func TestGapAnalysis_FormatProminentWarning(t *testing.T) {
+	analysis := &GapAnalysis{
+		HasGaps:        true,
+		ContextQuality: 25,
+		Query:          "test task",
+		MatchStats: MatchStatistics{
+			TotalMatches:       2,
+			ConstraintCount:    0,
+			DecisionCount:      1,
+			InvestigationCount: 1,
+		},
+		Gaps: []Gap{
+			{
+				Type:        GapTypeNoConstraints,
+				Severity:    GapSeverityWarning,
+				Description: "No constraints found",
+			},
+		},
+	}
+
+	msg := analysis.FormatProminentWarning()
+
+	// Check that key elements are present
+	if msg == "" {
+		t.Error("FormatProminentWarning() returned empty string")
+	}
+	if !contains(msg, "CONTEXT GAP") {
+		t.Error("Message should contain 'CONTEXT GAP'")
+	}
+	if !contains(msg, "25/100") {
+		t.Error("Message should contain context quality score")
+	}
+	if !contains(msg, "2 matches") {
+		t.Error("Message should mention match count")
+	}
+}
+
+func TestGapAnalysis_FormatProminentWarning_NoGaps(t *testing.T) {
+	analysis := &GapAnalysis{
+		HasGaps:        false,
+		ContextQuality: 75,
+	}
+
+	msg := analysis.FormatProminentWarning()
+
+	if msg != "" {
+		t.Errorf("FormatProminentWarning() should return empty string when no gaps, got: %s", msg)
+	}
+}
+
+func TestGapAnalysis_ToAPIResponse(t *testing.T) {
+	analysis := &GapAnalysis{
+		HasGaps:        true,
+		ContextQuality: 30,
+		Query:          "test query",
+		MatchStats: MatchStatistics{
+			TotalMatches:       5,
+			ConstraintCount:    2,
+			DecisionCount:      1,
+			InvestigationCount: 2,
+		},
+		Gaps: []Gap{
+			{
+				Type:        GapTypeNoConstraints,
+				Severity:    GapSeverityWarning,
+				Description: "No constraints found",
+				Suggestion:  "Add via kn constrain",
+			},
+		},
+	}
+
+	resp := analysis.ToAPIResponse()
+
+	if !resp.HasGaps {
+		t.Error("API response should have HasGaps = true")
+	}
+	if resp.ContextQuality != 30 {
+		t.Errorf("ContextQuality = %d, want 30", resp.ContextQuality)
+	}
+	if resp.Query != "test query" {
+		t.Errorf("Query = %s, want 'test query'", resp.Query)
+	}
+	if resp.MatchStats.TotalMatches != 5 {
+		t.Errorf("MatchStats.TotalMatches = %d, want 5", resp.MatchStats.TotalMatches)
+	}
+	if len(resp.Gaps) != 1 {
+		t.Errorf("Gaps length = %d, want 1", len(resp.Gaps))
+	}
+	if resp.Gaps[0].Type != "no_constraints" {
+		t.Errorf("Gaps[0].Type = %s, want 'no_constraints'", resp.Gaps[0].Type)
+	}
+}
+
+// Helper function for string containment check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

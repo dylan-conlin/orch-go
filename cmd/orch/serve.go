@@ -228,6 +228,18 @@ type AgentAPIResponse struct {
 	UpdatedAt    string             `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
 	CloseReason  string             `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
+	GapAnalysis  *GapAPIResponse    `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
+}
+
+// GapAPIResponse represents gap analysis data for the API.
+type GapAPIResponse struct {
+	HasGaps        bool `json:"has_gaps"`
+	ContextQuality int  `json:"context_quality"`
+	ShouldWarn     bool `json:"should_warn"`
+	MatchCount     int  `json:"match_count,omitempty"`
+	Constraints    int  `json:"constraints,omitempty"`
+	Decisions      int  `json:"decisions,omitempty"`
+	Investigations int  `json:"investigations,omitempty"`
 }
 
 // SynthesisResponse is a condensed version of verify.Synthesis for the API.
@@ -540,6 +552,17 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				if issue, ok := allIssues[agents[i].BeadsID]; ok && issue.CloseReason != "" {
 					agents[i].CloseReason = issue.CloseReason
 				}
+			}
+		}
+
+		// Fetch gap analysis from spawn events for each agent
+		gapAnalysisMap := getGapAnalysisFromEvents(beadsIDsToFetch)
+		for i := range agents {
+			if agents[i].BeadsID == "" {
+				continue
+			}
+			if gapData, ok := gapAnalysisMap[agents[i].BeadsID]; ok {
+				agents[i].GapAnalysis = gapData
 			}
 		}
 
@@ -1131,4 +1154,115 @@ func checkWorkspaceSynthesis(workspacePath string) bool {
 	}
 	// SYNTHESIS.md must exist and be non-empty
 	return info.Size() > 0
+}
+
+// getGapAnalysisFromEvents reads spawn events and extracts gap analysis data for given beads IDs.
+// Returns a map of beads ID -> GapAPIResponse.
+func getGapAnalysisFromEvents(beadsIDs []string) map[string]*GapAPIResponse {
+	result := make(map[string]*GapAPIResponse)
+	if len(beadsIDs) == 0 {
+		return result
+	}
+
+	// Build a set of beads IDs for fast lookup
+	beadsIDSet := make(map[string]bool)
+	for _, id := range beadsIDs {
+		beadsIDSet[id] = true
+	}
+
+	// Read events file
+	logPath := events.DefaultLogPath()
+	file, err := os.Open(logPath)
+	if err != nil {
+		return result
+	}
+	defer file.Close()
+
+	// Scan events for spawn events matching our beads IDs
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var event events.Event
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+
+		// Only process spawn events
+		if event.Type != "session.spawned" {
+			continue
+		}
+
+		// Check if this event is for one of our beads IDs
+		beadsID, ok := event.Data["beads_id"].(string)
+		if !ok || !beadsIDSet[beadsID] {
+			continue
+		}
+
+		// Already have gap analysis for this beads ID? Skip (we want the most recent)
+		// Since we read chronologically, later entries overwrite earlier ones
+		if _, exists := result[beadsID]; exists {
+			// We could skip, but let's allow overwrites for resumptions
+		}
+
+		// Extract gap analysis data from event
+		gapData := extractGapAnalysisFromEvent(event.Data)
+		if gapData != nil {
+			result[beadsID] = gapData
+		}
+	}
+
+	return result
+}
+
+// extractGapAnalysisFromEvent extracts gap analysis data from a spawn event's data map.
+func extractGapAnalysisFromEvent(data map[string]interface{}) *GapAPIResponse {
+	// Check if gap data exists
+	hasGaps, ok := data["gap_has_gaps"].(bool)
+	if !ok {
+		return nil
+	}
+
+	contextQuality := 0
+	if cq, ok := data["gap_context_quality"].(float64); ok {
+		contextQuality = int(cq)
+	}
+
+	shouldWarn := false
+	if sw, ok := data["gap_should_warn"].(bool); ok {
+		shouldWarn = sw
+	}
+
+	matchCount := 0
+	if mc, ok := data["gap_match_total"].(float64); ok {
+		matchCount = int(mc)
+	}
+
+	constraints := 0
+	if c, ok := data["gap_match_constraints"].(float64); ok {
+		constraints = int(c)
+	}
+
+	decisions := 0
+	if d, ok := data["gap_match_decisions"].(float64); ok {
+		decisions = int(d)
+	}
+
+	investigations := 0
+	if i, ok := data["gap_match_investigations"].(float64); ok {
+		investigations = int(i)
+	}
+
+	return &GapAPIResponse{
+		HasGaps:        hasGaps,
+		ContextQuality: contextQuality,
+		ShouldWarn:     shouldWarn,
+		MatchCount:     matchCount,
+		Constraints:    constraints,
+		Decisions:      decisions,
+		Investigations: investigations,
+	}
 }

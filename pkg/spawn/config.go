@@ -113,6 +113,10 @@ type Config struct {
 	// ServerContext is the formatted server info to include in SPAWN_CONTEXT.md
 	// Populated by GenerateServerContext() if IncludeServers is true
 	ServerContext string
+
+	// GapAnalysis contains the results of pre-spawn context gap analysis.
+	// Used for surfacing gaps in dashboard and tracking patterns.
+	GapAnalysis *GapAnalysis
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

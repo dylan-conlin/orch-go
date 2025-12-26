@@ -175,6 +175,9 @@ var (
 	spawnLight             bool   // Light tier spawn (skips SYNTHESIS.md requirement)
 	spawnFull              bool   // Full tier spawn (requires SYNTHESIS.md)
 	spawnWorkdir           string // Target project directory (defaults to current directory)
+	spawnGateOnGap         bool   // Block spawn if context quality is too low
+	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
+	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
 )
 
 var spawnCmd = &cobra.Command{
@@ -196,6 +199,15 @@ Spawn Tiers:
     Full tier (require SYNTHESIS.md): investigation, architect, research, 
       codebase-audit, design-session, systematic-debugging
     Light tier (skip SYNTHESIS.md): feature-impl, reliability-testing, issue-creation
+
+Gap Gating (Gate Over Remind):
+  --gate-on-gap:      Block spawn if context quality is too low (score < 20)
+  --skip-gap-gate:    Explicitly bypass gating (documents conscious decision)
+  --gap-threshold N:  Custom quality threshold (default 20)
+  
+  When gating is enabled and context quality is below threshold, spawn is blocked
+  with a prominent message explaining the gap and how to fix it. This enforces
+  the principle: 'gaps should be harder to ignore than to fix'.
 
 Concurrency Limiting:
   By default, limits concurrent agents to 5. This prevents runaway agent spawning.
@@ -221,6 +233,11 @@ Examples:
   
   # Inline mode - blocking with TUI, for debugging
   orch-go spawn --inline investigation "explore codebase"
+  
+  # Gap gating - block spawn on poor context quality
+  orch-go spawn --gate-on-gap investigation "important task"   # Block if context < 20
+  orch-go spawn --gate-on-gap --gap-threshold 30 feature-impl "critical" # Block if < 30
+  orch-go spawn --skip-gap-gate investigation "proceed anyway" # Document bypass
   
   # Other options
   orch-go spawn --model opus investigation "analyze code"      # Use Claude Opus
@@ -260,6 +277,9 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnLight, "light", false, "Light tier spawn (skips SYNTHESIS.md requirement on completion)")
 	spawnCmd.Flags().BoolVar(&spawnFull, "full", false, "Full tier spawn (requires SYNTHESIS.md for knowledge externalization)")
 	spawnCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (defaults to current directory)")
+	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
+	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
+	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
 }
 
 var askCmd = &cobra.Command{
@@ -1134,14 +1154,45 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 
 	// Gather context based on skill requirements (or fall back to default behavior)
 	var kbContext string
+	var gapAnalysis *spawn.GapAnalysis
 	if !spawnSkipArtifactCheck {
 		if requires != nil && requires.HasRequirements() {
 			// Skill-driven context gathering
 			fmt.Printf("Gathering context (skill requires: %s)\n", requires.String())
 			kbContext = spawn.GatherRequiredContext(requires, task, beadsID, projectDir)
+			// For skill-driven context, create a basic gap analysis from the results
+			// This is a placeholder - skills may provide their own gap info
+			gapAnalysis = spawn.AnalyzeGaps(nil, task)
 		} else {
-			// Fall back to default kb context check (backwards compatible)
-			kbContext = runPreSpawnKBCheck(task)
+			// Fall back to default kb context check with full gap analysis
+			gapResult := runPreSpawnKBCheckFull(task)
+			kbContext = gapResult.Context
+			gapAnalysis = gapResult.GapAnalysis
+		}
+
+		// Check gap gating - may block spawn if context quality is too low
+		if err := checkGapGating(gapAnalysis, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold); err != nil {
+			return err
+		}
+
+		// Log if skip-gap-gate was used (documents conscious bypass)
+		if spawnSkipGapGate && gapAnalysis != nil && gapAnalysis.ShouldBlockSpawn(spawnGapThreshold) {
+			fmt.Fprintf(os.Stderr, "⚠️  Bypassing gap gate (--skip-gap-gate): context quality %d\n", gapAnalysis.ContextQuality)
+			// Log the bypass for pattern detection
+			logger := events.NewLogger(events.DefaultLogPath())
+			event := events.Event{
+				Type:      "gap.gate.bypassed",
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"task":            task,
+					"context_quality": gapAnalysis.ContextQuality,
+					"beads_id":        beadsID,
+					"skill":           skillName,
+				},
+			}
+			if err := logger.Log(event); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log gap bypass: %v\n", err)
+			}
 		}
 	} else {
 		fmt.Println("Skipping context check (--skip-artifact-check)")
@@ -1169,6 +1220,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		SkipArtifactCheck: spawnSkipArtifactCheck,
 		KBContext:         kbContext,
 		IncludeServers:    spawn.DefaultIncludeServersForSkill(skillName),
+		GapAnalysis:       gapAnalysis,
 	}
 
 	// Pre-spawn token estimation and validation
@@ -1213,6 +1265,34 @@ func formatSessionTitle(workspaceName, beadsID string) string {
 		return workspaceName
 	}
 	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
+}
+
+// addGapAnalysisToEventData adds gap analysis information to an event data map.
+// This enables tracking of context gaps for pattern analysis and dashboard surfacing.
+func addGapAnalysisToEventData(eventData map[string]interface{}, gapAnalysis *spawn.GapAnalysis) {
+	if gapAnalysis == nil {
+		return
+	}
+
+	eventData["gap_has_gaps"] = gapAnalysis.HasGaps
+	eventData["gap_context_quality"] = gapAnalysis.ContextQuality
+
+	if gapAnalysis.HasGaps {
+		eventData["gap_should_warn"] = gapAnalysis.ShouldWarnAboutGaps()
+		eventData["gap_match_total"] = gapAnalysis.MatchStats.TotalMatches
+		eventData["gap_match_constraints"] = gapAnalysis.MatchStats.ConstraintCount
+		eventData["gap_match_decisions"] = gapAnalysis.MatchStats.DecisionCount
+		eventData["gap_match_investigations"] = gapAnalysis.MatchStats.InvestigationCount
+
+		// Capture gap types for pattern analysis
+		var gapTypes []string
+		for _, gap := range gapAnalysis.Gaps {
+			gapTypes = append(gapTypes, string(gap.Type))
+		}
+		if len(gapTypes) > 0 {
+			eventData["gap_types"] = gapTypes
+		}
+	}
 }
 
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
@@ -1266,6 +1346,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	if cfg.MCP != "" {
 		inlineEventData["mcp"] = cfg.MCP
 	}
+	addGapAnalysisToEventData(inlineEventData, cfg.GapAnalysis)
 	inlineEvent := events.Event{
 		Type:      "session.spawned",
 		SessionID: result.SessionID,
@@ -1281,6 +1362,10 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	fmt.Printf("  Session ID: %s\n", result.SessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	// Print context quality for visibility
+	if cfg.GapAnalysis != nil {
+		fmt.Printf("  Context:    %d/100\n", cfg.GapAnalysis.ContextQuality)
+	}
 
 	return nil
 }
@@ -1353,6 +1438,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	if cfg.MCP != "" {
 		eventData["mcp"] = cfg.MCP
 	}
+	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
 	event := events.Event{
 		Type:      "session.spawned",
 		SessionID: sessionID,
@@ -1375,7 +1461,12 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	if cfg.NoTrack {
 		fmt.Printf("  Tracking:   disabled (--no-track)\n")
 	}
-	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+	// Print context quality for visibility
+	if cfg.GapAnalysis != nil {
+		fmt.Printf("  Context:    %d/100\n", cfg.GapAnalysis.ContextQuality)
+	} else {
+		fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+	}
 
 	return nil
 }
@@ -1461,6 +1552,7 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	if cfg.MCP != "" {
 		eventData["mcp"] = cfg.MCP
 	}
+	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
 	event := events.Event{
 		Type:      "session.spawned",
 		SessionID: sessionID,
@@ -1495,7 +1587,12 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	if cfg.NoTrack {
 		fmt.Printf("  Tracking:   disabled (--no-track)\n")
 	}
-	fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+	// Print context quality for visibility
+	if cfg.GapAnalysis != nil {
+		fmt.Printf("  Context:    %d/100\n", cfg.GapAnalysis.ContextQuality)
+	} else {
+		fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
+	}
 
 	// Attach if requested
 	if attach {
@@ -3861,20 +3958,38 @@ func dirExists(path string) bool {
 	return info.IsDir()
 }
 
+// GapCheckResult contains the results of a pre-spawn gap check.
+type GapCheckResult struct {
+	Context     string             // Formatted context to include in SPAWN_CONTEXT.md
+	GapAnalysis *spawn.GapAnalysis // Gap analysis results for further processing
+	Blocked     bool               // True if spawn should be blocked due to gaps
+	BlockReason string             // Reason for blocking (if Blocked is true)
+}
+
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
 // Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
 // Also performs gap analysis and displays warnings for sparse or missing context.
 func runPreSpawnKBCheck(task string) string {
+	result := runPreSpawnKBCheckFull(task)
+	return result.Context
+}
+
+// runPreSpawnKBCheckFull runs kb context check with full gap analysis results.
+// This allows callers to access gap analysis for gating decisions.
+func runPreSpawnKBCheckFull(task string) *GapCheckResult {
+	gcr := &GapCheckResult{}
+
 	// Extract keywords from task description
 	// Try with 3 keywords first (more specific), fall back to 1 keyword (more broad)
 	keywords := spawn.ExtractKeywords(task, 3)
 	if keywords == "" {
 		// Perform gap analysis even when no keywords extracted
-		gapAnalysis := spawn.AnalyzeGaps(nil, task)
-		if gapAnalysis.ShouldWarnAboutGaps() {
-			fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
+		gcr.GapAnalysis = spawn.AnalyzeGaps(nil, task)
+		if gcr.GapAnalysis.ShouldWarnAboutGaps() {
+			// Use prominent warning format for better visibility
+			fmt.Fprintf(os.Stderr, "%s", gcr.GapAnalysis.FormatProminentWarning())
 		}
-		return ""
+		return gcr
 	}
 
 	fmt.Printf("Checking kb context for: %q\n", keywords)
@@ -3883,7 +3998,7 @@ func runPreSpawnKBCheck(task string) string {
 	result, err := spawn.RunKBContextCheck(keywords)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
-		return ""
+		return gcr
 	}
 
 	// If no matches with multiple keywords, try with just the first keyword
@@ -3894,26 +4009,27 @@ func runPreSpawnKBCheck(task string) string {
 			result, err = spawn.RunKBContextCheck(firstKeyword)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
-				return ""
+				return gcr
 			}
 		}
 	}
 
 	// Perform gap analysis to detect context gaps
-	gapAnalysis := spawn.AnalyzeGaps(result, keywords)
-	if gapAnalysis.ShouldWarnAboutGaps() {
-		fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
+	gcr.GapAnalysis = spawn.AnalyzeGaps(result, keywords)
+	if gcr.GapAnalysis.ShouldWarnAboutGaps() {
+		// Use prominent warning format for better visibility
+		fmt.Fprintf(os.Stderr, "%s", gcr.GapAnalysis.FormatProminentWarning())
 	}
 
 	if result == nil || !result.HasMatches {
 		fmt.Println("No prior knowledge found.")
-		return ""
+		return gcr
 	}
 
 	// Display results and prompt for acknowledgment
 	if !spawn.DisplayContextAndPrompt(result) {
 		fmt.Println("Context declined - proceeding without prior knowledge.")
-		return ""
+		return gcr
 	}
 
 	// Format context for inclusion in SPAWN_CONTEXT.md
@@ -3921,9 +4037,37 @@ func runPreSpawnKBCheck(task string) string {
 
 	// Include gap summary in spawn context if there are significant gaps
 	contextContent := spawn.FormatContextForSpawn(result)
-	if gapSummary := gapAnalysis.FormatGapSummary(); gapSummary != "" {
+	if gapSummary := gcr.GapAnalysis.FormatGapSummary(); gapSummary != "" {
 		contextContent = gapSummary + "\n\n" + contextContent
 	}
 
-	return contextContent
+	gcr.Context = contextContent
+	return gcr
+}
+
+// checkGapGating checks if spawn should be blocked due to context gaps.
+// Returns an error if spawn should be blocked, nil otherwise.
+func checkGapGating(gapAnalysis *spawn.GapAnalysis, gateEnabled, skipGate bool, threshold int) error {
+	// Skip gating if not enabled or explicitly bypassed
+	if !gateEnabled || skipGate {
+		return nil
+	}
+
+	// No gap analysis means no gating
+	if gapAnalysis == nil {
+		return nil
+	}
+
+	// Check if quality is below threshold
+	if threshold <= 0 {
+		threshold = spawn.DefaultGateThreshold
+	}
+
+	if gapAnalysis.ShouldBlockSpawn(threshold) {
+		// Display the block message
+		fmt.Fprintf(os.Stderr, "%s", gapAnalysis.FormatGateBlockMessage())
+		return fmt.Errorf("spawn blocked: context quality %d is below threshold %d", gapAnalysis.ContextQuality, threshold)
+	}
+
+	return nil
 }
