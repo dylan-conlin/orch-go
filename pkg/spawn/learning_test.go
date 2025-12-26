@@ -447,8 +447,8 @@ func TestDetermineSuggestion(t *testing.T) {
 			events: []GapEvent{
 				{GapType: string(GapTypeNoContext)},
 			},
-			expectedType: "add_knowledge",
-			containsWord: "foundational",
+			expectedType: "investigate",
+			containsWord: "discover", // no_context should suggest investigation to discover what's missing
 		},
 		{
 			name: "no_constraints_gaps",

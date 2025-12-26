@@ -373,6 +373,11 @@ func priorityOrder(priority string) int {
 }
 
 // determineSuggestion determines what action to suggest based on gap patterns.
+// The remediation type must match the gap type:
+// - no_context → investigate (we don't know what's missing, need discovery)
+// - no_constraints → kn constrain (we know constraints are missing)
+// - no_decisions → bd create (we know decisions are missing, need to establish)
+// - sparse_context/other → investigate (need more understanding)
 func determineSuggestion(query string, events []GapEvent) (suggestionType, suggestion, command string) {
 	// Check gap types to determine best suggestion
 	hasNoContext := false
@@ -393,12 +398,8 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 	// Generate a meaningful reason from gap context
 	reason := generateReasonFromGaps(query, events)
 
-	if hasNoContext {
-		// No context at all - suggest creating an investigation or knowledge
-		return "add_knowledge",
-			fmt.Sprintf("Gap %q has occurred %d times with no context. Consider creating foundational knowledge.", query, len(events)),
-			fmt.Sprintf(`kn decide "%s" --reason "%s"`, query, reason)
-	}
+	// Priority order matters: no_constraints and no_decisions are more specific
+	// than no_context, so check them first when they co-occur
 
 	if hasNoConstraints {
 		// Context exists but no constraints - suggest adding constraints
@@ -414,7 +415,15 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 			fmt.Sprintf(`bd create "Establish patterns for %s" -d "%s"`, query, reason)
 	}
 
-	// Default: suggest investigation
+	if hasNoContext {
+		// No context at all - we don't know what type of knowledge is missing
+		// Suggest investigation to discover what's needed (not kn decide which assumes decision is needed)
+		return "investigate",
+			fmt.Sprintf("Gap %q has occurred %d times with no context. Investigate to discover what knowledge is missing.", query, len(events)),
+			fmt.Sprintf(`orch spawn investigation "what context is needed for %s"`, query)
+	}
+
+	// Default: suggest investigation (covers sparse_context and other cases)
 	return "investigate",
 		fmt.Sprintf("Gap %q has occurred %d times. Investigate and document findings.", query, len(events)),
 		fmt.Sprintf(`orch spawn investigation "why does %s lack context"`, query)
