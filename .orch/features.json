@@ -167,13 +167,23 @@
       "created": "2025-12-26",
       "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
       "depends_on": ["feat-015"]
+    },
+    {
+      "id": "feat-017",
+      "title": "Implement multi-project workspace aggregation for dashboard",
+      "description": "Fix cross-project agent visibility by aggregating workspace metadata across multiple projects. Uses OpenCode session.Directory to discover active projects dynamically, builds workspace caches for each unique project directory in parallel, merges beadsToWorkspace and beadsToProjectDir maps for unified lookups. Solves 'Waiting for activity...' issue for agents spawned with --workdir to different projects. File targets: cmd/orch/serve.go (buildMultiProjectWorkspaceCache, extractUniqueProjectDirs). Out of scope: Project filtering API parameter, cross-request caching. Acceptance: Agents spawned with --workdir show correct status/phase in dashboard, no performance regression (<500ms response time).",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-inv-design-proper-cross-project-agent.md"
     }
   ],
   "meta": {
     "last_updated": "2025-12-26",
-    "total_features": 16,
+    "total_features": 17,
     "by_status": {
-      "todo": 16,
+      "todo": 17,
       "in_progress": 0,
       "done": 0
     }
