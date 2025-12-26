@@ -167,7 +167,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between border-b px-4 py-3">
 			<div class="flex items-center gap-3">
-				<div class={`h-3 w-3 rounded-full ${getStatusColor($selectedAgent.status)} ${$selectedAgent.is_processing ? 'animate-pulse' : ''}`}></div>
+				<div class={`h-3 w-3 rounded-full ${getStatusColor($selectedAgent.status)} ${$selectedAgent.status === 'active' && $selectedAgent.is_processing ? 'animate-pulse' : ''}`}></div>
 				<h2 id="agent-detail-title" class="text-lg font-semibold">
 					{$selectedAgent.task || $selectedAgent.id}
 				</h2>
@@ -190,7 +190,7 @@
 							{$selectedAgent.phase}
 						</Badge>
 					{/if}
-					{#if $selectedAgent.is_processing}
+					{#if $selectedAgent.status === 'active' && $selectedAgent.is_processing}
 						<Badge variant="secondary" class="animate-pulse">
 							Processing
 						</Badge>

@@ -201,10 +201,10 @@
 <button
 	type="button"
 	onclick={handleClick}
-	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all hover:border-primary/50 hover:shadow-sm {agent.is_processing ? 'border-yellow-500 animate-pulse shadow-md shadow-yellow-500/20' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
+	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all hover:border-primary/50 hover:shadow-sm {agent.status === 'active' && agent.is_processing ? 'border-yellow-500 animate-pulse shadow-md shadow-yellow-500/20' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
 >
-	<!-- Status indicator bar at top - yellow when processing -->
-	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${agent.is_processing ? 'bg-yellow-500' : getStatusColor(agent.status)}`}></div>
+	<!-- Status indicator bar at top - yellow when processing (active agents only) -->
+	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t ${agent.status === 'active' && agent.is_processing ? 'bg-yellow-500' : getStatusColor(agent.status)}`}></div>
 
 	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">
@@ -237,7 +237,7 @@
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
-			{#if agent.is_processing}
+			{#if agent.status === 'active' && agent.is_processing}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
