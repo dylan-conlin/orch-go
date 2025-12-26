@@ -157,3 +157,40 @@ func DetectCompletion(events []SSEEvent) (sessionID string, completed bool) {
 
 	return lastSessionID, false
 }
+
+// ParseSessionError extracts error details from a session.error event.
+// Returns sessionID and error message if found.
+func ParseSessionError(data string) (sessionID string, errMsg string) {
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &m); err != nil {
+		return "", ""
+	}
+
+	// Try new format: {"type":"session.error","properties":{"sessionID":"...","error":{"message":"..."}}}
+	if props, ok := m["properties"].(map[string]interface{}); ok {
+		if sid, ok := props["sessionID"].(string); ok {
+			sessionID = sid
+		}
+		if errorObj, ok := props["error"].(map[string]interface{}); ok {
+			if msg, ok := errorObj["message"].(string); ok {
+				errMsg = msg
+			}
+		}
+	}
+
+	// Fallback: check top-level fields
+	if sessionID == "" {
+		if sid, ok := m["sessionID"].(string); ok {
+			sessionID = sid
+		}
+	}
+	if errMsg == "" {
+		if errorObj, ok := m["error"].(map[string]interface{}); ok {
+			if msg, ok := errorObj["message"].(string); ok {
+				errMsg = msg
+			}
+		}
+	}
+
+	return sessionID, errMsg
+}

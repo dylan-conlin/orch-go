@@ -371,3 +371,56 @@ func TestSSEClientConnectionError(t *testing.T) {
 		t.Error("Connect() should return error for invalid URL")
 	}
 }
+
+// Test session error parsing
+func TestParseSessionError(t *testing.T) {
+	tests := []struct {
+		name          string
+		data          string
+		wantSessionID string
+		wantErrMsg    string
+	}{
+		{
+			name:          "new format error event",
+			data:          `{"type":"session.error","properties":{"sessionID":"ses_abc123","error":{"message":"No user message found in stream. This should never happen."}}}`,
+			wantSessionID: "ses_abc123",
+			wantErrMsg:    "No user message found in stream. This should never happen.",
+		},
+		{
+			name:          "old format error event",
+			data:          `{"sessionID":"ses_xyz789","error":{"message":"Connection timeout"}}`,
+			wantSessionID: "ses_xyz789",
+			wantErrMsg:    "Connection timeout",
+		},
+		{
+			name:          "error without message",
+			data:          `{"sessionID":"ses_123","error":{}}`,
+			wantSessionID: "ses_123",
+			wantErrMsg:    "",
+		},
+		{
+			name:          "invalid json",
+			data:          `not json`,
+			wantSessionID: "",
+			wantErrMsg:    "",
+		},
+		{
+			name:          "empty json",
+			data:          `{}`,
+			wantSessionID: "",
+			wantErrMsg:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sessionID, errMsg := ParseSessionError(tt.data)
+			if sessionID != tt.wantSessionID {
+				t.Errorf("ParseSessionError() sessionID = %v, want %v", sessionID, tt.wantSessionID)
+			}
+			if errMsg != tt.wantErrMsg {
+				t.Errorf("ParseSessionError() errMsg = %v, want %v", errMsg, tt.wantErrMsg)
+			}
+		})
+	}
+}

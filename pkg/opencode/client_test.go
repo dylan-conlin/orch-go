@@ -656,6 +656,63 @@ data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","st
 	}
 }
 
+// TestSendMessageWithStreamingSessionError tests that session errors are properly detected.
+func TestSendMessageWithStreamingSessionError(t *testing.T) {
+	sessionID := "ses_error_test"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session/" + sessionID + "/prompt_async":
+			w.WriteHeader(http.StatusOK)
+
+		case "/event":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				t.Fatal("Expected http.Flusher")
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.WriteHeader(http.StatusOK)
+
+			// Send session busy event
+			busyEvent := `event: session.status
+data: {"type":"session.status","properties":{"sessionID":"` + sessionID + `","status":{"type":"busy"}}}
+
+`
+			w.Write([]byte(busyEvent))
+			flusher.Flush()
+
+			// Send session error event
+			errorEvent := `event: session.error
+data: {"type":"session.error","properties":{"sessionID":"` + sessionID + `","error":{"message":"No user message found in stream. This should never happen."}}}
+
+`
+			w.Write([]byte(errorEvent))
+			flusher.Flush()
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	var streamedContent bytes.Buffer
+	err := client.SendMessageWithStreaming(sessionID, "test message", &streamedContent)
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("SendMessageWithStreaming() expected error for session.error event")
+	}
+
+	// Error should contain the session error message
+	if !strings.Contains(err.Error(), "No user message found") {
+		t.Errorf("Error should contain 'No user message found', got: %v", err)
+	}
+}
+
 // TestGetMessages tests the GetMessages API call.
 func TestGetMessages(t *testing.T) {
 	sessionID := "ses_test123"

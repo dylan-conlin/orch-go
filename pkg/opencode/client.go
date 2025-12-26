@@ -678,6 +678,32 @@ func (c *Client) SendMessageWithStreaming(sessionID, content string, streamTo io
 				continue
 			}
 
+			// Handle session error events
+			if eventType == "session.error" {
+				if props, ok := eventData["properties"].(map[string]interface{}); ok {
+					// Check if this error is for our session
+					if sid, ok := props["sessionID"].(string); ok && sid == sessionID {
+						// Extract error details
+						if errorObj, ok := props["error"].(map[string]interface{}); ok {
+							if msg, ok := errorObj["message"].(string); ok {
+								return fmt.Errorf("session error: %s", msg)
+							}
+						}
+						return fmt.Errorf("session error occurred")
+					}
+				}
+				// Also check top-level sessionID for older format
+				if sid, ok := eventData["sessionID"].(string); ok && sid == sessionID {
+					if errorObj, ok := eventData["error"].(map[string]interface{}); ok {
+						if msg, ok := errorObj["message"].(string); ok {
+							return fmt.Errorf("session error: %s", msg)
+						}
+					}
+					return fmt.Errorf("session error occurred")
+				}
+				continue
+			}
+
 			// Handle session status events
 			if eventType == "session.status" {
 				status, sid := ParseSessionStatus(data)
