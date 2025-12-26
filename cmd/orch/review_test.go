@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestExtractProject verifies project extraction from directory paths.
@@ -425,6 +426,133 @@ func TestReviewDoneCommandHasYesFlag(t *testing.T) {
 	// Check shorthand
 	if yFlag != nil && yFlag.Shorthand != "y" {
 		t.Errorf("Expected shorthand 'y', got %q", yFlag.Shorthand)
+	}
+}
+
+// TestIsUntrackedBeadsID verifies detection of untracked beads IDs.
+func TestIsUntrackedBeadsID(t *testing.T) {
+	tests := []struct {
+		name    string
+		beadsID string
+		want    bool
+	}{
+		{"standard tracked ID", "orch-go-abc123", false},
+		{"tracked ID with suffix", "orch-go-abc123.1", false},
+		{"untracked ID", "orch-go-untracked-1766695797", true},
+		{"untracked ID other project", "kb-cli-untracked-1766695797", true},
+		{"empty ID", "", false},
+		{"project-untracked-pattern", "snap-untracked-1234567890", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isUntrackedBeadsID(tt.beadsID)
+			if got != tt.want {
+				t.Errorf("isUntrackedBeadsID(%q) = %v, want %v", tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIsStaleAgent verifies staleness detection based on phase and time.
+func TestIsStaleAgent(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name    string
+		phase   string
+		modTime time.Time
+		want    bool
+	}{
+		{"Complete phase, recent", "Complete", now.Add(-1 * time.Hour), false},
+		{"Complete phase, old", "Complete", now.Add(-48 * time.Hour), false}, // Complete is never stale
+		{"Implementing phase, recent", "Implementing", now.Add(-1 * time.Hour), false},
+		{"Implementing phase, 25h old", "Implementing", now.Add(-25 * time.Hour), true},
+		{"Planning phase, 30h old", "Planning", now.Add(-30 * time.Hour), true},
+		{"Empty phase, recent", "", now.Add(-1 * time.Hour), false},
+		{"Empty phase, old", "", now.Add(-48 * time.Hour), true},
+		{"Design phase, 23h 59m", "Design", now.Add(-23*time.Hour - 59*time.Minute), false}, // Just under threshold
+		{"Design phase, just over 24h", "Design", now.Add(-24*time.Hour - 1*time.Minute), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isStaleAgent(tt.phase, tt.modTime)
+			if got != tt.want {
+				t.Errorf("isStaleAgent(%q, %v) = %v, want %v", tt.phase, tt.modTime, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestReviewCommandHasStaleAndAllFlags verifies the new filtering flags exist.
+func TestReviewCommandHasStaleAndAllFlags(t *testing.T) {
+	if reviewCmd == nil {
+		t.Fatal("reviewCmd is nil")
+	}
+
+	// Check --stale flag exists
+	staleFlag := reviewCmd.Flags().Lookup("stale")
+	if staleFlag == nil {
+		t.Error("Expected --stale flag")
+	}
+
+	// Check --all flag exists
+	allFlag := reviewCmd.Flags().Lookup("all")
+	if allFlag == nil {
+		t.Error("Expected --all flag")
+	}
+}
+
+// TestFilterByStaleOrUntracked verifies filtering logic for stale/untracked agents.
+func TestFilterByStaleOrUntracked(t *testing.T) {
+	now := time.Now()
+	completions := []CompletionInfo{
+		// Actionable - tracked and recent
+		{WorkspaceID: "ws-1", BeadsID: "project-abc1", Phase: "Complete", ModTime: now, IsStale: false, IsUntracked: false},
+		// Stale - old and not complete
+		{WorkspaceID: "ws-2", BeadsID: "project-abc2", Phase: "Implementing", ModTime: now.Add(-48 * time.Hour), IsStale: true, IsUntracked: false},
+		// Untracked
+		{WorkspaceID: "ws-3", BeadsID: "project-untracked-123", Phase: "Complete", ModTime: now, IsStale: false, IsUntracked: true},
+		// Stale AND untracked
+		{WorkspaceID: "ws-4", BeadsID: "project-untracked-456", Phase: "Planning", ModTime: now.Add(-48 * time.Hour), IsStale: true, IsUntracked: true},
+		// Actionable - tracked and needs review but recent
+		{WorkspaceID: "ws-5", BeadsID: "project-abc5", Phase: "Testing", ModTime: now, IsStale: false, IsUntracked: false},
+	}
+
+	// Test default filter (exclude stale and untracked)
+	var defaultFiltered []CompletionInfo
+	for _, c := range completions {
+		if !c.IsStale && !c.IsUntracked {
+			defaultFiltered = append(defaultFiltered, c)
+		}
+	}
+	if len(defaultFiltered) != 2 {
+		t.Errorf("Default filter: expected 2 actionable completions, got %d", len(defaultFiltered))
+	}
+
+	// Test --stale filter (only stale or untracked)
+	var staleFiltered []CompletionInfo
+	for _, c := range completions {
+		if c.IsStale || c.IsUntracked {
+			staleFiltered = append(staleFiltered, c)
+		}
+	}
+	if len(staleFiltered) != 3 {
+		t.Errorf("Stale filter: expected 3 stale/untracked completions, got %d", len(staleFiltered))
+	}
+
+	// Test --all (no filtering)
+	if len(completions) != 5 {
+		t.Errorf("All filter: expected 5 total completions, got %d", len(completions))
+	}
+}
+
+// TestStaleThreshold verifies the stale threshold constant is set correctly.
+func TestStaleThreshold(t *testing.T) {
+	expected := 24 * time.Hour
+	if StaleThreshold != expected {
+		t.Errorf("StaleThreshold = %v, want %v", StaleThreshold, expected)
 	}
 }
 
