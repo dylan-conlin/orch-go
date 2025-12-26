@@ -430,10 +430,12 @@ function handleSSEEvent(data: any) {
 		
 		if (sessionID && part && part.type) {
 			// Update agent activity and set is_processing=true (agent is actively responding)
+			// Only update active agents to prevent stale pulsing on completed agents
+			// (late SSE events can arrive after agent status changes to completed)
 			agents.update((agentList) => {
 				return agentList.map((agent) => {
-					// Match by session_id
-					if (agent.session_id === sessionID) {
+					// Match by session_id AND only update active agents
+					if (agent.session_id === sessionID && agent.status === 'active') {
 						return {
 							...agent,
 							is_processing: true, // Agent is actively generating response
@@ -463,6 +465,12 @@ function handleSSEEvent(data: any) {
 			agents.update((agentList) => {
 				return agentList.map((agent) => {
 					if (agent.session_id === sessionID) {
+						// Only set is_processing=true for active agents
+						// But always allow clearing is_processing (to clean up stale state)
+						// This prevents late SSE events from causing pulsing on completed agents
+						if (isProcessing && agent.status !== 'active') {
+							return agent; // Don't set processing on non-active agents
+						}
 						return {
 							...agent,
 							is_processing: isProcessing,
