@@ -62,7 +62,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://127.0.0.1:4096", "OpenCode server URL")
 
 	rootCmd.AddCommand(spawnCmd)
-	rootCmd.AddCommand(askCmd)
 	sendCmd.Flags().BoolVar(&sendAsync, "async", true, "Send message asynchronously (non-blocking)")
 	rootCmd.AddCommand(sendCmd)
 	rootCmd.AddCommand(monitorCmd)
@@ -280,18 +279,6 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
-}
-
-var askCmd = &cobra.Command{
-	Use:   "ask [identifier] [prompt]",
-	Short: "Send a message to an existing session (alias for send)",
-	Long:  "Send a message to an existing OpenCode session. This is an alias for the 'send' command. Supports session IDs, beads IDs, or workspace names.",
-	Args:  cobra.MinimumNArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		identifier := args[0]
-		prompt := strings.Join(args[1:], " ")
-		return runSend(serverURL, identifier, prompt)
-	},
 }
 
 var sendCmd = &cobra.Command{
