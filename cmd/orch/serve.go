@@ -263,7 +263,7 @@ type SynthesisResponse struct {
 // workspaceCache stores pre-computed workspace metadata to avoid repeated directory scans.
 // Built once per request and used for all lookups within that request.
 type workspaceCache struct {
-	// beadsToWorkspace maps beadsID → workspace path
+	// beadsToWorkspace maps beadsID → workspace path (absolute)
 	beadsToWorkspace map[string]string
 	// beadsToProjectDir maps beadsID → PROJECT_DIR from SPAWN_CONTEXT.md
 	beadsToProjectDir map[string]string
@@ -271,15 +271,125 @@ type workspaceCache struct {
 	workspaceEntries []os.DirEntry
 	// workspaceDir is the base workspace directory path
 	workspaceDir string
+	// workspaceEntryToPath maps directory entry name → absolute workspace path
+	// This is needed for multi-project scenarios where entries come from different projects
+	workspaceEntryToPath map[string]string
+}
+
+// extractUniqueProjectDirs collects unique project directories from OpenCode sessions.
+// Returns a deduplicated slice of directory paths that have active agents.
+// This enables multi-project workspace aggregation for cross-project agent visibility.
+func extractUniqueProjectDirs(sessions []opencode.Session, currentProjectDir string) []string {
+	seen := make(map[string]bool)
+	var dirs []string
+
+	// Always include current project directory
+	if currentProjectDir != "" {
+		seen[currentProjectDir] = true
+		dirs = append(dirs, currentProjectDir)
+	}
+
+	// Add unique directories from sessions
+	for _, s := range sessions {
+		dir := s.Directory
+		if dir == "" {
+			continue
+		}
+
+		// Normalize path (resolve any symlinks, clean path)
+		dir = filepath.Clean(dir)
+
+		if !seen[dir] {
+			seen[dir] = true
+			dirs = append(dirs, dir)
+		}
+	}
+
+	return dirs
+}
+
+// buildMultiProjectWorkspaceCache builds workspace caches for multiple project directories
+// and merges them into a unified cache. Scans in parallel for performance.
+// This enables cross-project agent visibility by aggregating workspace metadata
+// from all projects with active OpenCode sessions.
+func buildMultiProjectWorkspaceCache(projectDirs []string) *workspaceCache {
+	if len(projectDirs) == 0 {
+		return &workspaceCache{
+			beadsToWorkspace:  make(map[string]string),
+			beadsToProjectDir: make(map[string]string),
+		}
+	}
+
+	// If only one project directory, use the simpler single-project scan
+	if len(projectDirs) == 1 {
+		return buildWorkspaceCache(projectDirs[0])
+	}
+
+	// Build caches in parallel using goroutines
+	type cacheResult struct {
+		cache *workspaceCache
+	}
+	results := make(chan cacheResult, len(projectDirs))
+
+	for _, dir := range projectDirs {
+		go func(projectDir string) {
+			cache := buildWorkspaceCache(projectDir)
+			results <- cacheResult{cache: cache}
+		}(dir)
+	}
+
+	// Merge all caches into a unified cache
+	merged := &workspaceCache{
+		beadsToWorkspace:     make(map[string]string),
+		beadsToProjectDir:    make(map[string]string),
+		workspaceEntryToPath: make(map[string]string),
+	}
+
+	for i := 0; i < len(projectDirs); i++ {
+		result := <-results
+
+		// Merge beadsToWorkspace map (later entries don't overwrite earlier ones)
+		for beadsID, wsPath := range result.cache.beadsToWorkspace {
+			if _, exists := merged.beadsToWorkspace[beadsID]; !exists {
+				merged.beadsToWorkspace[beadsID] = wsPath
+			}
+		}
+
+		// Merge beadsToProjectDir map
+		for beadsID, projDir := range result.cache.beadsToProjectDir {
+			if _, exists := merged.beadsToProjectDir[beadsID]; !exists {
+				merged.beadsToProjectDir[beadsID] = projDir
+			}
+		}
+
+		// Merge workspaceEntryToPath map (for multi-project workspace path resolution)
+		for entryName, wsPath := range result.cache.workspaceEntryToPath {
+			if _, exists := merged.workspaceEntryToPath[entryName]; !exists {
+				merged.workspaceEntryToPath[entryName] = wsPath
+			}
+		}
+
+		// Merge workspace entries (for completed workspace scanning)
+		merged.workspaceEntries = append(merged.workspaceEntries, result.cache.workspaceEntries...)
+
+		// Keep track of workspace dir for backward compatibility
+		// (use first non-empty workspace dir)
+		if merged.workspaceDir == "" && result.cache.workspaceDir != "" {
+			merged.workspaceDir = result.cache.workspaceDir
+		}
+	}
+
+	return merged
 }
 
 // buildWorkspaceCache scans the workspace directory once and builds lookup maps.
 // This replaces multiple calls to findWorkspaceByBeadsID which each scanned all 400+ directories.
 func buildWorkspaceCache(projectDir string) *workspaceCache {
 	cache := &workspaceCache{
-		beadsToWorkspace:  make(map[string]string),
-		beadsToProjectDir: make(map[string]string),
-		workspaceDir:      filepath.Join(projectDir, ".orch", "workspace"),
+		beadsToWorkspace:     make(map[string]string),
+		beadsToProjectDir:    make(map[string]string),
+		workspaceDir:         filepath.Join(projectDir, ".orch", "workspace"),
+		workspaceEntryToPath: make(map[string]string),
 	}
 
 	entries, err := os.ReadDir(cache.workspaceDir)
@@ -297,6 +407,9 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 		dirName := entry.Name()
 		dirPath := filepath.Join(cache.workspaceDir, dirName)
 		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+
+		// Store entry name to absolute path mapping for multi-project support
+		cache.workspaceEntryToPath[dirName] = dirPath
 
 		// Read SPAWN_CONTEXT.md once to extract both beads ID and PROJECT_DIR
 		content, err := os.ReadFile(spawnContextPath)
@@ -357,6 +470,19 @@ func (c *workspaceCache) lookupProjectDir(beadsID string) string {
 	return c.beadsToProjectDir[beadsID]
 }
 
+// lookupWorkspacePathByEntry returns the absolute workspace path for a directory entry name.
+// This is used in multi-project scenarios where workspace entries come from different projects.
+func (c *workspaceCache) lookupWorkspacePathByEntry(entryName string) string {
+	if path, ok := c.workspaceEntryToPath[entryName]; ok {
+		return path
+	}
+	// Fallback to single-project path construction
+	if c.workspaceDir != "" {
+		return filepath.Join(c.workspaceDir, entryName)
+	}
+	return ""
+}
+
 // handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
 func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -370,13 +496,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		projectDir, _ = os.Getwd()
 	}
 
-	// Build workspace cache once for all lookups in this request.
-	// This replaces O(n*m) scanning with O(m) scanning + O(n) lookups,
-	// where n = number of agents and m = number of workspaces (~466).
-	// Previously: 466 directory reads * ~10 agents = 4660 file operations per request
-	// Now: 466 directory reads once = 466 file operations per request
-	wsCache := buildWorkspaceCache(projectDir)
-
 	client := opencode.NewClient(serverURL)
 
 	// Get active sessions from OpenCode
@@ -387,6 +506,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	// Build multi-project workspace cache for cross-project agent visibility.
+	// This aggregates workspace metadata from all projects with active sessions,
+	// enabling the dashboard to show correct status for agents spawned with --workdir.
+	// Previously: Only scanned current project's .orch/workspace/
+	// Now: Scans all unique project directories found in OpenCode sessions
+	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
+	wsCache := buildMultiProjectWorkspaceCache(projectDirs)
 
 	now := time.Now()
 	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
@@ -521,6 +648,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	// Add completed workspaces (those with SYNTHESIS.md or light-tier completions)
 	// Reuse cached workspace entries to avoid redundant directory reads
+	// Multi-project support: entries may come from different project workspace directories
 	if len(wsCache.workspaceEntries) > 0 {
 		for _, entry := range wsCache.workspaceEntries {
 			if !entry.IsDir() {
@@ -542,7 +670,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			workspacePath := filepath.Join(wsCache.workspaceDir, entry.Name())
+			// Use the lookup method for multi-project support
+			workspacePath := wsCache.lookupWorkspacePathByEntry(entry.Name())
 			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 			hasSynthesis := false
 

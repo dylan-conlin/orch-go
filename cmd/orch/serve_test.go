@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
 
 func TestHandleAgents(t *testing.T) {
@@ -428,5 +429,319 @@ func TestCheckWorkspaceSynthesis(t *testing.T) {
 	exists = checkWorkspaceSynthesis(tmpDir)
 	if exists {
 		t.Error("Expected checkWorkspaceSynthesis to return false for empty SYNTHESIS.md")
+	}
+}
+
+func TestExtractUniqueProjectDirs(t *testing.T) {
+	// Import the opencode package types inline
+	type testSession struct {
+		Directory string
+	}
+
+	tests := []struct {
+		name              string
+		currentProjectDir string
+		sessionDirs       []string
+		expectedCount     int
+	}{
+		{
+			name:              "empty sessions with current dir",
+			currentProjectDir: "/home/user/project1",
+			sessionDirs:       []string{},
+			expectedCount:     1, // just current dir
+		},
+		{
+			name:              "single session same as current",
+			currentProjectDir: "/home/user/project1",
+			sessionDirs:       []string{"/home/user/project1"},
+			expectedCount:     1, // deduplicated
+		},
+		{
+			name:              "multiple sessions different dirs",
+			currentProjectDir: "/home/user/project1",
+			sessionDirs:       []string{"/home/user/project2", "/home/user/project3"},
+			expectedCount:     3, // current + 2 others
+		},
+		{
+			name:              "duplicate session directories",
+			currentProjectDir: "/home/user/project1",
+			sessionDirs:       []string{"/home/user/project2", "/home/user/project2", "/home/user/project3"},
+			expectedCount:     3, // deduped
+		},
+		{
+			name:              "empty current dir",
+			currentProjectDir: "",
+			sessionDirs:       []string{"/home/user/project2", "/home/user/project3"},
+			expectedCount:     2,
+		},
+		{
+			name:              "empty session dir skipped",
+			currentProjectDir: "/home/user/project1",
+			sessionDirs:       []string{"", "/home/user/project2"},
+			expectedCount:     2, // empty is skipped
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock sessions - we need to use the actual type
+			sessions := make([]opencode.Session, len(tt.sessionDirs))
+			for i, dir := range tt.sessionDirs {
+				sessions[i] = opencode.Session{Directory: dir}
+			}
+
+			result := extractUniqueProjectDirs(sessions, tt.currentProjectDir)
+			if len(result) != tt.expectedCount {
+				t.Errorf("Expected %d project dirs, got %d: %v", tt.expectedCount, len(result), result)
+			}
+
+			// Verify current project dir is always first if provided
+			if tt.currentProjectDir != "" && len(result) > 0 {
+				if result[0] != filepath.Clean(tt.currentProjectDir) {
+					t.Errorf("Expected current project dir %q to be first, got %q", tt.currentProjectDir, result[0])
+				}
+			}
+		})
+	}
+}
+
+func TestBuildWorkspaceCache(t *testing.T) {
+	// Create a temporary project directory structure
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Create test workspaces with SPAWN_CONTEXT.md
+	testCases := []struct {
+		workspaceName string
+		beadsID       string
+		projectDir    string
+	}{
+		{
+			workspaceName: "og-feat-test1-26dec",
+			beadsID:       "orch-go-abc1",
+			projectDir:    "/home/user/orch-go",
+		},
+		{
+			workspaceName: "og-feat-test2-26dec",
+			beadsID:       "kb-cli-def2",
+			projectDir:    "/home/user/kb-cli",
+		},
+	}
+
+	for _, tc := range testCases {
+		wsPath := filepath.Join(workspaceDir, tc.workspaceName)
+		if err := os.MkdirAll(wsPath, 0755); err != nil {
+			t.Fatalf("Failed to create workspace %s: %v", tc.workspaceName, err)
+		}
+
+		spawnContext := fmt.Sprintf(`TASK: Test task
+
+You were spawned from beads issue: **%s**
+
+PROJECT_DIR: %s
+
+AUTHORITY: Standard
+`, tc.beadsID, tc.projectDir)
+		if err := os.WriteFile(filepath.Join(wsPath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("Failed to create SPAWN_CONTEXT.md for %s: %v", tc.workspaceName, err)
+		}
+	}
+
+	// Build the cache
+	cache := buildWorkspaceCache(tmpDir)
+
+	// Verify cache contents
+	if len(cache.beadsToWorkspace) != 2 {
+		t.Errorf("Expected 2 entries in beadsToWorkspace, got %d", len(cache.beadsToWorkspace))
+	}
+
+	// Check first workspace
+	if wsPath, ok := cache.beadsToWorkspace["orch-go-abc1"]; !ok {
+		t.Error("Expected orch-go-abc1 in beadsToWorkspace")
+	} else if !filepath.IsAbs(wsPath) {
+		t.Errorf("Expected absolute path for workspace, got %s", wsPath)
+	}
+
+	if projDir := cache.beadsToProjectDir["orch-go-abc1"]; projDir != "/home/user/orch-go" {
+		t.Errorf("Expected projectDir /home/user/orch-go, got %s", projDir)
+	}
+
+	// Check second workspace
+	if projDir := cache.beadsToProjectDir["kb-cli-def2"]; projDir != "/home/user/kb-cli" {
+		t.Errorf("Expected projectDir /home/user/kb-cli, got %s", projDir)
+	}
+
+	// Verify workspaceEntryToPath
+	if len(cache.workspaceEntryToPath) != 2 {
+		t.Errorf("Expected 2 entries in workspaceEntryToPath, got %d", len(cache.workspaceEntryToPath))
+	}
+}
+
+func TestBuildMultiProjectWorkspaceCache(t *testing.T) {
+	// Create two temporary project directories
+	tmpDir1 := t.TempDir()
+	tmpDir2 := t.TempDir()
+
+	// Create workspace structure for project 1
+	wsDir1 := filepath.Join(tmpDir1, ".orch", "workspace")
+	if err := os.MkdirAll(wsDir1, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir 1: %v", err)
+	}
+
+	ws1Path := filepath.Join(wsDir1, "og-feat-test1-26dec")
+	if err := os.MkdirAll(ws1Path, 0755); err != nil {
+		t.Fatalf("Failed to create workspace 1: %v", err)
+	}
+	spawnContext1 := `TASK: Test task 1
+
+You were spawned from beads issue: **proj1-abc1**
+
+PROJECT_DIR: /home/user/project1
+`
+	if err := os.WriteFile(filepath.Join(ws1Path, "SPAWN_CONTEXT.md"), []byte(spawnContext1), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md for ws1: %v", err)
+	}
+
+	// Create workspace structure for project 2
+	wsDir2 := filepath.Join(tmpDir2, ".orch", "workspace")
+	if err := os.MkdirAll(wsDir2, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir 2: %v", err)
+	}
+
+	ws2Path := filepath.Join(wsDir2, "og-feat-test2-26dec")
+	if err := os.MkdirAll(ws2Path, 0755); err != nil {
+		t.Fatalf("Failed to create workspace 2: %v", err)
+	}
+	spawnContext2 := `TASK: Test task 2
+
+You were spawned from beads issue: **proj2-def2**
+
+PROJECT_DIR: /home/user/project2
+`
+	if err := os.WriteFile(filepath.Join(ws2Path, "SPAWN_CONTEXT.md"), []byte(spawnContext2), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md for ws2: %v", err)
+	}
+
+	// Build multi-project cache
+	projectDirs := []string{tmpDir1, tmpDir2}
+	cache := buildMultiProjectWorkspaceCache(projectDirs)
+
+	// Verify merged cache contents
+	if len(cache.beadsToWorkspace) != 2 {
+		t.Errorf("Expected 2 entries in merged beadsToWorkspace, got %d", len(cache.beadsToWorkspace))
+	}
+
+	// Check workspace from project 1
+	if _, ok := cache.beadsToWorkspace["proj1-abc1"]; !ok {
+		t.Error("Expected proj1-abc1 in merged beadsToWorkspace")
+	}
+
+	// Check workspace from project 2
+	if _, ok := cache.beadsToWorkspace["proj2-def2"]; !ok {
+		t.Error("Expected proj2-def2 in merged beadsToWorkspace")
+	}
+
+	// Verify both project dirs are in the cache
+	if cache.beadsToProjectDir["proj1-abc1"] != "/home/user/project1" {
+		t.Errorf("Expected projectDir /home/user/project1, got %s", cache.beadsToProjectDir["proj1-abc1"])
+	}
+	if cache.beadsToProjectDir["proj2-def2"] != "/home/user/project2" {
+		t.Errorf("Expected projectDir /home/user/project2, got %s", cache.beadsToProjectDir["proj2-def2"])
+	}
+
+	// Verify workspace entries are merged
+	if len(cache.workspaceEntries) != 2 {
+		t.Errorf("Expected 2 workspace entries, got %d", len(cache.workspaceEntries))
+	}
+
+	// Verify workspaceEntryToPath is merged
+	if len(cache.workspaceEntryToPath) != 2 {
+		t.Errorf("Expected 2 entries in workspaceEntryToPath, got %d", len(cache.workspaceEntryToPath))
+	}
+}
+
+func TestBuildMultiProjectWorkspaceCacheSingleProject(t *testing.T) {
+	// Create a temporary project directory
+	tmpDir := t.TempDir()
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	wsPath := filepath.Join(wsDir, "og-feat-test-26dec")
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	spawnContext := `TASK: Test task
+
+You were spawned from beads issue: **proj-abc1**
+
+PROJECT_DIR: /home/user/project
+`
+	if err := os.WriteFile(filepath.Join(wsPath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+	}
+
+	// Build multi-project cache with single project (should use optimized path)
+	projectDirs := []string{tmpDir}
+	cache := buildMultiProjectWorkspaceCache(projectDirs)
+
+	// Should still work correctly
+	if len(cache.beadsToWorkspace) != 1 {
+		t.Errorf("Expected 1 entry in beadsToWorkspace, got %d", len(cache.beadsToWorkspace))
+	}
+	if _, ok := cache.beadsToWorkspace["proj-abc1"]; !ok {
+		t.Error("Expected proj-abc1 in beadsToWorkspace")
+	}
+}
+
+func TestBuildMultiProjectWorkspaceCacheEmpty(t *testing.T) {
+	// Build cache with empty project dirs
+	cache := buildMultiProjectWorkspaceCache([]string{})
+
+	// Should return empty cache, not nil
+	if cache == nil {
+		t.Fatal("Expected non-nil cache")
+	}
+	if cache.beadsToWorkspace == nil {
+		t.Error("Expected initialized beadsToWorkspace map")
+	}
+	if cache.beadsToProjectDir == nil {
+		t.Error("Expected initialized beadsToProjectDir map")
+	}
+}
+
+func TestWorkspaceCacheLookupMethods(t *testing.T) {
+	cache := &workspaceCache{
+		beadsToWorkspace:     map[string]string{"test-id": "/path/to/workspace"},
+		beadsToProjectDir:    map[string]string{"test-id": "/path/to/project"},
+		workspaceDir:         "/default/workspace/dir",
+		workspaceEntryToPath: map[string]string{"og-feat-test": "/specific/path/og-feat-test"},
+	}
+
+	// Test lookupWorkspace
+	if ws := cache.lookupWorkspace("test-id"); ws != "/path/to/workspace" {
+		t.Errorf("Expected /path/to/workspace, got %s", ws)
+	}
+	if ws := cache.lookupWorkspace("nonexistent"); ws != "" {
+		t.Errorf("Expected empty string for nonexistent beads ID, got %s", ws)
+	}
+
+	// Test lookupProjectDir
+	if pd := cache.lookupProjectDir("test-id"); pd != "/path/to/project" {
+		t.Errorf("Expected /path/to/project, got %s", pd)
+	}
+
+	// Test lookupWorkspacePathByEntry - should use map first
+	if path := cache.lookupWorkspacePathByEntry("og-feat-test"); path != "/specific/path/og-feat-test" {
+		t.Errorf("Expected /specific/path/og-feat-test, got %s", path)
+	}
+
+	// Test lookupWorkspacePathByEntry - should fallback to workspaceDir
+	if path := cache.lookupWorkspacePathByEntry("unknown-entry"); path != "/default/workspace/dir/unknown-entry" {
+		t.Errorf("Expected /default/workspace/dir/unknown-entry, got %s", path)
 	}
 }
