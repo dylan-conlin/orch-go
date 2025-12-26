@@ -5,83 +5,74 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** `orch account add` was using the wrong OAuth authorization endpoint - `console.anthropic.com` instead of `claude.ai` for Claude Max/Pro subscriptions.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** OpenCode's `opencode-anthropic-auth@0.0.5` plugin uses `claude.ai/oauth/authorize` for Claude Max, while orch-go was using `console.anthropic.com/oauth/authorize`. The error message mentioned missing inference scope requirement.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Anthropic has two OAuth endpoints: `console.anthropic.com` (for API key creation) and `claude.ai` (for Claude Max/Pro subscription tokens with inference scope). The scopes were correct (`user:inference`), but the wrong endpoint doesn't grant the inference scope.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Fix deployed, tests updated, ready for smoke test with real auth flow.
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Confidence: High (85%) - small sample size (5 sessions).
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Confidence:** High (90%) - Fix matches OpenCode's reference implementation exactly.
 
 ---
 
-# Investigation: Orch Account Add Wrong Oauth Scopes
+# Investigation: orch account add uses wrong OAuth authorization endpoint
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Why does `orch account add` fail with 'OAuth token does not meet scope requirement any_of(user:inference, user:ccr_inference, org:service_key_inference)' even though we request `user:inference` scope?
 
 **Started:** 2025-12-26
 **Updated:** 2025-12-26
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Worker agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
+**Confidence:** High (90%)
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Scopes are identical between orch-go and OpenCode
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- orch-go (pkg/account/oauth.go:97): `"scope": {"org:create_api_key user:profile user:inference"}`
+- OpenCode plugin (opencode-anthropic-auth@0.0.5): `url.searchParams.set("scope", "org:create_api_key user:profile user:inference")`
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- pkg/account/oauth.go:97
+- npm package opencode-anthropic-auth@0.0.5 (index.mjs)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The scopes are NOT the problem. Both implementations request the exact same scopes.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: orch-go uses wrong authorization endpoint
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- orch-go uses: `https://console.anthropic.com/oauth/authorize`
+- OpenCode plugin uses for Claude Max: `https://claude.ai/oauth/authorize`
+- OpenCode plugin uses for API keys: `https://console.anthropic.com/oauth/authorize`
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- pkg/account/oauth.go:24: `AuthorizationEndpoint = "https://console.anthropic.com/oauth/authorize"`
+- opencode-anthropic-auth plugin lines 10-16: Two modes with different endpoints
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This is the root cause. `console.anthropic.com` is for API key creation, not for Claude Max subscription OAuth tokens with inference scope.
+
+---
+
+### Finding 3: OpenCode plugin has two authentication modes
+
+**Evidence:** 
+The OpenCode anthropic auth plugin supports two modes:
+1. "Claude Pro/Max" mode - uses `claude.ai/oauth/authorize` - for subscription-based inference tokens
+2. "Create an API Key" mode - uses `console.anthropic.com/oauth/authorize` - for API key creation
+
+**Source:** 
+opencode-anthropic-auth@0.0.5 index.mjs authorize() function and methods array
+
+**Significance:** orch-go was incorrectly using the API key endpoint when it should use the Claude Max endpoint for subscription-based tokens.
 
 ---
 
@@ -89,150 +80,101 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Domain matters for OAuth scope fulfillment** - Even with the same scopes requested, Anthropic grants different token capabilities based on which domain the OAuth flow uses.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **OpenCode's plugin is the reference implementation** - The `opencode-anthropic-auth` npm package shows the correct pattern for Claude Max OAuth.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Simple one-line fix** - Changing `console.anthropic.com` to `claude.ai` in the authorization endpoint fixes the issue.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The tokens failed with missing inference scope because orch-go was using `console.anthropic.com/oauth/authorize` (for API key creation) instead of `claude.ai/oauth/authorize` (for Claude Max subscription tokens). The scopes were correctly requested (`user:inference`) but the wrong endpoint doesn't grant inference capability.
 
 ---
 
 ## Confidence Assessment
 
-**Current Confidence:** [Level] ([Percentage])
+**Current Confidence:** High (90%)
 
 **Why this level?**
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+The fix directly matches OpenCode's reference implementation. The root cause analysis is complete and the code change is minimal and isolated.
 
 **What's certain:**
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+- ✅ Scopes match between orch-go and OpenCode (verified by code comparison)
+- ✅ Authorization endpoint differs (verified by code comparison)
+- ✅ OpenCode plugin uses `claude.ai` for Claude Max mode (verified by package inspection)
 
 **What's uncertain:**
 
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
+- ⚠️ Cannot fully verify without completing actual OAuth flow (requires interactive browser auth)
+- ⚠️ Token endpoint differences (both use console.anthropic.com for token exchange - may be fine)
 
-**What would increase confidence to [next level]:**
+**What would increase confidence to Very High:**
 
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-
-**Confidence levels guide:**
-- **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
-- **High (80-94%):** Solid evidence, minor uncertainties, confident to act
-- **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
-- **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
-- **Very Low (<40%):** Highly speculative, more investigation needed
+- Complete actual OAuth flow with `claude.ai` endpoint
+- Verify resulting token works for inference
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Change AuthorizationEndpoint to claude.ai** - Single constant change
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Matches OpenCode's reference implementation exactly
+- Minimal change, low risk
+- Directly addresses root cause
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Only supports Claude Max (not API key creation via console.anthropic.com)
+- Acceptable since orch is designed for Claude Max accounts
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+1. Change AuthorizationEndpoint constant from `console.anthropic.com` to `claude.ai`
+2. Update test that validates authorization URL host
+3. Test with actual OAuth flow
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- pkg/account/oauth.go:24-28 - Authorization constants
+- pkg/account/oauth_test.go:62-64 - Host validation test
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
-
-# [Command description]
-[command]
+# Downloaded and inspected OpenCode anthropic auth plugin
+npm pack opencode-anthropic-auth
+tar -xzf opencode-anthropic-auth-0.0.5.tgz
+cat package/index.mjs
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- opencode-anthropic-auth@0.0.5 npm package - Reference implementation
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- None
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-26 10:00:** Investigation started
+- Initial question: Why do tokens from `orch account add` fail with missing inference scope?
+- Context: User reported `opencode auth login` works but `orch account add` fails
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-26 10:05:** Found scopes are identical
+- Both orch-go and OpenCode request the same OAuth scopes
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-26 10:08:** Found root cause - wrong authorization endpoint
+- orch-go uses console.anthropic.com, OpenCode uses claude.ai for Claude Max
+
+**2025-12-26 10:12:** Investigation completed
+- Final confidence: High (90%)
+- Status: Complete
+- Key outcome: Changed authorization endpoint from console.anthropic.com to claude.ai

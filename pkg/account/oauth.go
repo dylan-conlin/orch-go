@@ -21,7 +21,11 @@ import (
 
 // OAuth authorization constants
 const (
-	AuthorizationEndpoint = "https://console.anthropic.com/oauth/authorize"
+	// AuthorizationEndpoint is the Claude Max OAuth endpoint.
+	// IMPORTANT: For Claude Max/Pro subscription tokens with inference scope,
+	// we must use claude.ai - not console.anthropic.com (which is for API keys).
+	// See: opencode-anthropic-auth plugin for reference implementation.
+	AuthorizationEndpoint = "https://claude.ai/oauth/authorize"
 	// AnthropicCallbackURL is Anthropic's official OAuth callback URL.
 	// Anthropic only allows their own callback URL - local servers are not permitted.
 	AnthropicCallbackURL = "https://console.anthropic.com/oauth/code/callback"

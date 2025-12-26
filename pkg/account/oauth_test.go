@@ -59,8 +59,10 @@ func TestBuildAuthorizationURL(t *testing.T) {
 		t.Fatalf("buildAuthorizationURL() returned invalid URL: %v", err)
 	}
 
-	if parsed.Host != "console.anthropic.com" {
-		t.Errorf("Host = %s, want console.anthropic.com", parsed.Host)
+	// Authorization endpoint should be claude.ai (for Claude Max/Pro subscription OAuth)
+	// NOT console.anthropic.com (which is for API key creation)
+	if parsed.Host != "claude.ai" {
+		t.Errorf("Host = %s, want claude.ai", parsed.Host)
 	}
 
 	if parsed.Path != "/oauth/authorize" {
