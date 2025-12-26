@@ -158,10 +158,16 @@ func GatherRequiredContext(requires *RequiresContext, task, beadsID, projectDir 
 
 // gatherKBContext runs kb context query with task keywords.
 // Returns formatted context string or empty string if no matches.
+// Also performs gap analysis and includes gap summary in the context if significant.
 func gatherKBContext(task string) string {
 	// Extract keywords from task description
 	keywords := ExtractKeywords(task, 3)
 	if keywords == "" {
+		// Perform gap analysis even when no keywords extracted
+		gapAnalysis := AnalyzeGaps(nil, task)
+		if gapAnalysis.ShouldWarnAboutGaps() {
+			fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
+		}
 		return ""
 	}
 
@@ -169,18 +175,29 @@ func gatherKBContext(task string) string {
 	result, err := RunKBContextCheck(keywords)
 	if err != nil || result == nil || !result.HasMatches {
 		// Try with broader search (single keyword)
-		keywords = ExtractKeywords(task, 1)
-		if keywords != "" {
-			result, err = RunKBContextCheck(keywords)
-			if err != nil || result == nil || !result.HasMatches {
-				return ""
-			}
-		} else {
-			return ""
+		broadKeywords := ExtractKeywords(task, 1)
+		if broadKeywords != "" && broadKeywords != keywords {
+			result, err = RunKBContextCheck(broadKeywords)
 		}
 	}
 
-	return FormatContextForSpawn(result)
+	// Perform gap analysis
+	gapAnalysis := AnalyzeGaps(result, keywords)
+	if gapAnalysis.ShouldWarnAboutGaps() {
+		fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
+	}
+
+	if result == nil || !result.HasMatches {
+		return ""
+	}
+
+	// Format context with optional gap summary
+	contextContent := FormatContextForSpawn(result)
+	if gapSummary := gapAnalysis.FormatGapSummary(); gapSummary != "" {
+		contextContent = gapSummary + "\n\n" + contextContent
+	}
+
+	return contextContent
 }
 
 // beadsIssue represents minimal issue data from beads.

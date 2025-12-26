@@ -3863,11 +3863,17 @@ func dirExists(path string) bool {
 
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
 // Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
+// Also performs gap analysis and displays warnings for sparse or missing context.
 func runPreSpawnKBCheck(task string) string {
 	// Extract keywords from task description
 	// Try with 3 keywords first (more specific), fall back to 1 keyword (more broad)
 	keywords := spawn.ExtractKeywords(task, 3)
 	if keywords == "" {
+		// Perform gap analysis even when no keywords extracted
+		gapAnalysis := spawn.AnalyzeGaps(nil, task)
+		if gapAnalysis.ShouldWarnAboutGaps() {
+			fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
+		}
 		return ""
 	}
 
@@ -3893,6 +3899,12 @@ func runPreSpawnKBCheck(task string) string {
 		}
 	}
 
+	// Perform gap analysis to detect context gaps
+	gapAnalysis := spawn.AnalyzeGaps(result, keywords)
+	if gapAnalysis.ShouldWarnAboutGaps() {
+		fmt.Fprintf(os.Stderr, "\n%s\n", gapAnalysis.FormatGapWarning())
+	}
+
 	if result == nil || !result.HasMatches {
 		fmt.Println("No prior knowledge found.")
 		return ""
@@ -3906,5 +3918,12 @@ func runPreSpawnKBCheck(task string) string {
 
 	// Format context for inclusion in SPAWN_CONTEXT.md
 	fmt.Println("Including prior knowledge in spawn context.")
-	return spawn.FormatContextForSpawn(result)
+
+	// Include gap summary in spawn context if there are significant gaps
+	contextContent := spawn.FormatContextForSpawn(result)
+	if gapSummary := gapAnalysis.FormatGapSummary(); gapSummary != "" {
+		contextContent = gapSummary + "\n\n" + contextContent
+	}
+
+	return contextContent
 }
