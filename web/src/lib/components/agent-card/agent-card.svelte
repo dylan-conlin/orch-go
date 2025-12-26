@@ -341,30 +341,13 @@
 		</div>
 	{/if}
 
-	<!-- Synthesis for completed agents - always reserve space to prevent height jitter -->
-	{#if agent.status === 'completed'}
+	<!-- Synthesis outcome badge for completed agents (only if outcome exists) -->
+	<!-- Note: TLDR/close_reason already shown in title - no need to duplicate -->
+	{#if agent.status === 'completed' && agent.synthesis?.outcome}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if agent.synthesis?.tldr || agent.close_reason}
-				{#if agent.synthesis?.tldr}
-					<p class="text-[10px] leading-tight text-muted-foreground">
-						{agent.synthesis.tldr}
-					</p>
-				{:else if agent.close_reason}
-					<p class="text-[10px] leading-tight text-muted-foreground">
-						{agent.close_reason}
-					</p>
-				{/if}
-				{#if agent.synthesis?.outcome}
-					<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="mt-1 h-4 px-1 text-[10px]">
-						{agent.synthesis.outcome}
-					</Badge>
-				{/if}
-			{:else}
-				<!-- Placeholder to maintain consistent card height -->
-				<p class="text-[10px] leading-tight text-muted-foreground/50">
-					No synthesis available
-				</p>
-			{/if}
+			<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+				{agent.synthesis.outcome}
+			</Badge>
 		</div>
 	{/if}
 
