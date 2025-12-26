@@ -252,6 +252,79 @@ Use bd comment for updates.`,
 	}
 }
 
+// TestExtractProjectDirFromWorkspace verifies extracting PROJECT_DIR from SPAWN_CONTEXT.md
+func TestExtractProjectDirFromWorkspace(t *testing.T) {
+	tests := []struct {
+		name           string
+		contextContent string
+		wantProjectDir string
+	}{
+		{
+			name: "standard PROJECT_DIR format",
+			contextContent: `TASK: Some task
+
+PROJECT_DIR: /Users/dylan/Documents/personal/orch-go
+
+SESSION SCOPE: Medium
+`,
+			wantProjectDir: "/Users/dylan/Documents/personal/orch-go",
+		},
+		{
+			name: "cross-project skillc spawn",
+			contextContent: `TASK: Implement feature
+
+PROJECT_DIR: /Users/dylan/orch-knowledge
+
+AUTHORITY:
+...
+`,
+			wantProjectDir: "/Users/dylan/orch-knowledge",
+		},
+		{
+			name: "no PROJECT_DIR in file",
+			contextContent: `TASK: Some task
+
+SESSION SCOPE: Small
+`,
+			wantProjectDir: "",
+		},
+		{
+			name: "PROJECT_DIR with extra whitespace",
+			contextContent: `TASK: Some task
+
+PROJECT_DIR:   /path/with/spaces  
+
+SESSION SCOPE: Medium
+`,
+			wantProjectDir: "/path/with/spaces",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp workspace
+			tmpDir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpDir, "SPAWN_CONTEXT.md"), []byte(tt.contextContent), 0644); err != nil {
+				t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+			}
+
+			got := extractProjectDirFromWorkspace(tmpDir)
+			if got != tt.wantProjectDir {
+				t.Errorf("extractProjectDirFromWorkspace() = %q, want %q", got, tt.wantProjectDir)
+			}
+		})
+	}
+}
+
+// TestExtractProjectDirFromWorkspace_NoFile verifies behavior when no SPAWN_CONTEXT.md exists
+func TestExtractProjectDirFromWorkspace_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	got := extractProjectDirFromWorkspace(tmpDir)
+	if got != "" {
+		t.Errorf("extractProjectDirFromWorkspace() = %q, want empty string for missing file", got)
+	}
+}
+
 // TestCountBulletPoints verifies bullet point counting.
 func TestCountBulletPoints(t *testing.T) {
 	content := `### Files Created

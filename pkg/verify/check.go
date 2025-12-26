@@ -2,6 +2,7 @@
 package verify
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,8 +37,16 @@ type PhaseStatus struct {
 // GetComments retrieves comments for a beads issue.
 // It uses the beads RPC client when available, falling back to the bd CLI.
 func GetComments(beadsID string) ([]Comment, error) {
+	return GetCommentsWithDir(beadsID, "")
+}
+
+// GetCommentsWithDir retrieves comments for a beads issue from a specific project directory.
+// This is used for cross-project agent visibility where the beads issue is in a different
+// project than the current working directory.
+// If projectDir is empty, uses the current working directory.
+func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
+	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
 		client := beads.NewClient(socketPath)
 		if err := client.Connect(); err == nil {
@@ -50,8 +59,27 @@ func GetComments(beadsID string) ([]Comment, error) {
 		}
 	}
 
-	// Fallback to CLI
-	return beads.FallbackComments(beadsID)
+	// Fallback to CLI with project directory
+	return FallbackCommentsWithDir(beadsID, projectDir)
+}
+
+// FallbackCommentsWithDir retrieves comments via bd CLI in a specific directory.
+func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
+	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	if projectDir != "" {
+		cmd.Dir = projectDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bd comments failed: %w", err)
+	}
+
+	var comments []Comment
+	if err := json.Unmarshal(output, &comments); err != nil {
+		return nil, fmt.Errorf("failed to parse bd comments output: %w", err)
+	}
+
+	return comments, nil
 }
 
 // ParsePhaseFromComments extracts the latest Phase status from comments.
@@ -699,6 +727,56 @@ func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 		comments, err := beads.FallbackComments(beadsID)
 		if err == nil {
 			commentMap[beadsID] = comments
+		}
+	}
+
+	return commentMap
+}
+
+// GetCommentsBatchWithProjectDirs fetches comments for multiple issues, each with its own project directory.
+// The projectDirs map should contain beadsID -> projectDir mappings.
+// For beads IDs not in projectDirs, the current working directory is used.
+// Returns a map from beadsID to comments. Errors are silently skipped.
+// This is used for cross-project agent visibility where agents may be from different projects.
+func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]string) map[string][]Comment {
+	if len(beadsIDs) == 0 {
+		return make(map[string][]Comment)
+	}
+
+	commentMap := make(map[string][]Comment, len(beadsIDs))
+
+	// Group beads IDs by project directory for efficient RPC client reuse
+	byProjectDir := make(map[string][]string)
+	for _, beadsID := range beadsIDs {
+		dir := projectDirs[beadsID]
+		byProjectDir[dir] = append(byProjectDir[dir], beadsID)
+	}
+
+	// Process each project directory group
+	for projectDir, ids := range byProjectDir {
+		// Try RPC client first
+		socketPath, err := beads.FindSocketPath(projectDir)
+		if err == nil {
+			client := beads.NewClient(socketPath)
+			if err := client.Connect(); err == nil {
+				// Fetch comments sequentially via RPC
+				for _, beadsID := range ids {
+					comments, err := client.Comments(beadsID)
+					if err == nil {
+						commentMap[beadsID] = comments
+					}
+				}
+				client.Close()
+				continue
+			}
+		}
+
+		// Fallback to CLI for each issue in this project
+		for _, beadsID := range ids {
+			comments, err := FallbackCommentsWithDir(beadsID, projectDir)
+			if err == nil {
+				commentMap[beadsID] = comments
+			}
 		}
 	}
 

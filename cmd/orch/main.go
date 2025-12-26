@@ -2097,6 +2097,12 @@ func runStatus(serverURL string) error {
 	// 3. Collect all beads IDs we need comments for
 	var beadsIDsToFetch []string
 
+	// Track project directories for cross-project agents (beadsID -> projectDir)
+	beadsProjectDirs := make(map[string]string)
+
+	// Get current project's workspace directory for workspace lookups
+	projectDir, _ := os.Getwd()
+
 	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
 	type tmuxAgent struct {
 		beadsID string
@@ -2173,8 +2179,19 @@ func runStatus(serverURL string) error {
 		seenBeadsIDs[beadsID] = true
 	}
 
-	// 4. Batch fetch all comments in parallel (the slow part, but now parallelized)
-	commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
+	// Look up workspaces to get project directories for cross-project agents
+	for _, beadsID := range beadsIDsToFetch {
+		workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
+		if workspacePath != "" {
+			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
+			if agentProjectDir != "" && agentProjectDir != projectDir {
+				beadsProjectDirs[beadsID] = agentProjectDir
+			}
+		}
+	}
+
+	// 4. Batch fetch all comments with project-aware lookup for cross-project agents
+	commentsMap := verify.GetCommentsBatchWithProjectDirs(beadsIDsToFetch, beadsProjectDirs)
 
 	// 5. Batch fetch issue details to check closed status
 	// This also provides task info for closed issues (not returned by ListOpenIssues)
