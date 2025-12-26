@@ -187,7 +187,11 @@ func TestGenerateHandoffMarkdown(t *testing.T) {
 		PendingIssues: []PendingIssue{
 			{ID: "issue-1", Title: "Test issue", Priority: "P0"},
 		},
+		RecentWork: []RecentWorkItem{
+			{Type: "completed", Description: "[test-abc] Fixed auth bug"},
+		},
 		NextPriority: []string{"Check test-123"},
+		GitStats:     &GitStats{CommitCount: 5, LinesAdded: 100, LinesRemoved: 20, Summary: "5 commits, +100/-20 lines"},
 		DEKN:         &DEKNSummary{}, // Empty DEKN for prompts
 	}
 
@@ -196,21 +200,25 @@ func TestGenerateHandoffMarkdown(t *testing.T) {
 		t.Fatalf("generateHandoffMarkdown() error = %v", err)
 	}
 
-	// Verify key sections are present
+	// Verify key sections are present (updated for new template structure)
 	sections := []string{
 		"# Session Handoff - 21 Dec 2025",
 		"## TLDR",
 		"Test session with active agents.",
 		"## D.E.K.N. Summary",
-		"**Delta:**",
-		"**Evidence:**",
-		"**Knowledge:**",
-		"**Next:**",
+		"### Delta",
+		"### Evidence",
+		"### Knowledge",
+		"### Next",
 		"## Agents Still Running",
 		"**test-123**",
 		"## Next Session Priorities",
 		"Check test-123",
 		"## Quick Commands",
+		// Verify auto-populated content
+		"[test-abc] Fixed auth bug", // Delta from RecentWork
+		"5 commits, +100/-20 lines", // Evidence from GitStats
+		"SYNTHESIS REQUIRED",        // Prompts for Knowledge and Next
 	}
 
 	for _, section := range sections {
@@ -241,12 +249,12 @@ func TestGenerateHandoffMarkdownWithDEKN(t *testing.T) {
 		t.Fatalf("generateHandoffMarkdown() error = %v", err)
 	}
 
-	// Verify D.E.K.N. content is rendered
+	// Verify D.E.K.N. content is rendered (updated for new template structure)
 	deknContent := []string{
-		"**Delta:** Built authentication system",
-		"**Evidence:** 15 commits, all tests passing",
-		"**Knowledge:** OAuth requires refresh tokens",
-		"**Next:** Integrate with user service",
+		"Built authentication system",
+		"15 commits, all tests passing",
+		"OAuth requires refresh tokens",
+		"Integrate with user service",
 	}
 
 	for _, content := range deknContent {
@@ -255,12 +263,10 @@ func TestGenerateHandoffMarkdownWithDEKN(t *testing.T) {
 		}
 	}
 
-	// Verify placeholder text is NOT present when content is filled
+	// Verify placeholder/synthesis prompts are NOT present when content is filled
 	placeholders := []string{
-		"describe the transformation",
-		"Proof of work",
-		"What was learned",
-		"Recommended next",
+		"SYNTHESIS REQUIRED",
+		"FILL IN",
 	}
 
 	for _, placeholder := range placeholders {
@@ -461,6 +467,8 @@ func TestIsDEKNPlaceholder(t *testing.T) {
 }
 
 // TestValidateDEKN verifies D.E.K.N. validation logic.
+// Note: The validation now only requires synthesis sections (Knowledge, Next).
+// Delta and Evidence can be auto-populated from git stats and recent work.
 func TestValidateDEKN(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -475,7 +483,7 @@ func TestValidateDEKN(t *testing.T) {
 			errContains: "D.E.K.N. summary is required",
 		},
 		{
-			name: "all empty",
+			name: "all empty - only synthesis sections required",
 			dekn: &DEKNSummary{
 				Delta:     "",
 				Evidence:  "",
@@ -483,10 +491,10 @@ func TestValidateDEKN(t *testing.T) {
 				Next:      "",
 			},
 			expectError: true,
-			errContains: "Delta, Evidence, Knowledge, Next",
+			errContains: "Knowledge, Next",
 		},
 		{
-			name: "all placeholders",
+			name: "all placeholders - only synthesis sections required",
 			dekn: &DEKNSummary{
 				Delta:     "[What changed]",
 				Evidence:  "[Proof of work]",
@@ -494,29 +502,49 @@ func TestValidateDEKN(t *testing.T) {
 				Next:      "[Recommended next]",
 			},
 			expectError: true,
-			errContains: "Delta, Evidence, Knowledge, Next",
+			errContains: "Knowledge, Next",
 		},
 		{
-			name: "partial - missing Delta",
+			name: "partial - missing Delta is OK (auto-populated)",
 			dekn: &DEKNSummary{
 				Delta:     "",
 				Evidence:  "5 commits, tests passing",
 				Knowledge: "Learned about caching",
 				Next:      "Deploy to production",
 			},
-			expectError: true,
-			errContains: "Delta",
+			expectError: false, // Delta not required
 		},
 		{
-			name: "partial - missing Evidence",
+			name: "partial - missing Evidence is OK (auto-populated)",
 			dekn: &DEKNSummary{
 				Delta:     "Built feature X",
 				Evidence:  "[TODO]",
 				Knowledge: "Learned about caching",
 				Next:      "Deploy to production",
 			},
+			expectError: false, // Evidence not required
+		},
+		{
+			name: "partial - missing Knowledge is NOT OK",
+			dekn: &DEKNSummary{
+				Delta:     "Built feature X",
+				Evidence:  "5 commits",
+				Knowledge: "",
+				Next:      "Deploy to production",
+			},
 			expectError: true,
-			errContains: "Evidence",
+			errContains: "Knowledge",
+		},
+		{
+			name: "partial - missing Next is NOT OK",
+			dekn: &DEKNSummary{
+				Delta:     "Built feature X",
+				Evidence:  "5 commits",
+				Knowledge: "Learned about caching",
+				Next:      "",
+			},
+			expectError: true,
+			errContains: "Next",
 		},
 		{
 			name: "all filled with actual content",
@@ -529,10 +557,10 @@ func TestValidateDEKN(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "minimal but valid content",
+			name: "minimal but valid - only synthesis sections needed",
 			dekn: &DEKNSummary{
-				Delta:     "Fixed bug",
-				Evidence:  "1 commit",
+				Delta:     "", // OK - auto-populated
+				Evidence:  "", // OK - auto-populated
 				Knowledge: "Edge case in parser",
 				Next:      "Monitor errors",
 			},
@@ -660,6 +688,88 @@ func TestParseBdReadyOutput(t *testing.T) {
 	// Check second issue (has colons in title)
 	if issues[1].ID != "orch-go-36b" {
 		t.Errorf("Expected second issue ID 'orch-go-36b', got %q", issues[1].ID)
+	}
+}
+
+// TestGitStatsStructure verifies GitStats initialization.
+func TestGitStatsStructure(t *testing.T) {
+	stats := &GitStats{
+		CommitCount:  5,
+		LinesAdded:   100,
+		LinesRemoved: 20,
+		Summary:      "5 commits, +100/-20 lines",
+	}
+
+	if stats.CommitCount != 5 {
+		t.Errorf("Expected CommitCount 5, got %d", stats.CommitCount)
+	}
+	if stats.LinesAdded != 100 {
+		t.Errorf("Expected LinesAdded 100, got %d", stats.LinesAdded)
+	}
+	if stats.LinesRemoved != 20 {
+		t.Errorf("Expected LinesRemoved 20, got %d", stats.LinesRemoved)
+	}
+	if stats.Summary != "5 commits, +100/-20 lines" {
+		t.Errorf("Expected Summary '5 commits, +100/-20 lines', got %q", stats.Summary)
+	}
+}
+
+// TestParseGitDiffSummary verifies parsing of git diff summary output.
+func TestParseGitDiffSummary(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantAdded   int
+		wantRemoved int
+	}{
+		{
+			name:        "standard format",
+			input:       " 10 files changed, 500 insertions(+), 200 deletions(-)",
+			wantAdded:   500,
+			wantRemoved: 200,
+		},
+		{
+			name:        "only insertions",
+			input:       " 5 files changed, 100 insertions(+)",
+			wantAdded:   100,
+			wantRemoved: 0,
+		},
+		{
+			name:        "only deletions",
+			input:       " 3 files changed, 50 deletions(-)",
+			wantAdded:   0,
+			wantRemoved: 50,
+		},
+		{
+			name:        "singular insertion",
+			input:       " 1 file changed, 1 insertion(+)",
+			wantAdded:   1,
+			wantRemoved: 0,
+		},
+		{
+			name:        "singular deletion",
+			input:       " 1 file changed, 1 deletion(-)",
+			wantAdded:   0,
+			wantRemoved: 1,
+		},
+		{
+			name:        "empty string",
+			input:       "",
+			wantAdded:   0,
+			wantRemoved: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			added, removed := parseGitDiffSummary(tt.input)
+			if added != tt.wantAdded {
+				t.Errorf("parseGitDiffSummary() added = %d, want %d", added, tt.wantAdded)
+			}
+			if removed != tt.wantRemoved {
+				t.Errorf("parseGitDiffSummary() removed = %d, want %d", removed, tt.wantRemoved)
+			}
+		})
 	}
 }
 

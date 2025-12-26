@@ -72,8 +72,11 @@ type HandoffData struct {
 	LocalState    *LocalStateInfo  `json:"local_state,omitempty"`
 	NextPriority  []string         `json:"next_priorities"`
 
-	// D.E.K.N. sections - human-authored session summary
+	// D.E.K.N. sections - hybrid auto-generated + human-authored
 	DEKN *DEKNSummary `json:"dekn,omitempty"`
+
+	// GitStats for auto-populating Evidence
+	GitStats *GitStats `json:"git_stats,omitempty"`
 }
 
 // DEKNSummary contains the Delta, Evidence, Knowledge, Next sections.
@@ -120,6 +123,14 @@ type LocalStateInfo struct {
 	HasUncommitted bool   `json:"has_uncommitted"`
 	Branch         string `json:"branch,omitempty"`
 	Summary        string `json:"summary,omitempty"`
+}
+
+// GitStats contains git statistics for the session.
+type GitStats struct {
+	CommitCount  int    `json:"commit_count"`
+	LinesAdded   int    `json:"lines_added"`
+	LinesRemoved int    `json:"lines_removed"`
+	Summary      string `json:"summary"` // Human-readable summary
 }
 
 func runHandoff() error {
@@ -187,8 +198,9 @@ func runHandoff() error {
 	return nil
 }
 
-// validateDEKN validates that D.E.K.N. sections are filled in with actual content.
-// Returns an error if any section is empty or still contains placeholder text.
+// validateDEKN validates that D.E.K.N. synthesis sections are filled in.
+// Only gates on Knowledge and Next (synthesis sections) - Delta and Evidence can be auto-populated.
+// Returns an error if synthesis sections are empty or still contain placeholder text.
 func validateDEKN(dekn *DEKNSummary) error {
 	if dekn == nil {
 		return fmt.Errorf("D.E.K.N. summary is required when writing to file")
@@ -196,13 +208,8 @@ func validateDEKN(dekn *DEKNSummary) error {
 
 	var missing []string
 
-	// Check each field for empty or placeholder content
-	if isDEKNPlaceholder(dekn.Delta) {
-		missing = append(missing, "Delta")
-	}
-	if isDEKNPlaceholder(dekn.Evidence) {
-		missing = append(missing, "Evidence")
-	}
+	// Only require synthesis sections (Knowledge and Next)
+	// Delta and Evidence can be auto-populated from git stats and recent work
 	if isDEKNPlaceholder(dekn.Knowledge) {
 		missing = append(missing, "Knowledge")
 	}
@@ -211,7 +218,7 @@ func validateDEKN(dekn *DEKNSummary) error {
 	}
 
 	if len(missing) > 0 {
-		return fmt.Errorf("missing or placeholder content in sections: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("synthesis sections require human input: %s\n\nThese sections capture what was LEARNED and what to do NEXT - data alone can't tell this story.\nFill in these sections to complete the handoff.", strings.Join(missing, ", "))
 	}
 
 	return nil
@@ -228,13 +235,16 @@ func isDEKNPlaceholder(text string) bool {
 
 	// Check for common placeholder patterns
 	placeholderPatterns := []string{
-		"[",                // Bracketed placeholder like "[What changed...]"
-		"TODO",             // TODO markers
-		"FILL IN",          // Explicit fill-in markers
-		"describe the",     // Part of default prompt text
-		"Proof of work",    // Part of default prompt text
-		"What was learned", // Part of default prompt text
-		"Recommended next", // Part of default prompt text
+		"[",                    // Bracketed placeholder like "[What changed...]"
+		"TODO",                 // TODO markers
+		"FILL IN",              // Explicit fill-in markers
+		"SYNTHESIS REQUIRED",   // New synthesis prompt marker
+		"describe the",         // Part of default prompt text
+		"Proof of work",        // Part of default prompt text
+		"What was learned",     // Part of default prompt text
+		"Recommended next",     // Part of default prompt text
+		"what patterns",        // Part of Knowledge prompt
+		"what should the next", // Part of Next prompt
 	}
 
 	textLower := strings.ToLower(text)
@@ -287,11 +297,17 @@ func gatherHandoffData() (*HandoffData, error) {
 	// Get local state (uncommitted changes)
 	data.LocalState = gatherLocalState(projectDir)
 
+	// Get git stats for auto-populating Evidence
+	data.GitStats = gatherGitStats(projectDir)
+
 	// Derive next priorities from focus and pending issues
 	data.NextPriority = deriveNextPriorities(data)
 
 	// Generate TLDR
 	data.TLDR = generateTLDR(data, projectName)
+
+	// Initialize DEKN (will be populated with scaffold in template)
+	data.DEKN = &DEKNSummary{}
 
 	return data, nil
 }
@@ -542,6 +558,92 @@ func gatherLocalState(projectDir string) *LocalStateInfo {
 	return state
 }
 
+// gatherGitStats collects git statistics for recent commits (today's commits).
+func gatherGitStats(projectDir string) *GitStats {
+	stats := &GitStats{}
+
+	// Get today's date in git log format
+	today := time.Now().Format("2006-01-02")
+
+	// Count commits from today
+	commitCountCmd := exec.Command("git", "log", "--oneline", "--since="+today+" 00:00:00", "--format=%H")
+	commitCountCmd.Dir = projectDir
+	if output, err := commitCountCmd.Output(); err == nil {
+		commits := strings.TrimSpace(string(output))
+		if commits != "" {
+			stats.CommitCount = len(strings.Split(commits, "\n"))
+		}
+	}
+
+	// Get lines added/removed from today's commits
+	if stats.CommitCount > 0 {
+		diffStatCmd := exec.Command("git", "diff", "--stat", "--since="+today+" 00:00:00", "HEAD~"+fmt.Sprintf("%d", stats.CommitCount), "HEAD")
+		diffStatCmd.Dir = projectDir
+		if output, err := diffStatCmd.Output(); err == nil {
+			// Parse the summary line (e.g., "10 files changed, 500 insertions(+), 200 deletions(-)")
+			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+			if len(lines) > 0 {
+				summaryLine := lines[len(lines)-1]
+				stats.LinesAdded, stats.LinesRemoved = parseGitDiffSummary(summaryLine)
+			}
+		}
+
+		// Alternative: use shortstat for cleaner parsing
+		shortStatCmd := exec.Command("git", "diff", "--shortstat", "HEAD~"+fmt.Sprintf("%d", stats.CommitCount), "HEAD")
+		shortStatCmd.Dir = projectDir
+		if output, err := shortStatCmd.Output(); err == nil {
+			stats.LinesAdded, stats.LinesRemoved = parseGitDiffSummary(string(output))
+		}
+	}
+
+	// Build human-readable summary
+	if stats.CommitCount > 0 {
+		if stats.LinesAdded > 0 || stats.LinesRemoved > 0 {
+			stats.Summary = fmt.Sprintf("%d commits, +%d/-%d lines", stats.CommitCount, stats.LinesAdded, stats.LinesRemoved)
+		} else {
+			stats.Summary = fmt.Sprintf("%d commits", stats.CommitCount)
+		}
+	}
+
+	return stats
+}
+
+// parseGitDiffSummary extracts insertions and deletions from git diff summary.
+func parseGitDiffSummary(summary string) (added, removed int) {
+	// Match patterns like "500 insertions(+)" and "200 deletions(-)"
+	summary = strings.TrimSpace(summary)
+
+	// Look for insertions
+	if idx := strings.Index(summary, "insertion"); idx > 0 {
+		// Find the number before "insertion"
+		numStr := ""
+		for i := idx - 1; i >= 0 && (summary[i] == ' ' || (summary[i] >= '0' && summary[i] <= '9')); i-- {
+			if summary[i] >= '0' && summary[i] <= '9' {
+				numStr = string(summary[i]) + numStr
+			}
+		}
+		if n, err := fmt.Sscanf(numStr, "%d", &added); n == 0 || err != nil {
+			added = 0
+		}
+	}
+
+	// Look for deletions
+	if idx := strings.Index(summary, "deletion"); idx > 0 {
+		// Find the number before "deletion"
+		numStr := ""
+		for i := idx - 1; i >= 0 && (summary[i] == ' ' || (summary[i] >= '0' && summary[i] <= '9')); i-- {
+			if summary[i] >= '0' && summary[i] <= '9' {
+				numStr = string(summary[i]) + numStr
+			}
+		}
+		if n, err := fmt.Sscanf(numStr, "%d", &removed); n == 0 || err != nil {
+			removed = 0
+		}
+	}
+
+	return added, removed
+}
+
 func deriveNextPriorities(data *HandoffData) []string {
 	var priorities []string
 
@@ -630,26 +732,58 @@ const handoffTemplate = `# Session Handoff - {{.Date}}
 
 ## D.E.K.N. Summary
 
-{{- if .DEKN}}
-
-**Delta:** {{if .DEKN.Delta}}{{.DEKN.Delta}}{{else}}[What changed this session - describe the transformation, what was built/fixed/improved]{{end}}
-
-**Evidence:** {{if .DEKN.Evidence}}{{.DEKN.Evidence}}{{else}}[Proof of work - X commits, +Y/-Z lines, tests passing, validation results]{{end}}
-
-**Knowledge:** {{if .DEKN.Knowledge}}{{.DEKN.Knowledge}}{{else}}[What was learned - new patterns, key insights, things discovered]{{end}}
-
-**Next:** {{if .DEKN.Next}}{{.DEKN.Next}}{{else}}[Recommended next actions - what should the next session prioritize]{{end}}
-
+### Delta (What Changed)
+{{- if and .DEKN .DEKN.Delta}}
+{{.DEKN.Delta}}
 {{- else}}
+{{- if .RecentWork}}
+**Completed this session:**
+{{- range .RecentWork}}
+- {{.Description}}
+{{- end}}
+{{- else}}
+[Describe the transformation - what was built, fixed, or improved]
+{{- end}}
+{{- end}}
 
-**Delta:** [What changed this session - describe the transformation, what was built/fixed/improved]
+### Evidence (Proof of Work)
+{{- if and .DEKN .DEKN.Evidence}}
+{{.DEKN.Evidence}}
+{{- else}}
+{{- if .GitStats}}
+{{- if .GitStats.Summary}}
+**Git stats:** {{.GitStats.Summary}}
+{{- end}}
+{{- end}}
+{{- if .LocalState}}
+{{- if .LocalState.HasUncommitted}}
+**Local state:** {{.LocalState.Summary}} on branch ` + "`{{.LocalState.Branch}}`" + `
+{{- end}}
+{{- end}}
+**Tests:** [FILL IN: all passing / X failures / not run]
+{{- end}}
 
-**Evidence:** [Proof of work - X commits, +Y/-Z lines, tests passing, validation results]
+### Knowledge (What Was Learned)
+{{- if and .DEKN .DEKN.Knowledge}}
+{{.DEKN.Knowledge}}
+{{- else}}
+[SYNTHESIS REQUIRED: What patterns, insights, or lessons were discovered this session?]
+{{- end}}
 
-**Knowledge:** [What was learned - new patterns, key insights, things discovered]
+### Next (Recommended Actions)
+{{- if and .DEKN .DEKN.Next}}
+{{.DEKN.Next}}
+{{- else}}
+{{- if .NextPriority}}
+**Auto-suggested from state:**
+{{- range $i, $p := .NextPriority}}
+{{add $i 1}}. {{$p}}
+{{- end}}
 
-**Next:** [Recommended next actions - what should the next session prioritize]
-
+[SYNTHESIS REQUIRED: Validate/adjust priorities based on session learnings]
+{{- else}}
+[SYNTHESIS REQUIRED: What should the next session prioritize?]
+{{- end}}
 {{- end}}
 
 ---
