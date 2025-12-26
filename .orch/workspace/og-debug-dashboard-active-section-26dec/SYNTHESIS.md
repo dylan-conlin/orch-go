@@ -1,69 +1,70 @@
 # Session Synthesis
 
 **Agent:** og-debug-dashboard-active-section-26dec
-**Issue:** orch-go-6xya
-**Duration:** 2025-12-26 09:27 → 2025-12-26 09:40
+**Issue:** orch-go-yz06
+**Duration:** 2025-12-26 09:42 → 2025-12-26 09:58
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Fixed dashboard Active section not showing all active agents by preventing Phase: Complete and SYNTHESIS.md checks from overriding active OpenCode session status in serve.go.
+Fixed dashboard Active section incorrectly showing agents with both 'active' and 'Complete' badges by removing the guards that prevented Phase: Complete agents from being marked as completed even when their OpenCode session still exists. Phase: Complete is the definitive completion signal.
 
 ---
 
 ## Delta (What Changed)
 
-### Files Created
-- `.kb/investigations/2025-12-26-inv-dashboard-active-section-not-showing.md` - Root cause analysis and fix documentation
-
 ### Files Modified
-- `cmd/orch/serve.go:666-687` - Added `status != "active"` guards to completion status checks
+- `cmd/orch/serve.go:666-691` - Removed `status != "active"` guards from Phase: Complete and SYNTHESIS.md checks
 
 ### Commits
-- (pending) - fix: prevent Phase: Complete and SYNTHESIS.md from overriding active session status
+- (pending) - fix: mark Phase: Complete agents as completed regardless of session state
 
 ---
 
 ## Evidence (What Was Observed)
 
-- `orch status` showed 3 active agents, `/api/agents` returned only 2 with `status: "active"`
-- Missing agent `orch-go-7nmw` had Phase: Complete in beads comments but OpenCode session was still active
-- serve.go logic at line 672-674 unconditionally set `status: "completed"` on Phase: Complete
-- serve.go logic at line 681-686 checked SYNTHESIS.md without regard to active session state
-- main.go (orch status) used different logic: `isCompleted` based on beads issue closed status, not phase
+- API returned agents with `status: 'active'` AND `phase: 'Complete'` simultaneously (3 such agents)
+- Prior fix (orch-go-6xya) added guards that prevented status change to "completed" for agents with active sessions
+- This created the visual bug: agents showing both "active" and "Complete" badges in dashboard
+- After removing guards, API correctly returns `status: 'completed'` for all Phase: Complete agents
 
 ### Tests Run
 ```bash
-# Before fix - only 2 active
-curl -s http://127.0.0.1:3348/api/agents | jq '[.[] | select(.status == "active")] | length'
-# 2
+# Before fix - 3 agents with active + Complete
+curl -s http://127.0.0.1:3348/api/agents | jq '[.[] | select(.status == "active" and .phase == "Complete")] | length'
+# 3
 
-# After fix - all 5 active 
-curl -s http://127.0.0.1:3349/api/agents | jq '[.[] | select(.status == "active")] | length'
-# 5
-
-# Build verification
+# Build and restart
 make install
-# Success
+orch servers stop orch-go && orch servers start orch-go
+
+# After fix - 0 agents with both badges
+curl -s http://127.0.0.1:3348/api/agents | jq '[.[] | select(.status == "active" and .phase == "Complete")] | length'
+# 0
+
+# Unit tests
+go test ./cmd/orch/... -v -run TestServe
+# PASS: 10 tests
+
+# Playwright tests
+npx playwright test filtering.spec.ts
+# PASS: 8 tests
 ```
 
 ---
 
 ## Knowledge (What Was Learned)
 
-### New Artifacts
-- `.kb/investigations/2025-12-26-inv-dashboard-active-section-not-showing.md` - Full investigation documenting the logic divergence between serve.go and main.go
-
 ### Decisions Made
-- Decision 1: Active OpenCode session state takes precedence over completion signals (Phase: Complete, SYNTHESIS.md) because the session may be a resumption or the agent hasn't exited yet
+- Phase: Complete is the definitive signal for agent work completion
+- An open OpenCode session just means the agent hasn't called /exit yet, but the work is done
+- If an agent is resumed after Phase: Complete, a new Phase comment (e.g., "Phase: Implementing") would supersede the Complete status
 
 ### Constraints Discovered
-- serve.go and main.go must use consistent logic for determining agent status - they diverged causing dashboard/CLI inconsistency
-
-### Externalized via `kn`
-- None needed - constraint documented in investigation file and code comments
+- Prior fix (guards for active sessions) was overly conservative and caused the opposite bug
+- The correct hierarchy: Phase: Complete > session activity state
 
 ---
 
@@ -72,32 +73,27 @@ make install
 **Recommendation:** close
 
 ### If Close
-- [x] All deliverables complete (fix implemented, investigation documented)
-- [x] Tests passing (manual verification of API response counts)
-- [x] Investigation file has `**Status:** Complete`
-- [x] Ready for `orch complete orch-go-6xya`
+- [x] All deliverables complete
+- [x] Tests passing (go test, playwright)
+- [x] Dashboard correctly shows completed agents in Recent section
+- [x] Ready for `orch complete orch-go-yz06`
 
 ---
 
 ## Unexplored Questions
 
-**Questions that emerged during this session that weren't directly in scope:**
-- Race condition: What happens if agent exits but OpenCode hasn't updated session state yet? (May briefly show as active when actually complete)
-- Should serve.go also check beads issue closed status like main.go does?
+**Edge case: Agent resumed after Phase: Complete**
+- If an agent is resumed (via orch resume), it should report a new Phase comment to update status
+- Worth verifying this flow works correctly
 
-**Areas worth exploring further:**
-- Unify status determination logic between serve.go and main.go into shared function
-- Consider adding session.exitedAt to more accurately detect session termination
-
-**What remains unclear:**
-- Timing of OpenCode session state updates vs Phase: Complete comments
+*(Straightforward fix, minimal unexplored territory)*
 
 ---
 
 ## Session Metadata
 
 **Skill:** systematic-debugging
-**Model:** claude-opus-4-5-20251101
+**Model:** Claude Opus
 **Workspace:** `.orch/workspace/og-debug-dashboard-active-section-26dec/`
-**Investigation:** `.kb/investigations/2025-12-26-inv-dashboard-active-section-not-showing.md`
-**Beads:** `bd show orch-go-6xya`
+**Investigation:** `.kb/investigations/2025-12-26-inv-dashboard-active-section-not-showing.md` (prior investigation, different bug)
+**Beads:** `bd show orch-go-yz06`
