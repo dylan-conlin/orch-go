@@ -2,6 +2,7 @@ package beads
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -446,6 +447,397 @@ func TestBdShowArrayFormat(t *testing.T) {
 	if childIssues[0].ID != "proj-ph1.9" {
 		t.Errorf("ID = %q, want %q", childIssues[0].ID, "proj-ph1.9")
 	}
-	// Note: The dependencies field is parsed but our Issue type doesn't have it
-	// This is fine - json.Unmarshal ignores unknown fields by default
+	// Note: The dependencies field is parsed as json.RawMessage
+	// This allows accepting both string arrays and nested Issue objects
+}
+
+// TestChildIDPatterns tests parsing of child ID patterns (dot notation)
+// such as "proj-ph1.9" which are epic children. These IDs contain dots
+// which distinguishes them from regular IDs.
+func TestChildIDPatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       string
+		wantID   string
+		hasDepth int // expected depth based on dot count
+	}{
+		{
+			name:     "simple ID",
+			id:       "proj-abc",
+			wantID:   "proj-abc",
+			hasDepth: 0,
+		},
+		{
+			name:     "child ID level 1",
+			id:       "proj-ph1.1",
+			wantID:   "proj-ph1.1",
+			hasDepth: 1,
+		},
+		{
+			name:     "child ID level 1 double digit",
+			id:       "proj-ph1.12",
+			wantID:   "proj-ph1.12",
+			hasDepth: 1,
+		},
+		{
+			name:     "grandchild ID level 2",
+			id:       "proj-ph1.1.1",
+			wantID:   "proj-ph1.1.1",
+			hasDepth: 2,
+		},
+		{
+			name:     "complex prefix with child",
+			id:       "orch-go-re8n.3",
+			wantID:   "orch-go-re8n.3",
+			hasDepth: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test that Issue struct correctly parses various ID patterns
+			issueJSON := fmt.Sprintf(`{
+				"id": %q,
+				"title": "Test",
+				"status": "open",
+				"priority": 0,
+				"issue_type": "task"
+			}`, tt.id)
+
+			var issue Issue
+			if err := json.Unmarshal([]byte(issueJSON), &issue); err != nil {
+				t.Fatalf("failed to unmarshal issue with id %q: %v", tt.id, err)
+			}
+
+			if issue.ID != tt.wantID {
+				t.Errorf("ID = %q, want %q", issue.ID, tt.wantID)
+			}
+		})
+	}
+}
+
+// TestDependenciesParsingFormats tests that the Dependencies field
+// correctly handles different JSON formats returned by bd CLI.
+func TestDependenciesParsingFormats(t *testing.T) {
+	tests := []struct {
+		name         string
+		json         string
+		wantID       string
+		wantParseErr bool
+	}{
+		{
+			name: "no dependencies",
+			json: `{
+				"id": "test-1",
+				"title": "Test",
+				"status": "open",
+				"priority": 0,
+				"issue_type": "task"
+			}`,
+			wantID: "test-1",
+		},
+		{
+			name: "empty dependencies array",
+			json: `{
+				"id": "test-2",
+				"title": "Test",
+				"status": "open",
+				"priority": 0,
+				"issue_type": "task",
+				"dependencies": []
+			}`,
+			wantID: "test-2",
+		},
+		{
+			name: "string ID dependencies (legacy format)",
+			json: `{
+				"id": "test-3",
+				"title": "Test",
+				"status": "open",
+				"priority": 0,
+				"issue_type": "task",
+				"dependencies": ["dep-1", "dep-2"]
+			}`,
+			wantID: "test-3",
+		},
+		{
+			name: "nested Issue object dependencies (bd show format)",
+			json: `{
+				"id": "proj-ph1.9",
+				"title": "Child Issue",
+				"status": "open",
+				"priority": 1,
+				"issue_type": "task",
+				"dependencies": [
+					{
+						"id": "proj-ph1",
+						"title": "Parent Epic",
+						"status": "closed",
+						"priority": 1,
+						"issue_type": "epic",
+						"dependency_type": "parent-child"
+					}
+				]
+			}`,
+			wantID: "proj-ph1.9",
+		},
+		{
+			name: "mixed dependencies format",
+			json: `{
+				"id": "proj-ph1.5",
+				"title": "Mixed Deps",
+				"status": "open",
+				"priority": 2,
+				"issue_type": "task",
+				"dependencies": [
+					{
+						"id": "proj-ph1",
+						"title": "Parent",
+						"status": "open",
+						"priority": 1,
+						"issue_type": "epic",
+						"dependency_type": "parent-child"
+					},
+					{
+						"id": "proj-other",
+						"title": "Blocker",
+						"status": "closed",
+						"priority": 1,
+						"issue_type": "task",
+						"dependency_type": "blocks"
+					}
+				]
+			}`,
+			wantID: "proj-ph1.5",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var issue Issue
+			err := json.Unmarshal([]byte(tt.json), &issue)
+
+			if tt.wantParseErr {
+				if err == nil {
+					t.Errorf("expected parse error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+
+			if issue.ID != tt.wantID {
+				t.Errorf("ID = %q, want %q", issue.ID, tt.wantID)
+			}
+		})
+	}
+}
+
+// TestClient_Show_ChildID tests the RPC client's Show method with child IDs.
+// This uses a mock daemon to verify the client correctly handles child ID responses.
+func TestClient_Show_ChildID(t *testing.T) {
+	childIssue := Issue{
+		ID:        "proj-epic.3",
+		Title:     "Epic Child Task",
+		Status:    "open",
+		Priority:  1,
+		IssueType: "task",
+		// Dependencies field would be set by bd show but we test without it
+	}
+
+	socketPath, cleanup := mockDaemon(t, func(conn net.Conn) {
+		defer conn.Close()
+
+		// This handler runs in a loop to handle multiple requests on the same connection
+		// The client uses a single connection for health check + subsequent operations
+		for {
+			buf := make([]byte, 4096)
+			n, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+
+			var req Request
+			if err := json.Unmarshal(buf[:n], &req); err != nil {
+				return
+			}
+
+			var resp Response
+
+			switch req.Operation {
+			case OpHealth:
+				healthData, _ := json.Marshal(HealthResponse{
+					Status:  "healthy",
+					Version: "1.0.0",
+					Uptime:  1.0,
+				})
+				resp = Response{
+					Success: true,
+					Data:    healthData,
+				}
+
+			case OpShow:
+				var args ShowArgs
+				if err := json.Unmarshal(req.Args, &args); err != nil {
+					return
+				}
+
+				// Verify we received the child ID correctly
+				if args.ID != "proj-epic.3" {
+					t.Errorf("Show received ID = %q, want %q", args.ID, "proj-epic.3")
+				}
+
+				issueData, _ := json.Marshal(childIssue)
+				resp = Response{
+					Success: true,
+					Data:    issueData,
+				}
+
+			default:
+				resp = Response{
+					Success: false,
+					Error:   fmt.Sprintf("unknown operation: %s", req.Operation),
+				}
+			}
+
+			respJSON, _ := json.Marshal(resp)
+			conn.Write(append(respJSON, '\n'))
+		}
+	})
+	defer cleanup()
+
+	c := NewClient(socketPath)
+	if err := c.Connect(); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer c.Close()
+
+	issue, err := c.Show("proj-epic.3")
+	if err != nil {
+		t.Fatalf("Show failed: %v", err)
+	}
+
+	if issue.ID != "proj-epic.3" {
+		t.Errorf("Issue.ID = %q, want %q", issue.ID, "proj-epic.3")
+	}
+	if issue.Title != "Epic Child Task" {
+		t.Errorf("Issue.Title = %q, want %q", issue.Title, "Epic Child Task")
+	}
+}
+
+// TestEpicChildWithParentDependency tests parsing a complete epic child
+// response with parent dependency as returned by bd show --json.
+func TestEpicChildWithParentDependency(t *testing.T) {
+	// This is the actual format returned by `bd show child-id --json`
+	jsonResponse := `[
+		{
+			"id": "orch-go-re8n.1",
+			"title": "Implement feature X",
+			"description": "First child of epic",
+			"status": "in_progress",
+			"priority": 1,
+			"issue_type": "task",
+			"labels": ["skill:feature-impl", "triage:ready"],
+			"dependencies": [
+				{
+					"id": "orch-go-re8n",
+					"title": "Epic: Major Feature",
+					"status": "open",
+					"priority": 1,
+					"issue_type": "epic",
+					"dependency_type": "parent-child"
+				}
+			],
+			"created_at": "2025-12-25T10:00:00Z",
+			"updated_at": "2025-12-25T12:00:00Z"
+		}
+	]`
+
+	var issues []Issue
+	if err := json.Unmarshal([]byte(jsonResponse), &issues); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(issues))
+	}
+
+	issue := issues[0]
+
+	// Verify all fields are correctly parsed
+	if issue.ID != "orch-go-re8n.1" {
+		t.Errorf("ID = %q, want %q", issue.ID, "orch-go-re8n.1")
+	}
+	if issue.Title != "Implement feature X" {
+		t.Errorf("Title = %q, want %q", issue.Title, "Implement feature X")
+	}
+	if issue.Status != "in_progress" {
+		t.Errorf("Status = %q, want %q", issue.Status, "in_progress")
+	}
+	if issue.Priority != 1 {
+		t.Errorf("Priority = %d, want %d", issue.Priority, 1)
+	}
+	if issue.IssueType != "task" {
+		t.Errorf("IssueType = %q, want %q", issue.IssueType, "task")
+	}
+	if len(issue.Labels) != 2 {
+		t.Errorf("Labels count = %d, want 2", len(issue.Labels))
+	}
+	if issue.CreatedAt != "2025-12-25T10:00:00Z" {
+		t.Errorf("CreatedAt = %q, want %q", issue.CreatedAt, "2025-12-25T10:00:00Z")
+	}
+
+	// Dependencies is json.RawMessage - verify it's not nil
+	if issue.Dependencies == nil {
+		t.Error("Dependencies should not be nil")
+	}
+
+	// Verify the raw dependencies can be parsed if needed
+	var deps []map[string]interface{}
+	if err := json.Unmarshal(issue.Dependencies, &deps); err != nil {
+		t.Fatalf("failed to parse dependencies: %v", err)
+	}
+	if len(deps) != 1 {
+		t.Errorf("expected 1 dependency, got %d", len(deps))
+	}
+	if deps[0]["id"] != "orch-go-re8n" {
+		t.Errorf("dependency id = %v, want %q", deps[0]["id"], "orch-go-re8n")
+	}
+	if deps[0]["dependency_type"] != "parent-child" {
+		t.Errorf("dependency_type = %v, want %q", deps[0]["dependency_type"], "parent-child")
+	}
+}
+
+// TestMultiLevelChildID tests deeply nested child IDs (grandchildren).
+func TestMultiLevelChildID(t *testing.T) {
+	jsonResponse := `[
+		{
+			"id": "proj-epic.1.2",
+			"title": "Grandchild Task",
+			"status": "open",
+			"priority": 2,
+			"issue_type": "task",
+			"dependencies": [
+				{
+					"id": "proj-epic.1",
+					"title": "Child Epic",
+					"status": "open",
+					"priority": 1,
+					"issue_type": "epic",
+					"dependency_type": "parent-child"
+				}
+			]
+		}
+	]`
+
+	var issues []Issue
+	if err := json.Unmarshal([]byte(jsonResponse), &issues); err != nil {
+		t.Fatalf("failed to unmarshal grandchild: %v", err)
+	}
+
+	if issues[0].ID != "proj-epic.1.2" {
+		t.Errorf("ID = %q, want %q", issues[0].ID, "proj-epic.1.2")
+	}
 }
