@@ -300,3 +300,154 @@ func TestWorkerPool_ReleaseUnknownSlot(t *testing.T) {
 
 	p.Release(slot1)
 }
+
+// =============================================================================
+// Tests for Reconcile
+// =============================================================================
+
+func TestWorkerPool_Reconcile_FreesStaleSlots(t *testing.T) {
+	p := NewWorkerPool(3)
+
+	// Acquire 3 slots (at capacity)
+	slot1 := p.TryAcquire()
+	slot2 := p.TryAcquire()
+	slot3 := p.TryAcquire()
+
+	if p.Active() != 3 {
+		t.Fatalf("Active() = %d, want 3", p.Active())
+	}
+	if !p.AtCapacity() {
+		t.Fatal("AtCapacity() should be true")
+	}
+
+	// Simulate: 2 agents actually running (1 completed without daemon knowing)
+	freed := p.Reconcile(2)
+
+	if freed != 1 {
+		t.Errorf("Reconcile(2) freed = %d, want 1", freed)
+	}
+	if p.Active() != 2 {
+		t.Errorf("Active() after reconcile = %d, want 2", p.Active())
+	}
+	if p.AtCapacity() {
+		t.Error("AtCapacity() should be false after reconcile")
+	}
+	if p.Available() != 1 {
+		t.Errorf("Available() after reconcile = %d, want 1", p.Available())
+	}
+
+	// Cleanup
+	p.Release(slot1)
+	p.Release(slot2)
+	p.Release(slot3)
+}
+
+func TestWorkerPool_Reconcile_AllSessionsGone(t *testing.T) {
+	p := NewWorkerPool(3)
+
+	// Acquire 3 slots
+	p.TryAcquire()
+	p.TryAcquire()
+	p.TryAcquire()
+
+	// Simulate: all agents completed (none running)
+	freed := p.Reconcile(0)
+
+	if freed != 3 {
+		t.Errorf("Reconcile(0) freed = %d, want 3", freed)
+	}
+	if p.Active() != 0 {
+		t.Errorf("Active() after reconcile = %d, want 0", p.Active())
+	}
+	if p.AtCapacity() {
+		t.Error("AtCapacity() should be false after reconcile")
+	}
+}
+
+func TestWorkerPool_Reconcile_MoreActualThanTracked(t *testing.T) {
+	p := NewWorkerPool(3)
+
+	// Acquire 1 slot
+	p.TryAcquire()
+
+	// Simulate: more agents running than tracked (shouldn't happen, but handle gracefully)
+	freed := p.Reconcile(5)
+
+	if freed != 0 {
+		t.Errorf("Reconcile(5) freed = %d, want 0 (no action when actual >= tracked)", freed)
+	}
+	if p.Active() != 1 {
+		t.Errorf("Active() after reconcile = %d, want 1 (unchanged)", p.Active())
+	}
+}
+
+func TestWorkerPool_Reconcile_SameCount(t *testing.T) {
+	p := NewWorkerPool(3)
+
+	// Acquire 2 slots
+	p.TryAcquire()
+	p.TryAcquire()
+
+	// Simulate: exact match
+	freed := p.Reconcile(2)
+
+	if freed != 0 {
+		t.Errorf("Reconcile(2) freed = %d, want 0 (no action when counts match)", freed)
+	}
+	if p.Active() != 2 {
+		t.Errorf("Active() after reconcile = %d, want 2 (unchanged)", p.Active())
+	}
+}
+
+func TestWorkerPool_Reconcile_EmptyPool(t *testing.T) {
+	p := NewWorkerPool(3)
+
+	// Pool is empty
+	freed := p.Reconcile(0)
+
+	if freed != 0 {
+		t.Errorf("Reconcile(0) on empty pool freed = %d, want 0", freed)
+	}
+	if p.Active() != 0 {
+		t.Errorf("Active() = %d, want 0", p.Active())
+	}
+}
+
+func TestWorkerPool_Reconcile_WakesWaiters(t *testing.T) {
+	p := NewWorkerPool(1)
+
+	// Acquire the only slot
+	p.TryAcquire()
+
+	// Start a goroutine that waits for a slot
+	var slot *Slot
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		slot, err = p.Acquire(context.Background())
+		if err != nil {
+			t.Errorf("Waiter got error: %v", err)
+		}
+	}()
+
+	// Give goroutine time to start waiting
+	time.Sleep(10 * time.Millisecond)
+
+	// Reconcile to free the slot (simulating agent completed)
+	freed := p.Reconcile(0)
+	if freed != 1 {
+		t.Errorf("Reconcile(0) freed = %d, want 1", freed)
+	}
+
+	// Wait for goroutine
+	wg.Wait()
+
+	if slot == nil {
+		t.Error("Waiter should have received slot after Reconcile freed capacity")
+	}
+	if slot != nil {
+		p.Release(slot)
+	}
+}

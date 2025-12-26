@@ -832,6 +832,52 @@ func TestDaemon_ReleaseSlot_NoPool(t *testing.T) {
 	d.ReleaseSlot(&Slot{ID: 1})
 }
 
+// =============================================================================
+// Tests for ReconcileWithOpenCode
+// =============================================================================
+
+func TestDaemon_ReconcileWithOpenCode_NoPool(t *testing.T) {
+	d := &Daemon{Pool: nil}
+
+	// Should return 0 when no pool
+	freed := d.ReconcileWithOpenCode()
+	if freed != 0 {
+		t.Errorf("ReconcileWithOpenCode() = %d, want 0 (no pool)", freed)
+	}
+}
+
+func TestDaemon_ReconcileWithOpenCode_WithPool(t *testing.T) {
+	// This test verifies the pool integration, not the HTTP call itself.
+	// Pool.Reconcile is tested separately.
+	pool := NewWorkerPool(3)
+	// Acquire 3 slots to fill the pool
+	pool.TryAcquire()
+	pool.TryAcquire()
+	pool.TryAcquire()
+
+	d := &Daemon{
+		Pool: pool,
+	}
+
+	// ReconcileWithOpenCode calls DefaultActiveCount which makes HTTP call.
+	// The actual count depends on whether OpenCode is running.
+	// What we verify: the method doesn't panic and returns a reasonable value.
+	freed := d.ReconcileWithOpenCode()
+
+	// If OpenCode is running, freed could be 0-3 depending on actual sessions.
+	// If not running, freed will be 3 (reconcile to 0).
+	// Either way, freed should be between 0 and 3.
+	if freed < 0 || freed > 3 {
+		t.Errorf("ReconcileWithOpenCode() freed = %d, want 0-3", freed)
+	}
+
+	// Active + freed should equal 3 (what we started with)
+	if pool.Active()+freed != 3 {
+		t.Errorf("Pool.Active() + freed = %d + %d = %d, want 3",
+			pool.Active(), freed, pool.Active()+freed)
+	}
+}
+
 // Tests for beads RPC client integration
 
 func TestConvertBeadsIssues_Empty(t *testing.T) {

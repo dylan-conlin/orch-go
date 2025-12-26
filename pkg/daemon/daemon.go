@@ -247,6 +247,24 @@ func (d *Daemon) PoolStatus() *PoolStatus {
 	return &status
 }
 
+// ReconcileWithOpenCode synchronizes the worker pool with actual OpenCode sessions.
+// This prevents the pool from becoming stuck at capacity when agents complete
+// without the daemon knowing (e.g., overnight runs, crashes, manual kills).
+//
+// Should be called at the start of each poll cycle.
+// Returns the number of slots freed due to reconciliation, or 0 if no pool.
+func (d *Daemon) ReconcileWithOpenCode() int {
+	if d.Pool == nil {
+		return 0
+	}
+
+	// Get actual count from OpenCode API
+	actualCount := DefaultActiveCount()
+
+	// Reconcile pool with actual count
+	return d.Pool.Reconcile(actualCount)
+}
+
 // Preview shows what would be processed next without actually processing.
 func (d *Daemon) Preview() (*PreviewResult, error) {
 	issue, err := d.NextIssue()

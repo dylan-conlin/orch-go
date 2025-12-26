@@ -199,6 +199,13 @@ func runDaemonLoop() error {
 		cycles++
 		timestamp := time.Now().Format("15:04:05")
 
+		// Reconcile pool with actual OpenCode sessions at start of each cycle.
+		// This prevents stale capacity counts when agents complete without
+		// the daemon knowing (overnight runs, crashes, manual kills).
+		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
+			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
+		}
+
 		// Check capacity before polling
 		if d.AtCapacity() {
 			activeCount := d.ActiveCount()

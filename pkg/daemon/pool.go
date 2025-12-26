@@ -208,3 +208,46 @@ func (p *WorkerPool) Status() PoolStatus {
 		ActiveSlots: slotInfos,
 	}
 }
+
+// Reconcile synchronizes the pool's internal count with the actual number of
+// active sessions. This is necessary because the pool tracks slots internally
+// but agents may complete without the daemon knowing (e.g., overnight runs,
+// crashes, manual kills). By periodically reconciling with the actual OpenCode
+// session count, we prevent the pool from becoming permanently stuck at capacity.
+//
+// If actualCount < internal activeCount, the pool releases the difference
+// by clearing stale slots (oldest first) and reducing activeCount.
+// If actualCount > internal activeCount, no action is taken (slots will be
+// acquired naturally as spawns occur).
+//
+// Returns the number of slots that were released due to reconciliation.
+func (p *WorkerPool) Reconcile(actualCount int) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// If actual is same or more, nothing to reconcile
+	if actualCount >= p.activeCount {
+		return 0
+	}
+
+	// Calculate how many slots to release
+	toRelease := p.activeCount - actualCount
+
+	// Clear stale slots (they represent sessions that have completed)
+	// We remove from the front (oldest slots first)
+	released := 0
+	for i := 0; i < toRelease && len(p.slots) > 0; i++ {
+		p.slots = p.slots[1:] // Remove oldest slot
+		released++
+	}
+
+	// Update active count to match actual
+	p.activeCount = actualCount
+
+	// Wake up any waiters since capacity freed up
+	if released > 0 {
+		p.cond.Broadcast()
+	}
+
+	return released
+}
