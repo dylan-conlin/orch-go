@@ -47,28 +47,30 @@
 					{#if $usage && !$usage.error}
 						<Tooltip.Root>
 							<Tooltip.Trigger>
-								<div class="flex items-center gap-2 text-xs cursor-default">
-									<span
-										class="font-medium"
-										class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
-										class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
-										class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
-									>
-										{$usage.five_hour_percent.toFixed(0)}%{#if $usage.five_hour_reset} <span class="text-muted-foreground font-normal">({$usage.five_hour_reset})</span>{/if}
+								{#snippet child({ props })}
+									<span {...props} class="inline-flex items-center gap-2 text-xs cursor-default">
+										<span
+											class="font-medium"
+											class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
+											class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
+											class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
+										>
+											{$usage.five_hour_percent.toFixed(0)}%{#if $usage.five_hour_reset} <span class="text-muted-foreground font-normal">({$usage.five_hour_reset})</span>{/if}
+										</span>
+										<span class="text-muted-foreground">|</span>
+										<span
+											class="font-medium"
+											class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
+											class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
+											class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
+										>
+											{$usage.weekly_percent.toFixed(0)}%{#if $usage.weekly_reset} <span class="text-muted-foreground font-normal">({$usage.weekly_reset})</span>{/if}
+										</span>
+										{#if $usage.account_name || $usage.account}
+											<span class="text-muted-foreground">@{$usage.account_name || $usage.account.split('@')[0]}</span>
+										{/if}
 									</span>
-									<span class="text-muted-foreground">|</span>
-									<span
-										class="font-medium"
-										class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
-										class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
-										class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
-									>
-										{$usage.weekly_percent.toFixed(0)}%{#if $usage.weekly_reset} <span class="text-muted-foreground font-normal">({$usage.weekly_reset})</span>{/if}
-									</span>
-									{#if $usage.account_name || $usage.account}
-										<span class="text-muted-foreground">@{$usage.account_name || $usage.account.split('@')[0]}</span>
-									{/if}
-								</div>
+								{/snippet}
 							</Tooltip.Trigger>
 							<Tooltip.Content>
 								<p class="font-medium">Claude Max Usage</p>
@@ -83,10 +85,12 @@
 					{/if}
 					<Tooltip.Root>
 						<Tooltip.Trigger>
-							<div class="flex items-center gap-1.5 text-xs text-muted-foreground cursor-default">
-								<span class={`h-1.5 w-1.5 rounded-full ${statusColor}`}></span>
-								{$connectionStatus}
-							</div>
+							{#snippet child({ props })}
+								<span {...props} class="inline-flex items-center gap-1.5 text-xs text-muted-foreground cursor-default">
+									<span class={`h-1.5 w-1.5 rounded-full ${statusColor}`}></span>
+									{$connectionStatus}
+								</span>
+							{/snippet}
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							{#if $connectionStatus === 'connected'}

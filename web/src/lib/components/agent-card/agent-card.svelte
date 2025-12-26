@@ -265,10 +265,12 @@
 
 	<!-- Title (human-readable) -->
 	<Tooltip.Root>
-		<Tooltip.Trigger class="w-full text-left">
-			<p class="mt-1 truncate text-xs font-medium">
-				{getDisplayTitle(agent)}
-			</p>
+		<Tooltip.Trigger>
+			{#snippet child({ props })}
+				<span {...props} class="mt-1 block w-full truncate text-left text-xs font-medium cursor-default">
+					{getDisplayTitle(agent)}
+				</span>
+			{/snippet}
 		</Tooltip.Trigger>
 		<Tooltip.Content class="max-w-xs">
 			<p>{agent.synthesis?.tldr || agent.task || agent.id}</p>
@@ -278,10 +280,12 @@
 	<!-- Workspace ID (as subtitle when title differs) -->
 	{#if shouldShowWorkspaceSubtitle(agent)}
 		<Tooltip.Root>
-			<Tooltip.Trigger class="w-full text-left">
-				<p class="truncate font-mono text-[10px] text-muted-foreground">
-					{agent.id}
-				</p>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<span {...props} class="block w-full truncate text-left font-mono text-[10px] text-muted-foreground cursor-default">
+						{agent.id}
+					</span>
+				{/snippet}
 			</Tooltip.Trigger>
 			<Tooltip.Content>
 				<p class="font-mono text-xs">{agent.id}</p>

@@ -192,11 +192,16 @@
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
 	// to prevent constant reordering of active agents as they receive SSE updates
+	// IMPORTANT: When useStableSort is true, we skip is_processing comparison to prevent
+	// grid jostling when multiple agents toggle between busy/idle states rapidly
 	function sortAgents(agentList: Agent[], useStableSort: boolean = false): Agent[] {
 		return [...agentList].sort((a, b) => {
 			switch (sortBy) {
 				case 'recent-activity':
-					if (a.is_processing !== b.is_processing) {
+					// Only use is_processing for sort tiebreaker in non-stable sort mode
+					// In stable sort mode, is_processing toggles rapidly via SSE causing grid jostling
+					// The visual indicator (gold border) still shows processing state per-card
+					if (!useStableSort && a.is_processing !== b.is_processing) {
 						return a.is_processing ? -1 : 1;
 					}
 					// For stable sort (active agents), use spawned_at to maintain grid positions
@@ -298,13 +303,15 @@
 			<!-- Errors indicator -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<div class="flex items-center gap-2 cursor-default">
-						<span class="text-lg">❌</span>
-						<div class="flex items-baseline gap-1">
-							<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
-							<span class="text-xs text-muted-foreground">errors</span>
-						</div>
-					</div>
+					{#snippet child({ props })}
+						<span {...props} class="inline-flex items-center gap-2 cursor-default">
+							<span class="text-lg">❌</span>
+							<span class="inline-flex items-baseline gap-1">
+								<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+								<span class="text-xs text-muted-foreground">errors</span>
+							</span>
+						</span>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p>{$errorEvents.length === 0 ? 'No errors logged' : `${$errorEvents.length} agent error${$errorEvents.length === 1 ? '' : 's'} logged`}</p>
@@ -315,14 +322,16 @@
 			{#if $focus?.has_focus}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<div class="flex items-center gap-2 cursor-default" data-testid="focus-indicator">
-							<span class="text-lg">{getDriftEmoji($focus)}</span>
-							<div class="flex items-baseline gap-1">
-								<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
-									{$focus.is_drifting ? 'drifting' : 'focused'}
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="focus-indicator">
+								<span class="text-lg">{getDriftEmoji($focus)}</span>
+								<span class="inline-flex items-baseline gap-1">
+									<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
+										{$focus.is_drifting ? 'drifting' : 'focused'}
+									</span>
 								</span>
-							</div>
-						</div>
+							</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p class="font-medium">{$focus.goal || 'Focus set'}</p>
@@ -337,13 +346,15 @@
 			{#if $servers}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<div class="flex items-center gap-2 cursor-default" data-testid="servers-indicator">
-							<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
-							<div class="flex items-baseline gap-1">
-								<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
-								<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
-							</div>
-						</div>
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="servers-indicator">
+								<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+								<span class="inline-flex items-baseline gap-1">
+									<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
+									<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+								</span>
+							</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>{$servers.running_count} running, {$servers.stopped_count} stopped</p>
@@ -356,16 +367,18 @@
 			{#if $beads}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<div class="flex items-center gap-2 cursor-default" data-testid="beads-indicator">
-							<span class="text-lg">📋</span>
-							<div class="flex items-baseline gap-1">
-								<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
-								<span class="text-xs text-muted-foreground">ready</span>
-							</div>
-							{#if $beads.blocked_issues > 0}
-								<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
-							{/if}
-						</div>
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="beads-indicator">
+								<span class="text-lg">📋</span>
+								<span class="inline-flex items-baseline gap-1">
+									<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
+									<span class="text-xs text-muted-foreground">ready</span>
+								</span>
+								{#if $beads.blocked_issues > 0}
+									<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
+								{/if}
+							</span>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>{$beads.ready_issues} ready to work on</p>
@@ -378,20 +391,23 @@
 		<div class="ml-auto flex items-center gap-2">
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<Button
-						variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
-						size="sm"
-						onclick={handleConnectClick}
-						class="h-7 text-xs"
-					>
-						{#if $connectionStatus === 'connecting'}
-							...
-						{:else if $connectionStatus === 'connected'}
-							Disconnect
-						{:else}
-							Connect
-						{/if}
-					</Button>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant={$connectionStatus === 'connected' ? 'destructive' : 'outline'}
+							size="sm"
+							onclick={handleConnectClick}
+							class="h-7 text-xs"
+						>
+							{#if $connectionStatus === 'connecting'}
+								...
+							{:else if $connectionStatus === 'connected'}
+								Disconnect
+							{:else}
+								Connect
+							{/if}
+						</Button>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					{#if $connectionStatus === 'connected'}
@@ -599,20 +615,23 @@
 				</div>
 				<Tooltip.Root>
 				<Tooltip.Trigger>
-					<Button
-						variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'ghost'}
-						size="sm"
-						onclick={handleAgentlogConnectClick}
-						class="h-5 px-2 text-xs"
-					>
-						{#if $agentlogConnectionStatus === 'connecting'}
-							...
-						{:else if $agentlogConnectionStatus === 'connected'}
-							Stop
-						{:else}
-							Follow
-						{/if}
-					</Button>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'ghost'}
+							size="sm"
+							onclick={handleAgentlogConnectClick}
+							class="h-5 px-2 text-xs"
+						>
+							{#if $agentlogConnectionStatus === 'connecting'}
+								...
+							{:else if $agentlogConnectionStatus === 'connected'}
+								Stop
+							{:else}
+								Follow
+							{/if}
+						</Button>
+					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					{#if $agentlogConnectionStatus === 'connected'}
