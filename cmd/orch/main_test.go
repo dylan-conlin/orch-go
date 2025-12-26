@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // TestGetMaxAgentsDefault tests that getMaxAgents returns the default when no flag or env var is set.
@@ -1091,6 +1093,192 @@ func TestExtractDateFromWorkspaceName(t *testing.T) {
 			// Year should be current year (or previous year if date is in future)
 			if got.Year() != currentYear && got.Year() != currentYear-1 {
 				t.Errorf("extractDateFromWorkspaceName(%q) year = %d, want %d or %d", tt.workspace, got.Year(), currentYear, currentYear-1)
+			}
+		})
+	}
+}
+
+// TestFormatContextQualitySummary tests the context quality summary formatting.
+func TestFormatContextQualitySummary(t *testing.T) {
+	tests := []struct {
+		name          string
+		quality       int
+		hasGaps       bool
+		matchCount    int
+		constraints   int
+		wantIndicator string
+		wantLabel     string
+		wantNoMatches bool
+	}{
+		{
+			name:          "nil gap analysis",
+			quality:       0,
+			hasGaps:       false,
+			wantIndicator: "",
+			wantLabel:     "not checked",
+		},
+		{
+			name:          "zero quality - critical",
+			quality:       0,
+			hasGaps:       true,
+			wantIndicator: "🚨",
+			wantLabel:     "CRITICAL",
+		},
+		{
+			name:          "very low quality - poor",
+			quality:       15,
+			hasGaps:       true,
+			wantIndicator: "⚠️",
+			wantLabel:     "poor",
+		},
+		{
+			name:          "low quality - limited",
+			quality:       30,
+			hasGaps:       true,
+			wantIndicator: "⚠️",
+			wantLabel:     "limited",
+		},
+		{
+			name:          "moderate quality",
+			quality:       50,
+			hasGaps:       true,
+			wantIndicator: "📊",
+			wantLabel:     "moderate",
+		},
+		{
+			name:          "good quality",
+			quality:       70,
+			hasGaps:       false,
+			wantIndicator: "✓",
+			wantLabel:     "good",
+		},
+		{
+			name:          "excellent quality",
+			quality:       90,
+			hasGaps:       false,
+			wantIndicator: "✓",
+			wantLabel:     "excellent",
+		},
+		{
+			name:          "includes match count",
+			quality:       50,
+			hasGaps:       true,
+			matchCount:    5,
+			constraints:   2,
+			wantIndicator: "📊",
+			wantLabel:     "moderate",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var analysis *spawn.GapAnalysis
+			if tt.name != "nil gap analysis" {
+				analysis = &spawn.GapAnalysis{
+					HasGaps:        tt.hasGaps,
+					ContextQuality: tt.quality,
+					MatchStats: spawn.MatchStatistics{
+						TotalMatches:    tt.matchCount,
+						ConstraintCount: tt.constraints,
+					},
+				}
+			}
+
+			result := formatContextQualitySummary(analysis)
+
+			if tt.name == "nil gap analysis" {
+				if result != "not checked" {
+					t.Errorf("formatContextQualitySummary(nil) = %q, want %q", result, "not checked")
+				}
+				return
+			}
+
+			if !strings.Contains(result, tt.wantIndicator) {
+				t.Errorf("formatContextQualitySummary() = %q, want to contain indicator %q", result, tt.wantIndicator)
+			}
+			if !strings.Contains(result, tt.wantLabel) {
+				t.Errorf("formatContextQualitySummary() = %q, want to contain label %q", result, tt.wantLabel)
+			}
+			if !strings.Contains(result, "/100") {
+				t.Errorf("formatContextQualitySummary() = %q, want to contain quality score", result)
+			}
+			if tt.matchCount > 0 && !strings.Contains(result, "matches") {
+				t.Errorf("formatContextQualitySummary() = %q, want to mention matches", result)
+			}
+		})
+	}
+}
+
+// TestPrintSpawnSummaryWithGapWarning tests the gap warning printing logic.
+func TestPrintSpawnSummaryWithGapWarning(t *testing.T) {
+	// Test cases for determining when warning is printed
+	tests := []struct {
+		name        string
+		quality     int
+		hasGaps     bool
+		hasCritical bool
+		hasWarning  bool
+		wantWarning bool
+	}{
+		{
+			name:        "critical gap - should warn",
+			quality:     0,
+			hasGaps:     true,
+			hasCritical: true,
+			wantWarning: true,
+		},
+		{
+			name:        "low quality with warning gap - should warn",
+			quality:     15,
+			hasGaps:     true,
+			hasCritical: false,
+			hasWarning:  true,
+			wantWarning: true,
+		},
+		{
+			name:        "good quality - no warning",
+			quality:     75,
+			hasGaps:     false,
+			hasCritical: false,
+			wantWarning: false,
+		},
+		{
+			name:        "moderate quality with gaps - no warning",
+			quality:     50,
+			hasGaps:     true,
+			hasCritical: false,
+			wantWarning: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			analysis := &spawn.GapAnalysis{
+				HasGaps:        tt.hasGaps,
+				ContextQuality: tt.quality,
+			}
+
+			if tt.hasCritical {
+				analysis.Gaps = []spawn.Gap{
+					{
+						Type:     spawn.GapTypeNoContext,
+						Severity: spawn.GapSeverityCritical,
+					},
+				}
+			} else if tt.hasWarning {
+				analysis.Gaps = []spawn.Gap{
+					{
+						Type:     spawn.GapTypeSparseContext,
+						Severity: spawn.GapSeverityWarning,
+					},
+				}
+			}
+
+			// Check the conditions that trigger warning
+			shouldWarn := analysis.ShouldWarnAboutGaps() && (analysis.HasCriticalGaps() || analysis.ContextQuality < 20)
+
+			if shouldWarn != tt.wantWarning {
+				t.Errorf("warning condition = %v, want %v", shouldWarn, tt.wantWarning)
 			}
 		})
 	}

@@ -7,6 +7,7 @@
 	export let agent: Agent;
 
 	$: isSelected = $selectedAgentId === agent.id;
+	$: contextIndicator = getContextQualityIndicator(agent);
 
 	function handleClick() {
 		selectedAgentId.set(agent.id);
@@ -48,6 +49,28 @@
 			default:
 				return 'outline';
 		}
+	}
+
+	/**
+	 * Get context quality indicator based on gap analysis
+	 * Returns emoji and color class for visual representation
+	 */
+	function getContextQualityIndicator(agent: Agent): { emoji: string; colorClass: string; label: string } | null {
+		if (!agent.gap_analysis) return null;
+		
+		const quality = agent.gap_analysis.context_quality;
+		
+		if (quality === 0) {
+			return { emoji: '🚨', colorClass: 'text-red-500', label: 'No context' };
+		}
+		if (quality < 20) {
+			return { emoji: '⚠️', colorClass: 'text-red-500', label: `${quality}% context` };
+		}
+		if (quality < 40) {
+			return { emoji: '⚠️', colorClass: 'text-yellow-500', label: `${quality}% context` };
+		}
+		// Good quality - no indicator needed
+		return null;
 	}
 
 	function formatDuration(isoDate: string | undefined): string {
@@ -195,6 +218,9 @@
 			{/if}
 		</div>
 		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+			{#if contextIndicator}
+				<span class={contextIndicator.colorClass} title={contextIndicator.label}>{contextIndicator.emoji}</span>
+			{/if}
 			{#if agent.is_processing}
 				<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500" title="Generating response"></span>
 			{:else if agent.status === 'active'}

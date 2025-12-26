@@ -1295,6 +1295,72 @@ func addGapAnalysisToEventData(eventData map[string]interface{}, gapAnalysis *sp
 	}
 }
 
+// formatContextQualitySummary formats context quality for spawn summary output.
+// Returns a formatted string with visual indicators for gap severity.
+// This is the "prominent" surfacing that makes gaps hard to ignore.
+func formatContextQualitySummary(gapAnalysis *spawn.GapAnalysis) string {
+	if gapAnalysis == nil {
+		return "not checked"
+	}
+
+	quality := gapAnalysis.ContextQuality
+
+	// Determine visual indicator and label based on quality level
+	var indicator, label string
+	switch {
+	case quality == 0:
+		indicator = "🚨"
+		label = "CRITICAL - No context"
+	case quality < 20:
+		indicator = "⚠️"
+		label = "poor"
+	case quality < 40:
+		indicator = "⚠️"
+		label = "limited"
+	case quality < 60:
+		indicator = "📊"
+		label = "moderate"
+	case quality < 80:
+		indicator = "✓"
+		label = "good"
+	default:
+		indicator = "✓"
+		label = "excellent"
+	}
+
+	// Format the summary line
+	summary := fmt.Sprintf("%s %d/100 (%s)", indicator, quality, label)
+
+	// Add match breakdown for transparency
+	if gapAnalysis.MatchStats.TotalMatches > 0 {
+		summary += fmt.Sprintf(" - %d matches", gapAnalysis.MatchStats.TotalMatches)
+		if gapAnalysis.MatchStats.ConstraintCount > 0 {
+			summary += fmt.Sprintf(" (%d constraints)", gapAnalysis.MatchStats.ConstraintCount)
+		}
+	}
+
+	return summary
+}
+
+// printSpawnSummaryWithGapWarning prints the spawn summary with prominent gap warnings.
+// This ensures gaps are visible in the final output, not just during context gathering.
+func printSpawnSummaryWithGapWarning(gapAnalysis *spawn.GapAnalysis) {
+	if gapAnalysis == nil || !gapAnalysis.ShouldWarnAboutGaps() {
+		return
+	}
+
+	// Print a prominent warning box for critical gaps
+	if gapAnalysis.HasCriticalGaps() || gapAnalysis.ContextQuality < 20 {
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "┌─────────────────────────────────────────────────────────────┐\n")
+		fmt.Fprintf(os.Stderr, "│  ⚠️  GAP WARNING: Agent spawned with limited context         │\n")
+		fmt.Fprintf(os.Stderr, "├─────────────────────────────────────────────────────────────┤\n")
+		fmt.Fprintf(os.Stderr, "│  Agent may compensate by guessing patterns/conventions.    │\n")
+		fmt.Fprintf(os.Stderr, "│  Consider: kn decide / kn constrain / kb create            │\n")
+		fmt.Fprintf(os.Stderr, "└─────────────────────────────────────────────────────────────┘\n")
+	}
+}
+
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Spawn opencode session
@@ -1357,15 +1423,15 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Print spawn summary
+	// Print spawn summary with prominent gap warning if needed
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
 	fmt.Printf("Spawned agent:\n")
 	fmt.Printf("  Session ID: %s\n", result.SessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
 	fmt.Printf("  Beads ID:   %s\n", beadsID)
-	// Print context quality for visibility
-	if cfg.GapAnalysis != nil {
-		fmt.Printf("  Context:    %d/100\n", cfg.GapAnalysis.ContextQuality)
-	}
+	// Print context quality with visual indicators
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
 	return nil
 }
@@ -1449,7 +1515,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Print spawn summary
+	// Print spawn summary with prominent gap warning if needed
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
 	fmt.Printf("Spawned agent (headless):\n")
 	fmt.Printf("  Session ID: %s\n", sessionID)
 	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
@@ -1461,12 +1529,8 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	if cfg.NoTrack {
 		fmt.Printf("  Tracking:   disabled (--no-track)\n")
 	}
-	// Print context quality for visibility
-	if cfg.GapAnalysis != nil {
-		fmt.Printf("  Context:    %d/100\n", cfg.GapAnalysis.ContextQuality)
-	} else {
-		fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
-	}
+	// Print context quality with visual indicators
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
 	return nil
 }
@@ -1570,7 +1634,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
 	}
 
-	// Print spawn summary
+	// Print spawn summary with prominent gap warning if needed
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
 	fmt.Printf("Spawned agent in tmux:\n")
 	fmt.Printf("  Session:    %s\n", sessionName)
 	if sessionID != "" {
@@ -1587,12 +1653,8 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	if cfg.NoTrack {
 		fmt.Printf("  Tracking:   disabled (--no-track)\n")
 	}
-	// Print context quality for visibility
-	if cfg.GapAnalysis != nil {
-		fmt.Printf("  Context:    %d/100\n", cfg.GapAnalysis.ContextQuality)
-	} else {
-		fmt.Printf("  Context:    %s\n", cfg.ContextFilePath())
-	}
+	// Print context quality with visual indicators
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
 	// Attach if requested
 	if attach {

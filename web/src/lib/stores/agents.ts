@@ -12,6 +12,17 @@ export interface Synthesis {
 	next_actions?: string[]; // Follow-up items
 }
 
+// Gap analysis data from spawn time (context quality)
+export interface GapAnalysis {
+	has_gaps: boolean;
+	context_quality: number; // 0-100
+	should_warn: boolean;
+	match_count?: number;
+	constraints?: number;
+	decisions?: number;
+	investigations?: number;
+}
+
 export interface Agent {
 	id: string;
 	session_id?: string;
@@ -37,6 +48,7 @@ export interface Agent {
 	is_processing?: boolean; // True if actively generating response
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
+	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
 	// Real-time activity tracking
 	current_activity?: {
 		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';
