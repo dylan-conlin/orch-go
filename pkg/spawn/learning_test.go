@@ -515,3 +515,71 @@ func TestLoadTrackerNoFile(t *testing.T) {
 		t.Errorf("expected 0 events for new tracker, got %d", len(tracker.Events))
 	}
 }
+
+func TestGenerateReasonFromGaps(t *testing.T) {
+	tests := []struct {
+		name         string
+		query        string
+		events       []GapEvent
+		wantContains []string
+		wantNotEmpty bool
+	}{
+		{
+			name:         "empty_events",
+			query:        "auth",
+			events:       []GapEvent{},
+			wantContains: []string{"No context available"},
+		},
+		{
+			name:  "with_skill",
+			query: "auth",
+			events: []GapEvent{
+				{Skill: "investigation", Task: "analyze auth flow"},
+			},
+			wantContains: []string{"Used by: investigation", "Occurred 1 times"},
+		},
+		{
+			name:  "with_multiple_skills",
+			query: "database",
+			events: []GapEvent{
+				{Skill: "investigation", Task: "check db schema"},
+				{Skill: "feature-impl", Task: "add db migration"},
+				{Skill: "investigation", Task: "another task"},
+			},
+			wantContains: []string{"feature-impl", "investigation", "Occurred 3 times"},
+		},
+		{
+			name:  "with_tasks",
+			query: "config",
+			events: []GapEvent{
+				{Task: "update config parser"},
+				{Task: "fix config loading"},
+			},
+			wantContains: []string{"Tasks:", "Occurred 2 times"},
+		},
+		{
+			name:  "long_task_truncated",
+			query: "api",
+			events: []GapEvent{
+				{Task: "this is a very long task description that should be truncated to prevent overly long output"},
+			},
+			wantContains: []string{"..."},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := generateReasonFromGaps(tc.query, tc.events)
+
+			if result == "" {
+				t.Error("expected non-empty result")
+			}
+
+			for _, want := range tc.wantContains {
+				if !strings.Contains(result, want) {
+					t.Errorf("expected result to contain %q, got %q", want, result)
+				}
+			}
+		})
+	}
+}

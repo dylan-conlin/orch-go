@@ -383,31 +383,95 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 		}
 	}
 
+	// Generate a meaningful reason from gap context
+	reason := generateReasonFromGaps(query, events)
+
 	if hasNoContext {
 		// No context at all - suggest creating an investigation or knowledge
 		return "add_knowledge",
 			fmt.Sprintf("Gap %q has occurred %d times with no context. Consider creating foundational knowledge.", query, len(events)),
-			fmt.Sprintf(`kn decide "%s" --reason "TODO: document decision"`, query)
+			fmt.Sprintf(`kn decide "%s" --reason "%s"`, query, reason)
 	}
 
 	if hasNoConstraints {
 		// Context exists but no constraints - suggest adding constraints
 		return "add_knowledge",
 			fmt.Sprintf("Gap %q has occurred %d times without constraints. Add constraints if they exist.", query, len(events)),
-			fmt.Sprintf(`kn constrain "%s" --reason "TODO: document constraint"`, query)
+			fmt.Sprintf(`kn constrain "%s" --reason "%s"`, query, reason)
 	}
 
 	if hasNoDecisions {
 		// Context exists but no decisions - suggest creating issue to investigate
 		return "create_issue",
 			fmt.Sprintf("Gap %q has occurred %d times without decisions. Create issue to establish patterns.", query, len(events)),
-			fmt.Sprintf(`bd create "Establish patterns for %s" -d "Recurring gap detected - needs investigation"`, query)
+			fmt.Sprintf(`bd create "Establish patterns for %s" -d "%s"`, query, reason)
 	}
 
 	// Default: suggest investigation
 	return "investigate",
 		fmt.Sprintf("Gap %q has occurred %d times. Investigate and document findings.", query, len(events)),
 		fmt.Sprintf(`orch spawn investigation "why does %s lack context"`, query)
+}
+
+// generateReasonFromGaps creates a meaningful reason string from gap event context.
+func generateReasonFromGaps(query string, events []GapEvent) string {
+	if len(events) == 0 {
+		return "No context available for this topic"
+	}
+
+	// Collect unique skills and tasks from events
+	skills := make(map[string]bool)
+	tasks := make([]string, 0)
+
+	for _, e := range events {
+		if e.Skill != "" {
+			skills[e.Skill] = true
+		}
+		if e.Task != "" && len(tasks) < 3 { // Collect up to 3 unique tasks
+			found := false
+			for _, t := range tasks {
+				if t == e.Task {
+					found = true
+					break
+				}
+			}
+			if !found {
+				tasks = append(tasks, e.Task)
+			}
+		}
+	}
+
+	// Build reason based on available context
+	var parts []string
+
+	// Add skill context
+	if len(skills) > 0 {
+		skillList := make([]string, 0, len(skills))
+		for s := range skills {
+			skillList = append(skillList, s)
+		}
+		sort.Strings(skillList)
+		parts = append(parts, fmt.Sprintf("Used by: %s", strings.Join(skillList, ", ")))
+	}
+
+	// Add occurrence count
+	parts = append(parts, fmt.Sprintf("Occurred %d times", len(events)))
+
+	// Add task context if available
+	if len(tasks) > 0 {
+		// Truncate long tasks
+		shortTasks := make([]string, 0, len(tasks))
+		for _, t := range tasks {
+			if len(t) > 40 {
+				shortTasks = append(shortTasks, t[:37]+"...")
+			} else {
+				shortTasks = append(shortTasks, t)
+			}
+		}
+		parts = append(parts, fmt.Sprintf("Tasks: %s", strings.Join(shortTasks, "; ")))
+	}
+
+	return strings.Join(parts, ". ")
 }
 
 // AnalyzePatterns provides comprehensive analysis of gap patterns.

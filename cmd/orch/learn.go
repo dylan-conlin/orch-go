@@ -28,19 +28,21 @@ The learning loop tracks gaps detected during spawns and suggests:
 - Spawning investigations for unclear areas
 
 Subcommands:
-  orch learn             Show all suggestions (default)
-  orch learn suggest     Show suggestions with commands
-  orch learn patterns    Analyze gap patterns by topic
-  orch learn skills      Show gap rates by skill
-  orch learn effects     Show effectiveness of past improvements
-  orch learn act [index] Run the suggested command for a gap
-  orch learn clear       Clear gap history (use sparingly)
+  orch learn                         Show all suggestions (default)
+  orch learn suggest                 Show suggestions with commands
+  orch learn patterns                Analyze gap patterns by topic
+  orch learn skills                  Show gap rates by skill
+  orch learn effects                 Show effectiveness of past improvements
+  orch learn act [index]             Run the suggested command for a gap
+  orch learn resolve [index] [type]  Mark a gap as resolved manually
+  orch learn clear                   Clear gap history (use sparingly)
 
 Examples:
-  orch learn                    # Show suggestions
-  orch learn act 1              # Run first suggestion's command
-  orch learn patterns           # Analyze gap patterns
-  orch learn effects            # Check if improvements reduced gaps`,
+  orch learn                         # Show suggestions
+  orch learn act 1                   # Run first suggestion's command
+  orch learn resolve 2 added_knowledge  # Mark as resolved without running command
+  orch learn patterns                # Analyze gap patterns
+  orch learn effects                 # Check if improvements reduced gaps`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runLearnSuggest()
 	},
@@ -95,6 +97,35 @@ Example:
 	},
 }
 
+var learnResolveCmd = &cobra.Command{
+	Use:   "resolve [index] [resolution]",
+	Short: "Mark a gap as resolved without running a command",
+	Long: `Mark a recurring gap as resolved with a custom resolution.
+
+This is useful when you've already addressed a gap through other means,
+or when the suggested command isn't appropriate for your situation.
+
+Resolution types:
+  added_knowledge   - Added kn entry or documentation
+  created_issue     - Created a beads issue to track
+  investigated      - Completed investigation
+  wont_fix          - Decided not to address
+  custom            - Any other resolution (requires details)
+
+Example:
+  orch learn           # Shows: [1] auth (3x) - suggest: kn decide...
+  orch learn resolve 1 added_knowledge
+  orch learn resolve 2 wont_fix "Not relevant to current project"`,
+	Args: cobra.RangeArgs(2, 3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		details := ""
+		if len(args) == 3 {
+			details = args[2]
+		}
+		return runLearnResolve(args[0], args[1], details)
+	},
+}
+
 var learnClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Clear gap history (use sparingly)",
@@ -113,6 +144,7 @@ func init() {
 	learnCmd.AddCommand(learnSkillsCmd)
 	learnCmd.AddCommand(learnEffectsCmd)
 	learnCmd.AddCommand(learnActCmd)
+	learnCmd.AddCommand(learnResolveCmd)
 	learnCmd.AddCommand(learnClearCmd)
 	rootCmd.AddCommand(learnCmd)
 }
@@ -330,6 +362,70 @@ func runLearnAct(indexStr string) error {
 	}
 
 	fmt.Printf("\n✓ Recorded improvement for %q\n", s.Query)
+	fmt.Println("Run 'orch learn effects' later to see if this reduced gaps.")
+
+	return nil
+}
+
+func runLearnResolve(indexStr, resolution, details string) error {
+	var index int
+	if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+		return fmt.Errorf("invalid index: %s", indexStr)
+	}
+
+	// Validate resolution type
+	validResolutions := map[string]bool{
+		"added_knowledge": true,
+		"created_issue":   true,
+		"investigated":    true,
+		"wont_fix":        true,
+		"custom":          true,
+	}
+	if !validResolutions[resolution] {
+		return fmt.Errorf("invalid resolution type %q. Valid types: added_knowledge, created_issue, investigated, wont_fix, custom", resolution)
+	}
+
+	if resolution == "custom" && details == "" {
+		return fmt.Errorf("custom resolution requires details as third argument")
+	}
+
+	tracker, err := spawn.LoadTracker()
+	if err != nil {
+		return fmt.Errorf("failed to load gap tracker: %w", err)
+	}
+
+	suggestions := tracker.FindRecurringGaps()
+	if len(suggestions) == 0 {
+		fmt.Println("No suggestions available.")
+		return nil
+	}
+
+	if index < 1 || index > len(suggestions) {
+		return fmt.Errorf("index %d out of range (1-%d)", index, len(suggestions))
+	}
+
+	s := suggestions[index-1]
+
+	// Build resolution details
+	resolutionDetails := resolution
+	if details != "" {
+		resolutionDetails = fmt.Sprintf("%s: %s", resolution, details)
+	}
+
+	// Record the resolution for all events in this gap pattern
+	tracker.RecordResolution(s.Query, resolution, resolutionDetails)
+
+	// Record as improvement to track effectiveness
+	tracker.RecordImprovement(resolution, s.Query, resolutionDetails)
+
+	if err := tracker.Save(); err != nil {
+		return fmt.Errorf("failed to save resolution: %w", err)
+	}
+
+	fmt.Printf("✓ Marked %q as resolved (%s)\n", s.Query, resolution)
+	if details != "" {
+		fmt.Printf("  Details: %s\n", details)
+	}
 	fmt.Println("Run 'orch learn effects' later to see if this reduced gaps.")
 
 	return nil
