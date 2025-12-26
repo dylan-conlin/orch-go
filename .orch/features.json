@@ -135,13 +135,45 @@
       "source": ".kb/investigations/2025-12-25-inv-design-kb-ask-command-inline.md",
       "repo": "kb-cli",
       "notes": "Implementation sequence: 1) Basic ask with context piping, 2) No-context gate, 3) --kn flag, 4) --save flag, 5) --model flag"
+    },
+    {
+      "id": "feat-014",
+      "title": "Add daemon status file writing to polling loop",
+      "description": "Modify pkg/daemon/daemon.go to write ~/.orch/daemon-status.json on each poll cycle. Contains: running (bool), max_agents, active, available, last_spawn_at (RFC3339), last_poll_at, poll_interval_seconds, label. Use atomic write (temp file + rename) to prevent partial reads. File targets: pkg/daemon/daemon.go, pkg/daemon/status.go (new). Acceptance: daemon-status.json is updated each cycle, atomic write prevents corruption.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md"
+    },
+    {
+      "id": "feat-015",
+      "title": "Add /api/daemon endpoint to orch serve",
+      "description": "Add GET /api/daemon endpoint to cmd/orch/serve.go that combines: 1) launchd process check via 'launchctl list | grep com.orch.daemon', 2) Read ~/.orch/daemon-status.json for pool status. Response: { running, process_id, capacity: { active, max, available }, last_spawn, last_poll_at, config, stalled }. Stalled = queue has ready issues but no spawn in 2x poll_interval. Depends on feat-014. File targets: cmd/orch/serve.go. Acceptance: /api/daemon returns daemon health, stall detection works.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
+      "depends_on": ["feat-014"]
+    },
+    {
+      "id": "feat-016",
+      "title": "Add daemon indicator to dashboard stats bar",
+      "description": "Add daemon status indicator to web/src/routes/+page.svelte stats bar following servers pattern. Emoji: daemon running, stopped, stalled. Primary: 'X/Y' (active/max). Tooltip: last spawn time, stall warning. Color: green (healthy), yellow (at capacity), red (stopped/stalled). Add daemon store (web/src/lib/stores/daemon.ts) and poll with other stats. File targets: web/src/routes/+page.svelte, web/src/lib/stores/daemon.ts (new). Depends on feat-015. Acceptance: Dashboard shows daemon health at a glance, distinguishes healthy/at-capacity/stopped/stalled.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
+      "depends_on": ["feat-015"]
     }
   ],
   "meta": {
-    "last_updated": "2025-12-25",
-    "total_features": 13,
+    "last_updated": "2025-12-26",
+    "total_features": 16,
     "by_status": {
-      "todo": 13,
+      "todo": 16,
       "in_progress": 0,
       "done": 0
     }
