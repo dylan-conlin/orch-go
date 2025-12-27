@@ -2650,7 +2650,55 @@ func handleDismissReview(w http.ResponseWriter, r *http.Request) {
 	// Build workspace path
 	workspacePath := filepath.Join(sourceDir, ".orch", "workspace", req.WorkspaceID)
 
-	// Load existing review state
+	// Check for light-tier workspace - these don't have SYNTHESIS.md by design.
+	// Light-tier dismissals set LightTierAcknowledged instead of tracking individual recommendations.
+	if isLightTierWorkspace(workspacePath) {
+		reviewState, err := verify.LoadReviewState(workspacePath)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(DismissReviewResponse{
+				Success: false,
+				Error:   fmt.Sprintf("Failed to load review state: %v", err),
+			})
+			return
+		}
+
+		// Check if already acknowledged
+		if reviewState.LightTierAcknowledged {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(DismissReviewResponse{
+				Success: true,
+				Message: "Already acknowledged",
+			})
+			return
+		}
+
+		// Mark as acknowledged
+		reviewState.LightTierAcknowledged = true
+		reviewState.WorkspaceID = req.WorkspaceID
+		reviewState.BeadsID = extractBeadsIDFromWorkspace(workspacePath)
+		if reviewState.ReviewedAt.IsZero() {
+			reviewState.ReviewedAt = time.Now()
+		}
+
+		if err := verify.SaveReviewState(workspacePath, reviewState); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(DismissReviewResponse{
+				Success: false,
+				Error:   fmt.Sprintf("Failed to save review state: %v", err),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(DismissReviewResponse{
+			Success: true,
+			Message: "Light tier completion acknowledged",
+		})
+		return
+	}
+
+	// Full-tier path: Load existing review state
 	reviewState, err := verify.LoadReviewState(workspacePath)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
