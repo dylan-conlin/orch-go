@@ -2973,6 +2973,18 @@ func runComplete(beadsID string) error {
 		fmt.Printf("Issue %s is already closed in beads\n", beadsID)
 	}
 
+	// If --approve flag is set, add approval comment BEFORE verification
+	// This ensures the visual verification gate sees the approval
+	if completeApprove {
+		approvalComment := "✅ APPROVED - Visual changes reviewed and approved by orchestrator"
+		if err := addApprovalComment(beadsID, approvalComment); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to add approval comment: %v\n", err)
+			// Continue anyway - the approval might already exist or we can fallback
+		} else {
+			fmt.Printf("Added approval: %s\n", approvalComment)
+		}
+	}
+
 	// Verify phase status unless force flag is set
 	if !completeForce {
 		// Derive workspace path from project dir + beads ID
@@ -3219,6 +3231,25 @@ func runComplete(beadsID string) error {
 	}
 
 	return nil
+}
+
+// addApprovalComment adds an approval comment to a beads issue.
+// This is used by --approve flag to mark visual changes as human-reviewed.
+func addApprovalComment(beadsID, comment string) error {
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		// Use "orchestrator" as the author for approval comments
+		err := client.AddComment(beadsID, "orchestrator", comment)
+		if err == nil {
+			return nil
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	return beads.FallbackAddComment(beadsID, comment)
 }
 
 // hasGoChangesInRecentCommits checks if any of the last 5 commits contain changes

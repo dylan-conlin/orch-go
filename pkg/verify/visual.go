@@ -66,12 +66,14 @@ func IsSkillRequiringVisualVerification(skillName string) bool {
 
 // VisualVerificationResult represents the result of checking for visual verification evidence.
 type VisualVerificationResult struct {
-	Passed        bool     // Whether verification passed
-	HasWebChanges bool     // Whether web/ files were changed
-	HasEvidence   bool     // Whether visual verification evidence was found
-	Errors        []string // Error messages
-	Warnings      []string // Warning messages
-	Evidence      []string // Evidence found (for debugging)
+	Passed          bool     // Whether verification passed
+	HasWebChanges   bool     // Whether web/ files were changed
+	HasEvidence     bool     // Whether visual verification evidence was found
+	HasHumanApproval bool    // Whether human/orchestrator explicitly approved
+	NeedsApproval   bool     // Whether human approval is required but missing
+	Errors          []string // Error messages
+	Warnings        []string // Warning messages
+	Evidence        []string // Evidence found (for debugging)
 }
 
 // visualEvidencePatterns defines patterns that indicate visual verification was performed.
@@ -99,6 +101,22 @@ var visualEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)browser.*verified`),
 	regexp.MustCompile(`(?i)checked.*browser`),
 	regexp.MustCompile(`(?i)tested.*browser`),
+}
+
+// humanApprovalPatterns defines patterns that indicate explicit human/orchestrator approval.
+// These patterns must come from a human orchestrator, not from the agent itself.
+// The patterns are designed to be unlikely to be accidentally used by agents.
+var humanApprovalPatterns = []*regexp.Regexp{
+	// Explicit approval markers (orchestrator uses these)
+	regexp.MustCompile(`(?i)✅\s*APPROVED`),
+	regexp.MustCompile(`(?i)UI\s*APPROVED`),
+	regexp.MustCompile(`(?i)VISUAL\s*APPROVED`),
+	regexp.MustCompile(`(?i)human_approved:\s*true`),
+	regexp.MustCompile(`(?i)orchestrator_approved:\s*true`),
+	// "I approve" style (first person indicates human)
+	regexp.MustCompile(`(?i)I\s+approve\s+(the\s+)?(UI|visual|changes)`),
+	regexp.MustCompile(`(?i)LGTM.*UI`),
+	regexp.MustCompile(`(?i)UI.*LGTM`),
 }
 
 // HasWebChangesInRecentCommits checks if any of the last 5 commits contain changes
@@ -180,6 +198,26 @@ func HasVisualVerificationEvidence(comments []Comment) (bool, []string) {
 	return len(evidence) > 0, evidence
 }
 
+// HasHumanApproval checks beads comments for explicit human/orchestrator approval.
+// Returns true if any comment contains an explicit approval marker.
+// These markers are designed to be used by human orchestrators, not agents.
+func HasHumanApproval(comments []Comment) (bool, []string) {
+	var approvals []string
+
+	for _, comment := range comments {
+		for _, pattern := range humanApprovalPatterns {
+			if pattern.MatchString(comment.Text) {
+				matches := pattern.FindString(comment.Text)
+				if matches != "" {
+					approvals = append(approvals, matches)
+				}
+			}
+		}
+	}
+
+	return len(approvals) > 0, approvals
+}
+
 // HasVisualVerificationInSynthesis checks SYNTHESIS.md for visual verification evidence.
 // Looks in the Evidence section for screenshot/visual verification mentions.
 func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
@@ -218,12 +256,13 @@ func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
 }
 
 // VerifyVisualVerification checks if visual verification was performed for web/ changes.
-// This is a gate that blocks completion if web/ files were modified without visual verification evidence.
+// This is a gate that blocks completion if web/ files were modified without visual verification evidence
+// AND explicit human approval.
 //
 // The verification passes if:
 // 1. No web/ files were modified in recent commits, OR
 // 2. The skill is not a UI-focused skill (architect, investigation, debugging, etc.), OR
-// 3. Visual verification evidence is found in beads comments or SYNTHESIS.md
+// 3. Visual verification evidence is found AND human approval is present
 //
 // This skill-aware approach prevents false positives from non-UI skills that incidentally
 // modify web/ files as part of broader work. Only feature-impl (and similar UI-focused skills)
@@ -233,6 +272,13 @@ func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
 // - Screenshots mentioned (screenshot, captured image)
 // - Visual verification mentioned (visually verified, UI verified)
 // - Browser testing mentioned (playwright, browser_take_screenshot, tested in browser)
+//
+// Human Approval includes:
+// - ✅ APPROVED marker
+// - UI APPROVED / VISUAL APPROVED
+// - human_approved: true
+// - orchestrator_approved: true
+// - "I approve the UI/visual/changes"
 func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualVerificationResult {
 	result := VisualVerificationResult{Passed: true}
 
@@ -254,17 +300,25 @@ func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualV
 		return result
 	}
 
-	// UI-focused skill (feature-impl) - need visual verification evidence
+	// UI-focused skill (feature-impl) - need visual verification evidence AND human approval
 
-	// Check beads comments for evidence
+	// Check beads comments for evidence and approval
 	comments, err := GetComments(beadsID)
 	if err != nil {
 		result.Warnings = append(result.Warnings, "failed to get beads comments: "+err.Error())
 	} else {
+		// Check for visual verification evidence
 		hasEvidence, evidence := HasVisualVerificationEvidence(comments)
 		if hasEvidence {
 			result.HasEvidence = true
 			result.Evidence = append(result.Evidence, evidence...)
+		}
+
+		// Check for human approval
+		hasApproval, approvals := HasHumanApproval(comments)
+		if hasApproval {
+			result.HasHumanApproval = true
+			result.Evidence = append(result.Evidence, approvals...)
 		}
 	}
 
@@ -277,13 +331,22 @@ func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualV
 		}
 	}
 
-	// If web changes but no evidence, fail verification
+	// Determine what's missing
 	if !result.HasEvidence {
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			"web/ files modified but no visual verification evidence found",
 			"Agent must capture screenshot or mention visual verification in beads comment",
 			"Example: bd comment <id> \"Visual verification: screenshot captured showing [description]\"",
+		)
+	} else if !result.HasHumanApproval {
+		// Evidence exists but needs human approval
+		result.Passed = false
+		result.NeedsApproval = true
+		result.Errors = append(result.Errors,
+			"web/ files modified - visual evidence found but requires human approval",
+			"Use: orch complete <id> --approve   OR",
+			"Add approval comment: bd comment <id> \"✅ APPROVED\"",
 		)
 	}
 

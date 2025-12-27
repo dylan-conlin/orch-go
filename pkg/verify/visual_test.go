@@ -433,6 +433,7 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 		skillName      string
 		hasWebChanges  bool
 		hasEvidence    bool
+		hasApproval    bool
 		wantPassed     bool
 		wantHasWarning bool
 	}{
@@ -441,6 +442,7 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 			skillName:     "architect",
 			hasWebChanges: true,
 			hasEvidence:   false,
+			hasApproval:   false,
 			wantPassed:    true,
 		},
 		{
@@ -448,20 +450,31 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 			skillName:     "investigation",
 			hasWebChanges: true,
 			hasEvidence:   false,
+			hasApproval:   false,
 			wantPassed:    true,
 		},
 		{
-			name:          "feature-impl with web changes and evidence - should pass",
+			name:          "feature-impl with web changes and evidence and approval - should pass",
 			skillName:     "feature-impl",
 			hasWebChanges: true,
 			hasEvidence:   true,
+			hasApproval:   true,
 			wantPassed:    true,
+		},
+		{
+			name:          "feature-impl with web changes and evidence but no approval - should fail",
+			skillName:     "feature-impl",
+			hasWebChanges: true,
+			hasEvidence:   true,
+			hasApproval:   false,
+			wantPassed:    false,
 		},
 		{
 			name:          "feature-impl with web changes no evidence - should fail",
 			skillName:     "feature-impl",
 			hasWebChanges: true,
 			hasEvidence:   false,
+			hasApproval:   false,
 			wantPassed:    false,
 		},
 		{
@@ -469,6 +482,7 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 			skillName:     "new-skill",
 			hasWebChanges: true,
 			hasEvidence:   false,
+			hasApproval:   false,
 			wantPassed:    true,
 		},
 		{
@@ -476,6 +490,7 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 			skillName:     "feature-impl",
 			hasWebChanges: false,
 			hasEvidence:   false,
+			hasApproval:   false,
 			wantPassed:    true,
 		},
 	}
@@ -507,16 +522,156 @@ func TestSkillAwareVisualVerification(t *testing.T) {
 				return
 			}
 
-			// UI skill - need evidence
+			// UI skill - need both evidence AND approval
 			result.HasEvidence = tt.hasEvidence
+			result.HasHumanApproval = tt.hasApproval
+			
 			if !tt.hasEvidence {
 				result.Passed = false
 				result.Errors = append(result.Errors, "web/ files modified but no visual verification evidence found")
+			} else if !tt.hasApproval {
+				result.Passed = false
+				result.NeedsApproval = true
+				result.Errors = append(result.Errors, "web/ files modified - visual evidence found but requires human approval")
 			}
 
 			if result.Passed != tt.wantPassed {
 				t.Errorf("Result.Passed = %v, want %v", result.Passed, tt.wantPassed)
 			}
 		})
+	}
+}
+
+func TestHasHumanApproval(t *testing.T) {
+	tests := []struct {
+		name       string
+		comments   []Comment
+		wantHas    bool
+		wantMinLen int
+	}{
+		{
+			name: "checkmark approved",
+			comments: []Comment{
+				{Text: "✅ APPROVED - Visual changes look good"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "UI APPROVED",
+			comments: []Comment{
+				{Text: "UI APPROVED after review"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "VISUAL APPROVED",
+			comments: []Comment{
+				{Text: "VISUAL APPROVED - screenshot verified"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "human_approved flag",
+			comments: []Comment{
+				{Text: "human_approved: true"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "orchestrator_approved flag",
+			comments: []Comment{
+				{Text: "orchestrator_approved: true"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "I approve the UI",
+			comments: []Comment{
+				{Text: "I approve the UI changes"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "LGTM UI",
+			comments: []Comment{
+				{Text: "LGTM on the UI changes"},
+			},
+			wantHas:    true,
+			wantMinLen: 1,
+		},
+		{
+			name: "no approval - agent self-certified",
+			comments: []Comment{
+				{Text: "Visual verification: screenshot captured showing dashboard"},
+				{Text: "Phase: Complete - All tests passing"},
+			},
+			wantHas:    false,
+			wantMinLen: 0,
+		},
+		{
+			name:       "empty comments",
+			comments:   []Comment{},
+			wantHas:    false,
+			wantMinLen: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasApproval, approvals := HasHumanApproval(tt.comments)
+			if hasApproval != tt.wantHas {
+				t.Errorf("HasHumanApproval() hasApproval = %v, want %v", hasApproval, tt.wantHas)
+			}
+			if len(approvals) < tt.wantMinLen {
+				t.Errorf("HasHumanApproval() approval count = %d, want at least %d", len(approvals), tt.wantMinLen)
+			}
+		})
+	}
+}
+
+func TestHumanApprovalPatterns(t *testing.T) {
+	// Test that our patterns match expected inputs
+	testCases := []struct {
+		input       string
+		shouldMatch bool
+	}{
+		// Should match - explicit approval markers
+		{"✅ APPROVED", true},
+		{"✅ APPROVED - Visual changes look correct", true},
+		{"UI APPROVED", true},
+		{"VISUAL APPROVED", true},
+		{"human_approved: true", true},
+		{"orchestrator_approved: true", true},
+		{"I approve the UI changes", true},
+		{"I approve the visual changes", true},
+		{"LGTM on the UI", true},
+		{"UI looks LGTM", true},
+
+		// Should NOT match - agent self-certification
+		{"Visual verification: screenshot captured", false},
+		{"Screenshot taken of dashboard", false},
+		{"Verified in browser", false},
+		{"Tests passing", false},
+		{"Phase: Complete", false},
+		{"Approved the code changes", false}, // not UI-specific
+	}
+
+	for _, tc := range testCases {
+		matched := false
+		for _, pattern := range humanApprovalPatterns {
+			if pattern.MatchString(tc.input) {
+				matched = true
+				break
+			}
+		}
+		if matched != tc.shouldMatch {
+			t.Errorf("Approval pattern matching for %q: got %v, want %v", tc.input, matched, tc.shouldMatch)
+		}
 	}
 }
