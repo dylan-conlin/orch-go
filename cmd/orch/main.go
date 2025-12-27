@@ -641,7 +641,8 @@ func runQuestion(beadsID string) error {
 
 var (
 	// Abandon command flags
-	abandonReason string
+	abandonReason  string
+	abandonWorkdir string
 )
 
 var abandonCmd = &cobra.Command{
@@ -655,28 +656,65 @@ The agent's beads issue is NOT closed - you can restart work with 'orch work'.
 When --reason is provided, a FAILURE_REPORT.md is generated in the agent's workspace
 documenting what went wrong and recommendations for retry.
 
+For cross-project abandonment, use --workdir to specify the target project directory
+where the beads issue lives.
+
 Examples:
-  orch-go abandon proj-123                                    # Abandon agent
-  orch-go abandon proj-123 --reason "Out of context"          # Abandon with failure report
-  orch-go abandon proj-123 --reason "Stuck in loop"           # Document the failure`,
+  orch-go abandon proj-123                                      # Abandon agent in current project
+  orch-go abandon proj-123 --reason "Out of context"            # Abandon with failure report
+  orch-go abandon proj-123 --reason "Stuck in loop"             # Document the failure
+  orch-go abandon kb-cli-123 --workdir ~/projects/kb-cli        # Abandon agent in another project`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runAbandon(beadsID, abandonReason)
+		return runAbandon(beadsID, abandonReason, abandonWorkdir)
 	},
 }
 
 func init() {
 	abandonCmd.Flags().StringVar(&abandonReason, "reason", "", "Reason for abandonment (generates FAILURE_REPORT.md)")
+	abandonCmd.Flags().StringVar(&abandonWorkdir, "workdir", "", "Target project directory (for cross-project abandonment)")
 }
 
-func runAbandon(beadsID, reason string) error {
+func runAbandon(beadsID, reason, workdir string) error {
 	// Strategy: Check liveness directly via tmux and OpenCode, not registry
 	// An agent is "alive" if it has a tmux window OR an active OpenCode session
+
+	// Determine project directory - use --workdir if provided, otherwise current directory
+	var projectDir string
+	var err error
+	if workdir != "" {
+		projectDir, err = filepath.Abs(workdir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		// Verify directory exists
+		if stat, err := os.Stat(projectDir); err != nil {
+			return fmt.Errorf("workdir does not exist: %s", projectDir)
+		} else if !stat.IsDir() {
+			return fmt.Errorf("workdir is not a directory: %s", projectDir)
+		}
+		// Set DefaultDir for beads client to find the correct socket
+		beads.DefaultDir = projectDir
+	} else {
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
 
 	// First, verify the beads issue exists
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
+		// Provide helpful error message for cross-project issues
+		projectName := filepath.Base(projectDir)
+		issuePrefix := strings.Split(beadsID, "-")[0]
+		if len(strings.Split(beadsID, "-")) > 1 {
+			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
+		}
+		if issuePrefix != projectName {
+			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch abandon %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
+		}
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
@@ -684,8 +722,6 @@ func runAbandon(beadsID, reason string) error {
 		return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
 	}
 
-	// Get current directory for OpenCode client
-	projectDir, _ := os.Getwd()
 	client := opencode.NewClient(serverURL)
 
 	// Check for tmux window
@@ -2779,9 +2815,24 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 }
 
 func runComplete(beadsID string) error {
+	// Get current directory as project dir (needed for cross-project detection)
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
 	// Get issue to verify it exists
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
+		// Provide helpful error message for cross-project issues
+		projectName := filepath.Base(projectDir)
+		issuePrefix := strings.Split(beadsID, "-")[0]
+		if len(strings.Split(beadsID, "-")) > 1 {
+			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
+		}
+		if issuePrefix != projectName {
+			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: cd ~/path/to/%s && orch complete %s", beadsID, err, issuePrefix, projectName, issuePrefix, beadsID)
+		}
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
@@ -2789,12 +2840,6 @@ func runComplete(beadsID string) error {
 	isClosed := issue.Status == "closed"
 	if isClosed {
 		fmt.Printf("Issue %s is already closed in beads\n", beadsID)
-	}
-
-	// Get current directory as project dir
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
 	// Verify phase status unless force flag is set

@@ -227,13 +227,43 @@ func TestAbandonNonExistentAgent(t *testing.T) {
 	beadsID := "nonexistent-agent-xyz"
 
 	// runAbandon first verifies the beads issue exists
-	err := runAbandon(beadsID, "")
+	err := runAbandon(beadsID, "", "")
 	if err == nil {
 		t.Error("Expected error for non-existent agent")
 	}
 	// Now the error is from beads lookup failure (issue not found)
 	if err != nil && !strings.Contains(err.Error(), "failed to get beads issue") && !strings.Contains(err.Error(), "no agent found") {
 		t.Errorf("Expected 'failed to get beads issue' or 'no agent found' error, got: %v", err)
+	}
+}
+
+// TestCompleteCrossProjectErrorMessage tests that completing an agent from a different project
+// provides helpful error message with cd suggestion.
+func TestCompleteCrossProjectErrorMessage(t *testing.T) {
+	// Try to complete an agent with an ID that suggests a different project
+	// We're likely in 'orch-go' or 'orch' but using 'kb-cli' prefix
+	beadsID := "kb-cli-xyz123"
+
+	err := runComplete(beadsID)
+	if err == nil {
+		t.Error("Expected error for cross-project beads ID")
+		return
+	}
+
+	errMsg := err.Error()
+
+	// Check that the error message contains helpful hints
+	if !strings.Contains(errMsg, "Hint:") {
+		t.Errorf("Expected error to contain 'Hint:', got: %v", err)
+	}
+	if !strings.Contains(errMsg, "kb-cli") {
+		t.Errorf("Expected error to mention the project 'kb-cli', got: %v", err)
+	}
+	if !strings.Contains(errMsg, "cd ") {
+		t.Errorf("Expected error to suggest 'cd' command, got: %v", err)
+	}
+	if !strings.Contains(errMsg, "orch complete") {
+		t.Errorf("Expected error to include 'orch complete' command, got: %v", err)
 	}
 }
 
