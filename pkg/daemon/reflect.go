@@ -26,6 +26,9 @@ type ReflectSuggestions struct {
 
 	// Drift detected constraints that may conflict with code.
 	Drift []DriftSuggestion `json:"drift,omitempty"`
+
+	// Refine suggestions for kn entries that refine existing principles.
+	Refine []RefineSuggestion `json:"refine,omitempty"`
 }
 
 // SynthesisSuggestion represents a topic with multiple investigations.
@@ -57,12 +60,33 @@ type DriftSuggestion struct {
 	Suggestion string `json:"suggestion"`
 }
 
+// RefineSuggestion represents a kn entry that refines an existing principle.
+type RefineSuggestion struct {
+	ID         string   `json:"id"`
+	Content    string   `json:"content"`
+	Principle  string   `json:"principle"`
+	MatchTerms []string `json:"match_terms"`
+	Suggestion string   `json:"suggestion"`
+}
+
 // kbReflectOutput represents the raw output from kb reflect --format json.
 type kbReflectOutput struct {
 	Synthesis []SynthesisSuggestion `json:"synthesis,omitempty"`
 	Promote   []PromoteSuggestion   `json:"promote,omitempty"`
 	Stale     []StaleSuggestion     `json:"stale,omitempty"`
 	Drift     []DriftSuggestion     `json:"drift,omitempty"`
+	Refine    []kbRefineOutput      `json:"refine,omitempty"`
+}
+
+// kbRefineOutput represents the raw refine entry from kb reflect.
+type kbRefineOutput struct {
+	Entry struct {
+		ID      string `json:"id"`
+		Content string `json:"content"`
+	} `json:"entry"`
+	Principle  string   `json:"principle"`
+	MatchTerms []string `json:"match_terms"`
+	Suggestion string   `json:"suggestion"`
 }
 
 // SuggestionsPath returns the default path for storing reflection suggestions.
@@ -88,12 +112,25 @@ func RunReflection() (*ReflectSuggestions, error) {
 		return nil, fmt.Errorf("failed to parse kb reflect output: %w", err)
 	}
 
+	// Convert refine output to suggestions
+	var refine []RefineSuggestion
+	for _, r := range rawOutput.Refine {
+		refine = append(refine, RefineSuggestion{
+			ID:         r.Entry.ID,
+			Content:    r.Entry.Content,
+			Principle:  r.Principle,
+			MatchTerms: r.MatchTerms,
+			Suggestion: r.Suggestion,
+		})
+	}
+
 	suggestions := &ReflectSuggestions{
 		Timestamp: time.Now().UTC(),
 		Synthesis: rawOutput.Synthesis,
 		Promote:   rawOutput.Promote,
 		Stale:     rawOutput.Stale,
 		Drift:     rawOutput.Drift,
+		Refine:    refine,
 	}
 
 	return suggestions, nil
@@ -153,7 +190,7 @@ func (s *ReflectSuggestions) HasSuggestions() bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0
+	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0
 }
 
 // TotalCount returns the total number of suggestions across all categories.
@@ -161,7 +198,7 @@ func (s *ReflectSuggestions) TotalCount() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift)
+	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine)
 }
 
 // Summary returns a human-readable summary of suggestions.
@@ -182,6 +219,9 @@ func (s *ReflectSuggestions) Summary() string {
 	}
 	if len(s.Drift) > 0 {
 		parts = append(parts, fmt.Sprintf("%d potential drifts", len(s.Drift)))
+	}
+	if len(s.Refine) > 0 {
+		parts = append(parts, fmt.Sprintf("%d principle refinements", len(s.Refine)))
 	}
 
 	result := ""

@@ -1828,9 +1828,19 @@ type GapsAPIResponse struct {
 // ReflectAPIResponse is the JSON structure returned by /api/reflect.
 // It exposes the reflect-suggestions.json data with synthesis/promote/stale info.
 type ReflectAPIResponse struct {
-	Timestamp string                    `json:"timestamp"`
+	Timestamp string                   `json:"timestamp"`
 	Synthesis []ReflectSynthesisSummary `json:"synthesis"`
-	Error     string                    `json:"error,omitempty"`
+	Refine    []ReflectRefineSummary   `json:"refine,omitempty"`
+	Error     string                   `json:"error,omitempty"`
+}
+
+// ReflectRefineSummary represents a kn entry that refines an existing principle.
+type ReflectRefineSummary struct {
+	ID         string   `json:"id"`
+	Content    string   `json:"content"`
+	Principle  string   `json:"principle"`
+	MatchTerms []string `json:"match_terms"`
+	Suggestion string   `json:"suggestion"`
 }
 
 // ReflectSynthesisSummary represents a topic with accumulated investigations.
@@ -2002,6 +2012,13 @@ func handleReflect(w http.ResponseWriter, r *http.Request) {
 			Investigations []string `json:"investigations"`
 			Suggestion     string   `json:"suggestion"`
 		} `json:"synthesis"`
+		Refine []struct {
+			ID         string   `json:"id"`
+			Content    string   `json:"content"`
+			Principle  string   `json:"principle"`
+			MatchTerms []string `json:"match_terms"`
+			Suggestion string   `json:"suggestion"`
+		} `json:"refine"`
 	}
 
 	if err := json.Unmarshal(data, &rawReflect); err != nil {
@@ -2022,9 +2039,22 @@ func handleReflect(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Convert refine data
+	var refine []ReflectRefineSummary
+	for _, r := range rawReflect.Refine {
+		refine = append(refine, ReflectRefineSummary{
+			ID:         r.ID,
+			Content:    r.Content,
+			Principle:  r.Principle,
+			MatchTerms: r.MatchTerms,
+			Suggestion: r.Suggestion,
+		})
+	}
+
 	resp := ReflectAPIResponse{
 		Timestamp: rawReflect.Timestamp,
 		Synthesis: synthesis,
+		Refine:    refine,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
