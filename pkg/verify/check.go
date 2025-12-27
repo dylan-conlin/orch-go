@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
@@ -578,12 +579,19 @@ func GetIssue(beadsID string) (*Issue, error) {
 	}, nil
 }
 
-// GetIssuesBatch retrieves multiple issues in a single call.
+// GetIssuesBatch retrieves multiple issues efficiently.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
-// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses List() to get all issues in one call, then filters by requested IDs.
+// This is much faster than individual Show() calls (1 call vs N calls).
 func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	if len(beadsIDs) == 0 {
 		return make(map[string]*Issue), nil
+	}
+
+	// Build a set of requested IDs for O(1) lookup
+	requestedIDs := make(map[string]bool, len(beadsIDs))
+	for _, id := range beadsIDs {
+		requestedIDs[id] = true
 	}
 
 	result := make(map[string]*Issue, len(beadsIDs))
@@ -593,41 +601,43 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	if err == nil {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 
-		// Fetch each issue via RPC
-		for _, beadsID := range beadsIDs {
-			issue, err := client.Show(beadsID)
-			if err == nil {
-				result[issue.ID] = &Issue{
-					ID:          issue.ID,
-					Title:       issue.Title,
-					Description: issue.Description,
-					Status:      issue.Status,
-					IssueType:   issue.IssueType,
-					CloseReason: issue.CloseReason,
+		// Fetch ALL issues in one call, then filter
+		allIssues, err := client.List(nil)
+		if err == nil {
+			for i := range allIssues {
+				if requestedIDs[allIssues[i].ID] {
+					result[allIssues[i].ID] = &Issue{
+						ID:          allIssues[i].ID,
+						Title:       allIssues[i].Title,
+						Description: allIssues[i].Description,
+						Status:      allIssues[i].Status,
+						IssueType:   allIssues[i].IssueType,
+						CloseReason: allIssues[i].CloseReason,
+					}
 				}
 			}
-			// Silently skip invalid IDs
-		}
-		if len(result) > 0 {
 			return result, nil
 		}
-		// Fall through to CLI if no results
+		// Fall through to CLI if RPC failed
 	}
 
-	// Fallback to CLI - fetch each issue individually
-	for _, beadsID := range beadsIDs {
-		issue, err := beads.FallbackShow(beadsID)
-		if err == nil {
-			result[issue.ID] = &Issue{
-				ID:          issue.ID,
-				Title:       issue.Title,
-				Description: issue.Description,
-				Status:      issue.Status,
-				IssueType:   issue.IssueType,
-				CloseReason: issue.CloseReason,
+	// Fallback to CLI - List all issues in one call
+	allIssues, err := beads.FallbackList("")
+	if err != nil {
+		return result, nil // Return empty on error (don't fail the whole request)
+	}
+
+	for i := range allIssues {
+		if requestedIDs[allIssues[i].ID] {
+			result[allIssues[i].ID] = &Issue{
+				ID:          allIssues[i].ID,
+				Title:       allIssues[i].Title,
+				Description: allIssues[i].Description,
+				Status:      allIssues[i].Status,
+				IssueType:   allIssues[i].IssueType,
+				CloseReason: allIssues[i].CloseReason,
 			}
 		}
-		// Silently skip invalid IDs
 	}
 
 	return result, nil
@@ -729,16 +739,19 @@ func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 	return commentMap
 }
 
-// GetCommentsBatchWithProjectDirs fetches comments for multiple issues, each with its own project directory.
+// GetCommentsBatchWithProjectDirs fetches comments for multiple issues in parallel.
 // The projectDirs map should contain beadsID -> projectDir mappings.
 // For beads IDs not in projectDirs, the current working directory is used.
 // Returns a map from beadsID to comments. Errors are silently skipped.
 // This is used for cross-project agent visibility where agents may be from different projects.
+// Uses goroutines with semaphore to parallelize fetching (much faster than sequential).
 func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]string) map[string][]Comment {
 	if len(beadsIDs) == 0 {
 		return make(map[string][]Comment)
 	}
 
+	// Use mutex-protected map for thread-safe writes
+	var mu sync.Mutex
 	commentMap := make(map[string][]Comment, len(beadsIDs))
 
 	// Group beads IDs by project directory for efficient RPC client reuse
@@ -748,34 +761,55 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 		byProjectDir[dir] = append(byProjectDir[dir], beadsID)
 	}
 
-	// Process each project directory group
-	for projectDir, ids := range byProjectDir {
-		rpcSucceeded := false
+	// Limit concurrent RPC calls to avoid overwhelming the server
+	const maxConcurrent = 20
+	sem := make(chan struct{}, maxConcurrent)
 
-		// Try RPC client first with auto-reconnect
+	var wg sync.WaitGroup
+
+	// Process each project directory group in parallel
+	for projectDir, ids := range byProjectDir {
+		// Try RPC client first
 		socketPath, err := beads.FindSocketPath(projectDir)
 		if err == nil {
 			client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-			// Fetch comments sequentially via RPC
-			for _, beadsID := range ids {
-				comments, err := client.Comments(beadsID)
-				if err == nil {
-					commentMap[beadsID] = comments
-					rpcSucceeded = true
-				}
-			}
-		}
 
-		// Fallback to CLI for each issue in this project if RPC didn't work
-		if !rpcSucceeded {
+			// Fetch comments in parallel via RPC
 			for _, beadsID := range ids {
-				comments, err := FallbackCommentsWithDir(beadsID, projectDir)
-				if err == nil {
-					commentMap[beadsID] = comments
-				}
+				wg.Add(1)
+				go func(id string, c *beads.Client) {
+					defer wg.Done()
+					sem <- struct{}{}        // Acquire semaphore
+					defer func() { <-sem }() // Release semaphore
+
+					comments, err := c.Comments(id)
+					if err == nil {
+						mu.Lock()
+						commentMap[id] = comments
+						mu.Unlock()
+					}
+				}(beadsID, client)
+			}
+		} else {
+			// Fallback to CLI for this project dir in parallel
+			for _, beadsID := range ids {
+				wg.Add(1)
+				go func(id string, dir string) {
+					defer wg.Done()
+					sem <- struct{}{}        // Acquire semaphore
+					defer func() { <-sem }() // Release semaphore
+
+					comments, err := FallbackCommentsWithDir(id, dir)
+					if err == nil {
+						mu.Lock()
+						commentMap[id] = comments
+						mu.Unlock()
+					}
+				}(beadsID, projectDir)
 			}
 		}
 	}
 
+	wg.Wait()
 	return commentMap
 }
