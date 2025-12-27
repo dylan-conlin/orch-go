@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-o22b
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Agent shipped broken UI feature because validation was build-only; SSR hydration bug made toggle non-functional despite passing build.
