@@ -152,6 +152,18 @@ func TrackerPath() string {
 	return trackerPathFunc()
 }
 
+// TrackerPathFunc returns the current tracker path function.
+// Used for testing to save and restore the original function.
+func TrackerPathFunc() string {
+	return trackerPathFunc()
+}
+
+// SetTrackerPathFunc sets a custom tracker path function.
+// Used for testing to inject a custom path.
+func SetTrackerPathFunc(fn func() string) {
+	trackerPathFunc = fn
+}
+
 // LoadTracker loads the gap tracker from disk.
 // Returns an empty tracker if file doesn't exist.
 func LoadTracker() (*GapTracker, error) {
