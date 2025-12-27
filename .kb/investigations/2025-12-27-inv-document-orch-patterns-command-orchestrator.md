@@ -92,7 +92,7 @@ Documentation was added to:
 
 **What's untested:**
 
-- ⚠️ Skill rebuild (`orch build skills` not run - requires skillc)
+- ✅ Skill rebuild (skillc deploy ran successfully - deployed to ~/.claude/skills/meta/orchestrator/SKILL.md)
 - ⚠️ Command output matches documentation (not run interactively)
 
 **What would change this:**
