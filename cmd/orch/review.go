@@ -122,10 +122,13 @@ type CompletionInfo struct {
 	ModTime       time.Time // Workspace modification time
 	IsUntracked   bool      // True if agent was spawned with --no-track
 	IsStale       bool      // True if agent is in non-Complete phase for >24h
+	IsLightTier   bool      // True if agent was spawned as light tier (no SYNTHESIS.md by design)
 }
 
 // getCompletionsForReview retrieves completed agents with verification status.
-// Scans .orch/workspace/ for completed workspaces (those with SYNTHESIS.md).
+// Scans .orch/workspace/ for completed workspaces. Detects both:
+// - Full-tier agents: those with SYNTHESIS.md
+// - Light-tier agents: those with .tier file containing "light" AND Phase: Complete in beads comments
 func getCompletionsForReview() ([]CompletionInfo, error) {
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -134,7 +137,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 
 	var results []CompletionInfo
 
-	// Scan workspaces for SYNTHESIS.md (completion indicator)
+	// Scan workspaces for completions
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	entries, _ := os.ReadDir(workspaceDir)
 
@@ -146,10 +149,19 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		dirName := entry.Name()
 		dirPath := filepath.Join(workspaceDir, dirName)
 
-		// Check for SYNTHESIS.md
+		// Check for SYNTHESIS.md (full-tier completion)
 		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
-		if _, err := os.Stat(synthesisPath); os.IsNotExist(err) {
-			continue // No synthesis = not complete
+		hasSynthesis := false
+		if _, err := os.Stat(synthesisPath); err == nil {
+			hasSynthesis = true
+		}
+
+		// Check for light-tier completion (no synthesis by design)
+		isLightComplete, lightBeadsID := isLightTierComplete(dirPath)
+
+		// Skip workspaces that are neither full-tier with synthesis nor light-tier complete
+		if !hasSynthesis && !isLightComplete {
+			continue
 		}
 
 		// Get workspace modification time from directory
@@ -159,8 +171,11 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			modTime = dirInfo.ModTime()
 		}
 
-		// Extract beads ID from SPAWN_CONTEXT.md
+		// Extract beads ID from SPAWN_CONTEXT.md (or use lightBeadsID for light tier)
 		beadsID := extractBeadsIDFromWorkspace(dirPath)
+		if beadsID == "" && lightBeadsID != "" {
+			beadsID = lightBeadsID
+		}
 
 		// Extract skill from workspace name
 		skill := extractSkillFromTitle(dirName)
@@ -176,41 +191,51 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			Skill:         skill,
 			ModTime:       modTime,
 			IsUntracked:   isUntracked,
+			IsLightTier:   isLightComplete,
 		}
 
-		// Check verification status if we have a beads ID
-		if beadsID != "" {
-			result, err := verify.VerifyCompletionFull(beadsID, dirPath, projectDir, "")
-			if err != nil {
-				info.VerifyError = fmt.Sprintf("verification error: %v", err)
-				info.VerifyOK = false
-			} else if result.Passed {
+		// Handle full-tier agents (with SYNTHESIS.md)
+		if hasSynthesis {
+			// Check verification status if we have a beads ID
+			if beadsID != "" {
+				result, err := verify.VerifyCompletionFull(beadsID, dirPath, projectDir, "")
+				if err != nil {
+					info.VerifyError = fmt.Sprintf("verification error: %v", err)
+					info.VerifyOK = false
+				} else if result.Passed {
+					info.VerifyOK = true
+					info.Phase = result.Phase.Phase
+					info.Summary = result.Phase.Summary
+
+					// Try to parse synthesis
+					s, err := verify.ParseSynthesis(dirPath)
+					if err == nil {
+						info.Synthesis = s
+					}
+				} else {
+					info.VerifyOK = false
+					if len(result.Errors) > 0 {
+						info.VerifyError = result.Errors[0]
+					}
+				}
+			} else {
+				// No beads ID but has SYNTHESIS.md - partially verifiable
 				info.VerifyOK = true
-				info.Phase = result.Phase.Phase
-				info.Summary = result.Phase.Summary
+				info.Phase = "Complete"
+				info.Summary = "(no beads tracking)"
 
 				// Try to parse synthesis
 				s, err := verify.ParseSynthesis(dirPath)
 				if err == nil {
 					info.Synthesis = s
 				}
-			} else {
-				info.VerifyOK = false
-				if len(result.Errors) > 0 {
-					info.VerifyError = result.Errors[0]
-				}
 			}
-		} else {
-			// No beads ID but has SYNTHESIS.md - partially verifiable
+		} else if isLightComplete {
+			// Handle light-tier agents (no SYNTHESIS.md by design)
+			// Light-tier agents are verified OK if they have Phase: Complete
 			info.VerifyOK = true
 			info.Phase = "Complete"
-			info.Summary = "(no beads tracking)"
-
-			// Try to parse synthesis
-			s, err := verify.ParseSynthesis(dirPath)
-			if err == nil {
-				info.Synthesis = s
-			}
+			info.Summary = "(light tier - no synthesis by design)"
 		}
 
 		// Determine if agent is stale (non-Complete phase for >24h)
@@ -334,20 +359,29 @@ func runReviewSingle(beadsID string) error {
 		review.Skill = extractSkillFromTitle(filepath.Base(workspacePath))
 	}
 
+	// Check if this is a light tier agent
+	if workspacePath != "" {
+		review.IsLightTier = isLightTierWorkspace(workspacePath)
+	}
+
 	// Display the review
 	fmt.Print(verify.FormatAgentReview(review))
 
 	// Print next steps
 	fmt.Println("---")
-	if review.Status == "Phase: Complete" && review.SynthesisExists {
-		fmt.Printf("Ready to complete: orch complete %s\n", beadsID)
+	if review.Status == "Phase: Complete" {
+		// Light tier agents are ready without SYNTHESIS.md
+		if review.SynthesisExists || review.IsLightTier {
+			fmt.Printf("Ready to complete: orch complete %s\n", beadsID)
+		} else {
+			fmt.Println("Missing: SYNTHESIS.md - agent should create this before completing")
+			fmt.Printf("\nTo force completion: orch complete %s --force\n", beadsID)
+		}
 	} else {
-		if !review.SynthesisExists {
+		if !review.SynthesisExists && !review.IsLightTier {
 			fmt.Println("Missing: SYNTHESIS.md - agent should create this before completing")
 		}
-		if review.Status != "Phase: Complete" {
-			fmt.Println("Missing: Phase: Complete - agent should report via bd comment")
-		}
+		fmt.Println("Missing: Phase: Complete - agent should report via bd comment")
 		fmt.Printf("\nTo force completion: orch complete %s --force\n", beadsID)
 	}
 
@@ -468,12 +502,15 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 				status = "NEEDS_REVIEW"
 			}
 
-			// Add stale/untracked indicators
+			// Add stale/untracked/light-tier indicators
 			if c.IsStale {
 				status = "STALE"
 			}
 			if c.IsUntracked {
 				status = "UNTRACKED"
+			}
+			if c.IsLightTier {
+				status = "LIGHT"
 			}
 
 			beadsInfo := ""
@@ -487,9 +524,14 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 				fmt.Printf("         Phase: %s - %s\n", c.Phase, c.Summary)
 			}
 
-			// Display Synthesis Card if available
+			// Display Synthesis Card if available (full-tier only)
 			if c.Synthesis != nil {
 				printSynthesisCard(c.Synthesis)
+			}
+
+			// Light tier note
+			if c.IsLightTier {
+				fmt.Println("         (Light tier - no synthesis by design)")
 			}
 
 			if !c.VerifyOK && c.VerifyError != "" {

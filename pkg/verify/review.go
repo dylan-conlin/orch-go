@@ -47,6 +47,9 @@ type AgentReview struct {
 	InvestigationPath  string
 	InvestigationFound bool
 
+	// Light tier indicator
+	IsLightTier bool // True if spawned as light tier (no SYNTHESIS.md by design)
+
 	// Test results (if available)
 	TestOutput string
 }
@@ -331,6 +334,8 @@ func FormatAgentReview(review *AgentReview) string {
 			outcomeStr += ")"
 		}
 		sb.WriteString(fmt.Sprintf("  • SYNTHESIS.md%s\n", outcomeStr))
+	} else if review.IsLightTier {
+		sb.WriteString("  • SYNTHESIS.md (not required - light tier)\n")
 	} else {
 		sb.WriteString("  • SYNTHESIS.md (missing)\n")
 	}
