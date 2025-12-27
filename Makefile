@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean test install fmt lint docs version
+.PHONY: all build clean test install install-restart fmt lint docs version
 
 # Default target
 all: build
@@ -39,6 +39,17 @@ install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
 	@codesign --force --sign - $(INSTALL_DIR)/$(BINARY_NAME)
 	@echo "Installed to $(INSTALL_DIR)/$(BINARY_NAME)"
+	@echo ""
+	@echo "💡 The orch daemon may need restart to pick up the new binary:"
+	@echo "   launchctl kickstart -k gui/$$(id -u)/com.orch.daemon"
+	@echo ""
+	@echo "Or run: make install-restart"
+
+# Install and restart daemon to pick up new binary
+install-restart: install
+	@echo "Restarting orch daemon..."
+	@launchctl kickstart -k gui/$$(id -u)/com.orch.daemon 2>/dev/null || echo "Note: Daemon not running or not installed"
+	@echo "Done. Daemon restarted with new binary."
 
 # Clean build artifacts
 clean:
@@ -79,13 +90,14 @@ version: build
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  build    - Build the binary"
-	@echo "  test     - Run tests"
-	@echo "  install  - Install to ~/bin"
-	@echo "  clean    - Clean build artifacts"
-	@echo "  fmt      - Format code"
-	@echo "  lint     - Run linter"
-	@echo "  vet      - Run go vet"
-	@echo "  tidy     - Tidy modules"
-	@echo "  run      - Build and run"
-	@echo "  docs     - Generate CLI documentation"
+	@echo "  build           - Build the binary"
+	@echo "  test            - Run tests"
+	@echo "  install         - Install to ~/bin"
+	@echo "  install-restart - Install and restart daemon"
+	@echo "  clean           - Clean build artifacts"
+	@echo "  fmt             - Format code"
+	@echo "  lint            - Run linter"
+	@echo "  vet             - Run go vet"
+	@echo "  tidy            - Tidy modules"
+	@echo "  run             - Build and run"
+	@echo "  docs            - Generate CLI documentation"
