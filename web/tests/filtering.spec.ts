@@ -1,8 +1,17 @@
 import { test, expect } from '@playwright/test';
 
+// Helper to switch to historical mode where filter bar is visible
+async function switchToHistoricalMode(page: import('@playwright/test').Page) {
+	const modeToggle = page.getByTestId('mode-toggle');
+	await expect(modeToggle).toBeVisible();
+	// Click the History button (second button in the toggle)
+	await modeToggle.getByRole('button', { name: /History/ }).click();
+}
+
 test.describe('Agent Filtering and Sorting', () => {
 	test('should render filter bar', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		const filterBar = page.getByTestId('filter-bar');
 		await expect(filterBar).toBeVisible();
@@ -10,6 +19,7 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should have status filter dropdown', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		const statusFilter = page.getByTestId('status-filter');
 		await expect(statusFilter).toBeVisible();
@@ -24,6 +34,7 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should have sort dropdown', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		const sortSelect = page.getByTestId('sort-select');
 		await expect(sortSelect).toBeVisible();
@@ -38,6 +49,7 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should display agent count', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		const filterCount = page.getByTestId('filter-count');
 		await expect(filterCount).toBeVisible();
@@ -48,6 +60,7 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should change status filter', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		const statusFilter = page.getByTestId('status-filter');
 		
@@ -66,6 +79,7 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should change sort order', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		const sortSelect = page.getByTestId('sort-select');
 		
@@ -84,10 +98,10 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should show clear filters button when filters are active', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
-		// Get the clear button in the filter bar specifically
-		const filterBar = page.getByTestId('filter-bar');
-		const clearButton = filterBar.getByRole('button', { name: 'Clear' });
+		// Use data-testid for unambiguous selection (avoids conflict with empty state's "Clear filters" link)
+		const clearButton = page.getByTestId('clear-filters-button');
 		
 		// Initially no clear button (default filters)
 		await expect(clearButton).not.toBeVisible();
@@ -107,6 +121,7 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should render agent sections', async ({ page }) => {
 		await page.goto('/');
+		await switchToHistoricalMode(page);
 		
 		// With progressive disclosure, we now have agent-sections container
 		const agentSections = page.getByTestId('agent-sections');
