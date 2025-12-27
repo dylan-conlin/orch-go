@@ -1,49 +1,48 @@
 # Session Synthesis
 
 **Agent:** og-debug-bd-show-json-26dec
-**Issue:** orch-go-v9u3
-**Duration:** 2025-12-26 08:34 → 2025-12-26 08:50
+**Issue:** orch-go-881b
+**Duration:** 2025-12-26 22:05 → 2025-12-26 22:35
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Investigated `bd show` JSON parsing failure during daemon spawn. Found the bug was already fixed in commit 1d3de60b (Dec 25), but the daemon was running old binary. Restarted daemon to pick up fix - spawns now working.
+Fixed JSON parsing bug in Client.Show() where bd show --json returns array but code expected single object. Updated to try array format first, fall back to single object for compatibility. This completes the fix that 1d3de60b started (FallbackShow was fixed, but Client.Show() via RPC was not).
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Created
-- `.kb/investigations/2025-12-26-inv-bd-show-json-parsing-fails.md` - Investigation documenting root cause
+- `.kb/investigations/2025-12-26-inv-bd-show-json-returns-array.md` - Root cause analysis and fix documentation
 
 ### Files Modified
-- None (no code changes needed - fix already existed)
+- `pkg/beads/client.go` - Updated Client.Show() to handle both array and single object response formats
+- `pkg/beads/client_test.go` - Added TestClient_Show_ArrayFormat to verify array parsing via RPC
 
 ### Commits
-- No new commits - issue was operational (stale daemon), not code
-
-### Actions Taken
-- Restarted orch daemon: `launchctl kickstart -k gui/$(id -u)/com.orch.daemon`
+- `6246d9ae` - fix(beads): handle both array and object formats in Client.Show()
 
 ---
 
 ## Evidence (What Was Observed)
 
-- Daemon log showed errors "json: cannot unmarshal array into Go value of type beads.Issue" at 20:15-20:39 (before fix commit)
-- Commit `1d3de60b` (Dec 25 20:42:35) fixed the exact error by changing `FallbackShow` to handle array format
-- Daemon PID 11745 was unchanged since 10:53 PM the previous day (running old binary)
-- Binary at `/Users/dylanconlin/bin/orch` was modified at 8:40 AM Dec 26 (after rebuild)
-- After daemon restart (new PID 27035), smoke test passed
+- `bd show orch-go-881b --json` returns `[{...}]` (array with single element)
+- Client.Show() at pkg/beads/client.go:362-363 was unmarshaling to single `Issue` struct
+- FallbackShow() at pkg/beads/client.go:649-670 already handled arrays correctly (fixed in commit 1d3de60b)
+- TestClient_Show_ChildID uses mock daemon returning single object, showing RPC daemon may return either format
 
 ### Tests Run
 ```bash
-# Smoke test with forced CLI fallback
-BEADS_NO_DAEMON=1 go run /tmp/test_fix.go
-# SUCCESS: FallbackShow returned: orch-go-v9u3 - bd show JSON parsing fails for daemon spawn
-# SUCCESS: verify.GetIssue returned: orch-go-v9u3 - bd show JSON parsing fails for daemon spawn
-# ✓ All tests passed! Fix is working.
+# All beads package tests pass
+go test ./pkg/beads/... -v
+# PASS: TestClient_Show_ChildID, TestClient_Show_ArrayFormat, TestIntegration_ChildID_Show
+
+# Smoke test: orch status works with new binary
+~/bin/orch status
+# Shows 4 active agents correctly
 ```
 
 ---
@@ -51,16 +50,18 @@ BEADS_NO_DAEMON=1 go run /tmp/test_fix.go
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-26-inv-bd-show-json-parsing-fails.md` - Documents operational vs code bug distinction
+- `.kb/investigations/2025-12-26-inv-bd-show-json-returns-array.md` - Full root cause analysis
 
 ### Decisions Made
-- No code changes needed: Fix already existed (commit 1d3de60b), just needed daemon restart
+- Decision: Try array format first, fall back to single object - because bd CLI returns arrays but RPC daemon mock tests expect single objects, suggesting different beads daemon versions may behave differently
 
 ### Constraints Discovered
-- **launchd daemon persistence**: Daemons survive binary rebuilds. Must explicitly restart with `launchctl kickstart -k` to pick up new code after `make install`.
+- bd show CLI always returns arrays, even for single issues
+- RPC daemon may return either format depending on version
+- Prior session misdiagnosed as stale daemon issue, but actual bug in Client.Show() remained
 
 ### Externalized via `kn`
-- None (constraint is already documented in investigation)
+- None needed - fix is straightforward, constraint is already documented in investigation
 
 ---
 
@@ -69,32 +70,23 @@ BEADS_NO_DAEMON=1 go run /tmp/test_fix.go
 **Recommendation:** close
 
 ### If Close
-- [x] All deliverables complete (investigation file, daemon restarted)
-- [x] Tests passing (smoke test verified)
-- [x] Investigation file has `**Phase:** Complete`
-- [x] Ready for `orch complete orch-go-v9u3`
+- [x] All deliverables complete
+- [x] Tests passing
+- [x] Investigation file has `**Phase:** Complete
+- [x] Ready for `orch complete orch-go-881b`
 
 ---
 
 ## Unexplored Questions
 
-**Questions that emerged during this session that weren't directly in scope:**
-- Should `make install` automatically restart the daemon? (convenience vs explicitness trade-off)
-- Could daemon log its binary version at startup for easier debugging?
-
-**Areas worth exploring further:**
-- Add version/commit hash to `orch --version` for easier binary identification
-- Consider daemon health check that validates it's running expected version
-
-**What remains unclear:**
-- None - root cause fully understood
+Straightforward session, no unexplored territory.
 
 ---
 
 ## Session Metadata
 
 **Skill:** systematic-debugging
-**Model:** opus
+**Model:** claude-opus-4-20250514
 **Workspace:** `.orch/workspace/og-debug-bd-show-json-26dec/`
-**Investigation:** `.kb/investigations/2025-12-26-inv-bd-show-json-parsing-fails.md`
-**Beads:** `bd show orch-go-v9u3`
+**Investigation:** `.kb/investigations/2025-12-26-inv-bd-show-json-returns-array.md`
+**Beads:** `bd show orch-go-881b`
