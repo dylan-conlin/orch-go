@@ -2699,10 +2699,10 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 }
 
 // printAgentsWideFormat prints agents in full table format (>120 chars).
-// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME
+// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS
 func printAgentsWideFormat(agents []AgentInfo) {
-	fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME")
-	fmt.Printf("  %s\n", strings.Repeat("-", 105))
+	fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 115))
 
 	for _, agent := range agents {
 		beadsID := agent.BeadsID
@@ -2722,23 +2722,25 @@ func printAgentsWideFormat(agents []AgentInfo) {
 			skill = "-"
 		}
 		status := getAgentStatus(agent)
+		tokens := formatTokenStatsCompact(agent.Tokens)
 
-		fmt.Printf("  %-18s %-8s %-12s %-35s %-18s %s\n",
+		fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n",
 			beadsID,
 			status,
 			truncate(phase, 10),
-			truncate(task, 33),
-			truncate(skill, 16),
-			agent.Runtime)
+			truncate(task, 26),
+			truncate(skill, 13),
+			agent.Runtime,
+			tokens)
 	}
 }
 
 // printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
 // Drops TASK column, abbreviates SKILL.
-// Columns: BEADS ID, STATUS, PHASE, SKILL, RUNTIME
+// Columns: BEADS ID, STATUS, PHASE, SKILL, RUNTIME, TOKENS
 func printAgentsNarrowFormat(agents []AgentInfo) {
-	fmt.Printf("  %-18s %-8s %-12s %-12s %s\n", "BEADS ID", "STATUS", "PHASE", "SKILL", "RUNTIME")
-	fmt.Printf("  %s\n", strings.Repeat("-", 60))
+	fmt.Printf("  %-18s %-8s %-12s %-10s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 75))
 
 	for _, agent := range agents {
 		beadsID := agent.BeadsID
@@ -2754,13 +2756,15 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 			skill = "-"
 		}
 		status := getAgentStatus(agent)
+		tokens := formatTokenStatsCompact(agent.Tokens)
 
-		fmt.Printf("  %-18s %-8s %-12s %-12s %s\n",
+		fmt.Printf("  %-18s %-8s %-12s %-10s %-8s %s\n",
 			beadsID,
 			status,
 			truncate(phase, 10),
-			truncate(skill, 10),
-			agent.Runtime)
+			truncate(skill, 8),
+			agent.Runtime,
+			tokens)
 	}
 }
 
@@ -2851,6 +2855,26 @@ func formatTokenStats(tokens *opencode.TokenStats) string {
 		result += fmt.Sprintf(" (cache:%s)", formatTokenCount(tokens.CacheReadTokens))
 	}
 	return result
+}
+
+// formatTokenStatsCompact returns a compact formatted string of token usage for table display.
+// Shows total tokens with input/output breakdown: "12.5K (8K/4K)"
+func formatTokenStatsCompact(tokens *opencode.TokenStats) string {
+	if tokens == nil {
+		return "-"
+	}
+	total := tokens.TotalTokens
+	if total == 0 {
+		total = tokens.InputTokens + tokens.OutputTokens
+	}
+	if total == 0 {
+		return "-"
+	}
+	// Format: "total (in/out)" for quick scanning
+	return fmt.Sprintf("%s (%s/%s)",
+		formatTokenCount(total),
+		formatTokenCount(tokens.InputTokens),
+		formatTokenCount(tokens.OutputTokens))
 }
 
 // findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
