@@ -83,6 +83,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(portCmd)
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(retriesCmd)
 }
 
 var (
@@ -350,8 +351,9 @@ func init() {
 
 var (
 	// Complete command flags
-	completeForce  bool
-	completeReason string
+	completeForce   bool
+	completeReason  string
+	completeApprove bool
 )
 
 var completeCmd = &cobra.Command{
@@ -362,10 +364,15 @@ var completeCmd = &cobra.Command{
 Checks that the agent has reported "Phase: Complete" via beads comments before
 closing the issue. Use --force to skip phase verification.
 
+For agents that modified web/ files (UI tasks), --approve is required to explicitly
+confirm human review of the visual changes. This prevents agents from self-certifying
+UI correctness.
+
 Examples:
   orch-go complete proj-123
   orch-go complete proj-123 --reason "All tests passing"
-  orch-go complete proj-123 --force  # Skip phase verification`,
+  orch-go complete proj-123 --approve       # Approve UI changes after visual review
+  orch-go complete proj-123 --force         # Skip all verification`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
@@ -376,6 +383,7 @@ Examples:
 func init() {
 	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase verification")
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
+	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")
 }
 
 var (
@@ -1141,6 +1149,16 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	}
 	if spawnNoTrack {
 		fmt.Println("Skipping beads tracking (--no-track)")
+	}
+
+	// Check for retry patterns on existing issues - surface to prevent blind respawning
+	if !spawnNoTrack && spawnIssue != "" {
+		if stats, err := verify.GetFixAttemptStats(beadsID); err == nil && stats.IsRetryPattern() {
+			warning := verify.FormatRetryWarning(stats)
+			if warning != "" {
+				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
+			}
+		}
 	}
 
 	// Check if issue is already being worked on (prevent duplicate spawns)
@@ -4562,4 +4580,102 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	if err := tracker.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save gap tracker: %v\n", err)
 	}
+}
+
+var retriesCmd = &cobra.Command{
+	Use:   "retries",
+	Short: "Show issues with retry patterns (failed attempts)",
+	Long: `Show beads issues that have been retried after failures.
+
+This helps surface flaky issues that may need reliability-testing instead
+of repeated debugging attempts. A retry pattern is detected when:
+- An issue has been spawned multiple times
+- At least one attempt was abandoned (explicit failure)
+
+Issues are sorted by severity:
+1. Persistent failures (multiple attempts, no success) - shown first
+2. Retry patterns (some attempts, some abandons)
+
+Examples:
+  orch retries                 # Show all issues with retry patterns
+  orch retries orch-go-xxxx    # Show retry stats for a specific issue`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			return runRetriesForIssue(args[0])
+		}
+		return runRetriesAll()
+	},
+}
+
+func runRetriesForIssue(beadsID string) error {
+	stats, err := verify.GetFixAttemptStats(beadsID)
+	if err != nil {
+		return fmt.Errorf("failed to get retry stats: %w", err)
+	}
+
+	if stats.SpawnCount == 0 {
+		fmt.Printf("No spawn history found for %s\n", beadsID)
+		return nil
+	}
+
+	fmt.Printf("RETRY STATS: %s\n", beadsID)
+	fmt.Printf("  Spawns:     %d\n", stats.SpawnCount)
+	fmt.Printf("  Abandoned:  %d\n", stats.AbandonedCount)
+	fmt.Printf("  Completed:  %d\n", stats.CompletedCount)
+	if len(stats.Skills) > 0 {
+		fmt.Printf("  Skills:     %s\n", strings.Join(stats.Skills, ", "))
+	}
+	if !stats.LastAttemptAt.IsZero() {
+		fmt.Printf("  Last attempt: %s ago\n", formatDuration(time.Since(stats.LastAttemptAt)))
+	}
+
+	if stats.IsPersistentFailure() {
+		fmt.Println()
+		fmt.Println("🚨 PERSISTENT FAILURE PATTERN")
+		fmt.Println("   This issue has failed multiple times without success.")
+		fmt.Println("   Consider: orch spawn reliability-testing \"<task>\"")
+	} else if stats.IsRetryPattern() {
+		fmt.Println()
+		fmt.Println("⚠️  RETRY PATTERN DETECTED")
+		fmt.Println("   This issue has been respawned after previous failure(s).")
+		fmt.Println("   Consider investigating root cause before more attempts.")
+	}
+
+	return nil
+}
+
+func runRetriesAll() error {
+	patterns, err := verify.GetAllRetryPatterns()
+	if err != nil {
+		return fmt.Errorf("failed to get retry patterns: %w", err)
+	}
+
+	if len(patterns) == 0 {
+		fmt.Println("No retry patterns detected")
+		return nil
+	}
+
+	fmt.Printf("RETRY PATTERNS: %d issues with retry history\n\n", len(patterns))
+
+	for _, stats := range patterns {
+		// Status indicator
+		indicator := "⚠️"
+		if stats.IsPersistentFailure() {
+			indicator = "🚨"
+		}
+
+		fmt.Printf("%s %s\n", indicator, stats.BeadsID)
+		fmt.Printf("   Spawns: %d | Abandoned: %d | Completed: %d\n",
+			stats.SpawnCount, stats.AbandonedCount, stats.CompletedCount)
+		if len(stats.Skills) > 0 {
+			fmt.Printf("   Skills: %s\n", strings.Join(stats.Skills, ", "))
+		}
+		if action := stats.SuggestedAction(); action != "" {
+			fmt.Printf("   Suggested: %s\n", action)
+		}
+		fmt.Println()
+	}
+
+	return nil
 }
