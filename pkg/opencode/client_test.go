@@ -1569,3 +1569,114 @@ func TestGetLastMessageError(t *testing.T) {
 		t.Error("Expected error for server error response")
 	}
 }
+
+// TestIsSessionActive tests the IsSessionActive method.
+func TestIsSessionActive(t *testing.T) {
+	sessionID := "ses_test123"
+	nowMs := time.Now().UnixMilli()
+
+	tests := []struct {
+		name        string
+		sessionJSON string
+		maxIdleTime time.Duration
+		wantActive  bool
+	}{
+		{
+			name: "active - updated recently",
+			sessionJSON: fmt.Sprintf(`{
+				"id": "%s",
+				"title": "Test Session",
+				"directory": "/tmp/project",
+				"time": {"created": %d, "updated": %d}
+			}`, sessionID, nowMs-60000, nowMs-5000), // updated 5 seconds ago
+			maxIdleTime: 30 * time.Minute,
+			wantActive:  true,
+		},
+		{
+			name: "stale - updated more than maxIdleTime ago",
+			sessionJSON: fmt.Sprintf(`{
+				"id": "%s",
+				"title": "Test Session",
+				"directory": "/tmp/project",
+				"time": {"created": %d, "updated": %d}
+			}`, sessionID, nowMs-3600000, nowMs-3600000), // updated 1 hour ago
+			maxIdleTime: 30 * time.Minute,
+			wantActive:  false,
+		},
+		{
+			name: "active - just under maxIdleTime",
+			sessionJSON: fmt.Sprintf(`{
+				"id": "%s",
+				"title": "Test Session",
+				"directory": "/tmp/project",
+				"time": {"created": %d, "updated": %d}
+			}`, sessionID, nowMs-1790000, nowMs-1790000), // updated ~29.8 minutes ago
+			maxIdleTime: 30 * time.Minute,
+			wantActive:  true, // < maxIdleTime so still active
+		},
+		{
+			name: "stale - just over maxIdleTime",
+			sessionJSON: fmt.Sprintf(`{
+				"id": "%s",
+				"title": "Test Session",
+				"directory": "/tmp/project",
+				"time": {"created": %d, "updated": %d}
+			}`, sessionID, nowMs-1860000, nowMs-1860000), // updated 31 minutes ago
+			maxIdleTime: 30 * time.Minute,
+			wantActive:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/session/"+sessionID {
+					t.Errorf("Expected path /session/%s, got %s", sessionID, r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.sessionJSON))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL)
+			isActive := client.IsSessionActive(sessionID, tt.maxIdleTime)
+			if isActive != tt.wantActive {
+				t.Errorf("IsSessionActive() = %v, want %v", isActive, tt.wantActive)
+			}
+		})
+	}
+}
+
+// TestIsSessionActiveServerError tests IsSessionActive with server error.
+func TestIsSessionActiveServerError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	isActive := client.IsSessionActive(sessionID, 30*time.Minute)
+	if isActive {
+		t.Error("Expected false when server returns error")
+	}
+}
+
+// TestIsSessionActiveNotFound tests IsSessionActive when session doesn't exist.
+func TestIsSessionActiveNotFound(t *testing.T) {
+	sessionID := "ses_notfound"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	isActive := client.IsSessionActive(sessionID, 30*time.Minute)
+	if isActive {
+		t.Error("Expected false when session not found")
+	}
+}
