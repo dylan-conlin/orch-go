@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { connectionStatus } from '$lib/stores/agents';
 	import { usage } from '$lib/stores/usage';
-	import { theme } from '$lib/stores/theme';
+	import { theme, mode, getEffective } from '$lib/stores/theme';
 	import { ThemeToggle } from '$lib/components/theme-toggle';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Snippet } from 'svelte';
@@ -29,6 +29,13 @@
 
 	onMount(() => {
 		theme.init();
+		// Apply dark class based on mode
+		const effectiveMode = getEffective($mode);
+		if (effectiveMode === 'dark') {
+			document.documentElement.classList.add('dark');
+		} else {
+			document.documentElement.classList.remove('dark');
+		}
 	});
 </script>
 
