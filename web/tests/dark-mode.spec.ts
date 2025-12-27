@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Dark Mode Toggle', () => {
+test.describe('Theme Selection', () => {
 	test.beforeEach(async ({ page }) => {
 		// Clear localStorage before each test
 		await page.addInitScript(() => {
@@ -10,29 +10,57 @@ test.describe('Dark Mode Toggle', () => {
 
 	test('should render theme toggle button', async ({ page }) => {
 		await page.goto('/');
-		const themeToggle = page.getByRole('button', { name: 'Toggle theme' });
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
 		await expect(themeToggle).toBeVisible();
 	});
 
-	test('should toggle from light to dark mode', async ({ page }) => {
+	test('should open dropdown menu on click', async ({ page }) => {
 		await page.goto('/');
 		
-		// Initially should be in light mode (based on system preference or default)
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
+		await themeToggle.click();
+		
+		// Check that dropdown content is visible
+		await expect(page.getByText('Theme')).toBeVisible();
+		await expect(page.getByText('Light')).toBeVisible();
+		await expect(page.getByText('Dark')).toBeVisible();
+		await expect(page.getByText('System')).toBeVisible();
+	});
+
+	test('should switch to dark mode when selecting Dark option', async ({ page }) => {
+		await page.goto('/');
+		
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
+		await themeToggle.click();
+		
+		// Click on Dark option
+		await page.getByText('Dark').click();
+		
+		// Check if dark class is added to html
 		const html = page.locator('html');
+		await expect(html).toHaveClass(/dark/);
 		
-		// Click the toggle
-		const themeToggle = page.getByRole('button', { name: 'Toggle theme' });
+		// Check localStorage
+		const theme = await page.evaluate(() => localStorage.getItem('theme'));
+		expect(theme).toBe('dark');
+	});
+
+	test('should switch to light mode when selecting Light option', async ({ page }) => {
+		await page.goto('/');
+		
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
 		await themeToggle.click();
 		
-		// Check if dark class is added/removed
-		const hasDarkClass = await html.evaluate(el => el.classList.contains('dark'));
+		// Click on Light option
+		await page.getByText('Light').click();
 		
-		// Click again to toggle back
-		await themeToggle.click();
-		const hasDarkClassAfter = await html.evaluate(el => el.classList.contains('dark'));
+		// Check if dark class is removed from html
+		const html = page.locator('html');
+		await expect(html).not.toHaveClass(/dark/);
 		
-		// The classes should be different after toggling
-		expect(hasDarkClass).not.toBe(hasDarkClassAfter);
+		// Check localStorage
+		const theme = await page.evaluate(() => localStorage.getItem('theme'));
+		expect(theme).toBe('light');
 	});
 
 	test('should persist theme preference in localStorage', async ({ page, context }) => {
@@ -40,14 +68,14 @@ test.describe('Dark Mode Toggle', () => {
 		const newPage = await context.newPage();
 		await newPage.goto('/');
 		
-		// Click the toggle
-		const themeToggle = newPage.getByRole('button', { name: 'Toggle theme' });
+		// Open dropdown and select dark mode
+		const themeToggle = newPage.getByRole('button', { name: 'Select theme' });
 		await themeToggle.click();
+		await newPage.getByText('Dark').click();
 		
 		// Check localStorage
 		const theme = await newPage.evaluate(() => localStorage.getItem('theme'));
-		expect(theme).toBeTruthy();
-		expect(['light', 'dark', 'system']).toContain(theme);
+		expect(theme).toBe('dark');
 		
 		// Reload the page (no addInitScript, so localStorage persists)
 		await newPage.reload();
@@ -57,7 +85,11 @@ test.describe('Dark Mode Toggle', () => {
 		
 		// Theme should be restored from localStorage
 		const themeAfterReload = await newPage.evaluate(() => localStorage.getItem('theme'));
-		expect(themeAfterReload).toBe(theme);
+		expect(themeAfterReload).toBe('dark');
+		
+		// Check that dark class is still applied
+		const html = newPage.locator('html');
+		await expect(html).toHaveClass(/dark/);
 		
 		await newPage.close();
 	});
@@ -65,15 +97,52 @@ test.describe('Dark Mode Toggle', () => {
 	test('should show sun icon in dark mode and moon icon in light mode', async ({ page }) => {
 		await page.goto('/');
 		
-		const themeToggle = page.getByRole('button', { name: 'Toggle theme' });
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
 		
-		// Get initial icon
-		const initialSvg = themeToggle.locator('svg').first();
-		await expect(initialSvg).toBeVisible();
+		// Get initial icon (should be Moon for light mode)
+		const moonIcon = themeToggle.locator('svg');
+		await expect(moonIcon).toBeVisible();
 		
-		// Toggle and check icon changed
+		// Switch to dark mode
 		await themeToggle.click();
-		const newSvg = themeToggle.locator('svg').first();
-		await expect(newSvg).toBeVisible();
+		await page.getByText('Dark').click();
+		
+		// Now should show Sun icon
+		const sunIcon = themeToggle.locator('svg');
+		await expect(sunIcon).toBeVisible();
+	});
+
+	test('should switch to system preference when selecting System option', async ({ page }) => {
+		await page.goto('/');
+		
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
+		await themeToggle.click();
+		
+		// First set to dark
+		await page.getByText('Dark').click();
+		
+		// Then switch to system
+		await themeToggle.click();
+		await page.getByText('System').click();
+		
+		// Check localStorage
+		const theme = await page.evaluate(() => localStorage.getItem('theme'));
+		expect(theme).toBe('system');
+	});
+
+	test('should close dropdown when clicking outside', async ({ page }) => {
+		await page.goto('/');
+		
+		const themeToggle = page.getByRole('button', { name: 'Select theme' });
+		await themeToggle.click();
+		
+		// Dropdown should be visible
+		await expect(page.getByText('Theme')).toBeVisible();
+		
+		// Press Escape to close the dropdown (more reliable than clicking outside)
+		await page.keyboard.press('Escape');
+		
+		// Dropdown should be hidden
+		await expect(page.getByText('Theme')).not.toBeVisible();
 	});
 });
