@@ -13,8 +13,8 @@
 	let dismissingAllLightTier: boolean = false;
 	
 	// Separate light-tier from standard agents
-	$: lightTierAgents = $pendingReviews?.agents.filter(a => a.is_light_tier) ?? [];
-	$: standardAgents = $pendingReviews?.agents.filter(a => !a.is_light_tier) ?? [];
+	$: lightTierAgents = $pendingReviews?.agents?.filter(a => a.is_light_tier) ?? [];
+	$: standardAgents = $pendingReviews?.agents?.filter(a => !a.is_light_tier) ?? [];
 	
 	// Count total light-tier unreviewed items
 	$: lightTierTotalUnreviewed = lightTierAgents.reduce((sum, agent) => 
