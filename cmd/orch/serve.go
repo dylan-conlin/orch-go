@@ -293,6 +293,7 @@ type AgentAPIResponse struct {
 	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
 	CloseReason  string             `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
 	GapAnalysis  *GapAPIResponse    `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`      // Token usage for the session
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -930,6 +931,19 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, agent)
 		}
 		agents = filtered
+	}
+
+	// Fetch token usage for agents with valid session IDs
+	// NOTE: This makes HTTP calls per agent. Unlike IsProcessing (which was removed
+	// due to CPU impact), token data changes infrequently and is valuable for monitoring.
+	// If this becomes a performance issue, consider caching or background fetching.
+	for i := range agents {
+		if agents[i].SessionID != "" {
+			tokens, err := client.GetSessionTokens(agents[i].SessionID)
+			if err == nil && tokens != nil {
+				agents[i].Tokens = tokens
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1696,10 +1710,11 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 			Priority:    req.Priority,
 			Labels:      req.Labels,
 		})
-	}
-
-	// Fallback to CLI if RPC failed or client unavailable
-	if issue == nil && err == nil {
+		if err != nil {
+			// Fall through to CLI fallback on RPC error
+			issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+		}
+	} else {
 		issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
 	}
 
