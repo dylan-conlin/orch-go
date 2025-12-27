@@ -244,7 +244,7 @@ func TestCompleteCrossProjectErrorMessage(t *testing.T) {
 	// We're likely in 'orch-go' or 'orch' but using 'kb-cli' prefix
 	beadsID := "kb-cli-xyz123"
 
-	err := runComplete(beadsID)
+	err := runComplete(beadsID, "")
 	if err == nil {
 		t.Error("Expected error for cross-project beads ID")
 		return
@@ -259,8 +259,8 @@ func TestCompleteCrossProjectErrorMessage(t *testing.T) {
 	if !strings.Contains(errMsg, "kb-cli") {
 		t.Errorf("Expected error to mention the project 'kb-cli', got: %v", err)
 	}
-	if !strings.Contains(errMsg, "cd ") {
-		t.Errorf("Expected error to suggest 'cd' command, got: %v", err)
+	if !strings.Contains(errMsg, "--workdir") {
+		t.Errorf("Expected error to suggest '--workdir' option, got: %v", err)
 	}
 	if !strings.Contains(errMsg, "orch complete") {
 		t.Errorf("Expected error to include 'orch complete' command, got: %v", err)

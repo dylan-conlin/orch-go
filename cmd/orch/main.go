@@ -354,6 +354,7 @@ var (
 	completeForce   bool
 	completeReason  string
 	completeApprove bool
+	completeWorkdir string
 )
 
 var completeCmd = &cobra.Command{
@@ -368,15 +369,20 @@ For agents that modified web/ files (UI tasks), --approve is required to explici
 confirm human review of the visual changes. This prevents agents from self-certifying
 UI correctness.
 
+For cross-project completion (agents spawned with --workdir in another project),
+the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
+Use --workdir as explicit override when auto-detection fails.
+
 Examples:
   orch-go complete proj-123
   orch-go complete proj-123 --reason "All tests passing"
   orch-go complete proj-123 --approve       # Approve UI changes after visual review
-  orch-go complete proj-123 --force         # Skip all verification`,
+  orch-go complete proj-123 --force         # Skip all verification
+  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runComplete(beadsID)
+		return runComplete(beadsID, completeWorkdir)
 	},
 }
 
@@ -384,6 +390,7 @@ func init() {
 	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase verification")
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")
+	completeCmd.Flags().StringVar(&completeWorkdir, "workdir", "", "Target project directory (for cross-project completion)")
 }
 
 var (
@@ -2945,24 +2952,66 @@ func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentNam
 	return "", ""
 }
 
-func runComplete(beadsID string) error {
-	// Get current directory as project dir (needed for cross-project detection)
-	projectDir, err := os.Getwd()
+func runComplete(beadsID, workdir string) error {
+	// Get current directory as base project dir
+	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Determine beads project directory:
+	// 1. If --workdir provided, use that
+	// 2. Otherwise, try to auto-detect from workspace SPAWN_CONTEXT.md
+	// 3. Fall back to current directory
+	var beadsProjectDir string
+	var workspacePath, agentName string
+
+	// First, find workspace in current project (even for cross-project agents, workspace is in orchestrator's project)
+	workspacePath, agentName = findWorkspaceByBeadsID(currentDir, beadsID)
+
+	if workdir != "" {
+		// Explicit --workdir flag provided
+		beadsProjectDir, err = filepath.Abs(workdir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		// Verify directory exists
+		if stat, err := os.Stat(beadsProjectDir); err != nil {
+			return fmt.Errorf("workdir does not exist: %s", beadsProjectDir)
+		} else if !stat.IsDir() {
+			return fmt.Errorf("workdir is not a directory: %s", beadsProjectDir)
+		}
+		fmt.Printf("Using explicit workdir: %s\n", beadsProjectDir)
+	} else if workspacePath != "" {
+		// Try to extract PROJECT_DIR from workspace SPAWN_CONTEXT.md
+		projectDirFromWorkspace := extractProjectDirFromWorkspace(workspacePath)
+		if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
+			// Cross-project agent detected
+			beadsProjectDir = projectDirFromWorkspace
+			fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(beadsProjectDir))
+		} else {
+			beadsProjectDir = currentDir
+		}
+	} else {
+		beadsProjectDir = currentDir
+	}
+
+	// Set beads.DefaultDir for cross-project operations BEFORE any beads operations
+	if beadsProjectDir != currentDir {
+		beads.DefaultDir = beadsProjectDir
 	}
 
 	// Get issue to verify it exists
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
 		// Provide helpful error message for cross-project issues
-		projectName := filepath.Base(projectDir)
+		projectName := filepath.Base(beadsProjectDir)
 		issuePrefix := strings.Split(beadsID, "-")[0]
 		if len(strings.Split(beadsID, "-")) > 1 {
 			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
 		}
 		if issuePrefix != projectName {
-			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: cd ~/path/to/%s && orch complete %s", beadsID, err, issuePrefix, projectName, issuePrefix, beadsID)
+			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch complete %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
 		}
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
@@ -2987,15 +3036,13 @@ func runComplete(beadsID string) error {
 
 	// Verify phase status unless force flag is set
 	if !completeForce {
-		// Derive workspace path from project dir + beads ID
-		// Strategy: Search .orch/workspace/ for directories containing the beads ID
-		workspacePath, agentName := findWorkspaceByBeadsID(projectDir, beadsID)
-
+		// Workspace already found at top of function
 		if workspacePath != "" {
 			fmt.Printf("Workspace: %s\n", agentName)
 		}
 
-		result, err := verify.VerifyCompletionFull(beadsID, workspacePath, projectDir, "")
+		// Use beadsProjectDir for verification (where the beads issue lives)
+		result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "")
 		if err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}
@@ -3028,7 +3075,7 @@ func runComplete(beadsID string) error {
 
 	// Check liveness before closing - warn if agent appears still running
 	if !completeForce {
-		liveness := state.GetLiveness(beadsID, serverURL, projectDir)
+		liveness := state.GetLiveness(beadsID, serverURL, beadsProjectDir)
 		if liveness.IsAlive() {
 			// Build warning message with details about what's still running
 			var runningDetails []string
@@ -3071,10 +3118,7 @@ func runComplete(beadsID string) error {
 		}
 	}
 
-	// Get workspace path for synthesis parsing
-	workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
-
-	// Check synthesis for follow-up recommendations (only if workspace exists)
+	// Check synthesis for follow-up recommendations (workspace already found at top)
 	if workspacePath != "" {
 		synthesis, err := verify.ParseSynthesis(workspacePath)
 		if err == nil && synthesis != nil {
@@ -3182,15 +3226,15 @@ func runComplete(beadsID string) error {
 		}
 	}
 
-	// Auto-rebuild if agent committed Go changes
-	if hasGoChangesInRecentCommits(projectDir) {
+	// Auto-rebuild if agent committed Go changes (in the beads project)
+	if hasGoChangesInRecentCommits(beadsProjectDir) {
 		fmt.Println("Detected Go file changes in recent commits")
-		if err := runAutoRebuild(projectDir); err != nil {
+		if err := runAutoRebuild(beadsProjectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed: %v\n", err)
 		} else {
 			fmt.Println("Auto-rebuild completed: make install")
 			// Restart orch serve if running
-			if restarted, err := restartOrchServe(projectDir); err != nil {
+			if restarted, err := restartOrchServe(beadsProjectDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to restart orch serve: %v\n", err)
 			} else if restarted {
 				fmt.Println("Restarted orch serve")
@@ -3198,7 +3242,7 @@ func runComplete(beadsID string) error {
 		}
 
 		// Check for new CLI commands that may need skill documentation
-		newCommands := detectNewCLICommands(projectDir)
+		newCommands := detectNewCLICommands(beadsProjectDir)
 		if len(newCommands) > 0 {
 			fmt.Println()
 			fmt.Println("┌─────────────────────────────────────────────────────────────┐")
