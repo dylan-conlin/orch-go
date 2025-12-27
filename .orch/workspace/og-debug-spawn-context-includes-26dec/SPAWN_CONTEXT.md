@@ -7,8 +7,6 @@ SPAWN TIER: full
 
 
 
-⚠️ Limited context (27/100) - agent may need to discover patterns during work
-
 ## PRIOR KNOWLEDGE (from kb context)
 
 **Query:** "spawn context includes"
@@ -17,6 +15,16 @@ SPAWN TIER: full
 - Analyze Nate Jones Article Llm
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-analyze-nate-jones-article-llm.md
 - Find Command Performance Evaluate Alternatives
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-find-command-performance-evaluate-alternatives.md
+- [orch-knowledge] Test Spawn Workflow
+  - See: /Users/dylanconlin/orch-knowledge/.kb/investigations/2025-12-18-inv-test-spawn.md
+- [orch-knowledge] say hello and exit immediately
+  - See: /Users/dylanconlin/orch-knowledge/.kb/investigations/simple/2025-12-19-say-hello-exit-immediately.md
+- [orch-cli] Agent Mail Integration Test
+  - See: /Users/dylanconlin/Documents/personal/orch-cli/.kb/investigations/2025-12-02-test-agent-mail-integration-register.md
+- [orch-go] Analyze Nate Jones Article Llm
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-analyze-nate-jones-article-llm.md
+- [orch-go] Find Command Performance Evaluate Alternatives
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-find-command-performance-evaluate-alternatives.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
@@ -547,8 +555,8 @@ CONTEXT AVAILABLE:
 **Status:** stopped
 
 **Ports:**
-- **api:** http://localhost:3348
 - **web:** http://localhost:5188
+- **api:** http://localhost:3348
 
 **Quick commands:**
 - Start servers: `orch servers start orch-go`

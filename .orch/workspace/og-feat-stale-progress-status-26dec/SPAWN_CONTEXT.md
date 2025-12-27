@@ -7,84 +7,15 @@ SPAWN TIER: light
 
 
 
+⚠️ Limited context (15/100) - agent may need to discover patterns during work
+
 ## PRIOR KNOWLEDGE (from kb context)
 
-**Query:** "stale"
-
-### Constraints (MUST respect)
-- tmux fallback requires either current registry window ID OR beads ID in window name format [beads-id]
-  - Reason: If both are stale/missing, fallback fails despite window existing
-- tmux fallback requires either current registry window ID OR beads ID in window name format [beads-id]
-  - Reason: Both paths needed for resilience; if both stale/missing, fallback fails despite window existing
-- orch tail tmux fallback requires either current registry window ID OR beads ID in window name format [beads-id]
-  - Reason: Dual-dependency failure causes fallback to fail when both are stale/missing
-- D.E.K.N. 'Next:' field must be updated when marking Status: Complete
-  - Reason: Prevents stale investigations that mislead future agents
-- GetAccountCapacity token comparison can fail when tokens drift between auth.json and accounts.yaml
-  - Reason: External token rotation (by OpenCode) causes isActiveAccount check to fail, leading to auth.json being left with stale tokens after rotation
-- SSE event handlers must check agent status before setting is_processing=true
-  - Reason: Late SSE events can arrive after agent status changes, causing stale visual state
-
-### Prior Decisions
-- Domain-based template ownership: kb-cli owns artifact templates (investigation, decision, guide), orch-go owns spawn-time templates (SYNTHESIS, SPAWN_CONTEXT, FAILURE_REPORT)
-  - Reason: Validated during stale template retirement - skill templates directories are orphaned when kb create provides templates
-- bd multi-repo config is YAML-only, database config is legacy
-  - Reason: Fix commit 634c0b93 moved repos config from database to YAML. GetMultiRepoConfig() reads YAML only. Stale binary causes silent failure.
-- Binary staleness should be prevented with make install
-  - Reason: Project tracks ./orch binary in git, but build process creates build/orch. Users should run 'make install' to sync ~/bin/orch rather than manually copying to root directory.
-- orch serve displayThreshold should match orch status (30min)
-  - Reason: 6h threshold showed 25 stale sessions while orch status showed 0, causing dashboard noise
-- orch review done command complete
-  - Reason: Already implemented in commit 635a7c1 (Dec 25 2025). The spawn context was based on stale investigation data. Feature verified working: closes beads issues, cleans up tmux, logs events.
-- 24 hours is the staleness threshold for orch review
-  - Reason: Agents stuck in non-Complete phase for >24h are effectively abandoned. Directory modification time is a reasonable proxy for activity.
-- Dashboard is_processing visual indicators require status === 'active' check
-  - Reason: SSE session.status events may not clear is_processing flag when agent completes, causing stale pulsing animation. Defensive check ensures only active agents show processing state.
-- kb reflect Command Interface
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-21-kb-reflect-command-interface.md
-- debugging Insufficient Balance error when orch usage showed 99% remaining
+**Query:** "stale progress status"
 
 ### Related Investigations
-- Compare orch-cli (Python) vs orch-go Features
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-compare-orch-cli-python-orch.md
-- Expose Strategic Alignment Commands
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-expose-strategic-alignment-commands-focus.md
-- Agent Registry for Persistent Tracking
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-orch-add-agent-registry-persistent.md
-- Refactoring pkg/registry as Beads Issue State Cache
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-plan-refactoring-pkg-registry-act.md
-- Tmux Concurrent Epsilon Spawn Capability
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-tmux-concurrent-epsilon.md
-- Deep Pattern Analysis Across Orchestration Artifacts
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-design-deep-pattern-analysis-orchestration-artifacts.md
-- Design: kb reflect Command Specification
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-design-kb-reflect-command-specification.md
-- Design: Minimal Artifact Set Specification
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-design-minimal-artifact-taxonomy.md
-- Registry Usage Audit in orch-go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-audit-all-registry-usage-orch.md
-- Daemon and Hook Integration for kb reflect
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-daemon-hook-integration-kb-reflect.md
-- Deep Post-Mortem on 24 Hours of Development Chaos
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-deep-post-mortem-last-24.md
-- Design: Self-Reflection Protocol Specification
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-design-self-reflection-protocol-specification.md
-- Enhance orch clean with four-layer reconciliation
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-enhance-orch-clean-four-layer.md
-- [Investigation Title]
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-investigate-orch-status-showing-stale.md
-- Model Handling Conflicts Between orch-go and opencode
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-model-handling-conflicts-between-orch.md
-- orch status showing stale sessions as active
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-orch-status-showing-stale-sessions.md
-- Questioning Inherited Constraints
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-questioning-inherited-constraints-when-how.md
-- Temporal Signals for Autonomous Reflection
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-temporal-signals-autonomous-reflection.md
-- orch spawn --tmux getting SIGKILL
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-tmux-spawn-killed.md
-- Synthesis: Registry Evolution and Orch Identity
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-synthesis-registry-evolution-and-orch-identity.md
+- Stale Progress Status Blocks Respawn
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-stale-progress-status-blocks-respawn.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
 
@@ -138,6 +69,23 @@ AUTHORITY:
 - Task estimation significantly wrong (2h task is actually 8h)
 
 **When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
+
+**Surface Before Circumvent:**
+Before working around ANY constraint (technical, architectural, or process):
+1. Surface it first: `bd comment orch-go-wh7n "CONSTRAINT: [what constraint] - [why considering workaround]"`
+2. Wait for orchestrator acknowledgment before proceeding
+3. The accountability is a feature, not a cost
+
+This applies to:
+- System constraints discovered during work (e.g., API limits, tool limitations)
+- Architectural patterns that seem inconvenient for your task
+- Process requirements that feel like overhead
+- Prior decisions (from `kb context`) that conflict with your approach
+
+**Why:** Working around constraints without surfacing them:
+- Prevents the system from learning about recurring friction
+- Bypasses stakeholders who should know about the limitation
+- Creates hidden technical debt
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)

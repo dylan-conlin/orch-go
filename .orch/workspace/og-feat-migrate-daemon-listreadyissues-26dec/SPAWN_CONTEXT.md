@@ -1,4 +1,4 @@
-TASK: Migrate daemon.ListReadyIssues to beads RPC. Replace bd CLI subprocess calls in pkg/daemon/ with pkg/beads RPC client. Use beads.NewClient() with WithAutoReconnect.
+TASK: Migrate daemon.ListReadyIssues to beads RPC
 
 SPAWN TIER: light
 
@@ -548,7 +548,7 @@ CONTEXT AVAILABLE:
 ## LOCAL SERVERS
 
 **Project:** orch-go
-**Status:** running
+**Status:** stopped
 
 **Ports:**
 - **web:** http://localhost:5188

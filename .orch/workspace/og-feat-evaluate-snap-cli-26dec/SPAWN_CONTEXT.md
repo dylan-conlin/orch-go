@@ -7,55 +7,17 @@ SPAWN TIER: light
 
 
 
+⚠️ Limited context (27/100) - agent may need to discover patterns during work
+
 ## PRIOR KNOWLEDGE (from kb context)
 
-**Query:** "evaluate"
-
-### Prior Decisions
-- Use direct fetch in page.evaluate to test API performance
-  - Reason: Bypasses SSE connection requirement while still testing the mock API response time
+**Query:** "evaluate snap cli"
 
 ### Related Investigations
-- Explore Tradeoffs for orch-go OpenCode Integration
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-design-explore-tradeoffs-orch-opencode-integration.md
-- Research: Claude 4.5 and Claude Max Pricing (Late 2025)
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-research-claude-claude-max-pricing.md
-- Research: Gemini 2.0 Models (Flash, Pro, Experimental)
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-research-gemini-2-0-models.md
-- Research: DeepSeek and Llama Model Comparison for Arbitrage (Late 2025)
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-research-deepseek-llama-arbitrage-comparison.md
-- Registry Usage Audit in orch-go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-audit-all-registry-usage-orch.md
-- Beads OSS Relationship - Fork vs Contribute vs Local Patches
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-beads-oss-relationship-fork-vs.md
-- Deep Dive into Inter-Agent Communication Architecture
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-deep-dive-inter-agent-communication.md
-- Knowledge Promotion Paths
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-knowledge-promotion-paths.md
-- Phase 3 - Evaluate spawn session_id capture without registry
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-phase-evaluate-spawn-session-id.md
-- Questioning Inherited Constraints
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-questioning-inherited-constraints-when-how.md
-- Temporal Signals for Autonomous Reflection
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-temporal-signals-autonomous-reflection.md
-- Is agentlog init ready to integrate into orch init?
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-inv-agentlog-init-ready-integrate-into.md
-- Analyze Nate Jones Article Llm
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-analyze-nate-jones-article-llm.md
-- External Content Workflow Discussing Reddit
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-external-content-workflow-discussing-reddit.md
-- Find Command Performance Evaluate Alternatives
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-23-inv-find-command-performance-evaluate-alternatives.md
-- Beads Dependency Strategy Follow-Up
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-24-inv-follow-up-ecosystem-audit-orch.md
-- Full Ecosystem Audit - Scope and Simplify
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-24-inv-full-ecosystem-audit-scope-simplify.md
-- Meta-Orchestration Maturity Assessment
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-24-inv-meta-orchestration-maturity-assessment.md
-- Should We Evolve Skills to Be Where True Value Resides?
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-25-design-should-we-evolve-skills-where.md
-- Add Load Test Dashboard 50
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-25-inv-add-load-test-dashboard-50.md
+- Evaluate snap CLI Integration for Visual Verification
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-evaluate-snap-cli-integration-visual.md
+- [orch-go] Evaluate snap CLI Integration for Visual Verification
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-evaluate-snap-cli-integration-visual.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
 

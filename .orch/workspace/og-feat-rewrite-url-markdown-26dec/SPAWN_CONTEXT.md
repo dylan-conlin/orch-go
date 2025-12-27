@@ -7,45 +7,15 @@ SPAWN TIER: light
 
 
 
+⚠️ Limited context (15/100) - agent may need to discover patterns during work
+
 ## PRIOR KNOWLEDGE (from kb context)
 
-**Query:** "rewrite"
+**Query:** "rewrite url markdown"
 
 ### Related Investigations
-- CLI Project Scaffolding and Build Setup
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-19-inv-cli-project-scaffolding-build.md
-- OpenCode POC - Spawn Session Via Go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-19-simple-opencode-poc-spawn-session-via.md
-- Compare orch-cli (Python) vs orch-go Features
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-20-inv-compare-orch-cli-python-orch.md
-- Design: kb reflect Command Specification
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-design-kb-reflect-command-specification.md
-- Agents skip SYNTHESIS.md creation
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-agents-skip-synthesis-md-creation.md
-- Registry Usage Audit in orch-go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-audit-all-registry-usage-orch.md
-- Design: Self-Reflection Protocol Specification
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-design-self-reflection-protocol-specification.md
-- Questioning Inherited Constraints
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-questioning-inherited-constraints-when-how.md
-- Temporal Signals for Autonomous Reflection
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-temporal-signals-autonomous-reflection.md
-- Trace Evolution from orch-cli (Python) to orch-go
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-inv-trace-evolution-orch-cli-python.md
-- Synthesis: Registry Evolution and Orch Identity
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-21-synthesis-registry-evolution-and-orch-identity.md
-- Dashboard Shows 0 Agents Despite API Returning 209
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-debug-dashboard-shows-0-agents-despite-api-returning-209.md
-- Template System Fragmentation Deep Dive
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-22-inv-deep-dive-template-system-fragmentation.md
-- What is orch-ecosystem?
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-24-inv-what-orch-ecosystem-reflect-what.md
-- URL-to-Markdown Architecture Review Before Go Rewrite
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-design-review-url-markdown-architecture-before.md
-- OpenCode Session Accumulation Causing CPU Spikes
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-investigate-opencode-session-accumulation-causing.md
-- Test Spawn to Verify Pre-Spawn KB Context Check
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/archived/2025-12-22-inv-test-spawn-verify-pre-spawn.md
+- Rewrite Url Markdown As Go
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-rewrite-url-markdown-as-go.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
 
@@ -100,10 +70,27 @@ AUTHORITY:
 
 **When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
 
+**Surface Before Circumvent:**
+Before working around ANY constraint (technical, architectural, or process):
+1. Surface it first: `bd comment orch-go-sm33 "CONSTRAINT: [what constraint] - [why considering workaround]"`
+2. Wait for orchestrator acknowledgment before proceeding
+3. The accountability is a feature, not a cost
+
+This applies to:
+- System constraints discovered during work (e.g., API limits, tool limitations)
+- Architectural patterns that seem inconvenient for your task
+- Process requirements that feel like overhead
+- Prior decisions (from `kb context`) that conflict with your approach
+
+**Why:** Working around constraints without surfacing them:
+- Prevents the system from learning about recurring friction
+- Bypasses stakeholders who should know about the limitation
+- Creates hidden technical debt
+
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
-2. **SET UP investigation file:** Run `kb create investigation rewrite-url-markdown-as-go` to create from template
-   - This creates: `.kb/investigations/simple/YYYY-MM-DD-rewrite-url-markdown-as-go.md`
+2. **SET UP investigation file:** Run `kb create investigation rewrite-url-markdown-go-cli` to create from template
+   - This creates: `.kb/investigations/simple/YYYY-MM-DD-rewrite-url-markdown-go-cli.md`
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
 

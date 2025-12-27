@@ -1,9 +1,9 @@
 {
-  "reviewed_at": "2025-12-26T15:26:53.695969-08:00",
+  "reviewed_at": "2025-12-26T22:00:46.852386-08:00",
   "dismissed": [
-    2,
     0,
-    1
+    1,
+    2
   ],
   "workspace_id": "og-inv-orchestrator-session-boundaries-21dec",
   "beads_id": "orch-go-4kwt.3",

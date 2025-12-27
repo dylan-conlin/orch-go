@@ -1,4 +1,4 @@
-TASK: Migrate serve beads calls to RPC. Replace bd CLI subprocess calls in cmd/orch/serve.go with pkg/beads RPC client. Use beads.NewClient() with WithAutoReconnect. Reference existing RPC usage in daemon.go.
+TASK: Migrate serve beads calls to RPC
 
 SPAWN TIER: light
 
@@ -586,7 +586,7 @@ CONTEXT AVAILABLE:
 ## LOCAL SERVERS
 
 **Project:** orch-go
-**Status:** running
+**Status:** stopped
 
 **Ports:**
 - **web:** http://localhost:5188

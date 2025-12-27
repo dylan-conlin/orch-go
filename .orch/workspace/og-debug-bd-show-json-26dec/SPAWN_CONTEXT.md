@@ -1,4 +1,4 @@
-TASK: bd show JSON parsing fails during daemon spawn with: json: cannot unmarshal array into Go value of type beads.Issue. Check pkg/beads/client.go Show() function. Likely bd show returning array instead of single object in some edge case. This blocked overnight daemon - all spawns failed.
+TASK: bd show --json returns array, breaks orch-go parsing
 
 SPAWN TIER: full
 
@@ -46,15 +46,18 @@ SPAWN TIER: full
   - Reason: Beads comments are per-project; to show phase info for agents from other projects, must query the correct project's beads database
 - Dashboard is_processing visual indicators require status === 'active' check
   - Reason: SSE session.status events may not clear is_processing flag when agent completes, causing stale pulsing animation. Defensive check ensures only active agents show processing state.
-- kb reflect Command Interface
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-21-kb-reflect-command-interface.md
-- Single-Agent Review Command
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-21-single-agent-review-command.md
-- Replace Confidence Scores with Structured Uncertainty
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-22-replace-confidence-scores-with-structured-uncertainty.md
-- Orchestrator System Resource Visibility
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2025-12-25-orchestrator-system-resource-visibility.md
-- debugging Insufficient Balance error when orch usage showed 99% remaining
+- OpenCode handles OAuth auto-refresh via anthropic-auth plugin
+  - Reason: Code inspection shows token check at fetch time - no orch implementation needed
+- Dashboard synthesis review shows synthesis inline with actionable issue creation
+  - Reason: Enables orchestrators to act on synthesis recommendations without leaving dashboard UI
+- Error pattern analysis uses normalized message matching for grouping similar errors
+  - Reason: Enables dashboard to show recurring patterns by truncating to 100 chars and trimming whitespace
+- Ready queue UI uses truncate for titles and limit 2 labels shown
+  - Reason: Keeps queue items scannable at 666px width
+- Deduplicate agents by title in serve.go keeping most recent session
+  - Reason: OpenCode can have multiple sessions with same title (resumed agents). Dashboard shows duplicate entries without deduplication.
+- Verify issue status before starting work
+  - Reason: Previous agent completed work (commit 70b2e247) but issue remained in_progress. Check bd show and git log before implementing to avoid duplicate effort.
 
 ### Related Investigations
 - CLI orch complete Command Implementation
@@ -102,9 +105,10 @@ SPAWN TIER: full
 
 
 
+
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via `bd comment orch-go-v9u3 "Phase: Planning - [brief description]"`
+1. Report via `bd comment orch-go-881b "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -115,7 +119,7 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 After your final commit, BEFORE typing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: `bd comment orch-go-v9u3 "Phase: Complete - [1-2 sentence summary of deliverables]"`
+2. Run: `bd comment orch-go-881b "Phase: Complete - [1-2 sentence summary of deliverables]"`
 3. Run: `/exit` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
@@ -149,15 +153,34 @@ AUTHORITY:
 
 **When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
 
+**Surface Before Circumvent:**
+Before working around ANY constraint (technical, architectural, or process):
+1. Surface it first: `bd comment orch-go-881b "CONSTRAINT: [what constraint] - [why considering workaround]"`
+2. Wait for orchestrator acknowledgment before proceeding
+3. The accountability is a feature, not a cost
+
+This applies to:
+- System constraints discovered during work (e.g., API limits, tool limitations)
+- Architectural patterns that seem inconvenient for your task
+- Process requirements that feel like overhead
+- Prior decisions (from `kb context`) that conflict with your approach
+
+**Why:** Working around constraints without surfacing them:
+- Prevents the system from learning about recurring friction
+- Bypasses stakeholders who should know about the limitation
+- Creates hidden technical debt
+
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
-2. **SET UP investigation file:** Run `kb create investigation bd-show-json-parsing-fails` to create from template
-   - This creates: `.kb/investigations/simple/YYYY-MM-DD-bd-show-json-parsing-fails.md`
+2. **SET UP investigation file:** Run `kb create investigation bd-show-json-returns-array` to create from template
+   - This creates: `.kb/investigations/simple/YYYY-MM-DD-bd-show-json-returns-array.md`
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
+
    - **IMPORTANT:** After running `kb create`, report the actual path via:
-     `bd comment orch-go-v9u3 "investigation_path: /path/to/file.md"`
+     `bd comment orch-go-881b "investigation_path: /path/to/file.md"`
      (This allows orch complete to verify the correct file)
+
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
    - Fill sections: What I tried → What I observed → Test performed
@@ -179,23 +202,24 @@ Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
 
+
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
-You were spawned from beads issue: **orch-go-v9u3**
+You were spawned from beads issue: **orch-go-881b**
 
 **Use `bd comment` for progress updates instead of workspace-only tracking:**
 
 ```bash
 # Report progress at phase transitions
-bd comment orch-go-v9u3 "Phase: Planning - Analyzing codebase structure"
-bd comment orch-go-v9u3 "Phase: Implementing - Adding authentication middleware"
-bd comment orch-go-v9u3 "Phase: Complete - All tests passing, ready for review"
+bd comment orch-go-881b "Phase: Planning - Analyzing codebase structure"
+bd comment orch-go-881b "Phase: Implementing - Adding authentication middleware"
+bd comment orch-go-881b "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment orch-go-v9u3 "BLOCKED: Need clarification on API contract"
+bd comment orch-go-881b "BLOCKED: Need clarification on API contract"
 
 # Report questions
-bd comment orch-go-v9u3 "QUESTION: Should we use JWT or session-based auth?"
+bd comment orch-go-881b "QUESTION: Should we use JWT or session-based auth?"
 ```
 
 **When to comment:**
@@ -204,11 +228,12 @@ bd comment orch-go-v9u3 "QUESTION: Should we use JWT or session-based auth?"
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-v9u3`.
+**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-881b`.
 
 ⛔ **NEVER run `bd close`** - Only the orchestrator closes issues via `orch complete`.
    - Workers report `Phase: Complete`, orchestrator verifies and closes
    - Running `bd close` bypasses verification and breaks tracking
+
 
 
 ## SKILL GUIDANCE (systematic-debugging)
@@ -226,11 +251,10 @@ description: Use when encountering any bug, test failure, or unexpected behavior
 ---
 
 <!-- AUTO-GENERATED by skillc -->
-<!-- Checksum: 490f6c574f57 -->
-<!-- Source: /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc -->
-<!-- Deployed to: /Users/dylanconlin/.claude/skills/worker/systematic-debugging/SKILL.md -->
-<!-- To modify: edit files in /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc, then run: skillc deploy -->
-<!-- Last compiled: 2025-12-25 20:44:55 -->
+<!-- Checksum: 4162e12ef951 -->
+<!-- Source: worker/systematic-debugging/.skillc -->
+<!-- To modify: edit files in worker/systematic-debugging/.skillc, then run: skillc build -->
+<!-- Last compiled: 2025-12-24 07:51:19 -->
 
 
 ## Summary
@@ -619,7 +643,7 @@ CONTEXT AVAILABLE:
 ## LOCAL SERVERS
 
 **Project:** orch-go
-**Status:** running
+**Status:** stopped
 
 **Ports:**
 - **web:** http://localhost:5188
@@ -635,8 +659,10 @@ CONTEXT AVAILABLE:
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
 
+
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. `bd comment orch-go-v9u3 "Phase: Complete - [1-2 sentence summary]"`
+2. `bd comment orch-go-881b "Phase: Complete - [1-2 sentence summary]"`
 3. `/exit`
+
 
 ⚠️ Your work is NOT complete until you run these commands.
