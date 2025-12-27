@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/action"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -65,6 +66,9 @@ const (
 
 	// PatternTypeContextDrift indicates context quality degrading over time.
 	PatternTypeContextDrift PatternType = "context_drift"
+
+	// PatternTypeFutileAction indicates repeated tool actions with unsuccessful outcomes.
+	PatternTypeFutileAction PatternType = "futile_action"
 )
 
 // PatternSeverity indicates how significant the pattern is.
@@ -115,6 +119,11 @@ func runPatterns() error {
 	// 2. Collect recurring gap patterns from gap-tracker.json
 	if gapPatterns, err := collectGapPatterns(); err == nil {
 		output.Patterns = append(output.Patterns, gapPatterns...)
+	}
+
+	// 3. Collect action outcome patterns from action-log.jsonl
+	if actionPatterns, err := collectActionPatterns(); err == nil {
+		output.Patterns = append(output.Patterns, actionPatterns...)
 	}
 
 	// Sort patterns by severity (critical first), then by count
@@ -380,4 +389,77 @@ func printPattern(p DetectedPattern) {
 	if p.Suggestion != "" {
 		fmt.Printf("      -> %s\n", p.Suggestion)
 	}
+}
+
+// collectActionPatterns collects action outcome patterns from action-log.jsonl.
+// These represent repeated futile actions (e.g., reading files that don't exist).
+func collectActionPatterns() ([]DetectedPattern, error) {
+	patterns := []DetectedPattern{}
+
+	tracker, err := action.LoadTracker("")
+	if err != nil {
+		return nil, err
+	}
+
+	// Get action patterns (3+ occurrences of failed actions)
+	actionPatterns := tracker.FindPatterns()
+
+	for _, ap := range actionPatterns {
+		pattern := DetectedPattern{
+			Type:  PatternTypeFutileAction,
+			Count: ap.Count,
+		}
+
+		// Determine severity based on count and outcome type
+		if ap.Count >= 5 {
+			pattern.Severity = PatternSeverityCritical
+		} else if ap.Count >= 3 {
+			pattern.Severity = PatternSeverityWarning
+		} else {
+			pattern.Severity = PatternSeverityInfo
+		}
+
+		// Build title and description based on outcome type
+		switch ap.Outcome {
+		case action.OutcomeEmpty:
+			pattern.Title = fmt.Sprintf("Empty result: %s on %s", ap.Tool, ap.Target)
+			pattern.Description = fmt.Sprintf("Tool %s has returned empty results on %s %d times - target may not exist or has no content",
+				ap.Tool, ap.Target, ap.Count)
+		case action.OutcomeError:
+			pattern.Title = fmt.Sprintf("Repeated error: %s on %s", ap.Tool, ap.Target)
+			pattern.Description = fmt.Sprintf("Tool %s has failed on %s %d times - investigate underlying cause",
+				ap.Tool, ap.Target, ap.Count)
+		case action.OutcomeFallback:
+			pattern.Title = fmt.Sprintf("Fallback pattern: %s on %s", ap.Tool, ap.Target)
+			pattern.Description = fmt.Sprintf("Tool %s has required fallback on %s %d times - consider using alternative approach",
+				ap.Tool, ap.Target, ap.Count)
+		default:
+			pattern.Title = fmt.Sprintf("Action pattern: %s on %s", ap.Tool, ap.Target)
+			pattern.Description = fmt.Sprintf("Tool %s on %s has pattern with %d occurrences", ap.Tool, ap.Target, ap.Count)
+		}
+
+		// Add suggestion from action pattern
+		if suggestion := ap.SuggestKnEntry(); suggestion != "" {
+			pattern.Suggestion = suggestion
+		}
+
+		// Add workspace context if available
+		if len(ap.Workspaces) > 0 {
+			pattern.Details = append(pattern.Details, fmt.Sprintf("Workspaces: %s", strings.Join(ap.Workspaces, ", ")))
+		}
+
+		// Time range
+		if !ap.FirstSeen.IsZero() && !ap.LastSeen.IsZero() {
+			pattern.FirstSeen = ap.FirstSeen
+			pattern.LastSeen = ap.LastSeen
+			pattern.Details = append(pattern.Details,
+				fmt.Sprintf("First: %s, Last: %s",
+					ap.FirstSeen.Format("Jan 2 15:04"),
+					ap.LastSeen.Format("Jan 2 15:04")))
+		}
+
+		patterns = append(patterns, pattern)
+	}
+
+	return patterns, nil
 }
