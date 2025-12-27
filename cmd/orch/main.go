@@ -781,6 +781,13 @@ func runAbandon(beadsID, reason string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
+	// Reset beads status to open so respawn works without manual bd update
+	if err := verify.UpdateIssueStatus(beadsID, "open"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to reset beads status: %v\n", err)
+	} else {
+		fmt.Printf("Reset beads status: in_progress → open\n")
+	}
+
 	fmt.Printf("Abandoned agent: %s\n", agentName)
 	fmt.Printf("  Beads ID: %s\n", beadsID)
 	if reason != "" {
@@ -1107,12 +1114,19 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 				return fmt.Errorf("issue %s is already closed", beadsID)
 			}
 			if issue.Status == "in_progress" {
-				// Check if there's an active agent for this issue
+				// Check if there's a truly active agent for this issue
+				// OpenCode persists sessions to disk, so we must verify liveness not just existence
 				client := opencode.NewClient(serverURL)
 				sessions, _ := client.ListSessions("")
 				for _, s := range sessions {
 					if strings.Contains(s.Title, beadsID) {
-						return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
+						// Session exists - but is it actually active (recently updated)?
+						// Use 30 minute threshold - if no activity, session is stale
+						if client.IsSessionActive(s.ID, 30*time.Minute) {
+							return fmt.Errorf("issue %s is already in_progress with active agent (session %s). Use 'orch send %s' to interact or 'orch abandon %s' to restart", beadsID, s.ID, s.ID, beadsID)
+						}
+						// Session exists but is stale - log and continue (allow respawn)
+						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", s.ID[:12], beadsID)
 					}
 				}
 				// No active session - check if Phase: Complete was reported
@@ -2994,6 +3008,23 @@ func runComplete(beadsID string) error {
 				fmt.Println("Restarted orch serve")
 			}
 		}
+
+		// Check for new CLI commands that may need skill documentation
+		newCommands := detectNewCLICommands(projectDir)
+		if len(newCommands) > 0 {
+			fmt.Println()
+			fmt.Println("┌─────────────────────────────────────────────────────────────┐")
+			fmt.Println("│  📚 NEW CLI COMMANDS DETECTED                               │")
+			fmt.Println("├─────────────────────────────────────────────────────────────┤")
+			for _, cmd := range newCommands {
+				fmt.Printf("│  • %s\n", cmd)
+			}
+			fmt.Println("├─────────────────────────────────────────────────────────────┤")
+			fmt.Println("│  Consider updating skill documentation:                     │")
+			fmt.Println("│  - ~/.claude/skills/meta/orchestrator/SKILL.md              │")
+			fmt.Println("│  - docs/orch-commands-reference.md                          │")
+			fmt.Println("└─────────────────────────────────────────────────────────────┘")
+		}
 	}
 
 	// Log the completion
@@ -3046,6 +3077,76 @@ func hasGoChangesInRecentCommits(projectDir string) bool {
 		}
 	}
 	return false
+}
+
+// detectNewCLICommands checks if any of the last 5 commits added new CLI command files
+// to cmd/orch/. A file is considered a new command if:
+// 1. It's in cmd/orch/*.go (not a test file)
+// 2. It was added (not modified) in recent commits
+// 3. It contains cobra.Command definitions
+// Returns the list of new command file names (without path prefix).
+func detectNewCLICommands(projectDir string) []string {
+	var newCommands []string
+
+	// Get files added (not modified) in last 5 commits
+	// The 'A' status means added
+	cmd := exec.Command("git", "diff", "--name-status", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// If git command fails (e.g., not enough commits), try last 1 commit
+		cmd = exec.Command("git", "diff", "--name-status", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return nil
+		}
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Parse status line: "A\tcmd/orch/newcmd.go" or "M\tcmd/orch/main.go"
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		status := parts[0]
+		filePath := parts[1]
+
+		// Only care about added files (not modified)
+		if status != "A" {
+			continue
+		}
+
+		// Only check cmd/orch/*.go files (not test files)
+		if !strings.HasPrefix(filePath, "cmd/orch/") || !strings.HasSuffix(filePath, ".go") {
+			continue
+		}
+		if strings.HasSuffix(filePath, "_test.go") {
+			continue
+		}
+
+		// Read the file to check if it contains cobra command definitions
+		fullPath := filepath.Join(projectDir, filePath)
+		content, err := os.ReadFile(fullPath)
+		if err != nil {
+			continue
+		}
+
+		// Look for cobra command pattern: "var xxxCmd = &cobra.Command{"
+		if strings.Contains(string(content), "cobra.Command{") &&
+			strings.Contains(string(content), "rootCmd.AddCommand(") {
+			// Extract just the filename
+			fileName := filepath.Base(filePath)
+			newCommands = append(newCommands, fileName)
+		}
+	}
+
+	return newCommands
 }
 
 // runAutoRebuild runs make install in the project directory.
