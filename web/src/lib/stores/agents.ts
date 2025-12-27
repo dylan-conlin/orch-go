@@ -117,9 +117,11 @@ const FETCH_DEBOUNCE_MS = 500;
 // When an agent goes idle, we delay the visual update to prevent rapid flapping
 // between busy/idle states (which causes gold border flashing)
 const processingClearTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-// Delay before clearing is_processing state. 1000ms prevents most flapping while
-// still being responsive when agent truly stops processing.
-const PROCESSING_CLEAR_DELAY_MS = 1000;
+// Delay before clearing is_processing state. 5000ms (5 seconds) keeps the gold
+// "processing" indicator visible between rapid tool calls, preventing the visually
+// distracting flashing that occurs with shorter delays. The agent typically switches
+// between busy/idle states every few hundred milliseconds during active work.
+const PROCESSING_CLEAR_DELAY_MS = 5000;
 
 // Agent store
 function createAgentStore() {
