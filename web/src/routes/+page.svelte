@@ -90,32 +90,58 @@
 	$: uniqueProjects = [...new Set($agents.map(a => a.project).filter(Boolean))].sort() as string[];
 
 	onMount(() => {
-		// Load section state from localStorage
+		// Load section state from localStorage (sync, instant)
 		loadSectionState();
 
-		// Connect to SSE - this will trigger initial fetch when connection opens
-		// Removes race condition from parallel fetch + SSE connect
+		// Connect to primary SSE immediately - this triggers agents.fetch() on connection
+		// which is the most critical data for initial render
 		connectSSE();
-		connectAgentlogSSE();
 
-		// Fetch usage, focus, servers, beads, readyIssues, daemon, and pendingReviews data
-		usage.fetch();
-		focus.fetch();
-		servers.fetch();
-		beads.fetch();
-		readyIssues.fetch();
-		daemon.fetch();
-		pendingReviews.fetch();
+		// Fetch critical data in parallel using Promise.all
+		// These affect the primary dashboard view and should load ASAP
+		Promise.all([
+			beads.fetch(),
+			pendingReviews.fetch()
+		]).catch(console.error);
 
-		// Refresh usage, focus, servers, beads, readyIssues, daemon, and pendingReviews every 60 seconds
-		const usageInterval = setInterval(() => {
+		// Defer secondary data fetches using requestIdleCallback or setTimeout fallback
+		// These are "nice to have" data that can load after initial render
+		const deferSecondaryFetches = () => {
 			usage.fetch();
 			focus.fetch();
 			servers.fetch();
-			beads.fetch();
 			readyIssues.fetch();
 			daemon.fetch();
-			pendingReviews.fetch();
+		};
+
+		// Use requestIdleCallback for better performance, with setTimeout fallback
+		if ('requestIdleCallback' in window) {
+			requestIdleCallback(deferSecondaryFetches, { timeout: 2000 });
+		} else {
+			setTimeout(deferSecondaryFetches, 100);
+		}
+
+		// Defer agentlog SSE connection - it's for the event log panel, not critical
+		const connectSecondarySSE = () => {
+			connectAgentlogSSE();
+		};
+		if ('requestIdleCallback' in window) {
+			requestIdleCallback(connectSecondarySSE, { timeout: 3000 });
+		} else {
+			setTimeout(connectSecondarySSE, 500);
+		}
+
+		// Refresh all data every 60 seconds (all fetches are already non-blocking)
+		const refreshInterval = setInterval(() => {
+			Promise.all([
+				usage.fetch(),
+				focus.fetch(),
+				servers.fetch(),
+				beads.fetch(),
+				readyIssues.fetch(),
+				daemon.fetch(),
+				pendingReviews.fetch()
+			]).catch(console.error);
 		}, 60000);
 
 		// Clean up connections before page unload to avoid Firefox network errors
@@ -127,7 +153,7 @@
 
 		return () => {
 			window.removeEventListener('beforeunload', handleBeforeUnload);
-			clearInterval(usageInterval);
+			clearInterval(refreshInterval);
 		};
 	});
 
