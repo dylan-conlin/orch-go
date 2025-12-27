@@ -201,13 +201,24 @@
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-design-action-batching-layer-playwright.md",
       "notes": "Start as wrapper MCP server, consider upstream PR to microsoft/playwright-mcp once proven."
+    },
+    {
+      "id": "feat-020",
+      "title": "Cross-project completion: auto-detect from workspace metadata with --workdir fallback",
+      "description": "Fix cross-project completion UX when orchestrator runs from orch-go but needs to complete agents spawned in other repos (glass, kb-cli, etc). Solution: 1) Add --workdir flag to orch complete (like orch abandon), 2) Extract PROJECT_DIR from SPAWN_CONTEXT.md when workspace found, 3) Set beads.DefaultDir to target project for beads operations, 4) Update error messages to suggest --workdir option. Enables 'orch complete glass-xyz' from any directory. File targets: cmd/orch/main.go (add flag, modify runComplete()). Out of scope: Cross-repo beads query syntax, changes to beads CLI. Acceptance: 'orch complete glass-xyz' from orch-go auto-detects project and works; 'orch complete unknown-xyz --workdir ~/glass' works as fallback.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-inv-design-cross-project-completion-ux.md",
+      "notes": "Pattern matches existing orch abandon --workdir. Uses existing PROJECT_DIR metadata from SPAWN_CONTEXT.md."
     }
   ],
   "meta": {
     "last_updated": "2025-12-27",
-    "total_features": 19,
+    "total_features": 20,
     "by_status": {
-      "todo": 18,
+      "todo": 19,
       "in_progress": 0,
       "done": 1
     }
