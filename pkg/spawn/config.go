@@ -149,12 +149,36 @@ func GenerateWorkspaceName(skillName, task string) string {
 
 // generateSlug extracts meaningful words from text and creates a slug.
 func generateSlug(text string, maxWords int) string {
-	// Stop words to exclude
+	// Stop words to exclude - including question words, auxiliary verbs, and vague adjectives
+	// These rarely add meaning to workspace names
 	stopWords := map[string]bool{
+		// Articles and conjunctions
 		"the": true, "a": true, "an": true, "and": true, "or": true,
+		// Prepositions
 		"for": true, "to": true, "in": true, "on": true, "at": true,
+		"with": true, "from": true, "of": true, "by": true, "as": true,
+		// Be verbs
 		"is": true, "are": true, "was": true, "were": true, "be": true,
-		"this": true, "that": true, "with": true, "from": true, "of": true,
+		"been": true, "being": true,
+		// Demonstratives
+		"this": true, "that": true, "these": true, "those": true,
+		// Question words (rarely meaningful in workspace names)
+		"how": true, "what": true, "when": true, "where": true, "why": true, "which": true,
+		// Auxiliary/modal verbs
+		"should": true, "could": true, "would": true, "can": true, "will": true,
+		"may": true, "might": true, "must": true, "shall": true,
+		"do": true, "does": true, "did": true, "done": true,
+		"have": true, "has": true, "had": true,
+		// Vague adjectives/adverbs that don't add specificity
+		"better": true, "best": true, "good": true, "bad": true, "new": true,
+		"more": true, "less": true, "very": true, "really": true, "just": true,
+		// Common task description filler words
+		"need": true, "needs": true, "want": true, "wants": true,
+		"make": true, "makes": true, "get": true, "gets": true,
+		"use": true, "uses": true, "using": true,
+		"some": true, "any": true, "all": true, "each": true, "every": true,
+		// Pronouns
+		"it": true, "its": true, "we": true, "our": true, "they": true, "their": true,
 	}
 
 	// Extract words (lowercase, alphanumeric only)

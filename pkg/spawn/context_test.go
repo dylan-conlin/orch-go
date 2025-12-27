@@ -24,19 +24,37 @@ func TestGenerateWorkspaceName(t *testing.T) {
 			name:      "feature-impl skill",
 			skillName: "feature-impl",
 			task:      "add new spawn command",
-			wantParts: []string{"og-feat-", "add", "new", "spawn"}, // only 3 words in slug
+			wantParts: []string{"og-feat-", "add", "spawn", "command"}, // 'new' filtered as vague adjective
 		},
 		{
 			name:      "unknown skill",
 			skillName: "custom-skill",
 			task:      "do something",
-			wantParts: []string{"og-work-", "do", "something"},
+			wantParts: []string{"og-work-", "something"}, // 'do' filtered as auxiliary verb
 		},
 		{
 			name:      "task with stop words",
 			skillName: "investigation",
 			task:      "the quick brown fox in the forest",
 			wantParts: []string{"og-inv-", "quick", "brown", "fox"},
+		},
+		{
+			name:      "task with question words filtered",
+			skillName: "architect",
+			task:      "Design how to better surface ready queue items",
+			wantParts: []string{"og-arch-", "design", "surface", "ready"}, // 'how', 'better' filtered
+		},
+		{
+			name:      "task with modal verbs filtered",
+			skillName: "investigation",
+			task:      "what should we do when users can login",
+			wantParts: []string{"og-inv-", "users", "login"}, // 'what', 'should', 'we', 'do', 'when', 'can' filtered
+		},
+		{
+			name:      "task with filler words filtered",
+			skillName: "feature-impl",
+			task:      "need to make some changes to get better logging",
+			wantParts: []string{"og-feat-", "changes", "logging"}, // 'need', 'make', 'some', 'get', 'better' filtered
 		},
 	}
 
