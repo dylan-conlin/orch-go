@@ -649,8 +649,8 @@
 				{#if activeOnly}
 					<!-- Active Only mode: show flat grid of active agents -->
 					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
-						{#each sortedActiveAgents as agent, i (agent.id ?? `active-${i}`)}
-							<AgentCard {agent} />
+					{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+						<AgentCard {agent} />
 						{:else}
 							<div class="col-span-full rounded border border-dashed p-6 text-center">
 								<p class="text-sm text-muted-foreground">No active agents</p>
@@ -672,7 +672,7 @@
 							variant="active"
 						>
 							<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-								{#each sortedActiveAgents as agent, i (agent.id ?? `section-active-${i}`)}
+								{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 									<AgentCard {agent} />
 								{/each}
 							</div>
@@ -689,7 +689,7 @@
 							variant="recent"
 						>
 							<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-								{#each sortedRecentAgents as agent, i (agent.id ?? `section-recent-${i}`)}
+								{#each sortedRecentAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 									<AgentCard {agent} />
 								{/each}
 							</div>
@@ -706,7 +706,7 @@
 							variant="archive"
 						>
 							<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-								{#each sortedArchivedAgents as agent, i (agent.id ?? `section-archive-${i}`)}
+								{#each sortedArchivedAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 									<AgentCard {agent} />
 								{/each}
 							</div>

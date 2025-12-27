@@ -596,6 +596,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// These will be filtered out after Phase check unless Phase: Complete
 	pendingFilterByBeadsID := make(map[string]bool)
 
+	// Track agents by title to deduplicate (OpenCode can have multiple sessions with same title)
+	// Keep the most recently updated session for each title
+	seenTitles := make(map[string]int) // title -> index in agents slice
+
 	for _, s := range sessions {
 		createdAt := time.Unix(s.Time.Created/1000, 0)
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
@@ -655,6 +659,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
+		// Deduplicate by title - keep the most recently updated session
+		// OpenCode can have multiple sessions with the same title (e.g., resumed agents)
+		if existingIdx, exists := seenTitles[s.Title]; exists {
+			// Compare updated_at to keep the more recent session
+			existingUpdatedAt, _ := time.Parse(time.RFC3339, agents[existingIdx].UpdatedAt)
+			if updatedAt.After(existingUpdatedAt) {
+				// Replace the existing agent with this newer one
+				agents[existingIdx] = agent
+			}
+			// Skip appending since we either replaced or kept the existing one
+			continue
+		}
+
+		seenTitles[s.Title] = len(agents)
 		agents = append(agents, agent)
 	}
 
