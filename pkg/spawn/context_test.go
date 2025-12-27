@@ -746,6 +746,281 @@ func TestGenerateContext_WithoutServerContext(t *testing.T) {
 	}
 }
 
+func TestStripBeadsInstructions(t *testing.T) {
+	t.Run("removes beads code blocks", func(t *testing.T) {
+		content := `## Some Section
+
+Some text here.
+
+### Report via Beads
+
+` + "```" + `bash
+bd comment <beads-id> "Phase: Planning - starting work"
+bd comment <beads-id> "Phase: Complete - done"
+` + "```" + `
+
+### Next Section
+
+More text here.
+`
+		result := StripBeadsInstructions(content)
+
+		// Should remove the beads section
+		if strings.Contains(result, "### Report via Beads") {
+			t.Error("should remove Report via Beads section")
+		}
+		if strings.Contains(result, "bd comment <beads-id>") {
+			t.Error("should remove bd comment commands")
+		}
+
+		// Should keep other sections
+		if !strings.Contains(result, "## Some Section") {
+			t.Error("should keep other sections")
+		}
+		if !strings.Contains(result, "### Next Section") {
+			t.Error("should keep Next Section")
+		}
+	})
+
+	t.Run("removes completion criteria with beads reporting", func(t *testing.T) {
+		content := `## Completion Criteria
+
+Before marking complete, verify ALL:
+
+- [ ] **Root cause identified**
+- [ ] **Fix implemented**
+- [ ] **Tests passing**
+- [ ] **Reported** - ` + "`bd comment <beads-id> \"Phase: Complete - [summary]\"`" + `
+
+**If ANY unchecked, work is NOT complete.**
+`
+		result := StripBeadsInstructions(content)
+
+		// Should remove the beads-specific criteria line
+		if strings.Contains(result, "**Reported**") && strings.Contains(result, "bd comment") {
+			t.Error("should remove Reported beads criteria line")
+		}
+
+		// Should keep other criteria
+		if !strings.Contains(result, "**Root cause identified**") {
+			t.Error("should keep other criteria")
+		}
+		if !strings.Contains(result, "**Tests passing**") {
+			t.Error("should keep other criteria")
+		}
+	})
+
+	t.Run("removes After All Criteria Met code blocks", func(t *testing.T) {
+		content := `### After All Criteria Met
+
+` + "```" + `bash
+bd comment <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests passing"
+bd close <beads-id> --reason "Root cause: [X], Fix: [Y]"
+` + "```" + `
+
+Then call ` + "`/exit`" + ` to close agent session.
+`
+		result := StripBeadsInstructions(content)
+
+		// Should remove the beads command block
+		if strings.Contains(result, "bd close <beads-id>") {
+			t.Error("should remove bd close command")
+		}
+
+		// Should keep the /exit instruction
+		if !strings.Contains(result, "/exit") {
+			t.Error("should keep /exit instruction")
+		}
+	})
+
+	t.Run("handles empty content", func(t *testing.T) {
+		result := StripBeadsInstructions("")
+		if result != "" {
+			t.Error("should return empty string for empty input")
+		}
+	})
+
+	t.Run("handles content with no beads instructions", func(t *testing.T) {
+		content := `## Investigation Phase
+
+Analyze the code.
+
+### Steps
+
+1. Read the file
+2. Test the hypothesis
+3. Document findings
+`
+		result := StripBeadsInstructions(content)
+
+		// Should be mostly unchanged (some whitespace normalization may occur)
+		if !strings.Contains(result, "## Investigation Phase") {
+			t.Error("should keep content unchanged when no beads instructions")
+		}
+		if !strings.Contains(result, "### Steps") {
+			t.Error("should keep all sections")
+		}
+	})
+
+	t.Run("removes Beads Progress Tracking section", func(t *testing.T) {
+		content := `## Self-Review
+
+Check your work.
+
+### Beads Progress Tracking
+
+Use beads to track:
+- Phase transitions
+- Completions
+
+### Next Steps
+
+Continue work.
+`
+		result := StripBeadsInstructions(content)
+
+		// Should remove the beads tracking section
+		if strings.Contains(result, "### Beads Progress Tracking") {
+			t.Error("should remove Beads Progress Tracking section")
+		}
+
+		// Should keep other sections
+		if !strings.Contains(result, "## Self-Review") {
+			t.Error("should keep Self-Review section")
+		}
+		if !strings.Contains(result, "### Next Steps") {
+			t.Error("should keep Next Steps section")
+		}
+	})
+}
+
+func TestGenerateContext_NoTrackStripsSkillBeadsInstructions(t *testing.T) {
+	// Skill content with beads instructions (simulating real skill content)
+	skillContent := `---
+name: systematic-debugging
+---
+
+# Systematic Debugging
+
+## Self-Review
+
+Check your work.
+
+### Report via Beads
+
+` + "```" + `bash
+# If issues found and fixed:
+bd comment <beads-id> "Self-review: Fixed [issue summary]"
+
+# If passed:
+bd comment <beads-id> "Self-review passed - ready for completion"
+` + "```" + `
+
+## Completion Criteria
+
+- [ ] **Root cause identified**
+- [ ] **Fix implemented**
+- [ ] **Reported** - ` + "`bd comment <beads-id> \"Phase: Complete - [summary]\"`" + `
+
+### After All Criteria Met
+
+` + "```" + `bash
+bd comment <beads-id> "Phase: Complete - Root cause: [X], Fix: [Y], Tests passing"
+bd close <beads-id> --reason "Root cause: [X], Fix: [Y]"
+` + "```" + `
+
+Then call ` + "`/exit`" + ` to close agent session.
+`
+
+	cfg := &Config{
+		Task:          "debug an issue",
+		SkillName:     "systematic-debugging",
+		Project:       "test-project",
+		ProjectDir:    "/tmp/test",
+		WorkspaceName: "og-debug-test-26dec",
+		SkillContent:  skillContent,
+		NoTrack:       true,
+		Tier:          TierFull,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should contain skill guidance section
+	if !strings.Contains(content, "## SKILL GUIDANCE (systematic-debugging)") {
+		t.Error("expected content to contain skill guidance section")
+	}
+
+	// Should NOT contain beads commands from skill content
+	if strings.Contains(content, "bd comment <beads-id>") {
+		t.Error("expected skill content to have beads commands stripped for --no-track spawn")
+	}
+	if strings.Contains(content, "bd close <beads-id>") {
+		t.Error("expected skill content to have bd close commands stripped for --no-track spawn")
+	}
+
+	// Should still contain the main skill guidance (non-beads parts)
+	if !strings.Contains(content, "# Systematic Debugging") {
+		t.Error("expected content to still contain skill title")
+	}
+	if !strings.Contains(content, "## Self-Review") {
+		t.Error("expected content to still contain Self-Review section")
+	}
+	if !strings.Contains(content, "## Completion Criteria") {
+		t.Error("expected content to still contain Completion Criteria section")
+	}
+
+	// Should keep /exit instruction
+	if !strings.Contains(content, "/exit") {
+		t.Error("expected content to keep /exit instruction")
+	}
+
+	// Should keep non-beads completion criteria
+	if !strings.Contains(content, "**Root cause identified**") {
+		t.Error("expected content to keep non-beads completion criteria")
+	}
+}
+
+func TestGenerateContext_TrackedKeepsSkillBeadsInstructions(t *testing.T) {
+	// Same skill content as above
+	skillContent := `---
+name: systematic-debugging
+---
+
+# Systematic Debugging
+
+### Report via Beads
+
+` + "```" + `bash
+bd comment <beads-id> "Phase: Complete"
+` + "```" + `
+`
+
+	cfg := &Config{
+		Task:          "debug an issue",
+		SkillName:     "systematic-debugging",
+		Project:       "test-project",
+		ProjectDir:    "/tmp/test",
+		WorkspaceName: "og-debug-test-26dec",
+		SkillContent:  skillContent,
+		BeadsID:       "test-123",
+		NoTrack:       false, // Tracked spawn
+		Tier:          TierFull,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// Should contain beads commands from skill content (not stripped)
+	if !strings.Contains(content, "bd comment <beads-id>") {
+		t.Error("expected skill content to keep beads commands for tracked spawn")
+	}
+}
+
 func TestGenerateContext_NoTrack(t *testing.T) {
 	t.Run("excludes beads instructions when NoTrack is true", func(t *testing.T) {
 		cfg := &Config{
