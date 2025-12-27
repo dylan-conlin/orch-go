@@ -1,33 +1,37 @@
 import { writable } from 'svelte/store';
+import { browser } from '$app/environment';
 
 // Dashboard mode: operational (daily) vs historical (full archive)
 export type DashboardMode = 'operational' | 'historical';
 
 const STORAGE_KEY = 'orch-dashboard-mode';
 
+// Get stored value from localStorage (only works in browser)
+function getStoredMode(): DashboardMode {
+	if (!browser) return 'operational';
+	try {
+		const stored = localStorage.getItem(STORAGE_KEY);
+		if (stored === 'operational' || stored === 'historical') {
+			return stored;
+		}
+	} catch (e) {
+		console.warn('Failed to load dashboard mode from localStorage:', e);
+	}
+	return 'operational';
+}
+
 // Create store with localStorage persistence
 function createDashboardModeStore() {
-	// Load initial value from localStorage
-	let initialValue: DashboardMode = 'operational'; // Default to operational
-	if (typeof window !== 'undefined') {
-		try {
-			const stored = localStorage.getItem(STORAGE_KEY);
-			if (stored === 'operational' || stored === 'historical') {
-				initialValue = stored;
-			}
-		} catch (e) {
-			console.warn('Failed to load dashboard mode from localStorage:', e);
-		}
-	}
-
-	const { subscribe, set, update } = writable<DashboardMode>(initialValue);
+	// Start with default, will be synced from localStorage on init()
+	const store = writable<DashboardMode>('operational');
+	const { subscribe, update } = store;
 
 	return {
 		subscribe,
 		set: (value: DashboardMode) => {
-			set(value);
+			store.set(value);
 			// Persist to localStorage
-			if (typeof window !== 'undefined') {
+			if (browser) {
 				try {
 					localStorage.setItem(STORAGE_KEY, value);
 				} catch (e) {
@@ -39,7 +43,7 @@ function createDashboardModeStore() {
 			update((current) => {
 				const newValue = current === 'operational' ? 'historical' : 'operational';
 				// Persist to localStorage
-				if (typeof window !== 'undefined') {
+				if (browser) {
 					try {
 						localStorage.setItem(STORAGE_KEY, newValue);
 					} catch (e) {
@@ -48,6 +52,13 @@ function createDashboardModeStore() {
 				}
 				return newValue;
 			});
+		},
+		// Initialize from localStorage (call in onMount)
+		init: () => {
+			if (browser) {
+				const stored = getStoredMode();
+				store.set(stored);
+			}
 		}
 	};
 }

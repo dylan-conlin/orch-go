@@ -94,6 +94,9 @@
 	$: uniqueProjects = [...new Set($agents.map(a => a.project).filter(Boolean))].sort() as string[];
 
 	onMount(() => {
+		// Initialize dashboard mode from localStorage (must be in onMount for SSR)
+		dashboardMode.init();
+
 		// Load section state from localStorage (sync, instant)
 		loadSectionState();
 
