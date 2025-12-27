@@ -1483,6 +1483,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 // This is useful for automation and daemon-driven spawns.
 // Uses opencode CLI with --format json to properly support model selection
 // (the HTTP API ignores the model parameter).
+// Includes retry logic for transient network failures.
 func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	client := opencode.NewClient(serverURL)
 
@@ -1490,46 +1491,37 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	// The HTTP API ignores model parameter - only CLI mode honors --model flag
 	// Format title with beads ID so orch status can match sessions
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
-	cmd.Dir = cfg.ProjectDir
-	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
-	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdout: %w", err)
+	// Use retry logic for transient failures (network issues, server temporarily unavailable)
+	retryCfg := spawn.DefaultRetryConfig()
+	result, retryResult := spawn.Retry(retryCfg, func() (*headlessSpawnResult, error) {
+		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
+	})
+
+	if retryResult.LastErr != nil {
+		// Wrap the error with user-friendly message and recovery guidance
+		spawnErr := spawn.WrapSpawnError(retryResult.LastErr, "Headless spawn failed")
+		if retryResult.Attempts > 1 {
+			fmt.Fprintf(os.Stderr, "Spawn failed after %d attempts\n", retryResult.Attempts)
+		}
+		// Print formatted error with recovery guidance
+		fmt.Fprintf(os.Stderr, "\n%s\n", spawn.FormatSpawnError(spawnErr))
+		return spawnErr
 	}
 
-	// Discard stderr in headless mode (no TUI to display it)
-	cmd.Stderr = nil
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start opencode: %w", err)
+	if retryResult.Attempts > 1 {
+		fmt.Printf("Spawn succeeded after %d attempts\n", retryResult.Attempts)
 	}
 
-	// Process stdout to extract session ID, then let the process run in background
-	// We need to read at least until we get the session ID, then spawn a goroutine
-	// to continue processing in the background
-	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
-	if err != nil {
-		// Try to kill the process if we couldn't get session ID
-		cmd.Process.Kill()
-		return fmt.Errorf("failed to extract session ID: %w", err)
-	}
+	sessionID := result.SessionID
 
 	// Write session ID to workspace file for later lookups
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
 
-	// Spawn goroutine to continue reading stdout and wait for process
-	// This prevents the stdout pipe from blocking the opencode process
-	go func() {
-		// Drain remaining stdout
-		io.Copy(io.Discard, stdout)
-		// Wait for process to complete (cleanup)
-		cmd.Wait()
-	}()
+	// Start background cleanup goroutine
+	result.StartBackgroundCleanup()
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -1543,6 +1535,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		"model":               cfg.Model,
 		"no_track":            cfg.NoTrack,
 		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	if retryResult.Attempts > 1 {
+		eventData["retry_attempts"] = retryResult.Attempts
 	}
 	if cfg.MCP != "" {
 		eventData["mcp"] = cfg.MCP
@@ -1576,6 +1571,65 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
 	return nil
+}
+
+// headlessSpawnResult contains the result of starting a headless session.
+type headlessSpawnResult struct {
+	SessionID string
+	cmd       *exec.Cmd
+	stdout    io.ReadCloser
+}
+
+// StartBackgroundCleanup starts a goroutine to drain stdout and wait for the process.
+func (r *headlessSpawnResult) StartBackgroundCleanup() {
+	if r.stdout == nil || r.cmd == nil {
+		return
+	}
+	go func() {
+		// Drain remaining stdout
+		io.Copy(io.Discard, r.stdout)
+		// Wait for process to complete (cleanup)
+		r.cmd.Wait()
+	}()
+}
+
+// startHeadlessSession starts an opencode session and extracts the session ID.
+// Returns the result with session ID and resources for cleanup.
+func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
+	cmd.Dir = cfg.ProjectDir
+	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
+	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		spawnErr := spawn.WrapSpawnError(err, "Failed to get stdout pipe")
+		return nil, spawnErr
+	}
+
+	// Discard stderr in headless mode (no TUI to display it)
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
+		return nil, spawnErr
+	}
+
+	// Process stdout to extract session ID, then let the process run in background
+	// We need to read at least until we get the session ID
+	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
+	if err != nil {
+		// Try to kill the process if we couldn't get session ID
+		cmd.Process.Kill()
+		spawnErr := spawn.WrapSpawnError(err, "Failed to extract session ID")
+		return nil, spawnErr
+	}
+
+	return &headlessSpawnResult{
+		SessionID: sessionID,
+		cmd:       cmd,
+		stdout:    stdout,
+	}, nil
 }
 
 // runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
@@ -2073,19 +2127,20 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID    string `json:"session_id"`
-	BeadsID      string `json:"beads_id,omitempty"`
-	Skill        string `json:"skill,omitempty"`
-	Account      string `json:"account,omitempty"`
-	Runtime      string `json:"runtime"`
-	Title        string `json:"title,omitempty"`
-	Window       string `json:"window,omitempty"`
-	Phase        string `json:"phase,omitempty"`         // Current phase from beads comments
-	Task         string `json:"task,omitempty"`          // Task description (truncated)
-	Project      string `json:"project,omitempty"`       // Project name derived from beads ID or workspace
-	IsPhantom    bool   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
-	IsProcessing bool   `json:"is_processing,omitempty"` // True if session is actively generating a response
-	IsCompleted  bool   `json:"is_completed,omitempty"`  // True if beads issue is closed
+	SessionID    string                 `json:"session_id"`
+	BeadsID      string                 `json:"beads_id,omitempty"`
+	Skill        string                 `json:"skill,omitempty"`
+	Account      string                 `json:"account,omitempty"`
+	Runtime      string                 `json:"runtime"`
+	Title        string                 `json:"title,omitempty"`
+	Window       string                 `json:"window,omitempty"`
+	Phase        string                 `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string                 `json:"task,omitempty"`          // Task description (truncated)
+	Project      string                 `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	IsPhantom    bool                   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool                   `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool                   `json:"is_completed,omitempty"`  // True if beads issue is closed
+	Tokens       *opencode.TokenStats   `json:"tokens,omitempty"`        // Token usage for the session
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -2383,6 +2438,16 @@ func runStatus(serverURL string) error {
 
 	// Fetch account usage information
 	accounts := getAccountUsage()
+
+	// Fetch token usage for each agent with a valid session ID
+	for i := range filteredAgents {
+		if filteredAgents[i].SessionID != "" && filteredAgents[i].SessionID != "tmux-stalled" {
+			tokens, err := client.GetSessionTokens(filteredAgents[i].SessionID)
+			if err == nil && tokens != nil {
+				filteredAgents[i].Tokens = tokens
+			}
+		}
+	}
 
 	// Build output (use filtered agents for display)
 	output := StatusOutput{
@@ -2727,7 +2792,7 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		fmt.Printf("  %s [%s]\n", beadsID, status)
 		fmt.Printf("    Phase: %s | Skill: %s\n", phase, skill)
 		fmt.Printf("    Task: %s\n", truncate(task, 50))
-		fmt.Printf("    Runtime: %s\n", agent.Runtime)
+		fmt.Printf("    Runtime: %s | Tokens: %s\n", agent.Runtime, formatTokenStats(agent.Tokens))
 	}
 }
 
@@ -2762,6 +2827,30 @@ func abbreviateSkill(skill string) string {
 		return abbr
 	}
 	return skill
+}
+
+// formatTokenCount formats a token count with K/M suffixes for readability.
+func formatTokenCount(count int) string {
+	if count < 1000 {
+		return fmt.Sprintf("%d", count)
+	}
+	if count < 1000000 {
+		return fmt.Sprintf("%.1fK", float64(count)/1000)
+	}
+	return fmt.Sprintf("%.1fM", float64(count)/1000000)
+}
+
+// formatTokenStats returns a formatted string of token usage.
+func formatTokenStats(tokens *opencode.TokenStats) string {
+	if tokens == nil {
+		return "-"
+	}
+	// Format: "in:X out:Y (cache:Z)"
+	result := fmt.Sprintf("in:%s out:%s", formatTokenCount(tokens.InputTokens), formatTokenCount(tokens.OutputTokens))
+	if tokens.CacheReadTokens > 0 {
+		result += fmt.Sprintf(" (cache:%s)", formatTokenCount(tokens.CacheReadTokens))
+	}
+	return result
 }
 
 // findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
