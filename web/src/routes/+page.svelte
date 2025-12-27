@@ -9,6 +9,7 @@
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
 	import { PendingReviewsSection } from '$lib/components/pending-reviews-section';
 	import { ReadyQueueSection } from '$lib/components/ready-queue-section';
+	import { UpNextSection } from '$lib/components/up-next-section';
 	import { RecentWins } from '$lib/components/recent-wins';
 	import { NeedsAttention } from '$lib/components/needs-attention';
 	import {
@@ -53,6 +54,7 @@
 		active: true,   // Active always expanded by default
 		recent: false,  // Recent collapsed by default
 		archive: false, // Archive collapsed by default
+		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
 		readyQueue: false, // Ready queue collapsed by default
 		pendingReviews: true, // Pending reviews expanded by default (actionable)
 		sseStream: false // SSE Stream collapsed by default (low signal-to-noise for most users)
@@ -550,6 +552,11 @@
 	{#if $dashboardMode === 'operational'}
 		<!-- OPERATIONAL MODE: Focused daily coordination view -->
 		
+		<!-- Up Next (priority queue visibility) -->
+		<UpNextSection
+			bind:expanded={sectionState.upNext}
+		/>
+		
 		<!-- Active Agents (always visible, main focus) -->
 		<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
 			<div class="flex items-center gap-2 px-3 py-2 border-b">
@@ -590,6 +597,11 @@
 
 	{:else}
 		<!-- HISTORICAL MODE: Full archive with SSE stream and filters -->
+
+		<!-- Up Next (priority queue visibility) -->
+		<UpNextSection
+			bind:expanded={sectionState.upNext}
+		/>
 
 		<!-- Ready Queue Section (dedicated collapsible section) -->
 		<ReadyQueueSection
@@ -680,11 +692,11 @@
 						<option value="alphabetical">A-Z</option>
 					</select>
 
-					{#if hasActiveFilters}
-						<button onclick={clearFilters} class="text-xs text-muted-foreground hover:text-foreground">
-							Clear
-						</button>
-					{/if}
+				{#if hasActiveFilters}
+					<button onclick={clearFilters} class="text-xs text-muted-foreground hover:text-foreground" data-testid="clear-filters-button">
+						Clear
+					</button>
+				{/if}
 
 					<span class="ml-auto text-muted-foreground" data-testid="filter-count">
 						{totalVisibleAgents} agent{totalVisibleAgents === 1 ? '' : 's'}
