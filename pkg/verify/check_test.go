@@ -3,6 +3,7 @@ package verify
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -587,6 +588,171 @@ Straightforward session, no unexplored territory.
 	}
 	if len(got.Uncertainties) != 0 {
 		t.Errorf("Uncertainties should be empty, got %v", got.Uncertainties)
+	}
+}
+
+func TestParseSynthesisSpawnFollowUpNoFalsePositives(t *testing.T) {
+	// Test that markdown bold fields like **Skill:** are NOT parsed as action items
+	// Regression test for bug where **Field:** was incorrectly matched as bullet point
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	content := `# Session Synthesis
+
+**Agent:** og-arch-test
+**Outcome:** success
+
+## TLDR
+
+Test spawn-follow-up parsing.
+
+---
+
+## Next (What Should Happen)
+
+**Recommendation:** spawn-follow-up
+
+### Spawn Follow-up
+**Issue:** Implement new feature
+**Skill:** feature-impl
+**Context:**
+` + "```" + `
+Some context here
+` + "```" + `
+
+---
+
+## Session Metadata
+
+**Skill:** architect
+`
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test synthesis file: %v", err)
+	}
+
+	got, err := ParseSynthesis(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseSynthesis failed: %v", err)
+	}
+
+	// **Issue:**, **Skill:**, **Context:** should NOT be parsed as action items
+	// They start with ** (markdown bold), not * (bullet)
+	if len(got.NextActions) != 0 {
+		t.Errorf("NextActions should be empty (no actual bullet/numbered items), got %d: %v",
+			len(got.NextActions), got.NextActions)
+	}
+}
+
+func TestParseSynthesisSpawnFollowUpWithActions(t *testing.T) {
+	// Test that numbered items inside Spawn Follow-up ARE correctly parsed
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	content := `# Session Synthesis
+
+**Agent:** og-arch-test
+**Outcome:** success
+
+## TLDR
+
+Test spawn-follow-up with numbered actions.
+
+---
+
+## Next (What Should Happen)
+
+**Recommendation:** spawn-follow-up
+
+### Spawn Follow-up
+**Issue:** Implement new feature
+**Skill:** feature-impl
+
+**Tasks:**
+1. First task to do
+2. Second task to do
+- Bullet task
+
+---
+
+## Session Metadata
+
+**Skill:** architect
+`
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test synthesis file: %v", err)
+	}
+
+	got, err := ParseSynthesis(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseSynthesis failed: %v", err)
+	}
+
+	// Should have 3 items: two numbered and one bullet
+	if len(got.NextActions) != 3 {
+		t.Errorf("NextActions length = %d, want 3, got: %v", len(got.NextActions), got.NextActions)
+	}
+}
+
+func TestParseSynthesisIndentedContinuationLines(t *testing.T) {
+	// Test that indented lines (metadata/context under a main item) are NOT parsed as separate items
+	// Regression test for bug where "   - Skill: feature-impl" was incorrectly matched
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	content := `# Session Synthesis
+
+**Agent:** og-inv-test
+**Outcome:** success
+
+## TLDR
+
+Test with indented continuation lines.
+
+---
+
+## Next (What Should Happen)
+
+**Recommendation:** close
+
+### Follow-up Work (for separate issues)
+1. **Add glass_* to visual verification** - Update pkg/verify/visual.go
+   - Skill: feature-impl
+   - Quick win, <30 min
+   
+2. **Configure Glass as MCP option** - Make it work
+   - Skill: feature-impl  
+   - Needs investigation
+
+3. **Document Chrome launch requirement** - Add to docs
+   - Skill: feature-impl (or documentation task)
+
+---
+
+## Session Metadata
+
+**Skill:** investigation
+`
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test synthesis file: %v", err)
+	}
+
+	got, err := ParseSynthesis(tmpDir)
+	if err != nil {
+		t.Fatalf("ParseSynthesis failed: %v", err)
+	}
+
+	// Should have exactly 3 items (the numbered main items)
+	// The indented "- Skill:", "- Quick win" etc. should NOT be captured
+	if len(got.NextActions) != 3 {
+		t.Errorf("NextActions length = %d, want 3 (only main numbered items), got: %v",
+			len(got.NextActions), got.NextActions)
+	}
+
+	// Verify the items are the main action items, not the indented metadata
+	for _, action := range got.NextActions {
+		if strings.Contains(action, "- Skill:") || strings.Contains(action, "- Quick win") {
+			t.Errorf("NextActions should not contain indented metadata lines, got: %q", action)
+		}
 	}
 }
 

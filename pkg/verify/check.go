@@ -270,11 +270,19 @@ func extractNextActions(content string) []string {
 	// Also look for follow-up work in Next section
 	nextSection := extractSectionWithVariant(content, "Next", "Next (What Should Happen)")
 	if nextSection != "" {
-		// Look for "### Follow-up Work" subsection
-		followUpPattern := regexp.MustCompile(`(?s)### Follow-up Work[^\n]*\n(.*?)(?:\n###|\n---|\z)`)
-		matches := followUpPattern.FindStringSubmatch(nextSection)
-		if len(matches) >= 2 {
-			actions = append(actions, parseActionItems(matches[1])...)
+		// Look for follow-up subsections with various naming conventions:
+		// - "### Follow-up Work" or "### Follow-up Work Identified"
+		// - "### Spawn Follow-up" or "### If Spawn Follow-up"
+		followUpPatterns := []string{
+			`(?s)### Follow-up Work[^\n]*\n(.*?)(?:\n###|\n---|\z)`,
+			`(?s)### (?:If )?Spawn Follow-up[^\n]*\n(.*?)(?:\n###|\n---|\z)`,
+		}
+		for _, pattern := range followUpPatterns {
+			re := regexp.MustCompile(pattern)
+			matches := re.FindStringSubmatch(nextSection)
+			if len(matches) >= 2 {
+				actions = append(actions, parseActionItems(matches[1])...)
+			}
 		}
 	}
 
@@ -282,17 +290,28 @@ func extractNextActions(content string) []string {
 }
 
 // parseActionItems extracts list items (- item, * item, or 1. item format).
+// Note: Uses "* " (asterisk+space) to distinguish bullet points from markdown bold (**text**).
+// Note: Only matches non-indented lines to avoid capturing continuation/metadata lines
+// that are indented under a parent item.
 func parseActionItems(section string) []string {
 	var items []string
 	lines := strings.Split(section, "\n")
 	numberedPattern := regexp.MustCompile(`^\d+\.`)
 
 	for _, line := range lines {
+		// Skip indented lines - they're continuation/metadata, not separate items
+		// Check for indentation BEFORE trimming
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			continue
+		}
+
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") || numberedPattern.MatchString(line) {
+		// Match bullet points: "- item" or "* item" (with space after marker)
+		// Using "* " to avoid matching markdown bold syntax like "**Skill:**"
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || numberedPattern.MatchString(line) {
 			items = append(items, line)
 		}
 	}
