@@ -212,13 +212,37 @@
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-cross-project-completion-ux.md",
       "notes": "Pattern matches existing orch abandon --workdir. Uses existing PROJECT_DIR metadata from SPAWN_CONTEXT.md."
+    },
+    {
+      "id": "feat-021",
+      "title": "Add Glass tool patterns to visual verification",
+      "description": "Add glass_* MCP tool patterns and glass CLI output patterns to pkg/verify/visual.go visualEvidencePatterns. Patterns: glass_snap, glass snap, glass_screenshot, JSON output with screenshot field. This enables Glass-based visual verification to pass the evidence check. File targets: pkg/verify/visual.go (lines 79-104). Out of scope: Glass CLI implementation (separate issue orch-go-l1is). Acceptance: Agents using glass_snap or glass snap commands are detected as having visual verification evidence.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-inv-design-ui-validation-gate-system.md",
+      "notes": "Quick win (~30 min), no dependencies. Part of 3-tier UI validation gate design."
+    },
+    {
+      "id": "feat-022",
+      "title": "Implement 'glass snap --verify' command for orchestrator use",
+      "description": "Add --verify flag to glass snap command that outputs structured JSON proof of browser verification. Output format: {\"screenshot\": \"path\", \"url\": \"...\", \"title\": \"...\", \"timestamp\": \"...\"}. Enables agents to run glass snap --verify and include output in beads comments as machine-parseable evidence. Depends on Glass CLI infrastructure (orch-go-l1is). File targets: glass/cmd/snap.go. Out of scope: Screenshot comparison, baseline management. Acceptance: glass snap --verify outputs JSON, can be parsed by visual verification patterns.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-inv-design-ui-validation-gate-system.md",
+      "repo": "glass",
+      "depends_on": ["orch-go-l1is"],
+      "notes": "Part of 3-tier UI validation gate design. Decision kn-cc1c45: CLI for orchestrator use."
     }
   ],
   "meta": {
     "last_updated": "2025-12-27",
-    "total_features": 20,
+    "total_features": 22,
     "by_status": {
-      "todo": 19,
+      "todo": 21,
       "in_progress": 0,
       "done": 1
     }
