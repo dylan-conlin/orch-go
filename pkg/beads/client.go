@@ -351,6 +351,9 @@ func (c *Client) Ready(args *ReadyArgs) ([]Issue, error) {
 }
 
 // Show retrieves a single issue by ID.
+// Note: bd show --json returns an array even for a single issue.
+// The RPC daemon may return either format (array or single object) depending on version.
+// We try array format first (CLI behavior), then fall back to single object (RPC daemon).
 func (c *Client) Show(id string) (*Issue, error) {
 	args := ShowArgs{ID: id}
 
@@ -359,9 +362,19 @@ func (c *Client) Show(id string) (*Issue, error) {
 		return nil, err
 	}
 
+	// Try array format first (bd show --json CLI returns array)
+	var issues []Issue
+	if err := json.Unmarshal(resp.Data, &issues); err == nil {
+		if len(issues) == 0 {
+			return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
+		}
+		return &issues[0], nil
+	}
+
+	// Fall back to single object format (some RPC daemon versions)
 	var issue Issue
 	if err := json.Unmarshal(resp.Data, &issue); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal issue: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal issue (tried array and object): %w", err)
 	}
 
 	return &issue, nil

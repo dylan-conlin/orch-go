@@ -727,6 +727,88 @@ func TestClient_Show_ChildID(t *testing.T) {
 	}
 }
 
+// TestClient_Show_ArrayFormat tests the RPC client's Show method with array response.
+// Some beads daemon versions return arrays from bd show --json.
+// The client should handle both array and single object formats.
+func TestClient_Show_ArrayFormat(t *testing.T) {
+	childIssue := Issue{
+		ID:        "test-array-123",
+		Title:     "Array Format Issue",
+		Status:    "open",
+		Priority:  1,
+		IssueType: "task",
+	}
+
+	socketPath, cleanup := mockDaemon(t, func(conn net.Conn) {
+		defer conn.Close()
+
+		for {
+			buf := make([]byte, 4096)
+			n, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+
+			var req Request
+			if err := json.Unmarshal(buf[:n], &req); err != nil {
+				return
+			}
+
+			var resp Response
+
+			switch req.Operation {
+			case OpHealth:
+				healthData, _ := json.Marshal(HealthResponse{
+					Status:  "healthy",
+					Version: "1.0.0",
+					Uptime:  1.0,
+				})
+				resp = Response{
+					Success: true,
+					Data:    healthData,
+				}
+
+			case OpShow:
+				// Return array format (like bd show --json CLI does)
+				issues := []Issue{childIssue}
+				issueData, _ := json.Marshal(issues)
+				resp = Response{
+					Success: true,
+					Data:    issueData,
+				}
+
+			default:
+				resp = Response{
+					Success: false,
+					Error:   fmt.Sprintf("unknown operation: %s", req.Operation),
+				}
+			}
+
+			respJSON, _ := json.Marshal(resp)
+			conn.Write(append(respJSON, '\n'))
+		}
+	})
+	defer cleanup()
+
+	c := NewClient(socketPath)
+	if err := c.Connect(); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer c.Close()
+
+	issue, err := c.Show("test-array-123")
+	if err != nil {
+		t.Fatalf("Show failed: %v", err)
+	}
+
+	if issue.ID != "test-array-123" {
+		t.Errorf("Issue.ID = %q, want %q", issue.ID, "test-array-123")
+	}
+	if issue.Title != "Array Format Issue" {
+		t.Errorf("Issue.Title = %q, want %q", issue.Title, "Array Format Issue")
+	}
+}
+
 // TestEpicChildWithParentDependency tests parsing a complete epic child
 // response with parent dependency as returned by bd show --json.
 func TestEpicChildWithParentDependency(t *testing.T) {
