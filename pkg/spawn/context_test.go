@@ -1039,6 +1039,90 @@ bd comment <beads-id> "Phase: Complete"
 	}
 }
 
+func TestGenerateContext_SurfaceBeforeCircumvent(t *testing.T) {
+	t.Run("includes Surface Before Circumvent section with beads tracking", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-26dec",
+			BeadsID:       "test-123",
+			NoTrack:       false,
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain Surface Before Circumvent section
+		if !strings.Contains(content, "**Surface Before Circumvent:**") {
+			t.Error("expected content to contain Surface Before Circumvent section")
+		}
+
+		// Should contain beads comment instruction for surfacing constraints
+		if !strings.Contains(content, "bd comment test-123 \"CONSTRAINT:") {
+			t.Error("expected content to contain bd comment CONSTRAINT instruction with beads ID")
+		}
+
+		// Should contain the "wait for orchestrator" instruction
+		if !strings.Contains(content, "Wait for orchestrator acknowledgment") {
+			t.Error("expected content to contain wait for orchestrator instruction")
+		}
+
+		// Should contain examples of what constraints apply to
+		if !strings.Contains(content, "System constraints discovered during work") {
+			t.Error("expected content to contain examples of constraint types")
+		}
+
+		// Should contain the "why" explanation
+		if !strings.Contains(content, "Prevents the system from learning") {
+			t.Error("expected content to explain why surfacing matters")
+		}
+	})
+
+	t.Run("uses investigation file fallback for no-track spawn", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick investigation",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-26dec",
+			NoTrack:       true,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain Surface Before Circumvent section
+		if !strings.Contains(content, "**Surface Before Circumvent:**") {
+			t.Error("expected content to contain Surface Before Circumvent section")
+		}
+
+		// Should NOT contain bd comment CONSTRAINT instruction (no-track)
+		// The pattern we're looking for is the actual beads command: `bd comment ... "CONSTRAINT:`
+		// (not the informational message "Progress tracking via bd comment is NOT available")
+		if strings.Contains(content, `bd comment og-inv-test-26dec "CONSTRAINT:`) {
+			t.Error("expected content to NOT contain bd comment CONSTRAINT instruction for --no-track spawn")
+		}
+
+		// Should contain investigation file fallback
+		if !strings.Contains(content, "Document it in your investigation file") {
+			t.Error("expected content to contain investigation file fallback for --no-track spawn")
+		}
+
+		// Should mention SYNTHESIS.md for documentation
+		if !strings.Contains(content, "Include the constraint and your reasoning in SYNTHESIS.md") {
+			t.Error("expected content to mention SYNTHESIS.md for constraint documentation")
+		}
+	})
+}
+
 func TestGenerateContext_NoTrack(t *testing.T) {
 	t.Run("excludes beads instructions when NoTrack is true", func(t *testing.T) {
 		cfg := &Config{

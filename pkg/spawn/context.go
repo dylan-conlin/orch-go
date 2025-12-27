@@ -98,6 +98,25 @@ AUTHORITY:
 
 **When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
 
+**Surface Before Circumvent:**
+Before working around ANY constraint (technical, architectural, or process):
+{{if .NoTrack}}1. Document it in your investigation file: "CONSTRAINT: [what constraint] - [why considering workaround]"
+2. Include the constraint and your reasoning in SYNTHESIS.md
+{{else}}1. Surface it first: ` + "`bd comment {{.BeadsID}} \"CONSTRAINT: [what constraint] - [why considering workaround]\"`" + `
+2. Wait for orchestrator acknowledgment before proceeding
+{{end}}3. The accountability is a feature, not a cost
+
+This applies to:
+- System constraints discovered during work (e.g., API limits, tool limitations)
+- Architectural patterns that seem inconvenient for your task
+- Process requirements that feel like overhead
+- Prior decisions (from ` + "`kb context`" + `) that conflict with your approach
+
+**Why:** Working around constraints without surfacing them:
+- Prevents the system from learning about recurring friction
+- Bypasses stakeholders who should know about the limitation
+- Creates hidden technical debt
+
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
 2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
