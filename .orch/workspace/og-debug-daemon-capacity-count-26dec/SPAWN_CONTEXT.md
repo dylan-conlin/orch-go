@@ -1,4 +1,4 @@
-TASK: Daemon capacity count stale after initial spawn cycle. Untracked agents counting toward capacity. Evidence: daemon says 3/3 but orch status shows 3 running + 2 idle untracked. Reconcile() exists but untracked may not be filtered.
+TASK: Daemon capacity count goes stale after orch complete. Symptom: daemon shows capacity_used:3, orch status shows 0 active agents. Daemon not spawning because it thinks slots are full. Prior fixes (orch-go-59m3, orch-go-s2j7) added 30-min update window filter but issue persists. Investigate: How does daemon count active agents? Is it polling OpenCode correctly? Why doesn't it reconcile after completions?
 
 SPAWN TIER: full
 
@@ -14,20 +14,19 @@ SPAWN TIER: full
 ### Related Investigations
 - Daemon Capacity Count Goes Stale
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md
+- Daemon Capacity Count Stale After Initial Spawn Cycle
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-stale-after.md
 - Daemon Capacity Count Stuck While
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md
-- [orch-go] Daemon Capacity Count Goes Stale
-  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md
-- [orch-go] Daemon Capacity Count Stuck While
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.
 
 
 
+
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via `bd comment orch-go-59m3 "Phase: Planning - [brief description]"`
+1. Report via `bd comment orch-go-per9 "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -38,7 +37,7 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 After your final commit, BEFORE typing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: `bd comment orch-go-59m3 "Phase: Complete - [1-2 sentence summary of deliverables]"`
+2. Run: `bd comment orch-go-per9 "Phase: Complete - [1-2 sentence summary of deliverables]"`
 3. Run: `/exit` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
@@ -74,13 +73,15 @@ AUTHORITY:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be /Users/dylanconlin/Documents/personal/orch-go)
-2. **SET UP investigation file:** Run `kb create investigation daemon-capacity-count-stale-after` to create from template
-   - This creates: `.kb/investigations/simple/YYYY-MM-DD-daemon-capacity-count-stale-after.md`
+2. **SET UP investigation file:** Run `kb create investigation daemon-capacity-count-goes-stale` to create from template
+   - This creates: `.kb/investigations/simple/YYYY-MM-DD-daemon-capacity-count-goes-stale.md`
    - This file is your coordination artifact (replaces WORKSPACE.md)
    - If command fails, report to orchestrator immediately
+
    - **IMPORTANT:** After running `kb create`, report the actual path via:
-     `bd comment orch-go-59m3 "investigation_path: /path/to/file.md"`
+     `bd comment orch-go-per9 "investigation_path: /path/to/file.md"`
      (This allows orch complete to verify the correct file)
+
 3. **UPDATE investigation file** as you work:
    - Add TLDR at top (1-2 sentence summary of question and finding)
    - Fill sections: What I tried → What I observed → Test performed
@@ -102,23 +103,24 @@ Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
 
+
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
-You were spawned from beads issue: **orch-go-59m3**
+You were spawned from beads issue: **orch-go-per9**
 
 **Use `bd comment` for progress updates instead of workspace-only tracking:**
 
 ```bash
 # Report progress at phase transitions
-bd comment orch-go-59m3 "Phase: Planning - Analyzing codebase structure"
-bd comment orch-go-59m3 "Phase: Implementing - Adding authentication middleware"
-bd comment orch-go-59m3 "Phase: Complete - All tests passing, ready for review"
+bd comment orch-go-per9 "Phase: Planning - Analyzing codebase structure"
+bd comment orch-go-per9 "Phase: Implementing - Adding authentication middleware"
+bd comment orch-go-per9 "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment orch-go-59m3 "BLOCKED: Need clarification on API contract"
+bd comment orch-go-per9 "BLOCKED: Need clarification on API contract"
 
 # Report questions
-bd comment orch-go-59m3 "QUESTION: Should we use JWT or session-based auth?"
+bd comment orch-go-per9 "QUESTION: Should we use JWT or session-based auth?"
 ```
 
 **When to comment:**
@@ -127,11 +129,12 @@ bd comment orch-go-59m3 "QUESTION: Should we use JWT or session-based auth?"
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-59m3`.
+**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-per9`.
 
 ⛔ **NEVER run `bd close`** - Only the orchestrator closes issues via `orch complete`.
    - Workers report `Phase: Complete`, orchestrator verifies and closes
    - Running `bd close` bypasses verification and breaks tracking
+
 
 
 ## SKILL GUIDANCE (systematic-debugging)
@@ -149,11 +152,10 @@ description: Use when encountering any bug, test failure, or unexpected behavior
 ---
 
 <!-- AUTO-GENERATED by skillc -->
-<!-- Checksum: 490f6c574f57 -->
-<!-- Source: /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc -->
-<!-- Deployed to: /Users/dylanconlin/.claude/skills/worker/systematic-debugging/SKILL.md -->
-<!-- To modify: edit files in /Users/dylanconlin/orch-knowledge/skills/src/worker/systematic-debugging/.skillc, then run: skillc deploy -->
-<!-- Last compiled: 2025-12-25 20:44:55 -->
+<!-- Checksum: 4162e12ef951 -->
+<!-- Source: worker/systematic-debugging/.skillc -->
+<!-- To modify: edit files in worker/systematic-debugging/.skillc, then run: skillc build -->
+<!-- Last compiled: 2025-12-24 07:51:19 -->
 
 
 ## Summary
@@ -558,8 +560,10 @@ CONTEXT AVAILABLE:
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
 
+
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. `bd comment orch-go-59m3 "Phase: Complete - [1-2 sentence summary]"`
+2. `bd comment orch-go-per9 "Phase: Complete - [1-2 sentence summary]"`
 3. `/exit`
+
 
 ⚠️ Your work is NOT complete until you run these commands.

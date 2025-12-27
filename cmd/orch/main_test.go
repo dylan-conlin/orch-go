@@ -1550,6 +1550,166 @@ func TestCheckAndAutoSwitchAccountEnvThresholds(t *testing.T) {
 	}
 }
 
+// TestNewCLICommandContentDetection tests the content-based detection of cobra commands.
+// This tests the file content matching logic used by detectNewCLICommands.
+func TestNewCLICommandContentDetection(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		isCommand bool
+	}{
+		{
+			name: "valid cobra command file",
+			content: `package main
+
+import "github.com/spf13/cobra"
+
+var doctorCmd = &cobra.Command{
+	Use:   "doctor",
+	Short: "Check health",
+}
+
+func init() {
+	rootCmd.AddCommand(doctorCmd)
+}`,
+			isCommand: true,
+		},
+		{
+			name: "cobra command without AddCommand",
+			content: `package main
+
+import "github.com/spf13/cobra"
+
+var orphanCmd = &cobra.Command{
+	Use:   "orphan",
+	Short: "Not registered",
+}`,
+			isCommand: false,
+		},
+		{
+			name: "test file with cobra reference",
+			content: `package main
+
+import "testing"
+
+func TestSomething(t *testing.T) {
+	// Test cobra.Command usage
+}`,
+			isCommand: false,
+		},
+		{
+			name: "helper file without cobra",
+			content: `package main
+
+func doSomething() error {
+	return nil
+}`,
+			isCommand: false,
+		},
+		{
+			name: "AddCommand without cobra.Command definition",
+			content: `package main
+
+func init() {
+	rootCmd.AddCommand(someOtherCmd)
+}`,
+			isCommand: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use the same logic as detectNewCLICommands
+			isCobraCommand := strings.Contains(tt.content, "cobra.Command{") &&
+				strings.Contains(tt.content, "rootCmd.AddCommand(")
+
+			if isCobraCommand != tt.isCommand {
+				t.Errorf("cobra command detection = %v, want %v", isCobraCommand, tt.isCommand)
+			}
+		})
+	}
+}
+
+// TestDetectNewCLICommandsGitStatus tests the git status line parsing for new files.
+func TestDetectNewCLICommandsGitStatusParsing(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusLine string
+		wantAdded  bool
+		wantFile   string
+	}{
+		{
+			name:       "added Go file in cmd/orch",
+			statusLine: "A\tcmd/orch/doctor.go",
+			wantAdded:  true,
+			wantFile:   "cmd/orch/doctor.go",
+		},
+		{
+			name:       "modified Go file in cmd/orch",
+			statusLine: "M\tcmd/orch/main.go",
+			wantAdded:  false,
+			wantFile:   "",
+		},
+		{
+			name:       "added test file",
+			statusLine: "A\tcmd/orch/doctor_test.go",
+			wantAdded:  false,
+			wantFile:   "",
+		},
+		{
+			name:       "added Go file in pkg",
+			statusLine: "A\tpkg/verify/check.go",
+			wantAdded:  false,
+			wantFile:   "",
+		},
+		{
+			name:       "deleted file",
+			statusLine: "D\tcmd/orch/old.go",
+			wantAdded:  false,
+			wantFile:   "",
+		},
+		{
+			name:       "renamed file",
+			statusLine: "R\tcmd/orch/old.go\tcmd/orch/new.go",
+			wantAdded:  false,
+			wantFile:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse status line like detectNewCLICommands does
+			parts := strings.Fields(tt.statusLine)
+			if len(parts) < 2 {
+				if tt.wantAdded {
+					t.Error("expected to parse as added but parsing failed")
+				}
+				return
+			}
+
+			status := parts[0]
+			filePath := parts[1]
+
+			// Check added condition
+			isAdded := status == "A"
+			// Check file path conditions
+			isTargetFile := strings.HasPrefix(filePath, "cmd/orch/") &&
+				strings.HasSuffix(filePath, ".go") &&
+				!strings.HasSuffix(filePath, "_test.go")
+
+			shouldProcess := isAdded && isTargetFile
+
+			if shouldProcess != tt.wantAdded {
+				t.Errorf("file processing = %v, want %v", shouldProcess, tt.wantAdded)
+			}
+
+			if tt.wantAdded && filePath != tt.wantFile {
+				t.Errorf("file path = %q, want %q", filePath, tt.wantFile)
+			}
+		})
+	}
+}
+
 // Helper functions for env var management
 func setEnvIfNotEmpty(key, value string) {
 	if value == "" {

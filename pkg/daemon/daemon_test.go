@@ -1249,3 +1249,41 @@ func TestIsUntrackedBeadsID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetClosedIssuesBatch_EmptyInput(t *testing.T) {
+	// Empty input should return empty map
+	result := getClosedIssuesBatch(nil)
+	if len(result) != 0 {
+		t.Errorf("getClosedIssuesBatch(nil) = %v, want empty map", result)
+	}
+
+	result = getClosedIssuesBatch([]string{})
+	if len(result) != 0 {
+		t.Errorf("getClosedIssuesBatch([]) = %v, want empty map", result)
+	}
+}
+
+// TestGetClosedIssuesBatch_Integration is an integration test that requires
+// a beads daemon or CLI to be available. It's skipped in CI.
+func TestGetClosedIssuesBatch_Integration(t *testing.T) {
+	// Skip if no beads socket available (CI environment)
+	socketPath, err := beads.FindSocketPath("")
+	if err != nil {
+		t.Skip("Skipping integration test: no beads socket available")
+	}
+
+	// Try to connect
+	client := beads.NewClient(socketPath)
+	if err := client.Connect(); err != nil {
+		t.Skip("Skipping integration test: cannot connect to beads daemon")
+	}
+	client.Close()
+
+	// This test just verifies the function doesn't panic with valid input
+	// The actual result depends on the state of the beads database
+	result := getClosedIssuesBatch([]string{"nonexistent-id-xyz"})
+	// Should return empty or error gracefully
+	if result == nil {
+		t.Error("getClosedIssuesBatch() returned nil, want non-nil map")
+	}
+}
