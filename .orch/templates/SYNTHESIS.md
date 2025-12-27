@@ -7,6 +7,37 @@
 
 ---
 
+<!--
+## How to Use This Template (Progressive Synthesis)
+
+**Fill this file AS YOU WORK, not at the end.**
+
+The anti-pattern: "I'll synthesize everything when I'm done" → leads to lost details,
+incomplete sections, and the cognitive load of reconstructing what you observed.
+
+**Progressive documentation pattern:**
+1. **BEFORE:** Fill metadata (agent, issue, duration start)
+2. **DURING:** Add to Delta and Evidence sections as you go
+3. **AFTER:** Synthesize Knowledge and Next sections
+4. **COMMIT:** Final review, fill TLDR, update outcome
+
+**Section timing:**
+| Section | When to Fill |
+|---------|--------------|
+| TLDR | Last (after you know what happened) |
+| Delta | During work (as you create/modify files) |
+| Evidence | During work (as you observe things) |
+| Knowledge | After implementation (patterns noticed) |
+| Next | After validation (what should happen) |
+| Unexplored | Anytime (capture questions as they emerge) |
+
+**Why this matters:**
+- Details are lost if not captured immediately
+- "I'll remember" → you won't (session amnesia)
+- Progressive fill reduces end-of-session cognitive load
+- Sections like "Unexplored Questions" need real-time capture
+-->
+
 ## TLDR
 
 [1-2 sentence summary. What was the goal? What was achieved?]
