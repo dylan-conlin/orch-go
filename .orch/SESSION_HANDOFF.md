@@ -1,117 +1,89 @@
-# Session Handoff - Dec 26, 2025 (Evening)
+# Session Handoff - Dec 26 Evening
 
-## Session Focus
-Started: Resume from afternoon handoff
-Evolved: Daemon stability, review UI design, session reflection pattern
+## Session Summary
 
-## What We Accomplished
+Major theme: **Review UI improvements and multi-project orchestration design**
 
-### 1. Daemon Capacity Fix (Critical)
-- **Root cause:** Untracked agents counting toward capacity, stale session count
-- **Fix:** orch-go-59m3 - Filter out untracked agents, filter by 30-min update window
-- **Caveat:** Daemon needs restart after `make install` to pick up new binary (orch-go-uxj9 created)
+### Key Accomplishments
 
-### 2. Review UI Design (3-Phase Plan)
-- Phase 1: `orch review done` prompts for synthesis recommendations (✅ orch-go-q1o0 complete)
-- Phase 2: Review state tracking (orch-go-3c63 - queued)
-- Phase 3: Dashboard Pending Reviews section (orch-go-ex7z - queued)
+1. **Pending Reviews Triage** - Cleared 71 → 0 unreviewed recommendations, created 7 actionable issues
 
-### 3. Queue Visibility Design
-- Problem: Stats bar shows "50 ready" but no way to see issues
-- Design: Expandable queue section below stats bar (orch-go-9nh7 created for impl)
+2. **Multi-project Architecture** - Designed "global visibility, project-scoped operations" pattern
+   - Dashboard shows all projects ✅
+   - Operations require correct cwd, with helpful error messages
+   - Created orch-go-6u94, orch-go-f5hz for error message improvements
 
-### 4. Session-End Workflow Design
-- Problem: Workers have "Leave it Better", orchestrators have no equivalent
-- Solution: "Session Reflection" section before "Landing the Plane"
-- Three checkpoints: Friction audit, Gap capture, System reaction check
+3. **New Features**
+   - `orch fetch-md` - Go replacement for url-to-markdown (chromedp + html-to-markdown)
+   - Debounced gold processing border (5s delay, CSS transitions)
+   - Fixed duplicate key errors (backend dedup + composite keys)
+   - Improved workspace slug generation (better stop words)
 
-### 5. New Commands/Features
-- `orch doctor` - Service health check with --fix flag (orch-go-iw2i)
-- `notifications.enabled` config setting (orch-go-25wz)
-- Auto-switch account tests (orch-go-1qwt)
+4. **Design Investigations**
+   - Up Next section for queue visibility (orch-go-afsz)
+   - Theme system extraction from OpenCode (orch-go-t84l)
+   - Light tier synthesis visibility (orch-go-cafd)
 
-### 6. Architecture Decisions
-- **Reactive infrastructure** - Let failures guide plist creation, use `orch doctor` for detection
-- **MCP vs CLI** - Replace web-to-markdown MCP with Go CLI (chromedp + html-to-markdown)
-- **url-to-markdown Go rewrite** - Issue orch-go-sm33 created
+5. **Bug Findings**
+   - Daemon capacity count goes stale after completions (orch-go-per9 investigating)
+   - Light tier agents don't produce SYNTHESIS.md by design - need review tooling update
+   - New CLI commands not prompting for skill docs (orch-go-zkdd implementing auto-detect)
 
-## Issues Closed This Session: 31
+### Current State
 
-Key completions:
-- Daemon capacity fix (orch-go-s2j7, orch-go-59m3)
-- Review prompts phase 1 (orch-go-q1o0)
-- `orch complete` EOF fix (orch-go-7qkh)
-- `orch learn` remediation types (orch-go-mxfc)
-- `/api/errors` endpoint (orch-go-j2he)
-- `orch doctor` command (orch-go-iw2i)
-- 3 epics closed (headless default, beads hardening, pressure visibility)
+**Stats:**
+- Open: 47 | In Progress: 6 | Ready: 46 | Closed: 567
+- Usage: 51% weekly (49% remaining)
 
-## Decisions Made
+**Running Agents (5):**
+| Issue | Task | Phase |
+|-------|------|-------|
+| orch-go-per9 | Daemon capacity stale | Investigating |
+| orch-go-afsz | Up Next section | Running |
+| orch-go-cafd | Light tier visibility | Implementing |
+| orch-go-zkdd | CLI command detection | Implementing |
+| orch-go-wh7n | Stale in_progress fix | Complete |
 
-| Decision | Reason |
-|----------|--------|
-| Reactive infra + orch doctor | Aligns with pressure-over-compensation principle |
-| MCP → CLI for transformations | MCP overkill for one-shot conversions |
-| Session Reflection in skill | Mirrors "Leave it Better" for workers |
-| Queue visibility via expandable section | Consistent with CollapsibleSection pattern |
+**Idle (need completion):**
+- orch-go-sm33, orch-go-i914
 
-## Current State
+### High-Priority Next Work
 
-```
-Open:        51
-In Progress: 4
-Blocked:     1
-Closed:      542
-Ready:       50
-```
+| Issue | Description | Why |
+|-------|-------------|-----|
+| orch-go-per9 | Daemon capacity stale bug | Blocking autonomous spawning |
+| orch-go-6u94 | Abandon cross-project errors | Multi-project UX |
+| orch-go-f5hz | Complete cross-project errors | Multi-project UX |
+| orch-go-t84l | Theme selection system | Dashboard polish |
 
-**Usage:** 44% weekly (56% remaining), daemon running autonomously
+### Known Issues
 
-## Gaps / Friction Captured
+1. **Daemon capacity** - Shows capacity_used: 3 when orch status shows 0. Restart daemon to unblock, but per9 investigating root cause.
 
-| Gap | Status |
-|-----|--------|
-| Daemon needs restart after deploy | orch-go-uxj9 created |
-| Stale in_progress blocks spawn | orch-go-wh7n created |
-| Debug-retry context waste | kn question kn-f47148 |
-| Feature-impl without design | kn tried kn-8c832c |
+2. **No remote** - This repo has no git remote configured. All commits are local.
 
-## High-Value Next Work
+3. **Light tier invisible** - Feature-impl quick fixes don't produce SYNTHESIS.md, so they don't appear in pending reviews. orch-go-cafd fixing.
 
-| Issue | Description | Priority |
-|-------|-------------|----------|
-| orch-go-3c63 | Review state tracking (Phase 2) | P2 |
-| orch-go-ex7z | Dashboard Pending Reviews (Phase 3) | P2 |
-| orch-go-9nh7 | Dashboard expandable ready queue | P2 |
-| orch-go-sm33 | url-to-markdown Go rewrite | P2 |
-| orch-go-70ld | "Redirected too many times" root cause | P2 |
-
-## Resume Instructions
+### Resume Instructions
 
 ```bash
-# Check services
-orch doctor
+orch doctor          # Check services
+orch status          # See running agents
+orch complete <id> --force  # Complete idle agents
 
-# Check swarm
-orch status
-
-# Daemon should be spawning autonomously
-tail -f ~/.orch/daemon.log
-
-# Complete idle agents
-orch complete <id> --force
+# If daemon stuck at capacity:
+# DON'T restart - let orch-go-per9 investigate
+# Spawn manually if urgent: orch spawn ...
 ```
 
-## Session Reflection Pattern (NEW)
+### Session Reflection
 
-Before ending sessions, run through:
-1. **Friction audit** - What was harder than it should have been?
-2. **Gap capture** - Did we capture as kn/issues/investigations?
-3. **System reaction** - Did system behave as expected?
+**Friction encountered:**
+- Daemon capacity bug hit twice (created pressure via orch-go-per9)
+- CLI commands not surfacing for skill docs (orch-go-zkdd addressing)
+- Light tier completions invisible (orch-go-cafd addressing)
 
-Design at: `.kb/investigations/2025-12-26-inv-session-end-workflow-orchestrators.md`
-
-## Git State
-
-- All work committed locally on `master`
-- Clean working tree
+**Pressure applied (not compensated):**
+- Daemon capacity: Created issue, spawned debugger instead of just restarting
+- CLI command docs: Added evidence to orch-go-zkdd, spawned fix
+- Light tier: Investigated root cause, created orch-go-cafd
