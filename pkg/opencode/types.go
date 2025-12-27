@@ -82,15 +82,31 @@ type Message struct {
 
 // MessageInfo contains message metadata.
 type MessageInfo struct {
-	ID         string      `json:"id"`
-	SessionID  string      `json:"sessionID"`
-	Role       string      `json:"role"` // "user" or "assistant"
-	Time       MessageTime `json:"time"`
-	ParentID   string      `json:"parentID,omitempty"`
-	ModelID    string      `json:"modelID,omitempty"`
-	ProviderID string      `json:"providerID,omitempty"`
-	Mode       string      `json:"mode,omitempty"`
-	Finish     string      `json:"finish,omitempty"` // "stop", "error", etc.
+	ID         string        `json:"id"`
+	SessionID  string        `json:"sessionID"`
+	Role       string        `json:"role"` // "user" or "assistant"
+	Time       MessageTime   `json:"time"`
+	ParentID   string        `json:"parentID,omitempty"`
+	ModelID    string        `json:"modelID,omitempty"`
+	ProviderID string        `json:"providerID,omitempty"`
+	Mode       string        `json:"mode,omitempty"`
+	Finish     string        `json:"finish,omitempty"` // "stop", "error", etc.
+	Cost       float64       `json:"cost,omitempty"`
+	Tokens     *MessageToken `json:"tokens,omitempty"`
+}
+
+// MessageToken contains token usage information for a message.
+type MessageToken struct {
+	Input     int         `json:"input"`
+	Output    int         `json:"output"`
+	Reasoning int         `json:"reasoning,omitempty"`
+	Cache     *TokenCache `json:"cache,omitempty"`
+}
+
+// TokenCache contains cache token information.
+type TokenCache struct {
+	Read  int `json:"read"`
+	Write int `json:"write"`
 }
 
 // MessageTime contains message timing.
