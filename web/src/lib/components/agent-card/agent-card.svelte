@@ -9,9 +9,49 @@
 
 	$: isSelected = $selectedAgentId === agent.id;
 	$: contextIndicator = getContextQualityIndicator(agent);
+	$: displayState = getDisplayState(agent);
 
 	function handleClick() {
 		selectedAgentId.set(agent.id);
+	}
+
+	/**
+	 * Derive the display state from agent status + phase + activity
+	 * This provides clearer visual distinction between:
+	 * - running: actively processing (is_processing=true)
+	 * - ready-for-review: phase=Complete but status still active
+	 * - idle: no activity for a while
+	 * - waiting: active but no activity yet
+	 */
+	type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned';
+	
+	function getDisplayState(agent: Agent): DisplayState {
+		if (agent.status === 'completed') return 'completed';
+		if (agent.status === 'abandoned') return 'abandoned';
+		
+		if (agent.status === 'active') {
+			// Phase: Complete means agent reported done, waiting for orchestrator to close
+			if (agent.phase?.toLowerCase() === 'complete') {
+				return 'ready-for-review';
+			}
+			
+			// Actively processing
+			if (agent.is_processing) {
+				return 'running';
+			}
+			
+			// Check if idle for too long (no activity in 60+ seconds)
+			if (agent.current_activity?.timestamp) {
+				const idleMs = Date.now() - agent.current_activity.timestamp;
+				if (idleMs > 60000) {
+					return 'idle';
+				}
+			}
+			
+			return 'waiting';
+		}
+		
+		return 'waiting';
 	}
 
 	function getStatusVariant(status: Agent['status']) {
@@ -201,10 +241,10 @@
 <button
 	type="button"
 	onclick={handleClick}
-	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {agent.status === 'active' && agent.is_processing ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
+	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {displayState === 'running' ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : displayState === 'ready-for-review' ? 'border-blue-500 shadow-md shadow-blue-500/20' : displayState === 'idle' ? 'border-orange-500/50' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
 >
-	<!-- Status indicator bar at top - yellow when processing (active agents only) -->
-	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t transition-colors duration-500 ${agent.status === 'active' && agent.is_processing ? 'bg-yellow-500' : getStatusColor(agent.status)}`}></div>
+	<!-- Status indicator bar at top - color reflects display state -->
+	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t transition-colors duration-500 ${displayState === 'running' ? 'bg-yellow-500' : displayState === 'ready-for-review' ? 'bg-blue-500' : displayState === 'idle' ? 'bg-orange-500' : getStatusColor(agent.status)}`}></div>
 
 	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">
@@ -237,13 +277,31 @@
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
-			{#if agent.status === 'active' && agent.is_processing}
+			{#if displayState === 'running'}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>Generating response</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else if displayState === 'ready-for-review'}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>Done - pending review</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else if displayState === 'idle'}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="h-1.5 w-1.5 rounded-full bg-orange-500"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>Idle - no recent activity</p>
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{:else if agent.status === 'active'}
@@ -323,7 +381,45 @@
 	<!-- Current Activity Summary (for active agents) - always reserve space to prevent height jitter -->
 	{#if agent.status === 'active'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if agent.current_activity}
+			{#if displayState === 'ready-for-review'}
+				<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
+				<div class="flex items-center gap-1">
+					<span class="text-[10px]">✅</span>
+					<p class="flex-1 truncate text-[10px] text-blue-400 font-medium">
+						Done - pending review
+					</p>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<span class="text-[9px] text-muted-foreground/70 shrink-0">
+								{agent.runtime || formatDuration(agent.spawned_at)}
+							</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							<p>Agent reported Phase: Complete</p>
+							<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to close</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
+			{:else if displayState === 'idle'}
+				<!-- Agent has been idle for a while - might be stuck or waiting for input -->
+				<div class="flex items-center gap-1">
+					<span class="text-[10px]">💤</span>
+					<p class="flex-1 truncate text-[10px] text-orange-400">
+						Idle
+					</p>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<span class="text-[9px] text-muted-foreground/70 shrink-0">
+								{formatActivityAge(agent.current_activity?.timestamp)}
+							</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							<p>No activity for a while</p>
+							<p class="text-xs text-muted-foreground">May be stuck or waiting for input</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
+			{:else if agent.current_activity}
 				<div class="flex items-center gap-1">
 					<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
 					<p class="flex-1 truncate text-[10px] text-muted-foreground">
@@ -338,7 +434,7 @@
 				<div class="flex items-center gap-1">
 					<span class="text-[10px] text-muted-foreground/50">⏳</span>
 					<p class="flex-1 truncate text-[10px] text-muted-foreground/50">
-						Waiting for activity...
+						Starting up...
 					</p>
 				</div>
 			{/if}
