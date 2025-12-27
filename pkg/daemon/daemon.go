@@ -759,6 +759,7 @@ type CompletionResult struct {
 	CloseReason  string
 	Error        error
 	Verification verify.VerificationResult
+	Escalation   verify.EscalationLevel // Escalation level for this completion
 }
 
 // CompletionLoopResult contains the results of a completion loop iteration.
@@ -879,6 +880,9 @@ func findWorkspaceForIssue(beadsID, workspaceDir, projectDir string) string {
 
 // ProcessCompletion verifies and closes a single completed agent.
 // It runs the same verification as `orch complete` and closes the beads issue.
+// Uses the escalation model to determine whether to auto-complete:
+//   - EscalationNone/Info/Review: Auto-complete (issue closed)
+//   - EscalationBlock/Failed: Do not auto-complete (issue remains open)
 func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig) CompletionResult {
 	result := CompletionResult{
 		BeadsID: agent.BeadsID,
@@ -900,14 +904,42 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 	if err != nil {
 		result.Error = fmt.Errorf("verification failed: %w", err)
 		result.Verification = verificationResult
+		result.Escalation = verify.EscalationFailed
 		return result
 	}
 
 	result.Verification = verificationResult
 
+	// Try to parse synthesis for escalation signals
+	var synthesis *verify.Synthesis
+	if agent.WorkspacePath != "" {
+		synthesis, _ = verify.ParseSynthesis(agent.WorkspacePath)
+	}
+
+	// Determine escalation level
+	escalation := verify.DetermineEscalationFromCompletion(
+		verificationResult,
+		synthesis,
+		agent.BeadsID,
+		agent.WorkspacePath,
+		config.ProjectDir,
+	)
+	result.Escalation = escalation
+
 	// Check if verification passed
 	if !verificationResult.Passed {
 		result.Error = fmt.Errorf("verification failed: %s", strings.Join(verificationResult.Errors, "; "))
+		return result
+	}
+
+	// Check if escalation allows auto-completion
+	if !escalation.ShouldAutoComplete() {
+		reason := verify.ExplainEscalation(verify.EscalationInput{
+			VerificationPassed:  verificationResult.Passed,
+			VerificationErrors:  verificationResult.Errors,
+			NeedsVisualApproval: escalation == verify.EscalationBlock,
+		})
+		result.Error = fmt.Errorf("requires human review: %s", reason.Reason)
 		return result
 	}
 
@@ -959,15 +991,15 @@ func (d *Daemon) CompletionOnce(config CompletionConfig) (*CompletionLoopResult,
 		if compResult.Error != nil {
 			result.Errors = append(result.Errors, compResult.Error)
 			if config.Verbose {
-				fmt.Printf("    Error: %v\n", compResult.Error)
+				fmt.Printf("    Error: %v (escalation=%s)\n", compResult.Error, compResult.Escalation)
 			}
 		} else if compResult.Processed {
-			// Log successful auto-completion
-			if err := logger.LogAutoCompleted(agent.BeadsID, compResult.CloseReason); err != nil && config.Verbose {
+			// Log successful auto-completion with escalation level
+			if err := logger.LogAutoCompletedWithEscalation(agent.BeadsID, compResult.CloseReason, compResult.Escalation.String()); err != nil && config.Verbose {
 				fmt.Printf("    Warning: failed to log completion event: %v\n", err)
 			}
 			if config.Verbose {
-				fmt.Printf("    Closed: %s\n", compResult.CloseReason)
+				fmt.Printf("    Closed: %s (escalation=%s)\n", compResult.CloseReason, compResult.Escalation)
 			}
 		}
 	}

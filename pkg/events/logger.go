@@ -132,13 +132,22 @@ func (l *Logger) LogStatusChange(sessionID, status string) error {
 
 // LogAutoCompleted logs an auto-completion event (daemon closed the issue).
 func (l *Logger) LogAutoCompleted(beadsID, closeReason string) error {
+	return l.LogAutoCompletedWithEscalation(beadsID, closeReason, "")
+}
+
+// LogAutoCompletedWithEscalation logs an auto-completion event with escalation level.
+func (l *Logger) LogAutoCompletedWithEscalation(beadsID, closeReason, escalationLevel string) error {
+	data := map[string]interface{}{
+		"beads_id":     beadsID,
+		"close_reason": closeReason,
+	}
+	if escalationLevel != "" {
+		data["escalation_level"] = escalationLevel
+	}
 	return l.Log(Event{
 		Type:      EventTypeAutoCompleted,
 		SessionID: beadsID, // Using beads ID as session identifier
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"beads_id":     beadsID,
-			"close_reason": closeReason,
-		},
+		Data:      data,
 	})
 }
