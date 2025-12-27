@@ -5,42 +5,26 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Added light tier completion detection to /api/pending-reviews endpoint - now shows both full-tier (with SYNTHESIS.md) and light-tier completions (Phase: Complete in beads comments).
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tests pass, build succeeds, code follows existing patterns for tier detection.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Light tier workspaces have .tier file containing "light" and report Phase: Complete via beads comments. Detection requires checking both .tier file AND Phase: Complete status.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close - implementation complete. Commit and merge.
 
 ---
 
 # Investigation: Update Pending Reviews Detect Light
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to detect light tier completions in pending reviews when they don't produce SYNTHESIS.md?
 
 **Started:** 2025-12-26
 **Updated:** 2025-12-26
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Agent og-feat-update-pending-reviews-26dec
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]

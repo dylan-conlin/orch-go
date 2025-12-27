@@ -2310,6 +2310,7 @@ type PendingReviewAgent struct {
 	TotalRecommendations int                 `json:"total_recommendations"`
 	UnreviewedCount      int                 `json:"unreviewed_count"`
 	Items                []PendingReviewItem `json:"items"`
+	IsLightTier          bool                `json:"is_light_tier,omitempty"` // True if this was a light tier spawn (no synthesis by design)
 }
 
 // PendingReviewsAPIResponse is the JSON structure returned by /api/pending-reviews.
@@ -2320,6 +2321,8 @@ type PendingReviewsAPIResponse struct {
 }
 
 // handlePendingReviews returns pending synthesis reviews.
+// This includes both full-tier agents with SYNTHESIS.md and light-tier agents
+// that have completed (Phase: Complete) but have no synthesis by design.
 func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -2352,68 +2355,121 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		dirName := entry.Name()
 		dirPath := filepath.Join(workspaceDir, dirName)
 
-		// Check for SYNTHESIS.md
+		// Check for SYNTHESIS.md (full-tier agents)
 		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
-		if _, err := os.Stat(synthesisPath); os.IsNotExist(err) {
+		hasSynthesis := false
+		if _, err := os.Stat(synthesisPath); err == nil {
+			hasSynthesis = true
+		}
+
+		// Check for light-tier completion (no synthesis by design)
+		isLightComplete, lightBeadsID := isLightTierComplete(dirPath)
+
+		// Skip workspaces that are neither full-tier with synthesis nor light-tier complete
+		if !hasSynthesis && !isLightComplete {
 			continue
 		}
 
-		// Parse synthesis
-		synthesis, err := verify.ParseSynthesis(dirPath)
-		if err != nil || synthesis == nil {
-			continue
-		}
-
-		// Skip if no recommendations
-		if len(synthesis.NextActions) == 0 {
-			continue
-		}
-
-		// Load review state
-		reviewState, err := verify.LoadReviewState(dirPath)
-		if err != nil {
-			reviewState = &verify.ReviewState{}
-		}
-
-		// Extract beads ID from SPAWN_CONTEXT
-		beadsID := extractBeadsIDFromWorkspace(dirPath)
-
-		// Build item list
-		var items []PendingReviewItem
-		unreviewedCount := 0
-
-		for i, action := range synthesis.NextActions {
-			actedOn := contains(reviewState.ActedOn, i)
-			dismissed := contains(reviewState.Dismissed, i)
-			reviewed := actedOn || dismissed
-
-			if !reviewed {
-				unreviewedCount++
+		// Handle full-tier agents with synthesis
+		if hasSynthesis {
+			// Parse synthesis
+			synthesis, err := verify.ParseSynthesis(dirPath)
+			if err != nil || synthesis == nil {
+				continue
 			}
 
-			items = append(items, PendingReviewItem{
-				WorkspaceID: dirName,
-				BeadsID:     beadsID,
-				Index:       i,
-				Text:        action,
-				Reviewed:    reviewed,
-				ActedOn:     actedOn,
-				Dismissed:   dismissed,
-			})
-		}
+			// Skip if no recommendations
+			if len(synthesis.NextActions) == 0 {
+				continue
+			}
 
-		// Only include agents with unreviewed recommendations
-		if unreviewedCount > 0 {
+			// Load review state
+			reviewState, err := verify.LoadReviewState(dirPath)
+			if err != nil {
+				reviewState = &verify.ReviewState{}
+			}
+
+			// Extract beads ID from SPAWN_CONTEXT
+			beadsID := extractBeadsIDFromWorkspace(dirPath)
+
+			// Build item list
+			var items []PendingReviewItem
+			unreviewedCount := 0
+
+			for i, action := range synthesis.NextActions {
+				actedOn := contains(reviewState.ActedOn, i)
+				dismissed := contains(reviewState.Dismissed, i)
+				reviewed := actedOn || dismissed
+
+				if !reviewed {
+					unreviewedCount++
+				}
+
+				items = append(items, PendingReviewItem{
+					WorkspaceID: dirName,
+					BeadsID:     beadsID,
+					Index:       i,
+					Text:        action,
+					Reviewed:    reviewed,
+					ActedOn:     actedOn,
+					Dismissed:   dismissed,
+				})
+			}
+
+			// Only include agents with unreviewed recommendations
+			if unreviewedCount > 0 {
+				agents = append(agents, PendingReviewAgent{
+					WorkspaceID:          dirName,
+					WorkspacePath:        dirPath,
+					BeadsID:              beadsID,
+					TLDR:                 synthesis.TLDR,
+					TotalRecommendations: len(synthesis.NextActions),
+					UnreviewedCount:      unreviewedCount,
+					Items:                items,
+					IsLightTier:          false,
+				})
+				totalUnreviewed += unreviewedCount
+			}
+		} else if isLightComplete {
+			// Handle light-tier agents (no synthesis by design)
+			// Light-tier completions appear with a special indicator and no items
+			// They still need orchestrator acknowledgment via beads close
+
+			// Load review state to check if already acknowledged
+			reviewState, err := verify.LoadReviewState(dirPath)
+			if err != nil {
+				reviewState = &verify.ReviewState{}
+			}
+
+			// Skip if already reviewed (acknowledged)
+			if reviewState.LightTierAcknowledged {
+				continue
+			}
+
+			// Create a single "pseudo-item" indicating the light tier completion needs review
+			items := []PendingReviewItem{
+				{
+					WorkspaceID: dirName,
+					BeadsID:     lightBeadsID,
+					Index:       0,
+					Text:        "Light tier agent completed - no synthesis produced (by design). Review and close via orch complete.",
+					Reviewed:    false,
+					ActedOn:     false,
+					Dismissed:   false,
+				},
+			}
+
 			agents = append(agents, PendingReviewAgent{
 				WorkspaceID:          dirName,
 				WorkspacePath:        dirPath,
-				BeadsID:              beadsID,
-				TLDR:                 synthesis.TLDR,
-				TotalRecommendations: len(synthesis.NextActions),
-				UnreviewedCount:      unreviewedCount,
+				BeadsID:              lightBeadsID,
+				TLDR:                 "Light tier completion - review agent output directly",
+				TotalRecommendations: 1,
+				UnreviewedCount:      1,
 				Items:                items,
+				IsLightTier:          true,
 			})
-			totalUnreviewed += unreviewedCount
+			totalUnreviewed++
 		}
 	}
 
@@ -2438,6 +2494,41 @@ func contains(slice []int, val int) bool {
 		}
 	}
 	return false
+}
+
+// isLightTierWorkspace checks if a workspace is a light tier spawn.
+// Light tier workspaces have a .tier file containing "light".
+func isLightTierWorkspace(workspacePath string) bool {
+	tierPath := filepath.Join(workspacePath, ".tier")
+	data, err := os.ReadFile(tierPath)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(data)) == "light"
+}
+
+// isLightTierComplete checks if a light tier workspace has Phase: Complete in beads comments.
+// Returns true if the workspace is light tier AND has Phase: Complete.
+func isLightTierComplete(workspacePath string) (isComplete bool, beadsID string) {
+	if !isLightTierWorkspace(workspacePath) {
+		return false, ""
+	}
+
+	// Extract beads ID from SPAWN_CONTEXT.md
+	beadsID = extractBeadsIDFromWorkspace(workspacePath)
+	if beadsID == "" {
+		return false, ""
+	}
+
+	// Get comments for this beads ID
+	comments, err := verify.GetComments(beadsID)
+	if err != nil {
+		return false, beadsID
+	}
+
+	// Check for Phase: Complete
+	phaseStatus := verify.ParsePhaseFromComments(comments)
+	return phaseStatus.Found && strings.EqualFold(phaseStatus.Phase, "Complete"), beadsID
 }
 
 // DismissReviewRequest is the request body for POST /api/dismiss-review.

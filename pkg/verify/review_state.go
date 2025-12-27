@@ -31,6 +31,11 @@ type ReviewState struct {
 
 	// TotalRecommendations is the number of recommendations at review time
 	TotalRecommendations int `json:"total_recommendations,omitempty"`
+
+	// LightTierAcknowledged is true when a light-tier agent completion has been reviewed.
+	// Light-tier agents don't produce SYNTHESIS.md, so this field tracks acknowledgment
+	// of the completion itself rather than synthesis recommendations.
+	LightTierAcknowledged bool `json:"light_tier_acknowledged,omitempty"`
 }
 
 // IsReviewed returns true if this synthesis has been reviewed.

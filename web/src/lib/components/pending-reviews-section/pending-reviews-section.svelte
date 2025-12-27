@@ -112,9 +112,15 @@
 						<div class="rounded border bg-card p-3">
 							<div class="flex items-center gap-2 mb-2">
 								<span class="text-sm font-medium">{formatWorkspaceName(agent.workspace_id)}</span>
-								<Badge variant="outline" class="text-xs">
-									{unreviewedItems.length} recommendation{unreviewedItems.length === 1 ? '' : 's'}
-								</Badge>
+								{#if agent.is_light_tier}
+									<Badge variant="secondary" class="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
+										⚡ light
+									</Badge>
+								{:else}
+									<Badge variant="outline" class="text-xs">
+										{unreviewedItems.length} recommendation{unreviewedItems.length === 1 ? '' : 's'}
+									</Badge>
+								{/if}
 								{#if agent.beads_id}
 									<span class="text-xs text-muted-foreground">{agent.beads_id}</span>
 								{/if}

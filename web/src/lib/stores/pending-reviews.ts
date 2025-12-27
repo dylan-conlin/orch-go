@@ -23,6 +23,7 @@ export interface PendingReviewAgent {
 	total_recommendations: number;
 	unreviewed_count: number;
 	items: PendingReviewItem[];
+	is_light_tier?: boolean; // True if this was a light tier spawn (no synthesis by design)
 }
 
 // API response
