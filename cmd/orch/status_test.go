@@ -36,13 +36,11 @@ func TestFormatDurationForStatus(t *testing.T) {
 	}
 }
 
-// TestStatusUsesOpenCodeAPI verifies that status command now uses OpenCode API.
+// TestStatusUsesOpenCodeAPI verifies that status command uses OpenCode API.
 // This is a design test - the actual implementation uses ListSessions() from the API.
 func TestStatusUsesOpenCodeAPI(t *testing.T) {
-	// The status command now uses OpenCode API (ListSessions) instead of a registry.
-	// This test documents the architectural change:
-	// - OLD: Read from ~/.orch/agent-registry.json
-	// - NEW: GET /session from OpenCode API
+	// The status command uses OpenCode API (ListSessions) for session data.
+	// There is no agent registry file - all state comes from OpenCode + beads.
 	//
 	// The runStatus function:
 	// 1. Creates an OpenCode client

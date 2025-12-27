@@ -107,16 +107,16 @@ func TestGetMaxAgentsInvalidEnvVar(t *testing.T) {
 	}
 }
 
-// TestCheckConcurrencyLimitUsesOpenCodeAPI documents the new behavior.
-// After registry removal, concurrency checking uses OpenCode API ListSessions().
+// TestCheckConcurrencyLimitUsesOpenCodeAPI documents the concurrency checking behavior.
+// Concurrency checking uses OpenCode API ListSessions() directly.
 func TestCheckConcurrencyLimitUsesOpenCodeAPI(t *testing.T) {
-	// The checkConcurrencyLimit function now:
+	// The checkConcurrencyLimit function:
 	// 1. Creates an OpenCode client
 	// 2. Calls client.ListSessions()
 	// 3. Counts active sessions (status != "completed")
 	// 4. Returns error if count >= max
 	//
-	// This replaces the old registry-based counting.
+	// All session state comes from OpenCode - no agent registry file.
 	// Integration testing requires a running OpenCode server.
 }
 

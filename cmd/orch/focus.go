@@ -211,7 +211,7 @@ func runDrift() error {
 		return fmt.Errorf("failed to load focus: %w", err)
 	}
 
-	// Get active issues from registry
+	// Get active issues from OpenCode sessions
 	activeIssues := getActiveIssues()
 
 	result := store.CheckDrift(activeIssues)
@@ -319,7 +319,7 @@ func runNext() error {
 		return fmt.Errorf("failed to load focus: %w", err)
 	}
 
-	// Get active issues from registry
+	// Get active issues from OpenCode sessions
 	activeIssues := getActiveIssues()
 
 	// Get ready issues from beads for additional context

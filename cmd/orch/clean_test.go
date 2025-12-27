@@ -29,7 +29,7 @@ func TestGetProjectNameFromWorkdir(t *testing.T) {
 }
 
 // TestCleanWorkspaceBased tests workspace-based cleanup detection.
-// After registry removal, clean operates on workspaces directly.
+// The clean command operates on workspaces directly using OpenCode API for session status.
 func TestCleanWorkspaceBased(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()

@@ -324,7 +324,7 @@ func buildAbandonCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "abandon [beads-id]",
 		Short: "Abandon a stuck or frozen agent",
-		Long: `Abandon an agent and mark it abandoned in the registry.
+		Long: `Abandon a stuck or frozen agent.
 
 Use this command for stuck or frozen agents that are not responding.
 The agent's beads issue is NOT closed - you can restart work with 'orch work'.
@@ -338,13 +338,14 @@ Examples:
 func buildCleanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
-		Short: "Remove completed agents from the registry",
-		Long: `Remove completed and abandoned agents from the registry.
+		Short: "Clean up completed agent workspaces",
+		Long: `Clean up workspaces for completed and abandoned agents.
 
-By default, only cleans agents that are marked as completed or abandoned in the registry.
+Removes workspace directories (.orch/workspace/) for agents that have finished.
+Uses OpenCode API to determine which sessions are still active.
 
 Examples:
-  orch-go clean              # Clean completed/abandoned agents
+  orch-go clean              # Clean completed/abandoned workspaces
   orch-go clean --dry-run    # Show what would be cleaned`,
 		Run: noopRun,
 	}

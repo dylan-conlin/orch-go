@@ -85,12 +85,6 @@ pkg/
 - Token sources: OpenCode auth file, macOS Keychain
 - Same config format as Python orch-cli for interop
 
-### pkg/registry/ (Agent State)
-- `Registry` struct managing `~/.orch/agent-registry.json`
-- File locking via `syscall.Flock`
-- `Reconcile()`: Syncs registry with tmux window state
-- Agent states: `active`, `completed`, `abandoned`
-
 ### pkg/spawn/ (Spawn Context)
 - `SpawnConfig` struct with all spawn parameters
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
@@ -117,8 +111,7 @@ pkg/
 5. **Default (headless):** Creates session via HTTP API, sends prompt
 6. **With --tmux:** Creates session + tmux window for monitoring (opt-in)
 7. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
-8. Registers agent in `~/.orch/agent-registry.json`
-9. Returns immediately (unless --inline)
+8. Returns immediately (unless --inline)
 
 ## Commands
 
@@ -186,7 +179,6 @@ orch version
 
 ## Gotchas
 
-- **File locking**: Registry uses `syscall.Flock` - Unix only
 - **Window targeting**: Use workspace name, not window index
 - **Model default**: Opus (Max subscription), not Gemini (pay-per-token)
 - **SSE parsing**: Event type is inside JSON data, not `event:` prefix
