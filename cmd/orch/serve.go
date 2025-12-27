@@ -23,6 +23,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -60,6 +61,7 @@ Endpoints:
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
+  GET/PUT /api/config - User configuration settings (~/.orch/config.yaml)
   GET /health        - Health check
 
 Examples:
@@ -241,6 +243,9 @@ func runServe(portNum int) error {
 	// POST /api/dismiss-review - dismiss a specific recommendation
 	mux.HandleFunc("/api/dismiss-review", corsHandler(handleDismissReview))
 
+	// GET/PUT /api/config - user configuration settings
+	mux.HandleFunc("/api/config", corsHandler(handleConfig))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -269,6 +274,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
+	fmt.Println("  GET/PUT /api/config - User configuration settings")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -2768,4 +2774,102 @@ func handleDismissReview(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Message: fmt.Sprintf("Dismissed recommendation %d", req.Index),
 	})
+}
+
+// ConfigAPIResponse is the JSON structure returned by GET /api/config.
+type ConfigAPIResponse struct {
+	Backend              string `json:"backend"`
+	AutoExportTranscript bool   `json:"auto_export_transcript"`
+	NotificationsEnabled bool   `json:"notifications_enabled"`
+	ConfigPath           string `json:"config_path,omitempty"` // Path to config file for reference
+}
+
+// ConfigUpdateRequest is the JSON structure for PUT /api/config.
+type ConfigUpdateRequest struct {
+	Backend              *string `json:"backend,omitempty"`
+	AutoExportTranscript *bool   `json:"auto_export_transcript,omitempty"`
+	NotificationsEnabled *bool   `json:"notifications_enabled,omitempty"`
+}
+
+// handleConfig handles GET and PUT requests for user configuration.
+// GET returns current config from ~/.orch/config.yaml
+// PUT updates specified fields in the config
+func handleConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handleConfigGet(w, r)
+	case http.MethodPut:
+		handleConfigPut(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleConfigGet returns the current user configuration.
+func handleConfigGet(w http.ResponseWriter, r *http.Request) {
+	cfg, err := userconfig.Load()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	resp := ConfigAPIResponse{
+		Backend:              cfg.Backend,
+		AutoExportTranscript: cfg.AutoExportTranscript,
+		NotificationsEnabled: cfg.NotificationsEnabled(),
+		ConfigPath:           userconfig.ConfigPath(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode config: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleConfigPut updates the user configuration with the provided values.
+func handleConfigPut(w http.ResponseWriter, r *http.Request) {
+	var req ConfigUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Load existing config
+	cfg, err := userconfig.Load()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Update only the fields that were provided
+	if req.Backend != nil {
+		cfg.Backend = *req.Backend
+	}
+	if req.AutoExportTranscript != nil {
+		cfg.AutoExportTranscript = *req.AutoExportTranscript
+	}
+	if req.NotificationsEnabled != nil {
+		cfg.Notifications.Enabled = req.NotificationsEnabled
+	}
+
+	// Save the updated config
+	if err := userconfig.Save(cfg); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to save config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated config
+	resp := ConfigAPIResponse{
+		Backend:              cfg.Backend,
+		AutoExportTranscript: cfg.AutoExportTranscript,
+		NotificationsEnabled: cfg.NotificationsEnabled(),
+		ConfigPath:           userconfig.ConfigPath(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode config: %v", err), http.StatusInternalServerError)
+		return
+	}
 }

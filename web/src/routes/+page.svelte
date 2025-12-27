@@ -40,6 +40,8 @@
 	import { daemon, getDaemonEmoji, getDaemonCapacity } from '$lib/stores/daemon';
 	import { pendingReviews } from '$lib/stores/pending-reviews';
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
+	import { config } from '$lib/stores/config';
+	import { SettingsPanel } from '$lib/components/settings-panel';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -110,7 +112,8 @@
 		// These affect the primary dashboard view and should load ASAP
 		Promise.all([
 			beads.fetch(),
-			pendingReviews.fetch()
+			pendingReviews.fetch(),
+			config.fetch()
 		]).catch(console.error);
 
 		// Defer secondary data fetches using requestIdleCallback or setTimeout fallback
@@ -512,8 +515,9 @@
 				</Tooltip.Root>
 			{/if}
 		</div>
-		<!-- Connection button - pushed to end -->
-		<div class="ml-auto flex items-center gap-2">
+		<!-- Connection button and settings - pushed to end -->
+		<div class="ml-auto flex items-center gap-1">
+			<SettingsPanel />
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
