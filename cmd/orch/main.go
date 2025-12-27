@@ -883,8 +883,11 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
 	}
 
-	// Use issue title as the task (description is often longer form context)
+	// Use issue title and description as the task for full context
 	task := issue.Title
+	if issue.Description != "" {
+		task = issue.Title + "\n\n" + issue.Description
+	}
 
 	// Set the spawnIssue flag so runSpawnWithSkill uses the existing issue
 	spawnIssue = beadsID
