@@ -5,79 +5,73 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** `DefaultActiveCount()` counted all OpenCode sessions updated in last 30 min, regardless of whether their beads issue was closed; completed agents still counted toward capacity.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Test showed 7 recent sessions, but only 2 with open issues; daemon stuck at 3/3 while orch status showed 0 active agents. After fix, reconciliation correctly freed slots.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** OpenCode sessions persist after agent completion; checking beads issue status is required to know if an agent is actually running.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Fix implemented and verified - `DefaultActiveCount()` now queries beads to exclude sessions with closed issues.
 
 ---
 
 # Investigation: Daemon Capacity Stale After Complete
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Why does daemon capacity show 3/3 active when orch status shows 0 active agents, even after `orch complete` closes all agents?
 
 **Started:** 2025-12-26
 **Updated:** 2025-12-26
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Supersedes:** .kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md (partial fix that missed closed issue checking)
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: DefaultActiveCount() didn't check beads issue status
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- Original `DefaultActiveCount()` in pkg/daemon/daemon.go:418-474 only filtered by:
+  1. Session update time (30 min recency)
+  2. Untracked agents (beads ID contains "-untracked-")
+- Did NOT check if the beads issue was closed
+- When agents complete via `orch complete`, beads issue is closed but OpenCode session persists
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/daemon/daemon.go:418-474 (before fix)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Root cause of stale capacity. Completed agents continued to count toward daemon capacity because their sessions were "recently updated" even though work was done.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: OpenCode sessions persist after agent completion
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `curl http://127.0.0.1:4096/session | jq 'length'` returned 61+ sessions
+- Many sessions were from days ago (Dec 20, 22, etc.)
+- Closed agents showed recent "updated" timestamps from their final output or `/exit` command
+- Test showed 7 "recent" sessions but only 2 with open beads issues
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** OpenCode /session API, manual testing
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The 30-min recency filter wasn't sufficient. OpenCode updates session timestamps when agents produce output, even final output before completion.
+
+---
+
+### Finding 3: Pool.Reconcile() works correctly but needed accurate actual count
+
+**Evidence:**
+- `Pool.Reconcile(actualCount)` at pkg/daemon/pool.go:224-253
+- Returns 0 if `actualCount >= p.activeCount`
+- Was receiving inflated counts (7 instead of 2) because DefaultActiveCount included closed agents
+- After fix, reconciliation correctly freed slots: pool went from 3 → 2 when 1 agent completed
+
+**Source:** pkg/daemon/pool.go:224-253, daemon logs showing "Spawned 1 this cycle"
+
+**Significance:** The reconciliation mechanism was sound; only the input was wrong.
 
 ---
 
@@ -85,15 +79,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Session lifetime ≠ agent lifetime** - OpenCode sessions persist indefinitely; beads issue status is the authoritative source of whether an agent is running.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Prior fixes were incremental** - Previous investigations (orch-go-59m3, orch-go-s2j7) added recency filtering and untracked filtering, but missed the fundamental issue that completed agents still have recently-updated sessions.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Batch lookup for performance** - Added `getClosedIssuesBatch()` to check multiple beads issues in one RPC call, avoiding N+1 query pattern.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The daemon capacity stayed at 3/3 because `DefaultActiveCount()` counted all OpenCode sessions updated in the last 30 minutes, regardless of whether their beads issues were closed. When agents complete via `orch complete`, their beads issues are closed but their OpenCode sessions persist with recent timestamps. The fix adds a beads status check to `DefaultActiveCount()` - sessions with closed beads issues are no longer counted toward capacity.
 
 ---
 
@@ -101,120 +95,125 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Fix correctly excludes closed issues (verified: closed 4 daemon-spawned agents, count dropped from 7 → 2)
+- ✅ Daemon reconciliation frees slots after completions (verified: saw "Spawned 1 this cycle" after slots freed)
+- ✅ Beads RPC client works for batch status lookup (verified: test script successfully queried issue status)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Behavior when beads daemon is unavailable (falls back to CLI, but not tested under load)
+- ⚠️ Performance with many concurrent sessions (unlikely to be an issue at daemon's 60s poll interval)
+- ⚠️ Edge case: session exists but beads issue was deleted (would not count, which is correct)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if beads issue status isn't authoritative for agent running state
+- Fix might need adjustment if OpenCode changes session persistence behavior
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Bridge from investigation findings to actionable implementation.
 
-### Recommended Approach ⭐
+### Recommended Approach ⭐ (Implemented)
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Query beads status for each session's beads ID and exclude closed issues from count**
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Uses authoritative source (beads) for agent state
+- Minimal code change - adds filtering step to existing function
+- Self-healing - stale counts correct on next poll cycle
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Adds beads RPC/CLI dependency to DefaultActiveCount
+- Adds latency for batch beads lookup (mitigated by RPC daemon)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Extract beads IDs from session titles (already done)
+2. Batch fetch issue status via beads client
+3. Exclude sessions with closed issues from count
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Track daemon-spawned session IDs explicitly**
+- **Pros:** More precise - only count sessions daemon actually spawned
+- **Cons:** Requires changes to spawn path, more invasive
+- **When to use instead:** If beads check becomes performance bottleneck
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Have `orch complete` notify daemon**
+- **Pros:** Real-time slot release without polling
+- **Cons:** Requires IPC mechanism, more complex architecture
+- **When to use instead:** If near-real-time capacity updates become important
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Option A is simplest, uses existing infrastructure, and provides correctness at acceptable latency.
 
 ---
 
 ### Implementation Details
 
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+**What was implemented:**
 
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+1. `getClosedIssuesBatch(beadsIDs []string) map[string]bool` in pkg/daemon/daemon.go
+   - Uses beads RPC client (falls back to CLI)
+   - Returns map of closed beads IDs
 
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+2. Modified `DefaultActiveCount()` to:
+   - Collect beads IDs from recent sessions
+   - Query beads for closed status
+   - Exclude closed issues from count
+
+3. Tests in pkg/daemon/daemon_test.go:
+   - `TestGetClosedIssuesBatch_EmptyInput`
+   - `TestGetClosedIssuesBatch_Integration` (integration test)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Daemon frees slots after agents complete via `orch complete`
+- ✅ `DefaultActiveCount()` returns correct count matching orch status
+- ✅ All daemon tests pass
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+**Files Modified:**
+- `pkg/daemon/daemon.go:418-550` - Modified DefaultActiveCount, added getClosedIssuesBatch
+- `pkg/daemon/daemon_test.go` - Added tests for new function
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test active count calculation
+go run /tmp/test_active_fixed.go
 
-# [Command description]
-[command]
+# Run daemon tests
+go test ./pkg/daemon/... -v -count=1
+
+# Install and restart daemon
+make install && launchctl kickstart -k gui/$(id -u)/com.orch.daemon
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** .kb/investigations/2025-12-26-inv-daemon-capacity-count-goes-stale.md - Added reconciliation (partial fix)
+- **Investigation:** .kb/investigations/2025-12-26-inv-daemon-capacity-count-stuck-while.md - Added recency filter (partial fix)
+- **Investigation:** .kb/investigations/2025-12-26-inv-daemon-capacity-count-stale-after.md - Added untracked filter (partial fix)
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-26 16:47:** Investigation started
+- Initial question: Why daemon shows 3/3 active when orch status shows 0?
+- Context: Prior fixes didn't fully solve the issue
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-26 16:52:** Root cause identified
+- DefaultActiveCount counts all recent sessions regardless of beads issue status
+- OpenCode sessions persist after agent completion
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-26 17:00:** Fix implemented and verified
+- Added beads status check to DefaultActiveCount
+- Tested: closing daemon agents correctly freed slots
+- Daemon spawned new work after reconciliation
+
+**2025-12-26 17:01:** Investigation completed
+- Status: Complete
+- Key outcome: DefaultActiveCount now excludes sessions with closed beads issues

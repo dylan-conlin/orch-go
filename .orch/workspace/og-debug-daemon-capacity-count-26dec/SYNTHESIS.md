@@ -1,56 +1,57 @@
 # Session Synthesis
 
 **Agent:** og-debug-daemon-capacity-count-26dec
-**Issue:** orch-go-59m3
-**Duration:** 2025-12-26
+**Issue:** orch-go-per9
+**Duration:** 16:47 → 17:10
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Fixed daemon capacity count to exclude untracked agents (spawned with `--no-track`). The daemon now correctly reports only tracked sessions against its capacity limit by filtering out sessions with `-untracked-` in their beads ID.
+Fixed daemon capacity staleness by adding beads issue status check to `DefaultActiveCount()`. The function now excludes sessions whose beads issues are closed, correctly reflecting actual running agents rather than all recently-updated sessions.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Modified
-- `pkg/daemon/daemon.go:416-477` - Added `extractBeadsIDFromSessionTitle()` and `isUntrackedBeadsID()` functions; modified `DefaultActiveCount()` to filter out untracked sessions
-- `pkg/daemon/daemon_test.go` - Added tests for `TestExtractBeadsIDFromSessionTitle` and `TestIsUntrackedBeadsID`
+- `pkg/daemon/daemon.go:418-550` - Modified `DefaultActiveCount()` to check beads issue status via new `getClosedIssuesBatch()` helper
+- `pkg/daemon/daemon_test.go` - Added tests for `getClosedIssuesBatch()`
 
 ### Commits
-- (to be committed) - fix: exclude untracked agents from daemon capacity count
+- `09a90b0d` - Session Dec 26 evening: Review UI, multi-project design, daemon fixes (includes this fix)
 
 ---
 
 ## Evidence (What Was Observed)
 
-- 9 OpenCode sessions were active within 30 minutes, but 1 was untracked (`orch-go-untracked-1766786808`)
-- Daemon was reporting 9 instead of 8, inflating capacity usage
-- Session titles contain beads ID in brackets: `workspace-name [beads-id]`
-- Untracked agents have `-untracked-` pattern in beads ID (e.g., `project-untracked-1766786808`)
+- Daemon showed 3/3 capacity while `orch status` showed only 1-2 running agents
+- `DefaultActiveCount()` was returning 7 (all recent sessions) instead of 2 (only open issues)
+- OpenCode sessions persist after agent completion with recent "updated" timestamps
+- After fix, daemon correctly reconciled: pool went from 3 → 2, then spawned 1 new agent
 
 ### Root Cause Chain
-1. User spawns agents with `--no-track` flag
-2. `determineBeadsID()` generates beads ID like `project-untracked-{timestamp}`
-3. Session is created with title containing `[project-untracked-{timestamp}]`
-4. `DefaultActiveCount()` queries OpenCode API, counts ALL sessions
-5. Untracked sessions counted toward daemon capacity limit
-6. Daemon capacity inflated, blocking new spawns unnecessarily
+1. Agent completes work and calls `/exit`
+2. `orch complete` closes beads issue
+3. OpenCode session remains with recent "updated" timestamp
+4. `DefaultActiveCount()` counted session as "active" (updated in last 30 min)
+5. `Pool.Reconcile()` received inflated count (7 >= 3), so no slots freed
+6. Daemon stuck at capacity even though agents completed
 
 ### Tests Run
 ```bash
 # All daemon tests pass
-go test ./pkg/daemon/... -v -count=1
-# PASS: 60+ tests including new tests for extractBeadsIDFromSessionTitle and isUntrackedBeadsID
+go test ./pkg/daemon/... -count=1
+# ok  	github.com/dylan-conlin/orch-go/pkg/daemon	0.166s
 
-# Build verification
-go build ./cmd/orch
-# Success, no errors
+# Verified DefaultActiveCount returns correct count
+go run /tmp/test_daemon_count.go
+# DefaultActiveCount() = 2 (correctly excludes 5 closed issues)
 
-# Smoke test verified correct filtering
-# Total active: 9, Tracked: 8, Untracked: 1, Daemon would report: 8
+# Verified daemon spawns after reconciliation
+tail ~/.orch/daemon.log
+# [16:59:40] Spawned: orch-go-afsz (feature-impl)
 ```
 
 ---
@@ -58,16 +59,23 @@ go build ./cmd/orch
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stale-after.md` - Investigation documenting root cause and fix
+- `.kb/investigations/2025-12-26-debug-daemon-capacity-stale-after-complete.md` - Root cause analysis documenting session persistence issue
 
 ### Decisions Made
-- Filter by beads ID pattern rather than tracking session IDs explicitly (simpler, uses existing patterns)
-- Sessions without beads IDs in title are counted as tracked (conservative approach avoids false exclusions)
+- Check beads status via RPC rather than tracking session IDs explicitly - simpler, uses existing infrastructure
+- Batch beads lookups for performance - `getClosedIssuesBatch()` queries multiple issues in one call
 
 ### Constraints Discovered
-- `--no-track` spawns use pattern `{project}-untracked-{timestamp}` for beads ID
-- Session titles consistently include `[beads-id]` at the end
-- Untracked agents should NOT count against daemon capacity since they weren't spawned by daemon
+- OpenCode sessions persist indefinitely after agent completion
+- Session "updated" timestamp reflects last output, not agent state
+- Beads issue status is authoritative for agent lifecycle (open/in_progress = running, closed = done)
+
+### Prior Fixes (Incremental)
+This issue had multiple prior investigations:
+1. Added `Pool.Reconcile()` - but received wrong counts
+2. Added 30-min recency filter - didn't account for recent completion
+3. Added untracked agent filter - didn't account for closed issues
+4. **This fix** - checks beads status, finally correct
 
 ---
 
@@ -79,30 +87,29 @@ go build ./cmd/orch
 - [x] All deliverables complete
 - [x] Tests passing
 - [x] Investigation file has `**Phase:** Complete`
-- [x] Ready for `orch complete orch-go-59m3`
+- [x] Ready for `orch complete orch-go-per9`
 
 ---
 
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- Could there be sessions without beads IDs that should be counted? (Edge case, likely very rare)
-- Should we add metrics/logging to track reconciliation events? (Nice-to-have)
+- Should OpenCode auto-close sessions after agent exit? Would simplify capacity tracking
+- Should `orch complete` notify daemon directly? Would provide instant slot release without polling
 
 **Areas worth exploring further:**
-- End-to-end daemon integration tests that verify capacity with mixed tracked/untracked agents
+- Performance of beads batch lookups at high session counts
+- Daemon behavior when beads daemon is unavailable (currently falls back to CLI)
 
 **What remains unclear:**
-- Behavior when OpenCode API is temporarily unavailable (returns 0, could cause issues)
-
-*(Straightforward session overall, fix follows established patterns)*
+- OpenCode session lifecycle - why do sessions persist indefinitely?
 
 ---
 
 ## Session Metadata
 
 **Skill:** systematic-debugging
-**Model:** claude-opus-4
+**Model:** opus
 **Workspace:** `.orch/workspace/og-debug-daemon-capacity-count-26dec/`
-**Investigation:** `.kb/investigations/2025-12-26-inv-daemon-capacity-count-stale-after.md`
-**Beads:** `bd show orch-go-59m3`
+**Investigation:** `.kb/investigations/2025-12-26-debug-daemon-capacity-stale-after-complete.md`
+**Beads:** `bd show orch-go-per9`
