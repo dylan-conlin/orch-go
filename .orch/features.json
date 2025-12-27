@@ -190,13 +190,24 @@
       "created": "2025-12-26",
       "source": ".kb/investigations/2025-12-26-design-two-infrastructure-failures-revealed-missing.md",
       "notes": "Reactive detection (not proactive prevention) per Pressure Over Compensation principle. Add checks as services fail, not proactively."
+    },
+    {
+      "id": "feat-019",
+      "title": "Implement Playwright MCP action batching wrapper",
+      "description": "Create MCP server wrapper that adds browser_batch tool to Playwright MCP for sequential action execution. Accepts array of {tool, params} objects, executes sequentially with stop-on-error, returns consolidated results with per-action status. Reduces LLM round-trips by 3-5x for common workflows (login, form fill, navigation chains). Safety limits: max 20 actions, 5s per-action timeout, 60s batch timeout. File targets: pkg/mcp/batch/batch.go, pkg/mcp/batch/executor.go, pkg/mcp/batch/types.go. Acceptance: browser_batch tool executes actions sequentially, returns structured results with failure point, integrates with existing Playwright MCP tools.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-action-batching-layer-playwright.md",
+      "notes": "Start as wrapper MCP server, consider upstream PR to microsoft/playwright-mcp once proven."
     }
   ],
   "meta": {
-    "last_updated": "2025-12-26",
-    "total_features": 18,
+    "last_updated": "2025-12-27",
+    "total_features": 19,
     "by_status": {
-      "todo": 17,
+      "todo": 18,
       "in_progress": 0,
       "done": 1
     }
