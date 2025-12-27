@@ -13,14 +13,47 @@ import (
 	"time"
 )
 
+// DefaultHTTPTimeout is the default timeout for HTTP requests to the OpenCode API.
+// This prevents hangs when OpenCode is in a bad state (e.g., redirect loop).
+const DefaultHTTPTimeout = 10 * time.Second
+
 // Client handles OpenCode CLI interactions.
 type Client struct {
-	ServerURL string
+	ServerURL  string
+	httpClient *http.Client
 }
 
-// NewClient creates a new OpenCode client.
+// NewClient creates a new OpenCode client with default timeout.
 func NewClient(serverURL string) *Client {
-	return &Client{ServerURL: serverURL}
+	return &Client{
+		ServerURL: serverURL,
+		httpClient: &http.Client{
+			Timeout: DefaultHTTPTimeout,
+			// Limit redirects to prevent redirect loops from hanging
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("too many redirects (max 10)")
+				}
+				return nil
+			},
+		},
+	}
+}
+
+// NewClientWithTimeout creates a new OpenCode client with custom timeout.
+func NewClientWithTimeout(serverURL string, timeout time.Duration) *Client {
+	return &Client{
+		ServerURL: serverURL,
+		httpClient: &http.Client{
+			Timeout: timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("too many redirects (max 10)")
+				}
+				return nil
+			},
+		},
+	}
 }
 
 func (c *Client) getOpencodeBin() string {
@@ -200,7 +233,12 @@ func (c *Client) SendMessageAsync(sessionID, content, model string) error {
 		return err
 	}
 
-	resp, err := http.Post(c.ServerURL+"/session/"+sessionID+"/prompt_async", "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", c.ServerURL+"/session/"+sessionID+"/prompt_async", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -244,7 +282,7 @@ func (c *Client) ListSessions(directory string) ([]Session, error) {
 		req.Header.Set("x-opencode-directory", directory)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch sessions: %w", err)
 	}
@@ -264,7 +302,11 @@ func (c *Client) ListSessions(directory string) ([]Session, error) {
 
 // GetSession fetches a single session by ID from the OpenCode API.
 func (c *Client) GetSession(sessionID string) (*Session, error) {
-	resp, err := http.Get(c.ServerURL + "/session/" + sessionID)
+	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch session: %w", err)
 	}
@@ -287,7 +329,11 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 // NOTE: This returns true for any persisted session, not just actively running ones.
 // For liveness checks, use IsSessionActive() instead.
 func (c *Client) SessionExists(sessionID string) bool {
-	resp, err := http.Get(c.ServerURL + "/session/" + sessionID)
+	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return false
 	}
@@ -399,7 +445,7 @@ func (c *Client) CreateSession(title, directory, model string) (*CreateSessionRe
 	// This allows the session-context plugin to skip loading orchestrator skill
 	req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
@@ -427,7 +473,11 @@ func (c *Client) SendPrompt(sessionID, prompt, model string) error {
 
 // GetMessages fetches all messages for a session from the OpenCode API.
 func (c *Client) GetMessages(sessionID string) ([]Message, error) {
-	resp, err := http.Get(c.ServerURL + "/session/" + sessionID + "/message")
+	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID+"/message", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
 	}
@@ -453,7 +503,7 @@ func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
 	}
 	req.Header.Set("x-opencode-directory", projectDir)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -571,7 +621,7 @@ func (c *Client) ListDiskSessions(directory string) ([]Session, error) {
 
 	req.Header.Set("x-opencode-directory", directory)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch disk sessions: %w", err)
 	}
@@ -597,7 +647,7 @@ func (c *Client) DeleteSession(sessionID string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
@@ -622,8 +672,19 @@ func (c *Client) SendMessageWithStreaming(sessionID, content string, streamTo io
 	}
 
 	// Connect to SSE and stream the response
+	// Use a client without timeout for SSE - it's a long-running stream
+	sseClient := &http.Client{
+		// No timeout - SSE is meant to be long-running
+		// But still limit redirects
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects (max 10)")
+			}
+			return nil
+		},
+	}
 	sseURL := c.ServerURL + "/event"
-	resp, err := http.Get(sseURL)
+	resp, err := sseClient.Get(sseURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to SSE: %w", err)
 	}
@@ -751,4 +812,46 @@ func (c *Client) SendMessageWithStreaming(sessionID, content string, streamTo io
 			}
 		}
 	}
+}
+
+// TokenStats represents aggregated token usage for a session.
+type TokenStats struct {
+	InputTokens     int `json:"input_tokens"`
+	OutputTokens    int `json:"output_tokens"`
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	CacheReadTokens int `json:"cache_read_tokens,omitempty"`
+	TotalTokens     int `json:"total_tokens"` // input + output + reasoning
+}
+
+// AggregateTokens calculates total token usage from a slice of messages.
+// It sums up input, output, reasoning, and cache tokens across all messages.
+func AggregateTokens(messages []Message) TokenStats {
+	var stats TokenStats
+	for _, msg := range messages {
+		if msg.Info.Tokens == nil {
+			continue
+		}
+		stats.InputTokens += msg.Info.Tokens.Input
+		stats.OutputTokens += msg.Info.Tokens.Output
+		stats.ReasoningTokens += msg.Info.Tokens.Reasoning
+		if msg.Info.Tokens.Cache != nil {
+			stats.CacheReadTokens += msg.Info.Tokens.Cache.Read
+		}
+	}
+	stats.TotalTokens = stats.InputTokens + stats.OutputTokens + stats.ReasoningTokens
+	return stats
+}
+
+// GetSessionTokens fetches messages for a session and returns aggregated token stats.
+// Returns nil if session doesn't exist or has no messages.
+func (c *Client) GetSessionTokens(sessionID string) (*TokenStats, error) {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	stats := AggregateTokens(messages)
+	return &stats, nil
 }

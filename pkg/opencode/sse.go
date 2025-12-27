@@ -11,18 +11,33 @@ import (
 
 // SSEClient handles SSE connections to OpenCode.
 type SSEClient struct {
-	URL string
+	URL        string
+	httpClient *http.Client
 }
 
 // NewSSEClient creates a new SSE client.
+// SSE clients have no timeout since they're meant for long-running streams,
+// but do have redirect limiting to prevent redirect loops from hanging.
 func NewSSEClient(url string) *SSEClient {
-	return &SSEClient{URL: url}
+	return &SSEClient{
+		URL: url,
+		httpClient: &http.Client{
+			// No timeout - SSE is meant to be long-running
+			// But limit redirects to prevent redirect loops
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("too many redirects (max 10)")
+				}
+				return nil
+			},
+		},
+	}
 }
 
 // Connect establishes SSE connection and sends events to channel.
 // This is a blocking call that reads events until the connection is closed.
 func (c *SSEClient) Connect(events chan<- SSEEvent) error {
-	resp, err := http.Get(c.URL)
+	resp, err := c.httpClient.Get(c.URL)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
