@@ -51,7 +51,8 @@
 		recent: false,  // Recent collapsed by default
 		archive: false, // Archive collapsed by default
 		readyQueue: false, // Ready queue collapsed by default
-		pendingReviews: true // Pending reviews expanded by default (actionable)
+		pendingReviews: true, // Pending reviews expanded by default (actionable)
+		sseStream: false // SSE Stream collapsed by default (low signal-to-noise for most users)
 	};
 
 	// Load section state from localStorage on mount
@@ -764,34 +765,48 @@
 			</div>
 		</div>
 
-		<!-- SSE Events -->
+		<!-- SSE Events (collapsible) -->
 		<div class="rounded-lg border bg-card">
-			<div class="flex items-center justify-between border-b px-3 py-1.5">
+			<button
+				class="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-accent/50 transition-colors border-b"
+				onclick={() => { sectionState.sseStream = !sectionState.sseStream; }}
+				aria-expanded={sectionState.sseStream}
+				data-testid="sse-stream-toggle"
+			>
 				<div class="flex items-center gap-2">
 					<h3 class="text-xs font-semibold">SSE Stream</h3>
 					<span class="text-xs text-muted-foreground">OpenCode events</span>
 				</div>
-				<span class="text-xs text-muted-foreground">{$sseEvents.length} events</span>
-			</div>
-			<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
-				{#each $sseEvents.slice().reverse().slice(0, 20) as event (event.id)}
-					<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
-						<span class="opacity-60">{formatTime(event.timestamp)}</span>
-						<span class="text-foreground">{event.type}</span>
-						{#if event.properties?.sessionID}
-							<span class="opacity-60">{event.properties.sessionID.slice(0, 8)}</span>
-						{/if}
-					</div>
-				{:else}
-					<p class="py-2 text-center text-muted-foreground">
-						{#if $connectionStatus === 'connected'}
-							Waiting...
-						{:else}
-							Click Connect
-						{/if}
-					</p>
-				{/each}
-			</div>
+				<div class="flex items-center gap-2">
+					<span class="text-xs text-muted-foreground">{$sseEvents.length} events</span>
+					<span class="text-muted-foreground transition-transform {sectionState.sseStream ? 'rotate-180' : ''}">
+						<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="6 9 12 15 18 9"></polyline>
+						</svg>
+					</span>
+				</div>
+			</button>
+			{#if sectionState.sseStream}
+				<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
+					{#each $sseEvents.slice().reverse().slice(0, 20) as event (event.id)}
+						<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
+							<span class="opacity-60">{formatTime(event.timestamp)}</span>
+							<span class="text-foreground">{event.type}</span>
+							{#if event.properties?.sessionID}
+								<span class="opacity-60">{event.properties.sessionID.slice(0, 8)}</span>
+							{/if}
+						</div>
+					{:else}
+						<p class="py-2 text-center text-muted-foreground">
+							{#if $connectionStatus === 'connected'}
+								Waiting...
+							{:else}
+								Click Connect
+							{/if}
+						</p>
+					{/each}
+				</div>
+			{/if}
 		</div>
 	</div>
 </div>

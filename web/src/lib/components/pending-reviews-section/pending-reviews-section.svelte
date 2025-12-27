@@ -10,6 +10,15 @@
 	let creatingIssue: { [key: string]: boolean } = {};
 	let createdIssues: { [key: string]: string } = {};
 	let dismissingItem: { [key: string]: boolean } = {};
+	let dismissingAllLightTier: boolean = false;
+	
+	// Separate light-tier from standard agents
+	$: lightTierAgents = $pendingReviews?.agents.filter(a => a.is_light_tier) ?? [];
+	$: standardAgents = $pendingReviews?.agents.filter(a => !a.is_light_tier) ?? [];
+	
+	// Count total light-tier unreviewed items
+	$: lightTierTotalUnreviewed = lightTierAgents.reduce((sum, agent) => 
+		sum + getUnreviewedItems(agent).length, 0);
 
 	function toggle() {
 		expanded = !expanded;
@@ -62,6 +71,22 @@
 		}
 	}
 
+	async function handleDismissAllLightTier() {
+		dismissingAllLightTier = true;
+		
+		try {
+			// Dismiss all unreviewed items from light-tier agents
+			const promises = lightTierAgents.flatMap(agent => 
+				getUnreviewedItems(agent).map(item => 
+					pendingReviews.dismiss(agent.workspace_id, item.index)
+				)
+			);
+			await Promise.all(promises);
+		} finally {
+			dismissingAllLightTier = false;
+		}
+	}
+
 	// Get unreviewed items for an agent
 	function getUnreviewedItems(agent: PendingReviewAgent): PendingReviewItem[] {
 		return agent.items.filter(item => !item.reviewed && !item.dismissed && !item.acted_on);
@@ -106,21 +131,44 @@
 
 		{#if expanded}
 			<div class="border-t px-3 py-2 space-y-3" data-testid="pending-reviews-content">
-				{#each $pendingReviews.agents as agent (agent.workspace_id)}
+				<!-- Light-tier agents: grouped into single summary card -->
+				{#if lightTierTotalUnreviewed > 0}
+					<div class="rounded border bg-card p-3 border-blue-500/30 bg-blue-500/5">
+						<div class="flex items-center justify-between mb-2">
+							<div class="flex items-center gap-2">
+								<Badge variant="secondary" class="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
+									⚡ light tier
+								</Badge>
+								<span class="text-sm text-muted-foreground">
+									{lightTierTotalUnreviewed} recommendation{lightTierTotalUnreviewed === 1 ? '' : 's'} from {lightTierAgents.length} agent{lightTierAgents.length === 1 ? '' : 's'}
+								</span>
+							</div>
+							<Button
+								variant="outline"
+								size="sm"
+								class="h-6 px-2 text-xs"
+								onclick={handleDismissAllLightTier}
+								disabled={dismissingAllLightTier}
+							>
+								{dismissingAllLightTier ? 'Dismissing...' : 'Dismiss All'}
+							</Button>
+						</div>
+						<p class="text-xs text-muted-foreground">
+							Light tier spawns have minimal synthesis - these can usually be dismissed in bulk.
+						</p>
+					</div>
+				{/if}
+
+				<!-- Standard agents: show full detail -->
+				{#each standardAgents as agent (agent.workspace_id)}
 					{@const unreviewedItems = getUnreviewedItems(agent)}
 					{#if unreviewedItems.length > 0}
 						<div class="rounded border bg-card p-3">
 							<div class="flex items-center gap-2 mb-2">
 								<span class="text-sm font-medium">{formatWorkspaceName(agent.workspace_id)}</span>
-								{#if agent.is_light_tier}
-									<Badge variant="secondary" class="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
-										⚡ light
-									</Badge>
-								{:else}
-									<Badge variant="outline" class="text-xs">
-										{unreviewedItems.length} recommendation{unreviewedItems.length === 1 ? '' : 's'}
-									</Badge>
-								{/if}
+								<Badge variant="outline" class="text-xs">
+									{unreviewedItems.length} recommendation{unreviewedItems.length === 1 ? '' : 's'}
+								</Badge>
 								{#if agent.beads_id}
 									<span class="text-xs text-muted-foreground">{agent.beads_id}</span>
 								{/if}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
@@ -934,16 +935,47 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch token usage for agents with valid session IDs
-	// NOTE: This makes HTTP calls per agent. Unlike IsProcessing (which was removed
-	// due to CPU impact), token data changes infrequently and is valuable for monitoring.
-	// If this becomes a performance issue, consider caching or background fetching.
+	// Parallelized to avoid sequential HTTP calls causing ~20s delays with 200+ agents.
+	// Uses goroutines with semaphore to limit concurrent requests.
+	type tokenResult struct {
+		index  int
+		tokens *opencode.TokenStats
+	}
+	tokenChan := make(chan tokenResult, len(agents))
+	
+	// Limit concurrent HTTP requests to avoid overwhelming the OpenCode server
+	const maxConcurrent = 20
+	sem := make(chan struct{}, maxConcurrent)
+	
+	var wg sync.WaitGroup
 	for i := range agents {
-		if agents[i].SessionID != "" {
-			tokens, err := client.GetSessionTokens(agents[i].SessionID)
-			if err == nil && tokens != nil {
-				agents[i].Tokens = tokens
-			}
+		// Skip agents without session ID or completed agents (token data is static for completed)
+		if agents[i].SessionID == "" || agents[i].Status == "completed" {
+			continue
 		}
+		
+		wg.Add(1)
+		go func(idx int, sessionID string) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire semaphore
+			defer func() { <-sem }() // Release semaphore
+			
+			tokens, err := client.GetSessionTokens(sessionID)
+			if err == nil && tokens != nil {
+				tokenChan <- tokenResult{index: idx, tokens: tokens}
+			}
+		}(i, agents[i].SessionID)
+	}
+	
+	// Wait for all goroutines to complete, then close channel
+	go func() {
+		wg.Wait()
+		close(tokenChan)
+	}()
+	
+	// Collect results
+	for result := range tokenChan {
+		agents[result.index].Tokens = result.tokens
 	}
 
 	w.Header().Set("Content-Type", "application/json")
