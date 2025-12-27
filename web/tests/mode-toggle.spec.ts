@@ -14,9 +14,9 @@ test.describe('Dashboard Mode Toggle', () => {
 		await expect(opsButton).toBeVisible();
 		await expect(historyButton).toBeVisible();
 		
-		// Ops button should be active by default (has bg-background class)
-		await expect(opsButton).toHaveClass(/bg-background/);
-		await expect(historyButton).not.toHaveClass(/bg-background/);
+		// Ops button should be active by default (has shadow-md class for active state)
+		await expect(opsButton).toHaveClass(/shadow-md/);
+		await expect(historyButton).not.toHaveClass(/shadow-md/);
 		
 		// Should see operational mode content (active agents section is always visible in ops mode)
 		await expect(page.getByTestId('active-agents-section')).toBeVisible();
@@ -25,8 +25,8 @@ test.describe('Dashboard Mode Toggle', () => {
 		await historyButton.click();
 		
 		// History button should now be active
-		await expect(historyButton).toHaveClass(/bg-background/);
-		await expect(opsButton).not.toHaveClass(/bg-background/);
+		await expect(historyButton).toHaveClass(/shadow-md/);
+		await expect(opsButton).not.toHaveClass(/shadow-md/);
 		
 		// Should see historical mode content (filter bar is only in historical mode)
 		await expect(page.getByTestId('filter-bar')).toBeVisible();
@@ -35,8 +35,8 @@ test.describe('Dashboard Mode Toggle', () => {
 		await opsButton.click();
 		
 		// Ops button should be active again
-		await expect(opsButton).toHaveClass(/bg-background/);
-		await expect(historyButton).not.toHaveClass(/bg-background/);
+		await expect(opsButton).toHaveClass(/shadow-md/);
+		await expect(historyButton).not.toHaveClass(/shadow-md/);
 		
 		// Filter bar should be hidden (only in historical mode)
 		await expect(page.getByTestId('filter-bar')).not.toBeVisible();
@@ -61,6 +61,6 @@ test.describe('Dashboard Mode Toggle', () => {
 		await page.reload();
 		
 		// History button should still be active after reload
-		await expect(historyButton).toHaveClass(/bg-background/);
+		await expect(historyButton).toHaveClass(/shadow-md/);
 	});
 });

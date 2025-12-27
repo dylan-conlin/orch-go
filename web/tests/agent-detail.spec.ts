@@ -10,6 +10,9 @@ test.describe('Agent Detail Panel', () => {
 		// Navigate to dashboard (dev server)
 		await page.goto('/');
 		
+		// Switch to historical mode to access agent-sections
+		await page.getByTestId('mode-toggle').getByRole('button', { name: /History/ }).click();
+		
 		// Wait for agents to load
 		await page.waitForSelector('[data-testid="agent-sections"]', { timeout: 10000 });
 		
@@ -42,6 +45,8 @@ test.describe('Agent Detail Panel', () => {
 	
 	test('should close panel when clicking backdrop', async ({ page }) => {
 		await page.goto('/');
+		// Switch to historical mode to access agent-sections
+		await page.getByTestId('mode-toggle').getByRole('button', { name: /History/ }).click();
 		await page.waitForSelector('[data-testid="agent-sections"]', { timeout: 10000 });
 		
 		const agentCard = page.locator('.grid button.group').first();
@@ -64,6 +69,8 @@ test.describe('Agent Detail Panel', () => {
 	
 	test('should close panel when pressing Escape', async ({ page }) => {
 		await page.goto('/');
+		// Switch to historical mode to access agent-sections
+		await page.getByTestId('mode-toggle').getByRole('button', { name: /History/ }).click();
 		await page.waitForSelector('[data-testid="agent-sections"]', { timeout: 10000 });
 		
 		const agentCard = page.locator('.grid button.group').first();
@@ -86,6 +93,8 @@ test.describe('Agent Detail Panel', () => {
 	
 	test('should show selected state on agent card', async ({ page }) => {
 		await page.goto('/');
+		// Switch to historical mode to access agent-sections
+		await page.getByTestId('mode-toggle').getByRole('button', { name: /History/ }).click();
 		await page.waitForSelector('[data-testid="agent-sections"]', { timeout: 10000 });
 		
 		const agentCard = page.locator('.grid button.group').first();

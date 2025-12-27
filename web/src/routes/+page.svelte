@@ -345,19 +345,19 @@
 	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
-<div class="space-y-3">
+<div class="space-y-4">
 	<!-- Compact Stats Bar with Mode Toggle -->
-	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
+	<div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-card/80 backdrop-blur-sm px-4 py-2.5 shadow-sm" data-testid="stats-bar">
 		<!-- Mode Toggle -->
-		<div class="flex items-center gap-1 rounded-md bg-muted p-0.5" data-testid="mode-toggle">
+		<div class="flex items-center gap-0.5 rounded-lg bg-muted/80 p-1" data-testid="mode-toggle">
 			<button
-				class="px-2 py-1 rounded text-xs font-medium transition-colors {$dashboardMode === 'operational' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+				class="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 {$dashboardMode === 'operational' ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}"
 				onclick={() => dashboardMode.set('operational')}
 			>
 				⚡ Ops
 			</button>
 			<button
-				class="px-2 py-1 rounded text-xs font-medium transition-colors {$dashboardMode === 'historical' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+				class="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 {$dashboardMode === 'historical' ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}"
 				onclick={() => dashboardMode.set('historical')}
 			>
 				📦 History
@@ -365,15 +365,15 @@
 		</div>
 
 		<!-- Secondary indicators group -->
-		<div class="flex items-center gap-4">
+		<div class="flex items-center gap-5">
 			<!-- Errors indicator -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default">
+						<span {...props} class="inline-flex items-center gap-2 cursor-default rounded-lg px-2 py-1 transition-colors hover:bg-accent/30">
 							<span class="text-lg">❌</span>
 							<span class="inline-flex items-baseline gap-1">
-								<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+								<span class="text-xl font-bold tabular-nums" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
 								<span class="text-xs text-muted-foreground">errors</span>
 							</span>
 						</span>
@@ -388,10 +388,10 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default">
+						<span {...props} class="inline-flex items-center gap-2 cursor-default rounded-lg px-2 py-1 transition-colors hover:bg-accent/30">
 							<span class="text-lg">🟢</span>
 							<span class="inline-flex items-baseline gap-1">
-								<span class="text-xl font-bold" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
+								<span class="text-xl font-bold tabular-nums" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
 								<span class="text-xs text-muted-foreground">active</span>
 							</span>
 						</span>
@@ -578,10 +578,13 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="rounded border border-dashed p-6 text-center">
-						<p class="text-sm text-muted-foreground">No active agents</p>
-						<p class="mt-1 text-xs text-muted-foreground">
-							Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+					<div class="rounded-lg border-2 border-dashed border-muted-foreground/20 p-8 text-center">
+						<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+							<span class="text-2xl opacity-50">🤖</span>
+						</div>
+						<p class="text-sm font-medium text-muted-foreground">No active agents</p>
+						<p class="mt-2 text-xs text-muted-foreground">
+							Spawn with <code class="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">orch spawn</code>
 						</p>
 					</div>
 				{/if}
@@ -715,10 +718,13 @@
 						{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 							{:else}
-								<div class="col-span-full rounded border border-dashed p-6 text-center">
-									<p class="text-sm text-muted-foreground">No active agents</p>
-									<p class="mt-1 text-xs text-muted-foreground">
-										Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+								<div class="col-span-full rounded-lg border-2 border-dashed border-muted-foreground/20 p-8 text-center">
+									<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+										<span class="text-2xl opacity-50">🤖</span>
+									</div>
+									<p class="text-sm font-medium text-muted-foreground">No active agents</p>
+									<p class="mt-2 text-xs text-muted-foreground">
+										Spawn with <code class="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">orch spawn</code>
 									</p>
 								</div>
 							{/each}
@@ -778,16 +784,22 @@
 
 						<!-- Empty state when no agents at all -->
 						{#if sortedActiveAgents.length === 0 && sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0}
-							<div class="rounded border border-dashed p-6 text-center">
+							<div class="rounded-lg border-2 border-dashed border-muted-foreground/20 p-10 text-center">
 								{#if hasActiveFilters}
-									<p class="text-sm text-muted-foreground">No agents match filters</p>
-									<Button variant="link" onclick={clearFilters} class="mt-1 h-auto p-0 text-xs">
+									<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+										<span class="text-2xl opacity-50">🔍</span>
+									</div>
+									<p class="text-sm font-medium text-muted-foreground">No agents match filters</p>
+									<Button variant="outline" onclick={clearFilters} class="mt-3 h-8 text-xs">
 										Clear filters
 									</Button>
 								{:else}
-									<p class="text-sm text-muted-foreground">No agents in the swarm</p>
-									<p class="mt-1 text-xs text-muted-foreground">
-										Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+									<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
+										<span class="text-2xl opacity-50">🐝</span>
+									</div>
+									<p class="text-sm font-medium text-muted-foreground">No agents in the swarm</p>
+									<p class="mt-2 text-xs text-muted-foreground">
+										Spawn with <code class="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">orch spawn</code>
 									</p>
 								{/if}
 							</div>

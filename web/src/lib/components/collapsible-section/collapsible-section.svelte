@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import type { Agent } from '$lib/stores/agents';
 
 	export let title: string;
@@ -87,26 +89,27 @@
 	$: collapsedPreview = getCollapsedPreview(agents);
 </script>
 
-<div class="rounded-lg border {getVariantStyles(variant)}">
+<div class="rounded-lg border transition-all duration-200 {getVariantStyles(variant)} {expanded ? 'shadow-sm' : ''}">
 	<button
-		class="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-accent/50 transition-colors"
+		class="flex w-full items-center justify-between px-3 py-2.5 text-left rounded-lg transition-colors duration-150
+			hover:bg-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
 		onclick={toggle}
 		aria-expanded={expanded}
 		data-testid="section-toggle-{variant}"
 	>
 		<div class="flex items-center gap-2 min-w-0 flex-1">
-			<span class="text-sm flex-shrink-0">{icon}</span>
+			<span class="text-base flex-shrink-0 transition-transform duration-200 {expanded ? 'scale-110' : ''}">{icon}</span>
 			<span class="text-sm font-medium flex-shrink-0">{title}</span>
-			<Badge variant={getBadgeVariant(variant)} class="h-5 px-1.5 text-xs flex-shrink-0">
+			<Badge variant={getBadgeVariant(variant)} class="h-5 px-1.5 text-xs flex-shrink-0 tabular-nums">
 				{agents.length}
 			</Badge>
 			{#if !expanded && collapsedPreview && agents.length > 0}
-				<span class="text-xs text-muted-foreground truncate" data-testid="section-preview-{variant}">
+				<span class="text-xs text-muted-foreground truncate opacity-70" data-testid="section-preview-{variant}">
 					— {collapsedPreview}
 				</span>
 			{/if}
 		</div>
-		<span class="text-muted-foreground transition-transform flex-shrink-0 {expanded ? 'rotate-180' : ''}">
+		<span class="text-muted-foreground transition-transform duration-200 ease-out flex-shrink-0 {expanded ? 'rotate-180' : ''}">
 			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<polyline points="6 9 12 15 18 9"></polyline>
 			</svg>
@@ -114,12 +117,20 @@
 	</button>
 
 	{#if expanded && agents.length > 0}
-		<div class="border-t px-2 pb-2 pt-2" data-testid="section-content-{variant}">
+		<div 
+			class="border-t px-2 pb-2 pt-2" 
+			data-testid="section-content-{variant}"
+			transition:slide={{ duration: 200, easing: cubicOut }}
+		>
 			<slot />
 		</div>
 	{:else if expanded && agents.length === 0}
-		<div class="border-t px-3 py-4 text-center text-sm text-muted-foreground" data-testid="section-empty-{variant}">
-			No {title.toLowerCase()} agents
+		<div 
+			class="border-t px-3 py-6 text-center" 
+			data-testid="section-empty-{variant}"
+			transition:slide={{ duration: 200, easing: cubicOut }}
+		>
+			<p class="text-sm text-muted-foreground">No {title.toLowerCase()} agents</p>
 		</div>
 	{/if}
 </div>
