@@ -1,0 +1,300 @@
+// Package verify provides verification helpers for agent completion.
+package verify
+
+import (
+	"os/exec"
+	"regexp"
+	"strings"
+)
+
+// TestEvidenceResult represents the result of checking for test execution evidence.
+type TestEvidenceResult struct {
+	Passed           bool     // Whether verification passed
+	HasCodeChanges   bool     // Whether code files were changed (requires test evidence)
+	HasTestEvidence  bool     // Whether test execution evidence was found
+	Errors           []string // Error messages (blocking)
+	Warnings         []string // Warning messages (non-blocking)
+	Evidence         []string // Evidence found (for debugging)
+	SkillName        string   // Skill that was used
+}
+
+// Skills that require test execution evidence before completion.
+// Only implementation-focused skills need test verification.
+// Investigation/research skills produce artifacts, not code changes.
+var skillsRequiringTestEvidence = map[string]bool{
+	"feature-impl":         true, // Primary implementation skill
+	"systematic-debugging": true, // Debug fixes should be tested
+	"reliability-testing":  true, // Testing skill should document tests
+}
+
+// Skills explicitly excluded from test evidence requirements.
+// These skills may modify code incidentally but don't require test evidence.
+var skillsExcludedFromTestEvidence = map[string]bool{
+	"investigation":   true, // Research skill, produces investigations
+	"architect":       true, // Design skill, produces decisions
+	"research":        true, // External research, no code changes
+	"design-session":  true, // Scoping skill, produces epics
+	"codebase-audit":  true, // Audit skill, produces reports
+	"issue-creation":  true, // Triage skill, creates issues
+	"writing-skills":  true, // Meta skill, modifies skills
+}
+
+// IsSkillRequiringTestEvidence determines if a skill requires test execution evidence.
+//
+// The logic is:
+// 1. If skill is explicitly excluded (investigation, architect, etc.) -> false
+// 2. If skill is explicitly included (feature-impl, debugging) -> true
+// 3. If skill is unknown -> false (permissive default)
+func IsSkillRequiringTestEvidence(skillName string) bool {
+	if skillName == "" {
+		return false
+	}
+
+	skillName = strings.ToLower(skillName)
+
+	// Check explicit exclusions first
+	if skillsExcludedFromTestEvidence[skillName] {
+		return false
+	}
+
+	// Check explicit inclusions
+	if skillsRequiringTestEvidence[skillName] {
+		return true
+	}
+
+	// Unknown skill - be permissive
+	return false
+}
+
+// testEvidencePatterns defines regex patterns that indicate test execution was performed.
+// These patterns match actual test output, not just claims like "tests pass".
+var testEvidencePatterns = []*regexp.Regexp{
+	// Go test output patterns
+	regexp.MustCompile(`(?i)go\s+test\s+.*\s*[-–—]?\s*PASS`),            // "go test ./... - PASS"
+	regexp.MustCompile(`(?i)ok\s+\S+\s+\d+\.\d+s`),                      // "ok  package/name  0.123s"
+	regexp.MustCompile(`(?i)PASS:\s*\d+`),                               // "PASS: 15" (test count)
+	regexp.MustCompile(`(?i)---\s*PASS:\s*\w+`),                         // "--- PASS: TestName"
+	regexp.MustCompile(`(?i)FAIL:\s*\d+`),                               // "FAIL: 2" (captures failures too)
+	regexp.MustCompile(`(?i)\(\d+\s+tests?\s+in\s+\d+\.\d+s\)`),         // "(12 tests in 0.8s)"
+	regexp.MustCompile(`(?i)tests?\s+passed`),                           // "15 tests passed"
+	regexp.MustCompile(`(?i)all\s+tests?\s+pass`),                       // "all tests pass"
+
+	// npm/yarn/bun test output patterns
+	regexp.MustCompile(`(?i)npm\s+test\s*[-–—]?\s*(passed|success)`),    // "npm test - passed"
+	regexp.MustCompile(`(?i)yarn\s+test\s*[-–—]?\s*(passed|success)`),   // "yarn test - passed"
+	regexp.MustCompile(`(?i)bun\s+test\s*[-–—]?\s*(passed|success)`),    // "bun test - passed"
+	regexp.MustCompile(`(?i)\d+\s+pass(ed|ing)?[,\s]+\d+\s+fail`),       // "15 passing, 0 failing"
+	regexp.MustCompile(`(?i)Tests:\s+\d+\s+passed`),                     // "Tests: 15 passed"
+	regexp.MustCompile(`(?i)Test\s+Suites?:\s+\d+\s+passed`),            // "Test Suites: 5 passed"
+
+	// pytest output patterns
+	regexp.MustCompile(`(?i)pytest\s*[-–—]?\s*\d+\s+passed`),            // "pytest - 15 passed"
+	regexp.MustCompile(`(?i)==+\s+\d+\s+passed`),                        // "======= 15 passed"
+	regexp.MustCompile(`(?i)\d+\s+passed,?\s*\d*\s*(?:warnings?|errors?|failed)?`), // "15 passed, 0 failed"
+
+	// cargo test output patterns
+	regexp.MustCompile(`(?i)cargo\s+test\s*[-–—]?\s*(ok|passed)`),       // "cargo test - ok"
+	regexp.MustCompile(`(?i)test\s+result:\s+ok`),                       // "test result: ok"
+	regexp.MustCompile(`(?i)\d+\s+passed;\s+\d+\s+failed`),              // "15 passed; 0 failed"
+
+	// Generic test execution evidence
+	regexp.MustCompile(`(?i)Tests?:\s*(?:go\s+test|npm\s+test|pytest|cargo\s+test|yarn\s+test|bun\s+test)`), // "Tests: go test ..."
+	regexp.MustCompile(`(?i)ran\s+\d+\s+tests?\s+in\s+\d+`),             // "ran 15 tests in 2.3s"
+	regexp.MustCompile(`(?i)test\s+suite\s+(?:passed|completed)`),       // "test suite passed"
+	regexp.MustCompile(`(?i)all\s+\d+\s+tests?\s+(?:passed|succeeded)`), // "all 15 tests passed"
+	
+	// Playwright/e2e test patterns
+	regexp.MustCompile(`(?i)playwright\s+test.*\d+\s+passed`),           // "playwright test - 5 passed"
+	regexp.MustCompile(`(?i)\d+\s+passed\s+\(\d+[smh]\)`),               // "5 passed (2s)"
+}
+
+// falsePositivePatterns defines patterns that indicate a claim without evidence.
+// These should NOT count as test evidence.
+var falsePositivePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)^tests?\s+pass\s*$`),        // Just "tests pass" with no evidence
+	regexp.MustCompile(`(?i)verified\s+tests?\s+pass`),  // "verified tests pass" (claim)
+	regexp.MustCompile(`(?i)tests?\s+should\s+pass`),    // "tests should pass" (expectation)
+	regexp.MustCompile(`(?i)assuming\s+tests?\s+pass`),  // "assuming tests pass" (assumption)
+}
+
+// HasTestExecutionEvidence checks beads comments for evidence of test execution.
+// Returns true if any comment contains actual test output patterns.
+// Returns false for vague claims like "tests pass" without evidence.
+func HasTestExecutionEvidence(comments []Comment) (bool, []string) {
+	var evidence []string
+
+	for _, comment := range comments {
+		// Skip false positives
+		isFalsePositive := false
+		for _, fp := range falsePositivePatterns {
+			if fp.MatchString(comment.Text) {
+				isFalsePositive = true
+				break
+			}
+		}
+		if isFalsePositive {
+			continue
+		}
+
+		// Check for valid test evidence patterns
+		for _, pattern := range testEvidencePatterns {
+			if pattern.MatchString(comment.Text) {
+				matches := pattern.FindString(comment.Text)
+				if matches != "" {
+					evidence = append(evidence, matches)
+				}
+			}
+		}
+	}
+
+	return len(evidence) > 0, evidence
+}
+
+// codeFileExtensions defines file extensions that are considered "code files"
+// that typically require test verification when modified.
+var codeFileExtensions = []string{
+	".go", ".py", ".js", ".ts", ".jsx", ".tsx",
+	".rs", ".rb", ".java", ".kt", ".swift",
+	".c", ".cpp", ".h", ".hpp", ".cs",
+	".svelte", ".vue", // UI components
+}
+
+// HasCodeChangesInRecentCommits checks if any code files were modified
+// in recent commits that would require test verification.
+func HasCodeChangesInRecentCommits(projectDir string) bool {
+	// Get changed files from last 5 commits
+	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Try with fewer commits
+		cmd = exec.Command("git", "diff", "--name-only", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return false
+		}
+	}
+
+	return hasCodeChangesInFiles(string(output))
+}
+
+// hasCodeChangesInFiles checks if any files in the output are code files.
+func hasCodeChangesInFiles(gitOutput string) bool {
+	lines := strings.Split(gitOutput, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if isCodeFile(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCodeFile checks if a file path is a code file based on extension.
+func isCodeFile(filePath string) bool {
+	// Get base filename for test file checks
+	baseName := filePath
+	if idx := strings.LastIndex(filePath, "/"); idx != -1 {
+		baseName = filePath[idx+1:]
+	}
+
+	// Skip test files themselves (they don't require tests of tests)
+	if strings.Contains(filePath, "_test.go") ||
+		strings.Contains(filePath, ".test.") ||
+		strings.Contains(filePath, ".spec.") ||
+		strings.HasSuffix(filePath, "_test.py") ||
+		strings.HasPrefix(baseName, "test_") {
+		return false
+	}
+
+	for _, ext := range codeFileExtensions {
+		if strings.HasSuffix(filePath, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// VerifyTestEvidence checks if test execution evidence exists for code changes.
+// This is a gate that blocks completion if code files were modified without
+// test execution evidence in beads comments.
+//
+// The verification passes if:
+// 1. No code files were modified in recent commits, OR
+// 2. The skill is not an implementation-focused skill, OR
+// 3. Test execution evidence is found in beads comments
+//
+// Evidence must show actual test output (pass counts, timing, framework output)
+// not just claims like "tests pass".
+func VerifyTestEvidence(beadsID, workspacePath, projectDir string) TestEvidenceResult {
+	result := TestEvidenceResult{Passed: true}
+
+	// Extract skill name for skill-based gating
+	skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
+	result.SkillName = skillName
+
+	// Check if skill requires test evidence
+	if !IsSkillRequiringTestEvidence(skillName) {
+		result.Warnings = append(result.Warnings,
+			"skill '"+skillName+"' does not require test evidence")
+		return result
+	}
+
+	// Check if code files were modified
+	result.HasCodeChanges = HasCodeChangesInRecentCommits(projectDir)
+
+	// No code changes = no test evidence needed
+	if !result.HasCodeChanges {
+		result.Warnings = append(result.Warnings,
+			"no code files modified - test evidence not required")
+		return result
+	}
+
+	// Code changes exist - check for test evidence in beads comments
+	comments, err := GetComments(beadsID)
+	if err != nil {
+		result.Warnings = append(result.Warnings,
+			"failed to get beads comments: "+err.Error())
+		// Don't fail verification if we can't fetch comments
+		return result
+	}
+
+	hasEvidence, evidence := HasTestExecutionEvidence(comments)
+	result.HasTestEvidence = hasEvidence
+	result.Evidence = evidence
+
+	if !hasEvidence {
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			"code files modified but no test execution evidence found in beads comments",
+			"Agent must run tests and report actual output (not just 'tests pass')",
+			"Example: bd comment <id> 'Tests: go test ./pkg/... - PASS (12 tests in 0.8s)'",
+			"Example: bd comment <id> 'Tests: npm test - 15 passing, 0 failing'",
+		)
+	}
+
+	return result
+}
+
+// VerifyTestEvidenceForCompletion is a convenience function for use in VerifyCompletionFull.
+// Returns nil if no verification is needed (no code changes or non-implementation skill).
+// Returns EscalationBlock level result if test evidence is missing.
+func VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir string) *TestEvidenceResult {
+	result := VerifyTestEvidence(beadsID, workspacePath, projectDir)
+
+	// Return nil if no code changes - no action needed
+	if !result.HasCodeChanges {
+		return nil
+	}
+
+	// Return nil if skill doesn't require test evidence
+	if !IsSkillRequiringTestEvidence(result.SkillName) {
+		return nil
+	}
+
+	return &result
+}

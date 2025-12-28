@@ -363,6 +363,8 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // 1. Constraint verification from SPAWN_CONTEXT.md (file patterns must match)
 // 2. Phase gate verification (required phases must be reported via beads comments)
 // 3. Skill output verification from skill.yaml outputs.required section
+// 4. Visual verification for web/ changes
+// 5. Test execution evidence for code changes (blocks when code modified without test output)
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
@@ -434,6 +436,17 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 			result.Errors = append(result.Errors, visualResult.Errors...)
 		}
 		result.Warnings = append(result.Warnings, visualResult.Warnings...)
+	}
+
+	// Verify test execution evidence for code changes
+	// This gates completion when code files are modified without test execution evidence
+	testEvidenceResult := VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir)
+	if testEvidenceResult != nil {
+		if !testEvidenceResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, testEvidenceResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
 	}
 
 	return result, nil
