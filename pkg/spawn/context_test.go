@@ -1243,3 +1243,129 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateEcosystemContext(t *testing.T) {
+	// This test verifies the ecosystem context generation logic
+	// The actual file read depends on ~/.orch/ECOSYSTEM.md existing
+
+	t.Run("extracts quick reference from content", func(t *testing.T) {
+		content := `# Ecosystem
+
+> Purpose line
+
+---
+
+## Quick Reference
+
+| Repo | Purpose | CLI |
+|------|---------|-----|
+| orch-go | Orchestration | orch |
+| kb-cli | Knowledge base | kb |
+| beads | Issue tracking | bd |
+
+---
+
+## Core Repos
+
+### orch-go
+More detailed info...
+`
+		result := extractQuickReference(content)
+
+		// Should contain the table
+		if !strings.Contains(result, "## Quick Reference") {
+			t.Error("expected result to contain Quick Reference heading")
+		}
+		if !strings.Contains(result, "| orch-go |") {
+			t.Error("expected result to contain orch-go row")
+		}
+		if !strings.Contains(result, "| kb-cli |") {
+			t.Error("expected result to contain kb-cli row")
+		}
+
+		// Should NOT contain the Core Repos section
+		if strings.Contains(result, "## Core Repos") {
+			t.Error("result should stop before Core Repos section")
+		}
+		if strings.Contains(result, "More detailed info") {
+			t.Error("result should not include content after Quick Reference section")
+		}
+	})
+
+	t.Run("falls back to first lines if no quick reference", func(t *testing.T) {
+		content := `# Ecosystem
+
+This is a simple ecosystem file without Quick Reference section.
+
+Here is some info about projects.
+Line 1
+Line 2
+Line 3
+`
+		result := extractQuickReference(content)
+
+		// Should return some content (fallback behavior)
+		if result == "" {
+			t.Error("expected non-empty result for fallback case")
+		}
+		if !strings.Contains(result, "simple ecosystem file") {
+			t.Error("expected fallback to include content from file")
+		}
+	})
+}
+
+func TestGenerateContext_WithEcosystemContext(t *testing.T) {
+	// This test verifies ecosystem context is included in spawn context
+	// when ~/.orch/ECOSYSTEM.md exists (which it does on Dylan's machine)
+
+	cfg := &Config{
+		Task:       "test ecosystem integration",
+		SkillName:  "investigation",
+		Project:    "test-project",
+		ProjectDir: "/tmp/test",
+		BeadsID:    "test-123",
+		Tier:       TierFull,
+	}
+
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
+	}
+
+	// If ecosystem file exists, content should include ecosystem section
+	ecosystemContext := GenerateEcosystemContext()
+	if ecosystemContext != "" {
+		if !strings.Contains(content, "LOCAL PROJECT ECOSYSTEM") {
+			t.Error("expected content to contain LOCAL PROJECT ECOSYSTEM section when file exists")
+		}
+		// Should include key repos from ecosystem
+		if !strings.Contains(content, "orch-go") {
+			t.Error("expected ecosystem context to mention orch-go")
+		}
+	}
+}
+
+func TestGenerateEcosystemContext_Integration(t *testing.T) {
+	// This test verifies the real ecosystem file can be read and parsed
+	// Skip if file doesn't exist (CI environments)
+
+	context := GenerateEcosystemContext()
+	if context == "" {
+		t.Skip("~/.orch/ECOSYSTEM.md not found - skipping integration test")
+	}
+
+	// Should contain Quick Reference section
+	if !strings.Contains(context, "Quick Reference") {
+		t.Error("expected ecosystem context to contain Quick Reference")
+	}
+
+	// Should contain known repos
+	expectedRepos := []string{"orch-go", "kb-cli", "beads"}
+	for _, repo := range expectedRepos {
+		if !strings.Contains(context, repo) {
+			t.Errorf("expected ecosystem context to mention %s", repo)
+		}
+	}
+
+	t.Logf("Ecosystem context length: %d chars", len(context))
+}

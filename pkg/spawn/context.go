@@ -30,6 +30,13 @@ SPAWN TIER: {{.Tier}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .EcosystemContext}}
+## LOCAL PROJECT ECOSYSTEM
+
+The following local projects are part of Dylan's orchestration ecosystem. These are LOCAL repositories on this machine - do NOT search GitHub for them.
+
+{{.EcosystemContext}}
+{{end}}
 {{if .NoTrack}}
 📋 AD-HOC SPAWN (--no-track):
 This is an ad-hoc spawn without beads issue tracking.
@@ -376,7 +383,8 @@ type contextData struct {
 	KBContext         string
 	Tier              string
 	ServerContext     string
-	NoTrack           bool // When true, omit beads instructions from spawn context
+	EcosystemContext  string // Local project ecosystem from ~/.orch/ECOSYSTEM.md
+	NoTrack           bool   // When true, omit beads instructions from spawn context
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -394,6 +402,9 @@ func GenerateContext(cfg *Config) (string, error) {
 	if cfg.IncludeServers && serverContext == "" {
 		serverContext = GenerateServerContext(cfg.ProjectDir)
 	}
+
+	// Generate ecosystem context (auto-inject local project registry)
+	ecosystemContext := GenerateEcosystemContext()
 
 	// Strip beads instructions from skill content when NoTrack is true
 	// This prevents confusing agents with beads commands that won't work
@@ -417,6 +428,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		KBContext:         cfg.KBContext,
 		Tier:              cfg.Tier,
 		ServerContext:     serverContext,
+		EcosystemContext:  ecosystemContext,
 		NoTrack:           cfg.NoTrack,
 	}
 
@@ -888,4 +900,84 @@ func GenerateServerContext(projectDir string) string {
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+// EcosystemFilePath is the path to the ecosystem registry file.
+const EcosystemFilePath = "~/.orch/ECOSYSTEM.md"
+
+// GenerateEcosystemContext reads the ecosystem registry from ~/.orch/ECOSYSTEM.md
+// and extracts the Quick Reference table for inclusion in spawn context.
+// This provides spawned agents with knowledge of Dylan's local project ecosystem
+// so they don't try to search GitHub for projects like glass, beads, kb-cli, etc.
+// Returns empty string if file doesn't exist or can't be read.
+func GenerateEcosystemContext() string {
+	// Expand ~ to home directory
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	ecosystemPath := filepath.Join(home, ".orch", "ECOSYSTEM.md")
+
+	// Read the file
+	content, err := os.ReadFile(ecosystemPath)
+	if err != nil {
+		return "" // File doesn't exist or can't be read - skip silently
+	}
+
+	// Extract the Quick Reference section (table with repo info)
+	// This is the most useful part for agents - concise project listing
+	return extractQuickReference(string(content))
+}
+
+// extractQuickReference extracts the Quick Reference table from ECOSYSTEM.md.
+// Returns the table content or the first ~50 lines if table not found.
+func extractQuickReference(content string) string {
+	lines := strings.Split(content, "\n")
+
+	// Find "## Quick Reference" section
+	var inQuickRef bool
+	var result []string
+
+	for _, line := range lines {
+		// Start capturing at Quick Reference heading
+		if strings.HasPrefix(line, "## Quick Reference") {
+			inQuickRef = true
+			result = append(result, line)
+			continue
+		}
+
+		// Stop at next section (any ## heading)
+		if inQuickRef && strings.HasPrefix(line, "## ") {
+			break
+		}
+
+		// Capture content
+		if inQuickRef {
+			result = append(result, line)
+		}
+	}
+
+	if len(result) > 0 {
+		return strings.TrimSpace(strings.Join(result, "\n"))
+	}
+
+	// Fallback: return first 50 lines (minus frontmatter)
+	var fallback []string
+	skipFrontmatter := true
+	for i, line := range lines {
+		if skipFrontmatter && strings.HasPrefix(line, "---") {
+			continue
+		}
+		if skipFrontmatter && strings.HasPrefix(line, ">") {
+			continue
+		}
+		skipFrontmatter = false
+
+		fallback = append(fallback, line)
+		if len(fallback) >= 50 || i >= 60 {
+			break
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(fallback, "\n"))
 }
