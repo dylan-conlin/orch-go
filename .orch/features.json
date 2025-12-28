@@ -312,58 +312,103 @@
       "id": "feat-029",
       "title": "Define servers.yaml schema for launchd plist generation",
       "description": "Create servers.yaml schema for per-project server declarations that generate launchd plists. Schema includes: name, type (command/docker-compose), command, workdir, health (type: http/tcp, url/port, timeout). Parse to ServerConfig struct. File targets: pkg/servers/config.go (new). Out of scope: plist generation (feat-030). Acceptance: Parse servers.yaml with all field types, validation errors for invalid configs.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
-      "notes": "Phase 1 of launchd-native dev servers. Foundation for plist generation."
+      "notes": "SUPERSEDED: Docker Compose approach wins on AI debuggability. See feat-033 through feat-036."
     },
     {
       "id": "feat-030",
       "title": "Implement orch servers gen-plist command",
       "description": "Add 'orch servers gen-plist {project}' command that generates launchd plist files from servers.yaml. Plists include: RunAtLoad, KeepAlive, WorkingDirectory (absolute), PATH expansion, logging to ~/.orch/logs/. Output to ~/Library/LaunchAgents/com.orch.server.{project}.{server}.plist. File targets: pkg/servers/launchd.go (new), cmd/orch/servers.go (add gen-plist subcommand). Depends on feat-029. Acceptance: Plist generated with correct format, PATH fully expanded, logs configured.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
       "depends_on": ["feat-029"],
-      "notes": "Phase 1 of launchd-native dev servers. Core plist generation."
+      "notes": "SUPERSEDED: Docker Compose approach wins on AI debuggability. See feat-033 through feat-036."
     },
     {
       "id": "feat-031",
       "title": "Implement orch servers install/uninstall commands",
       "description": "Add 'orch servers install {project}' and 'orch servers uninstall {project}' commands. Install: runs gen-plist then 'launchctl bootstrap gui/{uid} {plist}'. Uninstall: runs 'launchctl bootout gui/{uid} {label}' then removes plist. File targets: cmd/orch/servers.go (add install/uninstall subcommands). Depends on feat-030. Acceptance: install bootstraps plists into launchd, uninstall removes cleanly, idempotent.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
       "depends_on": ["feat-030"],
-      "notes": "Phase 2 of launchd-native dev servers. Bootstrap automation."
+      "notes": "SUPERSEDED: Docker Compose approach wins on AI debuggability. See feat-033 through feat-036."
     },
     {
       "id": "feat-032",
       "title": "Add health polling to /api/servers endpoint",
       "description": "Enhance /api/servers endpoint to poll health for installed launchd server plists. For each com.orch.server.* plist, check if process running via launchctl list, then run health check from servers.yaml config. Return status: running/stopped/unhealthy. File targets: cmd/orch/serve.go (handleServers), pkg/servers/health.go (new). Depends on feat-031. Acceptance: /api/servers shows launchd-managed server health, dashboard shows indicators.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
       "depends_on": ["feat-031"],
-      "notes": "Phase 3 of launchd-native dev servers. Dashboard visibility without management."
+      "notes": "SUPERSEDED: Docker Compose approach wins. Health polling reimplemented in feat-036."
+    },
+    {
+      "id": "feat-033",
+      "title": "Configure Docker Desktop auto-start on login",
+      "description": "Ensure Docker Desktop starts automatically on Mac login. Either: (1) Docker Desktop Preferences → General → Start Docker Desktop when you log in, or (2) script via defaults write. One-time setup. File targets: None (UI config) or scripts/setup-docker-autostart.sh. Acceptance: After Mac reboot, Docker Desktop is running without user intervention.",
+      "status": "todo",
+      "skill": "manual",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "notes": "Phase 1 of Docker Compose dev servers. Foundation for auto-start."
+    },
+    {
+      "id": "feat-034",
+      "title": "Add restart policies to price-watch docker-compose.yml",
+      "description": "Add 'restart: unless-stopped' to all services in price-watch docker-compose.yml. Verify services come up automatically after Docker restart. File targets: /Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch/docker-compose.yml. Acceptance: After 'docker compose down && docker compose up -d', services have restart policy; after Docker restart, services auto-start.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "repo": "price-watch",
+      "notes": "Phase 2 of Docker Compose dev servers. Apply to existing Docker project."
+    },
+    {
+      "id": "feat-035",
+      "title": "Add docker-compose.yml to orch-go for vite dev server",
+      "description": "Create docker-compose.yml for orch-go with node container running vite dev server on port 5188. Include: node:20-alpine image, volume mount for source, restart: unless-stopped, port mapping 5188:5173. File targets: /Users/dylanconlin/Documents/personal/orch-go/docker-compose.yml. Acceptance: 'docker compose up -d' starts vite server on port 5188, accessible from host.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "notes": "Phase 3 of Docker Compose dev servers. Containerize non-Docker project."
+    },
+    {
+      "id": "feat-036",
+      "title": "Add Docker Compose status to /api/servers endpoint",
+      "description": "Enhance /api/servers endpoint to show Docker Compose service status. Run 'docker compose ps --format json' for each project with docker-compose.yml. Return service name, status, ports. File targets: cmd/orch/serve.go (handleServers). Acceptance: /api/servers shows running Docker services per project, dashboard shows health indicators.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "notes": "Phase 4 of Docker Compose dev servers. Dashboard visibility via docker compose ps."
     }
   ],
   "meta": {
     "last_updated": "2025-12-27",
-    "total_features": 32,
+    "total_features": 36,
     "by_status": {
       "todo": 24,
       "in_progress": 0,
       "done": 1,
-      "cancelled": 5
+      "cancelled": 9
     }
   },
   "epics": {

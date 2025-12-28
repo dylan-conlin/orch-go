@@ -9,7 +9,7 @@
 
 ## TLDR
 
-Redesigned dev servers as launchd-native services (not on-demand health checks). After reboot, servers auto-start via RunAtLoad plists - zero orchestrator attention, no SessionStart gating needed.
+After re-evaluation with correct lens (Dylan=zero mental load, AI=autonomous diagnosis), **Docker Compose** wins over launchd. AI debugs faster with `docker compose logs` than hunting through launchd plists/scattered logs. Add `restart: unless-stopped` + Docker Desktop auto-start = operational invisibility.
 
 ---
 
@@ -50,9 +50,9 @@ cat ~/Library/LaunchAgents/com.orch-go.serve.plist  # Valid XML
 - `.kb/investigations/2025-12-27-design-launchd-dev-servers.md` - launchd-native server design
 
 ### Decisions Made
-- **Servers are infrastructure, not dependencies:** Frame them like orch daemon (always running), not like test preconditions (check before work)
-- **Use launchd-native plists:** RunAtLoad + KeepAlive gives us auto-start on boot + auto-restart on crash
-- **Supersede prior investigation:** The on-demand health check approach violated the HARD CONSTRAINT
+- **Docker Compose > launchd for AI debuggability:** Unified logging, more AI training data, simpler mental model
+- **Evaluation lens matters:** "Implementation complexity" is irrelevant - AI handles that. What matters is: Dylan never thinks, AI diagnoses fast
+- **Containerize everything:** Even simple dev servers benefit from Docker's unified tooling
 
 ### Constraints Discovered
 - launchd requires fully-expanded PATH (doesn't inherit user shell PATH)
@@ -75,18 +75,20 @@ cat ~/Library/LaunchAgents/com.orch-go.serve.plist  # Valid XML
 
 ### Implementation Work (for follow-up spawns)
 
-**Phase 1: servers.yaml + gen-plist**
-- `pkg/servers/config.go` - servers.yaml schema
-- `pkg/servers/launchd.go` - plist generation
-- `cmd/orch/servers.go` - gen-plist subcommand
+**Phase 1: Docker Desktop auto-start**
+- Configure Docker Desktop → Preferences → General → Start Docker Desktop when you log in
+- One-time manual step (or script via defaults write)
 
-**Phase 2: install/uninstall**
-- `orch servers install <project>` - launchctl bootstrap
-- `orch servers uninstall <project>` - launchctl bootout
+**Phase 2: Add restart policies**
+- Add `restart: unless-stopped` to price-watch docker-compose.yml services
+- Verify services come up after Docker restart
 
-**Phase 3: Dashboard visibility**
-- `pkg/servers/health.go` - TCP/HTTP health checks
-- `cmd/orch/serve.go` - enhance /api/servers
+**Phase 3: Containerize remaining services**
+- orch-go vite → add docker-compose.yml with node container
+- Any other non-Docker dev servers
+
+**Phase 4: Dashboard visibility**
+- `cmd/orch/serve.go` - run `docker compose ps --format json` for /api/servers
 
 ---
 

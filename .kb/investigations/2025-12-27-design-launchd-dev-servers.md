@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Dev servers should run as native launchd services via per-project plists, NOT on-demand health checks or tmuxinator - launchd provides auto-start on login, auto-restart on crash, and zero human intervention.
+**Delta:** Docker Compose with `restart: unless-stopped` is the optimal solution - single declarative file per project, Docker Desktop handles boot-time startup, AI has excellent diagnostic tools (`docker compose logs`, `docker compose ps`), and Dylan never thinks about servers.
 
-**Evidence:** Existing launchd infrastructure (orch daemon, orch serve, tmuxinator autoload) proves the pattern works; tmuxinator-based approach requires orchestrator attention which violates the hard constraint.
+**Evidence:** Docker Compose is already used for price-watch; adding `restart: unless-stopped` + Docker Desktop auto-start gives operational invisibility with zero new infrastructure; AI can diagnose via standard Docker CLI.
 
-**Knowledge:** The key insight is servers are infrastructure like orch daemon itself - not dependencies to check, but services that should always be running. Use `orch servers gen-plist` to generate launchd plists per-project.
+**Knowledge:** Evaluation with correct lens (Dylan=zero mental load, AI=autonomous diagnosis) favors Docker Compose over launchd plists. Launchd has lower AI debuggability (scattered logs, less tooling).
 
-**Next:** Implement in 3 phases: (1) servers.yaml schema + gen-plist command, (2) launchd plist template + installation, (3) dashboard visibility via `/api/servers` health checks.
+**Next:** Add `restart: unless-stopped` to existing docker-compose files, ensure Docker Desktop starts on login, containerize remaining services (orch-go vite → node container).
 
 ---
 
@@ -38,6 +38,16 @@ Fill this at the END of your investigation, before marking Complete.
 ### HARD CONSTRAINT (from orchestrator)
 
 Dylan should NEVER have to start/stop/check servers manually. After system reboot, starting an orchestration session should just work - all servers already running.
+
+### REFRAME: Correct Evaluation Lens
+
+**Dylan doesn't write code - AI does everything.** So the evaluation criteria are:
+
+1. **Operational invisibility** - Dylan never thinks about servers
+2. **AI debuggability** - When broken, how fast can AI fix it autonomously?
+3. **Conceptual simplicity** - Simple mental model (or no model needed)
+
+Implementation complexity and learning curve are IRRELEVANT - AI handles both.
 
 ### What the Prior Investigation Got Wrong
 
@@ -163,34 +173,97 @@ allocations:
 
 ---
 
-## Synthesis
+## Re-Evaluation: Correct Lens Applied
+
+### Evaluation Framework
+
+| Criterion | Weight | Question |
+|-----------|--------|----------|
+| **Operational Invisibility** | High | Does Dylan ever think about servers? |
+| **AI Debuggability** | High | Can AI diagnose/fix issues autonomously? |
+| **Conceptual Simplicity** | Medium | Simple mental model (or none needed)? |
+| Implementation Complexity | ~~Low~~ | AI handles this - irrelevant |
+
+### Option Analysis
+
+#### Option A: launchd plists (original recommendation)
+
+**Operational Invisibility:** ✅ Excellent - RunAtLoad + KeepAlive means servers just run
+**AI Debuggability:** ⚠️ Medium
+- Logs scattered: `~/.orch/logs/`, `~/Library/Logs/`
+- Diagnosis requires: `launchctl list | grep`, reading multiple log files
+- No unified view of "what's running and why"
+- Less community tooling than Docker
+
+**Conceptual Model:** ⚠️ Medium - "plists in LaunchAgents" is Mac-specific, less intuitive
+
+#### Option B: Docker Compose for everything ⭐
+
+**Operational Invisibility:** ✅ Excellent - `restart: unless-stopped` + Docker Desktop auto-start
+**AI Debuggability:** ✅ Excellent
+- Unified tools: `docker compose ps`, `docker compose logs -f`
+- All services in one file, one command to diagnose
+- Rich ecosystem of Docker debugging knowledge
+- AI can run `docker compose logs service-name --tail 100` instantly
+
+**Conceptual Model:** ✅ Simple - "everything is in docker-compose.yml"
+
+**Trade-off:** Non-Docker projects (orch-go vite) need containerization or wrapper
+
+#### Option C: Nix/devbox
+
+**Operational Invisibility:** ⚠️ Unknown - Not currently installed
+**AI Debuggability:** ⚠️ Unknown - Less AI training data than Docker
+**Conceptual Model:** ✅ Elegant - `nix develop` starts everything
+
+**Trade-off:** Requires installation, unfamiliar to most AI models
+
+#### Option D: Hybrid (Docker Compose primary, launchd for edge cases)
+
+**Operational Invisibility:** ✅ Excellent
+**AI Debuggability:** ✅ Good - Docker is primary, launchd only when needed
+**Conceptual Model:** ⚠️ Medium - Two systems to understand
+
+### Revised Recommendation
+
+**Docker Compose for everything** wins on AI debuggability:
+
+| Approach | Dylan Thinks About | AI Debug Speed | Files to Manage |
+|----------|-------------------|----------------|-----------------|
+| launchd | Never | Medium (scattered logs) | N plists + servers.yaml |
+| Docker Compose | Never | Fast (unified tools) | 1 docker-compose.yml |
+| Nix | Never | Unknown | 1 flake.nix |
+
+**Key insight:** AI can debug Docker issues faster because:
+1. More training data on Docker than launchd
+2. Unified logging (`docker compose logs`)
+3. Single file shows all services (`docker compose ps`)
+4. Standard error patterns AI recognizes
+
+---
+
+## Synthesis (Revised)
 
 ### Key Insights
 
-1. **Servers ARE infrastructure, not dependencies** - The prior investigation framed servers as "blocking dependencies" to check before work. Wrong mental model. Servers are infrastructure that should always be running, like orch daemon itself. You don't "check if orch daemon is healthy before spawning" - it's just running.
+1. **Docker Compose > launchd for AI debuggability** - When something breaks, AI can run `docker compose logs` and see everything. With launchd, AI must hunt across multiple log files and parse plist XML.
 
-2. **launchd provides the complete solution** - We don't need a custom daemon, health check loop, or polling mechanism. launchd IS the process supervisor. Generate a plist per server, bootstrap it, and launchd handles: start on boot, restart on crash, logging, environment.
+2. **Containerize remaining services** - orch-go vite should run in a node container. This unifies the approach: everything is Docker.
 
-3. **Per-project servers.yaml is the right abstraction** - Each project declares its servers (type, command, port, health check). `orch servers gen-plist <project>` generates launchd plists. `orch servers install <project>` bootstraps them.
+3. **Docker Desktop auto-start is the boot mechanism** - Configure Docker Desktop to start on login. All compose services with `restart: unless-stopped` come up automatically.
 
-4. **Docker is a special case** - For Docker Compose projects, we can either:
-   - Use Docker's native restart policies (simpler, Docker-native)
-   - Use launchd wrapper that runs `docker compose up -d` on boot
-   
-   Recommend: Use Docker's native approach + ensure Docker Desktop starts on login.
+4. **One docker-compose.yml per project** - Dylan never sees it, AI maintains it, everything just works.
 
 ### Answer to Investigation Question
 
 **How to make servers auto-start after reboot with zero human intervention:**
 
-1. Define servers in per-project `servers.yaml`
-2. Generate launchd plists via `orch servers gen-plist <project>`
-3. Install via `orch servers install <project>` (runs `launchctl bootstrap`)
-4. launchd handles the rest: RunAtLoad for boot, KeepAlive for crashes
+1. **Configure Docker Desktop to start on login** (one-time setup)
+2. **Add `restart: unless-stopped` to all docker-compose.yml services**
+3. **Containerize non-Docker services** (orch-go vite → node container)
+4. Docker handles the rest: auto-start on boot, restart on crash, unified logging
 
-For Docker projects specifically: Add `restart: unless-stopped` to compose files and configure Docker Desktop to start on login.
-
-**This is Session Amnesia-compliant:** The plist IS the externalized state. Next Claude doesn't need to remember anything - the servers are just running.
+**This is Session Amnesia-compliant:** The docker-compose.yml IS the externalized state. AI can diagnose any issue with `docker compose logs`.
 
 ---
 
@@ -198,48 +271,64 @@ For Docker projects specifically: Add `restart: unless-stopped` to compose files
 
 ### Recommended Approach ⭐
 
-**launchd-native services via per-project plists**
+**Docker Compose for everything**
 
 **Why this approach:**
-- Uses existing, proven infrastructure (launchd)
-- Zero custom daemon code
-- Matches existing orch patterns (orch daemon, orch serve already use this)
-- Zero orchestrator attention after initial setup
+- **AI debuggability:** `docker compose logs` shows everything in one place
+- **Unified tooling:** AI has extensive Docker training data
+- **Zero Dylan mental load:** Everything is containers, one pattern
+- **Already partially implemented:** price-watch uses Docker Compose
 
 **Trade-offs accepted:**
-- One-time setup per project (`orch servers install`)
-- Docker projects need slightly different treatment
-- No real-time health dashboard (but can add via `/api/servers` polling)
+- Non-Docker projects need containerization (orch-go vite)
+- Docker Desktop must start on login (one-time config)
+- Slight overhead for simple dev servers
 
 **Implementation sequence:**
 
-1. **Phase 1: servers.yaml schema + gen-plist** - Define schema, generate plist files
-2. **Phase 2: install/uninstall commands** - Bootstrap plists into launchd
-3. **Phase 3: Dashboard visibility** - Add health check polling to `/api/servers`
+1. **Phase 1: Docker Desktop auto-start** - Configure to start on login
+2. **Phase 2: Add restart policies** - `restart: unless-stopped` to existing compose files
+3. **Phase 3: Containerize remaining services** - orch-go vite in node container
+4. **Phase 4: Dashboard visibility** - `docker compose ps` via `/api/servers`
 
-### servers.yaml Schema
+### docker-compose.yml Pattern
 
 ```yaml
-# {project}/.orch/servers.yaml
-servers:
-  - name: vite
-    type: command
-    command: bun run dev --port 5188
-    workdir: .  # relative to project root
-    health:
-      type: tcp
-      port: 5188
-      
-  - name: docker
-    type: docker-compose
-    compose_file: docker-compose.yml
-    services: [postgres, redis, rails]
-    health:
-      type: http
-      url: http://localhost:3000/health
+# {project}/docker-compose.yml
+services:
+  vite:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    ports:
+      - "5188:5173"
+    restart: unless-stopped
+    
+  # Existing services just add restart policy
+  postgres:
+    restart: unless-stopped
+    # ... existing config
 ```
 
-### Generated Plist (example)
+### AI Debugging Commands
+
+```bash
+# See all services status
+docker compose ps
+
+# See logs for specific service
+docker compose logs vite --tail 100
+
+# Restart a service
+docker compose restart vite
+
+# Check why service failed
+docker compose logs vite --since 5m
+```
+
+### Alternative: launchd (previous recommendation)
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
