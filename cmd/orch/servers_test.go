@@ -391,3 +391,180 @@ func TestServersGenPlist_NoCommandServers(t *testing.T) {
 		t.Error("expected error for no command-type servers")
 	}
 }
+
+// TestServersInit_PackageJSON tests init detection with package.json.
+func TestServersInit_PackageJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "testproject")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Create package.json with dev script
+	pkgJSON := `{"name": "test-app", "scripts": {"dev": "vite"}}`
+	if err := os.WriteFile(filepath.Join(projectDir, "package.json"), []byte(pkgJSON), 0644); err != nil {
+		t.Fatalf("failed to write package.json: %v", err)
+	}
+
+	// Run init (dry-run mode)
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runServersInit("testproject", projectDir, true, false, false)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should detect the web server
+	if !bytes.Contains([]byte(output), []byte("Detected")) {
+		t.Error("expected output to contain 'Detected'")
+	}
+	if !bytes.Contains([]byte(output), []byte("web")) {
+		t.Error("expected output to contain 'web' server")
+	}
+	if !bytes.Contains([]byte(output), []byte("package.json")) {
+		t.Error("expected output to contain 'package.json' as source")
+	}
+}
+
+// TestServersInit_GoMod tests init detection with go.mod.
+func TestServersInit_GoMod(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "testproject")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Create go.mod
+	goMod := `module example.com/test`
+	if err := os.WriteFile(filepath.Join(projectDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatalf("failed to write go.mod: %v", err)
+	}
+
+	// Create main.go
+	mainGo := `package main
+func main() {}`
+	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
+		t.Fatalf("failed to write main.go: %v", err)
+	}
+
+	// Run init (dry-run mode)
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runServersInit("testproject", projectDir, true, false, false)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should detect the api server
+	if !bytes.Contains([]byte(output), []byte("api")) {
+		t.Error("expected output to contain 'api' server")
+	}
+	if !bytes.Contains([]byte(output), []byte("go.mod")) {
+		t.Error("expected output to contain 'go.mod' as source")
+	}
+}
+
+// TestServersInit_ExistingServersYaml tests error when servers.yaml exists.
+func TestServersInit_ExistingServersYaml(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "testproject")
+	orchDir := filepath.Join(projectDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	// Create existing servers.yaml
+	serversYaml := `servers: []`
+	if err := os.WriteFile(filepath.Join(orchDir, "servers.yaml"), []byte(serversYaml), 0644); err != nil {
+		t.Fatalf("failed to write servers.yaml: %v", err)
+	}
+
+	err := runServersInit("testproject", projectDir, false, false, false)
+
+	if err == nil {
+		t.Error("expected error for existing servers.yaml")
+	}
+}
+
+// TestServersInit_Force tests --force flag overwriting existing servers.yaml.
+func TestServersInit_Force(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "testproject")
+	orchDir := filepath.Join(projectDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	// Create existing servers.yaml
+	serversYaml := `servers: []`
+	if err := os.WriteFile(filepath.Join(orchDir, "servers.yaml"), []byte(serversYaml), 0644); err != nil {
+		t.Fatalf("failed to write servers.yaml: %v", err)
+	}
+
+	// Create package.json to detect
+	pkgJSON := `{"scripts": {"dev": "vite"}}`
+	if err := os.WriteFile(filepath.Join(projectDir, "package.json"), []byte(pkgJSON), 0644); err != nil {
+		t.Fatalf("failed to write package.json: %v", err)
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runServersInit("testproject", projectDir, false, false, true) // force=true
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Errorf("expected no error with --force, got: %v", err)
+	}
+}
+
+// TestServersInit_NoServersDetected tests when no servers are detected.
+func TestServersInit_NoServersDetected(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runServersInit("testproject", tmpDir, true, false, false)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if !bytes.Contains([]byte(output), []byte("No servers detected")) {
+		t.Error("expected output to indicate no servers detected")
+	}
+}

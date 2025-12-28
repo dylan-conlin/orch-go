@@ -20,6 +20,7 @@ var serversCmd = &cobra.Command{
 	Long: `Centralized server management across projects.
 	
 Commands:
+  init     Scan project and generate .orch/servers.yaml
   up       Start servers via launchd/Docker (from servers.yaml)
   down     Stop servers via launchd/Docker
   list     Show all projects with port allocations and running status
@@ -30,6 +31,7 @@ Commands:
   status   Show server status
 
 Examples:
+  orch servers init myproject        # Scan and generate servers.yaml
   orch servers up myproject          # Start servers via launchd/Docker
   orch servers down myproject        # Stop servers
   orch servers list                  # Show all projects
@@ -213,8 +215,46 @@ Examples:
 	},
 }
 
+var serversInitCmd = &cobra.Command{
+	Use:   "init <project>",
+	Short: "Scan project and generate .orch/servers.yaml",
+	Long: `Scan a project directory and generate .orch/servers.yaml with inferred server types.
+
+Detection rules:
+  - docker-compose.yml, docker-compose.yaml, compose.yml, compose.yaml
+    -> docker type servers
+  - package.json with "dev" script
+    -> command type (npm/bun/pnpm/yarn run dev)
+  - go.mod with main.go
+    -> command type (go run .)
+  - web/, frontend/, client/, api/, backend/, server/ subdirectories
+    -> scanned for the above patterns
+
+Options:
+  --project-dir     Project directory (default: current directory)
+  --dry-run         Print detected servers without writing files
+  --gen-plist       Also generate launchd plist files
+  --force           Overwrite existing servers.yaml
+
+Examples:
+  orch servers init myproject
+  orch servers init myproject --project-dir /path/to/project
+  orch servers init myproject --dry-run
+  orch servers init myproject --gen-plist`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir, _ := cmd.Flags().GetString("project-dir")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		genPlist, _ := cmd.Flags().GetBool("gen-plist")
+		force, _ := cmd.Flags().GetBool("force")
+
+		return runServersInit(args[0], projectDir, dryRun, genPlist, force)
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(serversCmd)
+	serversCmd.AddCommand(serversInitCmd)
 	serversCmd.AddCommand(serversUpCmd)
 	serversCmd.AddCommand(serversDownCmd)
 	serversCmd.AddCommand(serversListCmd)
@@ -224,6 +264,12 @@ func init() {
 	serversCmd.AddCommand(serversOpenCmd)
 	serversCmd.AddCommand(serversStatusCmd)
 	serversCmd.AddCommand(serversGenPlistCmd)
+
+	// init flags
+	serversInitCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+	serversInitCmd.Flags().Bool("dry-run", false, "Print detected servers without writing files")
+	serversInitCmd.Flags().Bool("gen-plist", false, "Also generate launchd plist files")
+	serversInitCmd.Flags().Bool("force", false, "Overwrite existing servers.yaml")
 
 	// up/down flags
 	serversUpCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
@@ -759,6 +805,131 @@ func runServersGenPlist(project, projectDir, pathEnv string, keepAlive, runAtLoa
 			plistPath, _ := servers.PlistPath(project, s.Name)
 			fmt.Printf("  launchctl unload %s\n", plistPath)
 		}
+	}
+
+	return nil
+}
+
+// runServersInit scans a project directory and generates .orch/servers.yaml.
+func runServersInit(project, projectDir string, dryRun, genPlist, force bool) error {
+	// Default to current directory if not specified
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+
+	// Convert to absolute path
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
+
+	// Check if servers.yaml already exists
+	configPath := servers.DefaultPath(absProjectDir)
+	if _, err := os.Stat(configPath); err == nil && !force {
+		return fmt.Errorf("servers.yaml already exists at %s\nUse --force to overwrite", configPath)
+	}
+
+	fmt.Printf("Scanning %s for servers...\n", absProjectDir)
+	fmt.Println()
+
+	// Detect servers
+	result, err := servers.Detect(absProjectDir)
+	if err != nil {
+		return fmt.Errorf("detection failed: %w", err)
+	}
+
+	// Print warnings
+	for _, warning := range result.Warnings {
+		fmt.Printf("  [!] %s\n", warning)
+	}
+
+	// Deduplicate by name (keep first occurrence)
+	result.DeduplicateByName()
+
+	if len(result.Servers) == 0 {
+		fmt.Println("No servers detected.")
+		fmt.Println()
+		fmt.Println("Detection looks for:")
+		fmt.Println("  - docker-compose.yml (docker type)")
+		fmt.Println("  - package.json with 'dev' script (command type)")
+		fmt.Println("  - go.mod with main.go (command type)")
+		return nil
+	}
+
+	// Print detected servers
+	fmt.Printf("Detected %d server(s):\n", len(result.Servers))
+	fmt.Println()
+	fmt.Printf("  %-12s %-10s %-8s %s\n", "NAME", "TYPE", "PORT", "SOURCE")
+	fmt.Printf("  %s\n", strings.Repeat("-", 50))
+
+	for _, s := range result.Servers {
+		workdirInfo := ""
+		if s.Workdir != "" && s.Workdir != "." {
+			workdirInfo = fmt.Sprintf(" (workdir: %s)", s.Workdir)
+		}
+		fmt.Printf("  %-12s %-10s %-8d %s%s\n", s.Name, s.Type, s.Port, s.Source, workdirInfo)
+	}
+	fmt.Println()
+
+	if dryRun {
+		fmt.Println("Dry run - no files written")
+		fmt.Println()
+		fmt.Println("Would write to:", configPath)
+		return nil
+	}
+
+	// Convert to config and save
+	cfg := result.ToConfig()
+
+	if err := servers.Save(absProjectDir, cfg); err != nil {
+		return fmt.Errorf("failed to save servers.yaml: %w", err)
+	}
+
+	fmt.Printf("Generated: %s\n", configPath)
+
+	// Generate plists if requested
+	if genPlist {
+		fmt.Println()
+		fmt.Println("Generating launchd plist files...")
+
+		opts := servers.DefaultPlistOptions()
+		opts.KeepAlive = true
+		opts.RunAtLoad = false
+
+		commandCount := 0
+		for _, s := range cfg.Servers {
+			if s.Type != servers.TypeCommand {
+				continue
+			}
+
+			plistCfg := servers.ServerToPlistConfig(project, s, absProjectDir, opts)
+			content := servers.GeneratePlist(plistCfg)
+
+			if err := servers.WritePlist(project, s.Name, content); err != nil {
+				fmt.Printf("  [!] Failed to write plist for %s: %v\n", s.Name, err)
+				continue
+			}
+
+			plistPath, _ := servers.PlistPath(project, s.Name)
+			fmt.Printf("  Generated: %s\n", plistPath)
+			commandCount++
+		}
+
+		if commandCount > 0 {
+			fmt.Println()
+			fmt.Println("Start servers with:")
+			fmt.Printf("  orch servers up %s\n", project)
+		}
+	} else {
+		fmt.Println()
+		fmt.Println("Next steps:")
+		fmt.Printf("  1. Review: %s\n", configPath)
+		fmt.Printf("  2. Generate plists: orch servers gen-plist %s\n", project)
+		fmt.Printf("  3. Start servers: orch servers up %s\n", project)
 	}
 
 	return nil
