@@ -49,6 +49,7 @@
 	let projectFilter: string = 'all';
 	let sortBy: 'recent-activity' | 'newest' | 'oldest' | 'alphabetical' | 'project' | 'phase' = 'recent-activity';
 	let activeOnly: boolean = false;
+	let searchQuery: string = '';
 
 	// Section collapse state with localStorage persistence
 	const STORAGE_KEY = 'orch-dashboard-sections';
@@ -235,9 +236,10 @@
 		projectFilter = 'all';
 		sortBy = 'recent-activity';
 		activeOnly = false;
+		searchQuery = '';
 	}
 
-	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
+	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly || searchQuery !== '';
 
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
@@ -329,9 +331,29 @@
 		return agentList.filter(a => a.project === projectFilter);
 	}
 
-	// Apply all filters (skill + project)
+	// Apply search filter - searches workspace name (id), beads_id, task, beads_title, skill
+	function applySearchFilter(agentList: Agent[]): Agent[] {
+		if (!searchQuery.trim()) return agentList;
+		const query = searchQuery.toLowerCase().trim();
+		return agentList.filter(a => {
+			// Search across multiple fields
+			const searchableFields = [
+				a.id,              // workspace name
+				a.beads_id,        // beads issue ID
+				a.task,            // task description
+				a.beads_title,     // beads issue title
+				a.skill,           // skill type
+				a.project          // project name
+			];
+			return searchableFields.some(field => 
+				field && field.toLowerCase().includes(query)
+			);
+		});
+	}
+
+	// Apply all filters (skill + project + search)
 	function applyFilters(agentList: Agent[]): Agent[] {
-		return applyProjectFilter(applySkillFilter(agentList));
+		return applySearchFilter(applyProjectFilter(applySkillFilter(agentList)));
 	}
 
 	// Progressive disclosure: sorted and filtered agents per section
@@ -631,6 +653,30 @@
 			<div class="p-2">
 				<!-- Compact Filter Bar -->
 				<div class="mb-2 flex flex-wrap items-center gap-2 text-xs" data-testid="filter-bar">
+					<!-- Search input -->
+					<div class="relative">
+						<input
+							type="text"
+							bind:value={searchQuery}
+							placeholder="Search agents..."
+							class="h-6 w-40 rounded border border-input bg-background pl-6 pr-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+							data-testid="search-input"
+						/>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="absolute left-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<circle cx="11" cy="11" r="8" />
+							<path d="m21 21-4.3-4.3" />
+						</svg>
+					</div>
+
+					<div class="h-4 w-px bg-border"></div>
+
 					<label class="flex items-center gap-1 cursor-pointer">
 						<input
 							type="checkbox"
