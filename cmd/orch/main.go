@@ -170,7 +170,7 @@ var (
 	spawnAttach            bool   // Attach to tmux window after spawning
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
-	spawnMCP               string // MCP server config (e.g., "playwright")
+	spawnMCP               string // MCP server config (e.g., "playwright", "glass")
 	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
 	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
 	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
@@ -252,7 +252,8 @@ Examples:
   orch-go spawn --model opus investigation "analyze code"      # Use Claude Opus
   orch-go spawn --model flash investigation "quick check"      # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
-  orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
+  orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP (full browser)
+  orch-go spawn --mcp glass feature-impl "verify dashboard"    # With Glass MCP (shared Chrome)
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
   orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
   orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
@@ -280,7 +281,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
+	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
