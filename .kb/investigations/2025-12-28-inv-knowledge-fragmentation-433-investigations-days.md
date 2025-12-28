@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-s03z
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** The 500 investigations are NOT duplicative - they explore distinct aspects; the real problem is knowledge graph disconnection (0 lineage references, 0 kn citations, 1.8% decision promotion rate).
