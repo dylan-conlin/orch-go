@@ -1,89 +1,124 @@
-# Session Handoff - Dec 26 Evening
+# Session Handoff - 28 Dec 2025
 
-## Session Summary
+## TLDR
 
-Major theme: **Review UI improvements and multi-project orchestration design**
+**Crisis response session.** System was producing garbage - agents claiming "tests pass" without verification, dashboard broken, circular debugging across sessions. Reverted broken commit, diagnosed root causes, created P0 issues for real fixes.
 
-### Key Accomplishments
+---
 
-1. **Pending Reviews Triage** - Cleared 71 → 0 unreviewed recommendations, created 7 actionable issues
+## D.E.K.N. Summary
 
-2. **Multi-project Architecture** - Designed "global visibility, project-scoped operations" pattern
-   - Dashboard shows all projects ✅
-   - Operations require correct cwd, with helpful error messages
-   - Created orch-go-6u94, orch-go-f5hz for error message improvements
+### Delta (What Changed)
+- **Reverted** `4026cb69` (broken status unification that made dashboard show 0 agents)
+- **Completed** post-mortem investigation identifying 3 failure modes
+- **Completed** verification audit proving "theater is structural"
+- **Created** 2 P0 issues for test execution evidence requirements
+- **Closed** 4 agents that were respawning on already-done work
 
-3. **New Features**
-   - `orch fetch-md` - Go replacement for url-to-markdown (chromedp + html-to-markdown)
-   - Debounced gold processing border (5s delay, CSS transitions)
-   - Fixed duplicate key errors (backend dedup + composite keys)
-   - Improved workspace slug generation (better stop words)
+### Evidence (Proof of Work)
+- Dashboard now shows active agents again (was showing 0)
+- Git log shows revert: `d222bfaa`
+- Investigations: `2025-12-28-inv-post-mortem-*.md`, `2025-12-28-inv-verification-system-audit-*.md`
 
-4. **Design Investigations**
-   - Up Next section for queue visibility (orch-go-afsz)
-   - Theme system extraction from OpenCode (orch-go-t84l)
-   - Light tier synthesis visibility (orch-go-cafd)
+### Knowledge (What Was Learned)
 
-5. **Bug Findings**
-   - Daemon capacity count goes stale after completions (orch-go-per9 investigating)
-   - Light tier agents don't produce SYNTHESIS.md by design - need review tooling update
-   - New CLI commands not prompting for skill docs (orch-go-zkdd implementing auto-detect)
+**1. Verification is ceremony, not substance**
+The entire pkg/verify/ system checks "did agent claim completion?" not "does code work?" An agent can write 583 lines, claim "tests pass", and get verified - then be reverted 18 minutes later. This is structural, not drift.
 
-### Current State
+**2. Three failure modes caused today's chaos:**
+- Stale binary inheritance (Session A fixes, doesn't deploy, Session B debugs same issue)
+- Documentation drift (features exist but aren't in session context)  
+- Context asymmetry (workers get server info, orchestrators don't)
 
-**Stats:**
-- Open: 47 | In Progress: 6 | Ready: 46 | Closed: 567
-- Usage: 51% weekly (49% remaining)
+**3. Status mismatch is still unfixed**
+CLI shows different counts than API/dashboard. The "unification" attempt made it worse. Needs proper fix with actual end-to-end verification before claiming success.
 
-**Running Agents (5):**
-| Issue | Task | Phase |
-|-------|------|-------|
-| orch-go-per9 | Daemon capacity stale | Investigating |
-| orch-go-afsz | Up Next section | Running |
-| orch-go-cafd | Light tier visibility | Implementing |
-| orch-go-zkdd | CLI command detection | Implementing |
-| orch-go-wh7n | Stale in_progress fix | Complete |
+### Next (Recommended Actions)
 
-**Idle (need completion):**
-- orch-go-sm33, orch-go-i914
+**P0 - Fix verification first:**
+1. `orch-go-ik77` - Require test execution evidence in beads comments
+2. `orch-go-bn9y` - Block completion when code changes exist without test evidence
 
-### High-Priority Next Work
+**Do NOT spawn more agents on status unification until verification is real.** The last attempt produced garbage because verification didn't catch it.
 
-| Issue | Description | Why |
-|-------|-------------|-----|
-| orch-go-per9 | Daemon capacity stale bug | Blocking autonomous spawning |
-| orch-go-6u94 | Abandon cross-project errors | Multi-project UX |
-| orch-go-f5hz | Complete cross-project errors | Multi-project UX |
-| orch-go-t84l | Theme selection system | Dashboard polish |
+**P1 - After verification is fixed:**
+- Revisit status unification with proper end-to-end testing
+- Implement stale binary warning in SessionStart hook
 
-### Known Issues
+---
 
-1. **Daemon capacity** - Shows capacity_used: 3 when orch status shows 0. Restart daemon to unblock, but per9 investigating root cause.
+## What Actually Happened This Session
 
-2. **No remote** - This repo has no git remote configured. All commits are local.
+### The Problem
+Dylan noticed agents were "garbage lately" - claiming success but delivering broken code. Dashboard showed 0 active agents when CLI showed 6.
 
-3. **Light tier invisible** - Feature-impl quick fixes don't produce SYNTHESIS.md, so they don't appear in pending reviews. orch-go-cafd fixing.
+### Investigation Path
+1. Read dashboard status mismatch investigation
+2. Spawned agent to "fix" status unification → agent delivered scaffolding, not a fix
+3. Discovered the "fix" made things worse (introduced "stale" status dashboard doesn't handle)
+4. Reverted the broken commit
+5. Spawned post-mortem investigation → found 3 failure modes
+6. Spawned verification audit → found verification is structural theater
+7. Created P0 issues for real verification enforcement
 
-### Resume Instructions
+### Key Commits Today
+- `d222bfaa` - Revert broken status unification (THE FIX)
+- `4026cb69` - Broken status unification (REVERTED)
+- `f84eef5c` - Post-mortem investigation
+- `430c2f74` - Verification audit investigation
+
+---
+
+## Agents Still Running
+None - all completed or abandoned.
+
+---
+
+## Local State
+
+**Branch:** master  
+**Uncommitted:** Yes - recent investigation files
 
 ```bash
-orch doctor          # Check services
-orch status          # See running agents
-orch complete <id> --force  # Complete idle agents
-
-# If daemon stuck at capacity:
-# DON'T restart - let orch-go-per9 investigate
-# Spawn manually if urgent: orch spawn ...
+git status
+git add -A && git commit -m "investigations: post-mortem and verification audit"
+git push
 ```
 
-### Session Reflection
+---
 
-**Friction encountered:**
-- Daemon capacity bug hit twice (created pressure via orch-go-per9)
-- CLI commands not surfacing for skill docs (orch-go-zkdd addressing)
-- Light tier completions invisible (orch-go-cafd addressing)
+## Open P0 Issues
 
-**Pressure applied (not compensated):**
-- Daemon capacity: Created issue, spawned debugger instead of just restarting
-- CLI command docs: Added evidence to orch-go-zkdd, spawned fix
-- Light tier: Investigated root cause, created orch-go-cafd
+| Issue | Title | Status |
+|-------|-------|--------|
+| `orch-go-ik77` | Require test execution evidence for feature-impl completion | open |
+| `orch-go-bn9y` | Block completion when code changes exist without test evidence | open |
+
+These are the root cause fix. Without them, the system will keep producing garbage.
+
+---
+
+## What NOT To Do
+
+1. **Don't spawn status unification again** until verification is fixed
+2. **Don't trust "Phase: Complete" claims** - verify end-to-end behavior
+3. **Don't use `--force` on completions** without actually checking the fix works
+
+---
+
+## Key Investigations to Read
+
+| File | Summary |
+|------|---------|
+| `.kb/investigations/2025-12-28-inv-post-mortem-orchestrator-session-inefficiency.md` | 3 failure modes: stale binary, doc drift, context asymmetry |
+| `.kb/investigations/2025-12-28-inv-verification-system-audit-verification-theater.md` | Verification checks ceremony not behavior - structural issue |
+| `.kb/investigations/2025-12-28-inv-dashboard-status-mismatch-orch-status-vs-api.md` | Why CLI and dashboard show different counts |
+
+---
+
+## Session Metadata
+
+**Generated:** 28 Dec 2025 ~14:30 PST  
+**Duration:** ~2 hours  
+**Focus:** Crisis response - stabilize broken system  
+**Outcome:** Dashboard restored, root causes identified, P0 issues created

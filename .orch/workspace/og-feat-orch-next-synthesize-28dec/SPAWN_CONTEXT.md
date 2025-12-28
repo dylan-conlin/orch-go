@@ -40,14 +40,20 @@ SPAWN TIER: light
 
 
 
-⚠️ Limited context (15/100) - agent may need to discover patterns during work
-
 ## PRIOR KNOWLEDGE (from kb context)
 
 **Query:** "orch next synthesize"
 
+### Prior Decisions
+- orch next synthesizes multiple signals (bd ready, orch patterns, focus) into prioritized work recommendations
+  - Reason: Reduces orchestrator cognitive load by combining signals into BLOCKER > FOCUS > MAINTENANCE > BACKLOG categories
+- [orch-go] orch next synthesizes multiple signals (bd ready, orch patterns, focus) into prioritized work recommendations
+  - Reason: Reduces orchestrator cognitive load by combining signals into BLOCKER > FOCUS > MAINTENANCE > BACKLOG categories
+
 ### Related Investigations
 - Orch Next Synthesize Prioritized Work
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-28-inv-orch-next-synthesize-prioritized-work.md
+- [orch-go] Orch Next Synthesize Prioritized Work
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-28-inv-orch-next-synthesize-prioritized-work.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.

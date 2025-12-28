@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-3i8u
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** 4 orchestrator sessions on 2025-12-28 exhibited three failure modes: (1) stale binary inheritance across sessions causing 30+ min debugging the same fixed bug, (2) documentation/context gaps where features existed but weren't surfaced, (3) circular progress where sessions re-discovered what prior sessions had already found.

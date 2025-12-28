@@ -9,7 +9,7 @@ SPAWN TIER: light
 
 
 
-⚠️ Limited context (15/100) - agent may need to discover patterns during work
+⚠️ Limited context (27/100) - agent may need to discover patterns during work
 
 ## PRIOR KNOWLEDGE (from kb context)
 
@@ -17,6 +17,8 @@ SPAWN TIER: light
 
 ### Related Investigations
 - Auto Inject Local Project Ecosystem
+  - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-28-inv-auto-inject-local-project-ecosystem.md
+- [orch-go] Auto Inject Local Project Ecosystem
   - See: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2025-12-28-inv-auto-inject-local-project-ecosystem.md
 
 **IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.

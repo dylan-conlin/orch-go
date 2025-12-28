@@ -2,14 +2,14 @@
 
 **Agent:** og-debug-standardize-localhost-instead-28dec
 **Issue:** orch-go-nqoi
-**Duration:** 2025-12-28
-**Outcome:** success
+**Duration:** 2025-12-28 (verification session)
+**Outcome:** success (verified prior work complete)
 
 ---
 
 ## TLDR
 
-Audited orch-go for `127.0.0.1` references. Found the codebase already uses `localhost` consistently in production code. One documentation fix was made to `features.json`. Also cleaned stale `/web/.svelte-kit/` build artifacts that contained `127.0.0.1` references (likely root cause of original issue). Test files intentionally use `127.0.0.1:9999` for fake servers (correct pattern).
+**Verification complete.** Prior session already audited and fixed all `127.0.0.1` references. This re-spawn verified: features.json fix is committed (`877943f1`), production code uses `localhost`, CORS correctly accepts both, test files intentionally use fake ports, `.svelte-kit/` is clean. No additional changes needed - ready for `orch complete`.
 
 ---
 
@@ -25,7 +25,7 @@ Audited orch-go for `127.0.0.1` references. Found the codebase already uses `loc
 - `.kb/investigations/2025-12-28-inv-standardize-localhost-instead-127-across.md` - Investigation documenting audit findings
 
 ### Commits
-- (pending commit)
+- `877943f1` - docs: standardize localhost instead of 127.0.0.1 in features.json (committed by prior session)
 
 ---
 
