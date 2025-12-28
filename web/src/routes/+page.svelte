@@ -923,10 +923,10 @@
 				</div>
 			</div>
 
-			<!-- SSE Events (collapsible) -->
+			<!-- SSE Events (collapsible with preview) -->
 			<div class="rounded-lg border bg-card">
 				<button
-					class="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-accent/50 transition-colors border-b"
+					class="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-accent/50 transition-colors {sectionState.sseStream ? 'border-b' : ''}"
 					onclick={() => { sectionState.sseStream = !sectionState.sseStream; }}
 					aria-expanded={sectionState.sseStream}
 					data-testid="sse-stream-toggle"
@@ -944,6 +944,44 @@
 						</span>
 					</div>
 				</button>
+				<!-- Preview when collapsed: show last 3 events inline -->
+				{#if !sectionState.sseStream && $sseEvents.length > 0}
+					<div class="px-3 py-1.5 border-t font-mono text-xs space-y-0.5 bg-muted/30">
+						{#each $sseEvents.slice().reverse().slice(0, 3) as event (event.id)}
+							<div class="flex items-center gap-1 text-muted-foreground truncate">
+								<span class="opacity-60 tabular-nums text-[10px]">{formatTime(event.timestamp)}</span>
+								<Badge variant="outline" class="h-4 px-1 text-[10px] font-normal shrink-0">{event.type}</Badge>
+								{#if event.properties?.sessionID}
+									<span class="opacity-50 text-[10px]">{event.properties.sessionID.slice(0, 8)}</span>
+								{:else if event.properties?.part?.sessionID}
+									<span class="opacity-50 text-[10px]">{event.properties.part.sessionID.slice(0, 8)}</span>
+								{/if}
+								{#if event.properties?.part?.type}
+									<span class="text-foreground/70 text-[10px]">{event.properties.part.type}</span>
+								{/if}
+								{#if event.properties?.status?.type}
+									<Badge variant={event.properties.status.type === 'busy' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px] shrink-0">
+										{event.properties.status.type}
+									</Badge>
+								{/if}
+							</div>
+						{/each}
+						{#if $sseEvents.length > 3}
+							<div class="text-[10px] text-muted-foreground/70 pt-0.5">
+								+ {$sseEvents.length - 3} more events (click to expand)
+							</div>
+						{/if}
+					</div>
+				{:else if !sectionState.sseStream}
+					<div class="px-3 py-2 border-t text-xs text-muted-foreground text-center">
+						{#if $connectionStatus === 'connected'}
+							Waiting for events...
+						{:else}
+							Click Connect to start receiving events
+						{/if}
+					</div>
+				{/if}
+				<!-- Full view when expanded -->
 				{#if sectionState.sseStream}
 					<div class="max-h-64 overflow-y-auto p-2 font-mono text-xs">
 						{#each $sseEvents.slice().reverse().slice(0, 50) as event (event.id)}
