@@ -15,14 +15,14 @@ func TestInitProject(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Test basic initialization
-	// Args: projectDir, force, skipBeads, skipKB, skipClaudeMD, skipTmuxinator, beadsPrefix, projectType
+	// Args: projectDir, force, skipBeads, skipKB, skipKN, skipClaudeMD, skipTmuxinator, beadsPrefix, projectType
 	t.Run("creates all directories", func(t *testing.T) {
 		testDir := filepath.Join(tmpDir, "test1")
 		if err := os.MkdirAll(testDir, 0755); err != nil {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "") // skip beads, kb, claudemd, tmuxinator
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "") // skip beads, kb, kn, claudemd, tmuxinator
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -53,13 +53,13 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, true, true, true, "", "")
+		_, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("second initProject failed: %v", err)
 		}
@@ -80,13 +80,13 @@ func TestInitProject(t *testing.T) {
 		}
 
 		// First init
-		_, err := initProject(testDir, false, true, true, true, true, "", "")
+		_, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("first initProject failed: %v", err)
 		}
 
 		// Second init with force
-		result, err := initProject(testDir, true, true, true, true, true, "", "")
+		result, err := initProject(testDir, true, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("force initProject failed: %v", err)
 		}
@@ -103,7 +103,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -119,7 +119,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -129,13 +129,29 @@ func TestInitProject(t *testing.T) {
 		}
 	})
 
+	t.Run("skip kn sets flag", func(t *testing.T) {
+		testDir := filepath.Join(tmpDir, "test4c")
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			t.Fatalf("failed to create test dir: %v", err)
+		}
+
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "")
+		if err != nil {
+			t.Fatalf("initProject failed: %v", err)
+		}
+
+		if !result.KNSkipped {
+			t.Error("expected KNSkipped to be true")
+		}
+	})
+
 	t.Run("synthesis template is written", func(t *testing.T) {
 		testDir := filepath.Join(tmpDir, "test5")
 		if err := os.MkdirAll(testDir, 0755); err != nil {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		_, err := initProject(testDir, false, true, true, true, true, "", "")
+		_, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -161,7 +177,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create cmd dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, false, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, false, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -193,7 +209,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -215,7 +231,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, false, true, "", "svelte-app")
+		result, err := initProject(testDir, false, true, true, true, false, true, "", "svelte-app")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -239,7 +255,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, false, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, false, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -265,7 +281,7 @@ func TestInitProject(t *testing.T) {
 			t.Fatalf("failed to create test dir: %v", err)
 		}
 
-		result, err := initProject(testDir, false, true, true, true, true, "", "")
+		result, err := initProject(testDir, false, true, true, true, true, true, "", "")
 		if err != nil {
 			t.Fatalf("initProject failed: %v", err)
 		}
@@ -393,8 +409,8 @@ func containsSubstring(s, substr string) bool {
 func TestInitCreatesProjectConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Run init (skip beads, kb, claude, tmuxinator to focus on config)
-	result, err := initProject(tmpDir, false, true, true, true, true, "", "")
+	// Run init (skip beads, kb, kn, claude, tmuxinator to focus on config)
+	result, err := initProject(tmpDir, false, true, true, true, true, true, "", "")
 	if err != nil {
 		t.Fatalf("initProject failed: %v", err)
 	}
@@ -433,7 +449,7 @@ func TestInitProjectConfigWithAllocatedPorts(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Run init
-	result, err := initProject(tmpDir, false, true, true, true, true, "", "")
+	result, err := initProject(tmpDir, false, true, true, true, true, true, "", "")
 	if err != nil {
 		t.Fatalf("initProject failed: %v", err)
 	}

@@ -4490,7 +4490,7 @@ func ensureOrchScaffolding(projectDir string, autoInit bool, noTrack bool) error
 		fmt.Println("Auto-initializing orch scaffolding...")
 
 		// Run init with appropriate flags (skip CLAUDE.md and tmuxinator for minimal init)
-		result, err := initProject(projectDir, false, false, false, true, true, "", "")
+		result, err := initProject(projectDir, false, false, false, false, true, true, "", "")
 		if err != nil {
 			return fmt.Errorf("auto-init failed: %w", err)
 		}
