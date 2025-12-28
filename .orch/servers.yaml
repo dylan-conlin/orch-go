@@ -1,0 +1,13 @@
+servers:
+    # Note: orch-go CLI is not a dev server - use 'orch serve' separately
+    - name: web
+      type: command
+      command: npm run dev
+      port: 5173
+      health:
+        type: http
+        path: /
+        interval: 5s
+        timeout: 2s
+        retries: 3
+      workdir: web

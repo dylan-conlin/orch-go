@@ -1,0 +1,205 @@
+Documentation generated in docs/cli/
+  - orch-go.md
+  - orch-go_abandon.md
+  - orch-go_account.md
+  - orch-go_account_list.md
+  - orch-go_account_remove.md
+  - orch-go_account_switch.md
+  - orch-go_ask.md
+  - orch-go_clean.md
+  - orch-go_complete.md
+  - orch-go_daemon.md
+  - orch-go_daemon_preview.md
+  - orch-go_daemon_run.md
+  - orch-go_drift.md
+  - orch-go_focus.md
+  - orch-go_focus_clear.md
+  - orch-go_focus_get.md
+  - orch-go_focus_set.md
+  - orch-go_monitor.md
+  - orch-go_next.md
+  - orch-go_question.md
+  - orch-go_resume.md
+  - orch-go_review.md
+  - orch-go_send.md
+  - orch-go_serve.md
+  - orch-go_spawn.md
+  - orch-go_status.md
+  - orch-go_tail.md
+  - orch-go_usage.md
+  - orch-go_wait.md
+  - orch-go_work.md
+orch-go is a CLI tool for orchestrating OpenCode sessions.
+
+It provides commands for spawning new sessions, sending messages to existing
+sessions, and monitoring session events via SSE.
+
+Usage:
+  orch-go [command]
+
+Available Commands:
+  abandon     Abandon a stuck or frozen agent
+  account     Manage Claude Max accounts
+  clean       List completed agents and optionally close their resources
+  complete    Complete an agent and close the beads issue
+  completion  Generate the autocompletion script for the specified shell
+  daemon      Autonomous overnight processing
+  doctor      Check health of orch services and optionally fix issues
+  drift       Check if current work aligns with focus
+  fetch-md    Fetch a URL and convert it to Markdown
+  focus       Set or view the current north star priority
+  handoff     Generate a session handoff document
+  help        Help about any command
+  history     Show agent history with skill usage analytics
+  init        Initialize orch scaffolding in the current directory
+  kb          Knowledge base commands for inline queries and artifact management
+  learn       Review and act on system learning suggestions (delegates to kb learn)
+  lint        Check CLAUDE.md files against token and character limits
+  logs        View orch event logs
+  monitor     Monitor SSE events for session completion
+  next        Synthesize prioritized work recommendations
+  patterns    Surface behavioral patterns for orchestrator awareness
+  port        Manage port allocations for projects
+  question    Extract pending question from an agent's session
+  resume      Resume a paused agent with workspace-aware continuation
+  retries     Show issues with retry patterns (failed attempts)
+  review      Review agent work before completing
+  send        Send a message to an existing session
+  serve       Start the HTTP API server for the beads-ui dashboard
+  servers     Manage development servers across projects
+  sessions    Search and list OpenCode session history
+  spawn       Spawn a new agent with skill context (default: headless)
+  stale       Show stale beads issues (not updated recently)
+  status      Show swarm status and active agents
+  swarm       Batch spawn multiple agents with concurrency control
+  synthesis   Synthesize recent activity from git, beads, and investigations
+  tail        Capture recent output from an agent
+  tokens      Show token usage for sessions
+  transcript  Work with session transcripts
+  usage       Show Claude Max usage limits
+  version     Print the version information
+  wait        Block until agent reaches specified phase
+  work        Start work on a beads issue with skill inference
+
+Flags:
+  -h, --help            help for orch-go
+      --server string   OpenCode server URL (default "http://127.0.0.1:4096")
+  -v, --version         version for orch-go
+
+Use "orch-go [command] --help" for more information about a command.
+orch-go is a CLI tool for orchestrating OpenCode sessions.
+
+It provides commands for spawning new sessions, sending messages to existing
+sessions, and monitoring session events via SSE.
+
+Usage:
+  orch-go [command]
+
+Available Commands:
+  abandon     Abandon a stuck or frozen agent
+  account     Manage Claude Max accounts
+  clean       List completed agents and optionally close their resources
+  complete    Complete an agent and close the beads issue
+  completion  Generate the autocompletion script for the specified shell
+  daemon      Autonomous overnight processing
+  doctor      Check health of orch services and optionally fix issues
+  drift       Check if current work aligns with focus
+  fetch-md    Fetch a URL and convert it to Markdown
+  focus       Set or view the current north star priority
+  handoff     Generate a session handoff document
+  help        Help about any command
+  history     Show agent history with skill usage analytics
+  init        Initialize orch scaffolding in the current directory
+  kb          Knowledge base commands for inline queries and artifact management
+  learn       Review and act on system learning suggestions (delegates to kb learn)
+  lint        Check CLAUDE.md files against token and character limits
+  logs        View orch event logs
+  monitor     Monitor SSE events for session completion
+  next        Synthesize prioritized work recommendations
+  patterns    Surface behavioral patterns for orchestrator awareness
+  port        Manage port allocations for projects
+  question    Extract pending question from an agent's session
+  resume      Resume a paused agent with workspace-aware continuation
+  retries     Show issues with retry patterns (failed attempts)
+  review      Review agent work before completing
+  send        Send a message to an existing session
+  serve       Start the HTTP API server for the beads-ui dashboard
+  servers     Manage development servers across projects
+  sessions    Search and list OpenCode session history
+  spawn       Spawn a new agent with skill context (default: headless)
+  stale       Show stale beads issues (not updated recently)
+  status      Show swarm status and active agents
+  swarm       Batch spawn multiple agents with concurrency control
+  synthesis   Synthesize recent activity from git, beads, and investigations
+  tail        Capture recent output from an agent
+  tokens      Show token usage for sessions
+  transcript  Work with session transcripts
+  usage       Show Claude Max usage limits
+  version     Print the version information
+  wait        Block until agent reaches specified phase
+  work        Start work on a beads issue with skill inference
+
+Flags:
+  -h, --help            help for orch-go
+      --server string   OpenCode server URL (default "http://127.0.0.1:4096")
+  -v, --version         version for orch-go
+
+Use "orch-go [command] --help" for more information about a command.
+orch-go is a CLI tool for orchestrating OpenCode sessions.
+
+It provides commands for spawning new sessions, sending messages to existing
+sessions, and monitoring session events via SSE.
+
+Usage:
+  orch-go [command]
+
+Available Commands:
+  abandon     Abandon a stuck or frozen agent
+  account     Manage Claude Max accounts
+  clean       List completed agents and optionally close their resources
+  complete    Complete an agent and close the beads issue
+  completion  Generate the autocompletion script for the specified shell
+  daemon      Autonomous overnight processing
+  doctor      Check health of orch services and optionally fix issues
+  drift       Check if current work aligns with focus
+  fetch-md    Fetch a URL and convert it to Markdown
+  focus       Set or view the current north star priority
+  handoff     Generate a session handoff document
+  help        Help about any command
+  history     Show agent history with skill usage analytics
+  init        Initialize orch scaffolding in the current directory
+  kb          Knowledge base commands for inline queries and artifact management
+  learn       Review and act on system learning suggestions (delegates to kb learn)
+  lint        Check CLAUDE.md files against token and character limits
+  logs        View orch event logs
+  monitor     Monitor SSE events for session completion
+  next        Synthesize prioritized work recommendations
+  patterns    Surface behavioral patterns for orchestrator awareness
+  port        Manage port allocations for projects
+  question    Extract pending question from an agent's session
+  resume      Resume a paused agent with workspace-aware continuation
+  retries     Show issues with retry patterns (failed attempts)
+  review      Review agent work before completing
+  send        Send a message to an existing session
+  serve       Start the HTTP API server for the beads-ui dashboard
+  servers     Manage development servers across projects
+  sessions    Search and list OpenCode session history
+  spawn       Spawn a new agent with skill context (default: headless)
+  stale       Show stale beads issues (not updated recently)
+  status      Show swarm status and active agents
+  swarm       Batch spawn multiple agents with concurrency control
+  synthesis   Synthesize recent activity from git, beads, and investigations
+  tail        Capture recent output from an agent
+  tokens      Show token usage for sessions
+  transcript  Work with session transcripts
+  usage       Show Claude Max usage limits
+  version     Print the version information
+  wait        Block until agent reaches specified phase
+  work        Start work on a beads issue with skill inference
+
+Flags:
+  -h, --help            help for orch-go
+      --server string   OpenCode server URL (default "http://127.0.0.1:4096")
+  -v, --version         version for orch-go
+
+Use "orch-go [command] --help" for more information about a command.
