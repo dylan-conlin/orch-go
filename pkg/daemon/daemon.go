@@ -364,21 +364,15 @@ func ListReadyIssues() ([]Issue, error) {
 	return listReadyIssuesCLI()
 }
 
-// listReadyIssuesCLI retrieves ready issues by shelling out to bd CLI.
+// listReadyIssuesCLI retrieves ready issues using the beads CLIClient.
 func listReadyIssuesCLI() ([]Issue, error) {
-	cmd := exec.Command("bd", "ready", "--json")
-	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	client := beads.NewCLIClient(beads.WithEnv(os.Environ()))
+	beadsIssues, err := client.Ready(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready: %w", err)
 	}
 
-	var issues []Issue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse issues: %w", err)
-	}
-
-	return issues, nil
+	return convertBeadsIssues(beadsIssues), nil
 }
 
 // convertBeadsIssues converts beads.Issue slice to daemon.Issue slice.

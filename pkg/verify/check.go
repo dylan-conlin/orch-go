@@ -2,10 +2,8 @@
 package verify
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -61,23 +59,14 @@ func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 	return FallbackCommentsWithDir(beadsID, projectDir)
 }
 
-// FallbackCommentsWithDir retrieves comments via bd CLI in a specific directory.
+// FallbackCommentsWithDir retrieves comments via the beads CLIClient in a specific directory.
 func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
-	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	opts := []beads.CLIOption{}
 	if projectDir != "" {
-		cmd.Dir = projectDir
+		opts = append(opts, beads.WithWorkDir(projectDir))
 	}
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("bd comments failed: %w", err)
-	}
-
-	var comments []Comment
-	if err := json.Unmarshal(output, &comments); err != nil {
-		return nil, fmt.Errorf("failed to parse bd comments output: %w", err)
-	}
-
-	return comments, nil
+	client := beads.NewCLIClient(opts...)
+	return client.Comments(beadsID)
 }
 
 // ParsePhaseFromComments extracts the latest Phase status from comments.
