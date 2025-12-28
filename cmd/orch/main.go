@@ -2687,10 +2687,9 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	fmt.Println()
 	fmt.Println()
 
-	// Surface architect recommendations if any
-	if archCount, err := GetArchitectRecommendationCount(); err == nil && archCount > 0 {
-		fmt.Printf("⚠️  %d architect recommendation(s) awaiting review\n", archCount)
-		fmt.Println("   Run 'orch review --architects' to process")
+	// Surface architect recommendations if any (with rich detail for SessionStart awareness)
+	if surface, err := GetArchitectRecommendationsSurface(); err == nil && surface.TotalCount > 0 {
+		fmt.Print(FormatArchitectRecommendationsSurface(surface))
 		fmt.Println()
 	}
 

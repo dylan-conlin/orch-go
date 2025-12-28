@@ -627,6 +627,111 @@ func TestStaleThreshold(t *testing.T) {
 	}
 }
 
+// TestExtractShortWorkspaceName verifies workspace name shortening for display.
+func TestExtractShortWorkspaceName(t *testing.T) {
+	tests := []struct {
+		name        string
+		workspaceID string
+		want        string
+	}{
+		{"architect with date", "og-arch-de-bloat-feature-27dec", "de-bloat-feature"},
+		{"feature with date", "og-feat-beads-integration-27dec", "beads-integration"},
+		{"investigation with date", "kb-inv-auth-flow-analysis-21dec", "auth-flow-analysis"},
+		{"debug with date", "og-debug-orch-status-23dec", "orch-status"},
+		// snap- is 4 chars so not stripped as project prefix
+		{"research with date", "snap-research-api-patterns-15dec", "snap-research-api-patterns"},
+		{"short name", "og-feat", "og-feat"},
+		{"single word", "test", "test"},
+		// "my" is 2 chars so stripped, but "feature" is not a skill type
+		{"no prefix, with date", "my-feature-work-01jan", "feature-work"},
+		{"two parts only", "og-arch", "og-arch"},
+		{"complex name", "kb-audit-security-review-multi-tenant-02jan", "security-review-multi-tenant"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractShortWorkspaceName(tt.workspaceID)
+			if got != tt.want {
+				t.Errorf("extractShortWorkspaceName(%q) = %q, want %q", tt.workspaceID, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFormatArchitectRecommendationsSurface verifies the formatting of architect recommendations.
+func TestFormatArchitectRecommendationsSurface(t *testing.T) {
+	tests := []struct {
+		name     string
+		surface  *ArchitectRecommendationsSurface
+		contains []string
+		isEmpty  bool
+	}{
+		{
+			name:    "nil surface",
+			surface: nil,
+			isEmpty: true,
+		},
+		{
+			name: "empty surface",
+			surface: &ArchitectRecommendationsSurface{
+				TotalCount: 0,
+				Summaries:  nil,
+			},
+			isEmpty: true,
+		},
+		{
+			name: "single recommendation",
+			surface: &ArchitectRecommendationsSurface{
+				TotalCount: 1,
+				Summaries: []ArchitectRecommendationSummary{
+					{WorkspaceID: "de-bloat-feature", TLDR: "71% reduction possible", ItemCount: 8},
+				},
+			},
+			contains: []string{
+				"1 architect recommendation(s) awaiting review",
+				"de-bloat-feature (8 items)",
+				"71% reduction possible",
+				"orch review --architects",
+			},
+		},
+		{
+			name: "multiple recommendations with overflow",
+			surface: &ArchitectRecommendationsSurface{
+				TotalCount: 7,
+				Summaries: []ArchitectRecommendationSummary{
+					{WorkspaceID: "de-bloat-feature", TLDR: "71% reduction", ItemCount: 8},
+					{WorkspaceID: "beads-integration", TLDR: "Go RPC", ItemCount: 4},
+				},
+			},
+			contains: []string{
+				"7 architect recommendation(s) awaiting review",
+				"de-bloat-feature",
+				"beads-integration",
+				"... and 5 more",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatArchitectRecommendationsSurface(tt.surface)
+
+			if tt.isEmpty {
+				if got != "" {
+					t.Errorf("FormatArchitectRecommendationsSurface() = %q, want empty string", got)
+				}
+				return
+			}
+
+			for _, want := range tt.contains {
+				if !strings.Contains(got, want) {
+					t.Errorf("FormatArchitectRecommendationsSurface() = %q, want to contain %q", got, want)
+				}
+			}
+		})
+	}
+}
+
 // TestGetCompletionsForReviewWorkspaceBased verifies workspace-based completion detection.
 func TestGetCompletionsForReviewWorkspaceBased(t *testing.T) {
 	// Create temp project directory
