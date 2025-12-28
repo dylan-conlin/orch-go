@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean test install install-restart fmt lint docs version
+.PHONY: all build clean clean-all test install install-restart fmt lint docs version
 
 # Default target
 all: build
@@ -57,6 +57,11 @@ clean:
 	rm -rf $(BUILD_DIR)
 	go clean
 
+# Clean all artifacts including root-level executables
+clean-all: clean
+	@echo "Removing root-level executables..."
+	rm -f orch orch-go orch-new orch-test orch-test-serve test-orch-go *.test
+
 # Format code
 fmt:
 	go fmt ./...
@@ -95,6 +100,7 @@ help:
 	@echo "  install         - Install to ~/bin"
 	@echo "  install-restart - Install and restart daemon"
 	@echo "  clean           - Clean build artifacts"
+	@echo "  clean-all       - Clean all (including root executables)"
 	@echo "  fmt             - Format code"
 	@echo "  lint            - Run linter"
 	@echo "  vet             - Run go vet"
