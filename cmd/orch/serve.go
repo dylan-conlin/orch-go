@@ -1051,9 +1051,20 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to OpenCode SSE stream
+	// Connect to OpenCode SSE stream with directory header
+	// This is critical - without it, OpenCode only streams events for global sessions
 	opencodeURL := serverURL + "/event"
-	resp, err := http.Get(opencodeURL)
+	req, err := http.NewRequest("GET", opencodeURL, nil)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to create request: %s\"}\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+	// Set directory header so OpenCode streams events for THIS project's sessions
+	if sourceDir != "" && sourceDir != "unknown" {
+		req.Header.Set("x-opencode-directory", sourceDir)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		// Send error as SSE event
 		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to connect to OpenCode: %s\"}\n\n", err.Error())
