@@ -5,19 +5,19 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Orchestrator session-start context has 4 specific gaps: (1) wrong port in skill (3333 vs 3348), (2) no web UI startup instructions in CLAUDE.md, (3) SessionStart hook focuses on workspaces not servers, (4) spawned agents get server context but orchestrators don't.
+**Delta:** Orchestrator session-start context has 5 specific gaps: (1) wrong port in skill (3333 vs 3348), (2) no web UI startup instructions in CLAUDE.md, (3) SessionStart hook focuses on workspaces not servers, (4) spawned agents get server context but orchestrators don't, (5) stale binary detection exists (`orch version --source`) but isn't surfaced at session start.
 
-**Evidence:** Tested actual session start context by checking CLAUDE.md, hooks, and orchestrator skill; verified port 3348 responds while 3333 does not; confirmed spawned agents get LOCAL SERVERS section via GenerateServerContext() but orchestrators have no equivalent.
+**Evidence:** Tested `orch version --source` - correctly detects staleness by comparing embedded git hash to HEAD. Verified port 3348 responds while 3333 does not. Confirmed spawned agents get LOCAL SERVERS section via GenerateServerContext() but orchestrators have no equivalent. Found prior kn entries (kn-64dddf, kn-5afb22) documenting stale binary pain points.
 
-**Knowledge:** The asymmetry exists because spawn context is code-generated with project-specific server info, while orchestrator context relies on static CLAUDE.md files that don't include operational runtime context like "how to start the web UI".
+**Knowledge:** Both server info and staleness detection EXIST but aren't SURFACED at session start. The pattern is consistent: Dylan builds features, forgets to add them to SessionStart context injection. Spawn context is code-generated with project-specific info, while orchestrator context relies on static CLAUDE.md that lacks runtime details.
 
-**Next:** Fix orchestrator skill port (3333→3348), add dev server startup section to orch-go CLAUDE.md, and consider SessionStart hook enhancement to surface server health via `orch servers status`.
+**Next:** Fix orchestrator skill port (3333→3348), add dev server startup section to CLAUDE.md, add stale binary warning to SessionStart hook, consider adding `orch servers status` to SessionStart context.
 
 ---
 
 # Investigation: Session-Start Context Gaps for Orchestrators
 
-**Question:** What gaps exist in session-start context for orchestrators? Specifically: (1) What server/service information should orchestrators know? (2) What mechanisms have we tried? (3) What's still missing or broken?
+**Question:** What gaps exist in session-start context for orchestrators? Specifically: (1) What server/service information should orchestrators know? (2) What mechanisms have we tried? (3) What's still missing or broken? (4) Why do we keep running stale orch binaries?
 
 **Started:** 2025-12-28
 **Updated:** 2025-12-28
@@ -132,6 +132,47 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 
 ---
 
+### Finding 5: Stale Binary Detection EXISTS But Isn't Surfaced
+
+**Evidence:** The `orch version --source` command correctly detects binary staleness:
+
+```
+$ orch version --source
+orch version 877943f1-dirty
+build time:  2025-12-28T20:17:16Z
+source dir:  /Users/dylanconlin/Documents/personal/orch-go
+git hash:    877943f1f2c571eb9ce666f81fc34c71d8541f69
+
+status: ✓ UP TO DATE
+```
+
+When binary is stale, output shows:
+```
+status: ⚠️  STALE
+binary hash:  877943f1
+current HEAD: abc12345
+
+rebuild: cd /Users/dylanconlin/Documents/personal/orch-go && make install
+```
+
+The mechanism:
+- `Makefile:17` embeds GIT_HASH at build time via LDFLAGS
+- `cmd/orch/main.go:115-156` implements `runVersionSource()` which compares embedded hash to `git rev-parse HEAD`
+- Works correctly but is never run automatically
+
+Prior knowledge documents this pain:
+- `kn-64dddf`: "bd multi-repo config is YAML-only... Stale binary causes silent failure."
+- `kn-5afb22`: "Binary staleness should be prevented with make install"
+
+**Source:**
+- `/Users/dylanconlin/Documents/personal/orch-go/cmd/orch/main.go:115-156` - runVersionSource implementation
+- `/Users/dylanconlin/Documents/personal/orch-go/Makefile:17` - Git hash embedding
+- `kn get kn-64dddf` and `kn get kn-5afb22` - prior pain points
+
+**Significance:** The staleness detection is complete and accurate. The gap is that it's not surfaced automatically. Adding a SessionStart hook that calls `orch version --source` (or checks git hashes directly) would prevent orchestrators from working with outdated binaries.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
@@ -144,6 +185,8 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 
 4. **SessionStart Hook Underutilized** - The hook infrastructure exists and runs on every session, but it's focused on workspace management, not operational status. Prior investigations recommended SessionStart for server health surfacing, but this hasn't been implemented.
 
+5. **Features Exist, Surfacing Doesn't** - Both server info and staleness detection are fully implemented. The gap is surfacing them in SessionStart context. This is a pattern: build feature → forget to add to session context → hit the gap months later.
+
 **Answer to Investigation Question:**
 
 **What gaps exist?**
@@ -151,6 +194,7 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 2. Missing dev server startup instructions in CLAUDE.md (documentation gap)
 3. SessionStart hook doesn't surface server/service status (feature gap)
 4. Orchestrators don't get project-specific context that workers receive (architectural asymmetry)
+5. Stale binary detection exists but isn't surfaced automatically (feature gap)
 
 **What mechanisms have we tried?**
 - CLAUDE.md files (static, project-specific documentation)
@@ -163,6 +207,7 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 - No "how to start for development" section in CLAUDE.md (gap)
 - SessionStart doesn't surface `orch doctor` or `orch servers status` results (gap)
 - No equivalent to GenerateServerContext for orchestrator sessions (gap)
+- `orch version --source` staleness check isn't run automatically (gap)
 
 ---
 
@@ -175,6 +220,8 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 - ✅ SessionStart hook focuses on workspaces (verified: read full content)
 - ✅ GenerateServerContext exists and includes ports (verified: code review and .orch/config.yaml)
 - ✅ `orch doctor` and `orch servers status` show useful info (verified: ran commands)
+- ✅ `orch version --source` correctly detects staleness (verified: ran command, showed UP TO DATE)
+- ✅ Prior kn entries document stale binary pain (verified: kn-64dddf, kn-5afb22)
 
 **What's untested:**
 
@@ -208,8 +255,9 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 **Implementation sequence:**
 1. **Fix port in orchestrator skill** - Simple find/replace, quick win
 2. **Add dev server section to CLAUDE.md** - Document existing behavior
-3. **Consider SessionStart hook enhancement** - Surface `orch doctor` summary
-4. **Optionally** - Add orchestrator-equivalent of GenerateServerContext to SessionStart
+3. **Add stale binary warning to SessionStart hook** - Calls `orch version --source`, surfaces warning if stale
+4. **Consider server status in SessionStart** - Surface `orch doctor` or server health summary
+5. **Optionally** - Add orchestrator-equivalent of GenerateServerContext to SessionStart
 
 ### Alternative Approaches Considered
 
@@ -232,6 +280,7 @@ This context is included in SPAWN_CONTEXT.md for workers, but orchestrators don'
 **What to implement first:**
 1. Fix port 3333→3348 in `~/.claude/skills/meta/orchestrator/.skillc/` source files, then `skillc build`
 2. Add "Development Setup" section to CLAUDE.md with web UI startup instructions
+3. Create `stale-binary-warning.py` SessionStart hook - ~30 lines, calls `orch version --source`
 
 **Things to watch out for:**
 - ⚠️ Port 5188 in config.yaml vs 5173 vite default - may need alignment
@@ -302,9 +351,10 @@ launchctl list | grep -i orch
 
 | Type | Item | Action |
 |------|------|--------|
-| **Bug** | Port 3333 in orchestrator skill should be 3348 | Created via `bd create` |
+| **Bug** | Port 3333 in orchestrator skill should be 3348 | Create via `bd create` |
 | **Documentation** | Missing web UI startup instructions in CLAUDE.md | Included in recommendations |
-| **Enhancement** | SessionStart hook could surface `orch doctor` summary | Included in recommendations |
+| **Enhancement** | Add stale binary warning to SessionStart hook | Create via `bd create` |
+| **Enhancement** | SessionStart hook could surface server status | Included in recommendations |
 
 ---
 

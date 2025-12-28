@@ -1,7 +1,7 @@
 # Session Synthesis
 
 **Agent:** og-inv-gaps-exist-session-28dec
-**Issue:** orch-go-2wbw
+**Issue:** orch-go-a8jp
 **Duration:** 2025-12-28 ~12:30 → ~13:30
 **Outcome:** success
 
@@ -9,14 +9,14 @@
 
 ## TLDR
 
-Identified 4 specific gaps in orchestrator session-start context: wrong port in skill (3333 vs 3348), missing web UI startup docs in CLAUDE.md, underutilized SessionStart hook, and asymmetric context injection (spawned agents get server info, orchestrators don't).
+Identified 5 specific gaps in orchestrator session-start context: (1) wrong port in skill (3333 vs 3348), (2) missing web UI startup docs in CLAUDE.md, (3) underutilized SessionStart hook, (4) asymmetric context injection (spawned agents get server info, orchestrators don't), (5) stale binary detection exists (`orch version --source`) but isn't surfaced automatically at session start.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Created
-- `.kb/investigations/2025-12-28-inv-gaps-exist-session-start-context.md` - Full investigation with D.E.K.N. summary and actionable recommendations
+- `.kb/investigations/2025-12-28-inv-gaps-exist-session-start-context.md` - Full investigation with D.E.K.N. summary, 5 findings, and actionable recommendations
 
 ### Files Modified
 - None (investigation-only session)
@@ -34,6 +34,8 @@ Identified 4 specific gaps in orchestrator session-start context: wrong port in 
 - Spawned agents get `LOCAL SERVERS` section via `GenerateServerContext()` in `pkg/spawn/context.go:858`, but orchestrators don't receive equivalent
 - `orch doctor` shows all services running, but this isn't surfaced at session start
 - `orch servers status orch-go` shows web server running via launchd
+- `orch version --source` correctly detects binary staleness by comparing embedded git hash to current HEAD (verified: showed "UP TO DATE")
+- Prior kn entries document stale binary pain: kn-64dddf, kn-5afb22 (verified: `kn context "stale binary"`)
 
 ### Tests Run
 ```bash
@@ -47,6 +49,12 @@ grep -E "npm run dev|cd web" /Users/dylanconlin/Documents/personal/orch-go/CLAUD
 # Service status
 ~/bin/orch doctor  # All services running
 ~/bin/orch serve status  # API running on 3348
+
+# Stale binary detection
+~/bin/orch version --source  # status: ✓ UP TO DATE
+
+# Prior knowledge search
+kn context "stale binary"  # Found kn-64dddf, kn-5afb22
 ```
 
 ---
@@ -54,7 +62,7 @@ grep -E "npm run dev|cd web" /Users/dylanconlin/Documents/personal/orch-go/CLAUD
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-28-inv-gaps-exist-session-start-context.md` - Complete investigation with 4 findings
+- `.kb/investigations/2025-12-28-inv-gaps-exist-session-start-context.md` - Complete investigation with 5 findings
 
 ### Decisions Made
 - Port fix is highest priority (simple bug fix)
@@ -96,7 +104,17 @@ section explaining: (1) orch serve for API on 3348, (2) cd web && npm run dev
 for Svelte UI on 5173, (3) web UI connects to orch serve API.
 ```
 
-**Issue 3 (optional):** SessionStart hook server health surfacing
+**Issue 3:** Add stale binary warning to SessionStart hook
+**Skill:** feature-impl
+**Context:**
+```
+Create ~/.orch/hooks/stale-binary-warning.py that calls `orch version --source` 
+on session start. If stale, output warning with rebuild command. Add to 
+~/.claude/settings.json SessionStart section. `orch version --source` already 
+does the heavy lifting - just parse its output.
+```
+
+**Issue 4 (optional):** SessionStart hook server health surfacing
 **Skill:** feature-impl
 **Context:**
 ```
@@ -130,4 +148,4 @@ recommended SessionStart for server health. Hook infrastructure exists at
 **Model:** opus
 **Workspace:** `.orch/workspace/og-inv-gaps-exist-session-28dec/`
 **Investigation:** `.kb/investigations/2025-12-28-inv-gaps-exist-session-start-context.md`
-**Beads:** `bd show orch-go-2wbw`
+**Beads:** `bd show orch-go-a8jp`
