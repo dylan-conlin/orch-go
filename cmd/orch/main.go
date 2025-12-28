@@ -319,9 +319,10 @@ var monitorCmd = &cobra.Command{
 
 var (
 	// Status command flags
-	statusJSON    bool
-	statusAll     bool   // Include phantom agents (default: hide)
-	statusProject string // Filter by project
+	statusJSON         bool
+	statusAll          bool   // Include phantom agents (default: hide)
+	statusProject      string // Filter by project
+	statusSessionStart bool   // Output only surfacing info for SessionStart hooks
 )
 
 var statusCmd = &cobra.Command{
@@ -333,12 +334,20 @@ per-account usage percentages, and individual agent details.
 By default, phantom agents (beads issue open but no running agent) are hidden.
 Use --all to include them.
 
+The --session-start flag outputs only SessionStart surfacing info (architect
+recommendations, usage warnings) for use in SessionStart hooks. This creates
+pressure to review high-value design work that would otherwise accumulate silently.
+
 Examples:
-  orch-go status              # Show active agents only
-  orch-go status --all        # Include phantom agents
-  orch-go status --project snap  # Filter by project
-  orch-go status --json       # Output as JSON for scripting`,
+  orch-go status                  # Show active agents only
+  orch-go status --all            # Include phantom agents
+  orch-go status --project snap   # Filter by project
+  orch-go status --json           # Output as JSON for scripting
+  orch-go status --session-start  # Output surfacing info for hooks`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if statusSessionStart {
+			return runStatusSessionStart()
+		}
 		return runStatus(serverURL)
 	},
 }
@@ -347,6 +356,7 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON for scripting")
 	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Include phantom agents")
 	statusCmd.Flags().StringVar(&statusProject, "project", "", "Filter by project")
+	statusCmd.Flags().BoolVar(&statusSessionStart, "session-start", false, "Output only surfacing info for SessionStart hooks")
 }
 
 var (
@@ -2497,6 +2507,51 @@ func runStatus(serverURL string) error {
 	// Print human-readable output
 	printSwarmStatus(output, statusAll)
 	return nil
+}
+
+// runStatusSessionStart outputs only SessionStart surfacing info.
+// This is designed for use in SessionStart hooks to create pressure
+// to review high-value design work (architect recommendations) and
+// check usage limits.
+//
+// Output format is human-readable but minimal - just the warnings.
+// If there's nothing to surface, output is empty.
+func runStatusSessionStart() error {
+	var hasOutput bool
+
+	// Surface architect recommendations if any
+	surface, err := GetArchitectRecommendationsSurface()
+	if err == nil && surface.TotalCount > 0 {
+		fmt.Print(FormatArchitectRecommendationsSurface(surface))
+		hasOutput = true
+	}
+
+	// Surface usage warnings if at risk
+	usageWarning := getUsageWarningForSession()
+	if usageWarning != "" {
+		if hasOutput {
+			fmt.Println() // Add separator
+		}
+		fmt.Print(usageWarning)
+		hasOutput = true
+	}
+
+	// If nothing to surface, output is empty (silent success)
+	// This allows hooks to check for empty output
+	return nil
+}
+
+// getUsageWarningForSession returns a usage warning message if usage is high.
+// Returns empty string if usage is OK.
+func getUsageWarningForSession() string {
+	// Get current usage summary (includes warning status)
+	summary, isWarning := usage.GetUsageSummary()
+	if !isWarning {
+		return "" // Usage is OK
+	}
+
+	// Return the warning with action suggestion
+	return fmt.Sprintf("%s\n   Consider: orch account switch <backup-account>\n", summary)
 }
 
 // extractProjectFromBeadsID extracts the project name from a beads ID.

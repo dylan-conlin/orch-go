@@ -440,3 +440,62 @@ func TestFormatTokenStatsCompact(t *testing.T) {
 		})
 	}
 }
+
+// TestStatusSessionStartFlag verifies the --session-start flag exists.
+func TestStatusSessionStartFlag(t *testing.T) {
+	if statusCmd == nil {
+		t.Fatal("statusCmd is nil")
+	}
+
+	// Check --session-start flag exists
+	ssFlag := statusCmd.Flags().Lookup("session-start")
+	if ssFlag == nil {
+		t.Error("Expected --session-start flag")
+	}
+
+	// Verify it's a bool flag
+	if ssFlag != nil && ssFlag.Value.Type() != "bool" {
+		t.Errorf("Expected bool flag, got %s", ssFlag.Value.Type())
+	}
+}
+
+// TestGetUsageWarningForSession tests usage warning generation.
+func TestGetUsageWarningForSession(t *testing.T) {
+	// Note: This test is limited because getUsageWarningForSession calls
+	// usage.GetUsageSummary which requires OAuth tokens. We can only test
+	// that the function exists and doesn't panic.
+	//
+	// In a real scenario, we would mock the usage package, but since this
+	// is a light-tier spawn, we'll keep the test minimal.
+
+	// Call the function - should not panic even without valid auth
+	warning := getUsageWarningForSession()
+
+	// Either empty (no warning) or contains expected text
+	if warning != "" {
+		if !strings.Contains(warning, "orch account switch") {
+			t.Errorf("Expected warning to contain 'orch account switch', got: %s", warning)
+		}
+	}
+}
+
+// TestRunStatusSessionStartDoesNotPanic verifies the function doesn't panic.
+// This is a basic smoke test - full integration testing requires a running server.
+func TestRunStatusSessionStartDoesNotPanic(t *testing.T) {
+	// Capture stdout to avoid noise
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	defer func() {
+		w.Close()
+		os.Stdout = oldStdout
+
+		if r := recover(); r != nil {
+			t.Errorf("runStatusSessionStart panicked: %v", r)
+		}
+	}()
+
+	// Call the function - should return nil error or non-nil error, but not panic
+	_ = runStatusSessionStart()
+}
