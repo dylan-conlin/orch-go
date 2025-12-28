@@ -39,6 +39,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -85,10 +87,246 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// MarshalYAML implements yaml.Marshaler for Duration.
-func (d Duration) MarshalYAML() (interface{}, error) {
-	return time.Duration(d).String(), nil
+// PlistConfig holds configuration for generating a launchd plist.
+type PlistConfig struct {
+	// Label is the launchd service label (e.g., "com.orch.project.web").
+	Label string
+
+	// ProgramArguments are the command and arguments to run.
+	ProgramArguments []string
+
+	// WorkingDirectory is the working directory for the service.
+	WorkingDirectory string
+
+	// EnvironmentVariables are additional environment variables.
+	EnvironmentVariables map[string]string
+
+	// StandardOutPath is the path for stdout logging.
+	StandardOutPath string
+
+	// StandardErrorPath is the path for stderr logging.
+	StandardErrorPath string
+
+	// KeepAlive determines restart behavior.
+	KeepAlive bool
+
+	// RunAtLoad determines if the service starts at login.
+	RunAtLoad bool
 }
+
+// GeneratePlist creates a launchd plist XML string from a PlistConfig.
+func GeneratePlist(cfg PlistConfig) string {
+	var sb strings.Builder
+
+	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>`)
+	sb.WriteString(escapeXML(cfg.Label))
+	sb.WriteString(`</string>
+
+    <key>ProgramArguments</key>
+    <array>
+`)
+	for _, arg := range cfg.ProgramArguments {
+		sb.WriteString("        <string>")
+		sb.WriteString(escapeXML(arg))
+		sb.WriteString("</string>\n")
+	}
+	sb.WriteString(`    </array>
+
+    <key>RunAtLoad</key>
+`)
+	if cfg.RunAtLoad {
+		sb.WriteString("    <true/>\n")
+	} else {
+		sb.WriteString("    <false/>\n")
+	}
+
+	sb.WriteString(`
+    <key>KeepAlive</key>
+`)
+	if cfg.KeepAlive {
+		sb.WriteString(`    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+`)
+	} else {
+		sb.WriteString("    <false/>\n")
+	}
+
+	if cfg.WorkingDirectory != "" {
+		sb.WriteString(`
+    <key>WorkingDirectory</key>
+    <string>`)
+		sb.WriteString(escapeXML(cfg.WorkingDirectory))
+		sb.WriteString("</string>\n")
+	}
+
+	if cfg.StandardOutPath != "" {
+		sb.WriteString(`
+    <key>StandardOutPath</key>
+    <string>`)
+		sb.WriteString(escapeXML(cfg.StandardOutPath))
+		sb.WriteString("</string>\n")
+	}
+
+	if cfg.StandardErrorPath != "" {
+		sb.WriteString(`
+    <key>StandardErrorPath</key>
+    <string>`)
+		sb.WriteString(escapeXML(cfg.StandardErrorPath))
+		sb.WriteString("</string>\n")
+	}
+
+	if len(cfg.EnvironmentVariables) > 0 {
+		sb.WriteString(`
+    <key>EnvironmentVariables</key>
+    <dict>
+`)
+		// Sort keys for deterministic output
+		keys := make([]string, 0, len(cfg.EnvironmentVariables))
+		for k := range cfg.EnvironmentVariables {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			sb.WriteString("        <key>")
+			sb.WriteString(escapeXML(k))
+			sb.WriteString("</key>\n        <string>")
+			sb.WriteString(escapeXML(cfg.EnvironmentVariables[k]))
+			sb.WriteString("</string>\n")
+		}
+		sb.WriteString("    </dict>\n")
+	}
+
+	sb.WriteString(`</dict>
+</plist>
+`)
+
+	return sb.String()
+}
+
+// escapeXML escapes special XML characters.
+func escapeXML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&apos;")
+	return s
+}
+
+// ServerToPlistConfig converts a Server to a PlistConfig for launchd generation.
+func ServerToPlistConfig(project string, server Server, projectDir string, opts PlistOptions) PlistConfig {
+	label := fmt.Sprintf("com.%s.%s", project, server.Name)
+
+	// Build program arguments from command
+	// For command type, we wrap in shell to handle complex commands
+	args := []string{"/bin/sh", "-c", server.Command}
+
+	// Resolve working directory
+	workdir := projectDir
+	if server.Workdir != "." && server.Workdir != "" {
+		workdir = filepath.Join(projectDir, server.Workdir)
+	}
+
+	// Build environment variables
+	env := make(map[string]string)
+	if opts.Path != "" {
+		env["PATH"] = opts.Path
+	}
+	// Add server-specific env vars
+	for k, v := range server.Env {
+		env[k] = v
+	}
+
+	// Log paths
+	logDir := opts.LogDir
+	if logDir == "" {
+		logDir = filepath.Join(projectDir, ".orch", "logs")
+	}
+	stdoutPath := filepath.Join(logDir, fmt.Sprintf("%s.%s.log", project, server.Name))
+	stderrPath := filepath.Join(logDir, fmt.Sprintf("%s.%s.err.log", project, server.Name))
+
+	return PlistConfig{
+		Label:                label,
+		ProgramArguments:     args,
+		WorkingDirectory:     workdir,
+		EnvironmentVariables: env,
+		StandardOutPath:      stdoutPath,
+		StandardErrorPath:    stderrPath,
+		KeepAlive:            opts.KeepAlive,
+		RunAtLoad:            opts.RunAtLoad,
+	}
+}
+
+// PlistOptions holds options for plist generation.
+type PlistOptions struct {
+	// Path is the PATH environment variable to set.
+	Path string
+
+	// LogDir is the directory for log files. Defaults to projectDir/.orch/logs.
+	LogDir string
+
+	// KeepAlive determines if the service should restart on failure.
+	KeepAlive bool
+
+	// RunAtLoad determines if the service starts at login.
+	RunAtLoad bool
+}
+
+// DefaultPlistOptions returns sensible defaults for plist generation.
+func DefaultPlistOptions() PlistOptions {
+	homeDir, _ := os.UserHomeDir()
+	return PlistOptions{
+		Path:      fmt.Sprintf("%s/bin:%s/.local/bin:/usr/local/bin:/usr/bin:/bin", homeDir, homeDir),
+		KeepAlive: true,
+		RunAtLoad: false,
+	}
+}
+
+// LaunchAgentsDir returns the path to ~/Library/LaunchAgents.
+func LaunchAgentsDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(homeDir, "Library", "LaunchAgents"), nil
+}
+
+// PlistPath returns the path where a plist would be written for a project/server.
+func PlistPath(project, serverName string) (string, error) {
+	dir, err := LaunchAgentsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, fmt.Sprintf("com.%s.%s.plist", project, serverName)), nil
+}
+
+// WritePlist writes a plist file for a server.
+func WritePlist(project, serverName, content string) error {
+	plistPath, err := PlistPath(project, serverName)
+	if err != nil {
+		return err
+	}
+
+	// Ensure LaunchAgents directory exists
+	dir := filepath.Dir(plistPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
+	}
+
+	if err := os.WriteFile(plistPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write plist: %w", err)
+	}
+
+	return nil
+}
+
 
 // Duration returns the underlying time.Duration.
 func (d Duration) Duration() time.Duration {

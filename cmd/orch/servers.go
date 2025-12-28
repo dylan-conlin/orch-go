@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/port"
+	"github.com/dylan-conlin/orch-go/pkg/servers"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
@@ -124,6 +126,39 @@ Examples:
 	},
 }
 
+var serversGenPlistCmd = &cobra.Command{
+	Use:   "gen-plist <project>",
+	Short: "Generate launchd plist files from servers.yaml",
+	Long: `Generate launchd plist files for a project's servers.
+
+Reads servers from .orch/servers.yaml and generates launchd plist files
+at ~/Library/LaunchAgents/com.<project>.<server>.plist.
+
+Only generates plists for servers with type: command.
+
+Options:
+  --path          Override PATH environment variable
+  --keep-alive    Keep service running (restart on failure)
+  --run-at-load   Start service at login
+  --dry-run       Print plists without writing files
+  --project-dir   Project directory (default: current directory)
+
+Examples:
+  orch servers gen-plist myproject
+  orch servers gen-plist myproject --dry-run
+  orch servers gen-plist myproject --keep-alive --run-at-load`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir, _ := cmd.Flags().GetString("project-dir")
+		pathEnv, _ := cmd.Flags().GetString("path")
+		keepAlive, _ := cmd.Flags().GetBool("keep-alive")
+		runAtLoad, _ := cmd.Flags().GetBool("run-at-load")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+		return runServersGenPlist(args[0], projectDir, pathEnv, keepAlive, runAtLoad, dryRun)
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(serversCmd)
 	serversCmd.AddCommand(serversListCmd)
@@ -132,6 +167,14 @@ func init() {
 	serversCmd.AddCommand(serversAttachCmd)
 	serversCmd.AddCommand(serversOpenCmd)
 	serversCmd.AddCommand(serversStatusCmd)
+	serversCmd.AddCommand(serversGenPlistCmd)
+
+	// gen-plist flags
+	serversGenPlistCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+	serversGenPlistCmd.Flags().String("path", "", "Override PATH environment variable")
+	serversGenPlistCmd.Flags().Bool("keep-alive", true, "Keep service running (restart on failure)")
+	serversGenPlistCmd.Flags().Bool("run-at-load", false, "Start service at login")
+	serversGenPlistCmd.Flags().Bool("dry-run", false, "Print plists without writing files")
 }
 
 // ProjectServerInfo holds information about a project's servers.
@@ -417,6 +460,89 @@ func runServersStatus(registryPath string) error {
 	fmt.Printf("Stopped:          %d\n", stoppedCount)
 	fmt.Println()
 	fmt.Println("Use 'orch servers list' for detailed view")
+
+	return nil
+}
+
+// runServersGenPlist generates launchd plist files for a project's servers.
+func runServersGenPlist(project, projectDir, pathEnv string, keepAlive, runAtLoad, dryRun bool) error {
+	// Default to current directory if not specified
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+
+	// Convert to absolute path
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
+
+	// Load servers.yaml
+	cfg, err := servers.Load(absProjectDir)
+	if err != nil {
+		return fmt.Errorf("failed to load servers.yaml: %w", err)
+	}
+
+	if len(cfg.Servers) == 0 {
+		return fmt.Errorf("no servers found in %s", servers.DefaultPath(absProjectDir))
+	}
+
+	// Build options
+	opts := servers.DefaultPlistOptions()
+	if pathEnv != "" {
+		opts.Path = pathEnv
+	}
+	opts.KeepAlive = keepAlive
+	opts.RunAtLoad = runAtLoad
+
+	// Filter to command-type servers only
+	var commandServers []servers.Server
+	for _, s := range cfg.Servers {
+		if s.Type == servers.TypeCommand {
+			commandServers = append(commandServers, s)
+		}
+	}
+
+	if len(commandServers) == 0 {
+		return fmt.Errorf("no command-type servers found in servers.yaml")
+	}
+
+	// Generate plists
+	for _, s := range commandServers {
+		plistCfg := servers.ServerToPlistConfig(project, s, absProjectDir, opts)
+		content := servers.GeneratePlist(plistCfg)
+
+		if dryRun {
+			plistPath, _ := servers.PlistPath(project, s.Name)
+			fmt.Printf("=== %s ===\n", plistPath)
+			fmt.Println(content)
+		} else {
+			if err := servers.WritePlist(project, s.Name, content); err != nil {
+				return fmt.Errorf("failed to write plist for %s: %w", s.Name, err)
+			}
+			plistPath, _ := servers.PlistPath(project, s.Name)
+			fmt.Printf("Generated: %s\n", plistPath)
+		}
+	}
+
+	if !dryRun {
+		fmt.Println()
+		fmt.Println("To load services:")
+		for _, s := range commandServers {
+			plistPath, _ := servers.PlistPath(project, s.Name)
+			fmt.Printf("  launchctl load %s\n", plistPath)
+		}
+		fmt.Println()
+		fmt.Println("To unload services:")
+		for _, s := range commandServers {
+			plistPath, _ := servers.PlistPath(project, s.Name)
+			fmt.Printf("  launchctl unload %s\n", plistPath)
+		}
+	}
 
 	return nil
 }

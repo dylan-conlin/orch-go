@@ -3,6 +3,7 @@ package servers
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -488,5 +489,213 @@ func TestDuration_YAML(t *testing.T) {
 	}
 	if web.Health.Timeout.Duration() != 500*time.Millisecond {
 		t.Errorf("Timeout = %s, want 500ms", web.Health.Timeout.Duration())
+	}
+}
+
+func TestGeneratePlist(t *testing.T) {
+	cfg := PlistConfig{
+		Label:            "com.test.web",
+		ProgramArguments: []string{"/bin/sh", "-c", "npm run dev"},
+		WorkingDirectory: "/path/to/project",
+		EnvironmentVariables: map[string]string{
+			"PATH":     "/usr/local/bin:/usr/bin",
+			"NODE_ENV": "development",
+		},
+		StandardOutPath:   "/path/to/logs/test.web.log",
+		StandardErrorPath: "/path/to/logs/test.web.err.log",
+		KeepAlive:         true,
+		RunAtLoad:         false,
+	}
+
+	plist := GeneratePlist(cfg)
+
+	// Check required elements
+	if !strings.Contains(plist, "<key>Label</key>") {
+		t.Error("Missing Label key")
+	}
+	if !strings.Contains(plist, "<string>com.test.web</string>") {
+		t.Error("Missing Label value")
+	}
+	if !strings.Contains(plist, "<key>ProgramArguments</key>") {
+		t.Error("Missing ProgramArguments key")
+	}
+	if !strings.Contains(plist, "<string>/bin/sh</string>") {
+		t.Error("Missing /bin/sh in ProgramArguments")
+	}
+	if !strings.Contains(plist, "<key>WorkingDirectory</key>") {
+		t.Error("Missing WorkingDirectory key")
+	}
+	if !strings.Contains(plist, "<string>/path/to/project</string>") {
+		t.Error("Missing WorkingDirectory value")
+	}
+	if !strings.Contains(plist, "<key>EnvironmentVariables</key>") {
+		t.Error("Missing EnvironmentVariables key")
+	}
+	if !strings.Contains(plist, "<key>NODE_ENV</key>") {
+		t.Error("Missing NODE_ENV in EnvironmentVariables")
+	}
+	if !strings.Contains(plist, "<key>KeepAlive</key>") {
+		t.Error("Missing KeepAlive key")
+	}
+	if !strings.Contains(plist, "<key>SuccessfulExit</key>") {
+		t.Error("Missing SuccessfulExit key for KeepAlive")
+	}
+}
+
+func TestGeneratePlist_XMLEscaping(t *testing.T) {
+	cfg := PlistConfig{
+		Label:            "com.test.service",
+		ProgramArguments: []string{"echo", "Hello <World> & \"Friends\""},
+		KeepAlive:        false,
+		RunAtLoad:        true,
+	}
+
+	plist := GeneratePlist(cfg)
+
+	// Check XML escaping
+	if !strings.Contains(plist, "&lt;World&gt;") {
+		t.Error("Angle brackets not escaped")
+	}
+	if !strings.Contains(plist, "&amp;") {
+		t.Error("Ampersand not escaped")
+	}
+	if !strings.Contains(plist, "&quot;Friends&quot;") {
+		t.Error("Quotes not escaped")
+	}
+}
+
+func TestGeneratePlist_NoKeepAlive(t *testing.T) {
+	cfg := PlistConfig{
+		Label:            "com.test.service",
+		ProgramArguments: []string{"echo", "hello"},
+		KeepAlive:        false,
+		RunAtLoad:        true,
+	}
+
+	plist := GeneratePlist(cfg)
+
+	// Should have false for KeepAlive
+	if !strings.Contains(plist, "<key>KeepAlive</key>") {
+		t.Error("Missing KeepAlive key")
+	}
+	// Should not have SuccessfulExit dict when KeepAlive is false
+	if strings.Contains(plist, "<key>SuccessfulExit</key>") {
+		t.Error("Should not have SuccessfulExit when KeepAlive is false")
+	}
+	// Should have RunAtLoad true
+	if !strings.Contains(plist, "<key>RunAtLoad</key>\n    <true/>") {
+		t.Error("RunAtLoad should be true")
+	}
+}
+
+func TestServerToPlistConfig(t *testing.T) {
+	server := Server{
+		Name:    "web",
+		Type:    TypeCommand,
+		Command: "bun run dev",
+		Port:    5173,
+		Workdir: "frontend",
+		Env: map[string]string{
+			"PORT": "5173",
+		},
+	}
+
+	opts := PlistOptions{
+		Path:      "/custom/path:/usr/bin",
+		KeepAlive: true,
+		RunAtLoad: false,
+		LogDir:    "/custom/logs",
+	}
+
+	cfg := ServerToPlistConfig("myproject", server, "/project/root", opts)
+
+	if cfg.Label != "com.myproject.web" {
+		t.Errorf("Label = %q, want %q", cfg.Label, "com.myproject.web")
+	}
+	if cfg.WorkingDirectory != "/project/root/frontend" {
+		t.Errorf("WorkingDirectory = %q, want %q", cfg.WorkingDirectory, "/project/root/frontend")
+	}
+	if cfg.EnvironmentVariables["PATH"] != "/custom/path:/usr/bin" {
+		t.Error("PATH not set correctly")
+	}
+	if cfg.EnvironmentVariables["PORT"] != "5173" {
+		t.Error("Server env not included")
+	}
+	if cfg.StandardOutPath != "/custom/logs/myproject.web.log" {
+		t.Errorf("StandardOutPath = %q, want %q", cfg.StandardOutPath, "/custom/logs/myproject.web.log")
+	}
+	if cfg.StandardErrorPath != "/custom/logs/myproject.web.err.log" {
+		t.Errorf("StandardErrorPath = %q, want %q", cfg.StandardErrorPath, "/custom/logs/myproject.web.err.log")
+	}
+	if !cfg.KeepAlive {
+		t.Error("KeepAlive should be true")
+	}
+	if cfg.RunAtLoad {
+		t.Error("RunAtLoad should be false")
+	}
+}
+
+func TestServerToPlistConfig_DefaultWorkdir(t *testing.T) {
+	server := Server{
+		Name:    "api",
+		Type:    TypeCommand,
+		Command: "go run ./cmd/server",
+		Port:    3000,
+		Workdir: ".", // default
+	}
+
+	opts := DefaultPlistOptions()
+	cfg := ServerToPlistConfig("myproject", server, "/project/root", opts)
+
+	if cfg.WorkingDirectory != "/project/root" {
+		t.Errorf("WorkingDirectory = %q, want %q", cfg.WorkingDirectory, "/project/root")
+	}
+}
+
+func TestDefaultPlistOptions(t *testing.T) {
+	opts := DefaultPlistOptions()
+
+	if opts.Path == "" {
+		t.Error("Path should have a default value")
+	}
+	if !opts.KeepAlive {
+		t.Error("KeepAlive should default to true")
+	}
+	if opts.RunAtLoad {
+		t.Error("RunAtLoad should default to false")
+	}
+}
+
+func TestPlistPath(t *testing.T) {
+	path, err := PlistPath("myproject", "web")
+	if err != nil {
+		t.Fatalf("PlistPath failed: %v", err)
+	}
+
+	if !strings.HasSuffix(path, "Library/LaunchAgents/com.myproject.web.plist") {
+		t.Errorf("PlistPath = %q, expected suffix Library/LaunchAgents/com.myproject.web.plist", path)
+	}
+}
+
+func TestEscapeXML(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"hello", "hello"},
+		{"a & b", "a &amp; b"},
+		{"<tag>", "&lt;tag&gt;"},
+		{`"quoted"`, "&quot;quoted&quot;"},
+		{"it's", "it&apos;s"},
+		{"<a & 'b'>", "&lt;a &amp; &apos;b&apos;&gt;"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := escapeXML(tt.input)
+			if result != tt.expected {
+				t.Errorf("escapeXML(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
 	}
 }

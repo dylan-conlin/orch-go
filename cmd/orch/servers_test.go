@@ -276,3 +276,118 @@ func TestServersListReadsFromProjectConfig(t *testing.T) {
 		t.Error("api:3000 not found")
 	}
 }
+
+// TestServersGenPlist tests plist generation from servers.yaml.
+func TestServersGenPlist(t *testing.T) {
+	// Create temporary project directory with servers.yaml
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "testproject")
+	orchDir := filepath.Join(projectDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	// Create servers.yaml with command-type servers
+	serversYaml := `servers:
+  - name: web
+    type: command
+    command: npm run dev
+    port: 5173
+  - name: api
+    type: command
+    command: go run ./cmd/server
+    port: 3000
+  - name: db
+    type: docker
+    image: postgres:15
+    port: 5432
+`
+	serversPath := filepath.Join(orchDir, "servers.yaml")
+	if err := os.WriteFile(serversPath, []byte(serversYaml), 0644); err != nil {
+		t.Fatalf("failed to write servers.yaml: %v", err)
+	}
+
+	// Run gen-plist in dry-run mode
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runServersGenPlist("testproject", projectDir, "", true, false, true) // dry-run
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	// Should succeed
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	// Should generate plists for command-type servers only (web, api - not db which is docker)
+	if !bytes.Contains([]byte(output), []byte("com.testproject.web.plist")) {
+		t.Error("expected output to contain web plist path")
+	}
+	if !bytes.Contains([]byte(output), []byte("com.testproject.api.plist")) {
+		t.Error("expected output to contain api plist path")
+	}
+	// Should not contain docker server
+	if bytes.Contains([]byte(output), []byte("com.testproject.db.plist")) {
+		t.Error("should not generate plist for docker-type server")
+	}
+
+	// Should contain plist XML content
+	if !bytes.Contains([]byte(output), []byte("<plist version=\"1.0\">")) {
+		t.Error("expected output to contain plist XML")
+	}
+	if !bytes.Contains([]byte(output), []byte("<key>Label</key>")) {
+		t.Error("expected output to contain Label key")
+	}
+	if !bytes.Contains([]byte(output), []byte("com.testproject.web")) {
+		t.Error("expected output to contain web label")
+	}
+}
+
+// TestServersGenPlist_NoServersYaml tests error handling when no servers.yaml exists.
+func TestServersGenPlist_NoServersYaml(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	err := runServersGenPlist("testproject", tmpDir, "", true, false, true)
+
+	// Should return an error indicating no servers found
+	if err == nil {
+		t.Error("expected error for missing servers.yaml")
+	}
+}
+
+// TestServersGenPlist_NoCommandServers tests error handling when no command-type servers exist.
+func TestServersGenPlist_NoCommandServers(t *testing.T) {
+	// Create temporary project directory with only docker servers
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "testproject")
+	orchDir := filepath.Join(projectDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("failed to create .orch dir: %v", err)
+	}
+
+	// Create servers.yaml with only docker-type servers
+	serversYaml := `servers:
+  - name: db
+    type: docker
+    image: postgres:15
+    port: 5432
+`
+	serversPath := filepath.Join(orchDir, "servers.yaml")
+	if err := os.WriteFile(serversPath, []byte(serversYaml), 0644); err != nil {
+		t.Fatalf("failed to write servers.yaml: %v", err)
+	}
+
+	err := runServersGenPlist("testproject", projectDir, "", true, false, true)
+
+	// Should return an error indicating no command-type servers
+	if err == nil {
+		t.Error("expected error for no command-type servers")
+	}
+}
