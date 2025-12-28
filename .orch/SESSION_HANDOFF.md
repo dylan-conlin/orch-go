@@ -1,71 +1,65 @@
-# Session Handoff - 28 Dec 2025
+# Session Handoff - 28 Dec 2025 (Evening)
 
 ## TLDR
 
-**Crisis response session.** System was producing garbage - agents claiming "tests pass" without verification, dashboard broken, circular debugging across sessions. Reverted broken commit, diagnosed root causes, created P0 issues for real fixes.
+**Stabilization + knowledge infrastructure session.** Completed P0 verification fixes from prior session, investigated knowledge fragmentation (500 investigations with 0 lineage links), shipped 3 knowledge linkage improvements, and finally solved the "OpenCode redirect loop" mystery (it's expected behavior, not a bug).
 
 ---
 
 ## D.E.K.N. Summary
 
 ### Delta (What Changed)
-- **Reverted** `4026cb69` (broken status unification that made dashboard show 0 agents)
-- **Completed** post-mortem investigation identifying 3 failure modes
-- **Completed** verification audit proving "theater is structural"
-- **Created** 2 P0 issues for test execution evidence requirements
-- **Closed** 4 agents that were respawning on already-done work
+- **Completed** P0 verification fixes (`orch-go-ik77`, `orch-go-bn9y`) - agents now blocked without test evidence
+- **Shipped** 3 knowledge linkage improvements:
+  - `orch-go-89y0` - kb reflect semantic clustering (in kb-cli)
+  - `orch-go-87rn` - Spawn context includes related investigations
+  - `orch-go-i5s5` - Lineage reminder in spawn template
+- **Solved** OpenCode "redirect loop" mystery - NOT a bug, use `/session` not `/health`
+- **Closed** 10+ zombie/verification-only agents
+- **Created** `orch-go-x7vn` bug: visual verification checks project git history, not agent-specific changes
 
 ### Evidence (Proof of Work)
-- Dashboard now shows active agents again (was showing 0)
-- Git log shows revert: `d222bfaa`
-- Investigations: `2025-12-28-inv-post-mortem-*.md`, `2025-12-28-inv-verification-system-audit-*.md`
+- `go test ./pkg/verify/...` passes with 47 new test cases for evidence verification
+- Commits: `a6214ce7` (test evidence), `fa77b8d5` (lineage reminder), `fcb5de77` (related investigations)
+- Investigation: `.kb/investigations/2025-12-28-inv-knowledge-fragmentation-433-investigations-days.md`
+- Investigation: `.kb/investigations/2025-12-28-inv-opencode-redirect-loop-health-sessions.md`
 
 ### Knowledge (What Was Learned)
 
-**1. Verification is ceremony, not substance**
-The entire pkg/verify/ system checks "did agent claim completion?" not "does code work?" An agent can write 583 lines, claim "tests pass", and get verified - then be reverted 18 minutes later. This is structural, not drift.
+**1. Knowledge fragmentation is a linkage problem, not duplication**
+500 investigations exist but 0 have lineage references (Supersedes/Extracted-From). Investigations are distinct - each explores different aspect. The fix is better linkage, not synthesis passes.
 
-**2. Three failure modes caused today's chaos:**
-- Stale binary inheritance (Session A fixes, doesn't deploy, Session B debugs same issue)
-- Documentation drift (features exist but aren't in session context)  
-- Context asymmetry (workers get server info, orchestrators don't)
+**2. OpenCode "redirect loop" is expected behavior**
+OpenCode has NO `/health` endpoint. Unknown routes proxy to `desktop.opencode.ai` (web app), causing auth redirects. Use `/session` for health checks. This has been investigated 4 times - knowledge surfacing is the real issue.
 
-**3. Status mismatch is still unfixed**
-CLI shows different counts than API/dashboard. The "unification" attempt made it worse. Needs proper fix with actual end-to-end verification before claiming success.
+**3. Dashboard/CLI status mismatch remains**
+API marks `Phase: Complete` agents as "completed", CLI keeps them "active" until `orch complete`. This is semantic difference, not a bug - but causes confusion.
 
 ### Next (Recommended Actions)
 
-**P0 - Fix verification first:**
-1. `orch-go-ik77` - Require test execution evidence in beads comments
-2. `orch-go-bn9y` - Block completion when code changes exist without test evidence
+**Resume MCP investigation:**
+`orch-go-xnqg` - "MCP vs CLI: What is MCP's actual value proposition?" - 3 attempts failed (stuck in Planning). Needs narrower scope or investigation into why sessions die.
 
-**Do NOT spawn more agents on status unification until verification is real.** The last attempt produced garbage because verification didn't catch it.
-
-**P1 - After verification is fixed:**
-- Revisit status unification with proper end-to-end testing
-- Implement stale binary warning in SessionStart hook
+**Auto-switch account:**
+`orch-go-bwrm` - "Auto-switch account failing silently" - not urgent at 35% usage, but will bite when rate limited.
 
 ---
 
 ## What Actually Happened This Session
 
-### The Problem
-Dylan noticed agents were "garbage lately" - claiming success but delivering broken code. Dashboard showed 0 active agents when CLI showed 6.
+1. Read prior handoff - crisis response session had identified P0s
+2. Completed P0 verification fixes (test evidence requirements now enforced)
+3. Completed 6 zombie agents (prior work, verification-only sessions)
+4. Investigated knowledge fragmentation → found linkage is the problem
+5. Spawned 3 agents to fix knowledge linkage → all completed successfully
+6. Investigated OpenCode redirect loop → solved (use `/session` not `/health`)
+7. MCP investigation failed 3x → abandoned, needs different approach
 
-### Investigation Path
-1. Read dashboard status mismatch investigation
-2. Spawned agent to "fix" status unification → agent delivered scaffolding, not a fix
-3. Discovered the "fix" made things worse (introduced "stale" status dashboard doesn't handle)
-4. Reverted the broken commit
-5. Spawned post-mortem investigation → found 3 failure modes
-6. Spawned verification audit → found verification is structural theater
-7. Created P0 issues for real verification enforcement
-
-### Key Commits Today
-- `d222bfaa` - Revert broken status unification (THE FIX)
-- `4026cb69` - Broken status unification (REVERTED)
-- `f84eef5c` - Post-mortem investigation
-- `430c2f74` - Verification audit investigation
+### Key Commits This Session
+- `a6214ce7` - feat(verify): require test execution evidence
+- `fa77b8d5` - feat(spawn): add lineage reminder to template
+- `fcb5de77` - feat(spawn): include Delta for investigations in context
+- `57939c5d` - inv: OpenCode redirect loop is expected behavior
 
 ---
 
@@ -77,32 +71,33 @@ None - all completed or abandoned.
 ## Local State
 
 **Branch:** master  
-**Uncommitted:** Yes - recent investigation files
+**Uncommitted:** Workspace files only (ephemeral)
 
 ```bash
-git status
-git add -A && git commit -m "investigations: post-mortem and verification audit"
-git push
+# Sync and push
+bd sync && git add .beads/ .kn/ && git commit -m "chore: sync beads and kn" && git push
 ```
+
+**Note:** `git push` was failing with "Repository not found" - may need SSH key refresh or repo access check.
 
 ---
 
-## Open P0 Issues
+## Open Issues Worth Noting
 
-| Issue | Title | Status |
-|-------|-------|--------|
-| `orch-go-ik77` | Require test execution evidence for feature-impl completion | open |
-| `orch-go-bn9y` | Block completion when code changes exist without test evidence | open |
-
-These are the root cause fix. Without them, the system will keep producing garbage.
+| Issue | Type | Summary |
+|-------|------|---------|
+| `orch-go-xnqg` | investigation | MCP vs CLI value proposition (3 failed attempts) |
+| `orch-go-bwrm` | investigation | Auto-switch account failing silently |
+| `orch-go-x7vn` | bug | Visual verification checks project history, not agent changes |
+| `orch-go-bgf5` | investigation | Dashboard API shows 0 active (status mismatch) |
 
 ---
 
 ## What NOT To Do
 
-1. **Don't spawn status unification again** until verification is fixed
-2. **Don't trust "Phase: Complete" claims** - verify end-to-end behavior
-3. **Don't use `--force` on completions** without actually checking the fix works
+1. **Don't call `/health` on OpenCode** - use `/session` instead
+2. **Don't investigate redirect loop again** - it's been solved 4 times, answer is in kn-2a4e34
+3. **Don't force complete agents without checking tests** - new verification will catch this
 
 ---
 
@@ -110,15 +105,29 @@ These are the root cause fix. Without them, the system will keep producing garba
 
 | File | Summary |
 |------|---------|
-| `.kb/investigations/2025-12-28-inv-post-mortem-orchestrator-session-inefficiency.md` | 3 failure modes: stale binary, doc drift, context asymmetry |
-| `.kb/investigations/2025-12-28-inv-verification-system-audit-verification-theater.md` | Verification checks ceremony not behavior - structural issue |
-| `.kb/investigations/2025-12-28-inv-dashboard-status-mismatch-orch-status-vs-api.md` | Why CLI and dashboard show different counts |
+| `.kb/investigations/2025-12-28-inv-knowledge-fragmentation-433-investigations-days.md` | 500 investigations have 0 lineage links - fix is linkage not synthesis |
+| `.kb/investigations/2025-12-28-inv-opencode-redirect-loop-health-sessions.md` | Redirect loop is expected - OpenCode proxies unknown routes to web app |
+| `.kb/investigations/2025-12-28-inv-verification-system-audit-verification-theater.md` | Why agents could claim "tests pass" without evidence (now fixed) |
+
+---
+
+## Verification System Now Enforces
+
+Agents are blocked from completion if:
+1. Skill is `feature-impl`, `systematic-debugging`, or `reliability-testing`
+2. Code files (`.go`, `.ts`, `.py`, etc.) were modified
+3. No test execution evidence in beads comments
+
+Valid evidence example:
+```
+bd comment <id> 'Tests: go test ./pkg/... - PASS (12 tests in 0.8s)'
+```
 
 ---
 
 ## Session Metadata
 
-**Generated:** 28 Dec 2025 ~14:30 PST  
+**Generated:** 28 Dec 2025 ~15:40 PST  
 **Duration:** ~2 hours  
-**Focus:** Crisis response - stabilize broken system  
-**Outcome:** Dashboard restored, root causes identified, P0 issues created
+**Focus:** Stabilization + knowledge infrastructure  
+**Outcome:** P0s complete, knowledge linkage improved, redirect loop solved
