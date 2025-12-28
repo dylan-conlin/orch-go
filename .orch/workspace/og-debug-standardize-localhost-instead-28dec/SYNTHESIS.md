@@ -9,7 +9,7 @@
 
 ## TLDR
 
-Audited orch-go for `127.0.0.1` references. Found the codebase already uses `localhost` consistently in production code. Only one documentation fix was needed in `features.json`. Test files intentionally use `127.0.0.1:9999` for fake servers (correct pattern). Cross-repo skill files need separate update.
+Audited orch-go for `127.0.0.1` references. Found the codebase already uses `localhost` consistently in production code. One documentation fix was made to `features.json`. Also cleaned stale `/web/.svelte-kit/` build artifacts that contained `127.0.0.1` references (likely root cause of original issue). Test files intentionally use `127.0.0.1:9999` for fake servers (correct pattern).
 
 ---
 
@@ -17,6 +17,9 @@ Audited orch-go for `127.0.0.1` references. Found the codebase already uses `loc
 
 ### Files Modified
 - `.orch/features.json` - Updated feat-018 description: `http://127.0.0.1:4096` → `http://localhost:4096` and `http://127.0.0.1:3348` → `http://localhost:3348`
+
+### Directories Cleaned
+- `web/.svelte-kit/` - Removed stale build artifacts containing `127.0.0.1` (gitignored, will regenerate on next build)
 
 ### Files Created
 - `.kb/investigations/2025-12-28-inv-standardize-localhost-instead-127-across.md` - Investigation documenting audit findings
@@ -62,6 +65,22 @@ grep -r "127\.0\.0\.1:9999" --include="*.go" .
 if origin == "" || strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
 ```
 This is correct - browsers may send either as Origin header.
+
+### Stale Build Artifacts Found and Cleaned
+```bash
+grep -rn "127\.0\.0\.1" web/.svelte-kit/
+# Found multiple hardcoded http://127.0.0.1:3348 in compiled output files
+# These were from an old build before web source was standardized on localhost
+```
+Cleaned `/web/.svelte-kit/` directory. This is in `.gitignore` and will regenerate correctly on next build.
+
+**Root cause hypothesis:** If the web UI was serving stale build artifacts with `127.0.0.1:3348` for API calls while the API was on `localhost:3348`, cross-origin requests would fail. This explains why `localhost:5188` worked but `127.0.0.1:5188` didn't.
+
+### Web Source Already Correct
+```bash
+grep -rn "API_BASE" web/src/lib/stores/
+# All stores use: const API_BASE = 'http://localhost:3348'
+```
 
 ### Cross-Repo Findings (Out of Scope)
 ```bash
@@ -112,13 +131,12 @@ that should be http://localhost:3333:
 
 ## Unexplored Questions
 
-**Questions that emerged during this session:**
-- Why did `127.0.0.1:5188` not work while `localhost:5188` did for the user? Could be DNS resolution, hosts file configuration, or browser-specific behavior.
+**Questions resolved:**
+- Why did `127.0.0.1:5188` not work while `localhost:5188` did for the user?
+  - **Most likely:** Stale `.svelte-kit` build artifacts had `127.0.0.1:3348` for API calls, causing CORS/network issues when accessing the UI via `localhost:5188`
+  - Cleaning the build artifacts should resolve this
 
-**What remains unclear:**
-- Root cause of the original localhost vs 127.0.0.1 discrepancy the user experienced
-
-*(This is an audit - root cause analysis of the original failure is out of scope)*
+*(Straightforward session - stale build artifacts were the likely root cause)*
 
 ---
 
