@@ -162,11 +162,25 @@ The web-to-markdown MCP support request reveals a gap between `--mcp` flag inten
 
 No code changes required for orch-go. Documentation update recommended for research skill.
 
+## Implementation Complete
+
+**Changes made:**
+1. Updated `~/.claude/skills/worker/research/.skillc/SKILL.md.template` to add "Fetching External Content" section
+2. Rebuilt skill with `skillc build` and deployed to `~/.claude/skills/worker/research/SKILL.md`
+
+**New guidance added to research skill:**
+- Use WebFetch tool for external content (documentation sites, blog posts, GitHub repos)
+- Common research workflow: WebFetch official docs → WebFetch GitHub → Extract info
+- Fallback: For complex SPAs, ask orchestrator to configure `web-to-markdown` MCP
+
+**Commit:** `8bbe60c` in `~/.claude/skills` repo
+
 ## Self-Review
 
 - [x] Evidence sourced with specific locations
 - [x] Multiple options compared with pros/cons
 - [x] Clear recommendation with reasoning
 - [x] Trade-offs acknowledged
+- [x] Implementation complete and committed
 
 **Self-Review Status:** PASSED
