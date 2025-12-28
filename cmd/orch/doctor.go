@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -13,8 +14,9 @@ import (
 )
 
 var (
-	doctorFix     bool // Attempt to fix issues by starting services
-	doctorVerbose bool // Show verbose output
+	doctorFix       bool // Attempt to fix issues by starting services
+	doctorVerbose   bool // Show verbose output
+	doctorStaleOnly bool // Check stale binary only, exit with code 1 if stale
 )
 
 var doctorCmd = &cobra.Command{
@@ -28,11 +30,13 @@ Services checked:
   - Beads daemon
 
 Use --fix to automatically start services that are not running.
+Use --stale-only to check if the orch binary is stale (exit 1 if stale).
 
 Examples:
   orch doctor              # Check service health
   orch doctor --fix        # Check and start missing services
-  orch doctor --verbose    # Show detailed output`,
+  orch doctor --verbose    # Show detailed output
+  orch doctor --stale-only # Check binary staleness only (for scripts/hooks)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -41,6 +45,7 @@ Examples:
 func init() {
 	doctorCmd.Flags().BoolVarP(&doctorFix, "fix", "f", false, "Attempt to start services that are not running")
 	doctorCmd.Flags().BoolVarP(&doctorVerbose, "verbose", "v", false, "Show verbose output")
+	doctorCmd.Flags().BoolVar(&doctorStaleOnly, "stale-only", false, "Check binary staleness only (exit 1 if stale)")
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -62,6 +67,22 @@ type DoctorReport struct {
 }
 
 func runDoctor() error {
+	// Handle --stale-only flag for quick staleness check
+	if doctorStaleOnly {
+		status := checkStaleBinary()
+		if status.Error != "" {
+			fmt.Fprintf(os.Stderr, "⚠️  %s\n", status.Error)
+			return nil // Not an error, just a warning
+		}
+		if status.Stale {
+			fmt.Printf("⚠️  STALE: binary=%s HEAD=%s\n", status.BinaryHash[:12], status.CurrentHash[:12])
+			fmt.Printf("   rebuild: cd %s && make install\n", status.SourceDir)
+			os.Exit(1)
+		}
+		fmt.Println("✓ UP TO DATE")
+		return nil
+	}
+
 	fmt.Println("orch doctor - Service Health Check")
 	fmt.Println("===================================")
 	fmt.Println()
@@ -70,6 +91,26 @@ func runDoctor() error {
 		Healthy:  true,
 		Services: make([]ServiceStatus, 0),
 	}
+
+	// Check binary staleness first
+	binaryStatus := checkStaleBinary()
+	binaryServiceStatus := ServiceStatus{
+		Name:   "orch binary",
+		CanFix: false,
+	}
+	if binaryStatus.Error != "" {
+		binaryServiceStatus.Running = true // Don't mark as failure for dev builds
+		binaryServiceStatus.Details = binaryStatus.Error
+	} else if binaryStatus.Stale {
+		binaryServiceStatus.Running = false
+		binaryServiceStatus.Details = fmt.Sprintf("STALE (binary=%s, HEAD=%s)", binaryStatus.BinaryHash[:12], binaryStatus.CurrentHash[:12])
+		binaryServiceStatus.FixAction = fmt.Sprintf("cd %s && make install", binaryStatus.SourceDir)
+		report.Healthy = false
+	} else {
+		binaryServiceStatus.Running = true
+		binaryServiceStatus.Details = "UP TO DATE"
+	}
+	report.Services = append(report.Services, binaryServiceStatus)
 
 	// Check OpenCode server
 	openCodeStatus := checkOpenCode()
@@ -289,6 +330,60 @@ func startOrchServe() error {
 	}
 
 	return fmt.Errorf("orch serve started but not responding after 5s")
+}
+
+// BinaryStatus represents the staleness status of the orch binary.
+type BinaryStatus struct {
+	Stale       bool   `json:"stale"`
+	BinaryHash  string `json:"binary_hash,omitempty"`
+	CurrentHash string `json:"current_hash,omitempty"`
+	SourceDir   string `json:"source_dir,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// checkStaleBinary checks if the orch binary is stale compared to git HEAD.
+// This reuses the logic from runVersionSource() in main.go.
+func checkStaleBinary() BinaryStatus {
+	status := BinaryStatus{
+		SourceDir: sourceDir,
+	}
+
+	// Check if source directory is embedded
+	if sourceDir == "unknown" {
+		status.Error = "source directory not embedded (dev build)"
+		return status
+	}
+
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		status.Error = fmt.Sprintf("source directory not found: %s", sourceDir)
+		return status
+	}
+
+	// Check current git hash in source directory
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = sourceDir
+	output, err := cmd.Output()
+	if err != nil {
+		status.Error = fmt.Sprintf("could not get current git hash: %v", err)
+		return status
+	}
+
+	currentHash := strings.TrimSpace(string(output))
+	status.CurrentHash = currentHash
+
+	// Compare hashes
+	if gitHash == "unknown" {
+		status.Error = "git hash not embedded (dev build)"
+		status.BinaryHash = gitHash
+		return status
+	}
+
+	status.BinaryHash = gitHash
+	if currentHash != gitHash {
+		status.Stale = true
+	}
+
+	return status
 }
 
 // printDoctorReport prints the health report in a formatted way.

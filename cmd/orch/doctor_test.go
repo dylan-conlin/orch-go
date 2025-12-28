@@ -197,3 +197,63 @@ func TestServiceStatusFields(t *testing.T) {
 		t.Error("Port field not working correctly")
 	}
 }
+
+func TestBinaryStatusFields(t *testing.T) {
+	// Test that BinaryStatus has all expected fields
+	status := BinaryStatus{}
+
+	// These assignments should compile - ensures struct has correct fields
+	status.Stale = true
+	status.BinaryHash = "abc123"
+	status.CurrentHash = "def456"
+	status.SourceDir = "/path/to/source"
+	status.Error = "some error"
+
+	if !status.Stale {
+		t.Error("Stale field not working correctly")
+	}
+	if status.BinaryHash != "abc123" {
+		t.Error("BinaryHash field not working correctly")
+	}
+	if status.CurrentHash != "def456" {
+		t.Error("CurrentHash field not working correctly")
+	}
+	if status.SourceDir != "/path/to/source" {
+		t.Error("SourceDir field not working correctly")
+	}
+	if status.Error != "some error" {
+		t.Error("Error field not working correctly")
+	}
+}
+
+func TestBinaryStatusJSON(t *testing.T) {
+	status := BinaryStatus{
+		Stale:       true,
+		BinaryHash:  "abc123",
+		CurrentHash: "def456",
+		SourceDir:   "/path/to/source",
+	}
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("Failed to marshal BinaryStatus: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	if result["stale"] != true {
+		t.Errorf("Expected stale true, got %v", result["stale"])
+	}
+	if result["binary_hash"] != "abc123" {
+		t.Errorf("Expected binary_hash 'abc123', got %v", result["binary_hash"])
+	}
+	if result["current_hash"] != "def456" {
+		t.Errorf("Expected current_hash 'def456', got %v", result["current_hash"])
+	}
+	if result["source_dir"] != "/path/to/source" {
+		t.Errorf("Expected source_dir '/path/to/source', got %v", result["source_dir"])
+	}
+}
