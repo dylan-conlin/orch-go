@@ -923,32 +923,27 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Determine if this agent has an active session.
-			// An agent has an active session if:
-			// - It has a SessionID (active OpenCode session), OR
-			// - It has a Window target (active tmux window)
-			// These agents are still running, even if they've produced artifacts.
-			hasActiveSession := agents[i].SessionID != "" || agents[i].Window != ""
-
-			// Only mark status as completed if:
-			// 1. The agent does NOT have an active session, AND
-			// 2. Either Phase: Complete was reported OR SYNTHESIS.md exists
+			// Derive status from beads Phase, NOT from session existence or activity.
+			// Prior decision: "Dashboard agent status derived from beads phase, not session time"
 			//
-			// If a session is still open, the agent is active/idle regardless of artifacts.
-			// This fixes the bug where running agents were incorrectly shown as "completed"
-			// because they had Phase: Complete or SYNTHESIS.md but session was still open.
-			if !hasActiveSession {
-				// Check Phase: Complete from beads comments
-				if strings.EqualFold(agents[i].Phase, "Complete") {
-					agents[i].Status = "completed"
-				}
+			// Phase: Complete is authoritative for completion status. When an agent
+			// reports Phase: Complete via beads comment, the work is done - even if:
+			// - The OpenCode session is still open (agent may not have called /exit yet)
+			// - The session was recently updated (cleanup actions after reporting complete)
+			//
+			// This ensures the dashboard accurately reflects work status, not session status.
 
-				// Check SYNTHESIS.md in workspace (for untracked agents with fake beads IDs)
-				if agents[i].Status != "completed" {
-					workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
-					if checkWorkspaceSynthesis(workspacePath) {
-						agents[i].Status = "completed"
-					}
+			// Check Phase: Complete from beads comments - this is authoritative
+			if strings.EqualFold(agents[i].Phase, "Complete") {
+				agents[i].Status = "completed"
+			}
+
+			// Check SYNTHESIS.md in workspace (fallback for untracked agents with fake beads IDs)
+			// Only check if not already marked completed by Phase
+			if agents[i].Status != "completed" {
+				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
+				if checkWorkspaceSynthesis(workspacePath) {
+					agents[i].Status = "completed"
 				}
 			}
 
