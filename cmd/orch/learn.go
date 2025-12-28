@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,6 +16,8 @@ var (
 	learnShowPatterns bool
 	learnShowSkills   bool
 	learnShowEffects  bool
+	learnFromProject  string
+	learnExternal     bool
 )
 
 var learnCmd = &cobra.Command{
@@ -27,11 +30,18 @@ The learning loop tracks gaps detected during spawns and suggests:
 - Adding kn entries (decide/constrain) for missing knowledge
 - Spawning investigations for unclear areas
 
+Cross-project gap tracking:
+Gaps discovered while working in other projects (e.g., price-watch) are tagged
+with their source project. Use --from or --external to filter:
+  --from price-watch    Show only gaps discovered in price-watch
+  --external            Show only gaps discovered in OTHER projects (not current)
+
 Subcommands:
   orch learn                         Show all suggestions (default)
   orch learn suggest                 Show suggestions with commands
   orch learn patterns                Analyze gap patterns by topic
   orch learn skills                  Show gap rates by skill
+  orch learn projects                Show gap rates by source project
   orch learn effects                 Show effectiveness of past improvements
   orch learn act [index]             Run the suggested command for a gap
   orch learn resolve [index] [type]  Mark a gap as resolved manually
@@ -39,6 +49,8 @@ Subcommands:
 
 Examples:
   orch learn                         # Show suggestions
+  orch learn --from price-watch      # Show gaps discovered in price-watch
+  orch learn --external              # Show gaps from other projects (not orch-go)
   orch learn act 1                   # Run first suggestion's command
   orch learn resolve 2 added_knowledge  # Mark as resolved without running command
   orch learn patterns                # Analyze gap patterns
@@ -138,10 +150,48 @@ Use sparingly - the learning loop needs history to detect patterns.`,
 	},
 }
 
+var learnProjectsCmd = &cobra.Command{
+	Use:   "projects",
+	Short: "Show gap rates by source project",
+	Long: `Show gap statistics grouped by the project where they were discovered.
+
+This helps identify which projects have the most context gaps, enabling
+cross-project gap analysis. Gaps discovered in price-watch while working
+on that project can be surfaced here for orch-go improvements.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runLearnProjects()
+	},
+}
+
+var learnExternalCmd = &cobra.Command{
+	Use:   "external-summary",
+	Short: "Show summary of gaps discovered in other projects",
+	Long: `Show a quick summary of unresolved gaps discovered in other projects.
+
+This command is designed for SessionStart hooks to proactively surface
+gaps discovered while working in external projects (like price-watch)
+that suggest improvements needed in orch-go.
+
+Example output:
+  💡 3 gaps discovered in other projects:
+     - price-watch: 2 gaps
+     - blog: 1 gap
+  Run 'orch learn --external' for details.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runLearnExternalSummary()
+	},
+}
+
 func init() {
+	// Add flags for project filtering
+	learnCmd.PersistentFlags().StringVar(&learnFromProject, "from", "", "Filter to gaps from a specific project")
+	learnCmd.PersistentFlags().BoolVar(&learnExternal, "external", false, "Show only gaps from other projects (not current directory)")
+
 	learnCmd.AddCommand(learnSuggestCmd)
 	learnCmd.AddCommand(learnPatternsCmd)
 	learnCmd.AddCommand(learnSkillsCmd)
+	learnCmd.AddCommand(learnProjectsCmd)
+	learnCmd.AddCommand(learnExternalCmd)
 	learnCmd.AddCommand(learnEffectsCmd)
 	learnCmd.AddCommand(learnActCmd)
 	learnCmd.AddCommand(learnResolveCmd)
@@ -160,7 +210,23 @@ func runLearnSuggest() error {
 		return nil
 	}
 
-	fmt.Printf("Gap tracker: %s\n\n", tracker.Summary())
+	// Apply project filtering if specified
+	filterDesc := ""
+	if learnFromProject != "" {
+		tracker = tracker.FilterByProject(learnFromProject, false)
+		filterDesc = fmt.Sprintf(" (from %s)", learnFromProject)
+	} else if learnExternal {
+		currentProject := getCurrentProjectName()
+		tracker = tracker.FilterByProject(currentProject, true)
+		filterDesc = fmt.Sprintf(" (external, not %s)", currentProject)
+	}
+
+	if len(tracker.Events) == 0 {
+		fmt.Printf("No gaps found%s.\n", filterDesc)
+		return nil
+	}
+
+	fmt.Printf("Gap tracker: %s%s\n\n", tracker.Summary(), filterDesc)
 
 	suggestions := tracker.FindRecurringGaps()
 	if len(suggestions) == 0 {
@@ -452,4 +518,120 @@ func truncateString(s string, maxLen int) string {
 		return s[:maxLen-3] + "..."
 	}
 	return s
+}
+
+// getCurrentProjectName returns the current project name from the working directory.
+func getCurrentProjectName() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(cwd)
+}
+
+// runLearnExternalSummary shows a quick summary of gaps discovered in other projects.
+// This is designed for SessionStart hooks to proactively surface cross-project gaps.
+func runLearnExternalSummary() error {
+	tracker, err := spawn.LoadTracker()
+	if err != nil {
+		return fmt.Errorf("failed to load gap tracker: %w", err)
+	}
+
+	currentProject := getCurrentProjectName()
+	externalSummary := tracker.GetExternalGapSummary(currentProject)
+
+	if len(externalSummary) == 0 {
+		// No output if no external gaps - silent success
+		return nil
+	}
+
+	// Calculate total
+	total := 0
+	for _, count := range externalSummary {
+		total += count
+	}
+
+	// Sort projects by gap count
+	type projectGaps struct {
+		project string
+		count   int
+	}
+	var sorted []projectGaps
+	for project, count := range externalSummary {
+		sorted = append(sorted, projectGaps{project, count})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].count > sorted[j].count
+	})
+
+	// Output summary
+	fmt.Printf("💡 %d unresolved gaps discovered in other projects:\n", total)
+	for _, pg := range sorted {
+		pluralS := "s"
+		if pg.count == 1 {
+			pluralS = ""
+		}
+		fmt.Printf("   - %s: %d gap%s\n", pg.project, pg.count, pluralS)
+	}
+	fmt.Println("   Run 'orch learn --external' for details.")
+
+	return nil
+}
+
+// runLearnProjects shows gap statistics by source project.
+func runLearnProjects() error {
+	tracker, err := spawn.LoadTracker()
+	if err != nil {
+		return fmt.Errorf("failed to load gap tracker: %w", err)
+	}
+
+	if len(tracker.Events) == 0 {
+		fmt.Println("No gaps tracked yet.")
+		return nil
+	}
+
+	rates := tracker.GetProjectGapRates()
+
+	// Sort by count
+	type projectRate struct {
+		project string
+		count   int
+	}
+	var sorted []projectRate
+	for project, count := range rates {
+		sorted = append(sorted, projectRate{project, count})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].count > sorted[j].count
+	})
+
+	currentProject := getCurrentProjectName()
+
+	fmt.Println("\n╔══════════════════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║  📊 GAP RATES BY PROJECT                                                     ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════════════════════╣")
+
+	for _, pr := range sorted {
+		bar := strings.Repeat("█", min(pr.count, 40))
+		marker := ""
+		if pr.project == currentProject {
+			marker = " ← current"
+		}
+		fmt.Printf("║  %-25s %3d  [%-40s]%s\n", pr.project, pr.count, bar, marker)
+	}
+
+	fmt.Println("╚══════════════════════════════════════════════════════════════════════════════╝")
+
+	// Show external gap summary
+	externalSummary := tracker.GetExternalGapSummary(currentProject)
+	if len(externalSummary) > 0 {
+		total := 0
+		for _, count := range externalSummary {
+			total += count
+		}
+		fmt.Printf("\n💡 %d unresolved gaps discovered in other projects.\n", total)
+		fmt.Printf("   Run 'orch learn --external' to see suggestions for orch-go improvements.\n")
+	}
+
+	return nil
 }

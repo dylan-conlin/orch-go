@@ -52,6 +52,9 @@ type GapEvent struct {
 
 	// ResolutionDetails provides additional context about resolution.
 	ResolutionDetails string `json:"resolution_details,omitempty"`
+
+	// SourceProject is the project where the gap was detected.
+	SourceProject string `json:"source_project,omitempty"`
 }
 
 // GapTracker manages the history of context gaps and learning suggestions.
@@ -242,7 +245,15 @@ func (t *GapTracker) pruneOldEvents() {
 }
 
 // RecordGap adds a new gap event to the tracker.
+// Deprecated: Use RecordGapWithProject instead to capture source project context.
 func (t *GapTracker) RecordGap(analysis *GapAnalysis, skill, task string) {
+	t.RecordGapWithProject(analysis, skill, task, "")
+}
+
+// RecordGapWithProject adds a new gap event to the tracker with source project context.
+// The sourceProject should be the directory name (not full path) where the gap was discovered.
+// This enables cross-project gap tracking for dogfooding improvements.
+func (t *GapTracker) RecordGapWithProject(analysis *GapAnalysis, skill, task, sourceProject string) {
 	if analysis == nil || !analysis.HasGaps {
 		return
 	}
@@ -256,6 +267,7 @@ func (t *GapTracker) RecordGap(analysis *GapAnalysis, skill, task string) {
 			Skill:          skill,
 			Task:           task,
 			ContextQuality: analysis.ContextQuality,
+			SourceProject:  sourceProject,
 		}
 		t.Events = append(t.Events, event)
 	}
@@ -612,6 +624,69 @@ func (t *GapTracker) GetSkillGapRates() map[string]int {
 		}
 	}
 	return rates
+}
+
+// GetProjectGapRates returns gap statistics by source project.
+func (t *GapTracker) GetProjectGapRates() map[string]int {
+	rates := make(map[string]int)
+	for _, e := range t.Events {
+		project := e.SourceProject
+		if project == "" {
+			project = "(unknown)"
+		}
+		rates[project]++
+	}
+	return rates
+}
+
+// FilterByProject returns a new GapTracker with only events from the specified project.
+// If external is true, returns events NOT from the specified project (external gaps).
+func (t *GapTracker) FilterByProject(project string, external bool) *GapTracker {
+	filtered := &GapTracker{
+		Events:       []GapEvent{},
+		Improvements: t.Improvements,
+		LastAnalysis: t.LastAnalysis,
+	}
+
+	for _, e := range t.Events {
+		if external {
+			// External mode: include events NOT from this project
+			if e.SourceProject != "" && e.SourceProject != project {
+				filtered.Events = append(filtered.Events, e)
+			}
+		} else {
+			// From mode: include events FROM this project
+			if e.SourceProject == project {
+				filtered.Events = append(filtered.Events, e)
+			}
+		}
+	}
+
+	return filtered
+}
+
+// GetExternalGaps returns gaps discovered in projects other than the specified one.
+// This is used for proactive surfacing when returning to orch-go.
+func (t *GapTracker) GetExternalGaps(currentProject string) []GapEvent {
+	var external []GapEvent
+	for _, e := range t.Events {
+		if e.SourceProject != "" && e.SourceProject != currentProject {
+			external = append(external, e)
+		}
+	}
+	return external
+}
+
+// GetExternalGapSummary returns a summary of gaps discovered in other projects.
+// Returns a map of project -> gap count for display.
+func (t *GapTracker) GetExternalGapSummary(currentProject string) map[string]int {
+	summary := make(map[string]int)
+	for _, e := range t.Events {
+		if e.SourceProject != "" && e.SourceProject != currentProject && e.Resolution == "" {
+			summary[e.SourceProject]++
+		}
+	}
+	return summary
 }
 
 // MeasureImprovementEffectiveness checks if improvements reduced gaps.

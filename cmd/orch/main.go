@@ -2687,6 +2687,13 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	fmt.Println()
 	fmt.Println()
 
+	// Surface architect recommendations if any
+	if archCount, err := GetArchitectRecommendationCount(); err == nil && archCount > 0 {
+		fmt.Printf("⚠️  %d architect recommendation(s) awaiting review\n", archCount)
+		fmt.Println("   Run 'orch review --architects' to process")
+		fmt.Println()
+	}
+
 	// Print account usage
 	if len(output.Accounts) > 0 {
 		fmt.Println("ACCOUNTS")
@@ -4635,8 +4642,11 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 		return
 	}
 
-	// Record the gap
-	tracker.RecordGap(gapAnalysis, skill, task)
+	// Detect source project from current working directory
+	sourceProject := detectSourceProject()
+
+	// Record the gap with project context
+	tracker.RecordGapWithProject(gapAnalysis, skill, task, sourceProject)
 
 	// Check for recurring patterns and display suggestions
 	suggestions := tracker.FindRecurringGaps()
@@ -4658,6 +4668,16 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	if err := tracker.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save gap tracker: %v\n", err)
 	}
+}
+
+// detectSourceProject returns the project directory name from the current working directory.
+// Returns empty string if detection fails.
+func detectSourceProject() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(cwd)
 }
 
 var retriesCmd = &cobra.Command{
