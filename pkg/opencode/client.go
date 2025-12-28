@@ -20,6 +20,7 @@ const DefaultHTTPTimeout = 10 * time.Second
 // Client handles OpenCode CLI interactions.
 type Client struct {
 	ServerURL  string
+	Directory  string // Project directory for x-opencode-directory header
 	httpClient *http.Client
 }
 
@@ -38,6 +39,14 @@ func NewClient(serverURL string) *Client {
 			},
 		},
 	}
+}
+
+// NewClientWithDirectory creates a new OpenCode client with a specific project directory.
+// The directory is used for the x-opencode-directory header in all API calls.
+func NewClientWithDirectory(serverURL, directory string) *Client {
+	c := NewClient(serverURL)
+	c.Directory = directory
+	return c
 }
 
 // NewClientWithTimeout creates a new OpenCode client with custom timeout.
@@ -61,6 +70,15 @@ func (c *Client) getOpencodeBin() string {
 		return bin
 	}
 	return "opencode"
+}
+
+// setDirectoryHeader adds the x-opencode-directory header to a request.
+// This header tells OpenCode which project directory to use for the session.
+// It's required for all API calls to ensure sessions are stored in the correct location.
+func (c *Client) setDirectoryHeader(req *http.Request) {
+	if c.Directory != "" {
+		req.Header.Set("x-opencode-directory", c.Directory)
+	}
 }
 
 // ParseEvent parses a JSON event from opencode output.
@@ -238,6 +256,7 @@ func (c *Client) SendMessageAsync(sessionID, content, model string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -306,6 +325,7 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch session: %w", err)
@@ -333,6 +353,7 @@ func (c *Client) SessionExists(sessionID string) bool {
 	if err != nil {
 		return false
 	}
+	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return false
@@ -477,6 +498,7 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
@@ -646,6 +668,7 @@ func (c *Client) DeleteSession(sessionID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
+	c.setDirectoryHeader(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -1529,24 +1529,22 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	return nil
 }
 
-// runSpawnHeadless spawns the agent using CLI subprocess without a TUI.
+// runSpawnHeadless spawns the agent using the HTTP API without a TUI.
 // This is useful for automation and daemon-driven spawns.
-// Uses opencode CLI with --format json to properly support model selection
-// (the HTTP API ignores the model parameter).
+// Uses the HTTP API directly which properly supports directory configuration.
 // Includes retry logic for transient network failures.
-// The verbose flag enables real-time stderr output for debugging.
+// The verbose flag enables additional logging for debugging.
 func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, verbose bool) error {
-	client := opencode.NewClient(serverURL)
+	// Use client with directory so all API calls include x-opencode-directory header
+	client := opencode.NewClientWithDirectory(serverURL, cfg.ProjectDir)
 
-	// Build opencode command using CLI (like inline mode) to support model selection
-	// The HTTP API ignores model parameter - only CLI mode honors --model flag
 	// Format title with beads ID so orch status can match sessions
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 
 	// Use retry logic for transient failures (network issues, server temporarily unavailable)
 	retryCfg := spawn.DefaultRetryConfig()
 	result, retryResult := spawn.Retry(retryCfg, func() (*headlessSpawnResult, error) {
-		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg, verbose)
+		return startHeadlessSessionAPI(client, sessionTitle, minimalPrompt, cfg, verbose)
 	})
 
 	if retryResult.LastErr != nil {
@@ -1570,9 +1568,6 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
-
-	// Start background cleanup goroutine
-	result.StartBackgroundCleanup()
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -1739,6 +1734,41 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		stdout:       stdout,
 		stderrBuffer: &stderrBuffer,
 		verbose:      verbose,
+	}, nil
+}
+
+// startHeadlessSessionAPI creates a session via HTTP API and sends the initial prompt.
+// This is the preferred method for headless spawns as it properly handles the directory.
+// The opencode CLI's --attach mode has a bug where it always uses "/" as the directory.
+func startHeadlessSessionAPI(client *opencode.Client, sessionTitle, minimalPrompt string, cfg *spawn.Config, verbose bool) (*headlessSpawnResult, error) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, "Creating session via API: title=%s, directory=%s\n", sessionTitle, cfg.ProjectDir)
+	}
+
+	// Create session via HTTP API with correct directory
+	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model)
+	if err != nil {
+		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "Created session: %s\n", session.ID)
+	}
+
+	// Send the initial prompt
+	if err := client.SendPrompt(session.ID, minimalPrompt, cfg.Model); err != nil {
+		return nil, spawn.WrapSpawnError(err, "Failed to send initial prompt")
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "Sent initial prompt to session %s\n", session.ID)
+	}
+
+	// Return result - no process to manage since we're using the API
+	return &headlessSpawnResult{
+		SessionID: session.ID,
+		// cmd, stdout, stderrBuffer are nil since we're using API
+		verbose: verbose,
 	}, nil
 }
 
@@ -2237,20 +2267,20 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID    string                 `json:"session_id"`
-	BeadsID      string                 `json:"beads_id,omitempty"`
-	Skill        string                 `json:"skill,omitempty"`
-	Account      string                 `json:"account,omitempty"`
-	Runtime      string                 `json:"runtime"`
-	Title        string                 `json:"title,omitempty"`
-	Window       string                 `json:"window,omitempty"`
-	Phase        string                 `json:"phase,omitempty"`         // Current phase from beads comments
-	Task         string                 `json:"task,omitempty"`          // Task description (truncated)
-	Project      string                 `json:"project,omitempty"`       // Project name derived from beads ID or workspace
-	IsPhantom    bool                   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
-	IsProcessing bool                   `json:"is_processing,omitempty"` // True if session is actively generating a response
-	IsCompleted  bool                   `json:"is_completed,omitempty"`  // True if beads issue is closed
-	Tokens       *opencode.TokenStats   `json:"tokens,omitempty"`        // Token usage for the session
+	SessionID    string               `json:"session_id"`
+	BeadsID      string               `json:"beads_id,omitempty"`
+	Skill        string               `json:"skill,omitempty"`
+	Account      string               `json:"account,omitempty"`
+	Runtime      string               `json:"runtime"`
+	Title        string               `json:"title,omitempty"`
+	Window       string               `json:"window,omitempty"`
+	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string               `json:"task,omitempty"`          // Task description (truncated)
+	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool                 `json:"is_completed,omitempty"`  // True if beads issue is closed
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`        // Token usage for the session
 }
 
 // StatusOutput represents the full status output for JSON serialization.
