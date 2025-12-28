@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -179,6 +180,7 @@ var (
 	spawnGateOnGap         bool   // Block spawn if context quality is too low
 	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
+	spawnVerbose           bool   // Show stderr output in real-time for debugging
 )
 
 var spawnCmd = &cobra.Command{
@@ -219,6 +221,12 @@ Auto-Initialization:
   Use --auto-init to automatically run 'orch init' if .orch/ or .beads/ are missing.
   This is useful for spawning in new projects without prior setup.
 
+Error Visibility:
+  --verbose:          Show stderr output in real-time for debugging headless spawns
+  
+  By default, headless spawns capture stderr and log errors to events.jsonl on failure.
+  Use --verbose to see stderr in real-time when debugging spawn issues.
+
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
@@ -250,7 +258,8 @@ Examples:
   orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
   orch-go spawn --light feature-impl "quick fix"               # Light tier (no synthesis)
   orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)
-  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project`,
+  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project
+  orch-go spawn --verbose investigation "debug spawn issues"   # Show stderr in real-time`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -281,6 +290,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
+	spawnCmd.Flags().BoolVar(&spawnVerbose, "verbose", false, "Show stderr output in real-time for debugging headless spawns")
 }
 
 var sendCmd = &cobra.Command{
@@ -1335,7 +1345,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	}
 
 	// Default: Headless mode - spawn via HTTP API (automation-friendly, no TUI overhead)
-	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task, spawnVerbose)
 }
 
 // formatSessionTitle formats the session title to include beads ID for matching.
@@ -1522,7 +1532,8 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 // Uses opencode CLI with --format json to properly support model selection
 // (the HTTP API ignores the model parameter).
 // Includes retry logic for transient network failures.
-func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+// The verbose flag enables real-time stderr output for debugging.
+func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, verbose bool) error {
 	client := opencode.NewClient(serverURL)
 
 	// Build opencode command using CLI (like inline mode) to support model selection
@@ -1533,7 +1544,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	// Use retry logic for transient failures (network issues, server temporarily unavailable)
 	retryCfg := spawn.DefaultRetryConfig()
 	result, retryResult := spawn.Retry(retryCfg, func() (*headlessSpawnResult, error) {
-		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
+		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg, verbose)
 	})
 
 	if retryResult.LastErr != nil {
@@ -1613,12 +1624,15 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 // headlessSpawnResult contains the result of starting a headless session.
 type headlessSpawnResult struct {
-	SessionID string
-	cmd       *exec.Cmd
-	stdout    io.ReadCloser
+	SessionID    string
+	cmd          *exec.Cmd
+	stdout       io.ReadCloser
+	stderrBuffer *bytes.Buffer // Captured stderr for error visibility
+	verbose      bool          // Whether to output stderr in real-time
 }
 
-// StartBackgroundCleanup starts a goroutine to drain stdout and wait for the process.
+// StartBackgroundCleanup starts a goroutine to drain stdout, wait for the process,
+// and log any stderr output or exit errors to the events log for later analysis.
 func (r *headlessSpawnResult) StartBackgroundCleanup() {
 	if r.stdout == nil || r.cmd == nil {
 		return
@@ -1627,13 +1641,54 @@ func (r *headlessSpawnResult) StartBackgroundCleanup() {
 		// Drain remaining stdout
 		io.Copy(io.Discard, r.stdout)
 		// Wait for process to complete (cleanup)
-		r.cmd.Wait()
+		err := r.cmd.Wait()
+
+		// Check for errors to log
+		var hasError bool
+		var errorDetails []string
+
+		if err != nil {
+			hasError = true
+			errorDetails = append(errorDetails, fmt.Sprintf("exit_error: %v", err))
+		}
+
+		if r.stderrBuffer != nil && r.stderrBuffer.Len() > 0 {
+			stderrContent := strings.TrimSpace(r.stderrBuffer.String())
+			if stderrContent != "" {
+				hasError = true
+				errorDetails = append(errorDetails, fmt.Sprintf("stderr: %s", stderrContent))
+
+				// In verbose mode, stderr was already printed in real-time.
+				// In non-verbose mode, print a warning with the stderr content if there's an error.
+				if !r.verbose && err != nil {
+					fmt.Fprintf(os.Stderr, "\n⚠️  Agent process exited with error.\nStderr output:\n%s\n", stderrContent)
+				}
+			}
+		}
+
+		// Log errors to events for later analysis
+		if hasError {
+			logger := events.NewLogger(events.DefaultLogPath())
+			event := events.Event{
+				Type:      "session.error",
+				SessionID: r.SessionID,
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"session_id": r.SessionID,
+					"errors":     errorDetails,
+				},
+			}
+			if logErr := logger.Log(event); logErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log session error: %v\n", logErr)
+			}
+		}
 	}()
 }
 
 // startHeadlessSession starts an opencode session and extracts the session ID.
 // Returns the result with session ID and resources for cleanup.
-func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
+// The verbose flag enables real-time stderr output for debugging.
+func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config, verbose bool) (*headlessSpawnResult, error) {
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
@@ -1645,8 +1700,16 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		return nil, spawnErr
 	}
 
-	// Discard stderr in headless mode (no TUI to display it)
-	cmd.Stderr = nil
+	// Capture stderr for error visibility
+	// In verbose mode, also tee stderr to os.Stderr for real-time output
+	var stderrBuffer bytes.Buffer
+	if verbose {
+		// Tee stderr to both the buffer and os.Stderr for real-time debugging
+		cmd.Stderr = io.MultiWriter(&stderrBuffer, os.Stderr)
+	} else {
+		// Capture stderr to buffer for logging on errors
+		cmd.Stderr = &stderrBuffer
+	}
 
 	if err := cmd.Start(); err != nil {
 		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
@@ -1657,6 +1720,11 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	// We need to read at least until we get the session ID
 	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
 	if err != nil {
+		// Include any stderr content in the error message for visibility
+		stderrContent := strings.TrimSpace(stderrBuffer.String())
+		if stderrContent != "" {
+			err = fmt.Errorf("%w\nStderr: %s", err, stderrContent)
+		}
 		// Try to kill the process if we couldn't get session ID
 		cmd.Process.Kill()
 		spawnErr := spawn.WrapSpawnError(err, "Failed to extract session ID")
@@ -1664,9 +1732,11 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	}
 
 	return &headlessSpawnResult{
-		SessionID: sessionID,
-		cmd:       cmd,
-		stdout:    stdout,
+		SessionID:    sessionID,
+		cmd:          cmd,
+		stdout:       stdout,
+		stderrBuffer: &stderrBuffer,
+		verbose:      verbose,
 	}, nil
 }
 
