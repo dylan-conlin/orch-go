@@ -283,24 +283,24 @@ func runServe(portNum int) error {
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID           string             `json:"id"`
-	SessionID    string             `json:"session_id,omitempty"`
-	BeadsID      string             `json:"beads_id,omitempty"`
-	BeadsTitle   string             `json:"beads_title,omitempty"`
-	Skill        string             `json:"skill,omitempty"`
-	Status       string             `json:"status"`            // "active", "idle", "completed", etc.
-	Phase        string             `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task         string             `json:"task,omitempty"`    // Task description from beads issue
-	Project      string             `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
-	Runtime      string             `json:"runtime,omitempty"`
-	Window       string             `json:"window,omitempty"`
-	IsProcessing bool               `json:"is_processing,omitempty"` // True if actively generating response
-	SpawnedAt    string             `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
-	UpdatedAt    string             `json:"updated_at,omitempty"`    // ISO 8601 timestamp
-	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
-	CloseReason  string             `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
-	GapAnalysis  *GapAPIResponse    `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
-	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`      // Token usage for the session
+	ID           string               `json:"id"`
+	SessionID    string               `json:"session_id,omitempty"`
+	BeadsID      string               `json:"beads_id,omitempty"`
+	BeadsTitle   string               `json:"beads_title,omitempty"`
+	Skill        string               `json:"skill,omitempty"`
+	Status       string               `json:"status"`            // "active", "idle", "completed", etc.
+	Phase        string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task         string               `json:"task,omitempty"`    // Task description from beads issue
+	Project      string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime      string               `json:"runtime,omitempty"`
+	Window       string               `json:"window,omitempty"`
+	IsProcessing bool                 `json:"is_processing,omitempty"` // True if actively generating response
+	SpawnedAt    string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt    string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis    *SynthesisResponse   `json:"synthesis,omitempty"`
+	CloseReason  string               `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
+	GapAnalysis  *GapAPIResponse      `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`       // Token usage for the session
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -565,20 +565,58 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(serverURL)
 
-	// Get active sessions from OpenCode
-	// Don't filter by directory - show all sessions across all projects
-	// (serve process CWD may not match project directory)
-	sessions, err := client.ListSessions("")
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
-		return
+	// Build workspace cache FIRST to discover all project directories.
+	// This is critical because OpenCode stores sessions per-project-directory,
+	// and ListSessions("") only returns sessions from the default/global location.
+	// Sessions created with x-opencode-directory header won't be found without
+	// querying each project directory specifically.
+	//
+	// Strategy:
+	// 1. Build workspace cache from known project (discovers PROJECT_DIRs from SPAWN_CONTEXT.md)
+	// 2. Query OpenCode sessions for EACH discovered project directory
+	// 3. Merge all sessions together for unified view
+	initialCache := buildWorkspaceCache(projectDir)
+
+	// Collect unique project directories from workspace cache
+	projectDirsMap := make(map[string]bool)
+	projectDirsMap[projectDir] = true // Always include current project
+	for _, dir := range initialCache.beadsToProjectDir {
+		if dir != "" {
+			projectDirsMap[dir] = true
+		}
+	}
+
+	// Query OpenCode sessions for each project directory
+	// This ensures we find sessions created with x-opencode-directory header
+	var sessions []opencode.Session
+	seenSessionIDs := make(map[string]bool)
+
+	for dir := range projectDirsMap {
+		dirSessions, err := client.ListSessions(dir)
+		if err != nil {
+			// Log but continue - some directories may not have sessions
+			continue
+		}
+		for _, s := range dirSessions {
+			if !seenSessionIDs[s.ID] {
+				seenSessionIDs[s.ID] = true
+				sessions = append(sessions, s)
+			}
+		}
+	}
+
+	// Also query without directory filter to catch any global sessions
+	globalSessions, _ := client.ListSessions("")
+	for _, s := range globalSessions {
+		if !seenSessionIDs[s.ID] {
+			seenSessionIDs[s.ID] = true
+			sessions = append(sessions, s)
+		}
 	}
 
 	// Build multi-project workspace cache for cross-project agent visibility.
-	// This aggregates workspace metadata from all projects with active sessions,
-	// enabling the dashboard to show correct status for agents spawned with --workdir.
-	// Previously: Only scanned current project's .orch/workspace/
-	// Now: Scans all unique project directories found in OpenCode sessions
+	// Now that we have sessions from all directories, extract any additional
+	// project directories and rebuild the cache with full coverage.
 	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
 	wsCache := buildMultiProjectWorkspaceCache(projectDirs)
 
@@ -955,37 +993,37 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		tokens *opencode.TokenStats
 	}
 	tokenChan := make(chan tokenResult, len(agents))
-	
+
 	// Limit concurrent HTTP requests to avoid overwhelming the OpenCode server
 	const maxConcurrent = 20
 	sem := make(chan struct{}, maxConcurrent)
-	
+
 	var wg sync.WaitGroup
 	for i := range agents {
 		// Skip agents without session ID or completed agents (token data is static for completed)
 		if agents[i].SessionID == "" || agents[i].Status == "completed" {
 			continue
 		}
-		
+
 		wg.Add(1)
 		go func(idx int, sessionID string) {
 			defer wg.Done()
 			sem <- struct{}{}        // Acquire semaphore
 			defer func() { <-sem }() // Release semaphore
-			
+
 			tokens, err := client.GetSessionTokens(sessionID)
 			if err == nil && tokens != nil {
 				tokenChan <- tokenResult{index: idx, tokens: tokens}
 			}
 		}(i, agents[i].SessionID)
 	}
-	
+
 	// Wait for all goroutines to complete, then close channel
 	go func() {
 		wg.Wait()
 		close(tokenChan)
 	}()
-	
+
 	// Collect results
 	for result := range tokenChan {
 		agents[result.index].Tokens = result.tokens
@@ -1865,18 +1903,18 @@ type GapsAPIResponse struct {
 	TotalGaps         int                    `json:"total_gaps"`
 	RecurringPatterns int                    `json:"recurring_patterns"`
 	BySkill           map[string]int         `json:"by_skill"`
-	RecentGaps        int                    `json:"recent_gaps,omitempty"`       // Gaps in last 7 days
-	Suggestions       []GapSuggestionSummary `json:"suggestions,omitempty"`       // Top recurring gap suggestions
+	RecentGaps        int                    `json:"recent_gaps,omitempty"` // Gaps in last 7 days
+	Suggestions       []GapSuggestionSummary `json:"suggestions,omitempty"` // Top recurring gap suggestions
 	Error             string                 `json:"error,omitempty"`
 }
 
 // ReflectAPIResponse is the JSON structure returned by /api/reflect.
 // It exposes the reflect-suggestions.json data with synthesis/promote/stale info.
 type ReflectAPIResponse struct {
-	Timestamp string                   `json:"timestamp"`
+	Timestamp string                    `json:"timestamp"`
 	Synthesis []ReflectSynthesisSummary `json:"synthesis"`
-	Refine    []ReflectRefineSummary   `json:"refine,omitempty"`
-	Error     string                   `json:"error,omitempty"`
+	Refine    []ReflectRefineSummary    `json:"refine,omitempty"`
+	Error     string                    `json:"error,omitempty"`
 }
 
 // ReflectRefineSummary represents a kn entry that refines an existing principle.
@@ -2123,24 +2161,24 @@ type ErrorEvent struct {
 
 // ErrorPattern represents a recurring error pattern.
 type ErrorPattern struct {
-	Pattern    string   `json:"pattern"`     // Error message pattern (may be truncated/normalized)
-	Count      int      `json:"count"`       // Number of occurrences
-	LastSeen   string   `json:"last_seen"`   // ISO 8601 timestamp of most recent occurrence
-	BeadsIDs   []string `json:"beads_ids"`   // Affected beads issues
-	Suggestion string   `json:"suggestion"`  // Remediation suggestion
+	Pattern    string   `json:"pattern"`    // Error message pattern (may be truncated/normalized)
+	Count      int      `json:"count"`      // Number of occurrences
+	LastSeen   string   `json:"last_seen"`  // ISO 8601 timestamp of most recent occurrence
+	BeadsIDs   []string `json:"beads_ids"`  // Affected beads issues
+	Suggestion string   `json:"suggestion"` // Remediation suggestion
 }
 
 // ErrorsAPIResponse is the JSON structure returned by /api/errors.
 type ErrorsAPIResponse struct {
-	TotalErrors     int            `json:"total_errors"`               // Total error events
-	ErrorsLast24h   int            `json:"errors_last_24h"`            // Errors in last 24 hours
-	ErrorsLast7d    int            `json:"errors_last_7d"`             // Errors in last 7 days
-	AbandonedCount  int            `json:"abandoned_count"`            // Total agent.abandoned events
-	SessionErrors   int            `json:"session_errors"`             // Total session.error events
-	RecentErrors    []ErrorEvent   `json:"recent_errors,omitempty"`    // Last 20 error events
-	Patterns        []ErrorPattern `json:"patterns,omitempty"`         // Recurring error patterns
-	ByType          map[string]int `json:"by_type"`                    // Breakdown by error type
-	Error           string         `json:"error,omitempty"`            // Error message if any
+	TotalErrors    int            `json:"total_errors"`            // Total error events
+	ErrorsLast24h  int            `json:"errors_last_24h"`         // Errors in last 24 hours
+	ErrorsLast7d   int            `json:"errors_last_7d"`          // Errors in last 7 days
+	AbandonedCount int            `json:"abandoned_count"`         // Total agent.abandoned events
+	SessionErrors  int            `json:"session_errors"`          // Total session.error events
+	RecentErrors   []ErrorEvent   `json:"recent_errors,omitempty"` // Last 20 error events
+	Patterns       []ErrorPattern `json:"patterns,omitempty"`      // Recurring error patterns
+	ByType         map[string]int `json:"by_type"`                 // Breakdown by error type
+	Error          string         `json:"error,omitempty"`         // Error message if any
 }
 
 // handleErrors returns error pattern analysis from ~/.orch/events.jsonl.
@@ -2384,11 +2422,11 @@ func suggestRemediation(pattern string) string {
 type PendingReviewItem struct {
 	WorkspaceID string `json:"workspace_id"`
 	BeadsID     string `json:"beads_id"`
-	Index       int    `json:"index"`       // Index of the recommendation (0-based)
-	Text        string `json:"text"`        // The recommendation text
-	Reviewed    bool   `json:"reviewed"`    // Whether this item has been reviewed
-	ActedOn     bool   `json:"acted_on"`    // Whether an issue was created
-	Dismissed   bool   `json:"dismissed"`   // Whether this was dismissed
+	Index       int    `json:"index"`     // Index of the recommendation (0-based)
+	Text        string `json:"text"`      // The recommendation text
+	Reviewed    bool   `json:"reviewed"`  // Whether this item has been reviewed
+	ActedOn     bool   `json:"acted_on"`  // Whether an issue was created
+	Dismissed   bool   `json:"dismissed"` // Whether this was dismissed
 }
 
 // PendingReviewAgent represents an agent with pending synthesis reviews.
@@ -2405,9 +2443,9 @@ type PendingReviewAgent struct {
 
 // PendingReviewsAPIResponse is the JSON structure returned by /api/pending-reviews.
 type PendingReviewsAPIResponse struct {
-	Agents           []PendingReviewAgent `json:"agents"`
-	TotalAgents      int                  `json:"total_agents"`
-	TotalUnreviewed  int                  `json:"total_unreviewed"`
+	Agents          []PendingReviewAgent `json:"agents"`
+	TotalAgents     int                  `json:"total_agents"`
+	TotalUnreviewed int                  `json:"total_unreviewed"`
 }
 
 // handlePendingReviews returns pending synthesis reviews.
@@ -2629,9 +2667,9 @@ type DismissReviewRequest struct {
 
 // DismissReviewResponse is the response for POST /api/dismiss-review.
 type DismissReviewResponse struct {
-	Success  bool   `json:"success"`
-	Message  string `json:"message,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // handleDismissReview dismisses a synthesis recommendation.
