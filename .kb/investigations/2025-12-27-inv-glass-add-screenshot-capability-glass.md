@@ -5,79 +5,58 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Glass now has screenshot capability using Chrome DevTools Protocol's Page.CaptureScreenshot.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Successfully captured PNG and JPEG screenshots via CLI command, verified with `file` command showing correct image format and dimensions.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** mafredri/cdp library has full screenshot support via Page.CaptureScreenshot; the method returns base64-encoded data that needs decoding for file output but can be returned directly in MCP responses.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close - feature implemented and tested.
 
 ---
 
-# Investigation: Glass Add Screenshot Capability Glass
+# Investigation: Glass Add Screenshot Capability
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to add screenshot capability to Glass using Chrome DevTools Protocol?
 
 **Started:** 2025-12-27
 **Updated:** 2025-12-27
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: mafredri/cdp supports Page.CaptureScreenshot
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Grep of go module cache shows `CaptureScreenshot` method with full support for format (png/jpeg/webp), quality, and captureBeyondViewport options.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `~/go/pkg/mod/github.com/mafredri/cdp@v0.35.0/protocol/page/domain.go`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** No additional dependencies needed - can use existing CDP library.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Screenshot data is already base64-encoded from CDP
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** CDP returns CaptureScreenshotReply with Data field containing base64-encoded bytes.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `~/go/pkg/mod/github.com/mafredri/cdp@v0.35.0/protocol/page/command.go`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** MCP tool can return ImageContent directly with base64 data; CLI needs to decode for file write (already handled by mafredri).
+
+---
+
+### Finding 3: MCP supports ImageContent type for returning images
+
+**Evidence:** mark3labs/mcp-go has ImageContent struct with Type="image", Data (base64), and MIMEType fields.
+
+**Source:** `~/go/pkg/mod/github.com/mark3labs/mcp-go@v0.43.2/mcp/types.go`
+
+**Significance:** Can return screenshots directly to agents as image content.
 
 ---
 
@@ -85,15 +64,18 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Direct CDP support** - Page.CaptureScreenshot is fully supported by mafredri/cdp with all needed options.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **MCP image support** - ImageContent type allows returning screenshots directly to agents.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Full-page capture** - CDP supports CaptureBeyondViewport for scrollable page capture.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Added screenshot capability by implementing:
+1. `Screenshot()` method in `pkg/chrome/daemon.go` using CDP's Page.CaptureScreenshot
+2. `glass screenshot` CLI command with `-format`, `-quality`, `-full`, `-o` flags
+3. MCP `screenshot` tool returning base64-encoded ImageContent
 
 ---
 
@@ -101,120 +83,54 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ PNG screenshot capture works (verified: captured 304KB image, `file` confirms PNG format)
+- ✅ JPEG screenshot capture works (verified: captured JPEG image, `file` confirms JPEG format)
+- ✅ CLI flags parse correctly (verified: --help shows all options)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ WebP format (not tested but uses same CDP path)
+- ⚠️ Full-page capture on tall pages (not tested with scrollable content)
+- ⚠️ MCP tool returns image correctly to Claude (not tested with actual MCP client)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
-
----
-
-## Implementation Recommendations
-
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- Finding would be wrong if CDP returns different data format on some Chrome versions
+- Full-page might fail on very tall pages due to memory limits
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+**Files Modified:**
+- `pkg/chrome/daemon.go:1208-1266` - Added ScreenshotOptions and Screenshot method
+- `main.go:319-376` - Added runScreenshot command
+- `pkg/mcp/server.go:188-207, 566-637` - Added screenshot MCP tool
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Build
+go build -o glass .
 
-# [Command description]
-[command]
+# Test screenshot
+glass screenshot -o test-screenshot.png
+file test-screenshot.png  # Confirmed PNG image data
+
+glass screenshot -format jpeg -o test-screenshot.jpg
+file test-screenshot.jpg  # Confirmed JPEG image data
 ```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-27 19:00:** Investigation started
+- Initial question: How to add screenshot capability to Glass?
+- Context: Glass has no screenshot tool, Playwright can't screenshot Glass-controlled pages
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-27 19:05:** Found CDP support
+- mafredri/cdp has Page.CaptureScreenshot with full options
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-27 19:10:** Implementation complete
+- Added daemon method, CLI command, MCP tool
+- Tests pass, screenshots verified
