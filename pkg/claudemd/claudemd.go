@@ -151,3 +151,60 @@ func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
+
+// Limits represents the token and character limits for a CLAUDE.md file type.
+type Limits struct {
+	TokenLimit int
+	CharLimit  int
+}
+
+// GetLimits returns the recommended limits for a given file type.
+// File types: "global", "project", "orchestrator"
+func GetLimits(fileType string) Limits {
+	switch fileType {
+	case "global":
+		return Limits{TokenLimit: 5000, CharLimit: 20000}
+	case "orchestrator":
+		return Limits{TokenLimit: 15000, CharLimit: 40000}
+	case "project":
+		return Limits{TokenLimit: 15000, CharLimit: 60000}
+	default:
+		return Limits{TokenLimit: 15000, CharLimit: 60000}
+	}
+}
+
+// CountTokens estimates the token count for content.
+// Uses a simple heuristic: ~4 chars per token on average for English text.
+// This is a rough approximation of tiktoken's cl100k_base encoding.
+func CountTokens(content string) int {
+	// Simple heuristic: count words and add for special characters
+	// More accurate would be to use a proper tokenizer, but this is good enough for linting
+	words := 0
+	specialChars := 0
+	inWord := false
+
+	for _, r := range content {
+		if r == ' ' || r == '\n' || r == '\t' {
+			if inWord {
+				words++
+				inWord = false
+			}
+		} else if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+			inWord = true
+		} else {
+			// Special characters often get their own token
+			specialChars++
+			if inWord {
+				words++
+				inWord = false
+			}
+		}
+	}
+	if inWord {
+		words++
+	}
+
+	// Rough estimate: words + special characters gives a decent token approximation
+	// Claude's tokenizer (cl100k_base) typically produces slightly fewer tokens than this
+	return words + specialChars
+}
