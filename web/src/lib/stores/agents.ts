@@ -197,10 +197,28 @@ function createAgentStore() {
 export const agents = createAgentStore();
 
 // Derived stores for filtered views
+// Active agents = agents with sessions that are not completed.
+// This matches the CLI semantics where "active" means:
+// - Has an active OpenCode session (session_id exists)
+// - Not completed (status !== 'completed')
+// - Not stale (status !== 'stale' - idle too long)
+//
+// Note: The API sets status='idle' for sessions that aren't actively processing
+// (isProcessing=false) because calling IsSessionProcessing per-session caused
+// 125% CPU. However, the SSE stream updates is_processing in real-time via
+// session.status events. Agents with status='idle' but is_processing=true
+// should still show as active (they ARE processing, API just doesn't know yet).
+//
+// We include status='idle' agents because they have active sessions - they're
+// "working" even if momentarily between tasks. Only 'stale' agents (no updates
+// for >30min) and 'completed' agents should be excluded from the active section.
 export const activeAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => a.status === 'active')
+	$agents.filter((a) => a.status === 'active' || a.status === 'idle')
 );
 
+// Note: idleAgents is now effectively a subset of activeAgents since both
+// 'idle' and 'active' status agents are shown in the Active Agents section.
+// This store is kept for backwards compatibility but may be deprecated.
 export const idleAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'idle')
 );
@@ -217,13 +235,14 @@ export const abandonedAgents = derived(agents, ($agents) =>
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Progressive disclosure groups
-// Active: status === 'active' (agents actively processing)
-// Recent: idle/completed within 24 hours
-// Archive: idle/completed older than 24 hours
+// Active: status === 'active' OR status === 'idle' (agents with active sessions)
+// Recent: stale/completed within 24 hours (not in active section)
+// Archive: stale/completed older than 24 hours
 export const recentAgents = derived(agents, ($agents) => {
 	const now = Date.now();
 	return $agents.filter((a) => {
-		if (a.status === 'active' || a.status === 'deleted') return false;
+		// Exclude agents shown in active section (active + idle)
+		if (a.status === 'active' || a.status === 'idle' || a.status === 'deleted') return false;
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt < RECENT_THRESHOLD_MS;
 	});
@@ -232,7 +251,8 @@ export const recentAgents = derived(agents, ($agents) => {
 export const archivedAgents = derived(agents, ($agents) => {
 	const now = Date.now();
 	return $agents.filter((a) => {
-		if (a.status === 'active' || a.status === 'deleted') return false;
+		// Exclude agents shown in active section (active + idle)
+		if (a.status === 'active' || a.status === 'idle' || a.status === 'deleted') return false;
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt >= RECENT_THRESHOLD_MS;
 	});
