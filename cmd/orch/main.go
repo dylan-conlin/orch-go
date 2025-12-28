@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
@@ -44,6 +45,15 @@ var (
 )
 
 func main() {
+	// Check for stale binary and auto-rebuild if needed
+	if shouldAutoRebuild() {
+		if err := autoRebuild(); err != nil {
+			// Non-fatal: warn and continue with stale binary
+			fmt.Fprintf(os.Stderr, "⚠️  Auto-rebuild failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "    Running with stale binary. Manual fix: cd %s && make install\n\n", sourceDir)
+		}
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -153,6 +163,74 @@ func runVersionSource() {
 		fmt.Printf("current HEAD: %s\n", currentHash[:12])
 		fmt.Printf("\nrebuild: cd %s && make install\n", sourceDir)
 	}
+}
+
+// shouldAutoRebuild checks if the binary is stale and auto-rebuild is enabled.
+// Auto-rebuild is disabled if ORCH_NO_AUTO_REBUILD=1 is set.
+func shouldAutoRebuild() bool {
+	// Disable auto-rebuild via environment variable
+	if os.Getenv("ORCH_NO_AUTO_REBUILD") == "1" {
+		return false
+	}
+
+	// Skip for dev builds
+	if sourceDir == "unknown" || gitHash == "unknown" {
+		return false
+	}
+
+	// Check if source directory exists
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		return false
+	}
+
+	// Get current git hash
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = sourceDir
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	currentHash := strings.TrimSpace(string(output))
+	return currentHash != gitHash
+}
+
+// autoRebuild rebuilds and re-executes the binary.
+// This replaces the current process with the fresh binary.
+func autoRebuild() error {
+	fmt.Fprintf(os.Stderr, "🔄 Binary is stale, auto-rebuilding...\n")
+
+	// Run make install
+	cmd := exec.Command("make", "install")
+	cmd.Dir = sourceDir
+	cmd.Stdout = os.Stderr // Show build output on stderr
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("make install failed: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "✓ Rebuilt successfully, re-executing...\n\n")
+
+	// Re-execute the binary with same arguments
+	// The new binary is at ~/bin/orch (where make install puts it)
+	binaryPath := filepath.Join(os.Getenv("HOME"), "bin", "orch")
+
+	// Use syscall.Exec to replace current process (Unix only)
+	// This avoids nested process issues
+	return execReplaceProcess(binaryPath, os.Args)
+}
+
+// execReplaceProcess replaces the current process with a new executable.
+// Uses syscall.Exec to replace the current process (Unix-specific, macOS/Linux).
+func execReplaceProcess(path string, args []string) error {
+	env := os.Environ()
+
+	// Set flag to prevent infinite rebuild loop
+	env = append(env, "ORCH_NO_AUTO_REBUILD=1")
+
+	// syscall.Exec replaces current process - doesn't return on success
+	return syscall.Exec(path, args, env)
 }
 
 // DefaultMaxAgents is the default maximum number of concurrent agents.
@@ -2297,11 +2375,43 @@ func runStatus(serverURL string) error {
 	agents := make([]AgentInfo, 0)
 	seenBeadsIDs := make(map[string]bool)
 
+	// Get current project directory for session queries
+	projectDir, _ := os.Getwd()
+
 	// === OPTIMIZED: Batch fetch all data upfront ===
-	// 1. Fetch all OpenCode sessions in one call (already fast, ~15ms)
-	sessions, err := client.ListSessions("")
+	// 1. Fetch OpenCode sessions from current project directory FIRST.
+	// OpenCode stores sessions per-directory, so ListSessions("") only returns global sessions.
+	// Sessions created with x-opencode-directory header need to be queried with that directory.
+	var sessions []opencode.Session
+	seenSessionIDs := make(map[string]bool)
+
+	// Query current project directory first (most likely to have active agents)
+	if projectDir != "" {
+		dirSessions, err := client.ListSessions(projectDir)
+		if err == nil {
+			for _, s := range dirSessions {
+				if !seenSessionIDs[s.ID] {
+					seenSessionIDs[s.ID] = true
+					sessions = append(sessions, s)
+				}
+			}
+		}
+	}
+
+	// Also query global sessions to catch any that weren't created with directory header
+	globalSessions, err := client.ListSessions("")
 	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
+		// Only fail if we have no sessions at all
+		if len(sessions) == 0 {
+			return fmt.Errorf("failed to list sessions: %w", err)
+		}
+	} else {
+		for _, s := range globalSessions {
+			if !seenSessionIDs[s.ID] {
+				seenSessionIDs[s.ID] = true
+				sessions = append(sessions, s)
+			}
+		}
 	}
 
 	// Build a map of session ID -> session for quick lookup
@@ -2332,9 +2442,6 @@ func runStatus(serverURL string) error {
 
 	// Track project directories for cross-project agents (beadsID -> projectDir)
 	beadsProjectDirs := make(map[string]string)
-
-	// Get current project's workspace directory for workspace lookups
-	projectDir, _ := os.Getwd()
 
 	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
 	type tmuxAgent struct {

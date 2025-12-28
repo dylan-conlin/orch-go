@@ -16,13 +16,14 @@ Dashboard showed agents with Phase: Complete as "active" because status derivati
 ## Delta (What Changed)
 
 ### Files Created
-- `.kb/investigations/2025-12-28-inv-dashboard-shows-stale-agent-data.md` - Root cause analysis documenting two bugs: session scoping and status derivation
+- `.kb/investigations/2025-12-28-debug-dashboard-shows-stale-agent-data.md` - Root cause analysis documenting two bugs: session scoping and status derivation
 
 ### Files Modified
-- `cmd/orch/serve.go` - Fixed status derivation logic to use Phase: Complete as authoritative source
+- `cmd/orch/serve.go` - Fixed status derivation logic: `hasActivelyRunningSession` now checks session activity (status == "active"), not just session existence
+- `cmd/orch/main.go` - Fixed `runStatus()` to query directory-specific sessions first (`ListSessions(projectDir)`), then global sessions
 
 ### Commits
-- (Not yet committed - changes staged in serve.go)
+- (Not yet committed - changes in serve.go and main.go)
 
 ---
 
@@ -48,7 +49,7 @@ curl -s http://localhost:3349/api/agents | jq '[.[] | select(.phase == "Complete
 ## Knowledge (What Was Learned)
 
 ### New Artifacts
-- `.kb/investigations/2025-12-28-inv-dashboard-shows-stale-agent-data.md` - Full investigation with D.E.K.N. summary
+- `.kb/investigations/2025-12-28-debug-dashboard-shows-stale-agent-data.md` - Full investigation with D.E.K.N. summary
 
 ### Decisions Made
 - Use beads Phase as authoritative for completion status - prior decision exists, implementation was incorrect
@@ -74,7 +75,11 @@ curl -s http://localhost:3349/api/agents | jq '[.[] | select(.phase == "Complete
 - [ ] Ready for `orch complete orch-go-sk8i`
 
 ### Additional Notes
-The `orch status` showing 0 agents issue was already fixed in main.go by another agent (lines 2310-2321 query sessions by project directory). The running binary at `/Users/dylanconlin/bin/orch` is stale - a rebuild will fix both issues.
+Both issues are now fixed in this session:
+1. `orch status` now queries directory-specific sessions (lines 2300-2337 in main.go)
+2. `serve.go` now uses `hasActivelyRunningSession` that checks session activity status, not just existence
+
+After rebuilding with `go build ./cmd/orch`, both `orch status` and the dashboard API show correct data.
 
 ---
 
@@ -98,5 +103,5 @@ The `orch status` showing 0 agents issue was already fixed in main.go by another
 **Skill:** systematic-debugging
 **Model:** opus
 **Workspace:** `.orch/workspace/og-debug-dashboard-shows-stale-28dec/`
-**Investigation:** `.kb/investigations/2025-12-28-inv-dashboard-shows-stale-agent-data.md`
+**Investigation:** `.kb/investigations/2025-12-28-debug-dashboard-shows-stale-agent-data.md`
 **Beads:** `bd show orch-go-sk8i`
