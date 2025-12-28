@@ -9,99 +9,82 @@
 
 ## TLDR
 
-Standardized all user-facing URLs from `127.0.0.1` to `localhost` across the orch-go codebase because localhost works while 127.0.0.1 didn't work for the user. Updated ~50 occurrences across CLI defaults, web frontend, documentation, and tests.
+Audited orch-go for `127.0.0.1` references. Found the codebase already uses `localhost` consistently in production code. Only one documentation fix was needed in `features.json`. Test files intentionally use `127.0.0.1:9999` for fake servers (correct pattern). Cross-repo skill files need separate update.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Modified
+- `.orch/features.json` - Updated feat-018 description: `http://127.0.0.1:4096` → `http://localhost:4096` and `http://127.0.0.1:3348` → `http://localhost:3348`
 
-**CLI Core:**
-- `cmd/orch/main.go` - Default `--server` flag: `http://127.0.0.1:4096` → `http://localhost:4096`
-- `cmd/orch/serve.go` - Server status output, startup messages, pprof comment
-- `cmd/orch/doctor.go` - Health check URLs
-- `cmd/orch/focus.go` - OpenCode client URL
-- `cmd/gendoc/main.go` - Generated docs use localhost
-
-**Package Defaults:**
-- `pkg/daemon/daemon.go` - Default serverURL fallback
-- `pkg/daemon/completion.go` - DefaultCompletionServiceConfig
-- `pkg/tmux/tmux.go` - OpencodeAttachConfig comment
-
-**Web Frontend (all stores):**
-- `web/src/lib/stores/agents.ts` - API_BASE
-- `web/src/lib/stores/agentlog.ts` - API_BASE
-- `web/src/lib/stores/beads.ts` - API_BASE
-- `web/src/lib/stores/config.ts` - API_BASE
-- `web/src/lib/stores/daemon.ts` - API_BASE
-- `web/src/lib/stores/focus.ts` - API_BASE
-- `web/src/lib/stores/pending-reviews.ts` - API_BASE
-- `web/src/lib/stores/servers.ts` - API_BASE
-- `web/src/lib/stores/usage.ts` - API_BASE
-- `web/vite.config.ts` - Proxy target URLs
-
-**Documentation:**
-- `README.md` - All API pattern examples
-- `CLAUDE.md` - Architecture overview
-- `docs/cli/*.md` - All 30 generated CLI docs
-
-**Tests:**
-- `pkg/opencode/client_test.go` - Standard client URLs
-- `pkg/opencode/sse_test.go` - SSE client URL
-- `pkg/tmux/tmux_test.go` - Config URLs
-- `pkg/state/reconcile_test.go` - Server URLs
-- `pkg/daemon/completion_test.go` - Default config assertion
-- `web/tests/load-test.spec.ts` - API base URL
-- `web/test-race-condition.html` - API URLs
-
-**Legacy:**
-- `legacy/main.go` - Default ServerURL
-- `legacy/main_test.go` - Test URLs
+### Files Created
+- `.kb/investigations/2025-12-28-inv-standardize-localhost-instead-127-across.md` - Investigation documenting audit findings
 
 ### Commits
-- (to be committed)
+- (pending commit)
 
 ---
 
 ## Evidence (What Was Observed)
 
-- Initial grep found ~100 occurrences of `127.0.0.1`
-- User reported `127.0.0.1:5188` didn't work but `localhost:5188` does
-- CORS handler in serve.go correctly accepts both `localhost` AND `127.0.0.1` origins (kept as-is)
+### 127.0.0.1 Occurrences in orch-go (17 total in .go files)
 
-### Categorization of 127.0.0.1 occurrences:
+| Category | Count | Action |
+|----------|-------|--------|
+| Test files (fake ports 9999) | 14 | Keep (intentional) |
+| serve_test.go (Go httptest) | 2 | Keep (stdlib behavior) |
+| CORS middleware | 1 | Keep (must accept both origins) |
 
-| Category | Action | Count |
-|----------|--------|-------|
-| User-facing defaults | Changed to localhost | ~30 |
-| Web frontend API_BASE | Changed to localhost | 9 |
-| Documentation | Changed to localhost | ~20 |
-| Tests (standard flow) | Changed to localhost | ~15 |
-| CORS handling | Keep both (correct) | 1 |
-| Tests (invalid port 99999/9999) | Keep (error testing) | ~13 |
-| httptest.Server parsing | Keep (Go stdlib uses 127.0.0.1) | 2 |
-| Generated logs | Will update on next run | 1 |
-
-### Tests Run
+### Production Code Already Uses localhost
 ```bash
-# Go build is not available in this environment - requires verification by orchestrator
-# All changes are text substitutions that should not break compilation
+grep -r "localhost" --include="*.go" cmd/orch/main.go
+# Line 64: --server default is "http://localhost:4096"
+
+grep -r "localhost" --include="*.go" cmd/orch/serve.go
+# Lines 103, 134, 261: All serve messages use localhost
+
+grep -r "localhost" --include="*.go" pkg/daemon/
+# completion.go:78: ServerURL default is "http://localhost:4096"
+# daemon.go:454: Fallback serverURL is "http://localhost:4096"
 ```
+
+### Test Files Use 127.0.0.1 for Error Testing (Intentional)
+```bash
+grep -r "127\.0\.0\.1:9999" --include="*.go" .
+# Found in pkg/daemon/completion_test.go - 12 occurrences
+# All use port 9999 for intentionally unreachable servers
+```
+
+### CORS Correctly Accepts Both Origins
+```go
+// cmd/orch/serve.go:181
+if origin == "" || strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
+```
+This is correct - browsers may send either as Origin header.
+
+### Cross-Repo Findings (Out of Scope)
+```bash
+grep -r "127\.0\.0\.1" ~/orch-knowledge/skills/
+# skills/src/meta/orchestrator/SKILL.md:360,367,432 - http://127.0.0.1:3333
+# skills/src/policy/orchestrator/SKILL.md:190 - http://127.0.0.1:3333
+```
+These are in orch-knowledge repo and need separate update.
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### Key Finding
-- `localhost` and `127.0.0.1` are NOT always interchangeable
-- Some network configurations, DNS, or application settings may resolve them differently
-- Using `localhost` is more user-friendly and often more reliable
+The orch-go codebase is already standardized on `localhost`. The previous SYNTHESIS.md in this workspace described changes that were never committed - likely from a previous incomplete session.
+
+### Decisions Made
+- **Keep test file 127.0.0.1 usage** - Using `127.0.0.1:9999` for unreachable/fake servers is a valid testing pattern
+- **Keep CORS accepting both** - Browsers may send either `localhost` or `127.0.0.1` as Origin header
 
 ### Constraints Discovered
-- CORS handler must accept BOTH `localhost` and `127.0.0.1` origins (browsers may send either)
-- Go's httptest.Server always uses 127.0.0.1 format (cannot change)
-- Tests for error handling can use arbitrary URLs (no functional difference)
+- Go's `httptest.Server` always returns URLs in `http://127.0.0.1:PORT` format (stdlib behavior)
+- CORS middleware must accept both `localhost` and `127.0.0.1` origins
 
 ---
 
@@ -111,28 +94,38 @@ Standardized all user-facing URLs from `127.0.0.1` to `localhost` across the orc
 
 ### If Close
 - [x] All deliverables complete
-- [ ] Tests passing (requires orchestrator to run `go test ./...`)
-- [x] Changes consistent across codebase
-- [ ] Ready for `orch complete orch-go-nqoi`
+- [x] Investigation file created with findings
+- [x] Ready for `orch complete orch-go-nqoi`
 
-### Post-merge verification
-After building and installing the new binary:
-1. `orch serve` should show `http://localhost:3348`
-2. `orch status` should work with the new default URL
-3. Web dashboard at `http://localhost:5188` should connect successfully
+### Discovered Work (Cross-Repo - Create Beads Issue)
+**Title:** Update orchestrator skill files to use localhost instead of 127.0.0.1
+**Repo:** orch-knowledge
+**Context:**
+```
+The orchestrator SKILL.md files have 4 references to http://127.0.0.1:3333 
+that should be http://localhost:3333:
+- skills/src/meta/orchestrator/SKILL.md (lines 360, 367, 432)
+- skills/src/policy/orchestrator/SKILL.md (line 190)
+```
 
 ---
 
 ## Unexplored Questions
 
-- Why did 127.0.0.1 not work while localhost did? (Could be DNS, hosts file, or browser behavior)
-- Should the CORS handler use a configurable list of allowed origins?
+**Questions that emerged during this session:**
+- Why did `127.0.0.1:5188` not work while `localhost:5188` did for the user? Could be DNS resolution, hosts file configuration, or browser-specific behavior.
+
+**What remains unclear:**
+- Root cause of the original localhost vs 127.0.0.1 discrepancy the user experienced
+
+*(This is an audit - root cause analysis of the original failure is out of scope)*
 
 ---
 
 ## Session Metadata
 
 **Skill:** systematic-debugging
-**Model:** (orchestrator context)
+**Model:** claude-sonnet-4-20250514
 **Workspace:** `.orch/workspace/og-debug-standardize-localhost-instead-28dec/`
+**Investigation:** `.kb/investigations/2025-12-28-inv-standardize-localhost-instead-127-across.md`
 **Beads:** `bd show orch-go-nqoi`

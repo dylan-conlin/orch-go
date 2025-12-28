@@ -183,7 +183,7 @@
     {
       "id": "feat-018",
       "title": "Implement 'orch doctor' infrastructure health check command",
-      "description": "Add 'orch doctor' command to check orch ecosystem infrastructure health. Checks: 1) OpenCode server responding (http://127.0.0.1:4096/healthz), 2) orch serve API responding (http://127.0.0.1:3348/api/sessions), 3) orch daemon process running (launchctl list | grep com.orch.daemon), 4) Required plists present (~/Library/LaunchAgents/com.{opencode,orch-go,orch}.*.plist). Output: Green/Red status per check, overall health score. File targets: cmd/orch/doctor.go (new). Out of scope: Auto-repair, plist generation, project server checks (use 'orch servers' for that). Acceptance: 'orch doctor' shows infrastructure health, detects when services are down.",
+      "description": "Add 'orch doctor' command to check orch ecosystem infrastructure health. Checks: 1) OpenCode server responding (http://localhost:4096/healthz), 2) orch serve API responding (http://localhost:3348/api/sessions), 3) orch daemon process running (launchctl list | grep com.orch.daemon), 4) Required plists present (~/Library/LaunchAgents/com.{opencode,orch-go,orch}.*.plist). Output: Green/Red status per check, overall health score. File targets: cmd/orch/doctor.go (new). Out of scope: Auto-repair, plist generation, project server checks (use 'orch servers' for that). Acceptance: 'orch doctor' shows infrastructure health, detects when services are down.",
       "status": "todo",
       "skill": "feature-impl",
       "priority": "high",
