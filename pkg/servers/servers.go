@@ -285,10 +285,19 @@ type PlistOptions struct {
 }
 
 // DefaultPlistOptions returns sensible defaults for plist generation.
+// Uses the current shell's PATH environment to ensure commands like npm, go, etc.
+// are available in launchd services.
 func DefaultPlistOptions() PlistOptions {
-	homeDir, _ := os.UserHomeDir()
+	// Inherit PATH from current environment, which includes user-configured paths
+	// (homebrew, asdf, nvm, etc.) that are essential for running dev servers.
+	path := os.Getenv("PATH")
+	if path == "" {
+		// Fallback to minimal PATH if environment variable is not set
+		homeDir, _ := os.UserHomeDir()
+		path = fmt.Sprintf("%s/bin:%s/.local/bin:/usr/local/bin:/usr/bin:/bin", homeDir, homeDir)
+	}
 	return PlistOptions{
-		Path:      fmt.Sprintf("%s/bin:%s/.local/bin:/usr/local/bin:/usr/bin:/bin", homeDir, homeDir),
+		Path:      path,
 		KeepAlive: true,
 		RunAtLoad: false,
 	}

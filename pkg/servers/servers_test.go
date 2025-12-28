@@ -666,6 +666,37 @@ func TestDefaultPlistOptions(t *testing.T) {
 	}
 }
 
+func TestDefaultPlistOptions_InheritsPATH(t *testing.T) {
+	// Set a custom PATH environment variable
+	originalPath := os.Getenv("PATH")
+	testPath := "/opt/homebrew/bin:/custom/path:/usr/bin"
+	os.Setenv("PATH", testPath)
+	defer os.Setenv("PATH", originalPath)
+
+	opts := DefaultPlistOptions()
+
+	if opts.Path != testPath {
+		t.Errorf("DefaultPlistOptions should inherit PATH from environment\ngot:  %q\nwant: %q", opts.Path, testPath)
+	}
+}
+
+func TestDefaultPlistOptions_FallbackWhenPATHEmpty(t *testing.T) {
+	// Clear PATH environment variable
+	originalPath := os.Getenv("PATH")
+	os.Unsetenv("PATH")
+	defer os.Setenv("PATH", originalPath)
+
+	opts := DefaultPlistOptions()
+
+	// Should use fallback path
+	if opts.Path == "" {
+		t.Error("Path should have a fallback value when PATH env is empty")
+	}
+	if !strings.Contains(opts.Path, "/usr/bin") {
+		t.Errorf("Fallback path should contain /usr/bin, got: %q", opts.Path)
+	}
+}
+
 func TestPlistPath(t *testing.T) {
 	path, err := PlistPath("myproject", "web")
 	if err != nil {
