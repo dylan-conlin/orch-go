@@ -435,11 +435,17 @@
 					</span>
 				</div>
 			{:else}
-				<!-- Placeholder to maintain consistent card height -->
+				<!-- No current activity - show phase-based status or waiting -->
 				<div class="flex items-center gap-1">
-					<span class="text-[10px] text-muted-foreground/50">⏳</span>
+					<span class="text-[10px] text-muted-foreground/50">{agent.is_processing ? '⚡' : '💤'}</span>
 					<p class="flex-1 truncate text-[10px] text-muted-foreground/50">
-						Starting up...
+						{#if agent.phase}
+							{agent.phase}
+						{:else if agent.is_processing}
+							Working...
+						{:else}
+							Waiting for activity...
+						{/if}
 					</p>
 				</div>
 			{/if}
