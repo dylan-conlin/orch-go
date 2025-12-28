@@ -21,13 +21,13 @@ func TestIsLive(t *testing.T) {
 		{
 			name:       "empty beads ID returns false for both",
 			beadsID:    "",
-			serverURL:  "http://127.0.0.1:4096",
+			serverURL:  "http://localhost:4096",
 			projectDir: "/tmp/nonexistent",
 		},
 		{
 			name:       "nonexistent beads ID returns false for both",
 			beadsID:    "nonexistent-abc123",
-			serverURL:  "http://127.0.0.1:4096",
+			serverURL:  "http://localhost:4096",
 			projectDir: "/tmp/nonexistent",
 		},
 	}

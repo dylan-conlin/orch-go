@@ -187,22 +187,22 @@ func TestProcessOutput(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://127.0.0.1:4096")
+	client := NewClient("http://localhost:4096")
 	if client == nil {
 		t.Fatal("NewClient() returned nil")
 	}
-	if client.ServerURL != "http://127.0.0.1:4096" {
-		t.Errorf("ServerURL = %v, want http://127.0.0.1:4096", client.ServerURL)
+	if client.ServerURL != "http://localhost:4096" {
+		t.Errorf("ServerURL = %v, want http://localhost:4096", client.ServerURL)
 	}
 }
 
 func TestBuildSpawnCommand(t *testing.T) {
-	client := NewClient("http://127.0.0.1:4096")
+	client := NewClient("http://localhost:4096")
 	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://127.0.0.1:4096",
+		"--attach", "http://localhost:4096",
 		"--format", "json",
 		"--title", "test-title",
 		"say hello",
@@ -214,12 +214,12 @@ func TestBuildSpawnCommand(t *testing.T) {
 }
 
 func TestBuildSpawnCommandWithModel(t *testing.T) {
-	client := NewClient("http://127.0.0.1:4096")
+	client := NewClient("http://localhost:4096")
 	cmd := client.BuildSpawnCommand("say hello", "test-title", "anthropic/claude-opus-4")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://127.0.0.1:4096",
+		"--attach", "http://localhost:4096",
 		"--format", "json",
 		"--model", "anthropic/claude-opus-4",
 		"--title", "test-title",
@@ -255,7 +255,7 @@ func TestBuildSpawnCommandWithModel(t *testing.T) {
 }
 
 func TestBuildSpawnCommandWithoutModel(t *testing.T) {
-	client := NewClient("http://127.0.0.1:4096")
+	client := NewClient("http://localhost:4096")
 	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
 
 	// Verify --model flag is NOT included when model is empty
@@ -267,12 +267,12 @@ func TestBuildSpawnCommandWithoutModel(t *testing.T) {
 }
 
 func TestBuildAskCommand(t *testing.T) {
-	client := NewClient("http://127.0.0.1:4096")
+	client := NewClient("http://localhost:4096")
 	cmd := client.BuildAskCommand("ses_123", "what did you do?")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://127.0.0.1:4096",
+		"--attach", "http://localhost:4096",
 		"--session", "ses_123",
 		"--format", "json",
 		"what did you do?",
@@ -962,7 +962,7 @@ func TestListDiskSessions(t *testing.T) {
 
 // TestListDiskSessionsRequiresDirectory tests that ListDiskSessions fails without directory.
 func TestListDiskSessionsRequiresDirectory(t *testing.T) {
-	client := NewClient("http://127.0.0.1:4096")
+	client := NewClient("http://localhost:4096")
 	_, err := client.ListDiskSessions("")
 	if err == nil {
 		t.Error("Expected error when directory is empty")

@@ -451,7 +451,7 @@ func DefaultActiveCount() int {
 	// on the same machine as OpenCode server.
 	serverURL := os.Getenv("OPENCODE_URL")
 	if serverURL == "" {
-		serverURL = "http://127.0.0.1:4096"
+		serverURL = "http://localhost:4096"
 	}
 
 	// Make HTTP request to list sessions

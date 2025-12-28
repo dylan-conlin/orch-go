@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 // API configuration
-const API_BASE = 'http://127.0.0.1:3348';
+const API_BASE = 'http://localhost:3348';
 
 // Focus response from /api/focus
 export interface FocusInfo {

@@ -165,12 +165,12 @@ func checkOrchServe() ServiceStatus {
 	status := ServiceStatus{
 		Name:      "orch serve",
 		Port:      DefaultServePort,
-		URL:       fmt.Sprintf("http://127.0.0.1:%d", DefaultServePort),
+		URL:       fmt.Sprintf("http://localhost:%d", DefaultServePort),
 		CanFix:    true,
 		FixAction: fmt.Sprintf("orch serve --port %d", DefaultServePort),
 	}
 
-	healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", DefaultServePort)
+	healthURL := fmt.Sprintf("http://localhost:%d/health", DefaultServePort)
 	httpClient := &http.Client{Timeout: 2 * time.Second}
 	
 	resp, err := httpClient.Get(healthURL)
@@ -274,7 +274,7 @@ func startOrchServe() error {
 	}
 
 	// Wait for it to be ready (poll for up to 5 seconds)
-	healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", DefaultServePort)
+	healthURL := fmt.Sprintf("http://localhost:%d/health", DefaultServePort)
 	httpClient := &http.Client{Timeout: 2 * time.Second}
 	
 	for i := 0; i < 10; i++ {

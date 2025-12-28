@@ -24,7 +24,7 @@ orch-go monitor [flags]
 ### Options inherited from parent commands
 
 ```
-      --server string   OpenCode server URL (default "http://127.0.0.1:4096")
+      --server string   OpenCode server URL (default "http://localhost:4096")
 ```
 
 ### SEE ALSO
