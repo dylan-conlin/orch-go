@@ -244,6 +244,167 @@ func TestInferSkill(t *testing.T) {
 	}
 }
 
+func TestInferSkillFromLabels(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   string
+	}{
+		{"skill:research", []string{"triage:ready", "skill:research"}, "research"},
+		{"skill:investigation", []string{"skill:investigation"}, "investigation"},
+		{"skill:feature-impl", []string{"P1", "skill:feature-impl", "P2"}, "feature-impl"},
+		{"first skill wins", []string{"skill:first", "skill:second"}, "first"},
+		{"no skill label", []string{"triage:ready", "P1"}, ""},
+		{"empty labels", []string{}, ""},
+		{"nil labels", nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := InferSkillFromLabels(tt.labels)
+			if got != tt.want {
+				t.Errorf("InferSkillFromLabels(%v) = %q, want %q", tt.labels, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInferSkillFromIssue(t *testing.T) {
+	tests := []struct {
+		name      string
+		issue     *Issue
+		wantSkill string
+		wantErr   bool
+	}{
+		{
+			name:      "skill label takes priority over type",
+			issue:     &Issue{IssueType: "task", Labels: []string{"skill:research"}},
+			wantSkill: "research",
+			wantErr:   false,
+		},
+		{
+			name:      "skill label overrides bug type",
+			issue:     &Issue{IssueType: "bug", Labels: []string{"skill:investigation"}},
+			wantSkill: "investigation",
+			wantErr:   false,
+		},
+		{
+			name:      "falls back to type when no skill label",
+			issue:     &Issue{IssueType: "bug", Labels: []string{"triage:ready", "P1"}},
+			wantSkill: "systematic-debugging",
+			wantErr:   false,
+		},
+		{
+			name:      "falls back to type with empty labels",
+			issue:     &Issue{IssueType: "feature", Labels: []string{}},
+			wantSkill: "feature-impl",
+			wantErr:   false,
+		},
+		{
+			name:      "falls back to type with nil labels",
+			issue:     &Issue{IssueType: "investigation", Labels: nil},
+			wantSkill: "investigation",
+			wantErr:   false,
+		},
+		{
+			name:      "error for non-spawnable type without skill label",
+			issue:     &Issue{IssueType: "epic", Labels: []string{}},
+			wantSkill: "",
+			wantErr:   true,
+		},
+		{
+			name:      "skill label allows spawning non-standard type",
+			issue:     &Issue{IssueType: "epic", Labels: []string{"skill:research"}},
+			wantSkill: "research",
+			wantErr:   false,
+		},
+		{
+			name:    "nil issue returns error",
+			issue:   nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InferSkillFromIssue(tt.issue)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InferSkillFromIssue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromIssue() = %q, want %q", got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestDaemon_Preview_WithSkillLabel(t *testing.T) {
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{
+					ID:        "proj-1",
+					Title:     "Research task",
+					Priority:  1,
+					IssueType: "task",
+					Status:    "open",
+					Labels:    []string{"triage:ready", "skill:research"},
+				},
+			}, nil
+		},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+	if result.Issue == nil {
+		t.Fatal("Preview() expected issue, got nil")
+	}
+	// Should use skill:research, not infer feature-impl from task type
+	if result.Skill != "research" {
+		t.Errorf("Preview() skill = %q, want 'research' (from skill label, not type)", result.Skill)
+	}
+}
+
+func TestDaemon_Once_WithSkillLabel(t *testing.T) {
+	spawnCalled := false
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{
+					ID:        "proj-1",
+					Title:     "Investigation via label",
+					Priority:  0,
+					IssueType: "bug",
+					Status:    "open",
+					Labels:    []string{"skill:investigation"},
+				},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			spawnCalled = true
+			return nil
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("Once() expected Processed=true")
+	}
+	if !spawnCalled {
+		t.Error("Once() expected spawnFunc to be called")
+	}
+	// Should use skill:investigation, not infer systematic-debugging from bug type
+	if result.Skill != "investigation" {
+		t.Errorf("Once() skill = %q, want 'investigation' (from skill label, not type)", result.Skill)
+	}
+}
+
 func TestDaemon_Once_NoIssues(t *testing.T) {
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {

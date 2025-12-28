@@ -278,7 +278,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		}, nil
 	}
 
-	skill, err := InferSkill(issue.IssueType)
+	skill, err := InferSkillFromIssue(issue)
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
@@ -300,6 +300,7 @@ func IsSpawnableType(issueType string) bool {
 }
 
 // InferSkill maps issue types to skills.
+// Deprecated: Use InferSkillFromIssue which respects skill:* labels.
 func InferSkill(issueType string) (string, error) {
 	switch issueType {
 	case "bug":
@@ -313,6 +314,36 @@ func InferSkill(issueType string) (string, error) {
 	default:
 		return "", fmt.Errorf("cannot infer skill for issue type: %s", issueType)
 	}
+}
+
+// InferSkillFromLabels extracts a skill name from skill:* labels.
+// Returns the skill name if found (e.g., "research" from "skill:research"),
+// or empty string if no skill label is present.
+func InferSkillFromLabels(labels []string) string {
+	for _, label := range labels {
+		if strings.HasPrefix(label, "skill:") {
+			return strings.TrimPrefix(label, "skill:")
+		}
+	}
+	return ""
+}
+
+// InferSkillFromIssue determines the skill to use for an issue.
+// Priority order: skill:* label > issue type inference > error
+// This respects explicit skill assignments via labels while falling back
+// to type-based inference for issues without skill labels.
+func InferSkillFromIssue(issue *Issue) (string, error) {
+	if issue == nil {
+		return "", fmt.Errorf("cannot infer skill for nil issue")
+	}
+
+	// First, check for explicit skill:* label
+	if skill := InferSkillFromLabels(issue.Labels); skill != "" {
+		return skill, nil
+	}
+
+	// Fall back to type-based inference
+	return InferSkill(issue.IssueType)
 }
 
 // FormatPreview formats an issue for preview display.
@@ -571,7 +602,7 @@ func (d *Daemon) Once() (*OnceResult, error) {
 		}, nil
 	}
 
-	skill, err := InferSkill(issue.IssueType)
+	skill, err := InferSkillFromIssue(issue)
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
@@ -630,7 +661,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		}, nil, nil
 	}
 
-	skill, err := InferSkill(issue.IssueType)
+	skill, err := InferSkillFromIssue(issue)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
