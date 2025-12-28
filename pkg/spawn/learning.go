@@ -142,12 +142,13 @@ type TopicAnalysis struct {
 var trackerPathFunc = defaultTrackerPath
 
 // defaultTrackerPath returns the default path for the gap tracker file.
+// Uses ~/.kb/gap-tracker.json (knowledge-centric location, aligned with kb learn).
 func defaultTrackerPath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(homeDir, ".orch", "gap-tracker.json")
+	return filepath.Join(homeDir, ".kb", "gap-tracker.json")
 }
 
 // TrackerPath returns the path for the gap tracker file.
