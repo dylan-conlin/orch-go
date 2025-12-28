@@ -945,15 +945,36 @@
 					</div>
 				</button>
 				{#if sectionState.sseStream}
-					<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
-						{#each $sseEvents.slice().reverse().slice(0, 20) as event (event.id)}
-							<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
-								<span class="opacity-60">{formatTime(event.timestamp)}</span>
-								<span class="text-foreground">{event.type}</span>
-								{#if event.properties?.sessionID}
-									<span class="opacity-60">{event.properties.sessionID.slice(0, 8)}</span>
+					<div class="max-h-64 overflow-y-auto p-2 font-mono text-xs">
+						{#each $sseEvents.slice().reverse().slice(0, 50) as event (event.id)}
+							{@const hasProperties = event.properties && Object.keys(event.properties).length > 0}
+							<details class="group">
+								<summary class="flex items-center gap-1 py-0.5 text-muted-foreground cursor-pointer hover:bg-accent/30 rounded px-1 -mx-1 list-none">
+									{#if hasProperties}
+										<span class="text-muted-foreground/50 group-open:rotate-90 transition-transform w-3">▶</span>
+									{:else}
+										<span class="w-3"></span>
+									{/if}
+									<span class="opacity-60 tabular-nums">{formatTime(event.timestamp)}</span>
+									<Badge variant="outline" class="h-4 px-1 text-[10px] font-normal">{event.type}</Badge>
+									{#if event.properties?.sessionID}
+										<span class="opacity-50 text-[10px]">{event.properties.sessionID.slice(0, 8)}</span>
+									{:else if event.properties?.part?.sessionID}
+										<span class="opacity-50 text-[10px]">{event.properties.part.sessionID.slice(0, 8)}</span>
+									{/if}
+									{#if event.properties?.part?.type}
+										<span class="text-foreground/70 text-[10px]">{event.properties.part.type}</span>
+									{/if}
+									{#if event.properties?.status?.type}
+										<Badge variant={event.properties.status.type === 'busy' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+											{event.properties.status.type}
+										</Badge>
+									{/if}
+								</summary>
+								{#if hasProperties}
+									<pre class="ml-4 mt-1 mb-2 p-2 bg-muted/50 rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{JSON.stringify(event.properties, null, 2)}</pre>
 								{/if}
-							</div>
+							</details>
 						{:else}
 							<p class="py-2 text-center text-muted-foreground">
 								{#if $connectionStatus === 'connected'}
