@@ -21,7 +21,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -636,9 +635,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Filter: only show sessions updated in the last 10 minutes as "active"
 	// Sessions idle > 30 min are filtered out AFTER checking beads Phase status
 	// (completed agents should still be shown regardless of activity time)
-	// Use unified thresholds from state package for consistency with CLI
-	activeThreshold := 10 * time.Minute                  // Distinguish "active" vs "idle"
-	displayThreshold := state.DefaultMaxIdleTime         // Filter out old idle agents (30 min)
+	activeThreshold := 10 * time.Minute
+	displayThreshold := 30 * time.Minute
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
@@ -654,19 +652,17 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		runtime := now.Sub(createdAt)
 		timeSinceUpdate := now.Sub(updatedAt)
 
-		// Determine status using unified logic from pkg/state.
-		// NOTE: IsProcessing is populated client-side via SSE session.status events.
+		// Determine status based on recent activity
+		status := "active"
+		if timeSinceUpdate > activeThreshold {
+			status = "idle" // Session exists but hasn't had recent activity
+		}
+
+		// NOTE: IsProcessing is now populated client-side via SSE session.status events.
 		// Previously we called client.IsSessionProcessing(s.ID) here, but that makes
 		// an HTTP call per session which caused 125% CPU when dashboard polled frequently.
 		// The frontend already receives busy/idle state from OpenCode SSE and updates
-		// is_processing in real-time, so we pass false here - it will be updated by SSE.
-		unifiedStatus := state.DetermineStatusFromSession(
-			false, // isProcessing - populated client-side via SSE
-			timeSinceUpdate,
-			false, // isCompleted - will be updated after Phase check
-			activeThreshold,
-		)
-		status := state.StatusToAPIString(unifiedStatus)
+		// is_processing in real-time, so we don't need to fetch it here.
 
 		agent := AgentAPIResponse{
 			ID:           s.Title,
@@ -749,13 +745,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if !alreadyIn {
-				// Tmux-only agents are always "active" since tmux window exists
 				agents = append(agents, AgentAPIResponse{
 					ID:      win.Name,
 					BeadsID: beadsID,
 					Skill:   skill,
 					Project: project,
-					Status:  state.StatusToAPIString(state.StatusRunning), // tmux window = active
+					Status:  "active",
 					Window:  win.Target,
 				})
 

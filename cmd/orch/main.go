@@ -2418,8 +2418,7 @@ func runStatus(serverURL string) error {
 	sessionMap := make(map[string]*opencode.Session)
 	// Also build a map of beadsID -> session for matching
 	beadsToSession := make(map[string]*opencode.Session)
-	// Use unified max idle time from state package for consistency with API
-	maxIdleTime := state.DefaultMaxIdleTime
+	const maxIdleTime = 30 * time.Minute
 
 	for i := range sessions {
 		s := &sessions[i]

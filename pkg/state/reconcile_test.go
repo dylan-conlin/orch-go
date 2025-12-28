@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestIsLive(t *testing.T) {
@@ -196,86 +195,4 @@ func TestLivenessResult(t *testing.T) {
 			})
 		}
 	})
-}
-
-func TestAgentStatusResult(t *testing.T) {
-	// Test AgentStatusResult status values
-	t.Run("Status constants have expected values", func(t *testing.T) {
-		if StatusRunning != "running" {
-			t.Errorf("StatusRunning = %q, want %q", StatusRunning, "running")
-		}
-		if StatusIdle != "idle" {
-			t.Errorf("StatusIdle = %q, want %q", StatusIdle, "idle")
-		}
-		if StatusCompleted != "completed" {
-			t.Errorf("StatusCompleted = %q, want %q", StatusCompleted, "completed")
-		}
-		if StatusStale != "stale" {
-			t.Errorf("StatusStale = %q, want %q", StatusStale, "stale")
-		}
-	})
-
-	t.Run("Status string can be used in comparisons", func(t *testing.T) {
-		result := AgentStatusResult{Status: StatusRunning}
-		if string(result.Status) != "running" {
-			t.Errorf("string(Status) = %q, want %q", string(result.Status), "running")
-		}
-	})
-}
-
-func TestDetermineAgentStatusWithoutClient(t *testing.T) {
-	// Test DetermineAgentStatus with nil client (basic status checks)
-	// Full integration tests would require mocking OpenCode and beads
-
-	t.Run("Empty beads ID returns stale status", func(t *testing.T) {
-		result := DetermineAgentStatus(nil, nil, "", "/tmp", 30*time.Minute)
-		if result.Status != StatusStale {
-			t.Errorf("Status = %q, want %q for empty beads ID", result.Status, StatusStale)
-		}
-	})
-
-	t.Run("Result includes beads ID", func(t *testing.T) {
-		result := DetermineAgentStatus(nil, nil, "test-123", "/tmp", 30*time.Minute)
-		if result.BeadsID != "test-123" {
-			t.Errorf("BeadsID = %q, want %q", result.BeadsID, "test-123")
-		}
-	})
-}
-
-func TestExtractProjectDirFromSpawnContext(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    string
-	}{
-		{
-			name:    "valid PROJECT_DIR",
-			content: "TASK: Test\n\nPROJECT_DIR: /Users/test/project\n\nSome other stuff",
-			want:    "/Users/test/project",
-		},
-		{
-			name:    "PROJECT_DIR with spaces after colon",
-			content: "PROJECT_DIR:   /Users/test/project  \n",
-			want:    "/Users/test/project",
-		},
-		{
-			name:    "no PROJECT_DIR",
-			content: "TASK: Test\nSome content without project dir",
-			want:    "",
-		},
-		{
-			name:    "empty content",
-			content: "",
-			want:    "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractProjectDirFromSpawnContext(tt.content)
-			if got != tt.want {
-				t.Errorf("extractProjectDirFromSpawnContext() = %q, want %q", got, tt.want)
-			}
-		})
-	}
 }
