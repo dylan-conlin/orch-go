@@ -63,4 +63,84 @@ test.describe('Dashboard Mode Toggle', () => {
 		// History button should still be active after reload
 		await expect(historyButton).toHaveClass(/shadow-md/);
 	});
+
+	test('should set mode from URL query param ?tab=ops', async ({ page }) => {
+		// Navigate directly with tab=ops
+		await page.goto('/?tab=ops');
+		
+		const modeToggle = page.getByTestId('mode-toggle');
+		const opsButton = modeToggle.getByRole('button', { name: /Ops/ });
+		
+		// Ops button should be active
+		await expect(opsButton).toHaveClass(/shadow-md/);
+		
+		// Should see operational mode content
+		await expect(page.getByTestId('active-agents-section')).toBeVisible();
+		
+		// URL should still have the tab param
+		expect(page.url()).toContain('tab=ops');
+	});
+
+	test('should set mode from URL query param ?tab=history', async ({ page }) => {
+		// Navigate directly with tab=history
+		await page.goto('/?tab=history');
+		
+		const modeToggle = page.getByTestId('mode-toggle');
+		const historyButton = modeToggle.getByRole('button', { name: /History/ });
+		
+		// History button should be active
+		await expect(historyButton).toHaveClass(/shadow-md/);
+		
+		// Should see historical mode content (filter bar)
+		await expect(page.getByTestId('filter-bar')).toBeVisible();
+		
+		// URL should still have the tab param
+		expect(page.url()).toContain('tab=history');
+	});
+
+	test('should update URL when mode is changed via toggle', async ({ page }) => {
+		await page.goto('/');
+		
+		const modeToggle = page.getByTestId('mode-toggle');
+		const historyButton = modeToggle.getByRole('button', { name: /History/ });
+		const opsButton = modeToggle.getByRole('button', { name: /Ops/ });
+		
+		// Initially URL should have tab=ops (default)
+		await expect(page).toHaveURL(/tab=ops/);
+		
+		// Click History button
+		await historyButton.click();
+		
+		// URL should update to tab=history
+		await expect(page).toHaveURL(/tab=history/);
+		
+		// Click Ops button
+		await opsButton.click();
+		
+		// URL should update back to tab=ops
+		await expect(page).toHaveURL(/tab=ops/);
+	});
+
+	test('URL param should override localStorage preference', async ({ page }) => {
+		// Set localStorage to historical mode
+		await page.goto('/');
+		await page.evaluate(() => {
+			localStorage.setItem('orch-dashboard-mode', 'historical');
+		});
+		
+		// Navigate with tab=ops - URL should override localStorage
+		await page.goto('/?tab=ops');
+		
+		const modeToggle = page.getByTestId('mode-toggle');
+		const opsButton = modeToggle.getByRole('button', { name: /Ops/ });
+		
+		// Ops button should be active (URL wins over localStorage)
+		await expect(opsButton).toHaveClass(/shadow-md/);
+		
+		// localStorage should be updated to match URL
+		const storedMode = await page.evaluate(() => {
+			return localStorage.getItem('orch-dashboard-mode');
+		});
+		expect(storedMode).toBe('operational');
+	});
 });
