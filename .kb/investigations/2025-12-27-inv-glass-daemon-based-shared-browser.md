@@ -240,13 +240,20 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize"...}' | /Users/dylanconlin/bi
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-27 19:00:** Investigation started
+- Initial question: Why don't glass MCP tools appear in orchestrator sessions?
+- Context: Prior investigation fixed binary corruption, but tools still not visible
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2025-12-27 19:15:** Key finding - double-prefix naming issue
+- Discovered tools registered as `glass_tabs` become `glass_glass_tabs` via opencode
+- OpenCode adds MCP client name as prefix automatically
+- Fixed by removing `glass_` prefix from tool registration
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-27 19:25:** Binary corruption encountered again
+- Newly installed binary at ~/bin/glass returned exit 137
+- Manual recopy fixed the issue
+- Root cause unclear
+
+**2025-12-27 19:35:** Investigation completed
+- Status: Complete
+- Key outcome: Fixed MCP tool naming, glass ready for use, recommend disabling playwright
