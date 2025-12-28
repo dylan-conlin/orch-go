@@ -158,6 +158,7 @@ func runPatterns() error {
 }
 
 // collectRetryPatterns collects retry patterns from events.jsonl via verify package.
+// Filters out closed issues to avoid flagging resolved work as failures.
 func collectRetryPatterns() ([]DetectedPattern, error) {
 	patterns := []DetectedPattern{}
 
@@ -166,7 +167,31 @@ func collectRetryPatterns() ([]DetectedPattern, error) {
 		return nil, err
 	}
 
+	if len(retryStats) == 0 {
+		return patterns, nil
+	}
+
+	// Collect all beads IDs to batch-fetch their status
+	beadsIDs := make([]string, 0, len(retryStats))
 	for _, stats := range retryStats {
+		beadsIDs = append(beadsIDs, stats.BeadsID)
+	}
+
+	// Batch-fetch issue statuses from beads
+	// This filters out closed issues that shouldn't be flagged as failures
+	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
+	// Ignore error - if beads is unavailable, we'll show all patterns
+	// (better to show potential false positives than hide real issues)
+
+	for _, stats := range retryStats {
+		// Skip closed issues - they're resolved and shouldn't be flagged
+		if issue, ok := issueMap[stats.BeadsID]; ok {
+			status := strings.ToLower(issue.Status)
+			if status == "closed" || status == "deferred" || status == "tombstone" {
+				continue
+			}
+		}
+
 		pattern := DetectedPattern{
 			BeadsID: stats.BeadsID,
 			Count:   stats.SpawnCount,
