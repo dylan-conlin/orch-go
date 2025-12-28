@@ -399,13 +399,24 @@
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
       "notes": "Phase 4 of Docker Compose dev servers. Dashboard visibility via docker compose ps."
+    },
+    {
+      "id": "feat-037",
+      "title": "Document Glass vs Playwright browser tool boundaries",
+      "description": "Add clear guidance to global CLAUDE.md and feature-impl skill on when to use Glass (collaborative/shared browser) vs Playwright (headless/isolated verification). Glass: orchestrator interacting with Dylan's Chrome, dashboard work. Playwright: worker agents doing E2E tests, CI/CD. Include table showing use case mapping. File targets: ~/.claude/CLAUDE.md (Browser Automation section), feature-impl skill docs. Out of scope: Code changes to tools themselves. Acceptance: Future agents know which tool to use without confusion based on documentation.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-28",
+      "source": ".kb/investigations/2025-12-28-inv-glass-vs-playwright-role-clarity.md",
+      "notes": "Documentation-only change. Implements recommendation from Glass vs Playwright architect investigation."
     }
   ],
   "meta": {
-    "last_updated": "2025-12-27",
-    "total_features": 36,
+    "last_updated": "2025-12-28",
+    "total_features": 37,
     "by_status": {
-      "todo": 24,
+      "todo": 25,
       "in_progress": 0,
       "done": 1,
       "cancelled": 9
