@@ -230,8 +230,13 @@ func ServerToPlistConfig(project string, server Server, projectDir string, opts 
 	label := fmt.Sprintf("com.%s.%s", project, server.Name)
 
 	// Build program arguments from command
-	// For command type, we wrap in shell to handle complex commands
-	args := []string{"/bin/sh", "-c", server.Command}
+	// For command type, we wrap in a login shell to handle complex commands.
+	// Using /bin/bash -l ensures:
+	// 1. Login shell sources profile files (.bash_profile, .profile)
+	// 2. Environment variables (especially PATH) are properly inherited by child processes
+	// 3. Commands like 'go', 'npm', etc. in /opt/homebrew/bin are found
+	// Note: /bin/sh -c doesn't properly export PATH to child processes in launchd context
+	args := []string{"/bin/bash", "-l", "-c", server.Command}
 
 	// Resolve working directory
 	workdir := projectDir

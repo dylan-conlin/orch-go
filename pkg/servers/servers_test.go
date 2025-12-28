@@ -495,7 +495,7 @@ func TestDuration_YAML(t *testing.T) {
 func TestGeneratePlist(t *testing.T) {
 	cfg := PlistConfig{
 		Label:            "com.test.web",
-		ProgramArguments: []string{"/bin/sh", "-c", "npm run dev"},
+		ProgramArguments: []string{"/bin/bash", "-l", "-c", "npm run dev"},
 		WorkingDirectory: "/path/to/project",
 		EnvironmentVariables: map[string]string{
 			"PATH":     "/usr/local/bin:/usr/bin",
@@ -519,8 +519,8 @@ func TestGeneratePlist(t *testing.T) {
 	if !strings.Contains(plist, "<key>ProgramArguments</key>") {
 		t.Error("Missing ProgramArguments key")
 	}
-	if !strings.Contains(plist, "<string>/bin/sh</string>") {
-		t.Error("Missing /bin/sh in ProgramArguments")
+	if !strings.Contains(plist, "<string>/bin/bash</string>") {
+		t.Error("Missing /bin/bash in ProgramArguments")
 	}
 	if !strings.Contains(plist, "<key>WorkingDirectory</key>") {
 		t.Error("Missing WorkingDirectory key")
@@ -611,6 +611,14 @@ func TestServerToPlistConfig(t *testing.T) {
 
 	if cfg.Label != "com.myproject.web" {
 		t.Errorf("Label = %q, want %q", cfg.Label, "com.myproject.web")
+	}
+	// Verify login shell is used for proper environment inheritance
+	if len(cfg.ProgramArguments) != 4 ||
+		cfg.ProgramArguments[0] != "/bin/bash" ||
+		cfg.ProgramArguments[1] != "-l" ||
+		cfg.ProgramArguments[2] != "-c" ||
+		cfg.ProgramArguments[3] != "bun run dev" {
+		t.Errorf("ProgramArguments = %v, want [/bin/bash -l -c 'bun run dev']", cfg.ProgramArguments)
 	}
 	if cfg.WorkingDirectory != "/project/root/frontend" {
 		t.Errorf("WorkingDirectory = %q, want %q", cfg.WorkingDirectory, "/project/root/frontend")
