@@ -252,70 +252,118 @@
       "id": "feat-024",
       "title": "Define servers.yaml schema and config parser",
       "description": "Create servers.yaml schema for per-project server declarations with health checks. Schema includes: name, type (docker-compose/command), command, workdir, health (type: http/tcp/command, url/port/command, timeout), critical (bool). Parse to ServerConfig struct. File targets: pkg/servers/config.go (new). Out of scope: Runtime management, health check execution. Acceptance: Parse servers.yaml with all field types, validation errors for invalid configs.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-daemon-managed-development-servers.md",
-      "notes": "Phase 1 of daemon-managed dev servers. Foundation for health checks."
+      "notes": "SUPERSEDED: New investigation (2025-12-27-design-launchd-dev-servers.md) recommends launchd-native approach instead. See feat-029 through feat-032."
     },
     {
       "id": "feat-025",
       "title": "Implement server health check command",
       "description": "Add 'orch servers check {project}' command that runs health checks for all servers in project's servers.yaml. Supports health check types: http (GET with status 200), tcp (port open), command (exit code 0). Writes results to {project}/.orch/servers-status.json. Returns JSON with per-server health status. File targets: pkg/servers/health.go (new), cmd/orch/servers.go (add check subcommand). Depends on feat-024. Acceptance: Health checks run for all server types, status file written atomically, JSON output shows pass/fail per server.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-daemon-managed-development-servers.md",
       "depends_on": ["feat-024"],
-      "notes": "Phase 1 of daemon-managed dev servers. Core health check implementation."
+      "notes": "SUPERSEDED: New investigation (2025-12-27-design-launchd-dev-servers.md) recommends launchd-native approach instead. See feat-029 through feat-032."
     },
     {
       "id": "feat-026",
       "title": "Add server health status to /api/servers endpoint",
       "description": "Enhance /api/servers endpoint to include health status when .orch/servers-status.json exists for a project. Add 'health' field to ServerProjectInfo with per-server status (healthy/unhealthy/unknown). Merge with existing running status from tmux. File targets: cmd/orch/serve.go (handleServers). Depends on feat-025. Acceptance: /api/servers includes health field when status file exists, dashboard shows health indicators.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-daemon-managed-development-servers.md",
       "depends_on": ["feat-025"],
-      "notes": "Phase 1 of daemon-managed dev servers. Dashboard visibility."
+      "notes": "SUPERSEDED: New investigation (2025-12-27-design-launchd-dev-servers.md) recommends launchd-native approach. Health checks retained in feat-032."
     },
     {
       "id": "feat-027",
       "title": "Add server health gate to SessionStart hook",
       "description": "Integrate server health checks into SessionStart hook. Run 'orch servers check {project}' before agent work begins. If critical servers are unhealthy, inject warning into agent context. Optionally block spawn if --require-servers flag is set. File targets: orch-knowledge hooks/session-start (modified). Depends on feat-025. Acceptance: SessionStart runs health check, warnings appear in agent context, critical failures block work.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-daemon-managed-development-servers.md",
       "depends_on": ["feat-025"],
       "repo": "orch-knowledge",
-      "notes": "Phase 2 of daemon-managed dev servers. Gating mechanism."
+      "notes": "SUPERSEDED: launchd-native approach means servers are always running - no SessionStart gating needed."
     },
     {
       "id": "feat-028",
       "title": "Add auto-start capability to orch servers",
       "description": "Add 'orch servers up {project}' command that starts servers if not healthy. Combines health check with tmuxinator start. Idempotent - if servers already healthy, does nothing. If tmux session exists but servers unhealthy, restarts unhealthy servers only. File targets: cmd/orch/servers.go (add up subcommand). Depends on feat-025. Acceptance: 'orch servers up' starts unhealthy servers, is idempotent, works with tmuxinator.",
-      "status": "todo",
+      "status": "cancelled",
       "skill": "feature-impl",
       "priority": "medium",
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-daemon-managed-development-servers.md",
       "depends_on": ["feat-025"],
-      "notes": "Phase 3 of daemon-managed dev servers. Auto-start for SessionStart integration."
+      "notes": "SUPERSEDED: launchd-native approach means servers auto-start on boot via RunAtLoad - no 'up' command needed."
+    },
+    {
+      "id": "feat-029",
+      "title": "Define servers.yaml schema for launchd plist generation",
+      "description": "Create servers.yaml schema for per-project server declarations that generate launchd plists. Schema includes: name, type (command/docker-compose), command, workdir, health (type: http/tcp, url/port, timeout). Parse to ServerConfig struct. File targets: pkg/servers/config.go (new). Out of scope: plist generation (feat-030). Acceptance: Parse servers.yaml with all field types, validation errors for invalid configs.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "notes": "Phase 1 of launchd-native dev servers. Foundation for plist generation."
+    },
+    {
+      "id": "feat-030",
+      "title": "Implement orch servers gen-plist command",
+      "description": "Add 'orch servers gen-plist {project}' command that generates launchd plist files from servers.yaml. Plists include: RunAtLoad, KeepAlive, WorkingDirectory (absolute), PATH expansion, logging to ~/.orch/logs/. Output to ~/Library/LaunchAgents/com.orch.server.{project}.{server}.plist. File targets: pkg/servers/launchd.go (new), cmd/orch/servers.go (add gen-plist subcommand). Depends on feat-029. Acceptance: Plist generated with correct format, PATH fully expanded, logs configured.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "depends_on": ["feat-029"],
+      "notes": "Phase 1 of launchd-native dev servers. Core plist generation."
+    },
+    {
+      "id": "feat-031",
+      "title": "Implement orch servers install/uninstall commands",
+      "description": "Add 'orch servers install {project}' and 'orch servers uninstall {project}' commands. Install: runs gen-plist then 'launchctl bootstrap gui/{uid} {plist}'. Uninstall: runs 'launchctl bootout gui/{uid} {label}' then removes plist. File targets: cmd/orch/servers.go (add install/uninstall subcommands). Depends on feat-030. Acceptance: install bootstraps plists into launchd, uninstall removes cleanly, idempotent.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "depends_on": ["feat-030"],
+      "notes": "Phase 2 of launchd-native dev servers. Bootstrap automation."
+    },
+    {
+      "id": "feat-032",
+      "title": "Add health polling to /api/servers endpoint",
+      "description": "Enhance /api/servers endpoint to poll health for installed launchd server plists. For each com.orch.server.* plist, check if process running via launchctl list, then run health check from servers.yaml config. Return status: running/stopped/unhealthy. File targets: cmd/orch/serve.go (handleServers), pkg/servers/health.go (new). Depends on feat-031. Acceptance: /api/servers shows launchd-managed server health, dashboard shows indicators.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-launchd-dev-servers.md",
+      "depends_on": ["feat-031"],
+      "notes": "Phase 3 of launchd-native dev servers. Dashboard visibility without management."
     }
   ],
   "meta": {
     "last_updated": "2025-12-27",
-    "total_features": 28,
+    "total_features": 32,
     "by_status": {
-      "todo": 27,
+      "todo": 24,
       "in_progress": 0,
-      "done": 1
+      "done": 1,
+      "cancelled": 5
     }
   },
   "epics": {
