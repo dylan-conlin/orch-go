@@ -5,95 +5,81 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully moved `orch learn` to `kb learn` as Phase 1 consolidation - kb-cli now owns the learning loop.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Both kb-cli and orch-go build and pass tests; `kb learn --help` shows all subcommands; `orch learn` delegates to `kb learn`.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The learning loop conceptually belongs in kb since it's about knowledge gaps, suggests kn/kb artifacts, and aligns with `kb reflect`.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close issue - implementation complete. Future: When Phase 1 completes, update orchestrator skill documentation to use `kb learn` instead of `orch learn`.
 
 ---
 
-# Investigation: Move Orch Learn Kb Learn
+# Investigation: Move Orch Learn to Kb Learn
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How should we migrate `orch learn` to `kb learn` as part of Phase 1 consolidation?
 
 **Started:** 2025-12-27
 **Updated:** 2025-12-27
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Learning loop code is self-contained in pkg/spawn/learning.go
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The learning.go file (923 lines) contains all gap tracking types (GapEvent, GapTracker, LearningSuggestion, etc.) and functions (LoadTracker, Save, FindRecurringGaps, etc.) with no external dependencies on orch-go specific packages.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `/Users/dylanconlin/Documents/personal/orch-go/pkg/spawn/learning.go`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Clean extraction to kb-cli is feasible without complex refactoring.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Gap types are defined in gap.go but only used by learning.go
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** `GapType` (no_context, sparse_context, no_constraints, no_decisions) and `GapSeverity` (info, warning, critical) constants are only referenced by learning.go for suggestion generation.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `/Users/dylanconlin/Documents/personal/orch-go/pkg/spawn/gap.go`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** These types can be duplicated in kb-cli without causing import cycles; orch-go continues to use its copy for gap detection during spawn.
 
 ---
 
-## Synthesis
+### Finding 3: kb-cli follows same Cobra patterns as orch-go
 
-**Key Insights:**
+**Evidence:** kb-cli uses `spf13/cobra` with init() functions registering commands to rootCmd. reflect.go shows pattern of creating subcommands with RunE handlers.
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+**Source:** `/Users/dylanconlin/Documents/personal/kb-cli/cmd/kb/reflect.go`, `cmd/kb/main.go`
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+**Significance:** Direct port of command structure is straightforward.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+---
 
-**Answer to Investigation Question:**
+## Implementation
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**What was implemented:**
+
+1. **kb-cli: cmd/kb/learn.go** - Full implementation of `kb learn` with all subcommands:
+   - `kb learn` / `kb learn suggest` - Show recurring gap suggestions
+   - `kb learn patterns` - Analyze gap patterns by topic
+   - `kb learn skills` - Show gap rates by skill  
+   - `kb learn projects` - Show gap rates by source project
+   - `kb learn effects` - Show improvement effectiveness
+   - `kb learn act [index]` - Run suggested command
+   - `kb learn resolve [index] [type]` - Mark gap as resolved
+   - `kb learn clear` - Clear gap history
+   - `kb learn external-summary` - Show external project gaps
+
+2. **kb-cli: cmd/kb/learn_test.go** - Comprehensive test coverage
+
+3. **orch-go: pkg/spawn/learning.go** - Updated TrackerPath() to use `~/.kb/gap-tracker.json`
+
+4. **orch-go: cmd/orch/learn.go** - Replaced with wrapper that delegates to `kb learn`
 
 ---
 
@@ -101,120 +87,43 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ kb-cli builds successfully (verified: `go build ./cmd/kb/`)
+- ✅ kb-cli tests pass (verified: `go test ./cmd/kb/...` - 0.077s)
+- ✅ orch-go builds successfully (verified: `go build ./cmd/orch/`)
+- ✅ orch-go tests pass (verified: `go test ./pkg/spawn/...` - 0.034s)
+- ✅ `kb learn --help` shows all subcommands
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ End-to-end flow: orch spawn → gap event → kb learn display (requires running spawn with sparse context)
+- ⚠️ Migration of existing ~/.orch/gap-tracker.json data (users would need to copy file)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
-
----
-
-## Implementation Recommendations
-
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- Finding would be wrong if gap events written by orch spawn are not readable by kb learn
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+**Files Created:**
+- `/Users/dylanconlin/Documents/personal/kb-cli/cmd/kb/learn.go` - Main implementation
+- `/Users/dylanconlin/Documents/personal/kb-cli/cmd/kb/learn_test.go` - Test coverage
 
-**Commands Run:**
-```bash
-# [Command description]
-[command]
-
-# [Command description]
-[command]
-```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+**Files Modified:**
+- `/Users/dylanconlin/Documents/personal/orch-go/pkg/spawn/learning.go` - TrackerPath change
+- `/Users/dylanconlin/Documents/personal/orch-go/cmd/orch/learn.go` - Delegation wrapper
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-27:** Investigation started
+- Initial question: How to migrate orch learn to kb learn for Phase 1 consolidation
+- Context: Learning loop conceptually belongs in kb (knowledge management), not orch (agent coordination)
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-27:** Implementation complete
+- Created kb learn command with all subcommands
+- Updated gap-tracker.json location to ~/.kb/
+- orch learn now delegates to kb learn
+- Both projects build and tests pass
