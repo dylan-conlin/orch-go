@@ -1,6 +1,8 @@
 package spawn
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -650,4 +652,206 @@ func TestFormatContextForSpawnWithLimit(t *testing.T) {
 			t.Error("FormatContextForSpawn should produce same output as FormatContextForSpawnWithLimit with default limit")
 		}
 	})
+}
+
+func TestExtractDeltaFromInvestigation(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		content  string
+		wantDelta string
+	}{
+		{
+			name: "extracts delta from standard format",
+			content: `---
+linked_issues:
+  - orch-go-xyz
+---
+## Summary (D.E.K.N.)
+
+**Delta:** The spawn context should include related investigations to help agents create lineage references.
+
+**Evidence:** Analyzed 500 investigations, found 0 lineage references.
+
+**Knowledge:** Agents need context to build knowledge connections.
+
+**Next:** Implement investigation inclusion in spawn context.
+
+---
+
+# Investigation: Test Investigation
+`,
+			wantDelta: "The spawn context should include related investigations to help agents create lineage references.",
+		},
+		{
+			name: "handles file without delta",
+			content: `# Investigation: Simple Investigation
+
+Some content here without D.E.K.N. format.
+`,
+			wantDelta: "",
+		},
+		{
+			name: "handles empty delta line",
+			content: `## Summary (D.E.K.N.)
+
+**Delta:**
+
+**Evidence:** Some evidence
+`,
+			wantDelta: "",
+		},
+		{
+			name: "extracts delta with special characters",
+			content: `## Summary (D.E.K.N.)
+
+**Delta:** This is a finding with "quotes" and (parentheses) - including dashes.
+
+**Evidence:** Test
+`,
+			wantDelta: `This is a finding with "quotes" and (parentheses) - including dashes.`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Write test file
+			testFile := filepath.Join(tempDir, tt.name+".md")
+			if err := os.WriteFile(testFile, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("failed to write test file: %v", err)
+			}
+
+			got := extractDeltaFromInvestigation(testFile)
+			if got != tt.wantDelta {
+				t.Errorf("extractDeltaFromInvestigation() = %q, want %q", got, tt.wantDelta)
+			}
+		})
+	}
+
+	// Test non-existent file
+	t.Run("handles non-existent file", func(t *testing.T) {
+		got := extractDeltaFromInvestigation("/non/existent/file.md")
+		if got != "" {
+			t.Errorf("expected empty string for non-existent file, got %q", got)
+		}
+	})
+}
+
+func TestEnrichInvestigationsWithDelta(t *testing.T) {
+	// Create a temporary directory for test files
+	tempDir := t.TempDir()
+
+	// Create test investigation files
+	inv1Content := `## Summary (D.E.K.N.)
+
+**Delta:** First investigation key finding.
+`
+	inv2Content := `## Summary (D.E.K.N.)
+
+**Delta:** Second investigation key finding.
+`
+	inv3Content := `## Summary (D.E.K.N.)
+
+**Delta:** Third investigation key finding.
+`
+	inv4Content := `## Summary (D.E.K.N.)
+
+**Delta:** Fourth investigation key finding (should be dropped).
+`
+
+	inv1Path := filepath.Join(tempDir, "inv1.md")
+	inv2Path := filepath.Join(tempDir, "inv2.md")
+	inv3Path := filepath.Join(tempDir, "inv3.md")
+	inv4Path := filepath.Join(tempDir, "inv4.md")
+
+	os.WriteFile(inv1Path, []byte(inv1Content), 0644)
+	os.WriteFile(inv2Path, []byte(inv2Content), 0644)
+	os.WriteFile(inv3Path, []byte(inv3Content), 0644)
+	os.WriteFile(inv4Path, []byte(inv4Content), 0644)
+
+	t.Run("limits to MaxInvestigationsInContext", func(t *testing.T) {
+		investigations := []KBContextMatch{
+			{Type: "investigation", Title: "Inv 1", Path: inv1Path},
+			{Type: "investigation", Title: "Inv 2", Path: inv2Path},
+			{Type: "investigation", Title: "Inv 3", Path: inv3Path},
+			{Type: "investigation", Title: "Inv 4", Path: inv4Path},
+		}
+
+		enriched := enrichInvestigationsWithDelta(investigations)
+
+		if len(enriched) != MaxInvestigationsInContext {
+			t.Errorf("expected %d investigations, got %d", MaxInvestigationsInContext, len(enriched))
+		}
+	})
+
+	t.Run("enriches with delta", func(t *testing.T) {
+		investigations := []KBContextMatch{
+			{Type: "investigation", Title: "Inv 1", Path: inv1Path},
+			{Type: "investigation", Title: "Inv 2", Path: inv2Path},
+		}
+
+		enriched := enrichInvestigationsWithDelta(investigations)
+
+		if enriched[0].Delta != "First investigation key finding." {
+			t.Errorf("expected delta for inv1, got %q", enriched[0].Delta)
+		}
+		if enriched[1].Delta != "Second investigation key finding." {
+			t.Errorf("expected delta for inv2, got %q", enriched[1].Delta)
+		}
+	})
+
+	t.Run("handles missing path", func(t *testing.T) {
+		investigations := []KBContextMatch{
+			{Type: "investigation", Title: "Inv without path"},
+		}
+
+		enriched := enrichInvestigationsWithDelta(investigations)
+
+		if len(enriched) != 1 {
+			t.Errorf("expected 1 investigation, got %d", len(enriched))
+		}
+		if enriched[0].Delta != "" {
+			t.Errorf("expected empty delta for missing path, got %q", enriched[0].Delta)
+		}
+	})
+
+	t.Run("handles empty list", func(t *testing.T) {
+		investigations := []KBContextMatch{}
+		enriched := enrichInvestigationsWithDelta(investigations)
+		if len(enriched) != 0 {
+			t.Errorf("expected empty list, got %d", len(enriched))
+		}
+	})
+}
+
+func TestFormatContextIncludesDelta(t *testing.T) {
+	// Create a temporary directory for test file
+	tempDir := t.TempDir()
+
+	invContent := `## Summary (D.E.K.N.)
+
+**Delta:** Important finding about spawn context generation.
+`
+	invPath := filepath.Join(tempDir, "test-inv.md")
+	os.WriteFile(invPath, []byte(invContent), 0644)
+
+	kbResult := &KBContextResult{
+		Query:      "spawn context",
+		HasMatches: true,
+		Matches: []KBContextMatch{
+			{Type: "investigation", Title: "Spawn Context Investigation", Path: invPath},
+		},
+	}
+
+	result := FormatContextForSpawnWithLimit(kbResult, 100000)
+
+	// Check that the delta is included in the formatted output
+	if !strings.Contains(result.Content, "**Key finding:**") {
+		t.Error("expected '**Key finding:**' in formatted output")
+	}
+	if !strings.Contains(result.Content, "Important finding about spawn context generation.") {
+		t.Error("expected delta content in formatted output")
+	}
 }

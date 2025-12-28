@@ -2,8 +2,10 @@
 package spawn
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -45,7 +47,12 @@ type KBContextMatch struct {
 	Path        string // File path (for kb artifacts)
 	Reason      string // Reason (for kn entries)
 	FullContent string // Full content line for display
+	Delta       string // D.E.K.N. Delta (key finding, for investigations)
 }
+
+// MaxInvestigationsInContext limits the number of investigations to include in spawn context.
+// Keeping this small (2-3) to surface relevant prior work without context bloat.
+const MaxInvestigationsInContext = 3
 
 // KBContextResult holds the results of a kb context query.
 type KBContextResult struct {
@@ -436,6 +443,10 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	decisions := filterByType(result.Matches, "decision")
 	investigations := filterByType(result.Matches, "investigation")
 
+	// Enrich investigations with Delta (key findings) and limit to MaxInvestigationsInContext
+	// This helps agents understand prior work and create lineage references
+	investigations = enrichInvestigationsWithDelta(investigations)
+
 	// Try to format with all matches first
 	content := formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
 
@@ -546,6 +557,9 @@ func formatKBContextContent(query string, constraints, decisions, investigations
 		sb.WriteString("### Related Investigations\n")
 		for _, m := range investigations {
 			sb.WriteString(fmt.Sprintf("- %s", m.Title))
+			if m.Delta != "" {
+				sb.WriteString(fmt.Sprintf("\n  - **Key finding:** %s", m.Delta))
+			}
 			if m.Path != "" {
 				sb.WriteString(fmt.Sprintf("\n  - See: %s", m.Path))
 			}
@@ -557,6 +571,51 @@ func formatKBContextContent(query string, constraints, decisions, investigations
 	sb.WriteString("**IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.\n\n")
 
 	return sb.String()
+}
+
+// extractDeltaFromInvestigation reads an investigation file and extracts the Delta line.
+// Returns the Delta content (key finding) or empty string if not found.
+func extractDeltaFromInvestigation(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// Read up to 50 lines to find the Delta line (usually in first 15)
+	lineCount := 0
+	for scanner.Scan() && lineCount < 50 {
+		line := scanner.Text()
+		lineCount++
+
+		// Look for **Delta:** pattern
+		if strings.HasPrefix(line, "**Delta:**") {
+			delta := strings.TrimPrefix(line, "**Delta:**")
+			delta = strings.TrimSpace(delta)
+			return delta
+		}
+	}
+
+	return ""
+}
+
+// enrichInvestigationsWithDelta reads the Delta from each investigation file
+// and limits to MaxInvestigationsInContext most recent.
+func enrichInvestigationsWithDelta(investigations []KBContextMatch) []KBContextMatch {
+	// Limit to MaxInvestigationsInContext
+	if len(investigations) > MaxInvestigationsInContext {
+		investigations = investigations[:MaxInvestigationsInContext]
+	}
+
+	// Enrich each with Delta
+	for i := range investigations {
+		if investigations[i].Path != "" {
+			investigations[i].Delta = extractDeltaFromInvestigation(investigations[i].Path)
+		}
+	}
+
+	return investigations
 }
 
 func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
