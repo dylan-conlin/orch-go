@@ -139,14 +139,17 @@ DELIVERABLES (REQUIRED):
    - Add TLDR at top (1-2 sentence summary of question and finding)
    - Fill sections: What I tried → What I observed → Test performed
    - Only fill Conclusion if you actually tested (this is the key discipline)
-4. Update Status: field when done (Active → Complete)
-5. [Task-specific deliverables]
+4. **CHECK LINEAGE:** Before marking complete, run ` + "`kb context \"<your-topic>\"`" + ` to check if any prior investigation might be superseded by your work.
+   - If yes: Fill the **Supersedes:** field in your investigation with the path to the prior artifact
+   - Consider whether the prior investigation should have **Superseded-By:** updated (mention in completion comment)
+5. Update Status: field when done (Active → Complete)
+6. [Task-specific deliverables]
 {{if ne .Tier "light"}}
-6. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
+7. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
    - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
    - This is CRITICAL for the orchestrator to review your work.
 {{else}}
-6. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
+7. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
 {{end}}
 
 STATUS UPDATES:
