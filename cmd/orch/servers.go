@@ -20,20 +20,63 @@ var serversCmd = &cobra.Command{
 	Long: `Centralized server management across projects.
 	
 Commands:
+  up       Start servers via launchd/Docker (from servers.yaml)
+  down     Stop servers via launchd/Docker
   list     Show all projects with port allocations and running status
-  start    Start servers via tmuxinator
-  stop     Stop servers session
+  start    Start servers via tmuxinator (legacy)
+  stop     Stop servers session (legacy)
   attach   Attach to servers window
   open     Open servers in browser
-  status   Show summary view
+  status   Show server status
 
 Examples:
-  orch servers list                 # Show all projects
-  orch servers start myproject      # Start servers via tmuxinator
-  orch servers stop myproject       # Stop servers session
-  orch servers attach myproject     # Attach to servers window
-  orch servers open myproject       # Open in browser
-  orch servers status               # Show summary`,
+  orch servers up myproject          # Start servers via launchd/Docker
+  orch servers down myproject        # Stop servers
+  orch servers list                  # Show all projects
+  orch servers status                # Show summary
+  orch servers status myproject      # Show per-server status`,
+}
+
+var serversUpCmd = &cobra.Command{
+	Use:   "up <project>",
+	Short: "Start servers via launchd/Docker",
+	Long: `Start all servers for a project using launchd (for native processes)
+or Docker (for containers).
+
+Reads server definitions from .orch/servers.yaml and starts each server
+based on its type:
+  - command: Uses launchd with generated plist files
+  - docker:  Starts Docker containers with restart policy
+  - launchd: Uses existing launchd service
+
+Examples:
+  orch servers up myproject
+  orch servers up myproject --project-dir /path/to/project`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir, _ := cmd.Flags().GetString("project-dir")
+		return runServersUp(args[0], projectDir)
+	},
+}
+
+var serversDownCmd = &cobra.Command{
+	Use:   "down <project>",
+	Short: "Stop servers via launchd/Docker",
+	Long: `Stop all servers for a project.
+
+Stops servers based on their type:
+  - command: Uses launchctl bootout
+  - docker:  Uses docker stop
+  - launchd: Uses launchctl kill
+
+Examples:
+  orch servers down myproject
+  orch servers down myproject --project-dir /path/to/project`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectDir, _ := cmd.Flags().GetString("project-dir")
+		return runServersDown(args[0], projectDir)
+	},
 }
 
 var serversListCmd = &cobra.Command{
@@ -53,11 +96,13 @@ Examples:
 
 var serversStartCmd = &cobra.Command{
 	Use:   "start [project]",
-	Short: "Start servers via tmuxinator",
+	Short: "Start servers via tmuxinator (legacy)",
 	Long: `Start development servers for a project using tmuxinator.
 
 This runs 'tmuxinator start workers-{project}' which creates a tmux
 session with the servers window.
+
+Note: Consider using 'orch servers up' for launchd-based server management.
 
 Examples:
   orch servers start myproject`,
@@ -69,10 +114,12 @@ Examples:
 
 var serversStopCmd = &cobra.Command{
 	Use:   "stop [project]",
-	Short: "Stop servers for a project",
+	Short: "Stop servers for a project (legacy)",
 	Long: `Stop the servers tmux session for a project.
 
 This kills the workers-{project} tmux session.
+
+Note: Consider using 'orch servers down' for launchd-based server management.
 
 Examples:
   orch servers stop myproject`,
@@ -113,16 +160,23 @@ Examples:
 }
 
 var serversStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show servers status summary",
-	Long: `Show a summary of server status across all projects.
+	Use:   "status [project]",
+	Short: "Show servers status",
+	Long: `Show server status.
 
-Displays counts of running, allocated, and stopped servers.
+Without a project argument, shows a summary of all projects.
+With a project argument, shows per-server status from servers.yaml.
 
 Examples:
-  orch servers status`,
+  orch servers status               # Summary view
+  orch servers status myproject     # Per-server status`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runServersStatus("")
+		projectDir, _ := cmd.Flags().GetString("project-dir")
+		if len(args) == 0 {
+			return runServersStatus("")
+		}
+		return runServersStatusProject(args[0], projectDir)
 	},
 }
 
@@ -161,6 +215,8 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(serversCmd)
+	serversCmd.AddCommand(serversUpCmd)
+	serversCmd.AddCommand(serversDownCmd)
 	serversCmd.AddCommand(serversListCmd)
 	serversCmd.AddCommand(serversStartCmd)
 	serversCmd.AddCommand(serversStopCmd)
@@ -168,6 +224,11 @@ func init() {
 	serversCmd.AddCommand(serversOpenCmd)
 	serversCmd.AddCommand(serversStatusCmd)
 	serversCmd.AddCommand(serversGenPlistCmd)
+
+	// up/down flags
+	serversUpCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+	serversDownCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+	serversStatusCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
 
 	// gen-plist flags
 	serversGenPlistCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
@@ -460,6 +521,162 @@ func runServersStatus(registryPath string) error {
 	fmt.Printf("Stopped:          %d\n", stoppedCount)
 	fmt.Println()
 	fmt.Println("Use 'orch servers list' for detailed view")
+
+	return nil
+}
+
+// runServersUp starts all servers for a project using launchd/Docker.
+func runServersUp(project, projectDir string) error {
+	// Default to current directory if not specified
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+
+	// Convert to absolute path
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
+
+	// Ensure log directory exists
+	if err := servers.EnsureLogDir(absProjectDir); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	fmt.Printf("Starting servers for %s...\n", project)
+	fmt.Println()
+
+	results, err := servers.Up(project, absProjectDir)
+	if err != nil {
+		return err
+	}
+
+	// Print results
+	hasError := false
+	for _, r := range results {
+		if r.Success {
+			fmt.Printf("  ✓ %s: %s\n", r.Server, r.Message)
+		} else {
+			fmt.Printf("  ✗ %s: %s\n", r.Server, r.Message)
+			hasError = true
+		}
+	}
+
+	fmt.Println()
+	if hasError {
+		fmt.Println("Some servers failed to start")
+		return fmt.Errorf("not all servers started successfully")
+	}
+
+	fmt.Printf("All servers started for %s\n", project)
+	fmt.Printf("Check status: orch servers status %s\n", project)
+	return nil
+}
+
+// runServersDown stops all servers for a project.
+func runServersDown(project, projectDir string) error {
+	// Default to current directory if not specified
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+
+	// Convert to absolute path
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
+
+	fmt.Printf("Stopping servers for %s...\n", project)
+	fmt.Println()
+
+	results, err := servers.Down(project, absProjectDir)
+	if err != nil {
+		return err
+	}
+
+	// Print results
+	hasError := false
+	for _, r := range results {
+		if r.Success {
+			fmt.Printf("  ✓ %s: %s\n", r.Server, r.Message)
+		} else {
+			fmt.Printf("  ✗ %s: %s\n", r.Server, r.Message)
+			hasError = true
+		}
+	}
+
+	fmt.Println()
+	if hasError {
+		fmt.Println("Some servers failed to stop")
+		return fmt.Errorf("not all servers stopped successfully")
+	}
+
+	fmt.Printf("All servers stopped for %s\n", project)
+	return nil
+}
+
+// runServersStatusProject shows per-server status for a project.
+func runServersStatusProject(project, projectDir string) error {
+	// Default to current directory if not specified
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+
+	// Convert to absolute path
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project directory: %w", err)
+	}
+
+	states, err := servers.Status(project, absProjectDir)
+	if err != nil {
+		return err
+	}
+
+	if len(states) == 0 {
+		fmt.Printf("No servers defined in %s\n", servers.DefaultPath(absProjectDir))
+		return nil
+	}
+
+	fmt.Printf("Servers Status: %s\n", project)
+	fmt.Printf("%s\n", strings.Repeat("-", 60))
+	fmt.Printf("%-15s %-10s %-8s %-10s %s\n", "NAME", "TYPE", "PORT", "STATUS", "INFO")
+	fmt.Printf("%s\n", strings.Repeat("-", 60))
+
+	runningCount := 0
+	for _, s := range states {
+		statusIcon := "○"
+		if s.Status == servers.StatusRunning {
+			statusIcon = "●"
+			runningCount++
+		} else if s.Status == servers.StatusError {
+			statusIcon = "✗"
+		}
+
+		fmt.Printf("%-15s %-10s %-8d %s %-8s %s\n",
+			s.Name,
+			s.Type,
+			s.Port,
+			statusIcon,
+			s.Status,
+			s.Message,
+		)
+	}
+
+	fmt.Println()
+	fmt.Printf("Running: %d/%d\n", runningCount, len(states))
 
 	return nil
 }

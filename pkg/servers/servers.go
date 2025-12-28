@@ -87,6 +87,11 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// MarshalYAML implements yaml.Marshaler for Duration.
+func (d Duration) MarshalYAML() (interface{}, error) {
+	return time.Duration(d).String(), nil
+}
+
 // PlistConfig holds configuration for generating a launchd plist.
 type PlistConfig struct {
 	// Label is the launchd service label (e.g., "com.orch.project.web").
