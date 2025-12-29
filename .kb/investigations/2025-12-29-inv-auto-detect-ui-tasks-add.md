@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented UI task auto-detection that adds --mcp playwright when high/medium confidence UI work is detected.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** All 26 tests pass covering keyword detection (ui, component, visual, browser), file patterns (*.svelte, *.tsx), path patterns (web/, frontend/), and negative cases (backend tasks).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** High-confidence signals (explicit UI keywords, file extensions) auto-add MCP; low-confidence (single medium keyword) does not, to prevent false positives. --no-mcp flag provides escape hatch.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - feature complete, committed, tested.
 
 <!--
 Example D.E.K.N.:
@@ -31,21 +31,21 @@ Guidelines:
 
 ---
 
-# Investigation: Auto Detect Ui Tasks Add
+# Investigation: Auto Detect UI Tasks and Add --mcp playwright
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How should spawn command auto-detect UI tasks and add --mcp playwright?
 
 **Started:** 2025-12-29
 **Updated:** 2025-12-29
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Worker agent og-feat-auto-detect-ui-29dec
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Extracted-From:** N/A
+**Supersedes:** N/A
+**Superseded-By:** N/A
 
 ---
 
