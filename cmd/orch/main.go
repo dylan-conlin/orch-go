@@ -96,6 +96,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(retriesCmd)
 	rootCmd.AddCommand(sessionsCmd)
+	rootCmd.AddCommand(actionCmd)
 }
 
 var (
