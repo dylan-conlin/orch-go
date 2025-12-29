@@ -1,99 +1,64 @@
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
 -->
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented `orch changelog` command that aggregates git commits across all ecosystem repos.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Command tested successfully, showing 355 commits across 10 repos with proper categorization by source (skills/, .kb/, cmd/, pkg/, web/, docs/, config/).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Categorizing commits by files changed (not just commit message prefix) provides better insight into where work is happening across the ecosystem.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close - implementation complete. Consider adding --author filter in future iteration.
 
 ---
 
 # Investigation: Implement Core Orch Changelog Command
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to implement `orch changelog` command with git aggregation across ecosystem repos?
 
 **Started:** 2025-12-29
 **Updated:** 2025-12-29
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Dylan Conlin
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Supersedes:** N/A
+**Superseded-By:** N/A
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: OrchEcosystemRepos provides the repo list
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** `pkg/spawn/ecosystem.go` defines `ExpandedOrchEcosystemRepos` map with 10 repos: orch-go, orch-cli, kb-cli, orch-knowledge, beads, kn, beads-ui-svelte, glass, skillc, agentlog.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/spawn/ecosystem.go:16-29
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Can reuse this existing allowlist instead of defining a new one for changelog.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: File-based categorization more accurate than commit prefix
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Many commits don't follow conventional commit format strictly, but file paths reliably indicate category (cmd/, pkg/, .kb/, skills/, etc.).
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Tested with 355 commits - file-based categorization correctly identified 92 kb commits, 59 pkg commits, 52 cmd commits.
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** File-based categorization provides accurate source tracking for cross-project visibility.
 
 ---
 
-## Synthesis
+### Finding 3: Existing DateRange type can be reused
 
-**Key Insights:**
+**Evidence:** history.go already defines `DateRange` struct for similar purposes.
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+**Source:** cmd/orch/history.go:83-86
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-**Answer to Investigation Question:**
-
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Significance:** Reusing existing type maintains consistency and avoids duplication.
 
 ---
 
@@ -101,120 +66,83 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Command builds and runs (verified: `go build` + `go run ./cmd/orch/... changelog`)
+- ✅ Multi-repo aggregation works (verified: 10 repos scanned, 355 commits found)
+- ✅ --days and --project flags work (verified: `--days 1 --project orch-go`)
+- ✅ --json output works (verified: valid JSON output produced)
+- ✅ Missing repos handled gracefully (verified: beads-ui-svelte shows 0 commits)
+- ✅ Unit tests pass (verified: 6 test cases for categorization, parsing, icons)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Performance with very large git histories (not benchmarked)
+- ⚠️ Behavior with repos that have uncommitted changes
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if some repos don't exist at expected paths
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+### Recommended Approach ⭐ (Implemented)
 
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**File-based categorization with ecosystem repo scanning**
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Leverages existing `ExpandedOrchEcosystemRepos` allowlist
+- File paths more reliable than commit message parsing
+- Provides cross-project visibility requested in epic
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Only searches predefined repo paths (~/, ~/Documents/personal/, etc.)
+- Doesn't support custom repo locations
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+1. Get repo list from `spawn.ExpandedOrchEcosystemRepos`
+2. Find each repo's local path
+3. Run `git log --name-only` to get commits with files
+4. Categorize each commit by dominant file category
+5. Aggregate and format output
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- pkg/spawn/ecosystem.go - Source of ecosystem repo list
+- pkg/spawn/kbcontext.go - Original OrchEcosystemRepos definition
+- cmd/orch/history.go - Pattern for DateRange and analytics
+- cmd/orch/focus.go - Pattern for cobra command structure
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test changelog command
+go run ./cmd/orch/... changelog --days 3
 
-# [Command description]
-[command]
+# Test single project filter  
+go run ./cmd/orch/... changelog --project orch-go --days 1
+
+# Test JSON output
+go run ./cmd/orch/... changelog --json --days 1 --project orch-go
+
+# Run unit tests
+go test -v ./cmd/orch/... -run "Changelog"
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Epic:** orch-go-v7qs (Cross-Project Change Visibility)
+- **Decision:** None - straightforward implementation
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2025-12-29 08:00:** Investigation started
+- Initial question: How to implement `orch changelog` with git aggregation
+- Context: Part of Cross-Project Change Visibility epic
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2025-12-29 09:00:** Implementation completed
+- Status: Complete
+- Key outcome: `orch changelog` command working with all acceptance criteria met
