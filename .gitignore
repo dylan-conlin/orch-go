@@ -28,3 +28,7 @@ web/node_modules/
 web/.svelte-kit/
 web/build/
 tmp/
+
+# Orch ephemeral (workspaces are transient, logs are local)
+.orch/workspace/
+.orch/logs/
