@@ -253,6 +253,82 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 	return results, nil
 }
 
+// getCompletionsForSurfacing retrieves completed agents WITHOUT running expensive verification.
+// This is a lightweight version of getCompletionsForReview designed for surfacing recommendations
+// in orch status where we don't need full verification (constraint checks, phase gates, etc.).
+//
+// Only parses SYNTHESIS.md and workspace metadata - no beads RPC calls for verification.
+// Use getCompletionsForReview for actual review workflows that need verification status.
+func getCompletionsForSurfacing() ([]CompletionInfo, error) {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	var results []CompletionInfo
+
+	// Scan workspaces for completions
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, _ := os.ReadDir(workspaceDir)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+		dirPath := filepath.Join(workspaceDir, dirName)
+
+		// Check for SYNTHESIS.md (full-tier completion)
+		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
+		hasSynthesis := false
+		if _, err := os.Stat(synthesisPath); err == nil {
+			hasSynthesis = true
+		}
+
+		// Skip workspaces without SYNTHESIS.md (surfacing only needs synthesis data)
+		if !hasSynthesis {
+			continue
+		}
+
+		// Get workspace modification time from directory
+		dirInfo, err := entry.Info()
+		modTime := time.Now()
+		if err == nil {
+			modTime = dirInfo.ModTime()
+		}
+
+		// Extract beads ID from SPAWN_CONTEXT.md
+		beadsID := extractBeadsIDFromWorkspace(dirPath)
+
+		// Extract skill from workspace name
+		skill := extractSkillFromTitle(dirName)
+
+		// Detect if agent is untracked
+		isUntracked := isUntrackedBeadsID(beadsID)
+
+		info := CompletionInfo{
+			WorkspaceID:   dirName,
+			WorkspacePath: dirPath,
+			BeadsID:       beadsID,
+			Project:       extractProject(projectDir),
+			Skill:         skill,
+			ModTime:       modTime,
+			IsUntracked:   isUntracked,
+		}
+
+		// Parse synthesis (the main thing we need for surfacing)
+		s, err := verify.ParseSynthesis(dirPath)
+		if err == nil {
+			info.Synthesis = s
+		}
+
+		results = append(results, info)
+	}
+
+	return results, nil
+}
+
 // extractBeadsIDFromWorkspace extracts the beads ID from SPAWN_CONTEXT.md
 func extractBeadsIDFromWorkspace(workspacePath string) string {
 	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
@@ -1158,8 +1234,9 @@ func runReviewArchitects(projectFilter string, limit int) error {
 
 // GetArchitectRecommendationCount returns the count of architect agents with unreviewed recommendations.
 // Used by orch status to surface pending architect work.
+// Uses getCompletionsForSurfacing() to avoid expensive verification overhead.
 func GetArchitectRecommendationCount() (int, error) {
-	completions, err := getCompletionsForReview()
+	completions, err := getCompletionsForSurfacing()
 	if err != nil {
 		return 0, err
 	}
@@ -1210,10 +1287,14 @@ type ArchitectRecommendationsSurface struct {
 // in orch status. This provides the rich detail needed for SessionStart awareness of pending
 // high-value design work.
 //
+// Uses getCompletionsForSurfacing() which skips expensive verification - we only need synthesis
+// data for surfacing, not full verification status. This makes the function fast enough for
+// use in orch status (< 1s vs 1m+ with full verification).
+//
 // Returns summaries of up to 5 recommendations to keep output manageable. Use orch review --architects
 // for the full list.
 func GetArchitectRecommendationsSurface() (*ArchitectRecommendationsSurface, error) {
-	completions, err := getCompletionsForReview()
+	completions, err := getCompletionsForSurfacing()
 	if err != nil {
 		return nil, err
 	}
