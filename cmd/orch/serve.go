@@ -56,6 +56,7 @@ Endpoints:
   GET /api/focus     - Current focus and drift status
   GET /api/beads     - Beads stats (ready, blocked, open)
   GET /api/beads/ready - List of ready issues for queue visibility
+  GET /api/beads/blocked - Blocked issues with blocker details for filtering
   GET /api/servers   - Servers status across projects
   GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
@@ -218,6 +219,9 @@ func runServe(portNum int) error {
 
 	// GET /api/beads/ready - returns list of ready issues for dashboard queue visibility
 	mux.HandleFunc("/api/beads/ready", corsHandler(handleBeadsReady))
+
+	// GET /api/beads/blocked - returns blocked issues with blocker details for filtering
+	mux.HandleFunc("/api/beads/blocked", corsHandler(handleBeadsBlocked))
 
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
@@ -1569,6 +1573,137 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode beads ready: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// BlockedIssueResponse represents a blocked issue with blocker information.
+type BlockedIssueResponse struct {
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Priority       int      `json:"priority"`
+	IssueType      string   `json:"issue_type"`
+	Labels         []string `json:"labels,omitempty"`
+	CreatedAt      string   `json:"created_at,omitempty"`
+	BlockedByCount int      `json:"blocked_by_count"`
+	BlockedBy      []string `json:"blocked_by"`
+	// Computed fields for frontend filtering
+	NeedsAction    bool   `json:"needs_action"`    // True if blocked by closed/abandoned issue
+	ActionReason   string `json:"action_reason"`   // Why this needs attention
+	BlockerStatus  string `json:"blocker_status"`  // Status of the blocker (open, closed, etc.)
+	DaysBlocked    int    `json:"days_blocked"`    // How long it's been blocked
+}
+
+// BeadsBlockedAPIResponse is the JSON structure returned by /api/beads/blocked.
+type BeadsBlockedAPIResponse struct {
+	Issues      []BlockedIssueResponse `json:"issues"`
+	TotalCount  int                    `json:"total_count"`   // All blocked issues
+	ActionCount int                    `json:"action_count"`  // Issues needing action
+	Error       string                 `json:"error,omitempty"`
+}
+
+// handleBeadsBlocked returns blocked issues with blocker details for filtering.
+func handleBeadsBlocked(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get blocked issues via CLI fallback (no RPC support yet)
+	blockedIssues, err := beads.FallbackBlocked()
+	if err != nil {
+		resp := BeadsBlockedAPIResponse{
+			Issues:      []BlockedIssueResponse{},
+			TotalCount:  0,
+			ActionCount: 0,
+			Error:       fmt.Sprintf("Failed to get blocked issues: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Build response with computed fields
+	issues := make([]BlockedIssueResponse, 0, len(blockedIssues))
+	actionCount := 0
+
+	for _, blocked := range blockedIssues {
+		issue := BlockedIssueResponse{
+			ID:             blocked.ID,
+			Title:          blocked.Title,
+			Priority:       blocked.Priority,
+			IssueType:      blocked.IssueType,
+			Labels:         blocked.Labels,
+			CreatedAt:      blocked.CreatedAt,
+			BlockedByCount: blocked.BlockedByCount,
+			BlockedBy:      blocked.BlockedBy,
+			NeedsAction:    false,
+			ActionReason:   "",
+			BlockerStatus:  "",
+			DaysBlocked:    0,
+		}
+
+		// Calculate days blocked
+		if blocked.CreatedAt != "" {
+			if createdAt, err := time.Parse(time.RFC3339, blocked.CreatedAt); err == nil {
+				issue.DaysBlocked = int(time.Since(createdAt).Hours() / 24)
+			}
+		}
+
+		// Check each blocker to determine if action is needed
+		for _, blockerID := range blocked.BlockedBy {
+			// Look up the blocker issue status
+			blockerIssue, err := beads.FallbackShow(blockerID)
+			if err != nil {
+				// Blocker doesn't exist or can't be found - needs action
+				issue.NeedsAction = true
+				issue.ActionReason = fmt.Sprintf("Blocker %s not found", blockerID)
+				issue.BlockerStatus = "missing"
+				break
+			}
+
+			issue.BlockerStatus = blockerIssue.Status
+
+			// Check for actionable conditions
+			switch blockerIssue.Status {
+			case "closed":
+				// Blocked by a closed issue - stale dependency
+				issue.NeedsAction = true
+				issue.ActionReason = fmt.Sprintf("Blocked by closed issue %s - remove stale dependency", blockerID)
+				actionCount++
+			case "abandoned", "wontfix", "duplicate":
+				// Blocked by abandoned/wontfix issue
+				issue.NeedsAction = true
+				issue.ActionReason = fmt.Sprintf("Blocked by %s issue %s - reassign or close", blockerIssue.Status, blockerID)
+				actionCount++
+			case "open", "in_progress":
+				// Normal case - blocked by an active issue
+				// Only flag if blocked for >7 days
+				if issue.DaysBlocked > 7 {
+					issue.NeedsAction = true
+					issue.ActionReason = fmt.Sprintf("Blocked for %d days - blocker %s may be stuck", issue.DaysBlocked, blockerID)
+					actionCount++
+				}
+			}
+
+			// If we found an actionable condition, stop checking other blockers
+			if issue.NeedsAction {
+				break
+			}
+		}
+
+		issues = append(issues, issue)
+	}
+
+	resp := BeadsBlockedAPIResponse{
+		Issues:      issues,
+		TotalCount:  len(issues),
+		ActionCount: actionCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode beads blocked: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

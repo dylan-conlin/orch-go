@@ -4,14 +4,15 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { errorEvents } from '$lib/stores/agentlog';
 	import { pendingReviews, type PendingReviewAgent, type PendingReviewItem } from '$lib/stores/pending-reviews';
-	import { beads } from '$lib/stores/beads';
+	import { beads, blockedIssues, type BlockedIssue } from '$lib/stores/beads';
 	import { agents, activeAgents, createIssue } from '$lib/stores/agents';
 	import { gaps } from '$lib/stores/gaps';
 	import { onMount } from 'svelte';
 
-	// Fetch gaps on mount
+	// Fetch gaps and blocked issues on mount
 	onMount(() => {
 		gaps.fetch();
+		blockedIssues.fetch();
 	});
 
 	// State for issue creation
@@ -40,8 +41,10 @@
 	$: standardReviewCount = standardAgents.reduce((sum, agent) => 
 		sum + getUnreviewedItems(agent).length, 0);
 
-	// ⚠️ DECISION NEEDED: Blocked issues
-	$: totalBlocked = $beads?.blocked_issues ?? 0;
+	// ⚠️ DECISION NEEDED: Blocked issues that actually need intervention
+	// Only count issues where needs_action is true (blocked by closed/abandoned, or >7 days)
+	$: actionableBlocked = ($blockedIssues?.issues ?? []).filter(i => i.needs_action);
+	$: totalBlocked = actionableBlocked.length;
 
 	// 📊 PATTERNS: Recurring gaps that could use kn constrain
 	$: patternSuggestions = $gaps?.suggestions ?? [];
@@ -254,35 +257,59 @@
 							{totalBlocked}
 						</Badge>
 						<span class="text-[10px] text-muted-foreground ml-1">
-							— blocked issue{totalBlocked === 1 ? '' : 's'}
+							— blocked issue{totalBlocked === 1 ? '' : 's'} need{totalBlocked === 1 ? 's' : ''} intervention
 						</span>
 					</div>
-					<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
-						<div class="flex items-center gap-2 min-w-0">
-							<span class="text-xs">🚧</span>
-							<span class="text-xs">
-								{totalBlocked} issue{totalBlocked === 1 ? '' : 's'} blocked, needs decision
-							</span>
-						</div>
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								{#snippet child({ props })}
-									<Button
-										{...props}
-										variant="ghost"
-										size="sm"
-										class="h-6 px-2 text-[10px] opacity-70 group-hover:opacity-100 transition-opacity"
-										onclick={() => copyCommand('bd blocked')}
-									>
-										→ unblock
-									</Button>
-								{/snippet}
-							</Tooltip.Trigger>
-							<Tooltip.Content side="left">
-								<p class="text-xs">Click to copy command</p>
-								<code class="text-[10px] text-muted-foreground">bd blocked</code>
-							</Tooltip.Content>
-						</Tooltip.Root>
+					<div class="space-y-1.5">
+						{#each actionableBlocked.slice(0, 5) as issue (issue.id)}
+							<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
+								<div class="flex items-center gap-2 min-w-0 flex-1">
+									<code class="text-[10px] font-mono text-muted-foreground bg-muted px-1 py-0.5 rounded shrink-0">
+										{issue.id}
+									</code>
+									<span class="text-xs truncate flex-1" title={issue.action_reason}>{issue.action_reason}</span>
+									{#if issue.days_blocked > 7}
+										<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-orange-500/30 text-orange-500 shrink-0">
+											{issue.days_blocked}d
+										</Badge>
+									{/if}
+								</div>
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="outline"
+												size="sm"
+												class="h-6 px-2 text-[10px] shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
+												onclick={() => {
+													if (issue.blocker_status === 'closed') {
+														copyCommand(`bd dep remove ${issue.id} ${issue.blocked_by[0]}`);
+													} else {
+														copyCommand(`bd show ${issue.id}`);
+													}
+												}}
+											>
+												{issue.blocker_status === 'closed' ? '→ remove dep' : '→ show'}
+											</Button>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content side="left">
+										<p class="text-xs">Click to copy command</p>
+										<code class="text-[10px] text-muted-foreground">
+											{issue.blocker_status === 'closed' 
+												? `bd dep remove ${issue.id} ${issue.blocked_by[0]}`
+												: `bd show ${issue.id}`}
+										</code>
+									</Tooltip.Content>
+								</Tooltip.Root>
+							</div>
+						{/each}
+						{#if actionableBlocked.length > 5}
+							<div class="text-[10px] text-muted-foreground pl-2">
+								+{actionableBlocked.length - 5} more issues needing attention
+							</div>
+						{/if}
 					</div>
 				</div>
 			{/if}

@@ -242,6 +242,22 @@ type ResolveIDArgs struct {
 	ID string `json:"id"`
 }
 
+// BlockedIssue represents a blocked issue with information about what's blocking it.
+// Used by `bd blocked --json` which returns enriched issue data.
+type BlockedIssue struct {
+	ID             string   `json:"id"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description,omitempty"`
+	Status         string   `json:"status"`
+	Priority       int      `json:"priority"`
+	IssueType      string   `json:"issue_type"`
+	Labels         []string `json:"labels,omitempty"`
+	CreatedAt      string   `json:"created_at,omitempty"`
+	UpdatedAt      string   `json:"updated_at,omitempty"`
+	BlockedByCount int      `json:"blocked_by_count"`
+	BlockedBy      []string `json:"blocked_by"`
+}
+
 // CountArgs represents arguments for the count operation.
 type CountArgs struct {
 	Query     string   `json:"query,omitempty"`

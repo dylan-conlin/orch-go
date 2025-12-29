@@ -663,7 +663,12 @@ func FallbackReady() ([]Issue, error) {
 // Note: bd show --json always returns an array, even for a single issue.
 // We unmarshal the array and return the first element.
 func FallbackShow(id string) (*Issue, error) {
-	cmd := exec.Command("bd", "show", id, "--json")
+	bdPath := findBdPath()
+	cmd := exec.Command(bdPath, "show", id, "--json")
+	// Set working directory so bd can find .beads/
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd show failed: %w", err)
@@ -795,4 +800,52 @@ func FallbackUpdate(id, status string) error {
 		return fmt.Errorf("bd update failed: %w: %s", err, string(output))
 	}
 	return nil
+}
+
+// FallbackBlocked retrieves blocked issues via bd CLI.
+// Returns issues with blocked_by information for filtering actionable blockers.
+func FallbackBlocked() ([]BlockedIssue, error) {
+	// Find bd binary - try common locations first since PATH may not be set
+	bdPath := findBdPath()
+
+	cmd := exec.Command(bdPath, "blocked", "--json")
+	// Set working directory so bd can find .beads/
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bd blocked failed: %w", err)
+	}
+
+	var issues []BlockedIssue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse bd blocked output: %w", err)
+	}
+
+	return issues, nil
+}
+
+// findBdPath locates the bd binary, checking common locations before PATH.
+func findBdPath() string {
+	// Try common locations first (PATH may not be set in daemon contexts)
+	paths := []string{
+		filepath.Join(os.Getenv("HOME"), "bin", "bd"),
+		filepath.Join(os.Getenv("HOME"), "go", "bin", "bd"),
+		filepath.Join(os.Getenv("HOME"), ".local", "bin", "bd"),
+	}
+
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	// Fall back to PATH lookup
+	if path, err := exec.LookPath("bd"); err == nil {
+		return path
+	}
+
+	// Default to "bd" and hope for the best
+	return "bd"
 }
