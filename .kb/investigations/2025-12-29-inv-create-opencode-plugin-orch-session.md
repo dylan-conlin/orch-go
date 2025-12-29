@@ -29,7 +29,7 @@ Fill this at the END of your investigation, before marking Complete.
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** N/A
 **Supersedes:** N/A
-**Superseded-By:** N/A
+**Superseded-By:** .kb/investigations/2025-12-29-inv-consolidate-session-context-js-orch.md (plugin consolidated into orchestrator-session.ts)
 
 ---
 

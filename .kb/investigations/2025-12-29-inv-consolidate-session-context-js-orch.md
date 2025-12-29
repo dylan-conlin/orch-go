@@ -25,6 +25,9 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 **Next Step:** None
 **Status:** Complete
 
+<!-- Lineage -->
+**Supersedes:** .kb/investigations/2025-12-29-inv-create-opencode-plugin-orch-session.md (orch-session-autostart.ts now part of consolidated plugin)
+
 ---
 
 ## Findings
