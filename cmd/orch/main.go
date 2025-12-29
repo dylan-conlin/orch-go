@@ -2557,11 +2557,15 @@ func runStatus(serverURL string) error {
 		seenBeadsIDs[beadsID] = true
 	}
 
-	// Look up workspaces to get project directories for cross-project agents
+	// Build workspace cache ONCE (O(n) scan) instead of O(n*m) findWorkspaceByBeadsID calls
+	// This is the key performance optimization - we scan 702 dirs once instead of once per beadsID
+	wsCache := buildWorkspaceCache(projectDir)
+
+	// Look up workspaces to get project directories for cross-project agents (O(1) per lookup)
 	for _, beadsID := range beadsIDsToFetch {
-		workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
+		workspacePath := wsCache.lookupWorkspace(beadsID)
 		if workspacePath != "" {
-			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
+			agentProjectDir := wsCache.lookupProjectDir(beadsID)
 			if agentProjectDir != "" && agentProjectDir != projectDir {
 				beadsProjectDirs[beadsID] = agentProjectDir
 			}
