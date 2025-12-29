@@ -523,3 +523,392 @@ func TestLogger_CreateDirectory(t *testing.T) {
 		t.Error("Log file should have been created")
 	}
 }
+
+func TestIsWorkerSession(t *testing.T) {
+	tests := []struct {
+		name     string
+		title    string
+		expected bool
+	}{
+		{
+			name:     "worker session with beads ID",
+			title:    "og-feat-add-feature-24dec [orch-go-3anf]",
+			expected: true,
+		},
+		{
+			name:     "worker session simple",
+			title:    "my-workspace [abc-123]",
+			expected: true,
+		},
+		{
+			name:     "orchestrator session no brackets",
+			title:    "orchestrator-session",
+			expected: false,
+		},
+		{
+			name:     "empty title",
+			title:    "",
+			expected: false,
+		},
+		{
+			name:     "bracket not at end",
+			title:    "my-[id]-workspace",
+			expected: false,
+		},
+		{
+			name:     "only opening bracket",
+			title:    "my-workspace [incomplete",
+			expected: false,
+		},
+		{
+			name:     "only closing bracket",
+			title:    "my-workspace]",
+			expected: false,
+		},
+		{
+			name:     "empty brackets at end",
+			title:    "my-workspace []",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsWorkerSession(tt.title)
+			if got != tt.expected {
+				t.Errorf("IsWorkerSession(%q) = %v, want %v", tt.title, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsWorkerWorkspace(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		{
+			name:     "worker workspace path",
+			path:     "/Users/dylan/projects/orch-go/.orch/workspace/my-agent/",
+			expected: true,
+		},
+		{
+			name:     "worker workspace nested",
+			path:     "/home/user/code/.orch/workspace/feature-impl-xyz/SPAWN_CONTEXT.md",
+			expected: true,
+		},
+		{
+			name:     "orchestrator path",
+			path:     "/Users/dylan/projects/orch-go/",
+			expected: false,
+		},
+		{
+			name:     "empty path",
+			path:     "",
+			expected: false,
+		},
+		{
+			name:     "similar but not matching",
+			path:     "/Users/dylan/.orch/config/",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsWorkerWorkspace(tt.path)
+			if got != tt.expected {
+				t.Errorf("IsWorkerWorkspace(%q) = %v, want %v", tt.path, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractBeadsIDFromTitle(t *testing.T) {
+	tests := []struct {
+		name     string
+		title    string
+		expected string
+	}{
+		{
+			name:     "standard worker title",
+			title:    "og-feat-add-feature-24dec [orch-go-3anf]",
+			expected: "orch-go-3anf",
+		},
+		{
+			name:     "simple ID",
+			title:    "workspace [abc-123]",
+			expected: "abc-123",
+		},
+		{
+			name:     "ID with spaces",
+			title:    "workspace [ spaced-id ]",
+			expected: "spaced-id",
+		},
+		{
+			name:     "no brackets",
+			title:    "orchestrator-session",
+			expected: "",
+		},
+		{
+			name:     "empty title",
+			title:    "",
+			expected: "",
+		},
+		{
+			name:     "empty brackets",
+			title:    "workspace []",
+			expected: "",
+		},
+		{
+			name:     "bracket not at end",
+			title:    "my-[id]-workspace",
+			expected: "id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ExtractBeadsIDFromTitle(tt.title)
+			if got != tt.expected {
+				t.Errorf("ExtractBeadsIDFromTitle(%q) = %q, want %q", tt.title, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDetectOrchestratorStatus(t *testing.T) {
+	tests := []struct {
+		name             string
+		sessionTitle     string
+		workspace        string
+		wantOrchestrator bool
+		wantBeadsID      string
+	}{
+		{
+			name:             "worker by title",
+			sessionTitle:     "og-feat-xxx [orch-go-abc]",
+			workspace:        "/some/path",
+			wantOrchestrator: false,
+			wantBeadsID:      "orch-go-abc",
+		},
+		{
+			name:             "worker by workspace",
+			sessionTitle:     "some-session",
+			workspace:        "/path/.orch/workspace/agent-123/",
+			wantOrchestrator: false,
+			wantBeadsID:      "",
+		},
+		{
+			name:             "worker by both",
+			sessionTitle:     "og-feat [orch-go-xyz]",
+			workspace:        "/path/.orch/workspace/og-feat/",
+			wantOrchestrator: false,
+			wantBeadsID:      "orch-go-xyz",
+		},
+		{
+			name:             "orchestrator no indicators",
+			sessionTitle:     "orchestrator-session",
+			workspace:        "/Users/dylan/projects/orch-go/",
+			wantOrchestrator: true,
+			wantBeadsID:      "",
+		},
+		{
+			name:             "orchestrator empty fields",
+			sessionTitle:     "",
+			workspace:        "",
+			wantOrchestrator: true,
+			wantBeadsID:      "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotOrch, gotBeadsID := DetectOrchestratorStatus(tt.sessionTitle, tt.workspace)
+			if gotOrch != tt.wantOrchestrator {
+				t.Errorf("DetectOrchestratorStatus() isOrchestrator = %v, want %v", gotOrch, tt.wantOrchestrator)
+			}
+			if gotBeadsID != tt.wantBeadsID {
+				t.Errorf("DetectOrchestratorStatus() beadsID = %q, want %q", gotBeadsID, tt.wantBeadsID)
+			}
+		})
+	}
+}
+
+func TestLogger_AutoDetectOrchestrator(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "action-log.jsonl")
+
+	// Test with worker session title
+	logger := NewLoggerWithSession(logPath, "og-feat-test [orch-go-test123]")
+
+	event := ActionEvent{
+		Tool:      "Read",
+		Target:    "/path/to/file.md",
+		Outcome:   OutcomeSuccess,
+		Workspace: "/some/workspace",
+	}
+
+	if err := logger.Log(event); err != nil {
+		t.Fatalf("Log failed: %v", err)
+	}
+
+	// Load and verify
+	tracker, err := LoadTracker(logPath)
+	if err != nil {
+		t.Fatalf("LoadTracker failed: %v", err)
+	}
+
+	if len(tracker.Events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(tracker.Events))
+	}
+
+	e := tracker.Events[0]
+	if e.IsOrchestrator {
+		t.Error("Expected IsOrchestrator=false for worker session")
+	}
+	if e.BeadsID != "orch-go-test123" {
+		t.Errorf("Expected BeadsID='orch-go-test123', got %q", e.BeadsID)
+	}
+}
+
+func TestLogger_AutoDetectOrchestratorByWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "action-log.jsonl")
+
+	// Test without session title but with worker workspace
+	logger := NewLogger(logPath)
+
+	event := ActionEvent{
+		Tool:      "Read",
+		Target:    "/path/to/file.md",
+		Outcome:   OutcomeSuccess,
+		Workspace: "/project/.orch/workspace/my-agent/",
+	}
+
+	if err := logger.Log(event); err != nil {
+		t.Fatalf("Log failed: %v", err)
+	}
+
+	// Load and verify
+	tracker, err := LoadTracker(logPath)
+	if err != nil {
+		t.Fatalf("LoadTracker failed: %v", err)
+	}
+
+	if len(tracker.Events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(tracker.Events))
+	}
+
+	e := tracker.Events[0]
+	if e.IsOrchestrator {
+		t.Error("Expected IsOrchestrator=false for worker workspace")
+	}
+}
+
+func TestLogger_OrchestratorDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "action-log.jsonl")
+
+	// Test without any session title - should default to orchestrator
+	logger := NewLogger(logPath)
+
+	event := ActionEvent{
+		Tool:      "Read",
+		Target:    "/path/to/file.md",
+		Outcome:   OutcomeSuccess,
+		Workspace: "/regular/project/path",
+	}
+
+	if err := logger.Log(event); err != nil {
+		t.Fatalf("Log failed: %v", err)
+	}
+
+	// Load and verify
+	tracker, err := LoadTracker(logPath)
+	if err != nil {
+		t.Fatalf("LoadTracker failed: %v", err)
+	}
+
+	if len(tracker.Events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(tracker.Events))
+	}
+
+	e := tracker.Events[0]
+	if !e.IsOrchestrator {
+		t.Error("Expected IsOrchestrator=true for regular workspace without session title")
+	}
+}
+
+func TestNewLoggerWithSession(t *testing.T) {
+	logger := NewLoggerWithSession("/path/to/log.jsonl", "my-session [test-id]")
+
+	if logger.Path != "/path/to/log.jsonl" {
+		t.Errorf("Expected Path='/path/to/log.jsonl', got %q", logger.Path)
+	}
+	if logger.SessionTitle != "my-session [test-id]" {
+		t.Errorf("Expected SessionTitle='my-session [test-id]', got %q", logger.SessionTitle)
+	}
+}
+
+func TestNewDefaultLoggerWithSession(t *testing.T) {
+	logger := NewDefaultLoggerWithSession("my-session [test-id]")
+
+	if logger.SessionTitle != "my-session [test-id]" {
+		t.Errorf("Expected SessionTitle='my-session [test-id]', got %q", logger.SessionTitle)
+	}
+	if logger.Path == "" {
+		t.Error("Expected Path to be set to default")
+	}
+}
+
+func TestLogger_SetSessionTitle(t *testing.T) {
+	logger := NewLogger("/path/to/log.jsonl")
+
+	if logger.SessionTitle != "" {
+		t.Error("Expected empty SessionTitle initially")
+	}
+
+	logger.SetSessionTitle("updated-session [new-id]")
+
+	if logger.SessionTitle != "updated-session [new-id]" {
+		t.Errorf("Expected SessionTitle='updated-session [new-id]', got %q", logger.SessionTitle)
+	}
+}
+
+func TestLogger_ExplicitBeadsIDNotOverwritten(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "action-log.jsonl")
+
+	// Logger with session title
+	logger := NewLoggerWithSession(logPath, "og-feat-test [orch-go-auto]")
+
+	// Event with explicitly set BeadsID - should not be overwritten
+	event := ActionEvent{
+		Tool:           "Read",
+		Target:         "/path/to/file.md",
+		Outcome:        OutcomeSuccess,
+		IsOrchestrator: false,
+		BeadsID:        "explicit-beads-id",
+	}
+
+	if err := logger.Log(event); err != nil {
+		t.Fatalf("Log failed: %v", err)
+	}
+
+	// Load and verify
+	tracker, err := LoadTracker(logPath)
+	if err != nil {
+		t.Fatalf("LoadTracker failed: %v", err)
+	}
+
+	if len(tracker.Events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(tracker.Events))
+	}
+
+	e := tracker.Events[0]
+	if e.BeadsID != "explicit-beads-id" {
+		t.Errorf("Expected BeadsID='explicit-beads-id' (not overwritten), got %q", e.BeadsID)
+	}
+}

@@ -66,6 +66,14 @@ type ActionEvent struct {
 
 	// Context provides additional context about why the action was taken.
 	Context string `json:"context,omitempty"`
+
+	// IsOrchestrator indicates whether this action was performed by an orchestrator (true)
+	// or a worker agent (false). Detection is based on session title pattern and cwd.
+	IsOrchestrator bool `json:"is_orchestrator"`
+
+	// BeadsID is the beads issue ID associated with this action (for worker agents).
+	// Extracted from session title format: "workspace [beads-id]"
+	BeadsID string `json:"beads_id,omitempty"`
 }
 
 // ActionPattern represents a detected behavioral pattern.
@@ -116,9 +124,77 @@ func normalizeTarget(target string) string {
 	return strings.TrimSpace(target)
 }
 
+// IsWorkerSession determines if a session is a worker based on its title.
+// Worker sessions have titles matching the pattern: "workspace [beads-id]"
+// e.g., "og-feat-xxx [orch-go-abc]"
+func IsWorkerSession(sessionTitle string) bool {
+	// Check if title contains '[' and ends with ']'
+	if sessionTitle == "" {
+		return false
+	}
+	bracketStart := strings.LastIndex(sessionTitle, "[")
+	bracketEnd := strings.LastIndex(sessionTitle, "]")
+	// Worker pattern: has '[' followed by ']' at the end
+	return bracketStart != -1 && bracketEnd != -1 && bracketEnd > bracketStart && bracketEnd == len(sessionTitle)-1
+}
+
+// IsWorkerWorkspace determines if a path is within a worker workspace.
+// Worker workspaces are located under .orch/workspace/
+func IsWorkerWorkspace(path string) bool {
+	if path == "" {
+		return false
+	}
+	return strings.Contains(path, ".orch/workspace/")
+}
+
+// ExtractBeadsIDFromTitle extracts the beads ID from a session title.
+// Session titles follow format: "workspace-name [beads-id]"
+// e.g., "og-feat-add-feature-24dec [orch-go-3anf]" -> "orch-go-3anf"
+func ExtractBeadsIDFromTitle(title string) string {
+	if title == "" {
+		return ""
+	}
+	// Look for "[beads-id]" pattern at the end
+	start := strings.LastIndex(title, "[")
+	end := strings.LastIndex(title, "]")
+	if start == -1 || end == -1 || end <= start {
+		return ""
+	}
+	return strings.TrimSpace(title[start+1 : end])
+}
+
+// DetectOrchestratorStatus determines if an event is from an orchestrator or worker.
+// It uses session title and workspace path to make the determination.
+// Returns (isOrchestrator, beadsID).
+//
+// Detection logic:
+// - Worker if: session title contains '[' and ends with ']' (e.g., 'og-feat-xxx [orch-go-abc]')
+// - Worker if: workspace contains '.orch/workspace/'
+// - Otherwise: orchestrator
+func DetectOrchestratorStatus(sessionTitle, workspace string) (isOrchestrator bool, beadsID string) {
+	// Check if it's a worker session by title pattern
+	if IsWorkerSession(sessionTitle) {
+		beadsID = ExtractBeadsIDFromTitle(sessionTitle)
+		return false, beadsID
+	}
+
+	// Check if it's a worker by workspace path
+	if IsWorkerWorkspace(workspace) {
+		// Try to extract beads ID from title even if pattern doesn't match perfectly
+		beadsID = ExtractBeadsIDFromTitle(sessionTitle)
+		return false, beadsID
+	}
+
+	// Default to orchestrator
+	return true, ""
+}
+
 // Logger handles action outcome logging to a JSONL file.
 type Logger struct {
 	Path string
+	// SessionTitle is the title of the current session, used for orchestrator/worker detection.
+	// If set, Log will automatically populate IsOrchestrator and BeadsID fields.
+	SessionTitle string
 }
 
 // LoggerPathFunc allows customizing the log path for testing.
@@ -155,16 +231,52 @@ func NewLogger(path string) *Logger {
 	return &Logger{Path: path}
 }
 
+// NewLoggerWithSession creates a new action logger with a custom path and session title.
+// The session title is used for automatic orchestrator/worker detection.
+func NewLoggerWithSession(path, sessionTitle string) *Logger {
+	return &Logger{Path: path, SessionTitle: sessionTitle}
+}
+
 // NewDefaultLogger creates a new action logger with the default path.
 func NewDefaultLogger() *Logger {
 	return &Logger{Path: DefaultLogPath()}
 }
 
+// NewDefaultLoggerWithSession creates a new action logger with the default path and session title.
+// The session title is used for automatic orchestrator/worker detection.
+func NewDefaultLoggerWithSession(sessionTitle string) *Logger {
+	return &Logger{Path: DefaultLogPath(), SessionTitle: sessionTitle}
+}
+
+// SetSessionTitle sets the session title for orchestrator/worker detection.
+func (l *Logger) SetSessionTitle(title string) {
+	l.SessionTitle = title
+}
+
 // Log appends an action event to the JSONL log file.
+// If the logger has a SessionTitle set, it will automatically populate
+// IsOrchestrator and BeadsID fields using DetectOrchestratorStatus.
 func (l *Logger) Log(event ActionEvent) error {
 	// Set timestamp if not provided
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
+	}
+
+	// Auto-detect orchestrator status if SessionTitle is available and fields aren't set
+	// We check if BeadsID is empty to avoid overwriting explicitly set values
+	if l.SessionTitle != "" && event.BeadsID == "" {
+		isOrch, beadsID := DetectOrchestratorStatus(l.SessionTitle, event.Workspace)
+		event.IsOrchestrator = isOrch
+		event.BeadsID = beadsID
+	} else if l.SessionTitle == "" && event.BeadsID == "" {
+		// No session title available - try to detect from workspace alone
+		// If workspace contains .orch/workspace/, it's a worker
+		if IsWorkerWorkspace(event.Workspace) {
+			event.IsOrchestrator = false
+		} else {
+			// Default to orchestrator when no information available
+			event.IsOrchestrator = true
+		}
 	}
 
 	// Ensure directory exists
