@@ -252,6 +252,7 @@ var (
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
 	spawnMCP               string // MCP server config (e.g., "playwright", "glass")
+	spawnNoMCP             bool   // Disable MCP auto-detection for UI tasks
 	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
 	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
 	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
@@ -262,6 +263,7 @@ var (
 	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
 	spawnVerbose           bool   // Show stderr output in real-time for debugging
+	spawnSkipFailureReview bool   // Bypass failure report review gate (explicit opt-out)
 )
 
 var spawnCmd = &cobra.Command{
@@ -308,6 +310,30 @@ Error Visibility:
   By default, headless spawns capture stderr and log errors to events.jsonl on failure.
   Use --verbose to see stderr in real-time when debugging spawn issues.
 
+UI Task Auto-Detection:
+  Automatically detects UI tasks and adds --mcp playwright when:
+  - Task mentions UI-related file paths (web/, frontend/, src/routes/, *.svelte, *.tsx)
+  - Task contains UI keywords (ui, component, visual, browser, dashboard, etc.)
+  - Task references UI elements (button, modal, form, etc.)
+  
+  --no-mcp:  Disable auto-detection (prevents auto-adding --mcp playwright)
+  
+  When auto-detected, you'll see a message showing why UI was detected.
+
+Failure Report Gate (Gate Over Remind):
+  When respawning for an issue that was previously abandoned with --reason, a
+  FAILURE_REPORT.md exists in the prior workspace. Before respawning, key sections
+  must be filled out to capture learning:
+  
+    - What was attempted
+    - Details (what went wrong)
+    - Root cause analysis
+    - What should be different
+  
+  --skip-failure-review:  Explicitly bypass the failure report gate (documents opt-out)
+  
+  This gate enforces the principle: learning should happen before retry.
+
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
@@ -335,6 +361,7 @@ Examples:
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
   orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP (full browser)
   orch-go spawn --mcp glass feature-impl "verify dashboard"    # With Glass MCP (shared Chrome)
+  orch-go spawn --no-mcp feature-impl "fix UI bug"             # Disable UI auto-detection
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
   orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
   orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
@@ -363,6 +390,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome, requires Chrome --remote-debugging-port=9222)")
+	spawnCmd.Flags().BoolVar(&spawnNoMCP, "no-mcp", false, "Disable MCP auto-detection for UI tasks")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
@@ -373,6 +401,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnVerbose, "verbose", false, "Show stderr output in real-time for debugging headless spawns")
+	spawnCmd.Flags().BoolVar(&spawnSkipFailureReview, "skip-failure-review", false, "Bypass failure report review gate when respawning (documents explicit opt-out)")
 }
 
 var sendCmd = &cobra.Command{
@@ -497,7 +526,8 @@ func init() {
 
 var (
 	// Work command flags
-	workInline bool // Run inline (blocking) with TUI
+	workInline             bool // Run inline (blocking) with TUI
+	workSkipFailureReview  bool // Bypass failure report review gate (explicit opt-out)
 )
 
 var workCmd = &cobra.Command{
@@ -516,9 +546,14 @@ The issue description becomes the task prompt for the spawned agent.
 By default, spawns in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
 
+If a prior agent was abandoned (via 'orch abandon --reason'), a FAILURE_REPORT.md
+exists in the workspace. Before respawning, key sections must be filled out.
+Use --skip-failure-review to bypass this gate (documents explicit opt-out).
+
 Examples:
-  orch-go work proj-123           # Start work in tmux window (default)
-  orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
+  orch-go work proj-123                        # Start work in tmux window (default)
+  orch-go work proj-123 --inline               # Start work inline (blocking TUI)
+  orch-go work proj-123 --skip-failure-review  # Bypass failure report gate`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
@@ -528,6 +563,7 @@ Examples:
 
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
+	workCmd.Flags().BoolVar(&workSkipFailureReview, "skip-failure-review", false, "Bypass failure report review gate when respawning (documents explicit opt-out)")
 }
 
 var (
@@ -1029,6 +1065,8 @@ func runWork(serverURL, beadsID string, inline bool) error {
 
 	// Set the spawnIssue flag so runSpawnWithSkill uses the existing issue
 	spawnIssue = beadsID
+	// Pass through the skip-failure-review flag from work command
+	spawnSkipFailureReview = workSkipFailureReview
 
 	fmt.Printf("Starting work on: %s\n", beadsID)
 	fmt.Printf("  Title:  %s\n", issue.Title)
@@ -1311,6 +1349,26 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			if warning != "" {
 				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
 			}
+		}
+	}
+
+	// Gate on failure report - require learning before retry (Gate Over Remind)
+	// Only applies when respawning for an existing issue (--issue flag)
+	if !spawnNoTrack && spawnIssue != "" && !spawnSkipFailureReview {
+		failureStatus := spawn.CheckFailureReport(projectDir, beadsID)
+		if failureStatus.Exists && !failureStatus.IsFilled {
+			return errors.New(spawn.FormatFailureReportGateError(failureStatus, beadsID))
+		}
+		// If failure report exists and is filled, note it for context
+		if failureStatus.Exists && failureStatus.IsFilled {
+			fmt.Printf("Note: Prior failure report found and reviewed: %s\n", failureStatus.FilePath)
+		}
+	}
+	// Log if skip-failure-review was used (documents conscious bypass)
+	if spawnSkipFailureReview && spawnIssue != "" {
+		failureStatus := spawn.CheckFailureReport(projectDir, beadsID)
+		if failureStatus.Exists && !failureStatus.IsFilled {
+			fmt.Fprintf(os.Stderr, "⚠️  Bypassing failure report gate (--skip-failure-review): %s\n", failureStatus.FilePath)
 		}
 	}
 
@@ -1776,7 +1834,46 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	// Print context quality with visual indicators
 	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
+	// Start background monitoring for first comment (failed-to-start detection)
+	// This is non-blocking - spawns a goroutine that will warn if no comment within 60s
+	if beadsID != "" && !cfg.NoTrack {
+		go monitorFirstComment(beadsID, sessionID, cfg.WorkspaceName)
+	}
+
 	return nil
+}
+
+// monitorFirstComment waits for the first beads comment after spawn.
+// If no comment is received within 60s, logs a warning event for failed-to-start detection.
+// This runs in a background goroutine and is non-blocking.
+func monitorFirstComment(beadsID, sessionID, workspaceName string) {
+	result := verify.WaitForFirstComment(beadsID, 60*time.Second, 5*time.Second)
+
+	if result.Timeout {
+		// No comment within 60s - potential failed-to-start
+		fmt.Fprintf(os.Stderr, "\n⚠️  WARNING: Agent %s has not reported any Phase status after 60s\n", workspaceName)
+		fmt.Fprintf(os.Stderr, "   This may indicate the session failed to start properly.\n")
+		fmt.Fprintf(os.Stderr, "   Run 'orch doctor' for health check or 'orch status' for details.\n\n")
+
+		// Log the warning event
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "session.no_comment_warning",
+			SessionID: sessionID,
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id":   beadsID,
+				"session_id": sessionID,
+				"workspace":  workspaceName,
+				"waited_for": result.WaitedFor.Seconds(),
+				"warning":    "no beads comment after 60s",
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			// Silently ignore log errors in background goroutine
+			_ = err
+		}
+	}
 }
 
 // headlessSpawnResult contains the result of starting a headless session.
@@ -3468,6 +3565,16 @@ func runComplete(beadsID, workdir string) error {
 		}
 	} else {
 		fmt.Println("Skipping phase verification (--force)")
+
+		// Even with --force, warn about missing git commits for code-producing skills
+		// This helps catch false positives where agents claim completion without commits
+		if workspacePath != "" && beadsProjectDir != "" {
+			gitResult := verify.VerifyGitCommitsForCompletion(workspacePath, beadsProjectDir)
+			if gitResult != nil && !gitResult.Passed {
+				fmt.Fprintf(os.Stderr, "⚠️  WARNING: No git commits found since spawn time for code-producing skill '%s'\n", gitResult.SkillName)
+				fmt.Fprintf(os.Stderr, "   This may be a false positive - agent reported complete but has no commits\n")
+			}
+		}
 	}
 
 	// Check liveness before closing - warn if agent appears still running

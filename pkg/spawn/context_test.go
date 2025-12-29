@@ -1302,3 +1302,333 @@ func TestGenerateContext_WithoutEcosystemContext_NonEcosystemRepo(t *testing.T) 
 }
 
 // NOTE: TestGenerateEcosystemContext_Integration has been moved to ecosystem_test.go
+
+func TestCheckFailureReport(t *testing.T) {
+	t.Run("returns empty status when no workspace exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+		status := CheckFailureReport(tempDir, "test-123")
+
+		if status.Exists {
+			t.Error("expected Exists to be false when no workspace exists")
+		}
+		if status.IsFilled {
+			t.Error("expected IsFilled to be false when no report exists")
+		}
+	})
+
+	t.Run("returns empty status when workspace exists but no FAILURE_REPORT.md", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create workspace directory with SPAWN_CONTEXT.md
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-test-workspace")
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		// Create SPAWN_CONTEXT.md with beads ID reference
+		spawnContext := "You were spawned from beads issue: **test-123**\n\nSome other content."
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		status := CheckFailureReport(tempDir, "test-123")
+
+		if status.Exists {
+			t.Error("expected Exists to be false when no FAILURE_REPORT.md exists")
+		}
+	})
+
+	t.Run("detects unfilled failure report", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create workspace directory with SPAWN_CONTEXT.md
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-test-workspace")
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		// Create SPAWN_CONTEXT.md with beads ID reference
+		spawnContext := "You were spawned from beads issue: **test-123**\n\nSome other content."
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Create unfilled FAILURE_REPORT.md (with placeholders)
+		failureReport := `# Failure Report
+
+**Agent:** og-test-workspace
+**Issue:** test-123
+**Abandoned:** 2025-12-29 10:00:00
+**Reason:** Out of context
+
+---
+
+## Context
+
+**Task:** implement feature
+
+**What was attempted:**
+[Brief description of what the agent was trying to do]
+
+---
+
+## Failure Summary
+
+**Primary Cause:** Out of context
+
+**Details:**
+[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]
+
+---
+
+## Learnings
+
+**Root cause analysis:**
+- [If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]
+
+---
+
+## Recovery Recommendations
+
+**If yes, what should be different:**
+- [Suggestion 1 - different approach]
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "FAILURE_REPORT.md"), []byte(failureReport), 0644); err != nil {
+			t.Fatalf("failed to write FAILURE_REPORT.md: %v", err)
+		}
+
+		status := CheckFailureReport(tempDir, "test-123")
+
+		if !status.Exists {
+			t.Error("expected Exists to be true")
+		}
+		if status.IsFilled {
+			t.Error("expected IsFilled to be false for unfilled report")
+		}
+		if status.WhatWasAttempted {
+			t.Error("expected WhatWasAttempted to be false")
+		}
+		if status.Details {
+			t.Error("expected Details to be false")
+		}
+		if status.RootCauseAnalysis {
+			t.Error("expected RootCauseAnalysis to be false")
+		}
+		if status.WhatShouldDifferent {
+			t.Error("expected WhatShouldDifferent to be false")
+		}
+		if len(status.UnfilledSections) != 4 {
+			t.Errorf("expected 4 unfilled sections, got %d: %v", len(status.UnfilledSections), status.UnfilledSections)
+		}
+	})
+
+	t.Run("detects filled failure report", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create workspace directory with SPAWN_CONTEXT.md
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-test-workspace")
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		// Create SPAWN_CONTEXT.md with beads ID reference
+		spawnContext := "You were spawned from beads issue: **test-123**\n\nSome other content."
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Create filled FAILURE_REPORT.md (no placeholders)
+		failureReport := `# Failure Report
+
+**Agent:** og-test-workspace
+**Issue:** test-123
+**Abandoned:** 2025-12-29 10:00:00
+**Reason:** Out of context
+
+---
+
+## Context
+
+**Task:** implement feature
+
+**What was attempted:**
+Started implementing the authentication middleware but ran out of context.
+
+---
+
+## Failure Summary
+
+**Primary Cause:** Out of context
+
+**Details:**
+The agent consumed too much context reading test files before starting implementation.
+
+---
+
+## Learnings
+
+**Root cause analysis:**
+- Context exhaustion from reading too many files upfront
+- Should have focused on smaller scope first
+
+---
+
+## Recovery Recommendations
+
+**If yes, what should be different:**
+- Start with a smaller scope (auth middleware only, no tests)
+- Use targeted file reads instead of exploring broadly
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "FAILURE_REPORT.md"), []byte(failureReport), 0644); err != nil {
+			t.Fatalf("failed to write FAILURE_REPORT.md: %v", err)
+		}
+
+		status := CheckFailureReport(tempDir, "test-123")
+
+		if !status.Exists {
+			t.Error("expected Exists to be true")
+		}
+		if !status.IsFilled {
+			t.Error("expected IsFilled to be true for filled report")
+		}
+		if !status.WhatWasAttempted {
+			t.Error("expected WhatWasAttempted to be true")
+		}
+		if !status.Details {
+			t.Error("expected Details to be true")
+		}
+		if !status.RootCauseAnalysis {
+			t.Error("expected RootCauseAnalysis to be true")
+		}
+		if !status.WhatShouldDifferent {
+			t.Error("expected WhatShouldDifferent to be true")
+		}
+		if len(status.UnfilledSections) != 0 {
+			t.Errorf("expected 0 unfilled sections, got %d: %v", len(status.UnfilledSections), status.UnfilledSections)
+		}
+	})
+
+	t.Run("ignores workspaces for different beads ID", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create workspace directory with SPAWN_CONTEXT.md for different beads ID
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-other-workspace")
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		// Create SPAWN_CONTEXT.md with DIFFERENT beads ID
+		spawnContext := "You were spawned from beads issue: **other-456**\n\nSome other content."
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Create FAILURE_REPORT.md in this workspace
+		failureReport := `# Failure Report
+**Issue:** other-456
+**What was attempted:**
+[Brief description of what the agent was trying to do]
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "FAILURE_REPORT.md"), []byte(failureReport), 0644); err != nil {
+			t.Fatalf("failed to write FAILURE_REPORT.md: %v", err)
+		}
+
+		// Check for a different beads ID - should NOT find the failure report
+		status := CheckFailureReport(tempDir, "test-123")
+
+		if status.Exists {
+			t.Error("expected Exists to be false when no workspace matches the beads ID")
+		}
+	})
+
+	t.Run("detects partially filled failure report", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create workspace directory with SPAWN_CONTEXT.md
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-test-workspace")
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		// Create SPAWN_CONTEXT.md with beads ID reference
+		spawnContext := "You were spawned from beads issue: **test-123**\n\nSome other content."
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Create partially filled FAILURE_REPORT.md (some placeholders remain)
+		failureReport := `# Failure Report
+
+**What was attempted:**
+I was trying to implement the auth middleware.
+
+**Details:**
+[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]
+
+**Root cause analysis:**
+- Context exhaustion, ran out of context after 2 hours
+
+**If yes, what should be different:**
+[Suggestion 1 - different approach]
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "FAILURE_REPORT.md"), []byte(failureReport), 0644); err != nil {
+			t.Fatalf("failed to write FAILURE_REPORT.md: %v", err)
+		}
+
+		status := CheckFailureReport(tempDir, "test-123")
+
+		if !status.Exists {
+			t.Error("expected Exists to be true")
+		}
+		if status.IsFilled {
+			t.Error("expected IsFilled to be false for partially filled report")
+		}
+		if !status.WhatWasAttempted {
+			t.Error("expected WhatWasAttempted to be true (was filled)")
+		}
+		if status.Details {
+			t.Error("expected Details to be false (still has placeholder)")
+		}
+		if !status.RootCauseAnalysis {
+			t.Error("expected RootCauseAnalysis to be true (was filled)")
+		}
+		if status.WhatShouldDifferent {
+			t.Error("expected WhatShouldDifferent to be false (still has placeholder)")
+		}
+		if len(status.UnfilledSections) != 2 {
+			t.Errorf("expected 2 unfilled sections, got %d: %v", len(status.UnfilledSections), status.UnfilledSections)
+		}
+	})
+}
+
+func TestFormatFailureReportGateError(t *testing.T) {
+	status := &FailureReportStatus{
+		Exists:           true,
+		FilePath:         "/tmp/test/.orch/workspace/og-test/FAILURE_REPORT.md",
+		WorkspaceName:    "og-test",
+		IsFilled:         false,
+		UnfilledSections: []string{"What was attempted", "Root cause analysis"},
+	}
+
+	errMsg := FormatFailureReportGateError(status, "test-123")
+
+	// Check error message contains key information
+	if !strings.Contains(errMsg, "FAILURE_REPORT.md has unfilled sections") {
+		t.Error("expected error to mention unfilled sections")
+	}
+	if !strings.Contains(errMsg, status.FilePath) {
+		t.Error("expected error to contain file path")
+	}
+	if !strings.Contains(errMsg, "What was attempted") {
+		t.Error("expected error to list unfilled section")
+	}
+	if !strings.Contains(errMsg, "Root cause analysis") {
+		t.Error("expected error to list unfilled section")
+	}
+	if !strings.Contains(errMsg, "--skip-failure-review") {
+		t.Error("expected error to mention bypass flag")
+	}
+	if !strings.Contains(errMsg, "test-123") {
+		t.Error("expected error to include beads ID")
+	}
+}

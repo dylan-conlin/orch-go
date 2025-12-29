@@ -912,3 +912,135 @@ func GenerateServerContext(projectDir string) string {
 
 // NOTE: EcosystemFilePath, GenerateEcosystemContext, ExtractQuickReference,
 // and IsEcosystemRepo are now defined in ecosystem.go
+
+// FailureReportStatus represents the result of checking a FAILURE_REPORT.md file.
+type FailureReportStatus struct {
+	Exists              bool     // Whether a FAILURE_REPORT.md exists
+	FilePath            string   // Path to the FAILURE_REPORT.md file
+	WorkspaceName       string   // Name of the workspace containing the report
+	IsFilled            bool     // Whether key sections have been filled out
+	UnfilledSections    []string // Names of sections that still have placeholders
+	WhatWasAttempted    bool     // Whether "What was attempted" has been filled
+	Details             bool     // Whether "Details" under Failure Summary has been filled
+	RootCauseAnalysis   bool     // Whether "Root cause analysis" has been filled
+	WhatShouldDifferent bool     // Whether "If yes, what should be different" has been filled
+}
+
+// Placeholders that indicate unfilled sections in FAILURE_REPORT.md.
+// These are the template placeholders that should be replaced with actual content.
+var failureReportPlaceholders = []string{
+	"[Brief description of what the agent was trying to do]",
+	"[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]",
+	"[If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]",
+	"[Suggestion 1 - different approach]",
+}
+
+// CheckFailureReport checks if a FAILURE_REPORT.md exists for the given beads ID
+// and whether it has been filled out. Returns a status struct describing the state.
+//
+// This implements the "Gate Over Remind" principle: we don't just remind that the
+// file exists, we gate respawning on it being filled out properly.
+func CheckFailureReport(projectDir, beadsID string) *FailureReportStatus {
+	status := &FailureReportStatus{}
+
+	// Find workspace directory for this beads ID
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return status // No workspace directory, no failure report
+	}
+
+	// Look for FAILURE_REPORT.md in any workspace that was spawned for this beads ID
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		workspacePath := filepath.Join(workspaceDir, entry.Name())
+		reportPath := filepath.Join(workspacePath, "FAILURE_REPORT.md")
+
+		// Check if FAILURE_REPORT.md exists
+		if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+			continue
+		}
+
+		// Found a FAILURE_REPORT.md - check if it's for this beads ID
+		// First check the SPAWN_CONTEXT.md to confirm this workspace was for this issue
+		spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		if content, err := os.ReadFile(spawnContextPath); err == nil {
+			contentStr := string(content)
+			// Look for "spawned from beads issue: **{beadsID}**" or "beads issue: **{beadsID}**"
+			if !strings.Contains(contentStr, beadsID) {
+				continue // This workspace is for a different issue
+			}
+		} else {
+			continue // Can't read SPAWN_CONTEXT.md, skip this workspace
+		}
+
+		// This workspace was for our beads ID and has a FAILURE_REPORT.md
+		status.Exists = true
+		status.FilePath = reportPath
+		status.WorkspaceName = entry.Name()
+
+		// Read and analyze the failure report
+		content, err := os.ReadFile(reportPath)
+		if err != nil {
+			return status // Exists but can't read - report as unfilled
+		}
+
+		contentStr := string(content)
+		status.IsFilled = true // Assume filled until we find placeholders
+
+		// Check each key section for placeholder content
+		for _, placeholder := range failureReportPlaceholders {
+			if strings.Contains(contentStr, placeholder) {
+				status.IsFilled = false
+
+				// Determine which section this placeholder belongs to
+				switch placeholder {
+				case "[Brief description of what the agent was trying to do]":
+					status.UnfilledSections = append(status.UnfilledSections, "What was attempted")
+				case "[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]":
+					status.UnfilledSections = append(status.UnfilledSections, "Details")
+				case "[If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]":
+					status.UnfilledSections = append(status.UnfilledSections, "Root cause analysis")
+				case "[Suggestion 1 - different approach]":
+					status.UnfilledSections = append(status.UnfilledSections, "What should be different")
+				}
+			}
+		}
+
+		// Set individual field flags
+		status.WhatWasAttempted = !strings.Contains(contentStr, "[Brief description of what the agent was trying to do]")
+		status.Details = !strings.Contains(contentStr, "[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]")
+		status.RootCauseAnalysis = !strings.Contains(contentStr, "[If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]")
+		status.WhatShouldDifferent = !strings.Contains(contentStr, "[Suggestion 1 - different approach]")
+
+		// We found the failure report for this issue - return status
+		return status
+	}
+
+	return status // No failure report found
+}
+
+// FormatFailureReportGateError formats a user-friendly error message when
+// the failure report gate blocks a spawn.
+func FormatFailureReportGateError(status *FailureReportStatus, beadsID string) string {
+	var sb strings.Builder
+
+	sb.WriteString("⛔ FAILURE_REPORT.md has unfilled sections\n\n")
+	sb.WriteString("Before respawning, fill out the failure report to capture learning:\n\n")
+	sb.WriteString(fmt.Sprintf("  File: %s\n\n", status.FilePath))
+	sb.WriteString("  Unfilled sections:\n")
+	for _, section := range status.UnfilledSections {
+		sb.WriteString(fmt.Sprintf("    - %s\n", section))
+	}
+	sb.WriteString("\nWhy this gate exists:\n")
+	sb.WriteString("  • Prevents repeating the same failures\n")
+	sb.WriteString("  • Captures context for the next agent\n")
+	sb.WriteString("  • Creates institutional memory about what didn't work\n")
+	sb.WriteString("\nTo bypass (not recommended):\n")
+	sb.WriteString(fmt.Sprintf("  orch spawn --skip-failure-review --issue %s ...\n", beadsID))
+
+	return sb.String()
+}
