@@ -13,7 +13,9 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/sessions"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -198,29 +200,87 @@ func runSessionStatus() error {
 	// Calculate duration
 	duration := time.Since(session.Started)
 
-	fmt.Printf("Current session:\n")
-	fmt.Printf("  ID:       %s\n", session.ID)
-	fmt.Printf("  Started:  %s\n", session.Started.Format("2006-01-02 15:04:05"))
-	fmt.Printf("  Duration: %s\n", formatDuration(duration))
+	// Header with session ID
+	fmt.Printf("Session: %s\n", session.ID)
+	fmt.Printf("Started: %s (%s ago)\n",
+		session.Started.Format("2006-01-02 15:04"),
+		formatDuration(duration))
+
+	// Goal
 	if session.Goal != "" {
-		fmt.Printf("  Goal:     %s\n", session.Goal)
-	}
-	if session.FocusID != "" {
-		fmt.Printf("  Focus:    %s\n", session.FocusID)
+		fmt.Printf("Goal: %s\n", session.Goal)
 	}
 
-	// Show spawned agents
+	// Spawns this session
+	fmt.Println()
 	if len(session.Spawns) > 0 {
-		fmt.Printf("\nSpawned agents (%d):\n", len(session.Spawns))
-		for _, spawn := range session.Spawns {
-			age := formatDuration(time.Since(spawn.SpawnedAt))
-			fmt.Printf("  - %s (%s) - %s ago\n", spawn.BeadsID, spawn.Skill, age)
+		fmt.Printf("Spawns this session: %d\n", len(session.Spawns))
+		for _, spawnRecord := range session.Spawns {
+			// Get spawn status from beads
+			status := getSpawnStatus(spawnRecord.BeadsID)
+			fmt.Printf("  - %s (%s)\n", spawnRecord.BeadsID, status)
 		}
 	} else {
-		fmt.Printf("\nNo agents spawned yet\n")
+		fmt.Println("Spawns this session: 0")
+	}
+
+	// Active agents from OpenCode
+	activeCount := countActiveAgents()
+	fmt.Println()
+	fmt.Printf("Active agents: %d\n", activeCount)
+	if activeCount > 0 {
+		fmt.Println("  Run `orch status` for details.")
 	}
 
 	return nil
+}
+
+// getSpawnStatus returns the status of a spawn (complete, in_progress, etc.)
+// by checking beads comments for Phase: Complete.
+func getSpawnStatus(beadsID string) string {
+	// Check if phase complete via beads
+	isComplete, _ := verify.IsPhaseComplete(beadsID)
+	if isComplete {
+		return "complete"
+	}
+	return "in_progress"
+}
+
+// countActiveAgents returns the count of active agents from OpenCode.
+// An agent is considered active if:
+// 1. Updated within last 30 minutes
+// 2. Has a parseable beadsID (is orch-spawned)
+// 3. Has not reported Phase: Complete
+func countActiveAgents() int {
+	client := opencode.NewClient(serverURL)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return 0
+	}
+
+	now := time.Now()
+	staleThreshold := 30 * time.Minute
+	activeCount := 0
+
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		idleTime := now.Sub(updatedAt)
+		if idleTime >= staleThreshold {
+			continue // stale session
+		}
+		// Only count sessions with parseable beadsID (orch-spawned agents)
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" {
+			continue // not an orch-spawned agent
+		}
+		// Exclude completed agents
+		if isComplete, _ := verify.IsPhaseComplete(beadsID); isComplete {
+			continue
+		}
+		activeCount++
+	}
+
+	return activeCount
 }
 
 func runSessionEnd() error {
