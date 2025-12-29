@@ -6,8 +6,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -87,11 +89,18 @@ var sessionEndCmd = &cobra.Command{
 	Short: "End the current session",
 	Long: `End the current orchestrator session.
 
-Clears the active session state. Use 'orch handoff' to generate a handoff
-document before ending if you want to preserve context for the next session.
+Generates a handoff document with D.E.K.N. synthesis sections, saves it to
+the session directory, and clears session state.
+
+If there are in-progress agents, you'll be warned and can choose to continue
+or abort.
+
+Use --no-handoff to skip handoff generation and just clear session state.
 
 Examples:
-  orch session end     # End current session`,
+  orch session end                 # End with handoff generation
+  orch session end --no-handoff    # Just clear session state
+  orch session end --force         # Skip in-progress agent warning`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSessionEnd()
 	},
@@ -100,10 +109,17 @@ Examples:
 var (
 	// Session start flags
 	sessionStartIssue string
+
+	// Session end flags
+	sessionEndNoHandoff bool
+	sessionEndForce     bool
 )
 
 func init() {
 	sessionStartCmd.Flags().StringVar(&sessionStartIssue, "issue", "", "Beads issue ID to associate with focus")
+
+	sessionEndCmd.Flags().BoolVar(&sessionEndNoHandoff, "no-handoff", false, "Skip handoff generation, just clear session state")
+	sessionEndCmd.Flags().BoolVar(&sessionEndForce, "force", false, "Skip in-progress agent warning")
 
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStatusCmd)
@@ -289,17 +305,121 @@ func runSessionEnd() error {
 		return fmt.Errorf("failed to initialize session store: %w", err)
 	}
 
-	session, err := store.End()
-	if err != nil {
-		if err.Error() == "no active session" {
-			fmt.Println("No active session to end")
-			return nil
-		}
-		return fmt.Errorf("failed to end session: %w", err)
+	session := store.Get()
+	if session == nil {
+		fmt.Println("No active session to end")
+		return nil
 	}
 
 	// Calculate duration
 	duration := time.Since(session.Started)
+
+	// Print session header
+	fmt.Printf("Session %s ending...\n", session.ID)
+	fmt.Printf("Duration: %s\n", formatDuration(duration))
+	if session.Goal != "" {
+		fmt.Printf("Goal: %s\n", session.Goal)
+	}
+
+	// Count spawns by status
+	completeCount, inProgressCount := countSpawnsByStatus(session.Spawns)
+	fmt.Printf("Spawns: %d (%d complete, %d in_progress)\n",
+		len(session.Spawns), completeCount, inProgressCount)
+
+	// Warn about in-progress agents unless --force
+	if inProgressCount > 0 && !sessionEndForce {
+		fmt.Println()
+		fmt.Printf("⚠️  %d agent(s) still in progress:\n", inProgressCount)
+		for _, spawn := range session.Spawns {
+			if getSpawnStatus(spawn.BeadsID) == "in_progress" {
+				fmt.Printf("   - %s (%s)\n", spawn.BeadsID, spawn.Skill)
+			}
+		}
+		fmt.Println()
+		fmt.Print("Continue ending session? (y/n): ")
+
+		reader := bufio.NewReader(os.Stdin)
+		response, _ := reader.ReadString('\n')
+		response = strings.ToLower(strings.TrimSpace(response))
+		if response != "y" && response != "yes" {
+			fmt.Println("Session end cancelled.")
+			return nil
+		}
+	}
+
+	// Handle --no-handoff flag
+	if sessionEndNoHandoff {
+		return endSessionWithoutHandoff(store, session, duration)
+	}
+
+	// Generate handoff
+	fmt.Println()
+	fmt.Println("Generating handoff document...")
+
+	handoffData, err := gatherHandoffData()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to gather handoff data: %v\n", err)
+		fmt.Println("Continuing without handoff...")
+		return endSessionWithoutHandoff(store, session, duration)
+	}
+
+	// Prompt for D.E.K.N. synthesis sections (Knowledge and Next)
+	fmt.Println()
+	fmt.Println("D.E.K.N. Synthesis (required for handoff):")
+	fmt.Println("─────────────────────────────────────────────")
+
+	reader := bufio.NewReader(os.Stdin)
+
+	// Knowledge prompt
+	fmt.Println()
+	fmt.Println("Knowledge (What was learned this session?):")
+	fmt.Println("  Patterns discovered, insights gained, or lessons learned.")
+	fmt.Print("  > ")
+	knowledge, _ := reader.ReadString('\n')
+	knowledge = strings.TrimSpace(knowledge)
+	if knowledge == "" {
+		fmt.Println("  (skipped)")
+	}
+	handoffData.DEKN.Knowledge = knowledge
+
+	// Next prompt
+	fmt.Println()
+	fmt.Println("Next (Recommended actions for next session?):")
+	fmt.Println("  What should the next session prioritize?")
+	fmt.Print("  > ")
+	next, _ := reader.ReadString('\n')
+	next = strings.TrimSpace(next)
+	if next == "" {
+		fmt.Println("  (skipped)")
+	}
+	handoffData.DEKN.Next = next
+
+	// Generate markdown
+	markdown, err := generateHandoffMarkdown(handoffData)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to generate handoff markdown: %v\n", err)
+		return endSessionWithoutHandoff(store, session, duration)
+	}
+
+	// Save to session directory
+	sessionDir := getSessionDirectory(session.Started)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create session directory: %v\n", err)
+	} else {
+		handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+		if err := os.WriteFile(handoffPath, []byte(markdown), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write handoff file: %v\n", err)
+		} else {
+			fmt.Println()
+			fmt.Printf("Handoff saved to: %s\n", handoffPath)
+		}
+	}
+
+	// End the session
+	_, err = store.End()
+	if err != nil {
+		return fmt.Errorf("failed to end session: %w", err)
+	}
 
 	// Log the session end
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -307,27 +427,75 @@ func runSessionEnd() error {
 		Type:      "session.orchestrator.ended",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"session_id": session.ID,
-			"goal":       session.Goal,
-			"duration":   duration.Seconds(),
-			"spawns":     len(session.Spawns),
+			"session_id":      session.ID,
+			"goal":            session.Goal,
+			"duration":        duration.Seconds(),
+			"spawns":          len(session.Spawns),
+			"spawns_complete": completeCount,
+			"handoff_saved":   true,
 		},
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	fmt.Printf("Session ended:\n")
-	fmt.Printf("  ID:       %s\n", session.ID)
-	fmt.Printf("  Duration: %s\n", formatDuration(duration))
-	if session.Goal != "" {
-		fmt.Printf("  Goal:     %s\n", session.Goal)
-	}
-	fmt.Printf("  Spawns:   %d agents\n", len(session.Spawns))
-
-	fmt.Println("\nTip: Run 'orch handoff' to generate a handoff document for the next session")
+	fmt.Println()
+	fmt.Println("Session ended.")
 
 	return nil
+}
+
+// countSpawnsByStatus counts spawns by their completion status.
+func countSpawnsByStatus(spawns []sessions.SpawnRecord) (complete, inProgress int) {
+	for _, spawn := range spawns {
+		if getSpawnStatus(spawn.BeadsID) == "complete" {
+			complete++
+		} else {
+			inProgress++
+		}
+	}
+	return
+}
+
+// endSessionWithoutHandoff ends the session without generating a handoff document.
+func endSessionWithoutHandoff(store *sessions.OrchestratorStore, session *sessions.OrchestratorSession, duration time.Duration) error {
+	_, err := store.End()
+	if err != nil {
+		return fmt.Errorf("failed to end session: %w", err)
+	}
+
+	completeCount, _ := countSpawnsByStatus(session.Spawns)
+
+	// Log the session end
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "session.orchestrator.ended",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"session_id":      session.ID,
+			"goal":            session.Goal,
+			"duration":        duration.Seconds(),
+			"spawns":          len(session.Spawns),
+			"spawns_complete": completeCount,
+			"handoff_saved":   false,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	fmt.Println()
+	fmt.Println("Session ended (no handoff generated).")
+	fmt.Println("Tip: Run 'orch handoff' to generate a handoff document for the next session")
+
+	return nil
+}
+
+// getSessionDirectory returns the session directory path for the given time.
+// Format: ~/.orch/session/YYYY-MM-DD/
+func getSessionDirectory(t time.Time) string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".orch", "session", t.Format("2006-01-02"))
 }
 
 // Note: formatDuration is defined in wait.go and shared across commands
