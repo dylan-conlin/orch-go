@@ -426,3 +426,138 @@ func TestResolveArtifactPath(t *testing.T) {
 		}
 	})
 }
+
+// Tests for ecosystem filtering (--global post-filter)
+
+func TestExtractProjectNameFromPath(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected string
+	}{
+		{"/Users/dylan/Documents/personal/orch-go/.kb/investigations/foo.md", "orch-go"},
+		{"/Users/dylan/orch-cli/.kb/decisions/bar.md", "orch-cli"},
+		{"/home/user/beads/.kb/investigations/test.md", "beads"},
+		{"/path/to/skillc/.kb/decisions/decision.md", "skillc"},
+		{"/path/to/random-project/.kb/investigations/inv.md", "random-project"},
+		// Fallback case - no .kb/ in path
+		{"/path/to/dir/file.md", "dir"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := extractProjectNameFromPath(tt.path)
+			if result != tt.expected {
+				t.Errorf("extractProjectNameFromPath(%q) = %q, want %q", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFilterArtifactsToEcosystem(t *testing.T) {
+	artifacts := []KBArtifact{
+		{Name: "inv1", Path: "/Users/dylan/orch-go/.kb/investigations/inv1.md", Title: "Orch-go Investigation"},
+		{Name: "inv2", Path: "/Users/dylan/random-project/.kb/investigations/inv2.md", Title: "Random Investigation"},
+		{Name: "inv3", Path: "/Users/dylan/beads/.kb/investigations/inv3.md", Title: "Beads Investigation"},
+		{Name: "inv4", Path: "/Users/dylan/some-app/.kb/investigations/inv4.md", Title: "Some App Investigation"},
+		{Name: "inv5", Path: "/Users/dylan/skillc/.kb/decisions/dec1.md", Title: "Skillc Decision"},
+	}
+
+	filtered := filterArtifactsToEcosystem(artifacts)
+
+	// Should only include orch-go, beads, skillc (ecosystem repos)
+	if len(filtered) != 3 {
+		t.Errorf("Expected 3 artifacts after filtering, got %d", len(filtered))
+	}
+
+	// Check that correct ones are included
+	names := make(map[string]bool)
+	for _, a := range filtered {
+		names[a.Name] = true
+	}
+
+	if !names["inv1"] {
+		t.Error("Expected inv1 (orch-go) to be included")
+	}
+	if !names["inv3"] {
+		t.Error("Expected inv3 (beads) to be included")
+	}
+	if !names["inv5"] {
+		t.Error("Expected inv5 (skillc) to be included")
+	}
+	if names["inv2"] {
+		t.Error("Expected inv2 (random-project) to be excluded")
+	}
+	if names["inv4"] {
+		t.Error("Expected inv4 (some-app) to be excluded")
+	}
+}
+
+func TestFilterArtifactsToEcosystemEmpty(t *testing.T) {
+	// Empty input should return empty
+	result := filterArtifactsToEcosystem([]KBArtifact{})
+	if len(result) != 0 {
+		t.Errorf("Expected empty result, got %d items", len(result))
+	}
+
+	// Nil input should return nil
+	result = filterArtifactsToEcosystem(nil)
+	if result != nil {
+		t.Error("Expected nil result for nil input")
+	}
+}
+
+func TestFilterToEcosystem(t *testing.T) {
+	input := &KBContextResult{
+		Constraints: []KNEntry{{Content: "constraint1"}},
+		Decisions:   []KNEntry{{Content: "decision1"}},
+		Attempts:    []KNEntry{{Content: "attempt1"}},
+		Questions:   []KNEntry{{Content: "question1"}},
+		Investigations: []KBArtifact{
+			{Name: "inv1", Path: "/Users/dylan/orch-go/.kb/investigations/inv1.md"},
+			{Name: "inv2", Path: "/Users/dylan/random/.kb/investigations/inv2.md"},
+		},
+		KBDecisions: []KBArtifact{
+			{Name: "dec1", Path: "/Users/dylan/beads/.kb/decisions/dec1.md"},
+			{Name: "dec2", Path: "/Users/dylan/other/.kb/decisions/dec2.md"},
+		},
+	}
+
+	result := filterToEcosystem(input)
+
+	// kn entries should be unchanged (not filtered)
+	if len(result.Constraints) != 1 {
+		t.Error("Constraints should not be filtered")
+	}
+	if len(result.Decisions) != 1 {
+		t.Error("Decisions should not be filtered")
+	}
+	if len(result.Attempts) != 1 {
+		t.Error("Attempts should not be filtered")
+	}
+	if len(result.Questions) != 1 {
+		t.Error("Questions should not be filtered")
+	}
+
+	// Investigations should be filtered to ecosystem only
+	if len(result.Investigations) != 1 {
+		t.Errorf("Expected 1 investigation after filtering, got %d", len(result.Investigations))
+	}
+	if result.Investigations[0].Name != "inv1" {
+		t.Error("Expected inv1 (orch-go) to remain")
+	}
+
+	// KBDecisions should be filtered to ecosystem only
+	if len(result.KBDecisions) != 1 {
+		t.Errorf("Expected 1 decision after filtering, got %d", len(result.KBDecisions))
+	}
+	if result.KBDecisions[0].Name != "dec1" {
+		t.Error("Expected dec1 (beads) to remain")
+	}
+}
+
+func TestFilterToEcosystemNil(t *testing.T) {
+	result := filterToEcosystem(nil)
+	if result != nil {
+		t.Error("Expected nil result for nil input")
+	}
+}
