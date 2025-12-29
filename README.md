@@ -4,17 +4,33 @@ Go CLI for OpenCode orchestration - spawn sessions, monitor events, query sessio
 
 ## Installation
 
-Build the CLI using the Cobra-based implementation (recommended):
+Build and install the CLI using make (recommended):
 
 ```bash
-# Build from cmd/orch directory
-go build -o orch-go ./cmd/orch
+# Build and install (creates symlink ~/bin/orch → build/orch)
+make install
 
-# Or use make
+# Or just build (symlink makes this sufficient after first install)
 make build
 ```
 
-The legacy monolithic `main.go` at project root is deprecated and only supports `spawn`, `monitor`, and `ask` commands.
+The install target creates a symlink from `~/bin/orch` to the build output. This means:
+- `make build` automatically updates what you run (no separate install step needed)
+- The source repo is the single source of truth for the binary
+- Eliminates the "forgot to run `make install`" problem
+
+**First-time setup:**
+```bash
+# Ensure ~/bin is in your PATH (add to ~/.zshrc if needed)
+export PATH="$HOME/bin:$PATH"
+
+# Run install once to create the symlink
+make install
+```
+
+After the initial install, just `make build` is sufficient to update the CLI.
+
+**Note:** The legacy monolithic `main.go` at project root is deprecated and only supports `spawn`, `monitor`, and `ask` commands.
 
 ## Usage
 
