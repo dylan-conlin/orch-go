@@ -1478,6 +1478,19 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Determine spawn tier
 	tier := determineSpawnTier(skillName, spawnLight, spawnFull)
 
+	// UI task auto-detection - auto-add --mcp playwright when UI work detected
+	// Only applies when:
+	// - No explicit --mcp was provided
+	// - --no-mcp was not set
+	effectiveMCP := spawnMCP
+	if spawnMCP == "" && !spawnNoMCP {
+		uiResult := spawn.DetectUITask(task, projectDir)
+		if uiResult.ShouldAutoMCP {
+			effectiveMCP = "playwright"
+			fmt.Fprint(os.Stderr, spawn.FormatUIDetectionMessage(uiResult))
+		}
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:              task,
@@ -1491,7 +1504,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		Mode:              spawnMode,
 		Validation:        spawnValidation,
 		Model:             resolvedModel.Format(),
-		MCP:               spawnMCP,
+		MCP:               effectiveMCP,
 		Tier:              tier,
 		NoTrack:           spawnNoTrack,
 		SkipArtifactCheck: spawnSkipArtifactCheck,
@@ -2570,12 +2583,15 @@ type AgentInfo struct {
 	Title        string               `json:"title,omitempty"`
 	Window       string               `json:"window,omitempty"`
 	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
+	NoComments   bool                 `json:"no_comments,omitempty"`   // True if no beads comments after >1 min (potential failed-to-start)
 	Task         string               `json:"task,omitempty"`          // Task description (truncated)
 	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
 	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
 	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
-	IsCompleted  bool                 `json:"is_completed,omitempty"`  // True if beads issue is closed
-	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`        // Token usage for the session
+	IsCompleted   bool                 `json:"is_completed,omitempty"`   // True if beads issue is closed
+	IsBlocked     bool                 `json:"is_blocked,omitempty"`     // True if agent reported BLOCKED: comment
+	BlockedReason string               `json:"blocked_reason,omitempty"` // Reason from BLOCKED: comment
+	Tokens        *opencode.TokenStats `json:"tokens,omitempty"`         // Token usage for the session
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -2783,10 +2799,27 @@ func runStatus(serverURL string) error {
 		// Get phase from pre-fetched comments
 		var phase, task string
 		var isCompleted bool
-		if comments, ok := commentsMap[ta.beadsID]; ok {
+		var noComments bool
+		var isBlocked bool
+		var blockedReason string
+		comments, hasComments := commentsMap[ta.beadsID]
+		if hasComments && len(comments) > 0 {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
 				phase = phaseStatus.Phase
+			}
+			if phaseStatus.IsBlocked {
+				isBlocked = true
+				blockedReason = phaseStatus.BlockedReason
+			}
+		} else {
+			// No comments for this agent - check if session is > 1 min old
+			// to determine if this is a failed-to-start situation
+			if session != nil {
+				createdAt := time.Unix(session.Time.Created/1000, 0)
+				if now.Sub(createdAt) > time.Minute {
+					noComments = true
+				}
 			}
 		}
 		// Get task and check closed status from pre-fetched issues
@@ -2796,18 +2829,21 @@ func runStatus(serverURL string) error {
 		}
 
 		agents = append(agents, AgentInfo{
-			SessionID:    sessionID,
-			BeadsID:      ta.beadsID,
-			Skill:        ta.skill,
-			Title:        ta.title,
-			Runtime:      runtime,
-			Window:       ta.window,
-			Phase:        phase,
-			Task:         task,
-			Project:      ta.project,
-			IsPhantom:    isPhantom,
-			IsProcessing: isProcessing,
-			IsCompleted:  isCompleted,
+			SessionID:     sessionID,
+			BeadsID:       ta.beadsID,
+			Skill:         ta.skill,
+			Title:         ta.title,
+			Runtime:       runtime,
+			Window:        ta.window,
+			Phase:         phase,
+			Task:          task,
+			Project:       ta.project,
+			IsPhantom:     isPhantom,
+			IsProcessing:  isProcessing,
+			IsCompleted:   isCompleted,
+			NoComments:    noComments,
+			IsBlocked:     isBlocked,
+			BlockedReason: blockedReason,
 		})
 	}
 
@@ -2829,10 +2865,24 @@ func runStatus(serverURL string) error {
 		// Get phase from pre-fetched comments
 		var phase, task string
 		var isCompleted bool
-		if comments, ok := commentsMap[oa.beadsID]; ok {
+		var noComments bool
+		var isBlocked bool
+		var blockedReason string
+		comments, hasComments := commentsMap[oa.beadsID]
+		if hasComments && len(comments) > 0 {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
 				phase = phaseStatus.Phase
+			}
+			if phaseStatus.IsBlocked {
+				isBlocked = true
+				blockedReason = phaseStatus.BlockedReason
+			}
+		} else {
+			// No comments for this agent - check if session is > 1 min old
+			// to determine if this is a failed-to-start situation
+			if now.Sub(createdAt) > time.Minute {
+				noComments = true
 			}
 		}
 		if issue != nil {
@@ -2841,17 +2891,20 @@ func runStatus(serverURL string) error {
 		}
 
 		agents = append(agents, AgentInfo{
-			SessionID:    oa.session.ID,
-			Title:        oa.session.Title,
-			Runtime:      runtime,
-			BeadsID:      oa.beadsID,
-			Skill:        oa.skill,
-			Phase:        phase,
-			Task:         task,
-			Project:      oa.project,
-			IsPhantom:    isPhantom,
-			IsProcessing: isProcessing,
-			IsCompleted:  isCompleted,
+			SessionID:     oa.session.ID,
+			Title:         oa.session.Title,
+			Runtime:       runtime,
+			BeadsID:       oa.beadsID,
+			Skill:         oa.skill,
+			Phase:         phase,
+			Task:          task,
+			Project:       oa.project,
+			IsPhantom:     isPhantom,
+			IsProcessing:  isProcessing,
+			IsCompleted:   isCompleted,
+			NoComments:    noComments,
+			IsBlocked:     isBlocked,
+			BlockedReason: blockedReason,
 		})
 	}
 
@@ -3326,6 +3379,14 @@ func getAgentStatus(agent AgentInfo) string {
 	}
 	if agent.IsPhantom {
 		return "phantom"
+	}
+	if agent.IsBlocked {
+		// Agent explicitly reported BLOCKED: comment - needs orchestrator attention
+		return "🚫 blocked"
+	}
+	if agent.NoComments {
+		// Agent has session but no beads comments after >1 min - potential failed-to-start
+		return "⚠️ stalled"
 	}
 	if agent.IsProcessing {
 		return "running"

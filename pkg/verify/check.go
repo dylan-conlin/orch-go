@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
@@ -28,9 +29,11 @@ type Issue struct {
 
 // PhaseStatus represents the current phase of an agent.
 type PhaseStatus struct {
-	Phase   string // Current phase (e.g., "Complete", "Implementing", "Planning")
-	Summary string // Optional summary from the phase comment
-	Found   bool   // Whether a Phase: comment was found
+	Phase         string // Current phase (e.g., "Complete", "Implementing", "Planning")
+	Summary       string // Optional summary from the phase comment
+	Found         bool   // Whether a Phase: comment was found
+	IsBlocked     bool   // Whether a BLOCKED comment was found
+	BlockedReason string // The reason from the BLOCKED comment
 }
 
 // GetComments retrieves comments for a beads issue.
@@ -71,23 +74,45 @@ func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 
 // ParsePhaseFromComments extracts the latest Phase status from comments.
 // Looks for comments matching "Phase: <phase> - <summary>" pattern.
+// Also detects BLOCKED: comments and sets IsBlocked accordingly.
+// If a Phase update occurs after a BLOCKED comment, the blocked status is cleared
+// (agent resumed work after being unblocked).
 func ParsePhaseFromComments(comments []Comment) PhaseStatus {
 	// Pattern: "Phase: <phase>" optionally followed by " - <summary>"
 	phasePattern := regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
+	// Pattern: "BLOCKED:" followed by reason
+	blockedPattern := regexp.MustCompile(`(?i)BLOCKED:\s*(.*)`)
 
 	var latestPhase PhaseStatus
+	latestBlockedIdx := -1 // Track index of latest BLOCKED comment
+	latestPhaseIdx := -1   // Track index of latest Phase comment
 
-	for _, comment := range comments {
+	for idx, comment := range comments {
+		// Check for Phase: pattern
 		matches := phasePattern.FindStringSubmatch(comment.Text)
 		if len(matches) >= 2 {
-			latestPhase = PhaseStatus{
-				Phase: matches[1],
-				Found: true,
-			}
+			latestPhase.Phase = matches[1]
+			latestPhase.Found = true
 			if len(matches) >= 3 && matches[2] != "" {
 				latestPhase.Summary = strings.TrimSpace(matches[2])
 			}
+			latestPhaseIdx = idx
 		}
+
+		// Check for BLOCKED: pattern
+		blockedMatches := blockedPattern.FindStringSubmatch(comment.Text)
+		if len(blockedMatches) >= 2 {
+			latestPhase.IsBlocked = true
+			latestPhase.BlockedReason = strings.TrimSpace(blockedMatches[1])
+			latestBlockedIdx = idx
+		}
+	}
+
+	// If there was a Phase update after the BLOCKED comment, clear the blocked status
+	// (agent reported progress after being blocked, so it's no longer blocked)
+	if latestPhase.IsBlocked && latestPhaseIdx > latestBlockedIdx {
+		latestPhase.IsBlocked = false
+		latestPhase.BlockedReason = ""
 	}
 
 	return latestPhase
@@ -366,6 +391,7 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // 4. Visual verification for web/ changes
 // 5. Test execution evidence for code changes (blocks when code modified without test output)
 // 6. Build verification for Go projects (blocks when Go files modified but build fails)
+// 7. Git commit verification for code-producing skills (blocks when no commits since spawn)
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
@@ -459,6 +485,18 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 			result.Errors = append(result.Errors, buildResult.Errors...)
 		}
 		result.Warnings = append(result.Warnings, buildResult.Warnings...)
+	}
+
+	// Verify git commits exist for code-producing skills
+	// This gates completion when a code-producing skill (feature-impl, systematic-debugging)
+	// reports Phase: Complete but has no git commits since spawn time
+	gitCommitResult := VerifyGitCommitsForCompletion(workspacePath, projectDir)
+	if gitCommitResult != nil {
+		if !gitCommitResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, gitCommitResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, gitCommitResult.Warnings...)
 	}
 
 	return result, nil
@@ -866,4 +904,107 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 
 	wg.Wait()
 	return commentMap
+}
+
+// HasBeadsComment checks if a beads issue has any comments.
+// Returns true if at least one comment exists, false otherwise.
+// This is used to detect sessions that spawn but never execute (no Phase report).
+func HasBeadsComment(beadsID string) (bool, error) {
+	comments, err := GetComments(beadsID)
+	if err != nil {
+		return false, err
+	}
+	return len(comments) > 0, nil
+}
+
+// CommentCheckResult contains the result of checking for beads comments.
+type CommentCheckResult struct {
+	HasComments     bool   // Whether any comments exist
+	CommentCount    int    // Number of comments
+	FirstCommentAge int    // Age of first comment in seconds (0 if no comments)
+	HasPhase        bool   // Whether a Phase: comment was found
+	LatestPhase     string // The latest phase reported (empty if none)
+}
+
+// CheckCommentsWithAge checks if a beads issue has comments and returns detailed info.
+// This is used for detecting sessions that may have failed to start.
+func CheckCommentsWithAge(beadsID string) (*CommentCheckResult, error) {
+	comments, err := GetComments(beadsID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &CommentCheckResult{
+		HasComments:  len(comments) > 0,
+		CommentCount: len(comments),
+	}
+
+	if len(comments) > 0 {
+		// Parse phase from comments
+		phaseStatus := ParsePhaseFromComments(comments)
+		result.HasPhase = phaseStatus.Found
+		result.LatestPhase = phaseStatus.Phase
+	}
+
+	return result, nil
+}
+
+// WaitForFirstCommentResult contains the result of waiting for a first comment.
+type WaitForFirstCommentResult struct {
+	Found     bool          // Whether a comment was found within timeout
+	Timeout   bool          // Whether the wait timed out
+	WaitedFor time.Duration // How long we waited before giving up or finding comment
+	HasPhase  bool          // Whether a Phase: comment was found
+	Phase     string        // The phase if found
+	Error     error         // Any error during polling
+}
+
+// WaitForFirstComment polls for the first beads comment with a timeout.
+// This is used after spawning to detect if the session actually started.
+// Returns when either:
+// - A comment is found (success)
+// - Timeout is reached (possible failed-to-start)
+// - An error occurs (unexpected failure)
+//
+// pollInterval controls how frequently to check (default: 5s)
+// timeout controls how long to wait total (default: 60s)
+func WaitForFirstComment(beadsID string, timeout, pollInterval time.Duration) *WaitForFirstCommentResult {
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
+	if pollInterval == 0 {
+		pollInterval = 5 * time.Second
+	}
+
+	startTime := time.Now()
+	deadline := startTime.Add(timeout)
+
+	for time.Now().Before(deadline) {
+		comments, err := GetComments(beadsID)
+		if err != nil {
+			// On error, sleep and retry (daemon might be restarting)
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		if len(comments) > 0 {
+			// Found comment(s)
+			phaseStatus := ParsePhaseFromComments(comments)
+			return &WaitForFirstCommentResult{
+				Found:     true,
+				WaitedFor: time.Since(startTime),
+				HasPhase:  phaseStatus.Found,
+				Phase:     phaseStatus.Phase,
+			}
+		}
+
+		// No comments yet, sleep before next poll
+		time.Sleep(pollInterval)
+	}
+
+	// Timeout reached without finding comments
+	return &WaitForFirstCommentResult{
+		Timeout:   true,
+		WaitedFor: time.Since(startTime),
+	}
 }
