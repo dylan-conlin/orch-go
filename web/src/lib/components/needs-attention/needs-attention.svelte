@@ -78,7 +78,7 @@
 			if (result) {
 				createdIssues[key] = result.id;
 				createdIssues = createdIssues;
-				pendingReviews.markActedOn(agent.workspace_id, item.index);
+				await pendingReviews.markActedOn(agent.workspace_id, item.index);
 			}
 		} catch (error) {
 			console.error('Failed to create issue:', error);

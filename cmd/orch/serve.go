@@ -243,6 +243,9 @@ func runServe(portNum int) error {
 	// POST /api/dismiss-review - dismiss a specific recommendation
 	mux.HandleFunc("/api/dismiss-review", corsHandler(handleDismissReview))
 
+	// POST /api/act-on-review - mark a recommendation as acted on (issue created)
+	mux.HandleFunc("/api/act-on-review", corsHandler(handleActOnReview))
+
 	// GET/PUT /api/config - user configuration settings
 	mux.HandleFunc("/api/config", corsHandler(handleConfig))
 
@@ -274,6 +277,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
+	fmt.Println("  POST /api/act-on-review - Mark recommendation as acted on (issue created)")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
@@ -2828,6 +2832,120 @@ func handleDismissReview(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(DismissReviewResponse{
 		Success: true,
 		Message: fmt.Sprintf("Dismissed recommendation %d", req.Index),
+	})
+}
+
+// ActOnReviewRequest is the request body for POST /api/act-on-review.
+type ActOnReviewRequest struct {
+	WorkspaceID string `json:"workspace_id"`
+	Index       int    `json:"index"` // Index of the recommendation that was acted on
+}
+
+// ActOnReviewResponse is the response for POST /api/act-on-review.
+type ActOnReviewResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleActOnReview marks a synthesis recommendation as acted on (issue created).
+func handleActOnReview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ActOnReviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	if req.WorkspaceID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: false,
+			Error:   "workspace_id is required",
+		})
+		return
+	}
+
+	// Build workspace path
+	workspacePath := filepath.Join(sourceDir, ".orch", "workspace", req.WorkspaceID)
+
+	// Load existing review state
+	reviewState, err := verify.LoadReviewState(workspacePath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to load review state: %v", err),
+		})
+		return
+	}
+
+	// Parse synthesis to get total recommendations
+	synthesis, err := verify.ParseSynthesis(workspacePath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to parse synthesis: %v", err),
+		})
+		return
+	}
+
+	// Validate index
+	if req.Index < 0 || req.Index >= len(synthesis.NextActions) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Invalid index %d (total recommendations: %d)", req.Index, len(synthesis.NextActions)),
+		})
+		return
+	}
+
+	// Check if already reviewed
+	if contains(reviewState.ActedOn, req.Index) || contains(reviewState.Dismissed, req.Index) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: true,
+			Message: "Already reviewed",
+		})
+		return
+	}
+
+	// Add to acted on
+	reviewState.ActedOn = append(reviewState.ActedOn, req.Index)
+	reviewState.TotalRecommendations = len(synthesis.NextActions)
+	reviewState.WorkspaceID = req.WorkspaceID
+	if reviewState.ReviewedAt.IsZero() {
+		reviewState.ReviewedAt = time.Now()
+	}
+
+	// Extract beads ID if not set
+	if reviewState.BeadsID == "" {
+		reviewState.BeadsID = extractBeadsIDFromWorkspace(workspacePath)
+	}
+
+	// Save updated state
+	if err := verify.SaveReviewState(workspacePath, reviewState); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ActOnReviewResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to save review state: %v", err),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ActOnReviewResponse{
+		Success: true,
+		Message: fmt.Sprintf("Marked recommendation %d as acted on", req.Index),
 	})
 }
 

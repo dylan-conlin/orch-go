@@ -111,29 +111,55 @@ function createPendingReviewsStore() {
 			}
 		},
 		// Mark a recommendation as acted on (issue created)
-		markActedOn(workspaceId: string, index: number) {
-			update(state => {
-				if (!state) return state;
-				return {
-					...state,
-					total_unreviewed: state.total_unreviewed - 1,
-					agents: state.agents.map(agent => {
-						if (agent.workspace_id !== workspaceId) return agent;
+		async markActedOn(workspaceId: string, index: number): Promise<boolean> {
+			try {
+				const response = await fetch(`${API_BASE}/api/act-on-review`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						workspace_id: workspaceId,
+						index: index
+					})
+				});
+				
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				}
+				
+				const result = await response.json();
+				if (result.success) {
+					// Update local state to reflect the action
+					update(state => {
+						if (!state) return state;
 						return {
-							...agent,
-							unreviewed_count: agent.unreviewed_count - 1,
-							items: agent.items.map(item => {
-								if (item.index !== index) return item;
+							...state,
+							total_unreviewed: state.total_unreviewed - 1,
+							agents: state.agents.map(agent => {
+								if (agent.workspace_id !== workspaceId) return agent;
 								return {
-									...item,
-									acted_on: true,
-									reviewed: true
+									...agent,
+									unreviewed_count: agent.unreviewed_count - 1,
+									items: agent.items.map(item => {
+										if (item.index !== index) return item;
+										return {
+											...item,
+											acted_on: true,
+											reviewed: true
+										};
+									})
 								};
-							})
+							}).filter(agent => agent.unreviewed_count > 0)
 						};
-					}).filter(agent => agent.unreviewed_count > 0)
-				};
-			});
+					});
+					return true;
+				}
+				return false;
+			} catch (error) {
+				console.error('Failed to mark recommendation as acted on:', error);
+				return false;
+			}
 		}
 	};
 }
