@@ -15,12 +15,16 @@ import (
 // OrchEcosystemRepos defines the allowlist of repos that are relevant for orchestration work.
 // Used for tiered filtering: when global search is needed, results are post-filtered to this set.
 var OrchEcosystemRepos = map[string]bool{
-	"orch-go":        true,
-	"orch-cli":       true,
-	"kb-cli":         true,
-	"orch-knowledge": true,
-	"beads":          true,
-	"kn":             true,
+	"orch-go":          true,
+	"orch-cli":         true,
+	"kb-cli":           true,
+	"orch-knowledge":   true,
+	"beads":            true,
+	"beads-ui-svelte":  true,
+	"kn":               true,
+	"glass":            true,
+	"skillc":           true,
+	"agentlog":         true,
 }
 
 // MinMatchesForLocalSearch is the threshold below which we expand to global search.
