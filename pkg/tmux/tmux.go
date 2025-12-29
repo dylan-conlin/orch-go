@@ -84,23 +84,32 @@ func BuildStandaloneCommand(cfg *StandaloneConfig) string {
 // This is the preferred approach for TUI spawning - it connects to a shared
 // server, making sessions visible via API while still showing the TUI.
 type OpencodeAttachConfig struct {
-	ServerURL  string // http://localhost:4096
-	ProjectDir string
-	Model      string
-	SessionID  string // optional: continue existing session
+	ServerURL        string // http://localhost:4096
+	ProjectDir       string
+	Model            string
+	SessionID        string // optional: continue existing session
+	MCPConfigContent string // optional: JSON config for OPENCODE_CONFIG_CONTENT env var
 }
 
 // BuildOpencodeAttachCommand creates the opencode attach mode command string.
 // Attach mode: opencode attach {server_url} --dir {project_dir} --model {model}
 // Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
+// If MCPConfigContent is provided, sets OPENCODE_CONFIG_CONTENT env var for MCP server config.
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	opencodeBin := "opencode"
 	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
 		opencodeBin = bin
 	}
 
-	// Prefix with ORCH_WORKER=1 so the spawned agent knows it's an orch-managed worker
-	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %s --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
+	// Build env vars prefix
+	envPrefix := "ORCH_WORKER=1"
+	if cfg.MCPConfigContent != "" {
+		// Single-quote the JSON to prevent shell interpretation
+		envPrefix += fmt.Sprintf(" OPENCODE_CONFIG_CONTENT='%s'", cfg.MCPConfigContent)
+	}
+
+	// Build command with env prefix
+	cmd := fmt.Sprintf("%s %s attach %s --dir %q", envPrefix, opencodeBin, cfg.ServerURL, cfg.ProjectDir)
 	if cfg.Model != "" {
 		cmd += fmt.Sprintf(" --model %q", cfg.Model)
 	}

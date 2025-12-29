@@ -1200,6 +1200,11 @@ func checkAndAutoSwitchAccount() error {
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
+	// Validate MCP server name early (fail fast before any work)
+	if err := spawn.ValidateMCPName(spawnMCP); err != nil {
+		return err
+	}
+
 	// Check concurrency limit before spawning
 	if err := checkConcurrencyLimit(); err != nil {
 		return err
@@ -1545,6 +1550,15 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
+	// Add MCP config if specified
+	if cfg.MCP != "" {
+		mcpConfigContent, err := spawn.GenerateMCPConfig(cfg.MCP)
+		if err != nil {
+			return fmt.Errorf("failed to generate MCP config: %w", err)
+		}
+		cmd.Env = append(cmd.Env, "OPENCODE_CONFIG_CONTENT="+mcpConfigContent)
+	}
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to get stdout: %w", err)
@@ -1824,8 +1838,20 @@ func startHeadlessSessionAPI(client *opencode.Client, sessionTitle, minimalPromp
 		fmt.Fprintf(os.Stderr, "Creating session via API: title=%s, directory=%s\n", sessionTitle, cfg.ProjectDir)
 	}
 
+	// Generate MCP config if specified
+	var opts *opencode.CreateSessionOptions
+	if cfg.MCP != "" {
+		mcpConfigContent, err := spawn.GenerateMCPConfig(cfg.MCP)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate MCP config: %w", err)
+		}
+		opts = &opencode.CreateSessionOptions{
+			MCPConfigContent: mcpConfigContent,
+		}
+	}
+
 	// Create session via HTTP API with correct directory
-	session, err := client.CreateSession(sessionTitle, cfg.ProjectDir, cfg.Model)
+	session, err := client.CreateSessionWithOptions(sessionTitle, cfg.ProjectDir, cfg.Model, opts)
 	if err != nil {
 		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
 	}
@@ -1869,11 +1895,22 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
+	// Generate MCP config if specified
+	var mcpConfigContent string
+	if cfg.MCP != "" {
+		var err error
+		mcpConfigContent, err = spawn.GenerateMCPConfig(cfg.MCP)
+		if err != nil {
+			return fmt.Errorf("failed to generate MCP config: %w", err)
+		}
+	}
+
 	// Build opencode command using tmux package
 	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
-		ServerURL:  serverURL,
-		ProjectDir: cfg.ProjectDir,
-		Model:      cfg.Model,
+		ServerURL:        serverURL,
+		ProjectDir:       cfg.ProjectDir,
+		Model:            cfg.Model,
+		MCPConfigContent: mcpConfigContent,
 	})
 
 	// Send command and execute

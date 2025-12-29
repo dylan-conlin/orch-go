@@ -437,9 +437,22 @@ type CreateSessionResponse struct {
 	Directory string `json:"directory,omitempty"`
 }
 
+// CreateSessionOptions contains optional configuration for CreateSession.
+type CreateSessionOptions struct {
+	// MCPConfigContent is JSON config content for enabling MCP servers.
+	// Passed via x-opencode-env-OPENCODE_CONFIG_CONTENT header.
+	MCPConfigContent string
+}
+
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
 func (c *Client) CreateSession(title, directory, model string) (*CreateSessionResponse, error) {
+	return c.CreateSessionWithOptions(title, directory, model, nil)
+}
+
+// CreateSessionWithOptions creates a new OpenCode session with additional options.
+// This allows enabling MCP servers via MCPConfigContent.
+func (c *Client) CreateSessionWithOptions(title, directory, model string, opts *CreateSessionOptions) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
@@ -465,6 +478,12 @@ func (c *Client) CreateSession(title, directory, model string) (*CreateSessionRe
 	// Set ORCH_WORKER=1 header to signal this is an orch-managed worker session
 	// This allows the session-context plugin to skip loading orchestrator skill
 	req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
+
+	// Set MCP config content if provided
+	// This enables specific MCP servers for this session
+	if opts != nil && opts.MCPConfigContent != "" {
+		req.Header.Set("x-opencode-env-OPENCODE_CONFIG_CONTENT", opts.MCPConfigContent)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

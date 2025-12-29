@@ -122,6 +122,43 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 	}
 }
 
+func TestBuildOpencodeAttachCommand_MCPConfig(t *testing.T) {
+	cfg := &OpencodeAttachConfig{
+		ServerURL:        "http://localhost:4096",
+		ProjectDir:       "/home/user/project",
+		Model:            "anthropic/claude-opus",
+		MCPConfigContent: `{"mcp":{"glass":{"type":"local","command":["/Users/test/bin/glass","mcp"],"enabled":true}}}`,
+	}
+
+	got := BuildOpencodeAttachCommand(cfg)
+
+	// Should contain MCP config env var
+	if !strings.Contains(got, "OPENCODE_CONFIG_CONTENT=") {
+		t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain OPENCODE_CONFIG_CONTENT=", got)
+	}
+
+	// Should contain the JSON (single-quoted for shell safety)
+	if !strings.Contains(got, `'{"mcp"`) {
+		t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain single-quoted JSON", got)
+	}
+}
+
+func TestBuildOpencodeAttachCommand_NoMCPConfig(t *testing.T) {
+	cfg := &OpencodeAttachConfig{
+		ServerURL:  "http://localhost:4096",
+		ProjectDir: "/home/user/project",
+		Model:      "anthropic/claude-opus",
+		// No MCPConfigContent
+	}
+
+	got := BuildOpencodeAttachCommand(cfg)
+
+	// Should NOT contain MCP config env var when not set
+	if strings.Contains(got, "OPENCODE_CONFIG_CONTENT") {
+		t.Errorf("BuildOpencodeAttachCommand() = %q, should NOT contain OPENCODE_CONFIG_CONTENT when not set", got)
+	}
+}
+
 func TestBuildStandaloneCommand(t *testing.T) {
 
 	tests := []struct {
