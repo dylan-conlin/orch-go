@@ -573,6 +573,27 @@ func UpdateIssueStatus(beadsID, status string) error {
 	return beads.FallbackUpdate(beadsID, status)
 }
 
+// RemoveTriageReadyLabel removes the triage:ready label from a beads issue.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// This should be called after UpdateIssueStatus transitions the issue to in_progress.
+func RemoveTriageReadyLabel(beadsID string) error {
+	const triageReadyLabel = "triage:ready"
+
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		err := client.RemoveLabel(beadsID, triageReadyLabel)
+		if err == nil {
+			return nil
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	return beads.FallbackRemoveLabel(beadsID, triageReadyLabel)
+}
+
 // GetIssue retrieves issue details from beads.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 func GetIssue(beadsID string) (*Issue, error) {

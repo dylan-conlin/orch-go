@@ -802,6 +802,20 @@ func FallbackUpdate(id, status string) error {
 	return nil
 }
 
+// FallbackRemoveLabel removes a label from an issue via bd CLI.
+func FallbackRemoveLabel(id, label string) error {
+	bdPath := findBdPath()
+	cmd := exec.Command(bdPath, "unlabel", id, label)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd unlabel failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // FallbackBlocked retrieves blocked issues via bd CLI.
 // Returns issues with blocked_by information for filtering actionable blockers.
 func FallbackBlocked() ([]BlockedIssue, error) {

@@ -1316,6 +1316,11 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 			// Continue anyway
 		}
+		// Remove triage:ready label since issue is now in_progress
+		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
+			// Don't warn for non-critical label removal - it may not have the label
+			// and that's fine
+		}
 	}
 
 	// Resolve model - convert aliases to full format
