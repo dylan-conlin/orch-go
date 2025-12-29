@@ -1,7 +1,7 @@
 /**
  * Plugin: Log tool action outcomes for behavioral pattern detection.
  *
- * Triggered by: tool.execute.after (Read, Glob, Grep, Bash)
+ * Triggered by: tool.execute.before and tool.execute.after (Read, Glob, Grep, Bash)
  * Purpose: Track action outcomes (success/empty/error) to enable detection
  * of repeated futile actions by the orchestrator.
  *
@@ -14,6 +14,10 @@
  * - Logs to ~/.orch/action-log.jsonl (JSONL format)
  * - Patterns surfaced via 'orch patterns' command
  * - Uses pkg/action ActionEvent format
+ *
+ * Key implementation note: The 'tool.execute.before' hook receives args in output.args,
+ * while 'tool.execute.after' receives title/output/metadata. We store args from the
+ * before hook using callID as the key, then retrieve them in the after hook.
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
@@ -145,6 +149,10 @@ function logAction(event: ActionEvent): void {
 
 /**
  * OpenCode plugin that logs tool action outcomes.
+ *
+ * Uses a Map to store args from tool.execute.before (which has output.args)
+ * and retrieve them in tool.execute.after (which has output.title/output/metadata).
+ * The callID is used as the key to correlate before/after calls.
  */
 export const ActionLogPlugin: Plugin = async ({
   project,
@@ -160,7 +168,28 @@ export const ActionLogPlugin: Plugin = async ({
     workspace = workspaceMatch[1]
   }
 
+  // Store args from before hook, keyed by callID
+  // Also track logged callIDs to prevent duplicate logging
+  const pendingArgs = new Map<string, any>()
+  const loggedCalls = new Set<string>()
+
   return {
+    // Capture args from before hook (output.args is available here)
+    "tool.execute.before": async (input: any, output: any) => {
+      const tool = input.tool?.toLowerCase()
+
+      // Only track specific tools
+      if (!TRACKED_TOOLS.includes(tool)) {
+        return
+      }
+
+      // Store args keyed by callID for retrieval in after hook
+      if (input.callID && output.args) {
+        pendingArgs.set(input.callID, output.args)
+      }
+    },
+
+    // Log action outcome using stored args
     "tool.execute.after": async (input: any, output: any) => {
       const tool = input.tool?.toLowerCase()
 
@@ -169,22 +198,32 @@ export const ActionLogPlugin: Plugin = async ({
         return
       }
 
-      // Get result from output (structure depends on tool)
-      const result = output.result
-      const resultStr =
-        typeof result === "string"
-          ? result
-          : result?.output || result?.content || JSON.stringify(result || "")
+      // Prevent duplicate logging (hook may be called multiple times)
+      if (input.callID && loggedCalls.has(input.callID)) {
+        return
+      }
+
+      // Retrieve stored args from before hook
+      const args = input.callID ? pendingArgs.get(input.callID) : undefined
+
+      // Clean up stored args
+      if (input.callID) {
+        pendingArgs.delete(input.callID)
+        loggedCalls.add(input.callID)
+      }
+
+      // Get result from output (structure may vary)
+      const resultStr = output.output || ""
 
       // Determine outcome
       const { outcome, error_message } = determineOutcome(
         tool,
         resultStr,
-        output.error
+        undefined
       )
 
-      // Extract target
-      const target = extractTarget(tool, output.args)
+      // Extract target from stored args
+      const target = extractTarget(tool, args)
 
       // Build event
       const event: ActionEvent = {
@@ -194,11 +233,21 @@ export const ActionLogPlugin: Plugin = async ({
         outcome,
         error_message,
         workspace,
-        session_id: input.session_id,
+        session_id: input.sessionID,
       }
 
       // Log it
       logAction(event)
+
+      // Clean up old logged calls to prevent memory leak
+      // Keep only last 1000 entries
+      if (loggedCalls.size > 1000) {
+        const iterator = loggedCalls.values()
+        for (let i = 0; i < 500; i++) {
+          const val = iterator.next().value
+          if (val) loggedCalls.delete(val)
+        }
+      }
     },
   }
 }
