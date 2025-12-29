@@ -365,6 +365,7 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // 3. Skill output verification from skill.yaml outputs.required section
 // 4. Visual verification for web/ changes
 // 5. Test execution evidence for code changes (blocks when code modified without test output)
+// 6. Build verification for Go projects (blocks when Go files modified but build fails)
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
@@ -447,6 +448,17 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 			result.Errors = append(result.Errors, testEvidenceResult.Errors...)
 		}
 		result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
+	}
+
+	// Verify build for Go projects
+	// This gates completion when Go files are modified but the project doesn't build
+	buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
+	if buildResult != nil {
+		if !buildResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, buildResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, buildResult.Warnings...)
 	}
 
 	return result, nil
