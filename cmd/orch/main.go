@@ -20,6 +20,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
+	"github.com/dylan-conlin/orch-go/pkg/sessions"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/question"
@@ -1543,6 +1544,25 @@ func printSpawnSummaryWithGapWarning(gapAnalysis *spawn.GapAnalysis) {
 	}
 }
 
+// recordSpawnInSession records a spawn in the orchestrator session (if active).
+// This is best-effort - failures are logged but don't block the spawn.
+func recordSpawnInSession(beadsID, skillName, sessionID string) {
+	store, err := sessions.NewOrchestratorStore("")
+	if err != nil {
+		// Store load failed - silently ignore (spawns work without active session)
+		return
+	}
+
+	if !store.IsActive() {
+		// No active session - silently ignore
+		return
+	}
+
+	if err := store.RecordSpawn(beadsID, skillName, sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record spawn in session: %v\n", err)
+	}
+}
+
 // runSpawnInline spawns the agent inline (blocking) - original behavior.
 func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
 	// Spawn opencode session
@@ -1613,6 +1633,9 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	if err := inlineLogger.Log(inlineEvent); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
+
+	// Record spawn in orchestrator session (if active)
+	recordSpawnInSession(beadsID, skillName, result.SessionID)
 
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
@@ -1696,6 +1719,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
+
+	// Record spawn in orchestrator session (if active)
+	recordSpawnInSession(beadsID, skillName, sessionID)
 
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
@@ -1991,6 +2017,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		// Non-fatal - window was created successfully
 		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
 	}
+
+	// Record spawn in orchestrator session (if active)
+	recordSpawnInSession(beadsID, skillName, sessionID)
 
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
