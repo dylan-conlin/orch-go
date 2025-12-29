@@ -157,16 +157,19 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 // runKBContextQuery runs a single kb context query with optional --global flag.
 // Uses a 5-second timeout to prevent infinite hangs from kb context --global
 // scanning large directories like ~/Documents.
+// Passes --limit per category to reduce data transfer and parsing overhead.
 func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
 	// Create context with timeout to prevent hangs
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Build command args with limit per category
+	limitStr := fmt.Sprintf("%d", MaxMatchesPerCategory)
 	var cmd *exec.Cmd
 	if global {
-		cmd = exec.CommandContext(ctx, "kb", "context", "--global", query)
+		cmd = exec.CommandContext(ctx, "kb", "context", "--global", "--limit", limitStr, query)
 	} else {
-		cmd = exec.CommandContext(ctx, "kb", "context", query)
+		cmd = exec.CommandContext(ctx, "kb", "context", "--limit", limitStr, query)
 	}
 
 	output, err := cmd.Output()
