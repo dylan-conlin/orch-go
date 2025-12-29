@@ -532,7 +532,8 @@ func init() {
 
 var (
 	// Tail command flags
-	tailLines int
+	tailLines   int
+	tailWorkdir string
 
 	// Send command flags
 	sendAsync bool
@@ -545,24 +546,47 @@ var tailCmd = &cobra.Command{
 
 Fetches messages from the OpenCode API for the agent's session.
 
+For cross-project agents (spawned with --workdir in another project),
+use --workdir to specify the target project directory.
+
 Examples:
   orch-go tail proj-123              # Capture last 50 lines (default)
   orch-go tail proj-123 --lines 100  # Capture last 100 lines
-  orch-go tail proj-123 -n 20        # Capture last 20 lines`,
+  orch-go tail proj-123 -n 20        # Capture last 20 lines
+  orch-go tail kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project tailing`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runTail(beadsID, tailLines)
+		return runTail(beadsID, tailLines, tailWorkdir)
 	},
 }
 
 func init() {
 	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
+	tailCmd.Flags().StringVar(&tailWorkdir, "workdir", "", "Target project directory (for cross-project tailing)")
 }
 
-func runTail(beadsID string, lines int) error {
-	client := opencode.NewClient(serverURL)
-	projectDir, _ := os.Getwd()
+func runTail(beadsID string, lines int, workdir string) error {
+	// Determine project directory - use --workdir if provided, otherwise current directory
+	var projectDir string
+	var err error
+	if workdir != "" {
+		projectDir, err = filepath.Abs(workdir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		// Verify directory exists
+		if stat, err := os.Stat(projectDir); err != nil {
+			return fmt.Errorf("workdir does not exist: %s", projectDir)
+		} else if !stat.IsDir() {
+			return fmt.Errorf("workdir is not a directory: %s", projectDir)
+		}
+	} else {
+		projectDir, _ = os.Getwd()
+	}
+
+	// Create client with directory for x-opencode-directory header
+	client := opencode.NewClientWithDirectory(serverURL, projectDir)
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//
@@ -603,6 +627,12 @@ func runTail(beadsID string, lines int) error {
 	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
 		// tmux not available, and no API session found
+		// Provide helpful hint for cross-project issues
+		projectName := filepath.Base(projectDir)
+		issuePrefix := extractIssuePrefix(beadsID)
+		if issuePrefix != "" && issuePrefix != projectName {
+			return fmt.Errorf("no agent found for beads ID: %s (no tmux sessions, no API session)\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch tail %s --workdir ~/path/to/%s", beadsID, issuePrefix, projectName, beadsID, issuePrefix)
+		}
 		return fmt.Errorf("no agent found for beads ID: %s (no tmux sessions, no API session)", beadsID)
 	}
 
@@ -641,6 +671,12 @@ func runTail(beadsID string, lines int) error {
 		}
 	}
 
+	// Provide helpful hint for cross-project issues
+	projectName := filepath.Base(projectDir)
+	issuePrefix := extractIssuePrefix(beadsID)
+	if issuePrefix != "" && issuePrefix != projectName {
+		return fmt.Errorf("no agent found for beads ID: %s (checked tmux and API)\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch tail %s --workdir ~/path/to/%s", beadsID, issuePrefix, projectName, beadsID, issuePrefix)
+	}
 	return fmt.Errorf("no agent found for beads ID: %s (checked tmux and API)", beadsID)
 }
 
@@ -2128,6 +2164,18 @@ func extractBeadsIDFromTitle(title string) string {
 		}
 	}
 	return ""
+}
+
+// extractIssuePrefix extracts the project name from a beads ID.
+// Beads IDs follow the format "project-name-xxxx" (e.g., "orch-go-3anf", "kb-cli-1abc").
+// Returns the project portion (everything before the last hyphen-separated segment).
+func extractIssuePrefix(beadsID string) string {
+	parts := strings.Split(beadsID, "-")
+	if len(parts) <= 1 {
+		return beadsID
+	}
+	// Join all parts except the last one (which is the issue suffix like "3anf")
+	return strings.Join(parts[:len(parts)-1], "-")
 }
 
 // extractSkillFromTitle extracts skill from an OpenCode session title.
