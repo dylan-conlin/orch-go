@@ -635,7 +635,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Filter: only show sessions updated in the last 10 minutes as "active"
 	// Sessions idle > 30 min are filtered out AFTER checking beads Phase status
 	// (completed agents should still be shown regardless of activity time)
-	activeThreshold := 10 * time.Minute
+	// Dead threshold: if no activity for 3 minutes, session is dead.
+	// Agents are constantly reading, editing, running commands - 3 min silence = dead.
+	deadThreshold := 3 * time.Minute
 	displayThreshold := 30 * time.Minute
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
@@ -653,9 +655,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		timeSinceUpdate := now.Sub(updatedAt)
 
 		// Determine status based on recent activity
+		// 3 minutes no activity = dead. Agents constantly do something.
 		status := "active"
-		if timeSinceUpdate > activeThreshold {
-			status = "idle" // Session exists but hasn't had recent activity
+		if timeSinceUpdate > deadThreshold {
+			status = "dead"
 		}
 
 		// NOTE: IsProcessing is now populated client-side via SSE session.status events.
@@ -701,7 +704,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 		// Track if this agent should be filtered after Phase check
 		// Don't filter yet - we need to check beads Phase: Complete first
-		if status == "idle" && timeSinceUpdate > displayThreshold {
+		// Dead agents older than displayThreshold get filtered (unless completed)
+		if status == "dead" && timeSinceUpdate > displayThreshold {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
@@ -966,13 +970,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Post-Phase filtering: remove agents that were idle > displayThreshold
-		// and are NOT Phase: Complete. This deferred filtering ensures completed
-		// agents are shown regardless of activity time.
+		// Post-Phase filtering: remove agents that were dead > displayThreshold
+		// and are NOT Phase: Complete. Completed agents shown regardless of activity time.
+		// Dead agents are kept visible so user knows they need attention.
 		filtered := make([]AgentAPIResponse, 0, len(agents))
 		for _, agent := range agents {
-			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" {
-				// Skip idle agents that are not completed
+			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" && agent.Status != "dead" {
+				// Skip old agents that are not completed or dead
 				continue
 			}
 			filtered = append(filtered, agent)
