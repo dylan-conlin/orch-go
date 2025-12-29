@@ -351,6 +351,77 @@ type workspaceCache struct {
 	workspaceEntryToPath map[string]string
 }
 
+// discoverAllProjectDirs scans OpenCode's session storage to find ALL project directories
+// with sessions, regardless of whether sessions are already visible.
+// This solves the chicken-and-egg problem: we can't find cross-project sessions without
+// knowing which directories to query, but we couldn't know the directories without sessions.
+//
+// OpenCode stores sessions in ~/.local/share/opencode/storage/session/{partition_hash}/
+// Each session JSON file contains a "directory" field with the project path.
+func discoverAllProjectDirs() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	sessionStorageDir := filepath.Join(home, ".local", "share", "opencode", "storage", "session")
+	partitions, err := os.ReadDir(sessionStorageDir)
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var dirs []string
+
+	// Scan each partition directory
+	for _, partition := range partitions {
+		if !partition.IsDir() {
+			continue
+		}
+
+		partitionPath := filepath.Join(sessionStorageDir, partition.Name())
+		sessionFiles, err := os.ReadDir(partitionPath)
+		if err != nil {
+			continue
+		}
+
+		// Read just one session file to get the directory
+		// (all sessions in a partition belong to the same project directory)
+		for _, sessionFile := range sessionFiles {
+			if !strings.HasSuffix(sessionFile.Name(), ".json") {
+				continue
+			}
+
+			sessionPath := filepath.Join(partitionPath, sessionFile.Name())
+			data, err := os.ReadFile(sessionPath)
+			if err != nil {
+				continue
+			}
+
+			// Parse just enough to get the directory field
+			var session struct {
+				Directory string `json:"directory"`
+			}
+			if err := json.Unmarshal(data, &session); err != nil {
+				continue
+			}
+
+			if session.Directory != "" {
+				dir := filepath.Clean(session.Directory)
+				if !seen[dir] {
+					seen[dir] = true
+					dirs = append(dirs, dir)
+				}
+			}
+
+			// Only need one session file per partition
+			break
+		}
+	}
+
+	return dirs
+}
+
 // extractUniqueProjectDirs collects unique project directories from OpenCode sessions.
 // Returns a deduplicated slice of directory paths that have active agents.
 // This enables multi-project workspace aggregation for cross-project agent visibility.
@@ -573,22 +644,23 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(serverURL)
 
-	// Build workspace cache FIRST to discover all project directories.
-	// This is critical because OpenCode stores sessions per-project-directory,
-	// and ListSessions("") only returns sessions from the default/global location.
-	// Sessions created with x-opencode-directory header won't be found without
-	// querying each project directory specifically.
+	// Discover ALL project directories from OpenCode's session storage.
+	// This solves the chicken-and-egg problem: previously we could only find
+	// cross-project sessions if we already knew about the project directory
+	// from workspace SPAWN_CONTEXT.md, but new cross-project agents wouldn't
+	// have workspaces in the current project yet.
 	//
 	// Strategy:
-	// 1. Build workspace cache from known project (discovers PROJECT_DIRs from SPAWN_CONTEXT.md)
+	// 1. Scan OpenCode session storage to find ALL project directories with sessions
 	// 2. Query OpenCode sessions for EACH discovered project directory
-	// 3. Merge all sessions together for unified view
-	initialCache := buildWorkspaceCache(projectDir)
+	// 3. Build workspace cache from discovered directories
+	// 4. Merge all sessions together for unified view
+	allProjectDirs := discoverAllProjectDirs()
 
-	// Collect unique project directories from workspace cache
+	// Collect unique project directories (merge discovered with current project)
 	projectDirsMap := make(map[string]bool)
 	projectDirsMap[projectDir] = true // Always include current project
-	for _, dir := range initialCache.beadsToProjectDir {
+	for _, dir := range allProjectDirs {
 		if dir != "" {
 			projectDirsMap[dir] = true
 		}
