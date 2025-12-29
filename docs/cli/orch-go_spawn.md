@@ -39,7 +39,7 @@ orch-go spawn [skill] [task] [flags]
   -h, --help                  help for spawn
       --inline                Run inline (blocking) with TUI
       --issue string          Beads issue ID for tracking
-      --mcp string            MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome)
+      --mcp string            MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome, requires Chrome --remote-debugging-port=9222)
       --mode string           Implementation mode: tdd or direct (default "tdd")
       --model string          Model alias (opus, sonnet, haiku, flash, pro) or provider/model format
       --no-track              Opt-out of beads issue tracking (ad-hoc work)

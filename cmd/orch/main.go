@@ -360,7 +360,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome)")
+	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome, requires Chrome --remote-debugging-port=9222)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")

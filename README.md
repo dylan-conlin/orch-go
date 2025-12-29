@@ -135,6 +135,36 @@ All events are logged to `~/.orch/events.jsonl` in JSONL format:
 - OpenCode running at `http://localhost:4096` (default)
 - macOS for desktop notifications (uses beeep library)
 
+### MCP Servers (Browser Automation)
+
+Agents can use browser automation via MCP servers. Use `--mcp` flag when spawning:
+
+```bash
+# Playwright: Isolated browser instances (for E2E tests, visual verification)
+orch-go spawn --mcp playwright feature-impl "add UI feature"
+
+# Glass: Shared Chrome browser (for collaborative work, dashboard interaction)
+orch-go spawn --mcp glass feature-impl "verify dashboard"
+```
+
+**Glass requires Chrome to be launched with remote debugging enabled:**
+
+```bash
+# macOS: Launch Chrome with remote debugging
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# Or create an alias in ~/.zshrc:
+alias chrome-debug='/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222'
+```
+
+**When to use each:**
+| Tool | Browser Model | Use Case |
+|------|---------------|----------|
+| **Playwright** | Isolated instance | E2E tests, CI/CD, visual regression |
+| **Glass** | Dylan's Chrome (shared) | Dashboard interaction, collaborative browsing |
+
+**Note:** Chrome must be running with `--remote-debugging-port=9222` BEFORE spawning with `--mcp glass`. Glass connects to existing tabs rather than spawning new browser instances.
+
 ## API Patterns
 
 Based on validated manual testing:
