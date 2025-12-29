@@ -32,3 +32,4 @@ tmp/
 # Orch ephemeral (workspaces are transient, logs are local)
 .orch/workspace/
 .orch/logs/
+/gendoc
