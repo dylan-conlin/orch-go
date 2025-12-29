@@ -114,6 +114,8 @@ sessions, and monitoring session events via SSE.`,
 	rootCmd.AddCommand(buildUsageCmd())
 	rootCmd.AddCommand(buildServeCmd())
 	rootCmd.AddCommand(buildResumeCmd())
+	rootCmd.AddCommand(buildSessionsCmd())
+	rootCmd.AddCommand(buildServersCmd())
 
 	return rootCmd
 }
@@ -555,4 +557,162 @@ Examples:
 	cmd.Flags().String("message", "Continue with your task", "Message to send to resume the agent")
 
 	return cmd
+}
+
+func buildSessionsCmd() *cobra.Command {
+	sessionsCmd := &cobra.Command{
+		Use:   "sessions",
+		Short: "Search and list OpenCode session history",
+		Long: `Search and list OpenCode session history.
+
+Sessions are persisted by OpenCode at ~/.local/share/opencode/storage/.
+This command allows searching through session titles and message content
+to find past work, insights, and decisions.
+
+Subcommands:
+  list    - List recent sessions
+  search  - Full-text search of session content
+  show    - View a specific session
+
+Examples:
+  orch sessions list                    # List recent sessions
+  orch sessions list --limit 20         # List last 20 sessions
+  orch sessions list --date 2025-12-25  # Sessions from specific date
+  orch sessions search "teeth check"    # Search for text in sessions
+  orch sessions search --regex "auth.*token"  # Regex search
+  orch sessions show ses_abc123         # Show specific session`,
+	}
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List recent sessions",
+		Long: `List recent OpenCode sessions with summaries.
+
+Sessions are sorted by most recently updated. Use --limit to control
+how many sessions are shown.
+
+Examples:
+  orch sessions list                    # List recent sessions (default: 10)
+  orch sessions list --limit 50         # List last 50 sessions
+  orch sessions list --date 2025-12-25  # Sessions from specific date
+  orch sessions list --after 2025-12-20 # Sessions after date
+  orch sessions list --directory /path/to/project  # Filter by project`,
+		Run: noopRun,
+	}
+	listCmd.Flags().Int("limit", 10, "Maximum number of sessions to show")
+	listCmd.Flags().String("date", "", "Filter by specific date (YYYY-MM-DD)")
+	listCmd.Flags().String("after", "", "Sessions created after date (YYYY-MM-DD)")
+	listCmd.Flags().String("before", "", "Sessions created before date (YYYY-MM-DD)")
+	listCmd.Flags().StringP("directory", "d", "", "Filter by project directory")
+
+	searchCmd := &cobra.Command{
+		Use:   "search [query]",
+		Short: "Search session message content",
+		Long: `Search through session message content for matching text.
+
+This command searches the actual message content (not just titles) by
+fetching messages from the OpenCode API. Results show matching sessions
+with context snippets.
+
+Requires OpenCode to be running (uses API to fetch message content).
+
+Examples:
+  orch sessions search "error handling"        # Search for text
+  orch sessions search "teeth check"           # Find specific discussion
+  orch sessions search --regex "auth.*token"   # Regex search
+  orch sessions search -i "ERROR"              # Case-insensitive (default)
+  orch sessions search --case "Error"          # Case-sensitive
+  orch sessions search --limit 5 "pattern"     # Limit results`,
+		Run: noopRun,
+	}
+	searchCmd.Flags().Int("limit", 10, "Maximum number of results")
+	searchCmd.Flags().Bool("regex", false, "Treat query as regular expression")
+	searchCmd.Flags().Bool("case", false, "Case-sensitive search (default: case-insensitive)")
+	searchCmd.Flags().String("date", "", "Filter by specific date (YYYY-MM-DD)")
+	searchCmd.Flags().String("after", "", "Sessions created after date (YYYY-MM-DD)")
+	searchCmd.Flags().String("before", "", "Sessions created before date (YYYY-MM-DD)")
+	searchCmd.Flags().StringP("directory", "d", "", "Filter by project directory")
+
+	showCmd := &cobra.Command{
+		Use:   "show [session-id]",
+		Short: "Show session details and messages",
+		Long: `Show detailed information about a specific session.
+
+Displays session metadata and message content. Requires OpenCode
+to be running to fetch message content.
+
+Examples:
+  orch sessions show ses_abc123   # Show specific session
+  orch sessions show ses_xyz789   # View session messages`,
+		Run: noopRun,
+	}
+
+	sessionsCmd.AddCommand(listCmd)
+	sessionsCmd.AddCommand(searchCmd)
+	sessionsCmd.AddCommand(showCmd)
+
+	return sessionsCmd
+}
+
+func buildServersCmd() *cobra.Command {
+	serversCmd := &cobra.Command{
+		Use:   "servers",
+		Short: "Manage project development servers",
+		Long: `Manage development servers for projects.
+
+Each project can have multiple servers (e.g., web, api) configured in 
+.orch/servers.yaml. This command provides lifecycle management for these servers.
+
+Examples:
+  orch servers list                    # List all projects with port allocations
+  orch servers init snap               # Scan project and generate servers.yaml
+  orch servers up snap                 # Start all servers for snap project
+  orch servers down snap               # Stop all servers for snap project
+  orch servers open snap               # Open snap's web port in browser`,
+	}
+
+	initCmd := &cobra.Command{
+		Use:   "init [project]",
+		Short: "Initialize server configuration for a project",
+		Long: `Scan a project for common development patterns and generate .orch/servers.yaml.
+
+Detects package.json scripts, common ports, and standard dev server patterns.`,
+		Run: noopRun,
+	}
+
+	upCmd := &cobra.Command{
+		Use:   "up [project]",
+		Short: "Start servers for a project",
+		Long:  "Start all configured servers for a project using launchd or Docker.",
+		Run:   noopRun,
+	}
+
+	downCmd := &cobra.Command{
+		Use:   "down [project]",
+		Short: "Stop servers for a project",
+		Long:  "Stop all running servers for a project.",
+		Run:   noopRun,
+	}
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all projects with port allocations",
+		Long:  "Show all projects with their configured servers and port allocations.",
+		Run:   noopRun,
+	}
+
+	openCmd := &cobra.Command{
+		Use:   "open [project]",
+		Short: "Open project's web port in browser",
+		Long:  "Open the web server URL for a project in the default browser.",
+		Run:   noopRun,
+	}
+
+	serversCmd.AddCommand(initCmd)
+	serversCmd.AddCommand(upCmd)
+	serversCmd.AddCommand(downCmd)
+	serversCmd.AddCommand(listCmd)
+	serversCmd.AddCommand(openCmd)
+
+	return serversCmd
 }

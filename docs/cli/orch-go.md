@@ -42,6 +42,8 @@ orch-go [flags]
 * [orch-go review](orch-go_review.md)	 - Review agents ready for completion
 * [orch-go send](orch-go_send.md)	 - Send a message to an existing session
 * [orch-go serve](orch-go_serve.md)	 - Start the web dashboard server
+* [orch-go servers](orch-go_servers.md)	 - Manage project development servers
+* [orch-go sessions](orch-go_sessions.md)	 - Search and list OpenCode session history
 * [orch-go spawn](orch-go_spawn.md)	 - Spawn a new OpenCode session with skill context
 * [orch-go status](orch-go_status.md)	 - List active OpenCode sessions
 * [orch-go tail](orch-go_tail.md)	 - Capture recent output from an agent
