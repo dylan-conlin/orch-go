@@ -76,8 +76,8 @@ var testEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)---\s*PASS:\s*\w+`),                         // "--- PASS: TestName"
 	regexp.MustCompile(`(?i)FAIL:\s*\d+`),                               // "FAIL: 2" (captures failures too)
 	regexp.MustCompile(`(?i)\(\d+\s+tests?\s+in\s+\d+\.\d+s\)`),         // "(12 tests in 0.8s)"
-	regexp.MustCompile(`(?i)tests?\s+passed`),                           // "15 tests passed"
-	regexp.MustCompile(`(?i)all\s+tests?\s+pass`),                       // "all tests pass"
+	regexp.MustCompile(`(?i)\d+\s+tests?\s+passed`),                     // "15 tests passed" (requires count)
+	regexp.MustCompile(`(?i)all\s+\d+\s+tests?\s+pass`),                 // "all 15 tests pass" (requires count)
 
 	// npm/yarn/bun test output patterns
 	regexp.MustCompile(`(?i)npm\s+test\s*[-–—]?\s*(passed|success)`),    // "npm test - passed"
@@ -110,11 +110,21 @@ var testEvidencePatterns = []*regexp.Regexp{
 
 // falsePositivePatterns defines patterns that indicate a claim without evidence.
 // These should NOT count as test evidence.
+// The key insight: vague claims lack quantifiable output (counts, timing, specific output).
 var falsePositivePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)^tests?\s+pass\s*$`),        // Just "tests pass" with no evidence
-	regexp.MustCompile(`(?i)verified\s+tests?\s+pass`),  // "verified tests pass" (claim)
-	regexp.MustCompile(`(?i)tests?\s+should\s+pass`),    // "tests should pass" (expectation)
-	regexp.MustCompile(`(?i)assuming\s+tests?\s+pass`),  // "assuming tests pass" (assumption)
+	// Simple vague claims without counts or details
+	regexp.MustCompile(`(?i)^tests?\s+pass(ed)?\s*$`),           // Just "tests pass" or "tests passed"
+	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed)?\s*$`),     // "all tests pass" without count
+	regexp.MustCompile(`(?i)verified\s+tests?\s+pass`),          // "verified tests pass" (claim)
+	regexp.MustCompile(`(?i)tests?\s+should\s+pass`),            // "tests should pass" (expectation)
+	regexp.MustCompile(`(?i)assuming\s+tests?\s+pass`),          // "assuming tests pass" (assumption)
+	regexp.MustCompile(`(?i)tests?\s+will\s+pass`),              // "tests will pass" (prediction)
+	regexp.MustCompile(`(?i)tests?\s+(?:are\s+)?passing`),       // "tests passing" or "tests are passing" (state claim)
+	regexp.MustCompile(`(?i)^the\s+tests?\s+pass(ed)?\s*$`),     // "the tests pass"
+	regexp.MustCompile(`(?i)confirmed?\s+tests?\s+pass`),        // "confirmed tests pass" (claim)
+	regexp.MustCompile(`(?i)tests?\s+(?:have\s+)?succeeded`),    // "tests succeeded" without details
+	regexp.MustCompile(`(?i)tests?\s+completed?\s+successfully`), // "tests completed successfully"
+	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed|ing)?\b`),   // "all tests pass" at start of string (without count)
 }
 
 // HasTestExecutionEvidence checks beads comments for evidence of test execution.

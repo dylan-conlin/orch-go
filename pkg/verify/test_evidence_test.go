@@ -144,11 +144,19 @@ func TestHasTestExecutionEvidence(t *testing.T) {
 			wantLen: 1,
 		},
 
-		// Generic patterns
+		// Generic patterns - require counts
 		{
-			name: "all tests passed",
+			name: "all N tests passed",
 			comments: []Comment{
 				{Text: "all 15 tests passed"},
+			},
+			want:    true,
+			wantLen: 1,
+		},
+		{
+			name: "N tests passed",
+			comments: []Comment{
+				{Text: "15 tests passed"},
 			},
 			want:    true,
 			wantLen: 1,
@@ -171,10 +179,43 @@ func TestHasTestExecutionEvidence(t *testing.T) {
 		},
 
 		// False positives (should NOT count as evidence)
+		// These are vague claims without quantifiable output (counts, timing, etc.)
 		{
 			name: "vague claim - tests pass",
 			comments: []Comment{
 				{Text: "tests pass"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - tests passed",
+			comments: []Comment{
+				{Text: "tests passed"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - all tests pass",
+			comments: []Comment{
+				{Text: "all tests pass"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - all tests passed",
+			comments: []Comment{
+				{Text: "all tests passed"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - the tests pass",
+			comments: []Comment{
+				{Text: "the tests pass"},
 			},
 			want:    false,
 			wantLen: 0,
@@ -188,9 +229,65 @@ func TestHasTestExecutionEvidence(t *testing.T) {
 			wantLen: 0,
 		},
 		{
+			name: "vague claim - confirmed tests pass",
+			comments: []Comment{
+				{Text: "confirmed tests pass"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - tests passing",
+			comments: []Comment{
+				{Text: "tests passing"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - tests are passing",
+			comments: []Comment{
+				{Text: "tests are passing"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - tests succeeded",
+			comments: []Comment{
+				{Text: "tests succeeded"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim - tests completed successfully",
+			comments: []Comment{
+				{Text: "tests completed successfully"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
 			name: "expectation - tests should pass",
 			comments: []Comment{
 				{Text: "tests should pass after this change"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "expectation - tests will pass",
+			comments: []Comment{
+				{Text: "tests will pass"},
+			},
+			want:    false,
+			wantLen: 0,
+		},
+		{
+			name: "vague claim in sentence - all tests pass after changes",
+			comments: []Comment{
+				{Text: "all tests pass after changes"},
 			},
 			want:    false,
 			wantLen: 0,
@@ -350,6 +447,32 @@ func TestTestEvidencePatternMatching(t *testing.T) {
 		// Edge cases that should not match
 		{"partial match test", "testing something", false},
 		{"partial pass", "passenger list", false},
+
+		// Vague claims that should NOT match (false positives)
+		// These are exactly what caused verification theater in the 4026cb69 case
+		{"vague all tests pass", "all tests pass", false},
+		{"vague all tests passed", "all tests passed", false},
+		{"vague tests pass", "tests pass", false},
+		{"vague tests passed", "tests passed", false},
+		{"vague the tests pass", "the tests pass", false},
+		{"vague tests passing", "tests passing", false},
+		{"vague tests are passing", "tests are passing", false},
+		{"vague verified tests pass", "verified tests pass", false},
+		{"vague confirmed tests pass", "confirmed tests pass", false},
+		{"vague tests succeeded", "tests succeeded", false},
+		{"vague tests completed successfully", "tests completed successfully", false},
+		{"vague tests will pass", "tests will pass", false},
+		{"vague tests should pass", "tests should pass", false},
+
+		// Claims with context but no counts (still vague)
+		{"vague with context", "all tests pass after changes", false},
+		{"vague with reason", "tests pass because I fixed the bug", false},
+
+		// Valid patterns WITH counts
+		{"valid all N tests pass", "all 15 tests pass", true},
+		{"valid all N tests passed", "all 42 tests passed", true},
+		{"valid N tests passed", "15 tests passed", true},
+		{"valid ran N tests", "ran 10 tests in 1.5s", true},
 	}
 
 	for _, tc := range testCases {
