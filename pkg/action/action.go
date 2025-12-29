@@ -124,6 +124,18 @@ type Logger struct {
 // LoggerPathFunc allows customizing the log path for testing.
 var loggerPathFunc = defaultLogPath
 
+// SetLoggerPathFunc sets the function used to determine the default log path.
+// This is primarily used for testing.
+func SetLoggerPathFunc(f func() string) {
+	loggerPathFunc = f
+}
+
+// GetLoggerPathFunc returns the current logger path function.
+// This is primarily used for testing to save and restore the original function.
+func GetLoggerPathFunc() func() string {
+	return loggerPathFunc
+}
+
 // defaultLogPath returns the default path for action-log.jsonl.
 func defaultLogPath() string {
 	home, err := os.UserHomeDir()
