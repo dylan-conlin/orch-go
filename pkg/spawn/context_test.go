@@ -1244,84 +1244,16 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 	})
 }
 
-func TestGenerateEcosystemContext(t *testing.T) {
-	// This test verifies the ecosystem context generation logic
-	// The actual file read depends on ~/.orch/ECOSYSTEM.md existing
-
-	t.Run("extracts quick reference from content", func(t *testing.T) {
-		content := `# Ecosystem
-
-> Purpose line
-
----
-
-## Quick Reference
-
-| Repo | Purpose | CLI |
-|------|---------|-----|
-| orch-go | Orchestration | orch |
-| kb-cli | Knowledge base | kb |
-| beads | Issue tracking | bd |
-
----
-
-## Core Repos
-
-### orch-go
-More detailed info...
-`
-		result := extractQuickReference(content)
-
-		// Should contain the table
-		if !strings.Contains(result, "## Quick Reference") {
-			t.Error("expected result to contain Quick Reference heading")
-		}
-		if !strings.Contains(result, "| orch-go |") {
-			t.Error("expected result to contain orch-go row")
-		}
-		if !strings.Contains(result, "| kb-cli |") {
-			t.Error("expected result to contain kb-cli row")
-		}
-
-		// Should NOT contain the Core Repos section
-		if strings.Contains(result, "## Core Repos") {
-			t.Error("result should stop before Core Repos section")
-		}
-		if strings.Contains(result, "More detailed info") {
-			t.Error("result should not include content after Quick Reference section")
-		}
-	})
-
-	t.Run("falls back to first lines if no quick reference", func(t *testing.T) {
-		content := `# Ecosystem
-
-This is a simple ecosystem file without Quick Reference section.
-
-Here is some info about projects.
-Line 1
-Line 2
-Line 3
-`
-		result := extractQuickReference(content)
-
-		// Should return some content (fallback behavior)
-		if result == "" {
-			t.Error("expected non-empty result for fallback case")
-		}
-		if !strings.Contains(result, "simple ecosystem file") {
-			t.Error("expected fallback to include content from file")
-		}
-	})
-}
+// NOTE: Ecosystem context tests have been moved to ecosystem_test.go
 
 func TestGenerateContext_WithEcosystemContext(t *testing.T) {
 	// This test verifies ecosystem context is included in spawn context
-	// when ~/.orch/ECOSYSTEM.md exists (which it does on Dylan's machine)
+	// when the project is part of the ecosystem AND ~/.orch/ECOSYSTEM.md exists
 
 	cfg := &Config{
 		Task:       "test ecosystem integration",
 		SkillName:  "investigation",
-		Project:    "test-project",
+		Project:    "orch-go", // Must be an ecosystem repo
 		ProjectDir: "/tmp/test",
 		BeadsID:    "test-123",
 		Tier:       TierFull,
@@ -1345,27 +1277,28 @@ func TestGenerateContext_WithEcosystemContext(t *testing.T) {
 	}
 }
 
-func TestGenerateEcosystemContext_Integration(t *testing.T) {
-	// This test verifies the real ecosystem file can be read and parsed
-	// Skip if file doesn't exist (CI environments)
+func TestGenerateContext_WithoutEcosystemContext_NonEcosystemRepo(t *testing.T) {
+	// This test verifies ecosystem context is NOT included when
+	// the project is NOT part of the orchestration ecosystem
 
-	context := GenerateEcosystemContext()
-	if context == "" {
-		t.Skip("~/.orch/ECOSYSTEM.md not found - skipping integration test")
+	cfg := &Config{
+		Task:       "test non-ecosystem project",
+		SkillName:  "investigation",
+		Project:    "random-external-project", // Not an ecosystem repo
+		ProjectDir: "/tmp/test",
+		BeadsID:    "test-123",
+		Tier:       TierFull,
 	}
 
-	// Should contain Quick Reference section
-	if !strings.Contains(context, "Quick Reference") {
-		t.Error("expected ecosystem context to contain Quick Reference")
+	content, err := GenerateContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateContext failed: %v", err)
 	}
 
-	// Should contain known repos
-	expectedRepos := []string{"orch-go", "kb-cli", "beads"}
-	for _, repo := range expectedRepos {
-		if !strings.Contains(context, repo) {
-			t.Errorf("expected ecosystem context to mention %s", repo)
-		}
+	// Should NOT contain ecosystem context for non-ecosystem projects
+	if strings.Contains(content, "LOCAL PROJECT ECOSYSTEM") {
+		t.Error("expected non-ecosystem project to NOT contain LOCAL PROJECT ECOSYSTEM section")
 	}
-
-	t.Logf("Ecosystem context length: %d chars", len(context))
 }
+
+// NOTE: TestGenerateEcosystemContext_Integration has been moved to ecosystem_test.go
