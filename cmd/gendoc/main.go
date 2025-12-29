@@ -153,7 +153,7 @@ Examples:
 	cmd.Flags().Bool("inline", false, "Run inline (blocking) with TUI")
 	cmd.Flags().String("model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	cmd.Flags().Bool("no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	cmd.Flags().String("mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome)")
+	cmd.Flags().String("mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome, requires Chrome --remote-debugging-port=9222)")
 	cmd.Flags().Bool("skip-artifact-check", false, "Bypass pre-spawn kb context check")
 
 	return cmd
@@ -657,55 +657,321 @@ Examples:
 func buildServersCmd() *cobra.Command {
 	serversCmd := &cobra.Command{
 		Use:   "servers",
-		Short: "Manage project development servers",
-		Long: `Manage development servers for projects.
+		Short: "Manage development servers across projects",
+		Long: `Centralized server management across projects using launchd (macOS) or Docker.
 
-Each project can have multiple servers (e.g., web, api) configured in 
-.orch/servers.yaml. This command provides lifecycle management for these servers.
+**Why launchd over tmux:**
+- Servers persist across terminal sessions
+- Automatic restart on failure (KeepAlive)
+- Logs at .orch/logs/
+- System-level management (not tied to a tmux session)
 
-Examples:
-  orch servers list                    # List all projects with port allocations
-  orch servers init snap               # Scan project and generate servers.yaml
-  orch servers up snap                 # Start all servers for snap project
-  orch servers down snap               # Stop all servers for snap project
-  orch servers open snap               # Open snap's web port in browser`,
+**Workflow:**
+  1. orch servers init myproject      # Scan and generate servers.yaml
+  2. orch servers gen-plist myproject # Generate launchd plist files (optional)
+  3. orch servers up myproject        # Start all servers
+  4. orch servers status myproject    # Check per-server status
+  5. orch servers down myproject      # Stop all servers
+
+**Server Types:**
+  command  - Shell commands run via launchd plist (e.g., npm run dev)
+  docker   - Docker containers started via docker compose
+  launchd  - Existing launchd services (just starts/stops)
+
+**Configuration:**
+  Servers are declared in .orch/servers.yaml:
+  
+  servers:
+    - name: web
+      type: command
+      command: bun run dev
+      port: 5173
+    - name: api
+      type: command
+      command: go run .
+      port: 3348
+
+**Examples:**
+  orch servers init myproject        # Scan project for servers
+  orch servers up myproject          # Start all servers
+  orch servers down myproject        # Stop all servers
+  orch servers status                # Summary of all projects
+  orch servers status myproject      # Per-server status
+  orch servers open myproject        # Open web port in browser
+  orch servers list                  # List all projects with ports`,
 	}
 
 	initCmd := &cobra.Command{
-		Use:   "init [project]",
-		Short: "Initialize server configuration for a project",
-		Long: `Scan a project for common development patterns and generate .orch/servers.yaml.
+		Use:   "init <project>",
+		Short: "Scan project and generate .orch/servers.yaml",
+		Long: `Scan a project directory and generate .orch/servers.yaml with inferred server types.
 
-Detects package.json scripts, common ports, and standard dev server patterns.`,
+**Detection Rules:**
+  docker-compose.yml, docker-compose.yaml, compose.yml, compose.yaml
+    → docker type servers
+  package.json with "dev" script
+    → command type (npm/bun/pnpm/yarn run dev)
+  go.mod with main.go
+    → command type (go run .)
+  web/, frontend/, client/, api/, backend/, server/ subdirectories
+    → scanned for the above patterns
+
+**Example Output:**
+  Scanning /path/to/project for servers...
+  
+  Detected 2 server(s):
+  
+    NAME         TYPE       PORT     SOURCE
+    --------------------------------------------------
+    web          command    5173     web/package.json
+    api          command    3348     go.mod
+  
+  Generated: /path/to/project/.orch/servers.yaml
+
+**Options:**
+  --project-dir    Project directory (default: current directory)
+  --dry-run        Print detected servers without writing files
+  --gen-plist      Also generate launchd plist files
+  --force          Overwrite existing servers.yaml
+
+**Examples:**
+  orch servers init myproject
+  orch servers init myproject --project-dir /path/to/project
+  orch servers init myproject --dry-run
+  orch servers init myproject --gen-plist --force`,
 		Run: noopRun,
 	}
+	initCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+	initCmd.Flags().Bool("dry-run", false, "Print detected servers without writing files")
+	initCmd.Flags().Bool("gen-plist", false, "Also generate launchd plist files")
+	initCmd.Flags().Bool("force", false, "Overwrite existing servers.yaml")
 
 	upCmd := &cobra.Command{
-		Use:   "up [project]",
-		Short: "Start servers for a project",
-		Long:  "Start all configured servers for a project using launchd or Docker.",
-		Run:   noopRun,
+		Use:   "up <project>",
+		Short: "Start servers via launchd/Docker",
+		Long: `Start all servers for a project using launchd (for native processes) or Docker (for containers).
+
+Reads server definitions from .orch/servers.yaml and starts each server based on its type:
+  command  → Uses launchd with generated plist files
+  docker   → Starts Docker containers with restart policy
+  launchd  → Uses existing launchd service (launchctl start)
+
+**Prerequisites:**
+  1. servers.yaml exists (.orch/servers.yaml)
+  2. For command type: plist files generated (via gen-plist or init --gen-plist)
+
+**Example Output:**
+  Starting servers for myproject...
+  
+    ✓ web: started (launchd bootstrap)
+    ✓ api: started (launchd bootstrap)
+  
+  All servers started for myproject
+  Check status: orch servers status myproject
+
+**Options:**
+  --project-dir    Project directory (default: current directory)
+
+**Examples:**
+  orch servers up myproject
+  orch servers up myproject --project-dir /path/to/project`,
+		Run: noopRun,
 	}
+	upCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
 
 	downCmd := &cobra.Command{
-		Use:   "down [project]",
-		Short: "Stop servers for a project",
-		Long:  "Stop all running servers for a project.",
-		Run:   noopRun,
+		Use:   "down <project>",
+		Short: "Stop servers via launchd/Docker",
+		Long: `Stop all servers for a project.
+
+Stops servers based on their type:
+  command  → Uses launchctl bootout
+  docker   → Uses docker stop
+  launchd  → Uses launchctl kill
+
+**Example Output:**
+  Stopping servers for myproject...
+  
+    ✓ web: stopped (launchd bootout)
+    ✓ api: stopped (launchd bootout)
+  
+  All servers stopped for myproject
+
+**Options:**
+  --project-dir    Project directory (default: current directory)
+
+**Examples:**
+  orch servers down myproject
+  orch servers down myproject --project-dir /path/to/project`,
+		Run: noopRun,
 	}
+	downCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
 
 	listCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all projects with port allocations",
-		Long:  "Show all projects with their configured servers and port allocations.",
-		Run:   noopRun,
+		Short: "List all projects with port allocations and running status",
+		Long: `List all projects with their port allocations and running status.
+
+Shows which projects have port allocations, what ports are allocated,
+and whether the servers are currently running.
+
+**Example Output:**
+  PROJECT                   PORTS                          STATUS
+  ----------------------------------------------------------------------
+  beads-ui                  web:3000, api:3001             running
+  orch-go                   web:5188, api:3348             stopped
+  snap                      web:5173                       running
+
+  Total: 3 projects`,
+		Run: noopRun,
 	}
 
 	openCmd := &cobra.Command{
-		Use:   "open [project]",
-		Short: "Open project's web port in browser",
-		Long:  "Open the web server URL for a project in the default browser.",
-		Run:   noopRun,
+		Use:   "open <project>",
+		Short: "Open servers in browser",
+		Long: `Open the project's web server in the default browser.
+
+Finds the port allocated with purpose "vite" (web dev server) and opens
+http://localhost:<port> in the default browser.
+
+**Examples:**
+  orch servers open myproject`,
+		Run: noopRun,
+	}
+
+	statusCmd := &cobra.Command{
+		Use:   "status [project]",
+		Short: "Show servers status",
+		Long: `Show server status.
+
+Without a project argument, shows a summary of all projects.
+With a project argument, shows per-server status from servers.yaml.
+
+**Summary View (no project):**
+  Servers Status Summary
+  ----------------------------------------
+  Total projects:   3
+  Running:          2
+  Stopped:          1
+  
+  Use 'orch servers list' for detailed view
+
+**Per-Server View (with project):**
+  Servers Status: myproject
+  ------------------------------------------------------------
+  NAME            TYPE       PORT     STATUS     INFO
+  ------------------------------------------------------------
+  web             command    5173     ● running  PID: 12345
+  api             command    3348     ○ stopped  
+  
+  Running: 1/2
+
+**Examples:**
+  orch servers status               # Summary view
+  orch servers status myproject     # Per-server status`,
+		Run: noopRun,
+	}
+	statusCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+
+	genPlistCmd := &cobra.Command{
+		Use:   "gen-plist <project>",
+		Short: "Generate launchd plist files from servers.yaml",
+		Long: `Generate launchd plist files for a project's servers.
+
+Reads servers from .orch/servers.yaml and generates launchd plist files
+at ~/Library/LaunchAgents/com.<project>.<server>.plist.
+
+**Only generates plists for servers with type: command.** Docker and pre-existing
+launchd services don't need generated plists.
+
+**Understanding launchd:**
+launchd is macOS's service manager. A plist (Property List) file defines a service:
+  Label             Unique identifier (e.g., com.myproject.web)
+  ProgramArguments  Command to run
+  WorkingDirectory  Where to run it
+  KeepAlive         Restart on failure
+  RunAtLoad         Start at login
+  StandardOutPath   Where stdout goes (.orch/logs/<project>.<server>.log)
+  StandardErrorPath Where stderr goes (.orch/logs/<project>.<server>.err.log)
+
+The generated plists wrap your command in a login shell (/bin/bash -l -c "...")
+to ensure PATH and environment variables are properly inherited from your
+shell profile (including homebrew, nvm, asdf, etc.).
+
+**Example Output:**
+  Generated: ~/Library/LaunchAgents/com.myproject.web.plist
+  Generated: ~/Library/LaunchAgents/com.myproject.api.plist
+
+  To load services:
+    launchctl load ~/Library/LaunchAgents/com.myproject.web.plist
+    launchctl load ~/Library/LaunchAgents/com.myproject.api.plist
+
+  To unload services:
+    launchctl unload ~/Library/LaunchAgents/com.myproject.web.plist
+    launchctl unload ~/Library/LaunchAgents/com.myproject.api.plist
+
+**Note:** 'orch servers up' handles loading automatically - you rarely need
+to run launchctl manually.
+
+**Options:**
+  --dry-run        Print plists without writing files
+  --keep-alive     Keep service running / restart on failure (default: true)
+  --run-at-load    Start service at login (default: false)
+  --path           Override PATH environment variable
+  --project-dir    Project directory (default: current directory)
+
+**Examples:**
+  orch servers gen-plist myproject
+  orch servers gen-plist myproject --dry-run
+  orch servers gen-plist myproject --run-at-load`,
+		Run: noopRun,
+	}
+	genPlistCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
+	genPlistCmd.Flags().String("path", "", "Override PATH environment variable")
+	genPlistCmd.Flags().Bool("keep-alive", true, "Keep service running / restart on failure")
+	genPlistCmd.Flags().Bool("run-at-load", false, "Start service at login")
+	genPlistCmd.Flags().Bool("dry-run", false, "Print plists without writing files")
+
+	startCmd := &cobra.Command{
+		Use:   "start <project>",
+		Short: "Start servers via tmuxinator (legacy)",
+		Long: `Start development servers for a project using tmuxinator.
+
+This runs 'tmuxinator start workers-{project}' which creates a tmux
+session with the servers window.
+
+**Note:** Consider using 'orch servers up' for launchd-based server management.
+launchd provides persistence, automatic restart, and system-level control.
+
+**Examples:**
+  orch servers start myproject`,
+		Run: noopRun,
+	}
+
+	stopCmd := &cobra.Command{
+		Use:   "stop <project>",
+		Short: "Stop servers session (legacy)",
+		Long: `Stop the servers tmux session for a project.
+
+This kills the workers-{project} tmux session.
+
+**Note:** Consider using 'orch servers down' for launchd-based server management.
+
+**Examples:**
+  orch servers stop myproject`,
+		Run: noopRun,
+	}
+
+	attachCmd := &cobra.Command{
+		Use:   "attach <project>",
+		Short: "Attach to servers window",
+		Long: `Attach to the servers window for a project.
+
+Switches to the servers window in the workers-{project} tmux session.
+
+**Examples:**
+  orch servers attach myproject`,
+		Run: noopRun,
 	}
 
 	serversCmd.AddCommand(initCmd)
@@ -713,6 +979,11 @@ Detects package.json scripts, common ports, and standard dev server patterns.`,
 	serversCmd.AddCommand(downCmd)
 	serversCmd.AddCommand(listCmd)
 	serversCmd.AddCommand(openCmd)
+	serversCmd.AddCommand(statusCmd)
+	serversCmd.AddCommand(genPlistCmd)
+	serversCmd.AddCommand(startCmd)
+	serversCmd.AddCommand(stopCmd)
+	serversCmd.AddCommand(attachCmd)
 
 	return serversCmd
 }

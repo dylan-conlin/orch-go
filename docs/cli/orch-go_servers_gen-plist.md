@@ -11,113 +11,66 @@ Generate launchd plist files from servers.yaml
 
 Generate launchd plist files for a project's servers.
 
-Reads servers from `.orch/servers.yaml` and generates launchd plist files at
-`~/Library/LaunchAgents/com.<project>.<server>.plist`.
+Reads servers from .orch/servers.yaml and generates launchd plist files
+at ~/Library/LaunchAgents/com.<project>.<server>.plist.
 
-**Only generates plists for servers with `type: command`**. Docker and pre-existing
+**Only generates plists for servers with type: command.** Docker and pre-existing
 launchd services don't need generated plists.
 
 **Understanding launchd:**
-
 launchd is macOS's service manager. A plist (Property List) file defines a service:
-- **Label**: Unique identifier (e.g., `com.myproject.web`)
-- **ProgramArguments**: Command to run
-- **WorkingDirectory**: Where to run it
-- **KeepAlive**: Restart on failure
-- **RunAtLoad**: Start at login
+  Label             Unique identifier (e.g., com.myproject.web)
+  ProgramArguments  Command to run
+  WorkingDirectory  Where to run it
+  KeepAlive         Restart on failure
+  RunAtLoad         Start at login
+  StandardOutPath   Where stdout goes (.orch/logs/<project>.<server>.log)
+  StandardErrorPath Where stderr goes (.orch/logs/<project>.<server>.err.log)
 
-The generated plists wrap your command in a login shell (`/bin/bash -l -c "..."`) to
-ensure PATH and environment variables are properly inherited from your shell profile.
+The generated plists wrap your command in a login shell (/bin/bash -l -c "...")
+to ensure PATH and environment variables are properly inherited from your
+shell profile (including homebrew, nvm, asdf, etc.).
+
+**Example Output:**
+  Generated: ~/Library/LaunchAgents/com.myproject.web.plist
+  Generated: ~/Library/LaunchAgents/com.myproject.api.plist
+
+  To load services:
+    launchctl load ~/Library/LaunchAgents/com.myproject.web.plist
+    launchctl load ~/Library/LaunchAgents/com.myproject.api.plist
+
+  To unload services:
+    launchctl unload ~/Library/LaunchAgents/com.myproject.web.plist
+    launchctl unload ~/Library/LaunchAgents/com.myproject.api.plist
+
+**Note:** 'orch servers up' handles loading automatically - you rarely need
+to run launchctl manually.
+
+**Options:**
+  --dry-run        Print plists without writing files
+  --keep-alive     Keep service running / restart on failure (default: true)
+  --run-at-load    Start service at login (default: false)
+  --path           Override PATH environment variable
+  --project-dir    Project directory (default: current directory)
+
+**Examples:**
+  orch servers gen-plist myproject
+  orch servers gen-plist myproject --dry-run
+  orch servers gen-plist myproject --run-at-load
 
 ```
-orch servers gen-plist <project> [flags]
-```
-
-### Examples
-
-```bash
-# Generate plists for all command-type servers
-orch servers gen-plist myproject
-
-# Preview without writing files
-orch servers gen-plist myproject --dry-run
-
-# Generate with auto-restart and custom PATH
-orch servers gen-plist myproject --keep-alive --path "/opt/homebrew/bin:/usr/bin"
-
-# Generate and start at login
-orch servers gen-plist myproject --run-at-load
-```
-
-### Output
-
-```
-Generated: ~/Library/LaunchAgents/com.myproject.web.plist
-Generated: ~/Library/LaunchAgents/com.myproject.api.plist
-
-To load services:
-  launchctl load ~/Library/LaunchAgents/com.myproject.web.plist
-  launchctl load ~/Library/LaunchAgents/com.myproject.api.plist
-
-To unload services:
-  launchctl unload ~/Library/LaunchAgents/com.myproject.web.plist
-  launchctl unload ~/Library/LaunchAgents/com.myproject.api.plist
-```
-
-**Note:** `orch servers up` handles loading automatically - you rarely need to run
-`launchctl` manually.
-
-### Generated Plist Structure
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" ...>
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.myproject.web</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-l</string>
-        <string>-c</string>
-        <string>bun run dev</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>/Users/dylan/myproject/web</string>
-
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-
-    <key>StandardOutPath</key>
-    <string>/Users/dylan/myproject/.orch/logs/myproject.web.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>/Users/dylan/myproject/.orch/logs/myproject.web.err.log</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    </dict>
-</dict>
-</plist>
+orch-go servers gen-plist <project> [flags]
 ```
 
 ### Options
 
 ```
-      --dry-run        Print plists without writing files
-  -h, --help           help for gen-plist
-      --keep-alive     Keep service running / restart on failure (default true)
-      --path string    Override PATH environment variable
-      --project-dir    Project directory (default: current directory)
-      --run-at-load    Start service at login (default false)
+      --dry-run              Print plists without writing files
+  -h, --help                 help for gen-plist
+      --keep-alive           Keep service running / restart on failure (default true)
+      --path string          Override PATH environment variable
+      --project-dir string   Project directory (default: current directory)
+      --run-at-load          Start service at login
 ```
 
 ### Options inherited from parent commands
@@ -129,7 +82,5 @@ To unload services:
 ### SEE ALSO
 
 * [orch-go servers](orch-go_servers.md)	 - Manage development servers across projects
-* [orch-go servers init](orch-go_servers_init.md)	 - Scan project and generate .orch/servers.yaml
-* [orch-go servers up](orch-go_servers_up.md)	 - Start servers via launchd/Docker
 
 ###### Auto generated by spf13/cobra on 28-Dec-2025

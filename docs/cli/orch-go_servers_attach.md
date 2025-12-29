@@ -5,26 +5,19 @@ generated: "2025-12-28"
 
 ## orch-go servers attach
 
-Attach to servers window (legacy)
+Attach to servers window
 
 ### Synopsis
 
 Attach to the servers window for a project.
 
-**Note:** This is a legacy command for tmux-based server management.
-With launchd-based servers (`orch servers up`), logs are written to
-`.orch/logs/` and can be tailed directly.
+Switches to the servers window in the workers-{project} tmux session.
 
-Switches to the servers window in the `workers-{project}` tmux session.
+**Examples:**
+  orch servers attach myproject
 
 ```
-orch servers attach <project> [flags]
-```
-
-### Examples
-
-```bash
-orch servers attach myproject
+orch-go servers attach <project> [flags]
 ```
 
 ### Options
