@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { errorEvents } from '$lib/stores/agentlog';
 	import { pendingReviews, type PendingReviewAgent, type PendingReviewItem } from '$lib/stores/pending-reviews';
 	import { beads } from '$lib/stores/beads';
@@ -19,7 +20,10 @@
 	let dismissingItem: { [key: string]: boolean } = {};
 	let dismissingAllLightTier: boolean = false;
 
-	// BLOCKING: Agents at Phase: Complete that need orch complete
+	// Track collapsed state for light-tier section
+	let lightTierExpanded = false;
+
+	// 🔴 BLOCKING: Agents at Phase: Complete that need orch complete
 	$: completeAgents = $activeAgents.filter(a => 
 		a.phase?.toLowerCase() === 'complete'
 	);
@@ -36,27 +40,26 @@
 	$: standardReviewCount = standardAgents.reduce((sum, agent) => 
 		sum + getUnreviewedItems(agent).length, 0);
 
-	// PATTERNS: Recurring gaps that could use kn constrain
+	// ⚠️ DECISION NEEDED: Blocked issues
+	$: totalBlocked = $beads?.blocked_issues ?? 0;
+
+	// 📊 PATTERNS: Recurring gaps that could use kn constrain
 	$: patternSuggestions = $gaps?.suggestions ?? [];
 	$: hasPatterns = patternSuggestions.length > 0;
 
-	// Calculate total actionable items
-	// Count by *category* not individual items (keeps count small and actionable)
+	// Total errors
 	$: totalErrors = $errorEvents.length;
-	$: totalBlocked = $beads?.blocked_issues ?? 0;
-	$: totalBlockingAgents = completeAgents.length;
-	$: standardAgentCount = standardAgents.filter(a => getUnreviewedItems(a).length > 0).length;
-	
-	// Decision items: blocked issues + standard agent reviews
-	$: totalDecisions = (totalBlocked > 0 ? 1 : 0) + standardAgentCount;
-	
-	// Total attention items: count categories, not individual items
-	// BLOCKING (complete agents), Errors, DECISION (blocked + standard agent count), PATTERNS
+
+	// Calculate total attention items (keep it small and actionable)
+	// Count the number of CATEGORIES that need attention, not individual items
 	$: totalAttentionItems = 
-		(totalBlockingAgents > 0 ? 1 : 0) +  // BLOCKING section
-		(totalErrors > 0 ? 1 : 0) +            // Errors section
-		totalDecisions +                       // DECISION section
-		(hasPatterns ? 1 : 0);                 // PATTERNS section
+		(completeAgents.length > 0 ? 1 : 0) +      // BLOCKING category
+		(totalErrors > 0 ? 1 : 0) +                 // ERRORS category
+		(totalBlocked > 0 ? 1 : 0) +                // Blocked issues
+		(hasPatterns ? 1 : 0);                      // PATTERNS category
+
+	// Helper to check if we have anything to show (excluding light-tier)
+	$: hasAttentionItems = totalAttentionItems > 0;
 
 	function getItemKey(workspaceId: string, index: number): string {
 		return `${workspaceId}-${index}`;
@@ -147,206 +150,250 @@
 	}
 </script>
 
-{#if totalAttentionItems > 0 || lightTierTotalUnreviewed > 0}
+{#if hasAttentionItems || lightTierTotalUnreviewed > 0}
 	<div class="rounded-lg border border-amber-500/30 bg-amber-500/5" data-testid="needs-attention-section">
-		<div class="flex items-center gap-2 px-3 py-2 border-b">
+		<div class="flex items-center gap-2 px-3 py-2 border-b border-amber-500/20">
 			<span class="text-sm">⚠️</span>
 			<span class="text-sm font-medium">Needs Attention</span>
-			<Badge variant="secondary" class="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-600">
-				{totalAttentionItems}
-			</Badge>
+			{#if totalAttentionItems > 0}
+				<Badge variant="secondary" class="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-600">
+					{totalAttentionItems}
+				</Badge>
+			{/if}
 		</div>
 		<div class="p-2 space-y-2">
-			<!-- 🔴 BLOCKING: Agents at Phase: Complete -->
+			<!-- 🔴 BLOCKING: Agents at Phase: Complete need immediate review -->
 			{#if completeAgents.length > 0}
-				<div class="rounded border bg-card p-2 border-red-500/30">
+				<div class="rounded border bg-card p-2.5 border-red-500/30" data-testid="blocking-section">
 					<div class="flex items-center gap-2 mb-2">
 						<span class="text-sm">🔴</span>
-						<span class="text-xs font-semibold text-red-500">BLOCKING</span>
-						<span class="text-xs text-muted-foreground">
-							{completeAgents.length} agent{completeAgents.length === 1 ? '' : 's'} at Phase: Complete need review
+						<span class="text-xs font-semibold text-red-500 uppercase tracking-wide">Blocking</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-red-500/50 text-red-500">
+							{completeAgents.length}
+						</Badge>
+						<span class="text-[10px] text-muted-foreground ml-1">
+							— agents waiting for review
 						</span>
 					</div>
-					<div class="space-y-1">
-						{#each completeAgents as agent (agent.id)}
-							<div class="flex items-center justify-between gap-2 rounded p-1.5 hover:bg-muted/50 group">
-								<div class="flex items-center gap-2 min-w-0">
-									<span class="text-[10px] font-mono text-muted-foreground">{agent.beads_id || agent.id.slice(0, 12)}</span>
-									<span class="text-xs truncate">{agent.task || formatWorkspaceName(agent.id)}</span>
-									<span class="text-[10px] text-muted-foreground">{formatRuntime(agent)}</span>
+					<div class="space-y-1.5">
+						{#each completeAgents.slice(0, 5) as agent (agent.id)}
+							<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
+								<div class="flex items-center gap-2 min-w-0 flex-1">
+									<code class="text-[10px] font-mono text-muted-foreground bg-muted px-1 py-0.5 rounded shrink-0">
+										{agent.beads_id || agent.id.slice(0, 12)}
+									</code>
+									<span class="text-xs truncate flex-1">{agent.task || formatWorkspaceName(agent.id)}</span>
+									<span class="text-[10px] text-muted-foreground shrink-0">{formatRuntime(agent)}</span>
 								</div>
-								<Button
-									variant="outline"
-									size="sm"
-									class="h-5 px-2 text-[10px] shrink-0"
-									onclick={() => copyCommand(`orch complete ${agent.beads_id || agent.id}`)}
-								>
-									→ orch complete
-								</Button>
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="outline"
+												size="sm"
+												class="h-6 px-2 text-[10px] shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
+												onclick={() => copyCommand(`orch complete ${agent.beads_id || agent.id}`)}
+											>
+												→ complete
+											</Button>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content side="left">
+										<p class="text-xs">Click to copy command</p>
+										<code class="text-[10px] text-muted-foreground">orch complete {agent.beads_id || agent.id}</code>
+									</Tooltip.Content>
+								</Tooltip.Root>
 							</div>
 						{/each}
+						{#if completeAgents.length > 5}
+							<div class="text-[10px] text-muted-foreground pl-2">
+								+{completeAgents.length - 5} more agents waiting
+							</div>
+						{/if}
 					</div>
 				</div>
 			{/if}
 
-			<!-- ❌ Errors Section -->
+			<!-- ❌ Errors Section (if any) -->
 			{#if totalErrors > 0}
-				<div class="rounded border bg-card p-2 border-red-500/30">
-					<div class="flex items-center gap-2 mb-1">
+				<div class="rounded border bg-card p-2.5 border-red-500/30" data-testid="errors-section">
+					<div class="flex items-center gap-2 mb-1.5">
 						<span class="text-sm">❌</span>
-						<span class="text-xs font-medium text-red-500">Errors ({totalErrors})</span>
+						<span class="text-xs font-medium text-red-500">Errors</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-red-500/50 text-red-500">
+							{totalErrors}
+						</Badge>
 					</div>
-					<div class="space-y-0.5 max-h-24 overflow-y-auto">
-						{#each $errorEvents.slice().reverse().slice(0, 5) as event (event.id)}
-							<div class="flex items-center gap-1 text-xs text-muted-foreground">
-								<span class="opacity-60">{formatUnixTime(event.timestamp)}</span>
+					<div class="space-y-0.5 max-h-20 overflow-y-auto">
+						{#each $errorEvents.slice().reverse().slice(0, 3) as event (event.id)}
+							<div class="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
+								<span class="opacity-60 text-[10px] tabular-nums">{formatUnixTime(event.timestamp)}</span>
 								{#if event.session_id}
-									<span class="font-mono">{event.session_id.slice(0, 8)}</span>
+									<code class="font-mono text-[10px]">{event.session_id.slice(0, 8)}</code>
 								{/if}
 								{#if event.data?.error}
-									<span class="text-red-500 truncate">{event.data.error}</span>
+									<span class="text-red-500 truncate text-[10px]">{event.data.error}</span>
 								{/if}
 							</div>
 						{/each}
-						{#if totalErrors > 5}
-							<div class="text-[10px] text-muted-foreground">+{totalErrors - 5} more errors</div>
+						{#if totalErrors > 3}
+							<div class="text-[10px] text-muted-foreground pl-1">+{totalErrors - 3} more</div>
 						{/if}
 					</div>
 				</div>
 			{/if}
 
-			<!-- ⚠️ DECISION NEEDED: Blocked Issues + Standard Reviews -->
-			{#if totalDecisions > 0}
-				<div class="rounded border bg-card p-2 border-orange-500/30">
+			<!-- ⚠️ DECISION NEEDED: Blocked issues requiring human decision -->
+			{#if totalBlocked > 0}
+				<div class="rounded border bg-card p-2.5 border-orange-500/30" data-testid="decision-section">
 					<div class="flex items-center gap-2 mb-2">
 						<span class="text-sm">⚠️</span>
-						<span class="text-xs font-semibold text-orange-500">DECISION NEEDED</span>
-						<Badge variant="outline" class="h-4 px-1 text-[10px]">{totalDecisions}</Badge>
+						<span class="text-xs font-semibold text-orange-500 uppercase tracking-wide">Decision Needed</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-orange-500/50 text-orange-500">
+							{totalBlocked}
+						</Badge>
+						<span class="text-[10px] text-muted-foreground ml-1">
+							— blocked issue{totalBlocked === 1 ? '' : 's'}
+						</span>
 					</div>
-
-					<!-- Blocked Issues -->
-					{#if totalBlocked > 0}
-						<div class="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 mb-1">
+					<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
+						<div class="flex items-center gap-2 min-w-0">
 							<span class="text-xs">🚧</span>
-							<span class="text-xs">{totalBlocked} blocked issue{totalBlocked === 1 ? '' : 's'}</span>
-							<Button
-								variant="ghost"
-								size="sm"
-								class="h-5 px-2 text-[10px] ml-auto"
-								onclick={() => copyCommand('bd blocked')}
-							>
-								→ bd blocked
-							</Button>
+							<span class="text-xs">
+								{totalBlocked} issue{totalBlocked === 1 ? '' : 's'} blocked, needs decision
+							</span>
 						</div>
-					{/if}
-
-					<!-- Standard Reviews (not light-tier) -->
-					{#each standardAgents as agent (agent.workspace_id)}
-						{@const unreviewedItems = getUnreviewedItems(agent)}
-						{#if unreviewedItems.length > 0}
-							<div class="rounded border bg-card/50 p-1.5 mb-1">
-								<div class="flex items-center gap-1 mb-1">
-									<span class="text-[10px] font-medium truncate">{formatWorkspaceName(agent.workspace_id)}</span>
-									<Badge variant="outline" class="h-4 px-1 text-[10px]">{unreviewedItems.length}</Badge>
-								</div>
-
-								<div class="space-y-0.5">
-									{#each unreviewedItems.slice(0, 2) as item (item.index)}
-										{@const key = getItemKey(agent.workspace_id, item.index)}
-										<div class="flex items-start gap-1 rounded p-1 hover:bg-muted/50 group text-xs">
-											<span class="flex-1 text-[10px] truncate">{item.text}</span>
-											<div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-												{#if createdIssues[key]}
-													<span class="text-[10px] text-green-500 px-1">{createdIssues[key]}</span>
-												{:else}
-													<Button
-														variant="outline"
-														size="sm"
-														class="h-4 px-1 text-[9px]"
-														onclick={() => handleCreateIssue(agent, item)}
-														disabled={creatingIssue[key]}
-													>
-														{creatingIssue[key] ? '...' : '→ Issue'}
-													</Button>
-													<Button
-														variant="ghost"
-														size="sm"
-														class="h-4 px-1 text-[9px]"
-														onclick={() => handleDismiss(agent, item)}
-														disabled={dismissingItem[key]}
-													>
-														✕
-													</Button>
-												{/if}
-											</div>
-										</div>
-									{/each}
-									{#if unreviewedItems.length > 2}
-										<div class="text-[10px] text-muted-foreground pl-1">+{unreviewedItems.length - 2} more</div>
-									{/if}
-								</div>
-							</div>
-						{/if}
-					{/each}
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="sm"
+										class="h-6 px-2 text-[10px] opacity-70 group-hover:opacity-100 transition-opacity"
+										onclick={() => copyCommand('bd blocked')}
+									>
+										→ unblock
+									</Button>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content side="left">
+								<p class="text-xs">Click to copy command</p>
+								<code class="text-[10px] text-muted-foreground">bd blocked</code>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					</div>
 				</div>
 			{/if}
 
-			<!-- 📊 PATTERN: Recurring gaps -->
+			<!-- 📊 PATTERN: Recurring gaps that suggest constraints needed -->
 			{#if hasPatterns}
-				<div class="rounded border bg-card p-2 border-blue-500/30">
+				<div class="rounded border bg-card p-2.5 border-blue-500/30" data-testid="pattern-section">
 					<div class="flex items-center gap-2 mb-2">
 						<span class="text-sm">📊</span>
-						<span class="text-xs font-semibold text-blue-500">PATTERN</span>
-						<span class="text-xs text-muted-foreground">Recurring gaps ({$gaps?.recurring_patterns || 0})</span>
+						<span class="text-xs font-semibold text-blue-500 uppercase tracking-wide">Pattern</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-blue-500/50 text-blue-500">
+							{$gaps?.recurring_patterns || 0}
+						</Badge>
+						<span class="text-[10px] text-muted-foreground ml-1">
+							— recurring gaps
+						</span>
 					</div>
-					<div class="space-y-1">
+					<div class="space-y-1.5">
 						{#each patternSuggestions.slice(0, 3) as suggestion (suggestion.query)}
-							<div class="flex items-center justify-between gap-2 rounded p-1.5 hover:bg-muted/50">
-								<div class="flex items-center gap-2 min-w-0">
-									<span class="text-[10px] text-muted-foreground">{suggestion.count}×</span>
-									<span class="text-xs truncate">"{suggestion.query}"</span>
+							<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
+								<div class="flex items-center gap-2 min-w-0 flex-1">
+									<Badge variant="secondary" class="h-4 px-1.5 text-[10px] shrink-0">
+										{suggestion.count}×
+									</Badge>
+									<span class="text-xs truncate flex-1">"{suggestion.query}"</span>
 								</div>
-								<Button
-									variant="ghost"
-									size="sm"
-									class="h-5 px-2 text-[10px] shrink-0"
-									onclick={() => copyCommand(suggestion.suggestion)}
-								>
-									→ {suggestion.suggestion.split(' ').slice(0, 2).join(' ')}
-								</Button>
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="ghost"
+												size="sm"
+												class="h-6 px-2 text-[10px] shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
+												onclick={() => copyCommand(suggestion.suggestion)}
+											>
+												→ constrain
+											</Button>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content side="left">
+										<p class="text-xs">Click to copy command</p>
+										<code class="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-64">{suggestion.suggestion}</code>
+									</Tooltip.Content>
+								</Tooltip.Root>
 							</div>
 						{/each}
 						{#if patternSuggestions.length > 3}
-							<div class="text-[10px] text-muted-foreground pl-1">
-								+{patternSuggestions.length - 3} more patterns • <code class="bg-muted px-1 rounded">orch learn</code>
+							<div class="flex items-center justify-between pl-2">
+								<span class="text-[10px] text-muted-foreground">
+									+{patternSuggestions.length - 3} more patterns
+								</span>
+								<Button
+									variant="ghost"
+									size="sm"
+									class="h-5 px-2 text-[10px]"
+									onclick={() => copyCommand('orch learn')}
+								>
+									orch learn →
+								</Button>
 							</div>
 						{/if}
 					</div>
 				</div>
 			{/if}
 
-			<!-- ⚡ Light-tier summary (collapsed/dismissible) -->
+			<!-- ⚡ Light-tier stale recommendations (collapsed by default, separate from main attention count) -->
 			{#if lightTierTotalUnreviewed > 0}
-				<div class="rounded border bg-muted/30 p-2 border-muted-foreground/20">
-					<div class="flex items-center justify-between">
+				<div class="rounded border bg-muted/20 border-muted-foreground/10" data-testid="light-tier-section">
+					<button
+						class="flex items-center justify-between w-full px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors rounded"
+						onclick={() => { lightTierExpanded = !lightTierExpanded; }}
+					>
 						<div class="flex items-center gap-2">
-							<Badge variant="secondary" class="text-[10px] bg-blue-500/20 text-blue-400 border-blue-500/30 h-4 px-1">
+							<Badge variant="secondary" class="text-[10px] bg-slate-500/20 text-slate-500 border-slate-500/30 h-4 px-1.5">
 								⚡ light
 							</Badge>
 							<span class="text-[10px] text-muted-foreground">
-								{lightTierTotalUnreviewed} stale recommendations from {lightTierAgents.length} agent{lightTierAgents.length === 1 ? '' : 's'}
+								{lightTierTotalUnreviewed} stale from {lightTierAgents.length} agent{lightTierAgents.length === 1 ? '' : 's'}
 							</span>
 						</div>
-						<Button
-							variant="ghost"
-							size="sm"
-							class="h-5 px-2 text-[10px]"
-							onclick={handleDismissAllLightTier}
-							disabled={dismissingAllLightTier}
-						>
-							{dismissingAllLightTier ? '...' : 'Dismiss All'}
-						</Button>
-					</div>
+						<div class="flex items-center gap-2">
+							<Button
+								variant="ghost"
+								size="sm"
+								class="h-5 px-2 text-[10px]"
+								onclick={(e: Event) => { e.stopPropagation(); handleDismissAllLightTier(); }}
+								disabled={dismissingAllLightTier}
+							>
+								{dismissingAllLightTier ? '...' : 'Dismiss All'}
+							</Button>
+							<span class="text-muted-foreground transition-transform {lightTierExpanded ? 'rotate-180' : ''}">
+								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<polyline points="6 9 12 15 18 9"></polyline>
+								</svg>
+							</span>
+						</div>
+					</button>
+					{#if lightTierExpanded}
+						<div class="px-2.5 pb-2 pt-1 space-y-1 border-t border-muted-foreground/10">
+							{#each lightTierAgents as agent (agent.workspace_id)}
+								{@const unreviewedItems = getUnreviewedItems(agent)}
+								{#if unreviewedItems.length > 0}
+									<div class="text-[10px] text-muted-foreground">
+										<span class="font-medium">{formatWorkspaceName(agent.workspace_id)}</span>
+										<span class="opacity-60"> ({unreviewedItems.length})</span>
+									</div>
+								{/if}
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>
