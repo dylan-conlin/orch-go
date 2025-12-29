@@ -407,7 +407,11 @@ func GenerateContext(cfg *Config) (string, error) {
 	}
 
 	// Generate ecosystem context (auto-inject local project registry)
-	ecosystemContext := GenerateEcosystemContext()
+	// Use provided context if available, otherwise auto-generate from ~/.orch/ECOSYSTEM.md
+	ecosystemContext := cfg.EcosystemContext
+	if ecosystemContext == "" {
+		ecosystemContext = GenerateEcosystemContext()
+	}
 
 	// Strip beads instructions from skill content when NoTrack is true
 	// This prevents confusing agents with beads commands that won't work

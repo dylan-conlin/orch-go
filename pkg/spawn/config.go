@@ -117,6 +117,10 @@ type Config struct {
 	// GapAnalysis contains the results of pre-spawn context gap analysis.
 	// Used for surfacing gaps in dashboard and tracking patterns.
 	GapAnalysis *GapAnalysis
+
+	// EcosystemContext is the local project ecosystem context to include in SPAWN_CONTEXT.md
+	// If provided, used directly; otherwise GenerateEcosystemContext() is called to read from ~/.orch/ECOSYSTEM.md
+	EcosystemContext string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.
