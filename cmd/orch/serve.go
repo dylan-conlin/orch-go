@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1116,7 +1117,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleEvents proxies the OpenCode SSE stream to the client.
-// It connects to http://localhost:4096/event and forwards events.
+// It multiplexes SSE connections from all discovered project directories to provide
+// cross-project agent visibility. Each project directory gets its own SSE connection
+// to OpenCode, and events from all streams are forwarded to the client.
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1135,70 +1138,137 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to OpenCode SSE stream with directory header
-	// This is critical - without it, OpenCode only streams events for global sessions
-	opencodeURL := serverURL + "/event"
-	req, err := http.NewRequest("GET", opencodeURL, nil)
-	if err != nil {
-		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to create request: %s\"}\n\n", err.Error())
-		flusher.Flush()
-		return
-	}
-	// Set directory header so OpenCode streams events for THIS project's sessions
+	// Discover all project directories with OpenCode sessions
+	// This solves cross-project agent visibility: agents spawned with --workdir
+	// have sessions in their target project's directory, not the orchestrator's
+	allProjectDirs := discoverAllProjectDirs()
+
+	// Always include current project directory
+	projectDirs := make(map[string]bool)
 	if sourceDir != "" && sourceDir != "unknown" {
-		req.Header.Set("x-opencode-directory", sourceDir)
+		projectDirs[sourceDir] = true
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		// Send error as SSE event
-		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to connect to OpenCode: %s\"}\n\n", err.Error())
+	for _, dir := range allProjectDirs {
+		if dir != "" {
+			projectDirs[dir] = true
+		}
+	}
+
+	// Limit concurrent connections to prevent resource exhaustion
+	const maxConnections = 10
+	dirList := make([]string, 0, len(projectDirs))
+	for dir := range projectDirs {
+		dirList = append(dirList, dir)
+		if len(dirList) >= maxConnections {
+			break
+		}
+	}
+
+	if len(dirList) == 0 {
+		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"No project directories found\"}\n\n")
 		flusher.Flush()
 		return
 	}
-	defer resp.Body.Close()
 
-	// Check if OpenCode returned an error
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"OpenCode returned status %d\"}\n\n", resp.StatusCode)
-		flusher.Flush()
-		return
-	}
-
-	// Send connected event
-	fmt.Fprintf(w, "event: connected\ndata: {\"source\": \"%s\"}\n\n", opencodeURL)
+	// Send connected event with info about multiplexed streams
+	fmt.Fprintf(w, "event: connected\ndata: {\"source\": \"multiplexed\", \"directories\": %d}\n\n", len(dirList))
 	flusher.Flush()
 
-	// Create a done channel to handle client disconnect
 	ctx := r.Context()
 
-	// Read and forward SSE events
-	reader := bufio.NewReader(resp.Body)
+	// Channel for forwarding events from all streams to the client
+	eventChan := make(chan string, 100)
+
+	// WaitGroup to track all goroutines
+	var wg sync.WaitGroup
+
+	// Start a goroutine for each project directory's SSE stream
+	for _, dir := range dirList {
+		wg.Add(1)
+		go func(projectDir string) {
+			defer wg.Done()
+			streamSSEForDirectory(ctx, projectDir, eventChan)
+		}(dir)
+	}
+
+	// Close eventChan when all streams are done
+	go func() {
+		wg.Wait()
+		close(eventChan)
+	}()
+
+	// Forward events to the client
 	for {
 		select {
 		case <-ctx.Done():
 			// Client disconnected
 			return
-		default:
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				if err == io.EOF {
-					// Connection closed by OpenCode
-					fmt.Fprintf(w, "event: disconnected\ndata: {\"reason\": \"upstream closed\"}\n\n")
-					flusher.Flush()
-					return
-				}
-				// Read error
-				fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Read error: %s\"}\n\n", err.Error())
+		case line, ok := <-eventChan:
+			if !ok {
+				// All streams closed
+				fmt.Fprintf(w, "event: disconnected\ndata: {\"reason\": \"all upstream streams closed\"}\n\n")
 				flusher.Flush()
 				return
 			}
-
 			// Forward the line as-is (preserves SSE format)
 			if strings.HasPrefix(line, "data:") {
 				fmt.Printf("Forwarding SSE event: %s", line)
 			}
 			fmt.Fprint(w, line)
 			flusher.Flush()
+		}
+	}
+}
+
+// streamSSEForDirectory connects to OpenCode's SSE stream for a specific project directory
+// and sends events to the provided channel until the context is cancelled or the stream closes.
+func streamSSEForDirectory(ctx context.Context, projectDir string, eventChan chan<- string) {
+	opencodeURL := serverURL + "/event"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", opencodeURL, nil)
+	if err != nil {
+		// Don't flood the event channel with connection errors
+		return
+	}
+
+	// Set directory header so OpenCode streams events for this project's sessions
+	req.Header.Set("x-opencode-directory", projectDir)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		// Connection error - could be context cancelled, just return silently
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// OpenCode returned an error for this directory, skip it
+		return
+	}
+
+	// Read and forward SSE events
+	reader := bufio.NewReader(resp.Body)
+	for {
+		select {
+		case <-ctx.Done():
+			// Client disconnected, stop reading
+			return
+		default:
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				// Stream closed or read error, just return
+				return
+			}
+
+			// Send line to event channel (non-blocking with select to prevent deadlock)
+			select {
+			case eventChan <- line:
+			case <-ctx.Done():
+				return
+			default:
+				// Channel full, drop the event to prevent blocking
+				// This is acceptable for SSE where some events can be missed
+			}
 		}
 	}
 }
