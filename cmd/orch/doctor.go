@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -130,6 +131,13 @@ func runDoctor() error {
 	beadsDaemonStatus := checkBeadsDaemon()
 	report.Services = append(report.Services, beadsDaemonStatus)
 	// Beads daemon is optional, so we don't mark as unhealthy if not running
+
+	// Check for stalled sessions (sessions with no beads comments after >1 min)
+	stalledStatus := checkStalledSessions()
+	report.Services = append(report.Services, stalledStatus)
+	if !stalledStatus.Running {
+		report.Healthy = false
+	}
 
 	// Print status
 	printDoctorReport(report)
@@ -417,4 +425,108 @@ func printDoctorReport(report *DoctorReport) {
 	} else {
 		fmt.Println("Some services are not running.")
 	}
+}
+
+// checkStalledSessions checks for sessions that spawned but never reported a Phase status.
+// These are sessions with:
+// - An active OpenCode session
+// - A beads ID
+// - No beads comments after >1 minute
+// This indicates a potential failed-to-start situation.
+func checkStalledSessions() ServiceStatus {
+	status := ServiceStatus{
+		Name:      "Session Health",
+		CanFix:    false,
+		FixAction: "Use 'orch status' to review stalled sessions, 'orch abandon' to clean up",
+	}
+
+	client := opencode.NewClient(serverURL)
+	now := time.Now()
+
+	// Get current project directory for session queries
+	projectDir, _ := os.Getwd()
+
+	// Fetch sessions
+	var sessions []opencode.Session
+	seenSessionIDs := make(map[string]bool)
+
+	if projectDir != "" {
+		dirSessions, err := client.ListSessions(projectDir)
+		if err == nil {
+			for _, s := range dirSessions {
+				if !seenSessionIDs[s.ID] {
+					seenSessionIDs[s.ID] = true
+					sessions = append(sessions, s)
+				}
+			}
+		}
+	}
+
+	globalSessions, err := client.ListSessions("")
+	if err == nil {
+		for _, s := range globalSessions {
+			if !seenSessionIDs[s.ID] {
+				seenSessionIDs[s.ID] = true
+				sessions = append(sessions, s)
+			}
+		}
+	}
+
+	if len(sessions) == 0 {
+		status.Running = true
+		status.Details = "No active sessions"
+		return status
+	}
+
+	// Check each recent session for stalled status
+	const maxIdleTime = 30 * time.Minute
+	var stalledSessions []string
+
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+
+		// Only check recently active sessions
+		if now.Sub(updatedAt) > maxIdleTime {
+			continue
+		}
+
+		// Skip sessions less than 1 minute old (still starting up)
+		if now.Sub(createdAt) < time.Minute {
+			continue
+		}
+
+		// Extract beads ID from session title
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" {
+			continue
+		}
+
+		// Check if this session has any beads comments
+		hasComments, err := verify.HasBeadsComment(beadsID)
+		if err != nil {
+			// Skip on error (daemon might be down)
+			continue
+		}
+
+		if !hasComments {
+			// This session has no comments after >1 min - potential stalled session
+			stalledSessions = append(stalledSessions, beadsID)
+		}
+	}
+
+	if len(stalledSessions) == 0 {
+		status.Running = true
+		status.Details = fmt.Sprintf("%d active sessions, all reporting progress", len(sessions))
+		return status
+	}
+
+	// Found stalled sessions
+	status.Running = false
+	if len(stalledSessions) == 1 {
+		status.Details = fmt.Sprintf("⚠️ 1 stalled session (no Phase report after >1 min): %s", stalledSessions[0])
+	} else {
+		status.Details = fmt.Sprintf("⚠️ %d stalled sessions (no Phase report after >1 min): %s", len(stalledSessions), strings.Join(stalledSessions, ", "))
+	}
+	return status
 }

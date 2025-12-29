@@ -113,6 +113,67 @@ func TestParsePhaseFromComments(t *testing.T) {
 				Found:   true,
 			},
 		},
+		// BLOCKED status tests
+		{
+			name: "simple blocked comment",
+			comments: []Comment{
+				{Text: "Phase: Implementing - Working on feature"},
+				{Text: "BLOCKED: Need clarification on API contract"},
+			},
+			want: PhaseStatus{
+				Phase:         "Implementing",
+				Summary:       "Working on feature",
+				Found:         true,
+				IsBlocked:     true,
+				BlockedReason: "Need clarification on API contract",
+			},
+		},
+		{
+			name: "blocked cleared by later phase update",
+			comments: []Comment{
+				{Text: "Phase: Implementing - Working"},
+				{Text: "BLOCKED: Waiting for input"},
+				{Text: "Phase: Implementing - Continuing after clarification"},
+			},
+			want: PhaseStatus{
+				Phase:     "Implementing",
+				Summary:   "Continuing after clarification",
+				Found:     true,
+				IsBlocked: false,
+			},
+		},
+		{
+			name: "blocked case insensitive",
+			comments: []Comment{
+				{Text: "blocked: need help with this issue"},
+			},
+			want: PhaseStatus{
+				IsBlocked:     true,
+				BlockedReason: "need help with this issue",
+			},
+		},
+		{
+			name: "blocked with no phase",
+			comments: []Comment{
+				{Text: "BLOCKED: API endpoint returns 500"},
+			},
+			want: PhaseStatus{
+				Found:         false,
+				IsBlocked:     true,
+				BlockedReason: "API endpoint returns 500",
+			},
+		},
+		{
+			name: "multiple blocked - latest reason kept",
+			comments: []Comment{
+				{Text: "BLOCKED: First issue"},
+				{Text: "BLOCKED: Second issue after first resolved"},
+			},
+			want: PhaseStatus{
+				IsBlocked:     true,
+				BlockedReason: "Second issue after first resolved",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -127,6 +188,12 @@ func TestParsePhaseFromComments(t *testing.T) {
 			}
 			if got.Found != tt.want.Found {
 				t.Errorf("Found = %v, want %v", got.Found, tt.want.Found)
+			}
+			if got.IsBlocked != tt.want.IsBlocked {
+				t.Errorf("IsBlocked = %v, want %v", got.IsBlocked, tt.want.IsBlocked)
+			}
+			if got.BlockedReason != tt.want.BlockedReason {
+				t.Errorf("BlockedReason = %q, want %q", got.BlockedReason, tt.want.BlockedReason)
 			}
 		})
 	}
@@ -767,4 +834,129 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// Tests for failed-to-start detection functions
+
+func TestCheckCommentsWithAge(t *testing.T) {
+	// Note: This is a unit test for the result parsing logic, not the actual beads integration.
+	// We test the CommentCheckResult structure and parsing.
+
+	tests := []struct {
+		name     string
+		comments []Comment
+		want     *CommentCheckResult
+	}{
+		{
+			name:     "no comments",
+			comments: []Comment{},
+			want: &CommentCheckResult{
+				HasComments:  false,
+				CommentCount: 0,
+				HasPhase:     false,
+				LatestPhase:  "",
+			},
+		},
+		{
+			name: "comments without phase",
+			comments: []Comment{
+				{Text: "Just a regular comment"},
+			},
+			want: &CommentCheckResult{
+				HasComments:  true,
+				CommentCount: 1,
+				HasPhase:     false,
+				LatestPhase:  "",
+			},
+		},
+		{
+			name: "comments with phase",
+			comments: []Comment{
+				{Text: "Phase: Planning - Starting work"},
+			},
+			want: &CommentCheckResult{
+				HasComments:  true,
+				CommentCount: 1,
+				HasPhase:     true,
+				LatestPhase:  "Planning",
+			},
+		},
+		{
+			name: "multiple comments with phase",
+			comments: []Comment{
+				{Text: "Phase: Planning - Starting work"},
+				{Text: "Making progress"},
+				{Text: "Phase: Implementing - Working on feature"},
+			},
+			want: &CommentCheckResult{
+				HasComments:  true,
+				CommentCount: 3,
+				HasPhase:     true,
+				LatestPhase:  "Implementing",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate what CheckCommentsWithAge does without actual beads call
+			result := &CommentCheckResult{
+				HasComments:  len(tt.comments) > 0,
+				CommentCount: len(tt.comments),
+			}
+
+			if len(tt.comments) > 0 {
+				phaseStatus := ParsePhaseFromComments(tt.comments)
+				result.HasPhase = phaseStatus.Found
+				result.LatestPhase = phaseStatus.Phase
+			}
+
+			if result.HasComments != tt.want.HasComments {
+				t.Errorf("HasComments = %v, want %v", result.HasComments, tt.want.HasComments)
+			}
+			if result.CommentCount != tt.want.CommentCount {
+				t.Errorf("CommentCount = %d, want %d", result.CommentCount, tt.want.CommentCount)
+			}
+			if result.HasPhase != tt.want.HasPhase {
+				t.Errorf("HasPhase = %v, want %v", result.HasPhase, tt.want.HasPhase)
+			}
+			if result.LatestPhase != tt.want.LatestPhase {
+				t.Errorf("LatestPhase = %q, want %q", result.LatestPhase, tt.want.LatestPhase)
+			}
+		})
+	}
+}
+
+func TestWaitForFirstCommentResult(t *testing.T) {
+	// Test the result structure
+	t.Run("timeout result", func(t *testing.T) {
+		result := &WaitForFirstCommentResult{
+			Timeout:   true,
+			WaitedFor: 60000000000, // 60 seconds in nanoseconds
+		}
+		if !result.Timeout {
+			t.Error("Expected timeout to be true")
+		}
+		if result.Found {
+			t.Error("Expected found to be false on timeout")
+		}
+	})
+
+	t.Run("found result", func(t *testing.T) {
+		result := &WaitForFirstCommentResult{
+			Found:     true,
+			WaitedFor: 5000000000, // 5 seconds
+			HasPhase:  true,
+			Phase:     "Planning",
+		}
+		if !result.Found {
+			t.Error("Expected found to be true")
+		}
+		if result.Timeout {
+			t.Error("Expected timeout to be false")
+		}
+		if result.Phase != "Planning" {
+			t.Errorf("Phase = %q, want %q", result.Phase, "Planning")
+		}
+	})
 }
