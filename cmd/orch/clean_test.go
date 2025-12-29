@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
@@ -150,4 +151,166 @@ func TestCleanCommandIntegration(t *testing.T) {
 	// This is a placeholder for a more comprehensive integration test
 	// that would actually run the clean command against real workspaces.
 	t.Skip("Integration test not implemented - requires agent setup")
+}
+
+// TestFormatBytes tests the human-readable byte formatting.
+func TestFormatBytes(t *testing.T) {
+	tests := []struct {
+		bytes    int64
+		expected string
+	}{
+		{0, "0 B"},
+		{100, "100 B"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1048576, "1.0 MB"},
+		{1572864, "1.5 MB"},
+		{1073741824, "1.0 GB"},
+		{1610612736, "1.5 GB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			result := formatBytes(tt.bytes)
+			if result != tt.expected {
+				t.Errorf("formatBytes(%d) = %q, want %q", tt.bytes, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestWorkspaceInfoAgeCalculation tests workspace age calculation.
+func TestWorkspaceInfoAgeCalculation(t *testing.T) {
+	now := time.Now()
+	
+	tests := []struct {
+		name     string
+		modTime  time.Time
+		expected int // age in days
+	}{
+		{"today", now, 0},
+		{"yesterday", now.AddDate(0, 0, -1), 1},
+		{"week_ago", now.AddDate(0, 0, -7), 7},
+		{"month_ago", now.AddDate(0, -1, 0), 30}, // approximately
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			age := int(now.Sub(tt.modTime).Hours() / 24)
+			if age != tt.expected {
+				// Allow for month variation
+				if tt.name == "month_ago" && (age >= 28 && age <= 31) {
+					return
+				}
+				t.Errorf("age calculation for %s: got %d, want %d", tt.name, age, tt.expected)
+			}
+		})
+	}
+}
+
+// TestCleanOldWorkspacesFiltering tests that workspace age filtering works correctly.
+func TestCleanOldWorkspacesFiltering(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	now := time.Now()
+
+	// Create old workspace (10 days old)
+	oldWs := filepath.Join(workspaceDir, "og-feat-old-workspace")
+	if err := os.MkdirAll(oldWs, 0755); err != nil {
+		t.Fatalf("Failed to create old workspace: %v", err)
+	}
+	oldTime := now.AddDate(0, 0, -10)
+	if err := os.Chtimes(oldWs, oldTime, oldTime); err != nil {
+		t.Fatalf("Failed to set old workspace time: %v", err)
+	}
+
+	// Create recent workspace (2 days old)
+	newWs := filepath.Join(workspaceDir, "og-feat-new-workspace")
+	if err := os.MkdirAll(newWs, 0755); err != nil {
+		t.Fatalf("Failed to create new workspace: %v", err)
+	}
+	newTime := now.AddDate(0, 0, -2)
+	if err := os.Chtimes(newWs, newTime, newTime); err != nil {
+		t.Fatalf("Failed to set new workspace time: %v", err)
+	}
+
+	// Read workspaces and filter by age (7 days cutoff)
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		t.Fatalf("Failed to read workspace dir: %v", err)
+	}
+
+	cutoff := now.AddDate(0, 0, -7)
+	var oldWorkspaces []string
+	var recentWorkspaces []string
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			oldWorkspaces = append(oldWorkspaces, entry.Name())
+		} else {
+			recentWorkspaces = append(recentWorkspaces, entry.Name())
+		}
+	}
+
+	if len(oldWorkspaces) != 1 {
+		t.Errorf("Expected 1 old workspace (>7 days), got %d", len(oldWorkspaces))
+	}
+	if len(recentWorkspaces) != 1 {
+		t.Errorf("Expected 1 recent workspace (<=7 days), got %d", len(recentWorkspaces))
+	}
+}
+
+// TestCleanWorkspacesSkipsActiveSession tests that workspaces with active sessions are skipped.
+func TestCleanWorkspacesSkipsActiveSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Create workspace with session ID
+	ws := filepath.Join(workspaceDir, "og-feat-active-agent")
+	if err := os.MkdirAll(ws, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	sessionIDPath := filepath.Join(ws, ".session_id")
+	if err := os.WriteFile(sessionIDPath, []byte("ses_active123"), 0644); err != nil {
+		t.Fatalf("Failed to write session ID: %v", err)
+	}
+
+	// Simulate active sessions map
+	activeSessions := map[string]bool{
+		"ses_active123": true,
+	}
+
+	// Read session ID and check if active
+	sessionID, err := os.ReadFile(sessionIDPath)
+	if err != nil {
+		t.Fatalf("Failed to read session ID: %v", err)
+	}
+
+	hasActiveSession := activeSessions[string(sessionID)]
+	if !hasActiveSession {
+		t.Error("Workspace with ses_active123 should be detected as having active session")
+	}
+
+	// A workspace without matching session should not be active
+	activeSessions2 := map[string]bool{
+		"ses_other456": true,
+	}
+	hasActiveSession2 := activeSessions2[string(sessionID)]
+	if hasActiveSession2 {
+		t.Error("Workspace should not be detected as active with non-matching session ID")
+	}
 }

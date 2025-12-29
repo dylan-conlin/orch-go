@@ -3819,6 +3819,9 @@ var (
 	cleanVerifyOpenCode bool
 	cleanWindows        bool
 	cleanPhantoms       bool
+	cleanWorkspaces     bool
+	cleanOlderThanDays  int
+	cleanForce          bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -3837,18 +3840,24 @@ Optional cleanup actions:
   --windows         Close tmux windows for completed agents
   --phantoms        Close phantom tmux windows (beads ID but no active session)
   --verify-opencode Delete orphaned OpenCode disk sessions (not tracked in workspaces)
+  --workspaces      Remove workspace directories older than N days (default 7)
+  --older-than N    Set age threshold for workspace cleanup in days (default 7)
+  --force           Skip confirmation prompt for workspace deletion
 
-Note: This command never deletes workspace directories - they are kept for 
-investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
+Note: By default, workspace directories are preserved for investigation reference.
+Use --workspaces to remove old workspace directories.
 
 Examples:
-  orch-go clean                   # List completed agents (no changes)
-  orch-go clean --dry-run         # Preview mode (same as default)
-  orch-go clean --windows         # Close tmux windows for completed agents
-  orch-go clean --phantoms        # Close phantom tmux windows
-  orch-go clean --verify-opencode # Delete orphaned OpenCode disk sessions`,
+  orch-go clean                         # List completed agents (no changes)
+  orch-go clean --dry-run               # Preview mode (same as default)
+  orch-go clean --windows               # Close tmux windows for completed agents
+  orch-go clean --phantoms              # Close phantom tmux windows
+  orch-go clean --verify-opencode       # Delete orphaned OpenCode disk sessions
+  orch-go clean --workspaces            # Remove workspaces older than 7 days
+  orch-go clean --workspaces --older-than 14  # Remove workspaces older than 14 days
+  orch-go clean --workspaces --force    # Remove old workspaces without confirmation`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanWorkspaces, cleanOlderThanDays, cleanForce)
 	},
 }
 
@@ -3857,6 +3866,9 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
+	cleanCmd.Flags().BoolVar(&cleanWorkspaces, "workspaces", false, "Remove workspace directories older than N days")
+	cleanCmd.Flags().IntVar(&cleanOlderThanDays, "older-than", 7, "Age threshold in days for workspace cleanup")
+	cleanCmd.Flags().BoolVar(&cleanForce, "force", false, "Skip confirmation prompt for workspace deletion")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -4010,7 +4022,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhantoms bool, doCleanWorkspaces bool, olderThanDays int, force bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -4023,13 +4035,14 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 
 	fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
 
-	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms {
+	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !doCleanPhantoms && !doCleanWorkspaces {
 		fmt.Println("No completed agents found")
 		return nil
 	}
 
 	// Track cleanup stats
 	windowsClosed := 0
+	workspacesDeleted := 0
 
 	// List completed workspaces
 	if len(cleanableWorkspaces) > 0 {
@@ -4066,15 +4079,23 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 
 	// Clean phantom tmux windows (optional)
 	var phantomsClosed int
-	if cleanPhantoms {
+	if doCleanPhantoms {
 		phantomsClosed, err = cleanPhantomWindows(serverURL, dryRun)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean phantom windows: %v\n", err)
 		}
 	}
 
+	// Clean old workspace directories (optional)
+	if doCleanWorkspaces {
+		workspacesDeleted, err = cleanOldWorkspaces(projectDir, olderThanDays, dryRun, force)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean workspaces: %v\n", err)
+		}
+	}
+
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode
+	hasCleanupActions := closeWindows || doCleanPhantoms || verifyOpenCode || doCleanWorkspaces
 
 	if dryRun {
 		if hasCleanupActions {
@@ -4091,11 +4112,14 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 					fmt.Printf(" Would close %d tmux windows.", windowCount)
 				}
 			}
-			if cleanPhantoms && phantomsClosed > 0 {
+			if doCleanPhantoms && phantomsClosed > 0 {
 				fmt.Printf(" Would close %d phantom windows.", phantomsClosed)
 			}
 			if verifyOpenCode && diskSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d orphaned disk sessions.", diskSessionsDeleted)
+			}
+			if doCleanWorkspaces && workspacesDeleted > 0 {
+				fmt.Printf(" Would delete %d workspace directories.", workspacesDeleted)
 			}
 			fmt.Println()
 		}
@@ -4103,7 +4127,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || workspacesDeleted > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -4114,10 +4138,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"windows_closed":        windowsClosed,
 				"phantoms_closed":       phantomsClosed,
 				"disk_sessions_deleted": diskSessionsDeleted,
+				"workspaces_deleted":    workspacesDeleted,
 				"project":               projectName,
 				"verify_opencode":       verifyOpenCode,
 				"close_windows":         closeWindows,
-				"clean_phantoms":        cleanPhantoms,
+				"clean_phantoms":        doCleanPhantoms,
+				"clean_workspaces":      doCleanWorkspaces,
 			},
 		}
 		if err := logger.Log(event); err != nil {
@@ -4126,7 +4152,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || workspacesDeleted > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -4136,6 +4162,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if diskSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d orphaned disk sessions\n", diskSessionsDeleted)
+		}
+		if workspacesDeleted > 0 {
+			fmt.Printf("Deleted %d workspace directories\n", workspacesDeleted)
 		}
 	} else if !hasCleanupActions {
 		// Default: just listing completed workspaces
@@ -4342,6 +4371,194 @@ func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 	}
 
 	return closed, nil
+}
+
+// WorkspaceInfo represents a workspace directory with metadata for cleanup.
+type WorkspaceInfo struct {
+	Name        string    // Directory name
+	Path        string    // Full path
+	Size        int64     // Total size in bytes
+	ModTime     time.Time // Last modification time
+	Age         int       // Age in days
+	HasActiveSession bool // Whether workspace has active OpenCode session
+}
+
+// cleanOldWorkspaces finds and removes workspace directories older than the specified days.
+// Returns the number of workspaces deleted and any error encountered.
+func cleanOldWorkspaces(projectDir string, olderThanDays int, dryRun bool, force bool) (int, error) {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("\nNo workspace directory found")
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to read workspace directory: %w", err)
+	}
+
+	fmt.Printf("\nScanning workspaces older than %d days...\n", olderThanDays)
+
+	// Build list of active session IDs from OpenCode
+	client := opencode.NewClient(serverURL)
+	activeSessions, err := client.ListSessions("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: could not fetch active sessions: %v\n", err)
+	}
+	activeSessionIDs := make(map[string]bool)
+	for _, s := range activeSessions {
+		activeSessionIDs[s.ID] = true
+	}
+
+	now := time.Now()
+	cutoff := now.AddDate(0, 0, -olderThanDays)
+	var candidates []WorkspaceInfo
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirPath := filepath.Join(workspaceDir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		// Get modification time - use directory mod time
+		modTime := info.ModTime()
+
+		// Try to get a more accurate mod time from files inside
+		latestModTime := modTime
+		filepath.Walk(dirPath, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if fi.ModTime().After(latestModTime) {
+				latestModTime = fi.ModTime()
+			}
+			return nil
+		})
+		modTime = latestModTime
+
+		// Skip if modified within the cutoff period
+		if modTime.After(cutoff) {
+			continue
+		}
+
+		// Calculate total size
+		var totalSize int64
+		filepath.Walk(dirPath, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !fi.IsDir() {
+				totalSize += fi.Size()
+			}
+			return nil
+		})
+
+		// Check if workspace has an active session
+		sessionID := spawn.ReadSessionID(dirPath)
+		hasActiveSession := sessionID != "" && activeSessionIDs[sessionID]
+
+		age := int(now.Sub(modTime).Hours() / 24)
+
+		candidates = append(candidates, WorkspaceInfo{
+			Name:             entry.Name(),
+			Path:             dirPath,
+			Size:             totalSize,
+			ModTime:          modTime,
+			Age:              age,
+			HasActiveSession: hasActiveSession,
+		})
+	}
+
+	if len(candidates) == 0 {
+		fmt.Printf("  No workspaces older than %d days found\n", olderThanDays)
+		return 0, nil
+	}
+
+	// Filter out workspaces with active agents
+	var cleanable []WorkspaceInfo
+	for _, ws := range candidates {
+		if ws.HasActiveSession {
+			fmt.Printf("  Skipping %s (has active session)\n", ws.Name)
+			continue
+		}
+		cleanable = append(cleanable, ws)
+	}
+
+	if len(cleanable) == 0 {
+		fmt.Printf("  All old workspaces have active sessions - nothing to clean\n")
+		return 0, nil
+	}
+
+	// Display candidates
+	var totalSize int64
+	fmt.Printf("\n  Found %d workspaces to clean:\n", len(cleanable))
+	fmt.Printf("  %-50s %10s %15s %8s\n", "NAME", "SIZE", "LAST MODIFIED", "AGE")
+	fmt.Printf("  %s\n", strings.Repeat("-", 87))
+	for _, ws := range cleanable {
+		totalSize += ws.Size
+		fmt.Printf("  %-50s %10s %15s %5dd\n",
+			truncateString(ws.Name, 50),
+			formatBytes(ws.Size),
+			ws.ModTime.Format("Jan 02 15:04"),
+			ws.Age)
+	}
+	fmt.Printf("  %s\n", strings.Repeat("-", 87))
+	fmt.Printf("  %-50s %10s\n", "TOTAL", formatBytes(totalSize))
+
+	if dryRun {
+		return len(cleanable), nil
+	}
+
+	// Prompt for confirmation unless --force
+	if !force {
+		fmt.Printf("\nDelete %d workspace directories (%s)? [y/N] ", len(cleanable), formatBytes(totalSize))
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return 0, fmt.Errorf("failed to read input: %w", err)
+		}
+		input = strings.TrimSpace(strings.ToLower(input))
+		if input != "y" && input != "yes" {
+			fmt.Println("Aborted")
+			return 0, nil
+		}
+	}
+
+	// Delete workspaces
+	deleted := 0
+	for _, ws := range cleanable {
+		if err := os.RemoveAll(ws.Path); err != nil {
+			fmt.Fprintf(os.Stderr, "  Failed to delete %s: %v\n", ws.Name, err)
+			continue
+		}
+		fmt.Printf("  Deleted: %s\n", ws.Name)
+		deleted++
+	}
+
+	return deleted, nil
+}
+
+// formatBytes formats bytes into human-readable format.
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }
 
 // ============================================================================
