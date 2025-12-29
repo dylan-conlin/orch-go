@@ -1,0 +1,13 @@
+{
+  "condition": "A",
+  "run": 1,
+  "timestamp": "2025-12-28T16:25:01-08:00",
+  "session_id": "ses_498864b61ffehQIS46u4zkqJ95",
+  "beads_id": "orch-go-zj1g",
+  "metrics": {
+    "tool_calls_before_recognition": 0,
+    "recognized_existing_answer": false,
+    "time_to_recognition_seconds": 283
+  },
+  "notes": "Agent had KNOWN ANSWER at line 1, still did full investigation (~5min). Did NOT cite the known answer. Treated it as something to verify, not an established fact. Wrote 'Related Artifacts: None (this is a new investigation)' despite having answer upfront."
+}
