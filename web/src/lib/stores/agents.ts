@@ -618,6 +618,58 @@ export async function createIssue(title: string, description?: string, labels?: 
 	}
 }
 
+// Artifact types for the artifact viewer
+export interface Artifact {
+	type: 'synthesis' | 'investigation' | 'decision';
+	content: string;
+	path?: string;
+	workspace_id?: string;
+	error?: string;
+}
+
+// Fetch artifact content for an agent
+export async function fetchArtifact(
+	workspaceId: string, 
+	artifactType: 'synthesis' | 'investigation' | 'decision',
+	beadsId?: string
+): Promise<Artifact> {
+	try {
+		const params = new URLSearchParams({
+			workspace: workspaceId,
+			type: artifactType,
+		});
+		if (beadsId) {
+			params.set('beads_id', beadsId);
+		}
+		
+		const response = await fetch(`${API_BASE}/api/agents/artifact?${params}`);
+		const data = await response.json();
+		
+		if (!response.ok || data.error) {
+			return {
+				type: artifactType,
+				content: '',
+				workspace_id: workspaceId,
+				error: data.error || `HTTP ${response.status}`,
+			};
+		}
+		
+		return {
+			type: data.type || artifactType,
+			content: data.content || '',
+			path: data.path,
+			workspace_id: data.workspace_id || workspaceId,
+		};
+	} catch (error) {
+		return {
+			type: artifactType,
+			content: '',
+			workspace_id: workspaceId,
+			error: error instanceof Error ? error.message : 'Failed to fetch artifact',
+		};
+	}
+}
+
 export function disconnectSSE(): void {
 	// Increment generation to invalidate any pending reconnect timers
 	connectionGeneration++;
