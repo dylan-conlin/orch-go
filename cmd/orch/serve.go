@@ -1057,6 +1057,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// For untracked agents, try reading phase from workspace .phase file
+			// Untracked agents can't report Phase via beads comments (no real issue),
+			// so they write phase to their workspace as an alternative mechanism.
+			if agents[i].Phase == "" && isUntrackedBeadsIDServe(agents[i].BeadsID) {
+				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
+				if wsPhase := readWorkspacePhase(workspacePath); wsPhase != "" {
+					agents[i].Phase = wsPhase
+				}
+			}
+
 			// Derive status from beads Phase, NOT from session existence or activity.
 			// Prior decision: "Dashboard agent status derived from beads phase, not session time"
 			//
@@ -1078,6 +1088,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
 				if checkWorkspaceSynthesis(workspacePath) {
 					agents[i].Status = "completed"
+				}
+			}
+
+			// Stalled detection for untracked agents
+			// Untracked agents can't report Phase via beads comments (no real issue exists).
+			// If an untracked agent has no phase AND is > 1 minute old, mark as stalled.
+			// This matches CLI behavior (orch status shows "⚠️ stalled" for NoComments).
+			if agents[i].Status != "completed" && agents[i].Phase == "" && isUntrackedBeadsIDServe(agents[i].BeadsID) {
+				// Check if agent is > 1 minute old using SpawnedAt timestamp
+				if agents[i].SpawnedAt != "" {
+					spawnedAt, err := time.Parse(time.RFC3339, agents[i].SpawnedAt)
+					if err == nil && time.Since(spawnedAt) > time.Minute {
+						agents[i].Status = "stalled"
+					}
 				}
 			}
 
@@ -2285,6 +2309,30 @@ func checkWorkspaceSynthesis(workspacePath string) bool {
 	}
 	// SYNTHESIS.md must exist and be non-empty
 	return info.Size() > 0
+}
+
+// isUntrackedBeadsIDServe returns true if the beads ID indicates an untracked agent.
+// Untracked agents are spawned with --no-track and have IDs like "project-untracked-1766695797".
+// Note: Duplicated from review.go to avoid import cycle. Consider moving to shared package.
+func isUntrackedBeadsIDServe(beadsID string) bool {
+	return strings.Contains(beadsID, "-untracked-")
+}
+
+// readWorkspacePhase reads phase from workspace .phase file for untracked agents.
+// Untracked agents can't report Phase via beads comments (no real issue exists),
+// so they write phase to .orch/workspace/{name}/.phase as an alternative.
+// Returns empty string if file doesn't exist or can't be read.
+func readWorkspacePhase(workspacePath string) string {
+	if workspacePath == "" {
+		return ""
+	}
+	phasePath := filepath.Join(workspacePath, ".phase")
+	data, err := os.ReadFile(phasePath)
+	if err != nil {
+		return ""
+	}
+	// Phase file contains just the phase name, e.g., "Planning" or "Implementing"
+	return strings.TrimSpace(string(data))
 }
 
 // getGapAnalysisFromEvents reads spawn events and extracts gap analysis data for given beads IDs.

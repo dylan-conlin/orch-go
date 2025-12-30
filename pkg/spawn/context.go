@@ -52,15 +52,26 @@ The following patterns have been detected from prior agent sessions. These are f
 This is an ad-hoc spawn without beads issue tracking.
 Progress tracking via bd comment is NOT available.
 
+🚨 PHASE REPORTING (WORKSPACE FILE):
+Since bd comment is not available, report phase via workspace file:
+` + "`echo 'Planning' > {{.WorkspacePath}}/.phase`" + `
+
+Update this file at phase transitions:
+- Planning → Implementing → Testing → Complete
+
+This enables orchestrator visibility for untracked agents.
+
 🚨 SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE typing anything else:
 {{if eq .Tier "light"}}
-1. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + `
+2. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`/exit`" + ` to close the agent session
+2. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + `
+3. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 {{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
@@ -386,6 +397,7 @@ type contextData struct {
 	BeadsID            string
 	ProjectDir         string
 	WorkspaceName      string
+	WorkspacePath      string // Full absolute path to workspace directory
 	SkillName          string
 	SkillContent       string
 	InvestigationSlug  string
@@ -439,11 +451,15 @@ func GenerateContext(cfg *Config) (string, error) {
 		behavioralPatterns = GenerateBehavioralPatternsContext(cfg.WorkspaceName)
 	}
 
+	// Compute full workspace path for template (needed for phase file in --no-track spawns)
+	workspacePath := filepath.Join(cfg.ProjectDir, ".orch", "workspace", cfg.WorkspaceName)
+
 	data := contextData{
 		Task:               cfg.Task,
 		BeadsID:            cfg.BeadsID,
 		ProjectDir:         cfg.ProjectDir,
 		WorkspaceName:      cfg.WorkspaceName,
+		WorkspacePath:      workspacePath,
 		SkillName:          cfg.SkillName,
 		SkillContent:       skillContent,
 		InvestigationSlug:  slug,

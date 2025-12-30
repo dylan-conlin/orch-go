@@ -1173,6 +1173,22 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 		if !strings.Contains(content, "SYNTHESIS.md") {
 			t.Error("expected content to contain SYNTHESIS.md requirement for full tier")
 		}
+
+		// Should contain workspace phase file instructions for untracked agents
+		if !strings.Contains(content, "PHASE REPORTING (WORKSPACE FILE)") {
+			t.Error("expected content to contain phase reporting instructions for --no-track spawn")
+		}
+
+		// Should contain echo command to write phase to .phase file
+		if !strings.Contains(content, ".phase") {
+			t.Error("expected content to contain .phase file reference for --no-track spawn")
+		}
+
+		// Should contain full workspace path in phase instructions
+		expectedWorkspacePath := "/tmp/test/.orch/workspace/og-inv-test-26dec"
+		if !strings.Contains(content, expectedWorkspacePath) {
+			t.Errorf("expected content to contain workspace path %q", expectedWorkspacePath)
+		}
 	})
 
 	t.Run("includes beads instructions when NoTrack is false", func(t *testing.T) {
