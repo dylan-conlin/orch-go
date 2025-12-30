@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-neeo
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** All three "gaps" are already addressed by existing principles or pragmatic implementations: (1) cost/efficiency has `MaxInvestigationsInContext=3` and Progressive Disclosure, (2) trust dynamics are explicitly covered in orchestrator skill's "Orchestrator Autonomy" section, (3) principle failure modes are prevented by the 4-criteria test for new principles and Evolve by Distinction pattern.
