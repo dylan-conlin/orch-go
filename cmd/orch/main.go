@@ -5376,6 +5376,19 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 		contextContent = gapSummary + "\n\n" + contextContent
 	}
 
+	// Also check kb chronicle for topic-focused investigations
+	// This provides better relevance than generic keyword matches
+	chronicleResult, err := spawn.RunKBChronicleCheck(keywords)
+	if err == nil && chronicleResult != nil {
+		chronicleContext := spawn.FormatChronicleForSpawn(chronicleResult)
+		if chronicleContext != "" {
+			// Insert chronicle context before the closing IMPORTANT note
+			// This keeps related investigations visible but not overwhelming
+			contextContent = contextContent + chronicleContext
+			fmt.Printf("Found %d related investigations from kb chronicle.\n", len(chronicleResult.Timeline))
+		}
+	}
+
 	gcr.Context = contextContent
 	return gcr
 }

@@ -1,6 +1,7 @@
 package spawn
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -824,6 +825,135 @@ func TestEnrichInvestigationsWithDelta(t *testing.T) {
 			t.Errorf("expected empty list, got %d", len(enriched))
 		}
 	})
+}
+
+func TestFormatChronicleForSpawn(t *testing.T) {
+	t.Run("nil result returns empty", func(t *testing.T) {
+		result := FormatChronicleForSpawn(nil)
+		if result != "" {
+			t.Errorf("expected empty string for nil result, got %q", result)
+		}
+	})
+
+	t.Run("empty timeline returns empty", func(t *testing.T) {
+		result := FormatChronicleForSpawn(&ChronicleResult{
+			Topic:    "test",
+			Timeline: []ChronicleEntry{},
+		})
+		if result != "" {
+			t.Errorf("expected empty string for empty timeline, got %q", result)
+		}
+	})
+
+	t.Run("formats single investigation", func(t *testing.T) {
+		result := FormatChronicleForSpawn(&ChronicleResult{
+			Topic: "spawn context",
+			Timeline: []ChronicleEntry{
+				{
+					Date:    "2025-12-30",
+					Type:    "investigation",
+					Title:   "Spawn Context Generation",
+					Summary: "Found that spawn context uses generic keywords.",
+					Path:    "/path/to/investigation.md",
+				},
+			},
+		})
+
+		if !strings.Contains(result, "Prior Investigations on This Topic") {
+			t.Error("expected 'Prior Investigations on This Topic' header")
+		}
+		if !strings.Contains(result, "Spawn Context Generation") {
+			t.Error("expected investigation title in output")
+		}
+		if !strings.Contains(result, "Found that spawn context uses generic keywords.") {
+			t.Error("expected summary in output")
+		}
+		if !strings.Contains(result, "/path/to/investigation.md") {
+			t.Error("expected path in output")
+		}
+		if !strings.Contains(result, "spawn context") {
+			t.Error("expected topic in output")
+		}
+	})
+
+	t.Run("truncates long summaries", func(t *testing.T) {
+		longSummary := strings.Repeat("a", 300)
+		result := FormatChronicleForSpawn(&ChronicleResult{
+			Topic: "test",
+			Timeline: []ChronicleEntry{
+				{
+					Type:    "investigation",
+					Title:   "Test Investigation",
+					Summary: longSummary,
+				},
+			},
+		})
+
+		if strings.Contains(result, longSummary) {
+			t.Error("expected long summary to be truncated")
+		}
+		if !strings.Contains(result, "...") {
+			t.Error("expected ellipsis for truncated summary")
+		}
+	})
+
+	t.Run("formats multiple investigations", func(t *testing.T) {
+		result := FormatChronicleForSpawn(&ChronicleResult{
+			Topic: "auth",
+			Timeline: []ChronicleEntry{
+				{Type: "investigation", Title: "Auth Flow Analysis", Path: "/path/1.md"},
+				{Type: "investigation", Title: "JWT Implementation", Path: "/path/2.md"},
+				{Type: "investigation", Title: "Session Management", Path: "/path/3.md"},
+			},
+		})
+
+		if !strings.Contains(result, "Auth Flow Analysis") {
+			t.Error("expected first investigation title")
+		}
+		if !strings.Contains(result, "JWT Implementation") {
+			t.Error("expected second investigation title")
+		}
+		if !strings.Contains(result, "Session Management") {
+			t.Error("expected third investigation title")
+		}
+	})
+}
+
+func TestChronicleResultParsing(t *testing.T) {
+	// Test that we can parse the expected JSON format from kb chronicle
+	jsonData := `{
+		"topic": "spawn context",
+		"timeline": [
+			{
+				"date": "2025-12-30T00:00:00Z",
+				"type": "investigation",
+				"title": "CLI orch spawn Command Implementation",
+				"summary": "First checking direct symlinks",
+				"path": "/path/to/investigation.md",
+				"id": ""
+			}
+		],
+		"investigations": []
+	}`
+
+	var result ChronicleResult
+	err := json.Unmarshal([]byte(jsonData), &result)
+	if err != nil {
+		t.Fatalf("failed to parse chronicle JSON: %v", err)
+	}
+
+	if result.Topic != "spawn context" {
+		t.Errorf("expected topic 'spawn context', got %q", result.Topic)
+	}
+	if len(result.Timeline) != 1 {
+		t.Errorf("expected 1 timeline entry, got %d", len(result.Timeline))
+	}
+	if result.Timeline[0].Type != "investigation" {
+		t.Errorf("expected type 'investigation', got %q", result.Timeline[0].Type)
+	}
+	if result.Timeline[0].Title != "CLI orch spawn Command Implementation" {
+		t.Errorf("unexpected title: %q", result.Timeline[0].Title)
+	}
 }
 
 func TestFormatContextIncludesDelta(t *testing.T) {

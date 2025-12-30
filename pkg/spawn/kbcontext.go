@@ -4,6 +4,7 @@ package spawn
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -57,6 +58,27 @@ type KBContextMatch struct {
 // MaxInvestigationsInContext limits the number of investigations to include in spawn context.
 // Keeping this small (2-3) to surface relevant prior work without context bloat.
 const MaxInvestigationsInContext = 3
+
+// MaxChronicleInvestigations limits how many investigations from kb chronicle to include.
+// These are topic-focused investigations that are more likely to be relevant than generic keyword matches.
+const MaxChronicleInvestigations = 3
+
+// ChronicleEntry represents a single entry from kb chronicle JSON output.
+type ChronicleEntry struct {
+	Date    string `json:"date"`
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+	Path    string `json:"path"`
+	ID      string `json:"id"`
+}
+
+// ChronicleResult represents the parsed output of kb chronicle --format json.
+type ChronicleResult struct {
+	Topic          string           `json:"topic"`
+	Timeline       []ChronicleEntry `json:"timeline"`
+	Investigations []ChronicleEntry `json:"investigations"`
+}
 
 // KBContextResult holds the results of a kb context query.
 type KBContextResult struct {
@@ -633,4 +655,82 @@ func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
 		}
 	}
 	return filtered
+}
+
+// RunKBChronicleCheck runs 'kb chronicle' with the given topic to find related investigations.
+// Uses JSON format for reliable parsing. Returns nil if no matches or command fails.
+// This provides topic-focused investigation discovery (vs generic keyword matching from kb context).
+func RunKBChronicleCheck(topic string) (*ChronicleResult, error) {
+	if topic == "" {
+		return nil, nil
+	}
+
+	// Create context with timeout to prevent hangs
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Run kb chronicle with JSON output, limited to MaxChronicleInvestigations
+	limitStr := fmt.Sprintf("%d", MaxChronicleInvestigations)
+	cmd := exec.CommandContext(ctx, "kb", "chronicle", topic, "--format", "json", "--limit", limitStr)
+
+	output, err := cmd.Output()
+	if err != nil {
+		// kb chronicle may fail if no results or command not available - not an error
+		return nil, nil
+	}
+
+	if len(output) == 0 {
+		return nil, nil
+	}
+
+	var result ChronicleResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		// JSON parse error - log and continue without chronicle context
+		return nil, nil
+	}
+
+	// Filter to only investigation entries from the timeline
+	var investigations []ChronicleEntry
+	for _, entry := range result.Timeline {
+		if entry.Type == "investigation" && len(investigations) < MaxChronicleInvestigations {
+			investigations = append(investigations, entry)
+		}
+	}
+
+	if len(investigations) == 0 {
+		return nil, nil
+	}
+
+	result.Timeline = investigations
+	return &result, nil
+}
+
+// FormatChronicleForSpawn formats kb chronicle results for inclusion in SPAWN_CONTEXT.md.
+// Returns a markdown section showing prior investigations on the topic.
+func FormatChronicleForSpawn(result *ChronicleResult) string {
+	if result == nil || len(result.Timeline) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("### Prior Investigations on This Topic\n\n")
+	sb.WriteString(fmt.Sprintf("*From `kb chronicle %q` - these investigations explored similar questions:*\n\n", result.Topic))
+
+	for _, entry := range result.Timeline {
+		sb.WriteString(fmt.Sprintf("- **%s**\n", entry.Title))
+		if entry.Summary != "" {
+			// Truncate long summaries
+			summary := entry.Summary
+			if len(summary) > 200 {
+				summary = summary[:197] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("  - Summary: %s\n", summary))
+		}
+		if entry.Path != "" {
+			sb.WriteString(fmt.Sprintf("  - See: %s\n", entry.Path))
+		}
+	}
+	sb.WriteString("\n")
+
+	return sb.String()
 }
