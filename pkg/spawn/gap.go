@@ -127,7 +127,7 @@ func AnalyzeGaps(result *KBContextResult, query string) *GapAnalysis {
 			Type:        GapTypeNoConstraints,
 			Severity:    GapSeverityInfo,
 			Description: "No constraints found - agent may not know system limitations",
-			Suggestion:  "If there are constraints for this area, add them via 'kn constrain'",
+			Suggestion:  "If there are constraints for this area, add them via 'kb quick constrain'",
 		})
 	}
 
@@ -379,7 +379,7 @@ func (g *GapAnalysis) FormatGateBlockMessage() string {
 
 	sb.WriteString("║                                                                              ║\n")
 	sb.WriteString("║  To fix:                                                                     ║\n")
-	sb.WriteString("║    1. Add relevant knowledge:  kn decide / kn constrain / kb create          ║\n")
+	sb.WriteString("║    1. Add relevant knowledge:  kb quick decide / kb quick constrain           ║\n")
 	sb.WriteString("║    2. Or use --skip-gap-gate to proceed anyway (documents bypass)            ║\n")
 	sb.WriteString("║                                                                              ║\n")
 	sb.WriteString("║  Why gate? Agents without context compensate by guessing, creating          ║\n")
@@ -447,7 +447,7 @@ func (g *GapAnalysis) FormatProminentWarning() string {
 
 	sb.WriteString("├──────────────────────────────────────────────────────────────────────────────┤\n")
 	sb.WriteString("│  Agent may need to compensate by discovering patterns during work.          │\n")
-	sb.WriteString("│  Consider adding knowledge first: kn decide / kn constrain                  │\n")
+	sb.WriteString("│  Consider adding knowledge first: kb quick decide / kb quick constrain       │\n")
 	sb.WriteString("└──────────────────────────────────────────────────────────────────────────────┘\n")
 
 	return sb.String()

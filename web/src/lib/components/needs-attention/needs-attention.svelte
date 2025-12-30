@@ -48,7 +48,7 @@
 	$: actionableBlocked = ($blockedIssues?.issues ?? []).filter(i => i.needs_action);
 	$: totalBlocked = actionableBlocked.length;
 
-	// 📊 PATTERNS: Recurring gaps that could use kn constrain
+	// 📊 PATTERNS: Recurring gaps that could use kb quick constrain
 	$: patternSuggestions = $gaps?.suggestions ?? [];
 	$: hasGapPatterns = patternSuggestions.length > 0;
 

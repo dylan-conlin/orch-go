@@ -400,7 +400,7 @@ func priorityOrder(priority string) int {
 // determineSuggestion determines what action to suggest based on gap patterns.
 // The remediation type must match the gap type:
 // - no_context → investigate (we don't know what's missing, need discovery)
-// - no_constraints → kn constrain (we know constraints are missing)
+// - no_constraints → kb quick constrain (we know constraints are missing)
 // - no_decisions → bd create (we know decisions are missing, need to establish)
 // - sparse_context/other → investigate (need more understanding)
 func determineSuggestion(query string, events []GapEvent) (suggestionType, suggestion, command string) {
@@ -430,7 +430,7 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 		// Context exists but no constraints - suggest adding constraints
 		return "add_knowledge",
 			fmt.Sprintf("Gap %q has occurred %d times without constraints. Add constraints if they exist.", query, len(events)),
-			fmt.Sprintf(`kn constrain "%s" --reason "%s"`, query, reason)
+			fmt.Sprintf(`kb quick constrain "%s" --reason "%s"`, query, reason)
 	}
 
 	if hasNoDecisions {
@@ -442,7 +442,7 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 
 	if hasNoContext {
 		// No context at all - we don't know what type of knowledge is missing
-		// Suggest investigation to discover what's needed (not kn decide which assumes decision is needed)
+		// Suggest investigation to discover what's needed (not kb quick decide which assumes decision is needed)
 		return "investigate",
 			fmt.Sprintf("Gap %q has occurred %d times with no context. Investigate to discover what knowledge is missing.", query, len(events)),
 			fmt.Sprintf(`orch spawn investigation "what context is needed for %s"`, query)
@@ -454,11 +454,11 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 		fmt.Sprintf(`orch spawn investigation "why does %s lack context"`, query)
 }
 
-// MinReasonLength is the minimum length required by kn for --reason argument.
+// MinReasonLength is the minimum length required by kb quick for --reason argument.
 const MinReasonLength = 20
 
 // generateReasonFromGaps creates a meaningful reason string from gap event context.
-// Ensures the reason is at least MinReasonLength characters to satisfy kn validation.
+// Ensures the reason is at least MinReasonLength characters to satisfy kb quick validation.
 func generateReasonFromGaps(query string, events []GapEvent) string {
 	if len(events) == 0 {
 		return "No context available for this topic"
@@ -518,7 +518,7 @@ func generateReasonFromGaps(query string, events []GapEvent) string {
 
 	reason := strings.Join(parts, ". ")
 
-	// Ensure minimum length for kn validation (requires at least 20 chars)
+	// Ensure minimum length for kb quick validation (requires at least 20 chars)
 	if len(reason) < MinReasonLength {
 		// Pad with query context to meet minimum
 		reason = fmt.Sprintf("Recurring gap for topic: %s. %s", query, reason)
@@ -762,7 +762,7 @@ func (t *GapTracker) Summary() string {
 // This is similar to POSIX shell word splitting.
 // Examples:
 //
-//	`kn decide "auth" --reason "test reason"` -> ["kn", "decide", "auth", "--reason", "test reason"]
+//	`kb quick decide "auth" --reason "test reason"` -> ["kb", "quick", "decide", "auth", "--reason", "test reason"]
 //	`echo "hello world"` -> ["echo", "hello world"]
 func ParseShellCommand(cmdStr string) ([]string, error) {
 	var args []string
@@ -837,8 +837,8 @@ func ValidateCommand(cmdStr string) error {
 
 	// Validate known command patterns
 	switch args[0] {
-	case "kn":
-		return validateKnCommand(args)
+	case "kb":
+		return validateKbCommand(args)
 	case "bd":
 		return validateBdCommand(args)
 	case "orch":
@@ -849,33 +849,40 @@ func ValidateCommand(cmdStr string) error {
 	}
 }
 
-// validateKnCommand checks kn command syntax.
-func validateKnCommand(args []string) error {
+// validateKbCommand checks kb command syntax, especially kb quick subcommands.
+func validateKbCommand(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("kn command requires subcommand (decide, constrain, etc.)")
+		return fmt.Errorf("kb command requires subcommand (quick, context, etc.)")
 	}
 
-	switch args[1] {
-	case "decide", "constrain", "tried":
-		// These require at least a description
+	// Handle kb quick subcommands (decide, constrain, tried, question)
+	if args[1] == "quick" {
 		if len(args) < 3 {
-			return fmt.Errorf("kn %s requires a description", args[1])
+			return fmt.Errorf("kb quick requires subcommand (decide, constrain, tried, question)")
 		}
-		// Check for --reason flag value and validate minimum length
-		for i, arg := range args {
-			if arg == "--reason" {
-				if i == len(args)-1 {
-					return fmt.Errorf("--reason flag requires a value")
-				}
-				reasonValue := args[i+1]
-				if len(reasonValue) < MinReasonLength {
-					return fmt.Errorf("--reason must be at least %d characters (got %d)", MinReasonLength, len(reasonValue))
+
+		switch args[2] {
+		case "decide", "constrain", "tried":
+			// These require at least a description
+			if len(args) < 4 {
+				return fmt.Errorf("kb quick %s requires a description", args[2])
+			}
+			// Check for --reason/--failed flag value and validate minimum length
+			for i, arg := range args {
+				if arg == "--reason" || arg == "--failed" {
+					if i == len(args)-1 {
+						return fmt.Errorf("%s flag requires a value", arg)
+					}
+					reasonValue := args[i+1]
+					if len(reasonValue) < MinReasonLength {
+						return fmt.Errorf("%s must be at least %d characters (got %d)", arg, MinReasonLength, len(reasonValue))
+					}
 				}
 			}
-		}
-	case "question":
-		if len(args) < 3 {
-			return fmt.Errorf("kn question requires a question text")
+		case "question":
+			if len(args) < 4 {
+				return fmt.Errorf("kb quick question requires a question text")
+			}
 		}
 	}
 
