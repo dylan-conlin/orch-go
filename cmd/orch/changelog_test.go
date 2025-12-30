@@ -162,7 +162,11 @@ func TestGetCategoryIcon(t *testing.T) {
 		expected string
 	}{
 		{"skills", "🎯"},
+		{"skill-behavioral", "🎯"},
+		{"skill-docs", "📖"},
 		{"kb", "📚"},
+		{"decision-record", "📜"},
+		{"investigation", "🔍"},
 		{"cmd", "⚡"},
 		{"pkg", "📦"},
 		{"web", "🌐"},
@@ -229,5 +233,408 @@ func TestChangelogResultStructure(t *testing.T) {
 	}
 	if result.CommitsByCategory["cmd"] != 50 {
 		t.Errorf("CommitsByCategory[cmd] = %d, want 50", result.CommitsByCategory["cmd"])
+	}
+}
+
+// Tests for semantic parsing
+
+func TestParseConventionalCommit(t *testing.T) {
+	tests := []struct {
+		name       string
+		subject    string
+		wantType   string
+		wantBreak  bool
+	}{
+		{
+			name:      "simple feat",
+			subject:   "feat: add new feature",
+			wantType:  "feat",
+			wantBreak: false,
+		},
+		{
+			name:      "fix with scope",
+			subject:   "fix(auth): resolve login issue",
+			wantType:  "fix",
+			wantBreak: false,
+		},
+		{
+			name:      "docs",
+			subject:   "docs: update README",
+			wantType:  "docs",
+			wantBreak: false,
+		},
+		{
+			name:      "breaking with exclamation",
+			subject:   "feat!: breaking API change",
+			wantType:  "feat",
+			wantBreak: true,
+		},
+		{
+			name:      "breaking with BREAKING prefix",
+			subject:   "BREAKING: remove deprecated API",
+			wantType:  "",
+			wantBreak: true,
+		},
+		{
+			name:      "breaking in message",
+			subject:   "feat: change API BREAKING CHANGE",
+			wantType:  "feat",
+			wantBreak: true,
+		},
+		{
+			name:      "refactor",
+			subject:   "refactor: cleanup code",
+			wantType:  "refactor",
+			wantBreak: false,
+		},
+		{
+			name:      "chore",
+			subject:   "chore: update dependencies",
+			wantType:  "chore",
+			wantBreak: false,
+		},
+		{
+			name:      "no conventional format",
+			subject:   "Update readme file",
+			wantType:  "",
+			wantBreak: false,
+		},
+		{
+			name:      "test commit",
+			subject:   "test: add unit tests",
+			wantType:  "test",
+			wantBreak: false,
+		},
+		{
+			name:      "perf commit",
+			subject:   "perf: optimize query",
+			wantType:  "perf",
+			wantBreak: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotBreak := parseConventionalCommit(tt.subject)
+			if gotType != tt.wantType {
+				t.Errorf("parseConventionalCommit(%q) type = %q, want %q", tt.subject, gotType, tt.wantType)
+			}
+			if gotBreak != tt.wantBreak {
+				t.Errorf("parseConventionalCommit(%q) breaking = %v, want %v", tt.subject, gotBreak, tt.wantBreak)
+			}
+		})
+	}
+}
+
+func TestInferChangeType(t *testing.T) {
+	tests := []struct {
+		name       string
+		commitType string
+		files      []string
+		want       ChangeType
+	}{
+		{
+			name:       "docs commit type",
+			commitType: "docs",
+			files:      []string{"README.md"},
+			want:       ChangeTypeDocumentation,
+		},
+		{
+			name:       "feat commit type",
+			commitType: "feat",
+			files:      []string{"cmd/main.go"},
+			want:       ChangeTypeBehavioral,
+		},
+		{
+			name:       "fix commit type",
+			commitType: "fix",
+			files:      []string{"pkg/auth/auth.go"},
+			want:       ChangeTypeBehavioral,
+		},
+		{
+			name:       "chore commit type",
+			commitType: "chore",
+			files:      []string{"Makefile"},
+			want:       ChangeTypeStructural,
+		},
+		{
+			name:       "infer from markdown files",
+			commitType: "",
+			files:      []string{"docs/guide.md", "README.md"},
+			want:       ChangeTypeDocumentation,
+		},
+		{
+			name:       "infer from go files",
+			commitType: "",
+			files:      []string{"main.go", "pkg/util/util.go"},
+			want:       ChangeTypeBehavioral,
+		},
+		{
+			name:       "infer from config files",
+			commitType: "",
+			files:      []string{"config.yaml", "go.mod"},
+			want:       ChangeTypeStructural,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := inferChangeType(tt.commitType, tt.files)
+			if got != tt.want {
+				t.Errorf("inferChangeType(%q, %v) = %q, want %q", tt.commitType, tt.files, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInferBlastRadius(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []string
+		want  BlastRadius
+	}{
+		{
+			name:  "single file local",
+			files: []string{"main.go"},
+			want:  BlastRadiusLocal,
+		},
+		{
+			name:  "single skill local",
+			files: []string{"skills/worker/feature-impl/SKILL.md"},
+			want:  BlastRadiusLocal,
+		},
+		{
+			name: "multiple skills cross-skill",
+			files: []string{
+				"skills/worker/feature-impl/SKILL.md",
+				"skills/worker/investigation/SKILL.md",
+			},
+			want: BlastRadiusCrossSkill,
+		},
+		{
+			name:  "spawn system infrastructure",
+			files: []string{"pkg/spawn/context.go"},
+			want:  BlastRadiusInfrastructure,
+		},
+		{
+			name:  "skill.yaml infrastructure",
+			files: []string{"skills/worker/feature-impl/.skillc/skill.yaml"},
+			want:  BlastRadiusInfrastructure,
+		},
+		{
+			name:  "verify package infrastructure",
+			files: []string{"pkg/verify/skill_outputs.go"},
+			want:  BlastRadiusInfrastructure,
+		},
+		{
+			name:  "SPAWN_CONTEXT infrastructure",
+			files: []string{"templates/SPAWN_CONTEXT.md"},
+			want:  BlastRadiusInfrastructure,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := inferBlastRadius(tt.files)
+			if got != tt.want {
+				t.Errorf("inferBlastRadius(%v) = %q, want %q", tt.files, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInferSemanticCategory(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []string
+		want  string
+	}{
+		{
+			name:  "decision record",
+			files: []string{".kb/decisions/2025-12-30-some-decision.md"},
+			want:  "decision-record",
+		},
+		{
+			name:  "investigation",
+			files: []string{".kb/investigations/2025-12-30-inv-something.md"},
+			want:  "investigation",
+		},
+		{
+			name:  "skill behavioral",
+			files: []string{"skills/worker/feature-impl/SKILL.md", "skills/worker/feature-impl/config.go"},
+			want:  "skill-behavioral",
+		},
+		{
+			name:  "skill docs only",
+			files: []string{"skills/worker/feature-impl/README.md", "skills/worker/feature-impl/SKILL.md"},
+			want:  "skill-docs",
+		},
+		{
+			name:  "regular files",
+			files: []string{"cmd/main.go", "pkg/util.go"},
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := inferSemanticCategory(tt.files)
+			if got != tt.want {
+				t.Errorf("inferSemanticCategory(%v) = %q, want %q", tt.files, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateSemanticLabel(t *testing.T) {
+	tests := []struct {
+		name string
+		info SemanticInfo
+		want string
+	}{
+		{
+			name: "breaking behavioral",
+			info: SemanticInfo{
+				ChangeType:  ChangeTypeBehavioral,
+				BlastRadius: BlastRadiusLocal,
+				IsBreaking:  true,
+			},
+			want: "[BREAKING | behavioral]",
+		},
+		{
+			name: "docs local",
+			info: SemanticInfo{
+				ChangeType:  ChangeTypeDocumentation,
+				BlastRadius: BlastRadiusLocal,
+				IsBreaking:  false,
+			},
+			want: "[docs]",
+		},
+		{
+			name: "structural cross-skill",
+			info: SemanticInfo{
+				ChangeType:  ChangeTypeStructural,
+				BlastRadius: BlastRadiusCrossSkill,
+				IsBreaking:  false,
+			},
+			want: "[structural | cross-skill]",
+		},
+		{
+			name: "behavioral infrastructure",
+			info: SemanticInfo{
+				ChangeType:  ChangeTypeBehavioral,
+				BlastRadius: BlastRadiusInfrastructure,
+				IsBreaking:  false,
+			},
+			want: "[behavioral | infrastructure]",
+		},
+		{
+			name: "unknown local",
+			info: SemanticInfo{
+				ChangeType:  ChangeTypeUnknown,
+				BlastRadius: BlastRadiusLocal,
+				IsBreaking:  false,
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateSemanticLabel(tt.info)
+			if got != tt.want {
+				t.Errorf("generateSemanticLabel(%+v) = %q, want %q", tt.info, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseSemanticInfo(t *testing.T) {
+	tests := []struct {
+		name    string
+		subject string
+		files   []string
+		wantType    ChangeType
+		wantRadius  BlastRadius
+		wantBreak   bool
+	}{
+		{
+			name:       "feat with behavioral files",
+			subject:    "feat: add new feature",
+			files:      []string{"cmd/main.go"},
+			wantType:   ChangeTypeBehavioral,
+			wantRadius: BlastRadiusLocal,
+			wantBreak:  false,
+		},
+		{
+			name:       "breaking change",
+			subject:    "feat!: breaking API change",
+			files:      []string{"pkg/api/api.go"},
+			wantType:   ChangeTypeBehavioral,
+			wantRadius: BlastRadiusLocal,
+			wantBreak:  true,
+		},
+		{
+			name:       "docs with markdown",
+			subject:    "docs: update documentation",
+			files:      []string{"docs/README.md", "docs/guide.md"},
+			wantType:   ChangeTypeDocumentation,
+			wantRadius: BlastRadiusLocal,
+			wantBreak:  false,
+		},
+		{
+			name:       "infrastructure change",
+			subject:    "refactor: update spawn system",
+			files:      []string{"pkg/spawn/context.go", "pkg/spawn/config.go"},
+			wantType:   ChangeTypeBehavioral,
+			wantRadius: BlastRadiusInfrastructure,
+			wantBreak:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseSemanticInfo(tt.subject, tt.files)
+			if got.ChangeType != tt.wantType {
+				t.Errorf("parseSemanticInfo() ChangeType = %q, want %q", got.ChangeType, tt.wantType)
+			}
+			if got.BlastRadius != tt.wantRadius {
+				t.Errorf("parseSemanticInfo() BlastRadius = %q, want %q", got.BlastRadius, tt.wantRadius)
+			}
+			if got.IsBreaking != tt.wantBreak {
+				t.Errorf("parseSemanticInfo() IsBreaking = %v, want %v", got.IsBreaking, tt.wantBreak)
+			}
+		})
+	}
+}
+
+func TestParseGitLogWithSemanticInfo(t *testing.T) {
+	// Test that parseGitLog populates SemanticInfo
+	output := `abc12345|feat!: breaking API change|Dylan Conlin|2025-12-29T10:00:00-08:00
+cmd/orch/api.go
+
+def67890|docs: update README|Dylan Conlin|2025-12-29T09:00:00-08:00
+README.md`
+
+	commits, err := parseGitLog(output, "orch-go")
+	if err != nil {
+		t.Fatalf("parseGitLog failed: %v", err)
+	}
+
+	if len(commits) != 2 {
+		t.Errorf("expected 2 commits, got %d", len(commits))
+	}
+
+	// Check first commit (breaking)
+	if !commits[0].SemanticInfo.IsBreaking {
+		t.Errorf("first commit should be marked as breaking")
+	}
+	if commits[0].SemanticInfo.CommitType != "feat" {
+		t.Errorf("first commit type = %q, want %q", commits[0].SemanticInfo.CommitType, "feat")
+	}
+
+	// Check second commit (docs)
+	if commits[1].SemanticInfo.ChangeType != ChangeTypeDocumentation {
+		t.Errorf("second commit change type = %q, want %q", commits[1].SemanticInfo.ChangeType, ChangeTypeDocumentation)
 	}
 }
