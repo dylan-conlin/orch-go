@@ -121,6 +121,11 @@ type Config struct {
 	// EcosystemContext is the local project ecosystem context to include in SPAWN_CONTEXT.md
 	// If provided, used directly; otherwise GenerateEcosystemContext() is called to read from ~/.orch/ECOSYSTEM.md
 	EcosystemContext string
+
+	// BehavioralPatterns is the formatted behavioral patterns warning to include in SPAWN_CONTEXT.md
+	// If provided, used directly; otherwise GenerateBehavioralPatternsContext() is called
+	// to detect patterns from action-log.jsonl
+	BehavioralPatterns string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

@@ -1,10 +1,13 @@
 package spawn
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/action"
 )
 
 func TestGenerateWorkspaceName(t *testing.T) {
@@ -1302,6 +1305,213 @@ func TestGenerateContext_WithoutEcosystemContext_NonEcosystemRepo(t *testing.T) 
 }
 
 // NOTE: TestGenerateEcosystemContext_Integration has been moved to ecosystem_test.go
+
+func TestGenerateBehavioralPatternsContext(t *testing.T) {
+	t.Run("returns empty when no action log exists", func(t *testing.T) {
+		// Use a custom path that doesn't exist
+		tempDir := t.TempDir()
+		nonExistentPath := filepath.Join(tempDir, "action-log.jsonl")
+
+		// Override the logger path for this test
+		originalPathFunc := action.GetLoggerPathFunc()
+		action.SetLoggerPathFunc(func() string { return nonExistentPath })
+		defer action.SetLoggerPathFunc(originalPathFunc)
+
+		result := GenerateBehavioralPatternsContext("test-workspace")
+		if result != "" {
+			t.Error("expected empty string when no action log exists")
+		}
+	})
+
+	t.Run("returns empty when no patterns detected", func(t *testing.T) {
+		tempDir := t.TempDir()
+		logPath := filepath.Join(tempDir, "action-log.jsonl")
+
+		// Create an action log with only success events (no patterns)
+		logger := action.NewLogger(logPath)
+		if err := logger.LogSuccess("Read", "/some/file.go"); err != nil {
+			t.Fatalf("failed to log: %v", err)
+		}
+		if err := logger.LogSuccess("Bash", "go test"); err != nil {
+			t.Fatalf("failed to log: %v", err)
+		}
+
+		// Override the logger path
+		originalPathFunc := action.GetLoggerPathFunc()
+		action.SetLoggerPathFunc(func() string { return logPath })
+		defer action.SetLoggerPathFunc(originalPathFunc)
+
+		result := GenerateBehavioralPatternsContext("test-workspace")
+		if result != "" {
+			t.Error("expected empty string when no patterns (only successes)")
+		}
+	})
+
+	t.Run("returns patterns when futile actions detected", func(t *testing.T) {
+		tempDir := t.TempDir()
+		logPath := filepath.Join(tempDir, "action-log.jsonl")
+
+		// Create an action log with repeated empty results (futile action)
+		logger := action.NewLogger(logPath)
+		for i := 0; i < 5; i++ {
+			if err := logger.LogEmpty("Read", "SYNTHESIS.md"); err != nil {
+				t.Fatalf("failed to log: %v", err)
+			}
+		}
+
+		// Override the logger path
+		originalPathFunc := action.GetLoggerPathFunc()
+		action.SetLoggerPathFunc(func() string { return logPath })
+		defer action.SetLoggerPathFunc(originalPathFunc)
+
+		result := GenerateBehavioralPatternsContext("test-workspace")
+		if result == "" {
+			t.Error("expected patterns when futile actions detected")
+		}
+		if !strings.Contains(result, "Read") {
+			t.Error("expected pattern to contain tool name 'Read'")
+		}
+		// Target is kept as-is when not a full path (no slashes)
+		if !strings.Contains(result, "SYNTHESIS.md") {
+			t.Errorf("expected pattern to contain target (got: %s)", result)
+		}
+		if !strings.Contains(result, "returns empty") {
+			t.Error("expected pattern to describe outcome")
+		}
+	})
+
+	t.Run("limits patterns to avoid context bloat", func(t *testing.T) {
+		tempDir := t.TempDir()
+		logPath := filepath.Join(tempDir, "action-log.jsonl")
+
+		// Create many different patterns
+		logger := action.NewLogger(logPath)
+		for i := 0; i < 10; i++ {
+			target := fmt.Sprintf("file%d.txt", i)
+			for j := 0; j < 5; j++ {
+				if err := logger.LogEmpty("Read", target); err != nil {
+					t.Fatalf("failed to log: %v", err)
+				}
+			}
+		}
+
+		// Override the logger path
+		originalPathFunc := action.GetLoggerPathFunc()
+		action.SetLoggerPathFunc(func() string { return logPath })
+		defer action.SetLoggerPathFunc(originalPathFunc)
+
+		result := GenerateBehavioralPatternsContext("test-workspace")
+		if result == "" {
+			t.Error("expected patterns")
+		}
+		// Should contain message about more patterns
+		if !strings.Contains(result, "more patterns") {
+			t.Error("expected 'more patterns' message when >5 patterns exist")
+		}
+	})
+}
+
+func TestGenerateContext_WithBehavioralPatterns(t *testing.T) {
+	t.Run("includes behavioral patterns when detected", func(t *testing.T) {
+		tempDir := t.TempDir()
+		logPath := filepath.Join(tempDir, "action-log.jsonl")
+
+		// Create an action log with futile actions
+		logger := action.NewLogger(logPath)
+		for i := 0; i < 5; i++ {
+			if err := logger.LogEmpty("Read", "MISSING.md"); err != nil {
+				t.Fatalf("failed to log: %v", err)
+			}
+		}
+
+		// Override the logger path
+		originalPathFunc := action.GetLoggerPathFunc()
+		action.SetLoggerPathFunc(func() string { return logPath })
+		defer action.SetLoggerPathFunc(originalPathFunc)
+
+		cfg := &Config{
+			Task:          "test task",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    tempDir,
+			WorkspaceName: "og-test-workspace",
+			BeadsID:       "test-123",
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain behavioral patterns section
+		if !strings.Contains(content, "BEHAVIORAL PATTERNS WARNING") {
+			t.Error("expected content to contain BEHAVIORAL PATTERNS WARNING section")
+		}
+		if !strings.Contains(content, "Why this matters") {
+			t.Error("expected content to contain explanation")
+		}
+	})
+
+	t.Run("excludes behavioral patterns when none detected", func(t *testing.T) {
+		tempDir := t.TempDir()
+		logPath := filepath.Join(tempDir, "action-log.jsonl")
+
+		// Create empty action log (or just success events)
+		logger := action.NewLogger(logPath)
+		if err := logger.LogSuccess("Read", "exists.go"); err != nil {
+			t.Fatalf("failed to log: %v", err)
+		}
+
+		// Override the logger path
+		originalPathFunc := action.GetLoggerPathFunc()
+		action.SetLoggerPathFunc(func() string { return logPath })
+		defer action.SetLoggerPathFunc(originalPathFunc)
+
+		cfg := &Config{
+			Task:          "test task",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    tempDir,
+			WorkspaceName: "og-test-workspace",
+			BeadsID:       "test-123",
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain behavioral patterns section
+		if strings.Contains(content, "BEHAVIORAL PATTERNS WARNING") {
+			t.Error("expected content to NOT contain BEHAVIORAL PATTERNS WARNING when no patterns")
+		}
+	})
+
+	t.Run("uses provided behavioral patterns over auto-generated", func(t *testing.T) {
+		cfg := &Config{
+			Task:               "test task",
+			SkillName:          "feature-impl",
+			Project:            "test-project",
+			ProjectDir:         "/tmp/test",
+			WorkspaceName:      "og-test-workspace",
+			BeadsID:            "test-123",
+			Tier:               TierLight,
+			BehavioralPatterns: "Custom pattern warning here",
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain the custom patterns
+		if !strings.Contains(content, "Custom pattern warning here") {
+			t.Error("expected content to contain custom behavioral patterns")
+		}
+	})
+}
 
 func TestCheckFailureReport(t *testing.T) {
 	t.Run("returns empty status when no workspace exists", func(t *testing.T) {

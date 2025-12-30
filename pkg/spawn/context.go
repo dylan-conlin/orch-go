@@ -10,6 +10,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/action"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -36,6 +37,15 @@ SPAWN TIER: {{.Tier}}
 The following local projects are part of Dylan's orchestration ecosystem. These are LOCAL repositories on this machine - do NOT search GitHub for them.
 
 {{.EcosystemContext}}
+{{end}}
+{{if .BehavioralPatterns}}
+## BEHAVIORAL PATTERNS WARNING
+
+The following patterns have been detected from prior agent sessions. These are futile actions that agents have repeatedly attempted without success:
+
+{{.BehavioralPatterns}}
+
+**Why this matters:** These patterns indicate files or targets that don't exist, commands that fail, or approaches that don't work. Avoid repeating these actions. If you need similar functionality, try alternative approaches or ask for clarification.
 {{end}}
 {{if .NoTrack}}
 📋 AD-HOC SPAWN (--no-track):
@@ -372,22 +382,23 @@ func StripBeadsInstructions(content string) string {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task              string
-	BeadsID           string
-	ProjectDir        string
-	WorkspaceName     string
-	SkillName         string
-	SkillContent      string
-	InvestigationSlug string
-	Phases            string
-	Mode              string
-	Validation        string
-	InvestigationType string
-	KBContext         string
-	Tier              string
-	ServerContext     string
-	EcosystemContext  string // Local project ecosystem from ~/.orch/ECOSYSTEM.md
-	NoTrack           bool   // When true, omit beads instructions from spawn context
+	Task               string
+	BeadsID            string
+	ProjectDir         string
+	WorkspaceName      string
+	SkillName          string
+	SkillContent       string
+	InvestigationSlug  string
+	Phases             string
+	Mode               string
+	Validation         string
+	InvestigationType  string
+	KBContext          string
+	Tier               string
+	ServerContext      string
+	EcosystemContext   string // Local project ecosystem from ~/.orch/ECOSYSTEM.md
+	BehavioralPatterns string // Detected behavioral patterns from action-log.jsonl
+	NoTrack            bool   // When true, omit beads instructions from spawn context
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -421,23 +432,31 @@ func GenerateContext(cfg *Config) (string, error) {
 		skillContent = StripBeadsInstructions(skillContent)
 	}
 
+	// Generate behavioral patterns context (auto-inject detected patterns)
+	// Use provided context if available, otherwise auto-generate from action-log.jsonl
+	behavioralPatterns := cfg.BehavioralPatterns
+	if behavioralPatterns == "" {
+		behavioralPatterns = GenerateBehavioralPatternsContext(cfg.WorkspaceName)
+	}
+
 	data := contextData{
-		Task:              cfg.Task,
-		BeadsID:           cfg.BeadsID,
-		ProjectDir:        cfg.ProjectDir,
-		WorkspaceName:     cfg.WorkspaceName,
-		SkillName:         cfg.SkillName,
-		SkillContent:      skillContent,
-		InvestigationSlug: slug,
-		Phases:            cfg.Phases,
-		Mode:              cfg.Mode,
-		Validation:        cfg.Validation,
-		InvestigationType: cfg.InvestigationType,
-		KBContext:         cfg.KBContext,
-		Tier:              cfg.Tier,
-		ServerContext:     serverContext,
-		EcosystemContext:  ecosystemContext,
-		NoTrack:           cfg.NoTrack,
+		Task:               cfg.Task,
+		BeadsID:            cfg.BeadsID,
+		ProjectDir:         cfg.ProjectDir,
+		WorkspaceName:      cfg.WorkspaceName,
+		SkillName:          cfg.SkillName,
+		SkillContent:       skillContent,
+		InvestigationSlug:  slug,
+		Phases:             cfg.Phases,
+		Mode:               cfg.Mode,
+		Validation:         cfg.Validation,
+		InvestigationType:  cfg.InvestigationType,
+		KBContext:          cfg.KBContext,
+		Tier:               cfg.Tier,
+		ServerContext:      serverContext,
+		EcosystemContext:   ecosystemContext,
+		BehavioralPatterns: behavioralPatterns,
+		NoTrack:            cfg.NoTrack,
 	}
 
 	var buf bytes.Buffer
@@ -912,6 +931,123 @@ func GenerateServerContext(projectDir string) string {
 
 // NOTE: EcosystemFilePath, GenerateEcosystemContext, ExtractQuickReference,
 // and IsEcosystemRepo are now defined in ecosystem.go
+
+// GenerateBehavioralPatternsContext loads action patterns from action-log.jsonl
+// and formats them for inclusion in SPAWN_CONTEXT.md. This surfaces futile action
+// patterns to agents so they don't repeat the same mistakes.
+//
+// Returns empty string if no patterns are detected or if loading fails.
+// Patterns are filtered to those relevant to the current workspace/session.
+func GenerateBehavioralPatternsContext(workspaceName string) string {
+	tracker, err := action.LoadTracker("")
+	if err != nil {
+		return "" // Fail silently - don't block spawn on action log issues
+	}
+
+	patterns := tracker.FindPatterns()
+	if len(patterns) == 0 {
+		return "" // No patterns detected
+	}
+
+	var sb strings.Builder
+
+	// Limit to top 5 most frequent patterns to avoid context bloat
+	maxPatterns := 5
+	if len(patterns) < maxPatterns {
+		maxPatterns = len(patterns)
+	}
+
+	for i := 0; i < maxPatterns; i++ {
+		p := patterns[i]
+
+		// Format icon based on severity
+		icon := "⚠️"
+		if p.Count >= 5 {
+			icon = "🚫" // Strongly discourage
+		}
+
+		// Format the pattern warning
+		outcomeDesc := ""
+		switch p.Outcome {
+		case action.OutcomeEmpty:
+			outcomeDesc = "returns empty"
+		case action.OutcomeError:
+			outcomeDesc = "fails with error"
+		case action.OutcomeFallback:
+			outcomeDesc = "requires fallback"
+		default:
+			outcomeDesc = "fails"
+		}
+
+		sb.WriteString(fmt.Sprintf("%s **%s** on `%s` %s (%dx in past week)\n",
+			icon, p.Tool, p.Target, outcomeDesc, p.Count))
+	}
+
+	if len(patterns) > 5 {
+		sb.WriteString(fmt.Sprintf("\n... and %d more patterns (run `orch patterns` to see all)\n", len(patterns)-5))
+	}
+
+	return sb.String()
+}
+
+// GenerateBehavioralPatternsContextForWorkspace loads action patterns filtered
+// to a specific workspace. This is useful for showing patterns relevant to
+// the current agent's work context.
+func GenerateBehavioralPatternsContextForWorkspace(workspaceName string) string {
+	tracker, err := action.LoadTracker("")
+	if err != nil {
+		return ""
+	}
+
+	// Filter events to those matching this workspace
+	var workspaceEvents []action.ActionEvent
+	for _, e := range tracker.Events {
+		if e.Workspace != "" && strings.Contains(e.Workspace, workspaceName) {
+			workspaceEvents = append(workspaceEvents, e)
+		}
+	}
+
+	if len(workspaceEvents) == 0 {
+		// Fall back to global patterns if no workspace-specific ones
+		return GenerateBehavioralPatternsContext(workspaceName)
+	}
+
+	// Create a tracker with filtered events and find patterns
+	filteredTracker := &action.Tracker{Events: workspaceEvents}
+	patterns := filteredTracker.FindPatterns()
+
+	if len(patterns) == 0 {
+		// Fall back to global patterns
+		return GenerateBehavioralPatternsContext(workspaceName)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("**Patterns specific to similar workspaces:**\n\n")
+
+	maxPatterns := 3
+	if len(patterns) < maxPatterns {
+		maxPatterns = len(patterns)
+	}
+
+	for i := 0; i < maxPatterns; i++ {
+		p := patterns[i]
+		outcomeDesc := ""
+		switch p.Outcome {
+		case action.OutcomeEmpty:
+			outcomeDesc = "returns empty"
+		case action.OutcomeError:
+			outcomeDesc = "fails"
+		case action.OutcomeFallback:
+			outcomeDesc = "requires fallback"
+		default:
+			outcomeDesc = "fails"
+		}
+
+		sb.WriteString(fmt.Sprintf("- **%s** on `%s` %s (%dx)\n", p.Tool, p.Target, outcomeDesc, p.Count))
+	}
+
+	return sb.String()
+}
 
 // FailureReportStatus represents the result of checking a FAILURE_REPORT.md file.
 type FailureReportStatus struct {
