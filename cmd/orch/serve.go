@@ -238,6 +238,9 @@ func runServe(portNum int) error {
 	// GET /api/agents - returns JSON list of agents from OpenCode/tmux
 	mux.HandleFunc("/api/agents", corsHandler(handleAgents))
 
+	// GET /api/agents/artifact - returns artifact content (synthesis, investigation, decision)
+	mux.HandleFunc("/api/agents/artifact", corsHandler(handleAgentArtifact))
+
 	// GET /api/events - proxies OpenCode SSE stream
 	mux.HandleFunc("/api/events", corsHandler(handleEvents))
 
@@ -1237,6 +1240,349 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode agents: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// ArtifactAPIResponse is the JSON structure returned by /api/agents/artifact.
+type ArtifactAPIResponse struct {
+	Type        string `json:"type"`                   // "synthesis", "investigation", "decision"
+	Content     string `json:"content"`                // Markdown content
+	Path        string `json:"path,omitempty"`         // File path (for reference)
+	WorkspaceID string `json:"workspace_id,omitempty"` // Workspace that produced this artifact
+	Error       string `json:"error,omitempty"`        // Error message if artifact not found
+}
+
+// handleAgentArtifact returns artifact content for an agent.
+// Query params:
+// - workspace: workspace ID (e.g., "og-feat-dashboard-agent-pane-30dec")
+// - type: artifact type ("synthesis", "investigation", "decision")
+// - beads_id: optional beads ID for looking up investigation path from comments
+func handleAgentArtifact(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	workspaceID := r.URL.Query().Get("workspace")
+	artifactType := r.URL.Query().Get("type")
+	beadsID := r.URL.Query().Get("beads_id")
+
+	if workspaceID == "" {
+		http.Error(w, "workspace parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	if artifactType == "" {
+		http.Error(w, "type parameter is required (synthesis, investigation, decision)", http.StatusBadRequest)
+		return
+	}
+
+	// Discover project directories to find the workspace
+	allProjectDirs := discoverAllProjectDirs()
+
+	// Add current project directory
+	projectDirs := make(map[string]bool)
+	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
+		projectDirs[serveEffectiveDir] = true
+	}
+	for _, dir := range allProjectDirs {
+		if dir != "" {
+			projectDirs[dir] = true
+		}
+	}
+
+	// Find workspace across all project directories
+	var workspacePath string
+	for projectDir := range projectDirs {
+		candidatePath := filepath.Join(projectDir, ".orch", "workspace", workspaceID)
+		if _, err := os.Stat(candidatePath); err == nil {
+			workspacePath = candidatePath
+			break
+		}
+	}
+
+	if workspacePath == "" {
+		resp := ArtifactAPIResponse{
+			Type:  artifactType,
+			Error: fmt.Sprintf("Workspace not found: %s", workspaceID),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	var content string
+	var artifactPath string
+	var err error
+
+	switch artifactType {
+	case "synthesis":
+		artifactPath = filepath.Join(workspacePath, "SYNTHESIS.md")
+		var data []byte
+		data, err = os.ReadFile(artifactPath)
+		if err == nil {
+			content = string(data)
+		}
+
+	case "investigation":
+		// Check beads comments for investigation_path
+		if beadsID != "" {
+			artifactPath = getInvestigationPathFromBeads(beadsID)
+		}
+		// Fallback: check workspace SPAWN_CONTEXT.md for investigation_path
+		if artifactPath == "" {
+			artifactPath = getInvestigationPathFromWorkspace(workspacePath)
+		}
+		// Fallback: scan .kb/investigations/ for matching file
+		if artifactPath == "" {
+			artifactPath = findInvestigationByWorkspace(workspaceID)
+		}
+		if artifactPath != "" {
+			var data []byte
+			data, err = os.ReadFile(artifactPath)
+			if err == nil {
+				content = string(data)
+			}
+		} else {
+			err = fmt.Errorf("investigation artifact not found")
+		}
+
+	case "decision":
+		// Check beads comments for decision_path
+		if beadsID != "" {
+			artifactPath = getDecisionPathFromBeads(beadsID)
+		}
+		// Fallback: scan .kb/decisions/ for matching file
+		if artifactPath == "" {
+			artifactPath = findDecisionByWorkspace(workspaceID)
+		}
+		if artifactPath != "" {
+			var data []byte
+			data, err = os.ReadFile(artifactPath)
+			if err == nil {
+				content = string(data)
+			}
+		} else {
+			err = fmt.Errorf("decision artifact not found")
+		}
+
+	default:
+		resp := ArtifactAPIResponse{
+			Type:  artifactType,
+			Error: fmt.Sprintf("Unknown artifact type: %s (valid: synthesis, investigation, decision)", artifactType),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	if err != nil {
+		resp := ArtifactAPIResponse{
+			Type:        artifactType,
+			WorkspaceID: workspaceID,
+			Error:       fmt.Sprintf("Artifact not found: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := ArtifactAPIResponse{
+		Type:        artifactType,
+		Content:     content,
+		Path:        artifactPath,
+		WorkspaceID: workspaceID,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// getInvestigationPathFromBeads extracts the investigation_path from beads comments.
+// Agents report this via: bd comment <id> "investigation_path: /path/to/file.md"
+func getInvestigationPathFromBeads(beadsID string) string {
+	comments, err := verify.GetComments(beadsID)
+	if err != nil {
+		return ""
+	}
+
+	for _, comment := range comments {
+		if strings.HasPrefix(comment.Text, "investigation_path:") {
+			path := strings.TrimSpace(strings.TrimPrefix(comment.Text, "investigation_path:"))
+			// Validate path exists
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// getDecisionPathFromBeads extracts the decision_path from beads comments.
+// Agents report this via: bd comment <id> "decision_path: /path/to/file.md"
+func getDecisionPathFromBeads(beadsID string) string {
+	comments, err := verify.GetComments(beadsID)
+	if err != nil {
+		return ""
+	}
+
+	for _, comment := range comments {
+		if strings.HasPrefix(comment.Text, "decision_path:") {
+			path := strings.TrimSpace(strings.TrimPrefix(comment.Text, "decision_path:"))
+			// Validate path exists
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// getInvestigationPathFromWorkspace extracts investigation path from SPAWN_CONTEXT.md.
+func getInvestigationPathFromWorkspace(workspacePath string) string {
+	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+	data, err := os.ReadFile(spawnContextPath)
+	if err != nil {
+		return ""
+	}
+
+	// Look for "investigation_path:" in the content
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "investigation_path:") {
+			path := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "investigation_path:"))
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// findInvestigationByWorkspace scans .kb/investigations/ for a file matching the workspace name.
+// Pattern: looks for files containing workspace ID in the filename or dated files from spawn date.
+func findInvestigationByWorkspace(workspaceID string) string {
+	// Extract date suffix from workspace name (e.g., "og-feat-xyz-30dec" -> "30dec")
+	// and search topic (e.g., "og-feat-dashboard-agent-pane" -> "dashboard-agent-pane")
+	parts := strings.Split(workspaceID, "-")
+	if len(parts) < 3 {
+		return ""
+	}
+
+	// Try to extract keywords from workspace name
+	var keywords []string
+	for _, part := range parts {
+		// Skip prefix parts like "og", "feat", "inv", "debug"
+		if part == "og" || part == "feat" || part == "inv" || part == "debug" || part == "arch" {
+			continue
+		}
+		// Skip date suffixes (e.g., "30dec", "01jan")
+		if len(part) > 2 && len(part) <= 5 {
+			// Check if it looks like a date (ends with month abbreviation)
+			lp := strings.ToLower(part)
+			if strings.HasSuffix(lp, "jan") || strings.HasSuffix(lp, "feb") ||
+				strings.HasSuffix(lp, "mar") || strings.HasSuffix(lp, "apr") ||
+				strings.HasSuffix(lp, "may") || strings.HasSuffix(lp, "jun") ||
+				strings.HasSuffix(lp, "jul") || strings.HasSuffix(lp, "aug") ||
+				strings.HasSuffix(lp, "sep") || strings.HasSuffix(lp, "oct") ||
+				strings.HasSuffix(lp, "nov") || strings.HasSuffix(lp, "dec") {
+				continue
+			}
+		}
+		keywords = append(keywords, part)
+	}
+
+	if len(keywords) == 0 {
+		return ""
+	}
+
+	// Search in .kb/investigations/ (both simple/ and regular)
+	searchDirs := []string{
+		filepath.Join(serveEffectiveDir, ".kb", "investigations", "simple"),
+		filepath.Join(serveEffectiveDir, ".kb", "investigations"),
+	}
+
+	for _, dir := range searchDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := strings.ToLower(entry.Name())
+			// Check if filename contains any of our keywords
+			matchCount := 0
+			for _, kw := range keywords {
+				if strings.Contains(name, strings.ToLower(kw)) {
+					matchCount++
+				}
+			}
+			// Require at least 2 keyword matches for confidence
+			if matchCount >= 2 || (len(keywords) == 1 && matchCount == 1) {
+				return filepath.Join(dir, entry.Name())
+			}
+		}
+	}
+
+	return ""
+}
+
+// findDecisionByWorkspace scans .kb/decisions/ for a file matching the workspace name.
+func findDecisionByWorkspace(workspaceID string) string {
+	// Similar logic to findInvestigationByWorkspace
+	parts := strings.Split(workspaceID, "-")
+	if len(parts) < 3 {
+		return ""
+	}
+
+	var keywords []string
+	for _, part := range parts {
+		if part == "og" || part == "feat" || part == "inv" || part == "debug" || part == "arch" {
+			continue
+		}
+		lp := strings.ToLower(part)
+		if strings.HasSuffix(lp, "jan") || strings.HasSuffix(lp, "feb") ||
+			strings.HasSuffix(lp, "mar") || strings.HasSuffix(lp, "apr") ||
+			strings.HasSuffix(lp, "may") || strings.HasSuffix(lp, "jun") ||
+			strings.HasSuffix(lp, "jul") || strings.HasSuffix(lp, "aug") ||
+			strings.HasSuffix(lp, "sep") || strings.HasSuffix(lp, "oct") ||
+			strings.HasSuffix(lp, "nov") || strings.HasSuffix(lp, "dec") {
+			continue
+		}
+		keywords = append(keywords, part)
+	}
+
+	if len(keywords) == 0 {
+		return ""
+	}
+
+	dir := filepath.Join(serveEffectiveDir, ".kb", "decisions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.ToLower(entry.Name())
+		matchCount := 0
+		for _, kw := range keywords {
+			if strings.Contains(name, strings.ToLower(kw)) {
+				matchCount++
+			}
+		}
+		if matchCount >= 2 || (len(keywords) == 1 && matchCount == 1) {
+			return filepath.Join(dir, entry.Name())
+		}
+	}
+
+	return ""
 }
 
 // handleEvents proxies the OpenCode SSE stream to the client.
@@ -2960,6 +3306,8 @@ type PendingReviewsAPIResponse struct {
 // handlePendingReviews returns pending synthesis reviews.
 // This includes both full-tier agents with SYNTHESIS.md and light-tier agents
 // that have completed (Phase: Complete) but have no synthesis by design.
+// Filters out agents whose beads issues are already closed (using the same
+// pattern as filterClosedIssues in review.go).
 func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -3110,6 +3458,10 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Filter out agents whose beads issues are already closed
+	// This mirrors the filterClosedIssues pattern from review.go
+	agents, totalUnreviewed = filterPendingReviewsByClosedIssues(agents)
+
 	resp := PendingReviewsAPIResponse{
 		Agents:          agents,
 		TotalAgents:     len(agents),
@@ -3121,6 +3473,64 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode pending reviews: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// filterPendingReviewsByClosedIssues removes agents whose beads issues are closed/deferred/tombstone.
+// Uses batch fetching for efficiency. If beads is unavailable, returns all agents
+// (better to show potential false positives than hide real issues).
+// Returns filtered agents and recalculated totalUnreviewed count.
+func filterPendingReviewsByClosedIssues(agents []PendingReviewAgent) ([]PendingReviewAgent, int) {
+	if len(agents) == 0 {
+		return agents, 0
+	}
+
+	// Collect all beads IDs for batch fetch (skip untracked agents)
+	beadsIDs := make([]string, 0, len(agents))
+	for _, a := range agents {
+		if a.BeadsID != "" && !isUntrackedBeadsIDServe(a.BeadsID) {
+			beadsIDs = append(beadsIDs, a.BeadsID)
+		}
+	}
+
+	if len(beadsIDs) == 0 {
+		// All agents are untracked, return as-is with recalculated count
+		totalUnreviewed := 0
+		for _, a := range agents {
+			totalUnreviewed += a.UnreviewedCount
+		}
+		return agents, totalUnreviewed
+	}
+
+	// Batch fetch issue statuses
+	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
+	// Ignore error - if beads is unavailable, return all agents
+
+	// Filter out closed issues
+	var results []PendingReviewAgent
+	totalUnreviewed := 0
+
+	for _, a := range agents {
+		// Keep untracked agents (no beads issue to check)
+		if isUntrackedBeadsIDServe(a.BeadsID) || a.BeadsID == "" {
+			results = append(results, a)
+			totalUnreviewed += a.UnreviewedCount
+			continue
+		}
+
+		// Check if issue is closed
+		if issue, ok := issueMap[a.BeadsID]; ok {
+			status := strings.ToLower(issue.Status)
+			if status == "closed" || status == "deferred" || status == "tombstone" {
+				// Skip closed issues - they're resolved and shouldn't appear in pending reviews
+				continue
+			}
+		}
+
+		results = append(results, a)
+		totalUnreviewed += a.UnreviewedCount
+	}
+
+	return results, totalUnreviewed
 }
 
 // contains checks if a slice contains a value.
