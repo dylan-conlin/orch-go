@@ -41,11 +41,15 @@
 			}
 			
 			// Check if idle for too long (no activity in 60+ seconds)
-			if (agent.current_activity?.timestamp) {
-				const idleMs = Date.now() - agent.current_activity.timestamp;
+			// Use current_activity from SSE if available, otherwise fall back to last_activity from API
+			const activityTimestamp = agent.current_activity?.timestamp || agent.last_activity?.timestamp;
+			if (activityTimestamp) {
+				const idleMs = Date.now() - activityTimestamp;
 				if (idleMs > 60000) {
 					return 'idle';
 				}
+				// Has activity but not idle - show as running
+				return 'running';
 			}
 			
 			return 'waiting';
@@ -424,31 +428,43 @@
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
-			{:else if agent.current_activity}
-				<div class="flex items-center gap-1">
-					<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
-					<p class="flex-1 truncate text-[10px] text-muted-foreground">
-						{agent.current_activity.text || 'Working...'}
-					</p>
-					<span class="text-[9px] text-muted-foreground/70 shrink-0">
-						{formatActivityAge(agent.current_activity.timestamp)}
-					</span>
-				</div>
-			{:else}
-				<!-- No current activity - show phase-based status or waiting -->
-				<div class="flex items-center gap-1">
-					<span class="text-[10px] text-muted-foreground/50">{agent.is_processing ? '⚡' : '💤'}</span>
-					<p class="flex-1 truncate text-[10px] text-muted-foreground/50">
-						{#if agent.phase}
-							{agent.phase}
-						{:else if agent.is_processing}
-							Working...
-						{:else}
-							Waiting for activity...
-						{/if}
-					</p>
-				</div>
-			{/if}
+		{:else if agent.current_activity}
+			<!-- Real-time activity from SSE -->
+			<div class="flex items-center gap-1">
+				<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
+				<p class="flex-1 truncate text-[10px] text-muted-foreground">
+					{agent.current_activity.text || 'Working...'}
+				</p>
+				<span class="text-[9px] text-muted-foreground/70 shrink-0">
+					{formatActivityAge(agent.current_activity.timestamp)}
+				</span>
+			</div>
+		{:else if agent.last_activity}
+			<!-- Last known activity from API (fallback when SSE hasn't provided updates yet) -->
+			<div class="flex items-center gap-1">
+				<span class="text-[10px]">{getActivityIcon(agent.last_activity.type)}</span>
+				<p class="flex-1 truncate text-[10px] text-muted-foreground">
+					{agent.last_activity.text || 'Working...'}
+				</p>
+				<span class="text-[9px] text-muted-foreground/70 shrink-0">
+					{formatActivityAge(agent.last_activity.timestamp)}
+				</span>
+			</div>
+		{:else}
+			<!-- No activity available - show phase-based status or waiting -->
+			<div class="flex items-center gap-1">
+				<span class="text-[10px] text-muted-foreground/50">{agent.is_processing ? '⚡' : '💤'}</span>
+				<p class="flex-1 truncate text-[10px] text-muted-foreground/50">
+					{#if agent.phase}
+						{agent.phase}
+					{:else if agent.is_processing}
+						Working...
+					{:else}
+						Waiting for activity...
+					{/if}
+				</p>
+			</div>
+		{/if}
 		</div>
 	{/if}
 

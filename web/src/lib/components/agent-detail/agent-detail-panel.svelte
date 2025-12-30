@@ -253,39 +253,63 @@
 					{/if}
 				</div>
 				
-				<!-- Current Activity - styling varies by activity type -->
-				{#if $selectedAgent.current_activity}
-					<div class="mb-3 rounded-lg border {getActivityStyle($selectedAgent.current_activity.type)} p-3">
-						<div class="flex items-start gap-2">
-							<span class="text-lg">{getActivityIcon($selectedAgent.current_activity.type)}</span>
-							<div class="flex-1 min-w-0">
-								<p class="text-sm font-medium">{$selectedAgent.current_activity.text || 'Working...'}</p>
-								<span class="text-xs text-muted-foreground">
-									{$selectedAgent.current_activity.type}
-								</span>
-							</div>
+			<!-- Current Activity - styling varies by activity type -->
+			<!-- Show current_activity from SSE if available, otherwise last_activity from API -->
+			{#if $selectedAgent.current_activity}
+				<div class="mb-3 rounded-lg border {getActivityStyle($selectedAgent.current_activity.type)} p-3">
+					<div class="flex items-start gap-2">
+						<span class="text-lg">{getActivityIcon($selectedAgent.current_activity.type)}</span>
+						<div class="flex-1 min-w-0">
+							<p class="text-sm font-medium">{$selectedAgent.current_activity.text || 'Working...'}</p>
+							<span class="text-xs text-muted-foreground">
+								{$selectedAgent.current_activity.type}
+							</span>
 						</div>
 					</div>
-				{/if}
+				</div>
+			{:else if $selectedAgent.last_activity}
+				<div class="mb-3 rounded-lg border {getActivityStyle($selectedAgent.last_activity.type)} p-3">
+					<div class="flex items-start gap-2">
+						<span class="text-lg">{getActivityIcon($selectedAgent.last_activity.type)}</span>
+						<div class="flex-1 min-w-0">
+							<p class="text-sm font-medium">{$selectedAgent.last_activity.text || 'Working...'}</p>
+							<span class="text-xs text-muted-foreground">
+								{$selectedAgent.last_activity.type}
+								<span class="text-muted-foreground/50">(last known)</span>
+							</span>
+						</div>
+					</div>
+				</div>
+			{/if}
 
-				<!-- Activity Log - scrollable with more height -->
-				<div class="max-h-64 space-y-1 overflow-y-auto rounded border bg-muted/20 p-2 font-mono text-xs">
-					{#each agentEvents.slice().reverse() as event (event.id)}
-						{@const part = event.properties?.part}
-						{#if part}
-							<div class="flex items-start gap-2 py-1 text-muted-foreground hover:bg-muted/50 rounded px-1 transition-colors">
-								<span class="shrink-0">{getActivityIcon(part.type)}</span>
-								<span class="flex-1 break-words leading-relaxed">
-									{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
-								</span>
-							</div>
-						{/if}
+			<!-- Activity Log - scrollable with more height -->
+			<div class="max-h-64 space-y-1 overflow-y-auto rounded border bg-muted/20 p-2 font-mono text-xs">
+				{#each agentEvents.slice().reverse() as event (event.id)}
+					{@const part = event.properties?.part}
+					{#if part}
+						<div class="flex items-start gap-2 py-1 text-muted-foreground hover:bg-muted/50 rounded px-1 transition-colors">
+							<span class="shrink-0">{getActivityIcon(part.type)}</span>
+							<span class="flex-1 break-words leading-relaxed">
+								{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
+							</span>
+						</div>
+					{/if}
+				{:else}
+					{#if $selectedAgent.last_activity}
+						<!-- Show last activity from API when no SSE events yet -->
+						<div class="flex items-start gap-2 py-1 text-muted-foreground">
+							<span class="shrink-0">{getActivityIcon($selectedAgent.last_activity.type)}</span>
+							<span class="flex-1 break-words leading-relaxed">
+								{$selectedAgent.last_activity.text || 'Working...'} <span class="text-muted-foreground/50">(last known)</span>
+							</span>
+						</div>
 					{:else}
 						<p class="py-4 text-center text-muted-foreground">Waiting for activity...</p>
-					{/each}
-				</div>
+					{/if}
+				{/each}
 			</div>
-		{/if}
+		</div>
+	{/if}
 
 		<!-- Quick Copy Section - Full-width clickable items -->
 		<div class="border-b p-4">

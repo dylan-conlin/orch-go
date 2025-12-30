@@ -23,6 +23,13 @@ export interface GapAnalysis {
 	investigations?: number;
 }
 
+// LastActivity from API response (initial load)
+export interface LastActivity {
+	type: string; // "text", "tool", "reasoning", "step-start", "step-finish"
+	text?: string; // Activity description
+	timestamp?: number; // Unix timestamp in milliseconds
+}
+
 export interface Agent {
 	id: string;
 	session_id?: string;
@@ -49,7 +56,8 @@ export interface Agent {
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
-	// Real-time activity tracking
+	last_activity?: LastActivity; // Last activity from API (initial load)
+	// Real-time activity tracking (from SSE, takes precedence over last_activity)
 	current_activity?: {
 		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';
 		text?: string;

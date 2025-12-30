@@ -331,24 +331,34 @@ func runServe(portNum int) error {
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID           string               `json:"id"`
-	SessionID    string               `json:"session_id,omitempty"`
-	BeadsID      string               `json:"beads_id,omitempty"`
-	BeadsTitle   string               `json:"beads_title,omitempty"`
-	Skill        string               `json:"skill,omitempty"`
-	Status       string               `json:"status"`            // "active", "idle", "completed", etc.
-	Phase        string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task         string               `json:"task,omitempty"`    // Task description from beads issue
-	Project      string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
-	Runtime      string               `json:"runtime,omitempty"`
-	Window       string               `json:"window,omitempty"`
-	IsProcessing bool                 `json:"is_processing,omitempty"` // True if actively generating response
-	SpawnedAt    string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
-	UpdatedAt    string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
-	Synthesis    *SynthesisResponse   `json:"synthesis,omitempty"`
-	CloseReason  string               `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
-	GapAnalysis  *GapAPIResponse      `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
-	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`       // Token usage for the session
+	ID           string                `json:"id"`
+	SessionID    string                `json:"session_id,omitempty"`
+	BeadsID      string                `json:"beads_id,omitempty"`
+	BeadsTitle   string                `json:"beads_title,omitempty"`
+	Skill        string                `json:"skill,omitempty"`
+	Status       string                `json:"status"`            // "active", "idle", "completed", etc.
+	Phase        string                `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task         string                `json:"task,omitempty"`    // Task description from beads issue
+	Project      string                `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime      string                `json:"runtime,omitempty"`
+	Window       string                `json:"window,omitempty"`
+	IsProcessing bool                  `json:"is_processing,omitempty"` // True if actively generating response
+	SpawnedAt    string                `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt    string                `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis    *SynthesisResponse    `json:"synthesis,omitempty"`
+	CloseReason  string                `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
+	GapAnalysis  *GapAPIResponse       `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
+	Tokens       *opencode.TokenStats  `json:"tokens,omitempty"`       // Token usage for the session
+	LastActivity *LastActivityResponse `json:"last_activity,omitempty"` // Last activity from messages (for initial load)
+}
+
+// LastActivityResponse represents the most recent activity for an agent.
+// This is included in the API response so the dashboard has activity data on initial load,
+// rather than waiting for SSE events.
+type LastActivityResponse struct {
+	Type      string `json:"type"`                 // "text", "tool", "reasoning", "step-start", "step-finish"
+	Text      string `json:"text,omitempty"`       // Activity description
+	Timestamp int64  `json:"timestamp,omitempty"`  // Unix timestamp in milliseconds
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -1146,6 +1156,46 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Collect results
 	for result := range tokenChan {
 		agents[result.index].Tokens = result.tokens
+	}
+
+	// Fetch last activity for active agents (so dashboard has activity on initial load)
+	// Parallelized like token fetching to avoid blocking the response.
+	type activityResult struct {
+		index    int
+		activity *LastActivityResponse
+	}
+	activityChan := make(chan activityResult, len(agents))
+
+	// Reuse same semaphore limit for concurrent requests
+	var activityWg sync.WaitGroup
+	for i := range agents {
+		// Only fetch for active agents with session ID
+		if agents[i].SessionID == "" || agents[i].Status == "completed" {
+			continue
+		}
+
+		activityWg.Add(1)
+		go func(idx int, sessionID string) {
+			defer activityWg.Done()
+			sem <- struct{}{}        // Acquire semaphore
+			defer func() { <-sem }() // Release semaphore
+
+			activity := getLastActivityForSession(client, sessionID)
+			if activity != nil {
+				activityChan <- activityResult{index: idx, activity: activity}
+			}
+		}(i, agents[i].SessionID)
+	}
+
+	// Wait for all goroutines to complete, then close channel
+	go func() {
+		activityWg.Wait()
+		close(activityChan)
+	}()
+
+	// Collect results
+	for result := range activityChan {
+		agents[result.index].LastActivity = result.activity
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -3507,4 +3557,81 @@ func handlePatterns(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode patterns: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// getLastActivityForSession fetches the last activity from a session's messages.
+// Returns nil if no activity is available or on error.
+// This provides initial activity data for the dashboard, so it doesn't show
+// "Waiting for activity" until SSE events arrive.
+func getLastActivityForSession(client *opencode.Client, sessionID string) *LastActivityResponse {
+	messages, err := client.GetMessages(sessionID)
+	if err != nil || len(messages) == 0 {
+		return nil
+	}
+
+	// Work backwards through messages to find the last meaningful activity
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+
+		// Skip user messages - we want assistant activity
+		if msg.Info.Role != "assistant" {
+			continue
+		}
+
+		// Work backwards through parts to find the most recent activity
+		for j := len(msg.Parts) - 1; j >= 0; j-- {
+			part := msg.Parts[j]
+
+			// Skip empty parts
+			if part.Type == "" {
+				continue
+			}
+
+			// Extract activity based on part type
+			var activityText string
+			switch part.Type {
+			case "text":
+				// Truncate long text
+				activityText = part.Text
+				if len(activityText) > 100 {
+					activityText = activityText[:100] + "..."
+				}
+			case "tool":
+				if part.Tool != "" {
+					activityText = "Using " + part.Tool
+					if part.State != nil && part.State.Status != "" {
+						activityText += " (" + part.State.Status + ")"
+					}
+				}
+			case "reasoning":
+				activityText = "Reasoning..."
+				if len(part.Text) > 0 {
+					activityText = part.Text
+					if len(activityText) > 100 {
+						activityText = activityText[:100] + "..."
+					}
+				}
+			case "step-start":
+				activityText = "Starting step..."
+			case "step-finish":
+				activityText = "Completed step"
+			default:
+				activityText = strings.ReplaceAll(part.Type, "-", " ")
+			}
+
+			// Get timestamp from message time
+			timestamp := msg.Info.Time.Created
+			if msg.Info.Time.Completed > 0 {
+				timestamp = msg.Info.Time.Completed
+			}
+
+			return &LastActivityResponse{
+				Type:      part.Type,
+				Text:      activityText,
+				Timestamp: timestamp,
+			}
+		}
+	}
+
+	return nil
 }
