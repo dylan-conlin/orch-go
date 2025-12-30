@@ -780,12 +780,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// (completed agents should still be shown regardless of activity time)
 	// Dead threshold: if no activity for 3 minutes, session is dead.
 	// Agents are constantly reading, editing, running commands - 3 min silence = dead.
-	deadThreshold := 3 * time.Minute
+	// Uses StaleSessionThreshold from opencode package for consistency.
+	deadThreshold := opencode.StaleSessionThreshold
 	displayThreshold := 30 * time.Minute
+	// Dead agents have their own display threshold - old dead agents (24h+) don't need attention.
+	// Recent dead agents (< 4h) are kept visible so user knows they need attention.
+	deadDisplayThreshold := 4 * time.Hour
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
 	pendingFilterByBeadsID := make(map[string]bool)
+
+	// Track dead agents that are too old to display (> deadDisplayThreshold)
+	// Key: beadsID, Value: true if should be filtered out
+	deadTooOldByBeadsID := make(map[string]bool)
 
 	// Track agents by title to deduplicate (OpenCode can have multiple sessions with same title)
 	// Keep the most recently updated session for each title
@@ -850,6 +858,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// Dead agents older than displayThreshold get filtered (unless completed)
 		if status == "dead" && timeSinceUpdate > displayThreshold {
 			pendingFilterByBeadsID[agent.BeadsID] = true
+		}
+
+		// Track dead agents that are too old to display (> deadDisplayThreshold)
+		// These will be filtered out even if dead - old dead agents don't need attention
+		if status == "dead" && timeSinceUpdate > deadDisplayThreshold {
+			deadTooOldByBeadsID[agent.BeadsID] = true
 		}
 
 		// Deduplicate by title - keep the most recently updated session
@@ -1139,11 +1153,17 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 		// Post-Phase filtering: remove agents that were dead > displayThreshold
 		// and are NOT Phase: Complete. Completed agents shown regardless of activity time.
-		// Dead agents are kept visible so user knows they need attention.
+		// Dead agents > deadDisplayThreshold (4h) are also filtered - they're historical.
+		// Recent dead agents (< 4h) are kept visible so user knows they need attention.
 		filtered := make([]AgentAPIResponse, 0, len(agents))
 		for _, agent := range agents {
+			// Skip non-completed, non-dead agents older than displayThreshold
 			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" && agent.Status != "dead" {
-				// Skip old agents that are not completed or dead
+				continue
+			}
+			// Skip dead agents older than deadDisplayThreshold (unless completed)
+			// Old dead agents don't need attention - they're historical
+			if deadTooOldByBeadsID[agent.BeadsID] && agent.Status != "completed" {
 				continue
 			}
 			filtered = append(filtered, agent)

@@ -20,16 +20,20 @@
 	 * This provides clearer visual distinction between:
 	 * - running: actively processing (is_processing=true)
 	 * - ready-for-review: phase=Complete but status still active
-	 * - idle: no activity for a while
+	 * - idle: no activity for a while (within active session)
 	 * - waiting: active but no activity yet
+	 * - dead: session has no activity for >3 minutes (killed/crashed/stuck)
+	 * - stalled: untracked agent with no phase comments after >1 minute
 	 */
-	type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned';
+	type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned' | 'dead' | 'stalled';
 	
 	function getDisplayState(agent: Agent): DisplayState {
 		if (agent.status === 'completed') return 'completed';
 		if (agent.status === 'abandoned') return 'abandoned';
+		if (agent.status === 'dead') return 'dead';
+		if (agent.status === 'stalled') return 'stalled';
 		
-		if (agent.status === 'active') {
+		if (agent.status === 'active' || agent.status === 'idle') {
 			// Phase: Complete means agent reported done, waiting for orchestrator to close
 			if (agent.phase?.toLowerCase() === 'complete') {
 				return 'ready-for-review';
@@ -66,6 +70,9 @@
 				return 'completed';
 			case 'abandoned':
 				return 'abandoned';
+			case 'dead':
+			case 'stalled':
+				return 'destructive';
 			default:
 				return 'default';
 		}
@@ -79,6 +86,10 @@
 				return 'bg-blue-500';
 			case 'abandoned':
 				return 'bg-red-500';
+			case 'dead':
+				return 'bg-red-600';
+			case 'stalled':
+				return 'bg-orange-600';
 			default:
 				return 'bg-gray-500';
 		}
@@ -249,11 +260,11 @@
 		hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5
 		focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background
 		active:translate-y-0 active:shadow-md
-		{displayState === 'running' ? 'border-yellow-500/70 shadow-lg shadow-yellow-500/15 bg-yellow-500/5' : displayState === 'ready-for-review' ? 'border-blue-500/70 shadow-lg shadow-blue-500/15 bg-blue-500/5' : displayState === 'idle' ? 'border-orange-500/50 bg-orange-500/5' : 'border-border/60'}
+		{displayState === 'running' ? 'border-yellow-500/70 shadow-lg shadow-yellow-500/15 bg-yellow-500/5' : displayState === 'ready-for-review' ? 'border-blue-500/70 shadow-lg shadow-blue-500/15 bg-blue-500/5' : displayState === 'idle' ? 'border-orange-500/50 bg-orange-500/5' : displayState === 'dead' ? 'border-red-600/70 shadow-lg shadow-red-600/15 bg-red-600/10' : displayState === 'stalled' ? 'border-orange-600/70 shadow-lg shadow-orange-600/15 bg-orange-600/10' : 'border-border/60'}
 		{isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary shadow-lg shadow-primary/10' : ''}"
 >
 	<!-- Status indicator bar at top - color reflects display state with subtle gradient -->
-	<div class={`absolute left-0 top-0 h-1 w-full rounded-t-lg transition-all duration-300 ${displayState === 'running' ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' : displayState === 'ready-for-review' ? 'bg-gradient-to-r from-blue-500 to-blue-400' : displayState === 'idle' ? 'bg-gradient-to-r from-orange-500 to-orange-400' : getStatusColor(agent.status)}`}></div>
+	<div class={`absolute left-0 top-0 h-1 w-full rounded-t-lg transition-all duration-300 ${displayState === 'running' ? 'bg-gradient-to-r from-yellow-500 to-yellow-400' : displayState === 'ready-for-review' ? 'bg-gradient-to-r from-blue-500 to-blue-400' : displayState === 'idle' ? 'bg-gradient-to-r from-orange-500 to-orange-400' : displayState === 'dead' ? 'bg-gradient-to-r from-red-600 to-red-500' : displayState === 'stalled' ? 'bg-gradient-to-r from-orange-600 to-orange-500' : getStatusColor(agent.status)}`}></div>
 
 	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">
@@ -302,6 +313,26 @@
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>Done - pending review</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else if displayState === 'dead'}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="h-1.5 w-1.5 rounded-full bg-red-600"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>Dead - no activity for 3+ min</p>
+						<p class="text-xs text-muted-foreground">Session killed, crashed, or stuck</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else if displayState === 'stalled'}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="h-1.5 w-1.5 rounded-full bg-orange-600"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>Stalled - no phase reported</p>
+						<p class="text-xs text-muted-foreground">Untracked agent may have failed to start</p>
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{:else if displayState === 'idle'}
@@ -387,10 +418,49 @@
 		{/if}
 	</div>
 
-	<!-- Current Activity Summary (for active agents) - always reserve space to prevent height jitter -->
-	{#if agent.status === 'active'}
+	<!-- Current Activity Summary (for active/dead/stalled agents) - always reserve space to prevent height jitter -->
+	{#if agent.status === 'active' || agent.status === 'idle' || agent.status === 'dead' || agent.status === 'stalled'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if displayState === 'ready-for-review'}
+			{#if displayState === 'dead'}
+				<!-- Agent session is dead - no activity for 3+ minutes -->
+				<div class="flex items-center gap-1">
+					<span class="text-[10px]">💀</span>
+					<p class="flex-1 truncate text-[10px] text-red-400 font-medium">
+						Dead - needs attention
+					</p>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<span class="text-[9px] text-muted-foreground/70 shrink-0">
+								{agent.runtime || formatDuration(agent.spawned_at)}
+							</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							<p>No activity for 3+ minutes</p>
+							<p class="text-xs text-muted-foreground">Session was killed, crashed, or is stuck</p>
+							<p class="text-xs text-muted-foreground mt-1">Run <code>orch abandon {agent.beads_id}</code> or respawn</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
+			{:else if displayState === 'stalled'}
+				<!-- Untracked agent with no phase reported -->
+				<div class="flex items-center gap-1">
+					<span class="text-[10px]">⚠️</span>
+					<p class="flex-1 truncate text-[10px] text-orange-400 font-medium">
+						Stalled - no phase reported
+					</p>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<span class="text-[9px] text-muted-foreground/70 shrink-0">
+								{agent.runtime || formatDuration(agent.spawned_at)}
+							</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							<p>Agent hasn't reported phase yet</p>
+							<p class="text-xs text-muted-foreground">May have failed to start or is stuck</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
+			{:else if displayState === 'ready-for-review'}
 				<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
 				<div class="flex items-center gap-1">
 					<span class="text-[10px]">✅</span>
