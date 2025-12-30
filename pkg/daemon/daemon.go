@@ -26,6 +26,10 @@ type Config struct {
 	// MaxAgents is the maximum number of concurrent agents (0 = no limit).
 	MaxAgents int
 
+	// MaxSpawnsPerHour is the maximum number of spawns allowed per hour (0 = no limit).
+	// This prevents runaway spawning when many issues are batch-labeled as triage:ready.
+	MaxSpawnsPerHour int
+
 	// Label filters issues to only those with this label (empty = no filter).
 	Label string
 
@@ -42,12 +46,13 @@ type Config struct {
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval: time.Minute,
-		MaxAgents:    3,
-		Label:        "triage:ready",
-		SpawnDelay:   10 * time.Second,
-		DryRun:       false,
-		Verbose:      false,
+		PollInterval:     time.Minute,
+		MaxAgents:        3,
+		MaxSpawnsPerHour: 20, // Prevents runaway spawning
+		Label:            "triage:ready",
+		SpawnDelay:       10 * time.Second,
+		DryRun:           false,
+		Verbose:          false,
 	}
 }
 
@@ -74,9 +79,11 @@ func (i *Issue) HasLabel(label string) bool {
 
 // PreviewResult contains the result of a preview operation.
 type PreviewResult struct {
-	Issue   *Issue
-	Skill   string
-	Message string
+	Issue       *Issue
+	Skill       string
+	Message     string
+	RateLimited bool   // True if rate limit would prevent spawning
+	RateStatus  string // Rate limit status message (e.g., "5/20 spawns in last hour")
 }
 
 // OnceResult contains the result of processing one issue.
@@ -88,6 +95,115 @@ type OnceResult struct {
 	Error     error
 }
 
+// RateLimiter tracks spawn history to enforce hourly rate limits.
+type RateLimiter struct {
+	// MaxPerHour is the maximum spawns allowed per hour (0 = no limit).
+	MaxPerHour int
+	// SpawnHistory tracks timestamps of recent spawns.
+	SpawnHistory []time.Time
+	// nowFunc allows injecting time for testing.
+	nowFunc func() time.Time
+}
+
+// NewRateLimiter creates a new rate limiter with the given limit.
+func NewRateLimiter(maxPerHour int) *RateLimiter {
+	return &RateLimiter{
+		MaxPerHour:   maxPerHour,
+		SpawnHistory: make([]time.Time, 0),
+		nowFunc:      time.Now,
+	}
+}
+
+// CanSpawn returns true if spawning is allowed under the hourly rate limit.
+// Returns (allowed bool, spawnsInLastHour int, message string).
+func (r *RateLimiter) CanSpawn() (bool, int, string) {
+	if r.MaxPerHour <= 0 {
+		return true, 0, ""
+	}
+
+	now := r.nowFunc()
+	oneHourAgo := now.Add(-time.Hour)
+
+	// Count spawns in the last hour
+	count := 0
+	for _, t := range r.SpawnHistory {
+		if t.After(oneHourAgo) {
+			count++
+		}
+	}
+
+	if count >= r.MaxPerHour {
+		return false, count, fmt.Sprintf("Rate limit reached: %d/%d spawns in the last hour", count, r.MaxPerHour)
+	}
+
+	return true, count, ""
+}
+
+// RecordSpawn records a spawn at the current time.
+func (r *RateLimiter) RecordSpawn() {
+	now := r.nowFunc()
+	r.SpawnHistory = append(r.SpawnHistory, now)
+	r.prune()
+}
+
+// prune removes spawn history older than 1 hour to prevent unbounded growth.
+func (r *RateLimiter) prune() {
+	now := r.nowFunc()
+	oneHourAgo := now.Add(-time.Hour)
+
+	// Find first entry that's within the hour
+	cutoff := 0
+	for i, t := range r.SpawnHistory {
+		if t.After(oneHourAgo) {
+			cutoff = i
+			break
+		}
+		cutoff = i + 1 // All entries are old
+	}
+
+	if cutoff > 0 {
+		r.SpawnHistory = r.SpawnHistory[cutoff:]
+	}
+}
+
+// SpawnsRemaining returns how many spawns are available before hitting the limit.
+// Returns a high number if no limit is set.
+func (r *RateLimiter) SpawnsRemaining() int {
+	if r.MaxPerHour <= 0 {
+		return 100 // No limit
+	}
+
+	_, count, _ := r.CanSpawn()
+	remaining := r.MaxPerHour - count
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+// Status returns current rate limiter status for monitoring.
+type RateLimiterStatus struct {
+	MaxPerHour      int
+	SpawnsLastHour  int
+	SpawnsRemaining int
+	LimitReached    bool
+}
+
+// Status returns the current rate limiter status.
+func (r *RateLimiter) Status() RateLimiterStatus {
+	canSpawn, count, _ := r.CanSpawn()
+	remaining := r.MaxPerHour - count
+	if remaining < 0 {
+		remaining = 0
+	}
+	return RateLimiterStatus{
+		MaxPerHour:      r.MaxPerHour,
+		SpawnsLastHour:  count,
+		SpawnsRemaining: remaining,
+		LimitReached:    !canSpawn,
+	}
+}
+
 // Daemon manages autonomous issue processing.
 type Daemon struct {
 	// Config holds the daemon configuration.
@@ -96,6 +212,9 @@ type Daemon struct {
 	// Pool is the worker pool for concurrency control.
 	// If set, it is used instead of activeCountFunc.
 	Pool *WorkerPool
+
+	// RateLimiter tracks spawn history for hourly rate limiting.
+	RateLimiter *RateLimiter
 
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
@@ -125,19 +244,28 @@ func NewWithConfig(config Config) *Daemon {
 	if config.MaxAgents > 0 {
 		d.Pool = NewWorkerPool(config.MaxAgents)
 	}
+	// Initialize rate limiter if MaxSpawnsPerHour is set
+	if config.MaxSpawnsPerHour > 0 {
+		d.RateLimiter = NewRateLimiter(config.MaxSpawnsPerHour)
+	}
 	return d
 }
 
 // NewWithPool creates a new Daemon instance with an explicit worker pool.
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
-	return &Daemon{
+	d := &Daemon{
 		Config:          config,
 		Pool:            pool,
 		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
 	}
+	// Initialize rate limiter if MaxSpawnsPerHour is set
+	if config.MaxSpawnsPerHour > 0 {
+		d.RateLimiter = NewRateLimiter(config.MaxSpawnsPerHour)
+	}
+	return d
 }
 
 // NextIssue returns the next spawnable issue from the queue.
@@ -247,6 +375,34 @@ func (d *Daemon) PoolStatus() *PoolStatus {
 	return &status
 }
 
+// RateLimitStatus returns the current rate limiter status for monitoring.
+// Returns nil if no rate limiter is configured.
+func (d *Daemon) RateLimitStatus() *RateLimiterStatus {
+	if d.RateLimiter == nil {
+		return nil
+	}
+	status := d.RateLimiter.Status()
+	return &status
+}
+
+// RateLimited returns true if the daemon cannot spawn due to hourly rate limit.
+func (d *Daemon) RateLimited() bool {
+	if d.RateLimiter == nil {
+		return false
+	}
+	canSpawn, _, _ := d.RateLimiter.CanSpawn()
+	return !canSpawn
+}
+
+// RateLimitMessage returns a message if rate limited, or empty string if not.
+func (d *Daemon) RateLimitMessage() string {
+	if d.RateLimiter == nil {
+		return ""
+	}
+	_, _, msg := d.RateLimiter.CanSpawn()
+	return msg
+}
+
 // ReconcileWithOpenCode synchronizes the worker pool with actual OpenCode sessions.
 // This prevents the pool from becoming stuck at capacity when agents complete
 // without the daemon knowing (e.g., overnight runs, crashes, manual kills).
@@ -267,15 +423,29 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 
 // Preview shows what would be processed next without actually processing.
 func (d *Daemon) Preview() (*PreviewResult, error) {
+	result := &PreviewResult{}
+
+	// Check rate limit status
+	if d.RateLimiter != nil {
+		canSpawn, count, msg := d.RateLimiter.CanSpawn()
+		result.RateLimited = !canSpawn
+		if d.RateLimiter.MaxPerHour > 0 {
+			result.RateStatus = fmt.Sprintf("%d/%d spawns in last hour", count, d.RateLimiter.MaxPerHour)
+		}
+		if !canSpawn {
+			result.Message = msg
+			return result, nil
+		}
+	}
+
 	issue, err := d.NextIssue()
 	if err != nil {
 		return nil, err
 	}
 
 	if issue == nil {
-		return &PreviewResult{
-			Message: "No spawnable issues in queue",
-		}, nil
+		result.Message = "No spawnable issues in queue"
+		return result, nil
 	}
 
 	skill, err := InferSkillFromIssue(issue)
@@ -283,10 +453,9 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
-	return &PreviewResult{
-		Issue: issue,
-		Skill: skill,
-	}, nil
+	result.Issue = issue
+	result.Skill = skill
+	return result, nil
 }
 
 // IsSpawnableType returns true if the issue type can be spawned.
@@ -587,9 +756,24 @@ func isUntrackedBeadsID(beadsID string) bool {
 
 // Once processes a single issue from the queue and returns.
 // If a worker pool is configured, it acquires a slot before spawning.
+// If a rate limiter is configured, it checks the hourly limit before spawning.
 // Note: The slot is NOT automatically released when the agent completes.
 // Use OnceWithSlot() for explicit slot management, or ReleaseSlot() manually.
 func (d *Daemon) Once() (*OnceResult, error) {
+	// Check rate limit first (before fetching issues)
+	if d.RateLimiter != nil {
+		canSpawn, count, msg := d.RateLimiter.CanSpawn()
+		if !canSpawn {
+			if d.Config.Verbose {
+				fmt.Printf("  Rate limited: %s\n", msg)
+			}
+			return &OnceResult{
+				Processed: false,
+				Message:   fmt.Sprintf("Rate limited: %d/%d spawns in the last hour", count, d.RateLimiter.MaxPerHour),
+			}, nil
+		}
+	}
+
 	issue, err := d.NextIssue()
 	if err != nil {
 		return nil, err
@@ -637,6 +821,11 @@ func (d *Daemon) Once() (*OnceResult, error) {
 		}, nil
 	}
 
+	// Record successful spawn for rate limiting
+	if d.RateLimiter != nil {
+		d.RateLimiter.RecordSpawn()
+	}
+
 	return &OnceResult{
 		Processed: true,
 		Issue:     issue,
@@ -649,6 +838,20 @@ func (d *Daemon) Once() (*OnceResult, error) {
 // The caller is responsible for releasing the slot when the agent completes.
 // Returns (result, slot, error). Slot will be nil if no pool is configured or if spawn failed.
 func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
+	// Check rate limit first (before fetching issues)
+	if d.RateLimiter != nil {
+		canSpawn, count, msg := d.RateLimiter.CanSpawn()
+		if !canSpawn {
+			if d.Config.Verbose {
+				fmt.Printf("  Rate limited: %s\n", msg)
+			}
+			return &OnceResult{
+				Processed: false,
+				Message:   fmt.Sprintf("Rate limited: %d/%d spawns in the last hour", count, d.RateLimiter.MaxPerHour),
+			}, nil, nil
+		}
+	}
+
 	issue, err := d.NextIssue()
 	if err != nil {
 		return nil, nil, err
@@ -694,6 +897,11 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Error:     err,
 			Message:   fmt.Sprintf("Failed to spawn: %v", err),
 		}, nil, nil
+	}
+
+	// Record successful spawn for rate limiting
+	if d.RateLimiter != nil {
+		d.RateLimiter.RecordSpawn()
 	}
 
 	return &OnceResult{

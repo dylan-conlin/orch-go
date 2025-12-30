@@ -1448,3 +1448,466 @@ func TestGetClosedIssuesBatch_Integration(t *testing.T) {
 		t.Error("getClosedIssuesBatch() returned nil, want non-nil map")
 	}
 }
+
+// =============================================================================
+// Tests for RateLimiter
+// =============================================================================
+
+func TestNewRateLimiter(t *testing.T) {
+	r := NewRateLimiter(20)
+
+	if r.MaxPerHour != 20 {
+		t.Errorf("NewRateLimiter(20).MaxPerHour = %d, want 20", r.MaxPerHour)
+	}
+	if len(r.SpawnHistory) != 0 {
+		t.Errorf("NewRateLimiter(20).SpawnHistory should be empty, got %d entries", len(r.SpawnHistory))
+	}
+	if r.nowFunc == nil {
+		t.Error("NewRateLimiter(20).nowFunc should not be nil")
+	}
+}
+
+func TestRateLimiter_CanSpawn_NoLimit(t *testing.T) {
+	r := NewRateLimiter(0) // No limit
+
+	canSpawn, count, msg := r.CanSpawn()
+	if !canSpawn {
+		t.Error("CanSpawn() should return true when no limit is set")
+	}
+	if count != 0 {
+		t.Errorf("CanSpawn() count = %d, want 0 (no tracking)", count)
+	}
+	if msg != "" {
+		t.Errorf("CanSpawn() msg = %q, want empty", msg)
+	}
+}
+
+func TestRateLimiter_CanSpawn_BelowLimit(t *testing.T) {
+	r := NewRateLimiter(5)
+
+	// Record 3 spawns
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	canSpawn, count, msg := r.CanSpawn()
+	if !canSpawn {
+		t.Error("CanSpawn() should return true when below limit")
+	}
+	if count != 3 {
+		t.Errorf("CanSpawn() count = %d, want 3", count)
+	}
+	if msg != "" {
+		t.Errorf("CanSpawn() msg = %q, want empty", msg)
+	}
+}
+
+func TestRateLimiter_CanSpawn_AtLimit(t *testing.T) {
+	r := NewRateLimiter(3)
+
+	// Record exactly 3 spawns
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	canSpawn, count, msg := r.CanSpawn()
+	if canSpawn {
+		t.Error("CanSpawn() should return false when at limit")
+	}
+	if count != 3 {
+		t.Errorf("CanSpawn() count = %d, want 3", count)
+	}
+	if msg == "" {
+		t.Error("CanSpawn() should return a message when at limit")
+	}
+}
+
+func TestRateLimiter_CanSpawn_ExpiredHistory(t *testing.T) {
+	r := NewRateLimiter(3)
+
+	// Use a mock time function
+	baseTime := time.Now()
+	r.nowFunc = func() time.Time { return baseTime }
+
+	// Record 3 spawns at base time
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	// Move time forward by more than an hour
+	r.nowFunc = func() time.Time { return baseTime.Add(61 * time.Minute) }
+
+	// Old spawns should be expired
+	canSpawn, count, _ := r.CanSpawn()
+	if !canSpawn {
+		t.Error("CanSpawn() should return true when old spawns are expired")
+	}
+	if count != 0 {
+		t.Errorf("CanSpawn() count = %d, want 0 (expired)", count)
+	}
+}
+
+func TestRateLimiter_RecordSpawn(t *testing.T) {
+	r := NewRateLimiter(10)
+
+	r.RecordSpawn()
+	if len(r.SpawnHistory) != 1 {
+		t.Errorf("RecordSpawn() should add one entry, got %d", len(r.SpawnHistory))
+	}
+
+	r.RecordSpawn()
+	r.RecordSpawn()
+	if len(r.SpawnHistory) != 3 {
+		t.Errorf("RecordSpawn() should have 3 entries, got %d", len(r.SpawnHistory))
+	}
+}
+
+func TestRateLimiter_Prune(t *testing.T) {
+	r := NewRateLimiter(10)
+
+	baseTime := time.Now()
+	r.nowFunc = func() time.Time { return baseTime }
+
+	// Record 5 spawns
+	for i := 0; i < 5; i++ {
+		r.RecordSpawn()
+	}
+
+	if len(r.SpawnHistory) != 5 {
+		t.Fatalf("Expected 5 entries before prune, got %d", len(r.SpawnHistory))
+	}
+
+	// Move time forward by 2 hours
+	r.nowFunc = func() time.Time { return baseTime.Add(2 * time.Hour) }
+
+	// Record another spawn (this triggers prune)
+	r.RecordSpawn()
+
+	// Old entries should be pruned
+	if len(r.SpawnHistory) != 1 {
+		t.Errorf("After prune, expected 1 entry (new spawn), got %d", len(r.SpawnHistory))
+	}
+}
+
+func TestRateLimiter_SpawnsRemaining(t *testing.T) {
+	tests := []struct {
+		name     string
+		max      int
+		spawns   int
+		wantLeft int
+	}{
+		{"no limit", 0, 10, 100},
+		{"none used", 5, 0, 5},
+		{"some used", 10, 3, 7},
+		{"all used", 5, 5, 0},
+		{"over limit", 3, 5, 0}, // Can't have negative remaining
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewRateLimiter(tt.max)
+			for i := 0; i < tt.spawns; i++ {
+				r.RecordSpawn()
+			}
+
+			got := r.SpawnsRemaining()
+			if got != tt.wantLeft {
+				t.Errorf("SpawnsRemaining() = %d, want %d", got, tt.wantLeft)
+			}
+		})
+	}
+}
+
+func TestRateLimiter_Status(t *testing.T) {
+	r := NewRateLimiter(10)
+
+	// Record 4 spawns
+	for i := 0; i < 4; i++ {
+		r.RecordSpawn()
+	}
+
+	status := r.Status()
+	if status.MaxPerHour != 10 {
+		t.Errorf("Status().MaxPerHour = %d, want 10", status.MaxPerHour)
+	}
+	if status.SpawnsLastHour != 4 {
+		t.Errorf("Status().SpawnsLastHour = %d, want 4", status.SpawnsLastHour)
+	}
+	if status.SpawnsRemaining != 6 {
+		t.Errorf("Status().SpawnsRemaining = %d, want 6", status.SpawnsRemaining)
+	}
+	if status.LimitReached {
+		t.Error("Status().LimitReached should be false")
+	}
+
+	// Fill up to limit
+	for i := 0; i < 6; i++ {
+		r.RecordSpawn()
+	}
+
+	status = r.Status()
+	if !status.LimitReached {
+		t.Error("Status().LimitReached should be true when at limit")
+	}
+}
+
+// =============================================================================
+// Tests for Daemon with RateLimiter
+// =============================================================================
+
+func TestNewWithConfig_CreatesRateLimiter(t *testing.T) {
+	config := Config{
+		MaxSpawnsPerHour: 15,
+	}
+	d := NewWithConfig(config)
+
+	if d.RateLimiter == nil {
+		t.Fatal("NewWithConfig() should create RateLimiter when MaxSpawnsPerHour > 0")
+	}
+	if d.RateLimiter.MaxPerHour != 15 {
+		t.Errorf("RateLimiter.MaxPerHour = %d, want 15", d.RateLimiter.MaxPerHour)
+	}
+}
+
+func TestNewWithConfig_NoRateLimiterWhenNoLimit(t *testing.T) {
+	config := Config{
+		MaxSpawnsPerHour: 0, // No limit
+	}
+	d := NewWithConfig(config)
+
+	if d.RateLimiter != nil {
+		t.Error("NewWithConfig() should not create RateLimiter when MaxSpawnsPerHour = 0")
+	}
+}
+
+func TestDaemon_RateLimited(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxPerHour  int
+		spawns      int
+		wantLimited bool
+	}{
+		{"no limit", 0, 100, false},
+		{"below limit", 10, 5, false},
+		{"at limit", 5, 5, true},
+		{"above limit", 3, 5, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := NewWithConfig(Config{MaxSpawnsPerHour: tt.maxPerHour})
+
+			// Record spawns
+			if d.RateLimiter != nil {
+				for i := 0; i < tt.spawns; i++ {
+					d.RateLimiter.RecordSpawn()
+				}
+			}
+
+			got := d.RateLimited()
+			if got != tt.wantLimited {
+				t.Errorf("RateLimited() = %v, want %v", got, tt.wantLimited)
+			}
+		})
+	}
+}
+
+func TestDaemon_RateLimitMessage(t *testing.T) {
+	d := NewWithConfig(Config{MaxSpawnsPerHour: 3})
+
+	// Should be empty when not limited
+	msg := d.RateLimitMessage()
+	if msg != "" {
+		t.Errorf("RateLimitMessage() = %q, want empty when not limited", msg)
+	}
+
+	// Fill to limit
+	for i := 0; i < 3; i++ {
+		d.RateLimiter.RecordSpawn()
+	}
+
+	// Should have a message when limited
+	msg = d.RateLimitMessage()
+	if msg == "" {
+		t.Error("RateLimitMessage() should return a message when limited")
+	}
+}
+
+func TestDaemon_RateLimitStatus(t *testing.T) {
+	d := NewWithConfig(Config{MaxSpawnsPerHour: 10})
+
+	status := d.RateLimitStatus()
+	if status == nil {
+		t.Fatal("RateLimitStatus() should not be nil when rate limiter is configured")
+	}
+	if status.MaxPerHour != 10 {
+		t.Errorf("RateLimitStatus().MaxPerHour = %d, want 10", status.MaxPerHour)
+	}
+}
+
+func TestDaemon_RateLimitStatus_NilLimiter(t *testing.T) {
+	d := &Daemon{} // No rate limiter
+
+	status := d.RateLimitStatus()
+	if status != nil {
+		t.Error("RateLimitStatus() should be nil when no rate limiter is configured")
+	}
+}
+
+func TestDaemon_Once_RateLimited(t *testing.T) {
+	d := &Daemon{
+		RateLimiter: NewRateLimiter(2),
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			t.Error("spawnFunc should not be called when rate limited")
+			return nil
+		},
+	}
+
+	// Fill rate limit
+	d.RateLimiter.RecordSpawn()
+	d.RateLimiter.RecordSpawn()
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error = %v", err)
+	}
+	if result.Processed {
+		t.Error("Once() should not process when rate limited")
+	}
+	if result.Message == "" {
+		t.Error("Once() should have a message when rate limited")
+	}
+}
+
+func TestDaemon_Once_RecordsSpawn(t *testing.T) {
+	d := &Daemon{
+		RateLimiter: NewRateLimiter(10),
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			return nil
+		},
+	}
+
+	// Initially no spawns
+	if len(d.RateLimiter.SpawnHistory) != 0 {
+		t.Fatal("Expected 0 spawns initially")
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error = %v", err)
+	}
+	if !result.Processed {
+		t.Error("Once() expected Processed=true")
+	}
+
+	// Should have recorded the spawn
+	if len(d.RateLimiter.SpawnHistory) != 1 {
+		t.Errorf("Expected 1 spawn recorded, got %d", len(d.RateLimiter.SpawnHistory))
+	}
+}
+
+func TestDaemon_Once_NoRecordOnSpawnFailure(t *testing.T) {
+	d := &Daemon{
+		RateLimiter: NewRateLimiter(10),
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(beadsID string) error {
+			return fmt.Errorf("spawn failed")
+		},
+	}
+
+	result, err := d.Once()
+	if err != nil {
+		t.Fatalf("Once() error = %v", err)
+	}
+	if result.Processed {
+		t.Error("Once() expected Processed=false on spawn error")
+	}
+
+	// Should NOT have recorded the failed spawn
+	if len(d.RateLimiter.SpawnHistory) != 0 {
+		t.Errorf("Expected 0 spawns recorded on failure, got %d", len(d.RateLimiter.SpawnHistory))
+	}
+}
+
+func TestDaemon_Preview_ShowsRateStatus(t *testing.T) {
+	d := &Daemon{
+		RateLimiter: NewRateLimiter(10),
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Record some spawns
+	d.RateLimiter.RecordSpawn()
+	d.RateLimiter.RecordSpawn()
+	d.RateLimiter.RecordSpawn()
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() error = %v", err)
+	}
+
+	if result.RateStatus == "" {
+		t.Error("Preview() should show rate status")
+	}
+	if result.RateLimited {
+		t.Error("Preview() should not be rate limited yet")
+	}
+	if result.Issue == nil {
+		t.Error("Preview() should return an issue when not rate limited")
+	}
+}
+
+func TestDaemon_Preview_RateLimited(t *testing.T) {
+	d := &Daemon{
+		RateLimiter: NewRateLimiter(2),
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "Test", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Fill rate limit
+	d.RateLimiter.RecordSpawn()
+	d.RateLimiter.RecordSpawn()
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() error = %v", err)
+	}
+
+	if !result.RateLimited {
+		t.Error("Preview() should be rate limited")
+	}
+	if result.Message == "" {
+		t.Error("Preview() should have a message when rate limited")
+	}
+	if result.Issue != nil {
+		t.Error("Preview() should not return an issue when rate limited")
+	}
+}
+
+func TestDefaultConfig_IncludesMaxSpawnsPerHour(t *testing.T) {
+	config := DefaultConfig()
+
+	if config.MaxSpawnsPerHour != 20 {
+		t.Errorf("DefaultConfig().MaxSpawnsPerHour = %d, want 20", config.MaxSpawnsPerHour)
+	}
+}
