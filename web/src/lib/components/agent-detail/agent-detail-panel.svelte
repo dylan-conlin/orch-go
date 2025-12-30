@@ -20,6 +20,17 @@
 	// Collapsible sections state
 	let showDetails = false;
 	let showActivity = true;
+	
+	// Extract workspace name from agent ID (removes "[beads-id]" suffix if present)
+	// Agent IDs have format "workspace-name [beads-id]" but artifact API expects just workspace name
+	function extractWorkspaceName(agentId: string): string {
+		// Look for "[beads-id]" pattern and strip it
+		const bracketIndex = agentId.lastIndexOf(' [');
+		if (bracketIndex !== -1 && agentId.endsWith(']')) {
+			return agentId.substring(0, bracketIndex);
+		}
+		return agentId;
+	}
 
 	// Close panel handler
 	function closePanel() {
@@ -319,11 +330,11 @@
 				<div class="p-4 flex-1">
 					<h3 class="text-sm font-medium text-muted-foreground mb-3">Agent Output</h3>
 					<div class="h-[calc(100vh-300px)] min-h-[300px]">
-						<ArtifactViewer 
-							workspaceId={$selectedAgent.id}
-							beadsId={$selectedAgent.beads_id}
-							skill={$selectedAgent.skill}
-						/>
+					<ArtifactViewer 
+						workspaceId={extractWorkspaceName($selectedAgent.id)}
+						beadsId={$selectedAgent.beads_id}
+						skill={$selectedAgent.skill}
+					/>
 					</div>
 				</div>
 			{/if}
