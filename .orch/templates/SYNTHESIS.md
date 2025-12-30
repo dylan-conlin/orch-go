@@ -1,3 +1,15 @@
+<!--
+TEMPLATE: Session Synthesis
+This is a template file used by orch-go to create SYNTHESIS.md in agent workspaces.
+
+DO NOT: Edit individual SYNTHESIS.md files in workspaces - they are instances, not the source.
+SOURCE: /Users/dylanconlin/Documents/personal/orch-go/.orch/templates/SYNTHESIS.md
+MODIFY: Edit this file directly, then new spawns will use the updated template.
+UPDATED: 2025-12-30
+
+For changes to apply retroactively to existing workspaces, manually update those instances.
+-->
+
 # Session Synthesis
 
 **Agent:** {workspace-name}

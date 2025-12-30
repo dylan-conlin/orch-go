@@ -1,3 +1,15 @@
+<!--
+TEMPLATE: Failure Report
+This is a template file used by orch-go when abandoning agents via `orch abandon`.
+
+DO NOT: Edit FAILURE_REPORT.md files in workspaces - they are instances created from this template.
+SOURCE: /Users/dylanconlin/Documents/personal/orch-go/.orch/templates/FAILURE_REPORT.md
+MODIFY: Edit this file directly, then future `orch abandon` will use the updated template.
+UPDATED: 2025-12-30
+
+For changes to apply to existing failure reports, manually update those instances.
+-->
+
 # Failure Report
 
 **Agent:** {workspace-name}
