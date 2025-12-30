@@ -367,18 +367,18 @@
 
 <div class="space-y-4">
 	<!-- Compact Stats Bar -->
-	<div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-card/80 backdrop-blur-sm px-4 py-2.5 shadow-sm" data-testid="stats-bar">
-		<!-- Primary indicators group -->
-		<div class="flex items-center gap-5">
+	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-card/80 backdrop-blur-sm px-3 py-2.5 shadow-sm" data-testid="stats-bar">
+		<!-- Primary indicators group - metrics use whitespace-nowrap to prevent internal breaks -->
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<!-- Errors indicator -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default rounded-lg px-2 py-1 transition-colors hover:bg-accent/30">
-							<span class="text-lg">❌</span>
-							<span class="inline-flex items-baseline gap-1">
-								<span class="text-xl font-bold tabular-nums" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
-								<span class="text-xs text-muted-foreground">errors</span>
+						<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
+							<span class="text-base">❌</span>
+							<span class="inline-flex items-baseline gap-0.5">
+								<span class="text-lg font-bold tabular-nums" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+								<span class="text-xs text-muted-foreground hidden sm:inline">err</span>
 							</span>
 						</span>
 					{/snippet}
@@ -392,11 +392,11 @@
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default rounded-lg px-2 py-1 transition-colors hover:bg-accent/30">
-							<span class="text-lg">🟢</span>
-							<span class="inline-flex items-baseline gap-1">
-								<span class="text-xl font-bold tabular-nums" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
-								<span class="text-xs text-muted-foreground">active</span>
+						<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
+							<span class="text-base">🟢</span>
+							<span class="inline-flex items-baseline gap-0.5">
+								<span class="text-lg font-bold tabular-nums" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
+								<span class="text-xs text-muted-foreground hidden sm:inline">active</span>
 							</span>
 						</span>
 					{/snippet}
@@ -411,12 +411,10 @@
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="focus-indicator">
-								<span class="text-lg">{getDriftEmoji($focus)}</span>
-								<span class="inline-flex items-baseline gap-1">
-									<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
-										{$focus.is_drifting ? 'drifting' : 'focused'}
-									</span>
+							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="focus-indicator">
+								<span class="text-base">{getDriftEmoji($focus)}</span>
+								<span class="text-xs truncate max-w-24" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
+									{$focus.is_drifting ? 'drift' : 'focus'}
 								</span>
 							</span>
 						{/snippet}
@@ -435,11 +433,11 @@
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="servers-indicator">
-								<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
-								<span class="inline-flex items-baseline gap-1">
-									<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
-									<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
+							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="servers-indicator">
+								<span class="text-base">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+								<span class="inline-flex items-baseline gap-0.5">
+									<span class="text-lg font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
+									<span class="text-xs text-muted-foreground">/{$servers.total_count}</span>
 								</span>
 							</span>
 						{/snippet}
@@ -458,17 +456,17 @@
 						{#snippet child({ props })}
 							<button
 								{...props}
-								class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
+								class="inline-flex items-center gap-1.5 cursor-pointer hover:bg-accent/50 rounded px-1.5 py-1 transition-colors whitespace-nowrap"
 								onclick={() => { sectionState.readyQueue = !sectionState.readyQueue; }}
 								data-testid="beads-indicator"
 							>
-								<span class="text-lg">📋</span>
-								<span class="inline-flex items-baseline gap-1">
-									<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
-									<span class="text-xs text-muted-foreground">ready</span>
+								<span class="text-base">📋</span>
+								<span class="inline-flex items-baseline gap-0.5">
+									<span class="text-lg font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">rdy</span>
 								</span>
 								{#if $beads.blocked_issues > 0}
-									<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
+									<span class="text-xs text-red-500/80">+{$beads.blocked_issues}<span class="hidden sm:inline">blk</span></span>
 								{/if}
 							</button>
 						{/snippet}
@@ -486,14 +484,14 @@
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="daemon-indicator">
-								<span class="text-lg">{getDaemonEmoji($daemon)}</span>
-								<span class="inline-flex items-baseline gap-1">
+							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="daemon-indicator">
+								<span class="text-base">{getDaemonEmoji($daemon)}</span>
+								<span class="inline-flex items-baseline gap-0.5">
 									{#if $daemon.running}
-										<span class="text-xl font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
-										<span class="text-xs text-muted-foreground">slots</span>
+										<span class="text-lg font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
+										<span class="text-xs text-muted-foreground hidden sm:inline">slot</span>
 									{:else}
-										<span class="text-xs text-muted-foreground">daemon</span>
+										<span class="text-xs text-muted-foreground">off</span>
 									{/if}
 								</span>
 							</span>
@@ -519,8 +517,8 @@
 				</Tooltip.Root>
 			{/if}
 		</div>
-		<!-- Connection button and settings - pushed to end -->
-		<div class="ml-auto flex items-center gap-1">
+		<!-- Connection button and settings - pushed to end, shrinks last -->
+		<div class="ml-auto flex items-center gap-1 shrink-0">
 			<SettingsPanel />
 			<Tooltip.Root>
 				<Tooltip.Trigger>
