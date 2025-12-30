@@ -20,7 +20,7 @@ func TestActionEvent_PatternKey(t *testing.T) {
 				Target:  "/path/to/file.md",
 				Outcome: OutcomeEmpty,
 			},
-			expected: "Read:*.md:empty",
+			expected: "Read:/path/to/file.md:empty",
 		},
 		{
 			name: "event without extension",
@@ -38,7 +38,7 @@ func TestActionEvent_PatternKey(t *testing.T) {
 				Target:  "/path/to/README",
 				Outcome: OutcomeSuccess,
 			},
-			expected: "Read:README:success",
+			expected: "Read:/path/to/README:success",
 		},
 	}
 
@@ -57,11 +57,14 @@ func TestNormalizeTarget(t *testing.T) {
 		target   string
 		expected string
 	}{
-		{"/path/to/file.md", "*.md"},
-		{"/path/to/file.go", "*.go"},
-		{"/path/to/README", "README"},
+		// Paths are kept intact now (no over-aggressive normalization)
+		{"/path/to/file.md", "/path/to/file.md"},
+		{"/path/to/file.go", "/path/to/file.go"},
+		{"/path/to/README", "/path/to/README"},
 		{"some command", "some command"},
 		{"  whitespace  ", "whitespace"},
+		// Long targets get truncated at 80 chars (77 + "...")
+		{"absolutely-very-long-command-that-exceeds-eighty-characters-and-should-be-truncated-for-readability", "absolutely-very-long-command-that-exceeds-eighty-characters-and-should-be-tru..."},
 	}
 
 	for _, tt := range tests {

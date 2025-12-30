@@ -109,19 +109,53 @@ func (e *ActionEvent) PatternKey() string {
 }
 
 // normalizeTarget normalizes a target for pattern grouping.
-// This helps group similar actions (e.g., different file paths with same suffix).
+// We keep targets mostly intact to avoid over-grouping unrelated actions.
+// Only normalize very long targets (truncate) and whitespace.
 func normalizeTarget(target string) string {
-	// For file paths, keep the basename and extension
-	if strings.Contains(target, "/") {
-		base := filepath.Base(target)
-		// Keep the file extension pattern
-		if ext := filepath.Ext(base); ext != "" {
-			return "*" + ext
-		}
-		return base
+	target = strings.TrimSpace(target)
+
+	// Truncate very long targets (e.g., long bash commands) for readability
+	// but keep enough to distinguish different commands
+	if len(target) > 80 {
+		return target[:77] + "..."
 	}
-	// For other targets, normalize whitespace
-	return strings.TrimSpace(target)
+
+	return target
+}
+
+// isExpectedEmpty returns true if the command is expected to produce no output.
+// These should not be flagged as "empty result" patterns.
+func isExpectedEmpty(tool, target string) bool {
+	if tool != "Bash" {
+		return false
+	}
+	target = strings.TrimSpace(target)
+
+	// Commands that are expected to produce no output
+	expectedEmptyPrefixes := []string{
+		"sleep ",
+		"wait",
+		"cd ",
+		"export ",
+		"unset ",
+		"true",
+		":",         // bash no-op
+		"mkdir -p ", // silent on success
+		"touch ",    // silent on success
+		"rm ",       // silent on success (unless -v)
+		"cp ",       // silent on success (unless -v)
+		"mv ",       // silent on success (unless -v)
+		"chmod ",    // silent on success
+		"chown ",    // silent on success
+	}
+
+	for _, prefix := range expectedEmptyPrefixes {
+		if strings.HasPrefix(target, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // IsWorkerSession determines if a session is a worker based on its title.
@@ -405,6 +439,10 @@ func (t *Tracker) FindPatterns() []ActionPattern {
 		}
 		// Only track non-success outcomes (those are the "futile" actions)
 		if e.Outcome == OutcomeSuccess {
+			continue
+		}
+		// Skip expected-empty commands (sleep, cd, export, etc.)
+		if e.Outcome == OutcomeEmpty && isExpectedEmpty(e.Tool, e.Target) {
 			continue
 		}
 		key := e.PatternKey()
