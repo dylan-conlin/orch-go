@@ -35,11 +35,20 @@ import (
 const DefaultServePort = 3348
 
 var (
-	servePort int
+	servePort    int
+	serveWorkdir string // Optional workdir flag to override compile-time sourceDir
 
 	// beadsClient is a persistent RPC client for beads operations.
 	// Initialized at startup with auto-reconnect enabled.
 	beadsClient *beads.Client
+
+	// beadsClientPool is a lazy-initialized pool of beads clients per project directory.
+	// Used for multi-project dashboard support via ?project= query param.
+	beadsClientPool *beads.Pool
+
+	// serveEffectiveDir is the effective source directory for this serve instance.
+	// It's either serveWorkdir (if set) or sourceDir (compile-time default).
+	serveEffectiveDir string
 )
 
 var serveCmd = &cobra.Command{
@@ -50,15 +59,23 @@ var serveCmd = &cobra.Command{
 This is orchestration infrastructure (persistent monitoring), NOT a project
 dev server. Use 'orch serve status' to check if the API is running.
 
+Multi-Project Support:
+  The beads endpoints support a ?project=<path> query parameter to fetch
+  data from different project directories. This enables a unified dashboard
+  that shows agents and issues across multiple orchestration projects.
+  
+  Use --workdir to override the default project directory (otherwise uses
+  the compile-time sourceDir).
+
 Endpoints:
   GET /api/agents    - Returns JSON list of active agents from OpenCode/tmux
   GET /api/events    - Proxies the OpenCode SSE stream for real-time updates
   GET /api/agentlog  - Agent lifecycle events
   GET /api/usage     - Claude Max usage stats
   GET /api/focus     - Current focus and drift status
-  GET /api/beads     - Beads stats (ready, blocked, open)
-  GET /api/beads/ready - List of ready issues for queue visibility
-  GET /api/beads/blocked - Blocked issues with blocker details for filtering
+  GET /api/beads     - Beads stats (ready, blocked, open) [?project=<path>]
+  GET /api/beads/ready - List of ready issues [?project=<path>]
+  GET /api/beads/blocked - Blocked issues with details [?project=<path>]
   GET /api/servers   - Servers status across projects
   GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
@@ -68,9 +85,10 @@ Endpoints:
   GET /health        - Health check
 
 Examples:
-  orch-go serve              # Start server on port 3348
-  orch-go serve --port 8080  # Override with explicit port
-  orch-go serve status       # Check if server is running`,
+  orch-go serve                     # Start server on port 3348
+  orch-go serve --port 8080         # Override with explicit port
+  orch-go serve --workdir ~/proj    # Use different project directory
+  orch-go serve status              # Check if server is running`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe(servePort)
 	},
@@ -95,6 +113,7 @@ Examples:
 
 func init() {
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check/listen on")
+	serveCmd.Flags().StringVar(&serveWorkdir, "workdir", "", "Override default project directory (defaults to compile-time sourceDir)")
 	serveStatusCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check")
 
 	serveCmd.AddCommand(serveStatusCmd)
@@ -156,15 +175,30 @@ func runServeStatus(portNum int) error {
 }
 
 func runServe(portNum int) error {
-	// Set default directory for beads socket discovery
-	// This is needed because serve may run from any working directory
-	if sourceDir != "" && sourceDir != "unknown" {
-		beads.DefaultDir = sourceDir
+	// Determine effective source directory: --workdir flag overrides compile-time sourceDir
+	serveEffectiveDir = sourceDir
+	if serveWorkdir != "" {
+		// Resolve to absolute path
+		absPath, err := filepath.Abs(serveWorkdir)
+		if err != nil {
+			return fmt.Errorf("invalid workdir: %w", err)
+		}
+		serveEffectiveDir = absPath
+		fmt.Printf("Using workdir override: %s\n", serveEffectiveDir)
 	}
 
-	// Initialize persistent beads client with auto-reconnect.
+	// Set default directory for beads socket discovery
+	// This is needed because serve may run from any working directory
+	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
+		beads.DefaultDir = serveEffectiveDir
+	}
+
+	// Initialize beads client pool for multi-project support
+	beadsClientPool = beads.NewPool()
+
+	// Initialize persistent beads client with auto-reconnect for the primary project.
 	// This avoids per-request connection overhead and handles daemon restarts.
-	socketPath, err := beads.FindSocketPath(sourceDir)
+	socketPath, err := beads.FindSocketPath(serveEffectiveDir)
 	if err == nil {
 		beadsClient = beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if connErr := beadsClient.Connect(); connErr != nil {
@@ -1593,6 +1627,28 @@ func handleFocus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// getBeadsClientForProject returns a beads client for the given project directory.
+// If projectDir is empty, returns the default beadsClient.
+// Falls back to CLI operations if no client is available.
+// Returns (client, projectDir) where projectDir is resolved (may be default if empty).
+func getBeadsClientForProject(projectDir string) (*beads.Client, string) {
+	// If no project specified, use default client and effective directory
+	if projectDir == "" {
+		return beadsClient, serveEffectiveDir
+	}
+
+	// Resolve to absolute path
+	absPath, err := filepath.Abs(projectDir)
+	if err != nil {
+		// Can't resolve path, fall back to default
+		return beadsClient, serveEffectiveDir
+	}
+
+	// Get or create client from pool
+	client := beadsClientPool.GetOrCreate(absPath)
+	return client, absPath
+}
+
 // BeadsAPIResponse is the JSON structure returned by /api/beads.
 type BeadsAPIResponse struct {
 	TotalIssues    int     `json:"total_issues"`
@@ -1602,32 +1658,46 @@ type BeadsAPIResponse struct {
 	ReadyIssues    int     `json:"ready_issues"`
 	ClosedIssues   int     `json:"closed_issues"`
 	AvgLeadTimeHrs float64 `json:"avg_lead_time_hours,omitempty"`
+	ProjectDir     string  `json:"project_dir,omitempty"` // For multi-project visibility
 	Error          string  `json:"error,omitempty"`
 }
 
 // handleBeads returns beads stats by shelling out to `bd stats --json`.
+// Supports ?project=<path> query param for multi-project dashboard support.
 func handleBeads(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Get project directory from query param (optional)
+	projectDir := r.URL.Query().Get("project")
+	client, effectiveDir := getBeadsClientForProject(projectDir)
+
 	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var stats *beads.Stats
 	var err error
 
-	if beadsClient != nil {
-		stats, err = beadsClient.Stats()
+	if client != nil {
+		stats, err = client.Stats()
 		if err != nil {
 			// Fall through to CLI fallback on RPC error
+			// Set DefaultDir temporarily for CLI fallback
+			oldDefault := beads.DefaultDir
+			beads.DefaultDir = effectiveDir
 			stats, err = beads.FallbackStats()
+			beads.DefaultDir = oldDefault
 		}
 	} else {
+		// No client available, use CLI fallback with correct directory
+		oldDefault := beads.DefaultDir
+		beads.DefaultDir = effectiveDir
 		stats, err = beads.FallbackStats()
+		beads.DefaultDir = oldDefault
 	}
 
 	if err != nil {
-		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err)}
+		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err), ProjectDir: effectiveDir}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
@@ -1641,6 +1711,7 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		ReadyIssues:    stats.Summary.ReadyIssues,
 		ClosedIssues:   stats.Summary.ClosedIssues,
 		AvgLeadTimeHrs: stats.Summary.AvgLeadTimeHours,
+		ProjectDir:     effectiveDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1662,37 +1733,52 @@ type ReadyIssueResponse struct {
 
 // BeadsReadyAPIResponse is the JSON structure returned by /api/beads/ready.
 type BeadsReadyAPIResponse struct {
-	Issues []ReadyIssueResponse `json:"issues"`
-	Count  int                  `json:"count"`
-	Error  string               `json:"error,omitempty"`
+	Issues     []ReadyIssueResponse `json:"issues"`
+	Count      int                  `json:"count"`
+	ProjectDir string               `json:"project_dir,omitempty"` // For multi-project visibility
+	Error      string               `json:"error,omitempty"`
 }
 
 // handleBeadsReady returns list of ready issues for dashboard queue visibility.
+// Supports ?project=<path> query param for multi-project dashboard support.
 func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Get project directory from query param (optional)
+	projectDir := r.URL.Query().Get("project")
+	client, effectiveDir := getBeadsClientForProject(projectDir)
+
 	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var issues []beads.Issue
 	var err error
 
-	if beadsClient != nil {
-		issues, err = beadsClient.Ready(nil)
+	if client != nil {
+		issues, err = client.Ready(nil)
 		if err != nil {
 			// Fall through to CLI fallback on RPC error
+			// Set DefaultDir temporarily for CLI fallback
+			oldDefault := beads.DefaultDir
+			beads.DefaultDir = effectiveDir
 			issues, err = beads.FallbackReady()
+			beads.DefaultDir = oldDefault
 		}
 	} else {
+		// No client available, use CLI fallback with correct directory
+		oldDefault := beads.DefaultDir
+		beads.DefaultDir = effectiveDir
 		issues, err = beads.FallbackReady()
+		beads.DefaultDir = oldDefault
 	}
 
 	if err != nil {
 		resp := BeadsReadyAPIResponse{
-			Issues: []ReadyIssueResponse{},
-			Count:  0,
-			Error:  fmt.Sprintf("Failed to get ready issues: %v", err),
+			Issues:     []ReadyIssueResponse{},
+			Count:      0,
+			ProjectDir: effectiveDir,
+			Error:      fmt.Sprintf("Failed to get ready issues: %v", err),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1713,8 +1799,9 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := BeadsReadyAPIResponse{
-		Issues: readyIssues,
-		Count:  len(readyIssues),
+		Issues:     readyIssues,
+		Count:      len(readyIssues),
+		ProjectDir: effectiveDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1744,25 +1831,38 @@ type BlockedIssueResponse struct {
 // BeadsBlockedAPIResponse is the JSON structure returned by /api/beads/blocked.
 type BeadsBlockedAPIResponse struct {
 	Issues      []BlockedIssueResponse `json:"issues"`
-	TotalCount  int                    `json:"total_count"`   // All blocked issues
-	ActionCount int                    `json:"action_count"`  // Issues needing action
+	TotalCount  int                    `json:"total_count"`            // All blocked issues
+	ActionCount int                    `json:"action_count"`           // Issues needing action
+	ProjectDir  string                 `json:"project_dir,omitempty"`  // For multi-project visibility
 	Error       string                 `json:"error,omitempty"`
 }
 
 // handleBeadsBlocked returns blocked issues with blocker details for filtering.
+// Supports ?project=<path> query param for multi-project dashboard support.
 func handleBeadsBlocked(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Get project directory from query param (optional)
+	projectDir := r.URL.Query().Get("project")
+	_, effectiveDir := getBeadsClientForProject(projectDir)
+
+	// Set DefaultDir temporarily for CLI fallback (no RPC support for blocked yet)
+	oldDefault := beads.DefaultDir
+	beads.DefaultDir = effectiveDir
+
 	// Get blocked issues via CLI fallback (no RPC support yet)
 	blockedIssues, err := beads.FallbackBlocked()
+	beads.DefaultDir = oldDefault
+
 	if err != nil {
 		resp := BeadsBlockedAPIResponse{
 			Issues:      []BlockedIssueResponse{},
 			TotalCount:  0,
 			ActionCount: 0,
+			ProjectDir:  effectiveDir,
 			Error:       fmt.Sprintf("Failed to get blocked issues: %v", err),
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1799,8 +1899,12 @@ func handleBeadsBlocked(w http.ResponseWriter, r *http.Request) {
 
 		// Check each blocker to determine if action is needed
 		for _, blockerID := range blocked.BlockedBy {
-			// Look up the blocker issue status
+			// Look up the blocker issue status (use effectiveDir for cross-project)
+			oldDefault := beads.DefaultDir
+			beads.DefaultDir = effectiveDir
 			blockerIssue, err := beads.FallbackShow(blockerID)
+			beads.DefaultDir = oldDefault
+
 			if err != nil {
 				// Blocker doesn't exist or can't be found - needs action
 				issue.NeedsAction = true
@@ -1846,6 +1950,7 @@ func handleBeadsBlocked(w http.ResponseWriter, r *http.Request) {
 		Issues:      issues,
 		TotalCount:  len(issues),
 		ActionCount: actionCount,
+		ProjectDir:  effectiveDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

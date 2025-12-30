@@ -504,6 +504,15 @@ func WriteContext(cfg *Config) error {
 		return fmt.Errorf("failed to write spawn time file: %w", err)
 	}
 
+	// Log spawn telemetry to events.jsonl for observability
+	// This captures context size, kb context stats, and other spawn metrics
+	telemetry := CollectSpawnTelemetry(cfg, content, nil)
+	if err := LogSpawnTelemetry(DefaultTelemetryLogPath(), telemetry); err != nil {
+		// Don't fail the spawn on telemetry error - just warn
+		// Telemetry is observability, not critical path
+		fmt.Fprintf(os.Stderr, "Warning: failed to log spawn telemetry: %v\n", err)
+	}
+
 	return nil
 }
 
