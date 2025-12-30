@@ -117,8 +117,28 @@ func (c *CLIClient) Show(id string) (*Issue, error) {
 // List retrieves issues matching the given criteria.
 func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 	cmdArgs := []string{"list", "--json"}
-	if args != nil && args.Status != "" {
-		cmdArgs = append(cmdArgs, "--status", args.Status)
+	if args != nil {
+		if args.Status != "" {
+			cmdArgs = append(cmdArgs, "--status", args.Status)
+		}
+		if args.Title != "" {
+			cmdArgs = append(cmdArgs, "--title", args.Title)
+		}
+		if args.IssueType != "" {
+			cmdArgs = append(cmdArgs, "--type", args.IssueType)
+		}
+		if args.Assignee != "" {
+			cmdArgs = append(cmdArgs, "--assignee", args.Assignee)
+		}
+		for _, label := range args.Labels {
+			cmdArgs = append(cmdArgs, "--label", label)
+		}
+		for _, label := range args.LabelsAny {
+			cmdArgs = append(cmdArgs, "--label-any", label)
+		}
+		if args.Limit > 0 {
+			cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
+		}
 	}
 
 	cmd := c.bdCommand(cmdArgs...)
@@ -187,9 +207,23 @@ func (c *CLIClient) CloseIssue(id, reason string) error {
 }
 
 // Create creates a new issue.
+// If Force is false (default), it first checks for existing open issues with
+// the same title and returns the existing issue instead of creating a duplicate.
 func (c *CLIClient) Create(args *CreateArgs) (*Issue, error) {
 	if args == nil {
 		return nil, fmt.Errorf("create args required")
+	}
+
+	// Check for existing issue with same title (unless Force is set)
+	if !args.Force {
+		existing, err := c.FindByTitle(args.Title)
+		if err != nil {
+			// Log warning but continue with creation - dedup is best-effort
+			// We don't want to fail issue creation just because the check failed
+		} else if existing != nil {
+			// Found existing issue - return it instead of creating duplicate
+			return existing, nil
+		}
 	}
 
 	cmdArgs := []string{"create", args.Title, "--json"}
@@ -280,6 +314,28 @@ func (c *CLIClient) ResolveID(partialID string) (string, error) {
 		return "", err
 	}
 	return issue.ID, nil
+}
+
+// FindByTitle finds an open issue with the exact given title.
+// Returns nil if no matching issue is found.
+// Only searches open and in_progress issues (not closed).
+func (c *CLIClient) FindByTitle(title string) (*Issue, error) {
+	// Use --title filter to narrow results, then do exact match
+	// bd's --title is a case-insensitive substring match, so we still need exact check
+	for _, status := range []string{"open", "in_progress"} {
+		issues, err := c.List(&ListArgs{Status: status, Title: title})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list %s issues: %w", status, err)
+		}
+
+		for i := range issues {
+			if issues[i].Title == title {
+				return &issues[i], nil
+			}
+		}
+	}
+
+	return nil, nil
 }
 
 // Ensure CLIClient implements BeadsClient.

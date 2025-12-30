@@ -464,9 +464,23 @@ func (c *Client) CloseIssue(id, reason string) error {
 }
 
 // Create creates a new issue.
+// If Force is false (default), it first checks for existing open issues with
+// the same title and returns the existing issue instead of creating a duplicate.
 func (c *Client) Create(args *CreateArgs) (*Issue, error) {
 	if args == nil {
 		return nil, fmt.Errorf("create args required")
+	}
+
+	// Check for existing issue with same title (unless Force is set)
+	if !args.Force {
+		existing, err := c.FindByTitle(args.Title)
+		if err != nil {
+			// Log warning but continue with creation - dedup is best-effort
+			// We don't want to fail issue creation just because the check failed
+		} else if existing != nil {
+			// Found existing issue - return it instead of creating duplicate
+			return existing, nil
+		}
 	}
 
 	resp, err := c.execute(OpCreate, args)
@@ -638,6 +652,28 @@ func (c *Client) ResolveID(partialID string) (string, error) {
 	}
 
 	return resolvedID, nil
+}
+
+// FindByTitle finds an open issue with the exact given title.
+// Returns nil if no matching issue is found.
+// Only searches open and in_progress issues (not closed).
+func (c *Client) FindByTitle(title string) (*Issue, error) {
+	// Get all open issues and filter by exact title match
+	// We check both "open" and "in_progress" status
+	for _, status := range []string{"open", "in_progress"} {
+		issues, err := c.List(&ListArgs{Status: status})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list %s issues: %w", status, err)
+		}
+
+		for i := range issues {
+			if issues[i].Title == title {
+				return &issues[i], nil
+			}
+		}
+	}
+
+	return nil, nil
 }
 
 // Fallback functions for when daemon is not available.

@@ -48,6 +48,11 @@ type BeadsClient interface {
 
 	// ResolveID resolves a partial issue ID to a full ID.
 	ResolveID(partialID string) (string, error)
+
+	// FindByTitle finds an open issue with the exact given title.
+	// Returns nil if no matching issue is found.
+	// Used for deduplication before creating new issues.
+	FindByTitle(title string) (*Issue, error)
 }
 
 // Ensure Client implements BeadsClient.
