@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-cqa5
+---
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 Fill this at the END of your investigation, before marking Complete.
