@@ -7,12 +7,14 @@
 	import { beads, blockedIssues, type BlockedIssue } from '$lib/stores/beads';
 	import { agents, activeAgents, createIssue } from '$lib/stores/agents';
 	import { gaps } from '$lib/stores/gaps';
+	import { patterns, getSeverityIcon, type BehavioralPattern } from '$lib/stores/patterns';
 	import { onMount } from 'svelte';
 
-	// Fetch gaps and blocked issues on mount
+	// Fetch gaps, blocked issues, and patterns on mount
 	onMount(() => {
 		gaps.fetch();
 		blockedIssues.fetch();
+		patterns.fetch();
 	});
 
 	// State for issue creation
@@ -48,7 +50,13 @@
 
 	// 📊 PATTERNS: Recurring gaps that could use kn constrain
 	$: patternSuggestions = $gaps?.suggestions ?? [];
-	$: hasPatterns = patternSuggestions.length > 0;
+	$: hasGapPatterns = patternSuggestions.length > 0;
+
+	// 🔄 BEHAVIORAL: Repeated failures/empty reads from action log
+	$: behavioralPatterns = $patterns?.patterns ?? [];
+	$: hasBehavioralPatterns = behavioralPatterns.length > 0;
+	// Critical/warning patterns need immediate attention
+	$: criticalBehavioralPatterns = behavioralPatterns.filter(p => p.severity === 'critical' || p.severity === 'warning');
 
 	// Total errors
 	$: totalErrors = $errorEvents.length;
@@ -59,7 +67,8 @@
 		(completeAgents.length > 0 ? 1 : 0) +      // BLOCKING category
 		(totalErrors > 0 ? 1 : 0) +                 // ERRORS category
 		(totalBlocked > 0 ? 1 : 0) +                // Blocked issues
-		(hasPatterns ? 1 : 0);                      // PATTERNS category
+		(hasGapPatterns ? 1 : 0) +                  // Gap PATTERNS category
+		(criticalBehavioralPatterns.length > 0 ? 1 : 0); // BEHAVIORAL patterns category
 
 	// Helper to check if we have anything to show (excluding light-tier)
 	$: hasAttentionItems = totalAttentionItems > 0;
@@ -314,8 +323,82 @@
 				</div>
 			{/if}
 
+			<!-- 🔄 BEHAVIORAL: Repeated failures/empty reads -->
+			{#if criticalBehavioralPatterns.length > 0}
+				<div class="rounded border bg-card p-2.5 border-purple-500/30" data-testid="behavioral-section">
+					<div class="flex items-center gap-2 mb-2">
+						<span class="text-sm">🔄</span>
+						<span class="text-xs font-semibold text-purple-500 uppercase tracking-wide">Behavioral</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-purple-500/50 text-purple-500">
+							{criticalBehavioralPatterns.length}
+						</Badge>
+						<span class="text-[10px] text-muted-foreground ml-1">
+							— repeated failure{criticalBehavioralPatterns.length === 1 ? '' : 's'}
+						</span>
+					</div>
+					<div class="space-y-1.5">
+						{#each criticalBehavioralPatterns.slice(0, 3) as pattern (pattern.type + pattern.target)}
+							<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
+								<div class="flex items-center gap-2 min-w-0 flex-1">
+									<span class="text-[10px] {pattern.severity === 'critical' ? 'text-red-500' : 'text-orange-500'}">
+										{getSeverityIcon(pattern.severity)}
+									</span>
+									<Badge variant="secondary" class="h-4 px-1.5 text-[10px] shrink-0">
+										{pattern.count}×
+									</Badge>
+									<span class="text-xs truncate flex-1" title={pattern.description}>
+										{pattern.description}
+									</span>
+								</div>
+								{#if pattern.suggestion}
+									<Tooltip.Root>
+										<Tooltip.Trigger>
+											{#snippet child({ props })}
+												<Button
+													{...props}
+													variant="ghost"
+													size="sm"
+													class="h-6 px-2 text-[10px] shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
+													onclick={() => copyCommand(`orch patterns suppress 0`)}
+												>
+													→ suppress
+												</Button>
+											{/snippet}
+										</Tooltip.Trigger>
+										<Tooltip.Content side="left">
+											<p class="text-xs font-medium mb-1">Suggestion</p>
+											<p class="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-64">{pattern.suggestion}</p>
+											{#if pattern.context && Object.keys(pattern.context).length > 0}
+												<p class="text-[10px] text-muted-foreground/70 mt-1">
+													Context: {Object.entries(pattern.context).map(([k, v]) => `${k}=${v}`).join(', ')}
+												</p>
+											{/if}
+										</Tooltip.Content>
+									</Tooltip.Root>
+								{/if}
+							</div>
+						{/each}
+						{#if criticalBehavioralPatterns.length > 3}
+							<div class="flex items-center justify-between pl-2">
+								<span class="text-[10px] text-muted-foreground">
+									+{criticalBehavioralPatterns.length - 3} more patterns
+								</span>
+								<Button
+									variant="ghost"
+									size="sm"
+									class="h-5 px-2 text-[10px]"
+									onclick={() => copyCommand('orch patterns')}
+								>
+									orch patterns →
+								</Button>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
 			<!-- 📊 PATTERN: Recurring gaps that suggest constraints needed -->
-			{#if hasPatterns}
+			{#if hasGapPatterns}
 				<div class="rounded border bg-card p-2.5 border-blue-500/30" data-testid="pattern-section">
 					<div class="flex items-center gap-2 mb-2">
 						<span class="text-sm">📊</span>

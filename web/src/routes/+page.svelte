@@ -41,6 +41,7 @@
 	import { pendingReviews } from '$lib/stores/pending-reviews';
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { config } from '$lib/stores/config';
+	import { patterns } from '$lib/stores/patterns';
 	import { SettingsPanel } from '$lib/components/settings-panel';
 
 	// Filter and sort state
@@ -125,6 +126,7 @@
 			servers.fetch();
 			readyIssues.fetch();
 			daemon.fetch();
+			patterns.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -153,7 +155,8 @@
 				beads.fetch(),
 				readyIssues.fetch(),
 				daemon.fetch(),
-				pendingReviews.fetch()
+				pendingReviews.fetch(),
+				patterns.fetch()
 			]).catch(console.error);
 		}, 60000);
 

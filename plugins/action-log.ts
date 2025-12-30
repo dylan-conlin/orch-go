@@ -21,9 +21,121 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
-import { appendFileSync, mkdirSync } from "fs"
+import { appendFileSync, mkdirSync, existsSync } from "fs"
+import { createHash } from "crypto"
 import { homedir } from "os"
 import { join, dirname } from "path"
+
+/**
+ * Deduplication using file-based lock files.
+ * 
+ * This handles the case where the plugin is loaded as separate modules
+ * (which can happen if OpenCode loads from both ~/.config/opencode/plugin/
+ * and follows symlinks separately). 
+ * 
+ * For each event, we create a short-lived lock file based on the event hash.
+ * If the lock file exists, the event is a duplicate. Lock files are cleaned
+ * up after a short TTL (1 second).
+ */
+const DEDUP_WINDOW_MS = 100 // Bucket timestamps to 100ms windows
+const DEDUP_LOCK_DIR = join(homedir(), ".orch", ".action-log-locks")
+const LOCK_TTL_MS = 1000 // Lock files expire after 1 second
+
+// In-memory cache for fast lookups (avoids filesystem calls for same-instance duplicates)
+const recentHashes = new Set<string>()
+let lastCleanupTime = 0
+
+/**
+ * Generate a hash for deduplication.
+ * Uses session_id, timestamp (bucketed to 100ms), tool, and target.
+ */
+function getEventHash(
+  sessionId: string | undefined,
+  tool: string,
+  target: string
+): string {
+  // Bucket timestamp to 100ms windows to catch near-duplicates
+  const timestampBucket = Math.floor(Date.now() / DEDUP_WINDOW_MS)
+  const key = `${sessionId || ""}:${timestampBucket}:${tool}:${target}`
+  return createHash("md5").update(key).digest("hex").slice(0, 16)
+}
+
+/**
+ * Clean up old lock files periodically.
+ */
+function cleanupOldLocks(): void {
+  const now = Date.now()
+  // Only cleanup every 5 seconds to avoid excessive I/O
+  if (now - lastCleanupTime < 5000) {
+    return
+  }
+  lastCleanupTime = now
+  
+  try {
+    if (!existsSync(DEDUP_LOCK_DIR)) return
+    
+    const { readdirSync, statSync, unlinkSync } = require("fs")
+    const files = readdirSync(DEDUP_LOCK_DIR)
+    
+    for (const file of files) {
+      try {
+        const lockPath = join(DEDUP_LOCK_DIR, file)
+        const stats = statSync(lockPath)
+        if (now - stats.mtimeMs > LOCK_TTL_MS) {
+          unlinkSync(lockPath)
+        }
+      } catch {
+        // Ignore per-file errors
+      }
+    }
+  } catch {
+    // Ignore cleanup errors
+  }
+  
+  // Also clean in-memory cache
+  if (recentHashes.size > 500) {
+    recentHashes.clear()
+  }
+}
+
+/**
+ * Check if this event was recently logged (dedupe across plugin instances).
+ * Uses file-based lock files for cross-process deduplication.
+ */
+function isDuplicateEvent(hash: string): boolean {
+  // Fast path: check in-memory cache first
+  if (recentHashes.has(hash)) {
+    return true
+  }
+  
+  try {
+    // Ensure lock directory exists
+    mkdirSync(DEDUP_LOCK_DIR, { recursive: true })
+    
+    const lockPath = join(DEDUP_LOCK_DIR, hash)
+    
+    // Try to create lock file with exclusive flag (fails if exists)
+    // Using 'wx' flag: write exclusive - fails if file exists
+    const { openSync, closeSync } = require("fs")
+    const fd = openSync(lockPath, "wx")
+    closeSync(fd)
+    
+    // Successfully created lock - this is not a duplicate
+    recentHashes.add(hash)
+    
+    // Periodically clean up old locks
+    cleanupOldLocks()
+    
+    return false
+  } catch (err: any) {
+    // EEXIST means lock file already exists - this is a duplicate
+    if (err.code === "EEXIST") {
+      return true
+    }
+    // Other errors - proceed without dedup to avoid blocking logging
+    return false
+  }
+}
 
 // ActionEvent matches the Go struct in pkg/action/action.go
 interface ActionEvent {
@@ -129,9 +241,21 @@ function extractTarget(tool: string, args: any): string {
 }
 
 /**
- * Log action event to file.
+ * Log action event to file with deduplication.
+ * 
+ * Uses a global hash-based deduplication to prevent the same event
+ * from being logged twice (which can happen if the plugin is loaded
+ * multiple times by OpenCode).
  */
 function logAction(event: ActionEvent): void {
+  // Generate hash for deduplication BEFORE writing
+  const hash = getEventHash(event.session_id, event.tool, event.target)
+  
+  // Check for duplicate (uses global module-level Set)
+  if (isDuplicateEvent(hash)) {
+    return // Skip duplicate
+  }
+  
   const logPath = join(homedir(), ".orch", "action-log.jsonl")
 
   try {

@@ -20,6 +20,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/patterns"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -254,6 +255,9 @@ func runServe(portNum int) error {
 	// GET/PUT /api/config - user configuration settings
 	mux.HandleFunc("/api/config", corsHandler(handleConfig))
 
+	// GET /api/patterns - behavioral patterns from action log
+	mux.HandleFunc("/api/patterns", corsHandler(handlePatterns))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -284,6 +288,7 @@ func runServe(portNum int) error {
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  POST /api/act-on-review - Mark recommendation as acted on (issue created)")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")
+	fmt.Println("  GET /api/patterns  - Behavioral patterns (repeated failures, empty reads)")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -3320,6 +3325,81 @@ func handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode config: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// PatternsAPIPattern represents a detected behavioral pattern.
+type PatternsAPIPattern struct {
+	Type        string            `json:"type"`                  // Pattern type (e.g., "repeated_empty_read", "repeated_error")
+	Description string            `json:"description"`           // Human-readable description
+	Severity    string            `json:"severity"`              // "info", "warning", "critical"
+	Count       int               `json:"count"`                 // How many times this pattern occurred
+	Suggestion  string            `json:"suggestion,omitempty"`  // Suggested action
+	Context     map[string]string `json:"context,omitempty"`     // Common context (tier, skill, etc.)
+	Tool        string            `json:"tool,omitempty"`        // Tool that triggered the pattern
+	Target      string            `json:"target,omitempty"`      // Target of the action (file path, command, etc.)
+}
+
+// PatternsAPIResponse is the JSON structure returned by /api/patterns.
+type PatternsAPIResponse struct {
+	TotalEvents   int                  `json:"total_events"`   // Total action events in log
+	TotalPatterns int                  `json:"total_patterns"` // Number of detected patterns
+	Patterns      []PatternsAPIPattern `json:"patterns"`       // Detected patterns
+	Summary       string               `json:"summary"`        // Brief summary of log state
+	Error         string               `json:"error,omitempty"`
+}
+
+// handlePatterns returns behavioral pattern analysis from ~/.orch/action-log.json.
+func handlePatterns(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log, err := patterns.LoadLog()
+	if err != nil {
+		resp := PatternsAPIResponse{
+			Error: fmt.Sprintf("Failed to load action log: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	detected := log.DetectPatterns()
+
+	apiPatterns := make([]PatternsAPIPattern, 0, len(detected))
+	for _, p := range detected {
+		// Extract tool and target from first event if available
+		var tool, target string
+		if len(p.Events) > 0 {
+			tool = p.Events[0].Tool
+			target = p.Events[0].Target
+		}
+
+		apiPatterns = append(apiPatterns, PatternsAPIPattern{
+			Type:        p.Type,
+			Description: p.Description,
+			Severity:    p.Severity,
+			Count:       p.Count,
+			Suggestion:  p.Suggestion,
+			Context:     p.Context,
+			Tool:        tool,
+			Target:      target,
+		})
+	}
+
+	resp := PatternsAPIResponse{
+		TotalEvents:   len(log.Events),
+		TotalPatterns: len(detected),
+		Patterns:      apiPatterns,
+		Summary:       log.Summary(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode patterns: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
