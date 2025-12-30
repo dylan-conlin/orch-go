@@ -379,11 +379,32 @@ func (c *Client) IsSessionActive(sessionID string, maxIdleTime time.Duration) bo
 	return idleTime <= maxIdleTime
 }
 
+// StaleSessionThreshold is the maximum time since last session update before
+// a session is considered "stale" (dead/zombie). Active agents update their
+// session state constantly (every tool call, every message part). A session
+// with no updates for 3 minutes is effectively dead.
+const StaleSessionThreshold = 3 * time.Minute
+
 // IsSessionProcessing checks if a session is actively processing (has a pending assistant response).
-// This is the most reliable signal for detecting truly active agents because it checks
-// whether the last assistant message has finished (finish != "" and completed != 0).
-// Returns true if the session is currently generating a response, false if idle.
+// This is the most reliable signal for detecting truly active agents because it checks:
+// 1. Whether the session has recent activity (within StaleSessionThreshold)
+// 2. Whether the last assistant message has finished (finish != "" and completed != 0)
+//
+// Returns true only if the session is both recently active AND has an incomplete assistant message.
+// Returns false if the session is stale (no updates in 3 minutes) even if the last message
+// appears incomplete - this handles zombie sessions that were killed mid-execution.
 func (c *Client) IsSessionProcessing(sessionID string) bool {
+	// First check if the session is stale - if so, it cannot be processing
+	// This handles zombie sessions that have pending tool calls but are dead
+	session, err := c.GetSession(sessionID)
+	if err != nil {
+		return false
+	}
+	updatedAt := time.Unix(session.Time.Updated/1000, 0)
+	if time.Since(updatedAt) > StaleSessionThreshold {
+		return false // Stale session - no activity in 3 minutes means dead
+	}
+
 	messages, err := c.GetMessages(sessionID)
 	if err != nil || len(messages) == 0 {
 		return false
@@ -393,8 +414,9 @@ func (c *Client) IsSessionProcessing(sessionID string) bool {
 	lastMsg := messages[len(messages)-1]
 
 	// Session is processing if:
-	// 1. Last message is from assistant AND
-	// 2. It hasn't finished yet (finish is empty and completed is 0)
+	// 1. Session is not stale (checked above) AND
+	// 2. Last message is from assistant AND
+	// 3. It hasn't finished yet (finish is empty and completed is 0)
 	if lastMsg.Info.Role == "assistant" {
 		return lastMsg.Info.Finish == "" && lastMsg.Info.Time.Completed == 0
 	}

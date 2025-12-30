@@ -1419,13 +1419,27 @@ func TestIsSessionProcessing(t *testing.T) {
 	sessionID := "ses_test123"
 	nowMs := time.Now().UnixMilli()
 
+	// Session data with recent update time (not stale)
+	recentSessionJSON := fmt.Sprintf(`{
+		"id": "%s",
+		"time": {"created": %d, "updated": %d}
+	}`, sessionID, nowMs-10000, nowMs-1000) // updated 1 second ago
+
+	// Session data with stale update time (> 3 minutes ago)
+	staleSessionJSON := fmt.Sprintf(`{
+		"id": "%s",
+		"time": {"created": %d, "updated": %d}
+	}`, sessionID, nowMs-600000, nowMs-300000) // updated 5 minutes ago
+
 	tests := []struct {
 		name           string
+		sessionJSON    string
 		messages       string
 		wantProcessing bool
 	}{
 		{
-			name: "processing - assistant message with null finish",
+			name:        "processing - assistant message with null finish (recent session)",
+			sessionJSON: recentSessionJSON,
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":0},"finish":""},"parts":[]}
@@ -1433,7 +1447,17 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: true,
 		},
 		{
-			name: "idle - assistant message with finish stop",
+			name:        "idle - stale session even with incomplete assistant message",
+			sessionJSON: staleSessionJSON,
+			messages: fmt.Sprintf(`[
+				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
+				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":0},"finish":""},"parts":[]}
+			]`, sessionID, nowMs-300000, sessionID, nowMs-300000),
+			wantProcessing: false, // Stale session should not be considered processing
+		},
+		{
+			name:        "idle - assistant message with finish stop",
+			sessionJSON: recentSessionJSON,
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]}
@@ -1441,7 +1465,8 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: false,
 		},
 		{
-			name: "idle - assistant message with finish tool-calls",
+			name:        "idle - assistant message with finish tool-calls",
+			sessionJSON: recentSessionJSON,
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"tool-calls"},"parts":[]}
@@ -1449,7 +1474,8 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: false,
 		},
 		{
-			name: "processing - user message just sent (within 30s)",
+			name:        "processing - user message just sent (within 30s)",
+			sessionJSON: recentSessionJSON,
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]}
@@ -1457,7 +1483,8 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: true,
 		},
 		{
-			name: "idle - user message old (more than 30s ago)",
+			name:        "idle - user message old (more than 30s ago)",
+			sessionJSON: recentSessionJSON,
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]}
@@ -1466,6 +1493,7 @@ func TestIsSessionProcessing(t *testing.T) {
 		},
 		{
 			name:           "no messages",
+			sessionJSON:    recentSessionJSON,
 			messages:       "[]",
 			wantProcessing: false,
 		},
@@ -1475,7 +1503,12 @@ func TestIsSessionProcessing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(tt.messages))
+				// Handle both session and message requests
+				if strings.Contains(r.URL.Path, "/message") {
+					w.Write([]byte(tt.messages))
+				} else {
+					w.Write([]byte(tt.sessionJSON))
+				}
 			}))
 			defer server.Close()
 
