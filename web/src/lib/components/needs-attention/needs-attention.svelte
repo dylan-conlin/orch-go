@@ -8,6 +8,7 @@
 	import { agents, activeAgents, createIssue } from '$lib/stores/agents';
 	import { gaps } from '$lib/stores/gaps';
 	import { patterns, getSeverityIcon, type BehavioralPattern } from '$lib/stores/patterns';
+	import { usage, getUsageColor, getUsageEmoji } from '$lib/stores/usage';
 	import { onMount } from 'svelte';
 
 	// Fetch gaps, blocked issues, and patterns on mount
@@ -25,10 +26,18 @@
 
 	// Track collapsed state for light-tier section
 	let lightTierExpanded = false;
+	// Track collapsed state for pending reviews within attention panel
+	let pendingReviewsExpanded = false;
 
 	// 🔴 BLOCKING: Agents at Phase: Complete that need orch complete
 	$: completeAgents = $activeAgents.filter(a => 
 		a.phase?.toLowerCase() === 'complete'
+	);
+
+	// 🔴 BLOCKING: Agents asking questions (BLOCKED status)
+	$: askingQuestions = $activeAgents.filter(a => 
+		a.phase?.toLowerCase().includes('blocked') || 
+		a.phase?.toLowerCase().includes('question')
 	);
 
 	// Separate light-tier from standard agents for pending reviews
@@ -61,12 +70,19 @@
 	// Total errors
 	$: totalErrors = $errorEvents.length;
 
+	// 🟡 USAGE WARNING: Usage >80% needs account switch decision
+	$: usageWarning = $usage && ($usage.five_hour_percent >= 80 || $usage.weekly_percent >= 80 || ($usage.weekly_opus_percent ?? 0) >= 80);
+	$: highestUsagePercent = $usage ? Math.max($usage.five_hour_percent, $usage.weekly_percent, $usage.weekly_opus_percent ?? 0) : 0;
+
 	// Calculate total attention items (keep it small and actionable)
 	// Count the number of CATEGORIES that need attention, not individual items
 	$: totalAttentionItems = 
-		(completeAgents.length > 0 ? 1 : 0) +      // BLOCKING category
+		(completeAgents.length > 0 ? 1 : 0) +       // BLOCKING: agents at Phase: Complete
+		(askingQuestions.length > 0 ? 1 : 0) +      // BLOCKING: agents asking questions
 		(totalErrors > 0 ? 1 : 0) +                 // ERRORS category
 		(totalBlocked > 0 ? 1 : 0) +                // Blocked issues
+		(standardReviewCount > 0 ? 1 : 0) +         // Pending synthesis reviews
+		(usageWarning ? 1 : 0) +                    // Usage warning >80%
 		(hasGapPatterns ? 1 : 0) +                  // Gap PATTERNS category
 		(criticalBehavioralPatterns.length > 0 ? 1 : 0); // BEHAVIORAL patterns category
 
@@ -163,14 +179,17 @@
 </script>
 
 {#if hasAttentionItems || lightTierTotalUnreviewed > 0}
-	<div class="rounded-lg border border-amber-500/30 bg-amber-500/5" data-testid="needs-attention-section">
+	<div class="rounded-lg border border-amber-500/30 bg-amber-500/5" data-testid="attention-panel">
 		<div class="flex items-center gap-2 px-3 py-2 border-b border-amber-500/20">
-			<span class="text-sm">⚠️</span>
-			<span class="text-sm font-medium">Needs Attention</span>
+			<span class="text-sm">🔔</span>
+			<span class="text-sm font-medium">Attention Required</span>
 			{#if totalAttentionItems > 0}
 				<Badge variant="secondary" class="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-600">
 					{totalAttentionItems}
 				</Badge>
+			{/if}
+			{#if !hasAttentionItems}
+				<span class="text-xs text-green-500 ml-auto">✓ All clear</span>
 			{/if}
 		</div>
 		<div class="p-2 space-y-2">
@@ -227,6 +246,61 @@
 				</div>
 			{/if}
 
+			<!-- 🔴 BLOCKING: Agents asking questions -->
+			{#if askingQuestions.length > 0}
+				<div class="rounded border bg-card p-2.5 border-red-500/30" data-testid="questions-section">
+					<div class="flex items-center gap-2 mb-2">
+						<span class="text-sm">❓</span>
+						<span class="text-xs font-semibold text-red-500 uppercase tracking-wide">Asking Questions</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-red-500/50 text-red-500">
+							{askingQuestions.length}
+						</Badge>
+						<span class="text-[10px] text-muted-foreground ml-1">
+							— agents waiting for answers
+						</span>
+					</div>
+					<div class="space-y-1.5">
+						{#each askingQuestions.slice(0, 5) as agent (agent.id)}
+							<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
+								<div class="flex items-center gap-2 min-w-0 flex-1">
+									<code class="text-[10px] font-mono text-muted-foreground bg-muted px-1 py-0.5 rounded shrink-0">
+										{agent.beads_id || agent.id.slice(0, 12)}
+									</code>
+									<span class="text-xs truncate flex-1">{agent.task || formatWorkspaceName(agent.id)}</span>
+									<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-amber-500/50 text-amber-500 shrink-0">
+										{agent.phase}
+									</Badge>
+								</div>
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												variant="outline"
+												size="sm"
+												class="h-6 px-2 text-[10px] shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
+												onclick={() => copyCommand(`orch send ${agent.beads_id || agent.id} "your answer here"`)}
+											>
+												→ respond
+											</Button>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content side="left">
+										<p class="text-xs">Click to copy command template</p>
+										<code class="text-[10px] text-muted-foreground">orch send {agent.beads_id || agent.id} "answer"</code>
+									</Tooltip.Content>
+								</Tooltip.Root>
+							</div>
+						{/each}
+						{#if askingQuestions.length > 5}
+							<div class="text-[10px] text-muted-foreground pl-2">
+								+{askingQuestions.length - 5} more agents asking
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
 			<!-- ❌ Errors Section (if any) -->
 			{#if totalErrors > 0}
 				<div class="rounded border bg-card p-2.5 border-red-500/30" data-testid="errors-section">
@@ -252,6 +326,74 @@
 						{#if totalErrors > 3}
 							<div class="text-[10px] text-muted-foreground pl-1">+{totalErrors - 3} more</div>
 						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- 🟡 USAGE WARNING: Usage >80% needs account switch decision -->
+			{#if usageWarning}
+				<div class="rounded border bg-card p-2.5 border-yellow-500/30" data-testid="usage-warning-section">
+					<div class="flex items-center gap-2 mb-2">
+						<span class="text-sm">{getUsageEmoji(highestUsagePercent)}</span>
+						<span class="text-xs font-semibold text-yellow-500 uppercase tracking-wide">Usage Warning</span>
+						<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-yellow-500/50 text-yellow-500">
+							{highestUsagePercent}%
+						</Badge>
+						<span class="text-[10px] text-muted-foreground ml-1">
+							— consider account switch
+						</span>
+					</div>
+					<div class="space-y-1 px-2">
+						{#if $usage}
+							{#if $usage.five_hour_percent >= 80}
+								<div class="flex items-center justify-between text-xs">
+									<span class="text-muted-foreground">5-hour limit:</span>
+									<span class="font-medium {$usage.five_hour_percent >= 80 ? 'text-red-500' : 'text-yellow-500'}">{$usage.five_hour_percent}%</span>
+									{#if $usage.five_hour_reset}
+										<span class="text-[10px] text-muted-foreground">resets {$usage.five_hour_reset}</span>
+									{/if}
+								</div>
+							{/if}
+							{#if $usage.weekly_percent >= 80}
+								<div class="flex items-center justify-between text-xs">
+									<span class="text-muted-foreground">Weekly limit:</span>
+									<span class="font-medium {$usage.weekly_percent >= 80 ? 'text-red-500' : 'text-yellow-500'}">{$usage.weekly_percent}%</span>
+									{#if $usage.weekly_reset}
+										<span class="text-[10px] text-muted-foreground">resets {$usage.weekly_reset}</span>
+									{/if}
+								</div>
+							{/if}
+							{#if ($usage.weekly_opus_percent ?? 0) >= 80}
+								<div class="flex items-center justify-between text-xs">
+									<span class="text-muted-foreground">Opus weekly:</span>
+									<span class="font-medium text-red-500">{$usage.weekly_opus_percent}%</span>
+									{#if $usage.weekly_opus_reset}
+										<span class="text-[10px] text-muted-foreground">resets {$usage.weekly_opus_reset}</span>
+									{/if}
+								</div>
+							{/if}
+						{/if}
+						<div class="flex justify-end mt-1">
+							<Tooltip.Root>
+								<Tooltip.Trigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="outline"
+											size="sm"
+											class="h-6 px-2 text-[10px]"
+											onclick={() => copyCommand('orch account switch work')}
+										>
+											→ switch account
+										</Button>
+									{/snippet}
+								</Tooltip.Trigger>
+								<Tooltip.Content side="left">
+									<p class="text-xs">Click to copy command</p>
+									<code class="text-[10px] text-muted-foreground">orch account switch work</code>
+								</Tooltip.Content>
+							</Tooltip.Root>
+						</div>
 					</div>
 				</div>
 			{/if}
@@ -320,6 +462,89 @@
 							</div>
 						{/if}
 					</div>
+				</div>
+			{/if}
+
+			<!-- 📋 PENDING REVIEWS: Synthesis recommendations to review -->
+			{#if standardReviewCount > 0}
+				<div class="rounded border bg-card p-2.5 border-amber-500/30" data-testid="pending-reviews-inline">
+					<button
+						class="flex items-center justify-between w-full text-left"
+						onclick={() => { pendingReviewsExpanded = !pendingReviewsExpanded; }}
+					>
+						<div class="flex items-center gap-2">
+							<span class="text-sm">📋</span>
+							<span class="text-xs font-semibold text-amber-500 uppercase tracking-wide">Pending Reviews</span>
+							<Badge variant="outline" class="h-4 px-1.5 text-[10px] border-amber-500/50 text-amber-500">
+								{standardReviewCount}
+							</Badge>
+							<span class="text-[10px] text-muted-foreground ml-1">
+								— from {standardAgents.filter(a => getUnreviewedItems(a).length > 0).length} agent{standardAgents.filter(a => getUnreviewedItems(a).length > 0).length === 1 ? '' : 's'}
+							</span>
+						</div>
+						<span class="text-muted-foreground transition-transform {pendingReviewsExpanded ? 'rotate-180' : ''}">
+							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="6 9 12 15 18 9"></polyline>
+							</svg>
+						</span>
+					</button>
+					{#if pendingReviewsExpanded}
+						<div class="mt-2 space-y-2 border-t border-amber-500/20 pt-2">
+							{#each standardAgents as agent (agent.workspace_id)}
+								{@const unreviewedItems = getUnreviewedItems(agent)}
+								{#if unreviewedItems.length > 0}
+									<div class="space-y-1">
+										<div class="flex items-center gap-2">
+											<span class="text-xs font-medium">{formatWorkspaceName(agent.workspace_id)}</span>
+											{#if agent.beads_id}
+												<code class="text-[10px] font-mono text-muted-foreground">{agent.beads_id}</code>
+											{/if}
+										</div>
+										{#if agent.tldr}
+											<p class="text-[10px] text-muted-foreground line-clamp-1 pl-2">{agent.tldr}</p>
+										{/if}
+										<div class="space-y-0.5">
+											{#each unreviewedItems.slice(0, 3) as item (item.index)}
+												{@const key = getItemKey(agent.workspace_id, item.index)}
+												<div class="flex items-start gap-2 rounded px-2 py-1 hover:bg-muted/50 group text-[10px]">
+													<span class="flex-1 text-muted-foreground">{item.text}</span>
+													<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+														{#if createdIssues[key]}
+															<span class="text-green-500 px-1">{createdIssues[key]}</span>
+														{:else}
+															<Button
+																variant="outline"
+																size="sm"
+																class="h-5 px-1.5 text-[10px]"
+																onclick={() => handleCreateIssue(agent, item)}
+																disabled={creatingIssue[key]}
+															>
+																{creatingIssue[key] ? '...' : '+ Issue'}
+															</Button>
+															<Button
+																variant="ghost"
+																size="sm"
+																class="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+																onclick={() => handleDismiss(agent, item)}
+																disabled={dismissingItem[key]}
+															>
+																{dismissingItem[key] ? '...' : '×'}
+															</Button>
+														{/if}
+													</div>
+												</div>
+											{/each}
+											{#if unreviewedItems.length > 3}
+												<div class="text-[10px] text-muted-foreground pl-2">
+													+{unreviewedItems.length - 3} more
+												</div>
+											{/if}
+										</div>
+									</div>
+								{/if}
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/if}
 
