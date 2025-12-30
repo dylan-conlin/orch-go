@@ -861,15 +861,28 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 
 	// Process each project directory group in parallel
 	for projectDir, ids := range byProjectDir {
-		// Try RPC client first
-		socketPath, err := beads.FindSocketPath(projectDir)
-		if err == nil {
-			client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		// Debug: log the project directory and beads IDs being processed
+		// fmt.Printf("[DEBUG] GetCommentsBatchWithProjectDirs: projectDir=%q, ids=%v\n", projectDir, ids)
 
+		// Try RPC client first - must verify daemon is actually running
+		socketPath, err := beads.FindSocketPath(projectDir)
+		useRPC := false
+		var client *beads.Client
+
+		if err == nil {
+			client = beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+			// Actually connect to verify daemon is running
+			// FindSocketPath only checks if socket FILE exists, not if daemon is listening
+			if connErr := client.Connect(); connErr == nil {
+				useRPC = true
+			}
+		}
+
+		if useRPC {
 			// Fetch comments in parallel via RPC
 			for _, beadsID := range ids {
 				wg.Add(1)
-				go func(id string, c *beads.Client) {
+				go func(id string, c *beads.Client, dir string) {
 					defer wg.Done()
 					sem <- struct{}{}        // Acquire semaphore
 					defer func() { <-sem }() // Release semaphore
@@ -879,8 +892,16 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 						mu.Lock()
 						commentMap[id] = comments
 						mu.Unlock()
+					} else {
+						// RPC failed, fall back to CLI for this specific ID
+						comments, err := FallbackCommentsWithDir(id, dir)
+						if err == nil {
+							mu.Lock()
+							commentMap[id] = comments
+							mu.Unlock()
+						}
 					}
-				}(beadsID, client)
+				}(beadsID, client, projectDir)
 			}
 		} else {
 			// Fallback to CLI for this project dir in parallel

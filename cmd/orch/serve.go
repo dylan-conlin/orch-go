@@ -617,30 +617,40 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 		var beadsID, agentProjectDir string
 
 		// Parse once, extracting both pieces of info
+		// NOTE: Stop at FIRST match for beads ID, as later lines may contain template placeholders
 		for _, line := range strings.Split(contentStr, "\n") {
 			lineTrimmed := strings.TrimSpace(line)
 
 			// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
-			if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
-				// Pattern: "spawned from beads issue: **orch-go-xxxx**"
-				// Extract the beads ID between ** markers or after the colon
-				if idx := strings.Index(line, "**"); idx != -1 {
-					rest := line[idx+2:]
-					if endIdx := strings.Index(rest, "**"); endIdx != -1 {
-						beadsID = rest[:endIdx]
+			// Only match if we haven't found one yet (first occurrence is the real one)
+			if beadsID == "" {
+				if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
+					// Pattern: "spawned from beads issue: **orch-go-xxxx**"
+					// Extract the beads ID between ** markers or after the colon
+					if idx := strings.Index(line, "**"); idx != -1 {
+						rest := line[idx+2:]
+						if endIdx := strings.Index(rest, "**"); endIdx != -1 {
+							beadsID = rest[:endIdx]
+						}
 					}
-				}
-			} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
-				// Pattern: "bd comment orch-go-xxxx ..."
-				parts := strings.Fields(lineTrimmed)
-				if len(parts) >= 3 {
-					beadsID = parts[2]
+				} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
+					// Pattern: "bd comment orch-go-xxxx ..."
+					// Skip template placeholders like "<beads-id>"
+					parts := strings.Fields(lineTrimmed)
+					if len(parts) >= 3 && !strings.Contains(parts[2], "<") {
+						beadsID = parts[2]
+					}
 				}
 			}
 
-			// Extract PROJECT_DIR
-			if strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
+			// Extract PROJECT_DIR (also only first occurrence)
+			if agentProjectDir == "" && strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
 				agentProjectDir = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "PROJECT_DIR:"))
+			}
+			
+			// Early exit if both found
+			if beadsID != "" && agentProjectDir != "" {
+				break
 			}
 		}
 
