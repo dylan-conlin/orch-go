@@ -3690,80 +3690,77 @@ func runComplete(beadsID, workdir string) error {
 		}
 	}
 
-	// Check synthesis for follow-up recommendations (workspace already found at top)
-	if workspacePath != "" {
+	// Gate completion on discovered work disposition (workspace already found at top)
+	// This ensures recommendations from agents don't get silently dropped
+	if workspacePath != "" && !completeForce {
 		synthesis, err := verify.ParseSynthesis(workspacePath)
 		if err == nil && synthesis != nil {
-			// Check if there are follow-up recommendations to surface
-			hasFollowUp := false
-			if synthesis.Recommendation == "spawn-follow-up" || synthesis.Recommendation == "escalate" || synthesis.Recommendation == "resume" {
-				hasFollowUp = true
-			}
-			if len(synthesis.NextActions) > 0 {
-				hasFollowUp = true
-			}
+			// Collect discovered work items
+			items := verify.CollectDiscoveredWork(synthesis)
 
-			if hasFollowUp {
-				fmt.Println("\n--- Follow-up Recommendations ---")
+			if len(items) > 0 {
+				fmt.Println("\n--- Discovered Work Gate ---")
 
 				if synthesis.Recommendation != "" && synthesis.Recommendation != "close" {
 					fmt.Printf("Recommendation: %s\n", synthesis.Recommendation)
 				}
 
-				// Collect all actionable items
-				var actionableItems []string
-				actionableItems = append(actionableItems, synthesis.NextActions...)
-				actionableItems = append(actionableItems, synthesis.AreasToExplore...)
-				actionableItems = append(actionableItems, synthesis.Uncertainties...)
+				fmt.Printf("%d discovered work item(s) require disposition:\n", len(items))
 
-				if len(actionableItems) > 0 {
-					fmt.Printf("\n%d actionable items found:\n", len(actionableItems))
-					for i, action := range actionableItems {
-						fmt.Printf("  %d. %s\n", i+1, action)
+				// Check if stdin is a terminal for interactive prompting
+				if !term.IsTerminal(int(os.Stdin.Fd())) {
+					fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
+					fmt.Println("⚠️  Use --force to complete without disposition, or run interactively")
+				} else {
+					// Prompt for disposition of each item
+					result, err := verify.PromptDiscoveredWorkDisposition(items, os.Stdin, os.Stdout)
+					if err != nil {
+						return fmt.Errorf("discovered work disposition failed: %w\n\nCompletion blocked. Run again to disposition all items, or use --force to skip", err)
 					}
-				}
 
-				fmt.Println("\n---------------------------------")
+					if !result.AllDispositioned {
+						return fmt.Errorf("not all discovered work items were dispositioned\n\nCompletion blocked. Run again to disposition all items, or use --force to skip")
+					}
 
-				// Prompt for each actionable item (only if stdin is a terminal)
-				if len(actionableItems) > 0 {
-					if !term.IsTerminal(int(os.Stdin.Fd())) {
-						fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
-					} else {
-						reader := bufio.NewReader(os.Stdin)
-						createdCount := 0
-
-						for i, action := range actionableItems {
-							fmt.Printf("\n[%d/%d] %s\n", i+1, len(actionableItems), action)
-							fmt.Print("Create issue? [y/N/q to quit]: ")
-							response, err := reader.ReadString('\n')
-							if err != nil {
-								break
-							}
-							response = strings.TrimSpace(strings.ToLower(response))
-
-							if response == "q" || response == "quit" {
-								fmt.Println("Skipping remaining items.")
-								break
-							}
-
-							if response == "y" || response == "yes" {
-								// Create the issue using beads
-								issue, err := beads.FallbackCreate(action, "", "task", 2, []string{"triage:review"})
-								if err != nil {
-									fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
-								} else {
-									fmt.Printf("  Created: %s\n", issue.ID)
-									createdCount++
-								}
+					// File issues for items marked 'y'
+					filedItems := result.FiledItems()
+					createdCount := 0
+					for _, item := range filedItems {
+						// Clean up the item description for issue title
+						title := strings.TrimPrefix(item.Description, "- ")
+						title = strings.TrimPrefix(title, "* ")
+						// Remove numbered prefixes like "1. "
+						if len(title) > 3 && title[0] >= '0' && title[0] <= '9' && (title[1] == '.' || (title[1] >= '0' && title[1] <= '9' && title[2] == '.')) {
+							if idx := strings.Index(title, ". "); idx != -1 && idx < 4 {
+								title = title[idx+2:]
 							}
 						}
 
-						if createdCount > 0 {
-							fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:review"})
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
+						} else {
+							fmt.Printf("  Created: %s - %s\n", issue.ID, title)
+							createdCount++
 						}
 					}
+
+					if createdCount > 0 {
+						fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+					}
+
+					// Log skip-all reason if used
+					if result.SkipAllReason != "" {
+						fmt.Printf("Skip-all reason: %s\n", result.SkipAllReason)
+					}
+
+					skippedItems := result.SkippedItems()
+					if len(skippedItems) > 0 {
+						fmt.Printf("Skipped %d item(s)\n", len(skippedItems))
+					}
 				}
+
+				fmt.Println("---------------------------------")
 			}
 		}
 	}
