@@ -2037,13 +2037,20 @@ func startHeadlessSessionAPI(client *opencode.Client, sessionTitle, minimalPromp
 		fmt.Fprintf(os.Stderr, "Created session: %s\n", session.ID)
 	}
 
-	// Send the initial prompt
-	if err := client.SendPrompt(session.ID, minimalPrompt, cfg.Model); err != nil {
-		return nil, spawn.WrapSpawnError(err, "Failed to send initial prompt")
+	// Send the initial prompt with verification to address race condition
+	// where SendPrompt returns 200 but session isn't ready to receive messages.
+	// Uses 5s timeout with 300ms polling interval, retries once if verification fails.
+	const (
+		messageVerifyTimeout  = 5 * time.Second
+		messageVerifyInterval = 300 * time.Millisecond
+	)
+
+	if err := client.SendPromptWithVerification(session.ID, minimalPrompt, cfg.Model, messageVerifyTimeout, messageVerifyInterval); err != nil {
+		return nil, spawn.WrapSpawnError(err, "Failed to send initial prompt (message delivery verification failed)")
 	}
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "Sent initial prompt to session %s\n", session.ID)
+		fmt.Fprintf(os.Stderr, "Sent and verified initial prompt to session %s\n", session.ID)
 	}
 
 	// Return result - no process to manage since we're using the API

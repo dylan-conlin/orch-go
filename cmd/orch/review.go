@@ -308,7 +308,8 @@ func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
 // This is a lightweight version of getCompletionsForReview designed for surfacing recommendations
 // in orch status where we don't need full verification (constraint checks, phase gates, etc.).
 //
-// Only parses SYNTHESIS.md and workspace metadata - no beads RPC calls for verification.
+// Parses SYNTHESIS.md and workspace metadata, then filters out closed beads issues.
+// The beads filtering is necessary to avoid showing stale recommendations for resolved issues.
 // Use getCompletionsForReview for actual review workflows that need verification status.
 func getCompletionsForSurfacing() ([]CompletionInfo, error) {
 	projectDir, err := os.Getwd()
@@ -377,7 +378,9 @@ func getCompletionsForSurfacing() ([]CompletionInfo, error) {
 		results = append(results, info)
 	}
 
-	return results, nil
+	// Filter out completions whose beads issues are already closed
+	// This prevents showing stale recommendations for resolved issues
+	return filterClosedIssues(results), nil
 }
 
 // extractBeadsIDFromWorkspace extracts the beads ID from SPAWN_CONTEXT.md

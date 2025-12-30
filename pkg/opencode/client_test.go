@@ -1680,3 +1680,218 @@ func TestIsSessionActiveNotFound(t *testing.T) {
 		t.Error("Expected false when session not found")
 	}
 }
+
+// TestWaitForMessage tests the WaitForMessage method.
+func TestWaitForMessage(t *testing.T) {
+	sessionID := "ses_test123"
+
+	t.Run("success - message appears immediately", func(t *testing.T) {
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			// Return a message immediately
+			w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.WaitForMessage(sessionID, 2*time.Second, 100*time.Millisecond)
+		if err != nil {
+			t.Errorf("WaitForMessage() error = %v, want nil", err)
+		}
+		if callCount != 1 {
+			t.Errorf("Expected 1 API call, got %d", callCount)
+		}
+	})
+
+	t.Run("success - message appears after delay", func(t *testing.T) {
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			if callCount < 3 {
+				// First two calls return empty
+				w.Write([]byte(`[]`))
+			} else {
+				// Third call returns a message
+				w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
+			}
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.WaitForMessage(sessionID, 2*time.Second, 50*time.Millisecond)
+		if err != nil {
+			t.Errorf("WaitForMessage() error = %v, want nil", err)
+		}
+		if callCount != 3 {
+			t.Errorf("Expected 3 API calls, got %d", callCount)
+		}
+	})
+
+	t.Run("timeout - message never appears", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			// Always return empty
+			w.Write([]byte(`[]`))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.WaitForMessage(sessionID, 200*time.Millisecond, 50*time.Millisecond)
+		if err == nil {
+			t.Error("WaitForMessage() expected timeout error, got nil")
+		}
+		if err != ErrMessageDeliveryTimeout {
+			t.Errorf("WaitForMessage() error = %v, want ErrMessageDeliveryTimeout", err)
+		}
+	})
+
+	t.Run("continues on transient error", func(t *testing.T) {
+		callCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			if callCount < 3 {
+				// First two calls fail
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			// Third call succeeds with a message
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.WaitForMessage(sessionID, 2*time.Second, 50*time.Millisecond)
+		if err != nil {
+			t.Errorf("WaitForMessage() error = %v, want nil (should recover from transient errors)", err)
+		}
+		if callCount < 3 {
+			t.Errorf("Expected at least 3 API calls (2 failures + 1 success), got %d", callCount)
+		}
+	})
+}
+
+// TestSendPromptWithVerification tests the SendPromptWithVerification method.
+func TestSendPromptWithVerification(t *testing.T) {
+	sessionID := "ses_test123"
+	prompt := "test prompt"
+
+	t.Run("success - first attempt", func(t *testing.T) {
+		sendCount := 0
+		messageCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "prompt_async") {
+				sendCount++
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if strings.Contains(r.URL.Path, "message") {
+				messageCount++
+				w.Header().Set("Content-Type", "application/json")
+				// Message appears immediately
+				w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.SendPromptWithVerification(sessionID, prompt, "", 1*time.Second, 50*time.Millisecond)
+		if err != nil {
+			t.Errorf("SendPromptWithVerification() error = %v, want nil", err)
+		}
+		if sendCount != 1 {
+			t.Errorf("Expected 1 send call, got %d", sendCount)
+		}
+	})
+
+	t.Run("success - retry after timeout", func(t *testing.T) {
+		sendCount := 0
+		messageCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "prompt_async") {
+				sendCount++
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if strings.Contains(r.URL.Path, "message") {
+				messageCount++
+				w.Header().Set("Content-Type", "application/json")
+				// First few calls return empty (simulating initial send failure)
+				// After retry (sendCount == 2), message appears
+				if sendCount < 2 {
+					w.Write([]byte(`[]`))
+				} else {
+					w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
+				}
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.SendPromptWithVerification(sessionID, prompt, "", 150*time.Millisecond, 30*time.Millisecond)
+		if err != nil {
+			t.Errorf("SendPromptWithVerification() error = %v, want nil", err)
+		}
+		if sendCount != 2 {
+			t.Errorf("Expected 2 send calls (initial + retry), got %d", sendCount)
+		}
+	})
+
+	t.Run("failure - send fails", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "prompt_async") {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.SendPromptWithVerification(sessionID, prompt, "", 500*time.Millisecond, 50*time.Millisecond)
+		if err == nil {
+			t.Error("SendPromptWithVerification() expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "failed to send prompt") {
+			t.Errorf("Expected 'failed to send prompt' error, got: %v", err)
+		}
+	})
+
+	t.Run("failure - verification times out after retry", func(t *testing.T) {
+		sendCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "prompt_async") {
+				sendCount++
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if strings.Contains(r.URL.Path, "message") {
+				w.Header().Set("Content-Type", "application/json")
+				// Always return empty - message never appears
+				w.Write([]byte(`[]`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		err := client.SendPromptWithVerification(sessionID, prompt, "", 100*time.Millisecond, 30*time.Millisecond)
+		if err == nil {
+			t.Error("SendPromptWithVerification() expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "message delivery failed after retry") {
+			t.Errorf("Expected 'message delivery failed after retry' error, got: %v", err)
+		}
+		if sendCount != 2 {
+			t.Errorf("Expected 2 send calls (initial + retry), got %d", sendCount)
+		}
+	})
+}

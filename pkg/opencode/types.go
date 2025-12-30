@@ -9,6 +9,10 @@ import (
 // ErrNoSessionID is returned when no session ID is found in output.
 var ErrNoSessionID = errors.New("no session ID found in output")
 
+// ErrMessageDeliveryTimeout is returned when WaitForMessage times out
+// waiting for a message to appear in the session.
+var ErrMessageDeliveryTimeout = errors.New("timeout waiting for message to appear in session")
+
 // Event represents an event from opencode's JSON output.
 type Event struct {
 	Type      string          `json:"type"`

@@ -897,3 +897,69 @@ func (c *Client) GetSessionTokens(sessionID string) (*TokenStats, error) {
 	stats := AggregateTokens(messages)
 	return &stats, nil
 }
+
+// WaitForMessage polls GetMessages until the session has at least one message.
+// This is used to verify that a prompt was actually delivered after SendPrompt,
+// addressing the race condition where SendPrompt returns 200 but the message
+// isn't actually processed by the session.
+//
+// Returns nil if a message is found within the timeout.
+// Returns ErrMessageDeliveryTimeout if the timeout is exceeded.
+// The interval parameter controls how often to poll (recommended: 200-500ms).
+func (c *Client) WaitForMessage(sessionID string, timeout, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		messages, err := c.GetMessages(sessionID)
+		if err != nil {
+			// Transient error - keep trying
+			time.Sleep(interval)
+			continue
+		}
+
+		if len(messages) > 0 {
+			return nil
+		}
+
+		time.Sleep(interval)
+	}
+
+	return ErrMessageDeliveryTimeout
+}
+
+// SendPromptWithVerification sends a prompt and verifies it was delivered.
+// This combines SendPrompt with WaitForMessage to provide reliable message delivery.
+// If the initial send doesn't result in a message within the timeout, it retries once.
+//
+// Parameters:
+// - sessionID: The session to send the prompt to
+// - prompt: The message content
+// - model: Optional model specification (can be empty)
+// - timeout: How long to wait for message verification (recommended: 5s)
+// - interval: How often to poll for the message (recommended: 300ms)
+//
+// Returns nil on success, or an error if delivery fails after retry.
+func (c *Client) SendPromptWithVerification(sessionID, prompt, model string, timeout, interval time.Duration) error {
+	// First attempt
+	if err := c.SendPrompt(sessionID, prompt, model); err != nil {
+		return fmt.Errorf("failed to send prompt: %w", err)
+	}
+
+	// Wait for message to appear
+	if err := c.WaitForMessage(sessionID, timeout, interval); err == nil {
+		return nil // Success!
+	}
+
+	// First attempt timed out - retry once
+	// The session may have been in a transient state during first send
+	if err := c.SendPrompt(sessionID, prompt, model); err != nil {
+		return fmt.Errorf("retry send failed: %w", err)
+	}
+
+	// Wait again after retry
+	if err := c.WaitForMessage(sessionID, timeout, interval); err != nil {
+		return fmt.Errorf("message delivery failed after retry: %w", err)
+	}
+
+	return nil
+}
