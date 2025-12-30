@@ -337,3 +337,37 @@ func TestFutileActionPatternType(t *testing.T) {
 		t.Errorf("Expected PatternTypeFutileAction to be 'futile_action', got %s", PatternTypeFutileAction)
 	}
 }
+
+func TestParseSuppressDuration(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected time.Duration
+		wantErr  bool
+	}{
+		// Days
+		{"1d", 24 * time.Hour, false},
+		{"7d", 7 * 24 * time.Hour, false},
+		{"30d", 30 * 24 * time.Hour, false},
+		// Standard Go durations
+		{"1h", time.Hour, false},
+		{"30m", 30 * time.Minute, false},
+		{"24h", 24 * time.Hour, false},
+		// Invalid
+		{"invalid", 0, true},
+		{"d", 0, true},
+		{"xd", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseSuppressDuration(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseSuppressDuration(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if got != tt.expected {
+				t.Errorf("parseSuppressDuration(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}

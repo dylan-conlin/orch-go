@@ -562,7 +562,8 @@
 						</span>
 					</div>
 					<div class="space-y-1.5">
-						{#each criticalBehavioralPatterns.slice(0, 3) as pattern (pattern.type + pattern.target)}
+						{#each criticalBehavioralPatterns.slice(0, 3) as pattern, localIdx (pattern.type + pattern.target)}
+							{@const originalIdx = behavioralPatterns.findIndex(p => p.type === pattern.type && p.target === pattern.target)}
 							<div class="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors">
 								<div class="flex items-center gap-2 min-w-0 flex-1">
 									<span class="text-[10px] {pattern.severity === 'critical' ? 'text-red-500' : 'text-orange-500'}">
@@ -584,7 +585,7 @@
 													variant="ghost"
 													size="sm"
 													class="h-6 px-2 text-[10px] shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
-													onclick={() => copyCommand(`orch patterns suppress 0`)}
+													onclick={() => copyCommand(`orch patterns suppress ${originalIdx}`)}
 												>
 													→ suppress
 												</Button>
