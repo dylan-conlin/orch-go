@@ -19,6 +19,11 @@ import { join, resolve } from "path"
 import { homedir } from "os"
 
 const LOG_PREFIX = "[orchestrator-session]"
+const DEBUG = process.env.ORCH_PLUGIN_DEBUG === "1"
+
+function log(...args: any[]) {
+  if (DEBUG) console.log(LOG_PREFIX, ...args)
+}
 
 /**
  * Check if a file exists at the given path.
@@ -71,7 +76,7 @@ async function findOrchDirectory(startDir: string): Promise<string | null> {
 async function isWorker(directory: string | undefined): Promise<boolean> {
   // Check ORCH_WORKER env var (set by orch spawn)
   if (process.env.ORCH_WORKER === "1") {
-    console.log(`${LOG_PREFIX} Worker detected: ORCH_WORKER=1`)
+    log("Worker detected: ORCH_WORKER=1")
     return true
   }
 
@@ -81,13 +86,13 @@ async function isWorker(directory: string | undefined): Promise<boolean> {
   // Check for SPAWN_CONTEXT.md (workers have this in their workspace)
   const spawnContextPath = join(workDir, "SPAWN_CONTEXT.md")
   if (await exists(spawnContextPath)) {
-    console.log(`${LOG_PREFIX} Worker detected: SPAWN_CONTEXT.md found`)
+    log("Worker detected: SPAWN_CONTEXT.md found")
     return true
   }
 
   // Check if path contains .orch/workspace/ (worker workspace directory)
   if (workDir.includes(".orch/workspace/")) {
-    console.log(`${LOG_PREFIX} Worker detected: in .orch/workspace/`)
+    log("Worker detected: in .orch/workspace/")
     return true
   }
 
@@ -96,16 +101,22 @@ async function isWorker(directory: string | undefined): Promise<boolean> {
 
 /**
  * Check if an orchestrator session is already active.
- * Returns true if `orch session status` indicates an active session.
+ * Checks for session.json file existence instead of running orch command
+ * to avoid stdout leaking into the TUI.
  */
-async function hasActiveSession($: any): Promise<boolean> {
+async function hasActiveSession(): Promise<boolean> {
+  const sessionFile = join(homedir(), ".orch", "session.json")
+  if (!(await exists(sessionFile))) {
+    return false
+  }
+  
   try {
-    const result = await $`orch session status 2>/dev/null`
-    const output = result.stdout?.toString() || ""
-    // If output contains "No active session", there's no active session
-    return !output.includes("No active session")
+    const { readFile } = await import("fs/promises")
+    const content = await readFile(sessionFile, "utf-8")
+    const data = JSON.parse(content)
+    // Session is active if it has an id and started timestamp
+    return !!(data.session?.id && data.session?.started)
   } catch {
-    // Command failed - likely no session or orch not available
     return false
   }
 }
@@ -123,32 +134,32 @@ export const OrchestratorSessionPlugin: Plugin = async ({
   directory,
   $,
 }) => {
-  console.log(`${LOG_PREFIX} Plugin initialized, directory:`, directory)
+  log("Plugin initialized, directory:", directory)
 
   const workingDir = typeof directory === "string" ? directory : process.cwd()
 
   // Check if this is an orch project (has .orch directory)
   const orchDir = await findOrchDirectory(workingDir)
-  console.log(`${LOG_PREFIX} Orch dir check:`, orchDir)
+  log("Orch dir check:", orchDir)
 
   if (!orchDir) {
-    console.log(`${LOG_PREFIX} Skipping - not an orch project`)
+    log("Skipping - not an orch project")
     return {}
   }
 
   // Check worker status once at init (shared across hooks)
   const worker = await isWorker(workingDir)
-  console.log(`${LOG_PREFIX} Is worker:`, worker)
+  log("Is worker:", worker)
 
   if (worker) {
-    console.log(`${LOG_PREFIX} Skipping - worker agent detected`)
+    log("Skipping - worker agent detected")
     return {}
   }
 
   // Check if orchestrator skill exists
   const skillPath = join(homedir(), ".claude", "skills", "meta", "orchestrator", "SKILL.md")
   const skillExists = await exists(skillPath)
-  console.log(`${LOG_PREFIX} Skill path:`, skillPath, "exists:", skillExists)
+  log("Skill path:", skillPath, "exists:", skillExists)
 
   return {
     /**
@@ -156,11 +167,11 @@ export const OrchestratorSessionPlugin: Plugin = async ({
      * Worker detection already handled at plugin init.
      */
     config: async (config) => {
-      console.log(`${LOG_PREFIX} Config hook called`)
+      log("Config hook called")
 
       // Skip if skill doesn't exist
       if (!skillExists) {
-        console.log(`${LOG_PREFIX} Config: Orchestrator skill not found`)
+        log("Config: Orchestrator skill not found")
         return
       }
 
@@ -170,7 +181,7 @@ export const OrchestratorSessionPlugin: Plugin = async ({
       }
       if (!config.instructions.includes(skillPath)) {
         config.instructions.push(skillPath)
-        console.log(`${LOG_PREFIX} Config: Added orchestrator skill to instructions`)
+        log("Config: Added orchestrator skill to instructions")
       }
     },
 
@@ -184,21 +195,22 @@ export const OrchestratorSessionPlugin: Plugin = async ({
         return
       }
 
-      console.log(`${LOG_PREFIX} session.created event received`)
+      log("session.created event received")
 
       // Check if orchestrator session already exists
-      if (await hasActiveSession($)) {
-        console.log(`${LOG_PREFIX} Event: Skipping - orchestrator session already active`)
+      if (await hasActiveSession()) {
+        log("Event: Skipping - orchestrator session already active")
         return
       }
 
       // Start orchestrator session
-      console.log(`${LOG_PREFIX} Event: Starting orchestrator session...`)
+      log("Event: Starting orchestrator session...")
       try {
-        await $`orch session start`
-        console.log(`${LOG_PREFIX} Event: Orchestrator session started successfully`)
+        // Redirect stdout to /dev/null to prevent TUI pollution
+        await $`orch session start > /dev/null 2>&1`
+        log("Event: Orchestrator session started successfully")
       } catch (err) {
-        console.error(`${LOG_PREFIX} Event: Failed to start session:`, err)
+        if (DEBUG) console.error(`${LOG_PREFIX} Event: Failed to start session:`, err)
       }
     },
   }
