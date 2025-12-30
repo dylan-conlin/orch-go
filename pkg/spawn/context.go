@@ -181,6 +181,9 @@ Update Status: field in your investigation file:
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
+
+EXECUTION BEHAVIOR:
+**Listing steps is NOT a stopping point.** If you write "Next steps:" or a numbered action list, execute them immediately. Do not wait for confirmation. Silent waiting is a bug - you are either working, explicitly blocked (Status: BLOCKED), or done (Phase: Complete).
 {{if not .NoTrack}}
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
