@@ -193,9 +193,21 @@ function determineOutcome(
     return { outcome: "empty" }
   }
 
+  // For Read tool, check for successful file content markers FIRST
+  // This prevents false positives from error pattern matching
+  if (tool.toLowerCase() === "read") {
+    // Read tool returns content wrapped in <file>...</file> tags on success
+    if (output.includes("<file>") || output.startsWith("00001|")) {
+      return { outcome: "success" }
+    }
+  }
+
   // Check for error patterns in output
+  // Only check at the START of output to avoid matching content within files
+  const outputStart = output.slice(0, 500).toLowerCase()
   for (const pattern of ERROR_PATTERNS) {
-    if (output.includes(pattern)) {
+    // Check if error pattern appears near the start (not buried in file content)
+    if (outputStart.includes(pattern.toLowerCase())) {
       return { outcome: "error", error_message: output.slice(0, 200) }
     }
   }
@@ -208,7 +220,7 @@ function determineOutcome(
   }
 
   // For Read tool, check if content is meaningful
-  if (tool === "read") {
+  if (tool.toLowerCase() === "read") {
     // Very short output might indicate an empty or near-empty file
     if (output.trim().length < 10) {
       return { outcome: "empty" }
