@@ -334,6 +334,7 @@
 						workspaceId={extractWorkspaceName($selectedAgent.id)}
 						beadsId={$selectedAgent.beads_id}
 						skill={$selectedAgent.skill}
+						closeReason={$selectedAgent.close_reason}
 					/>
 					</div>
 				</div>
@@ -368,13 +369,7 @@
 				</div>
 			{/if}
 
-			<!-- Close Reason fallback (for light-tier without synthesis) -->
-			{#if $selectedAgent.status === 'completed' && !$selectedAgent.synthesis && $selectedAgent.close_reason}
-				<div class="border-t p-4">
-					<h3 class="text-sm font-medium text-muted-foreground mb-2">Completion Summary</h3>
-					<p class="text-sm">{$selectedAgent.close_reason}</p>
-				</div>
-			{/if}
+			<!-- Close Reason fallback is now handled by ArtifactViewer when no synthesis exists -->
 		</div>
 
 		<!-- Collapsible Details Section at Bottom -->

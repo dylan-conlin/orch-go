@@ -6,6 +6,7 @@
 	export let workspaceId: string;
 	export let beadsId: string | undefined = undefined;
 	export let skill: string | undefined = undefined;
+	export let closeReason: string | undefined = undefined; // Fallback for agents without synthesis
 	
 	// State
 	type ArtifactType = 'synthesis' | 'investigation' | 'decision';
@@ -161,11 +162,6 @@
 			<div class="flex items-center justify-center h-32 text-muted-foreground">
 				<div class="animate-pulse">Loading {getTabLabel(activeTab).toLowerCase()}...</div>
 			</div>
-		{:else if artifacts.get(activeTab)?.error}
-			<div class="text-center py-8 text-muted-foreground">
-				<p class="text-sm">{getTabLabel(activeTab)} not available</p>
-				<p class="text-xs mt-1 opacity-75">{artifacts.get(activeTab)?.error}</p>
-			</div>
 		{:else if artifacts.get(activeTab)?.content}
 			<div class="prose prose-sm dark:prose-invert max-w-none">
 				{@html renderMarkdown(artifacts.get(activeTab)?.content || '')}
@@ -176,9 +172,23 @@
 				</div>
 			{/if}
 		{:else if availableTabs.length === 0}
+			<!-- No artifacts at all - show graceful message with optional close_reason -->
 			<div class="text-center py-8 text-muted-foreground">
-				<p class="text-sm">No artifacts available</p>
-				<p class="text-xs mt-1 opacity-75">This agent hasn't produced any viewable artifacts yet</p>
+				<p class="text-sm">No synthesis produced</p>
+				{#if closeReason}
+					<div class="mt-4 mx-auto max-w-md rounded-lg border bg-muted/30 p-3 text-left">
+						<p class="text-xs font-medium text-muted-foreground mb-1">Completion Summary</p>
+						<p class="text-sm text-foreground">{closeReason}</p>
+					</div>
+				{:else}
+					<p class="text-xs mt-1 opacity-75">This agent completed without creating a synthesis file</p>
+				{/if}
+			</div>
+		{:else if artifacts.get(activeTab)?.error}
+			<!-- Has other tabs but current tab errored - still show graceful message -->
+			<div class="text-center py-8 text-muted-foreground">
+				<p class="text-sm">{getTabLabel(activeTab)} not available</p>
+				<p class="text-xs mt-1 opacity-75">Try another tab if available</p>
 			</div>
 		{/if}
 	</div>
