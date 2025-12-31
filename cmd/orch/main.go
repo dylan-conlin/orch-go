@@ -2658,7 +2658,9 @@ func runStatus(serverURL string) error {
 	sessionMap := make(map[string]*opencode.Session)
 	// Also build a map of beadsID -> session for matching
 	beadsToSession := make(map[string]*opencode.Session)
-	const maxIdleTime = 30 * time.Minute
+	// Use same threshold as dashboard (3 min) for consistent "active" vs "dead" determination
+	// Dashboard marks agents "dead" after StaleSessionThreshold of inactivity
+	maxIdleTime := opencode.StaleSessionThreshold
 
 	for i := range sessions {
 		s := &sessions[i]
@@ -4534,7 +4536,8 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
-	const maxIdleTime = 30 * time.Minute
+	// Use same threshold as dashboard (3 min) for consistent "active" vs "dead" determination
+	maxIdleTime := opencode.StaleSessionThreshold
 
 	fmt.Println("\nScanning for phantom tmux windows...")
 
