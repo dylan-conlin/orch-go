@@ -392,6 +392,7 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // 5. Test execution evidence for code changes (blocks when code modified without test output)
 // 6. Build verification for Go projects (blocks when Go files modified but build fails)
 // 7. Git commit verification for code-producing skills (blocks when no commits since spawn)
+// 8. Git diff verification (blocks when SYNTHESIS.md claims files not in actual git diff)
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
@@ -497,6 +498,18 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 			result.Errors = append(result.Errors, gitCommitResult.Errors...)
 		}
 		result.Warnings = append(result.Warnings, gitCommitResult.Warnings...)
+	}
+
+	// Verify git diff matches SYNTHESIS.md claims
+	// This gates completion when SYNTHESIS.md claims files that are not in the actual git diff
+	// (detects false positives where agent claims to modify files but didn't actually)
+	gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
+	if gitDiffResult != nil {
+		if !gitDiffResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, gitDiffResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
 	}
 
 	return result, nil
