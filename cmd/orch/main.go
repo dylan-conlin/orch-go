@@ -3073,7 +3073,8 @@ func extractProjectFromBeadsID(beadsID string) string {
 	// The project is everything before that
 	parts := strings.Split(beadsID, "-")
 	if len(parts) < 2 {
-		return beadsID
+		// No hyphen means invalid beads ID format, return empty
+		return ""
 	}
 	// The last part should be the 4-char hash, join everything else
 	return strings.Join(parts[:len(parts)-1], "-")

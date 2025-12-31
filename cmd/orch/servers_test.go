@@ -450,9 +450,14 @@ func TestServersInit_GoMod(t *testing.T) {
 		t.Fatalf("failed to write go.mod: %v", err)
 	}
 
-	// Create main.go
+	// Create main.go with HTTP server patterns so detection identifies it as a server
 	mainGo := `package main
-func main() {}`
+
+import "net/http"
+
+func main() {
+	http.ListenAndServe(":8080", nil)
+}`
 	if err := os.WriteFile(filepath.Join(projectDir, "main.go"), []byte(mainGo), 0644); err != nil {
 		t.Fatalf("failed to write main.go: %v", err)
 	}

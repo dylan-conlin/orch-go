@@ -267,9 +267,13 @@ func categorizeCommitByFiles(files []string) string {
 	}
 	
 	// Return the category with most files
+	// Priority order ensures deterministic tie-breaking (more specific wins over "other")
+	categoryPriority := []string{"skills", "kb", "cmd", "pkg", "web", "docs", "config", "other"}
+	
 	maxCategory := "other"
 	maxCount := 0
-	for cat, count := range categories {
+	for _, cat := range categoryPriority {
+		count := categories[cat]
 		if count > maxCount {
 			maxCategory = cat
 			maxCount = count
