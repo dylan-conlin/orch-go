@@ -230,6 +230,55 @@ func FormatStaleBugWarning(result *StaleBugResult) string {
 	return sb.String()
 }
 
+// FormatStaleBugGateError formats an error message for blocking spawn on stale bugs.
+// This is the Gate Over Remind pattern - we block by default and require explicit bypass.
+// The error message includes:
+// - What was found (related commits)
+// - How to verify the bug still exists
+// - How to bypass if needed (--skip-stale-check)
+func FormatStaleBugGateError(result *StaleBugResult, beadsID string) string {
+	if result == nil || !result.IsPotentiallyStale() {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("stale bug detected - spawn blocked\n\n")
+	sb.WriteString("┌─────────────────────────────────────────────────────────────┐\n")
+	sb.WriteString("│  PRE-SPAWN CHECK: This bug may have already been fixed.     │\n")
+	sb.WriteString("│  Found commits that reference this issue or related terms.  │\n")
+	sb.WriteString("└─────────────────────────────────────────────────────────────┘\n")
+
+	// Show issue context if available
+	if result.IssueTitle != "" {
+		sb.WriteString(fmt.Sprintf("\nIssue: %s\n", beadsID))
+		sb.WriteString(fmt.Sprintf("Title: %s\n", result.IssueTitle))
+	}
+
+	sb.WriteString("\nRelated commits (may have fixed the bug):\n")
+
+	for i, commit := range result.RelatedCommits {
+		if i >= 5 {
+			sb.WriteString(fmt.Sprintf("  ... and %d more\n", len(result.RelatedCommits)-5))
+			break
+		}
+		dateStr := ""
+		if !commit.Date.IsZero() {
+			dateStr = commit.Date.Format("2006-01-02")
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s (%s)\n", commit.Hash, commit.Subject, dateStr))
+	}
+
+	sb.WriteString("\nTo resolve:\n")
+	sb.WriteString("  1. Verify the bug still exists (reproduce the issue manually)\n")
+	sb.WriteString("  2. If bug is fixed: close the issue with 'bd close " + beadsID + " --reason \"Already fixed\"'\n")
+	sb.WriteString("  3. If bug persists: use --skip-stale-check to bypass this gate\n")
+	sb.WriteString("\nExample:\n")
+	sb.WriteString("  orch spawn --skip-stale-check --issue " + beadsID + " systematic-debugging \"...\"\n")
+
+	return sb.String()
+}
+
 // CheckStaleBugForIssue is a convenience function that retrieves issue details
 // and performs the stale bug check. It handles getting the issue creation time
 // and title from beads.

@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -252,6 +253,80 @@ func TestFormatStaleBugWarning(t *testing.T) {
 		}
 		if !containsString(result, "abc123") {
 			t.Errorf("Expected warning to show commit hash: %s", result)
+		}
+	})
+}
+
+func TestFormatStaleBugGateError(t *testing.T) {
+	t.Run("nil result returns empty", func(t *testing.T) {
+		result := FormatStaleBugGateError(nil, "test-123")
+		if result != "" {
+			t.Errorf("Expected empty string for nil result")
+		}
+	})
+
+	t.Run("not stale returns empty", func(t *testing.T) {
+		result := FormatStaleBugGateError(&StaleBugResult{
+			RelatedCommits: nil,
+		}, "test-123")
+		if result != "" {
+			t.Errorf("Expected empty string for non-stale result")
+		}
+	})
+
+	t.Run("stale result shows gate error with beads ID", func(t *testing.T) {
+		result := FormatStaleBugGateError(&StaleBugResult{
+			IssueID:    "test-123",
+			IssueTitle: "Authentication bug in login flow",
+			RelatedCommits: []RelatedCommit{
+				{Hash: "abc123", Subject: "fix: auth issue", Author: "Test User", Date: time.Now()},
+			},
+		}, "test-123")
+		if result == "" {
+			t.Error("Expected gate error message for stale result")
+		}
+		// Should mention spawn blocked
+		if !containsString(result, "spawn blocked") {
+			t.Errorf("Expected error to mention spawn blocked: %s", result)
+		}
+		// Should show commit hash
+		if !containsString(result, "abc123") {
+			t.Errorf("Expected error to show commit hash: %s", result)
+		}
+		// Should show beads ID
+		if !containsString(result, "test-123") {
+			t.Errorf("Expected error to show beads ID: %s", result)
+		}
+		// Should mention --skip-stale-check
+		if !containsString(result, "--skip-stale-check") {
+			t.Errorf("Expected error to mention --skip-stale-check bypass: %s", result)
+		}
+		// Should show issue title
+		if !containsString(result, "Authentication bug") {
+			t.Errorf("Expected error to show issue title: %s", result)
+		}
+	})
+
+	t.Run("shows up to 5 commits before truncating", func(t *testing.T) {
+		commits := make([]RelatedCommit, 7)
+		for i := range commits {
+			commits[i] = RelatedCommit{Hash: fmt.Sprintf("hash%d", i), Subject: fmt.Sprintf("commit %d", i)}
+		}
+		result := FormatStaleBugGateError(&StaleBugResult{
+			IssueID:        "test-123",
+			RelatedCommits: commits,
+		}, "test-123")
+		// Should show first 5 commits
+		if !containsString(result, "hash0") || !containsString(result, "hash4") {
+			t.Errorf("Expected first 5 commits to be shown: %s", result)
+		}
+		// Should NOT show 6th commit
+		if containsString(result, "hash5") && !containsString(result, "and 2 more") {
+			t.Errorf("Expected 6th commit to be truncated: %s", result)
+		}
+		// Should mention remaining commits
+		if !containsString(result, "and 2 more") {
+			t.Errorf("Expected truncation message: %s", result)
 		}
 	})
 }

@@ -335,6 +335,20 @@ Failure Report Gate (Gate Over Remind):
   
   This gate enforces the principle: learning should happen before retry.
 
+Stale Bug Gate (Gate Over Remind):
+  Before spawning for a bug issue (--issue), checks git history for commits that
+  may have already fixed the bug (matching issue ID or keywords from title).
+  If potentially related commits are found, spawn is BLOCKED to prevent wasting
+  agent time on already-fixed issues.
+  
+  --skip-stale-check:  Explicitly bypass the stale bug gate (when you've verified
+                       the bug still exists)
+  
+  To resolve when blocked:
+    1. Verify the bug still exists (reproduce manually)
+    2. If fixed: close issue with 'bd close <id> --reason "Already fixed"'
+    3. If persists: use --skip-stale-check to proceed
+
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
@@ -403,7 +417,7 @@ func init() {
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnVerbose, "verbose", false, "Show stderr output in real-time for debugging headless spawns")
 	spawnCmd.Flags().BoolVar(&spawnSkipFailureReview, "skip-failure-review", false, "Bypass failure report review gate when respawning (documents explicit opt-out)")
-	spawnCmd.Flags().BoolVar(&spawnSkipStaleCheck, "skip-stale-check", false, "Bypass stale bug check before spawning (use when you know bug still exists)")
+	spawnCmd.Flags().BoolVar(&spawnSkipStaleCheck, "skip-stale-check", false, "Bypass stale bug gate when commits suggest bug may be fixed (use when verified bug still exists)")
 }
 
 var sendCmd = &cobra.Command{
@@ -1354,19 +1368,22 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		}
 	}
 
-	// Check for stale bug issues - warn if commits may have already fixed the bug
+	// Check for stale bug issues - BLOCK spawn if commits may have already fixed the bug
 	// Only applies to existing issues (--issue flag) and not skipped
+	// This is a pre-spawn guardrail that prevents wasted agent time on already-fixed bugs
 	if !spawnNoTrack && spawnIssue != "" && !spawnSkipStaleCheck {
 		if result, err := verify.CheckStaleBugForIssue(projectDir, beadsID); err == nil && result.IsPotentiallyStale() {
-			warning := verify.FormatStaleBugWarning(result)
-			if warning != "" {
-				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
-			}
+			// Block spawn with error message showing evidence and bypass instructions
+			return errors.New(verify.FormatStaleBugGateError(result, beadsID))
 		}
 	}
 	// Log if skip-stale-check was used (documents conscious bypass)
 	if spawnSkipStaleCheck && spawnIssue != "" {
-		fmt.Fprintf(os.Stderr, "⚠️  Bypassing stale bug check (--skip-stale-check)\n")
+		// Still check for stale bugs to show what was bypassed
+		if result, err := verify.CheckStaleBugForIssue(projectDir, beadsID); err == nil && result.IsPotentiallyStale() {
+			fmt.Fprintf(os.Stderr, "⚠️  Bypassing stale bug check (--skip-stale-check)\n")
+			fmt.Fprintf(os.Stderr, "   Found %d commit(s) that may have already fixed this bug\n", len(result.RelatedCommits))
+		}
 	}
 
 	// Gate on failure report - require learning before retry (Gate Over Remind)
