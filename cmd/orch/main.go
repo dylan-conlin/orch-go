@@ -264,6 +264,7 @@ var (
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
 	spawnVerbose           bool   // Show stderr output in real-time for debugging
 	spawnSkipFailureReview bool   // Bypass failure report review gate (explicit opt-out)
+	spawnSkipStaleCheck    bool   // Bypass stale bug check before spawning
 )
 
 var spawnCmd = &cobra.Command{
@@ -402,6 +403,7 @@ func init() {
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnVerbose, "verbose", false, "Show stderr output in real-time for debugging headless spawns")
 	spawnCmd.Flags().BoolVar(&spawnSkipFailureReview, "skip-failure-review", false, "Bypass failure report review gate when respawning (documents explicit opt-out)")
+	spawnCmd.Flags().BoolVar(&spawnSkipStaleCheck, "skip-stale-check", false, "Bypass stale bug check before spawning (use when you know bug still exists)")
 }
 
 var sendCmd = &cobra.Command{
@@ -1350,6 +1352,21 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
 			}
 		}
+	}
+
+	// Check for stale bug issues - warn if commits may have already fixed the bug
+	// Only applies to existing issues (--issue flag) and not skipped
+	if !spawnNoTrack && spawnIssue != "" && !spawnSkipStaleCheck {
+		if result, err := verify.CheckStaleBugForIssue(projectDir, beadsID); err == nil && result.IsPotentiallyStale() {
+			warning := verify.FormatStaleBugWarning(result)
+			if warning != "" {
+				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
+			}
+		}
+	}
+	// Log if skip-stale-check was used (documents conscious bypass)
+	if spawnSkipStaleCheck && spawnIssue != "" {
+		fmt.Fprintf(os.Stderr, "⚠️  Bypassing stale bug check (--skip-stale-check)\n")
 	}
 
 	// Gate on failure report - require learning before retry (Gate Over Remind)
