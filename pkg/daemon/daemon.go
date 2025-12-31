@@ -273,6 +273,18 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 // Issues are sorted by priority (0 = highest priority).
 // If a label filter is configured, only issues with that label are considered.
 func (d *Daemon) NextIssue() (*Issue, error) {
+	return d.NextIssueExcluding(nil)
+}
+
+// NextIssueExcluding returns the next spawnable issue from the queue,
+// excluding any issues in the skip set. This allows the daemon to skip
+// issues that failed to spawn (e.g., due to failure report gate) and
+// continue processing other issues in the queue.
+//
+// Returns nil if no spawnable issues are available after excluding skipped ones.
+// Issues are sorted by priority (0 = highest priority).
+// If a label filter is configured, only issues with that label are considered.
+func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	issues, err := d.listIssuesFunc()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
@@ -288,6 +300,13 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 	})
 
 	for _, issue := range issues {
+		// Skip issues in the skip set (failed to spawn this cycle)
+		if skip != nil && skip[issue.ID] {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (failed to spawn this cycle)\n", issue.ID)
+			}
+			continue
+		}
 		// Skip non-spawnable types
 		if !IsSpawnableType(issue.IssueType) {
 			if d.Config.Verbose {
@@ -760,6 +779,17 @@ func isUntrackedBeadsID(beadsID string) bool {
 // Note: The slot is NOT automatically released when the agent completes.
 // Use OnceWithSlot() for explicit slot management, or ReleaseSlot() manually.
 func (d *Daemon) Once() (*OnceResult, error) {
+	return d.OnceExcluding(nil)
+}
+
+// OnceExcluding processes a single issue from the queue, excluding skipped issues.
+// This allows the daemon to skip issues that failed to spawn (e.g., due to failure
+// report gate) and continue processing other issues in the queue.
+//
+// The skip map should contain issue IDs that should be skipped this cycle.
+// If a worker pool is configured, it acquires a slot before spawning.
+// If a rate limiter is configured, it checks the hourly limit before spawning.
+func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// Check rate limit first (before fetching issues)
 	if d.RateLimiter != nil {
 		canSpawn, count, msg := d.RateLimiter.CanSpawn()
@@ -774,7 +804,7 @@ func (d *Daemon) Once() (*OnceResult, error) {
 		}
 	}
 
-	issue, err := d.NextIssue()
+	issue, err := d.NextIssueExcluding(skip)
 	if err != nil {
 		return nil, err
 	}

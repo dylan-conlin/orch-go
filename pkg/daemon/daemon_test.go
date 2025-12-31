@@ -121,6 +121,112 @@ func TestNextIssue_SkipsInProgressIssues(t *testing.T) {
 	}
 }
 
+func TestNextIssueExcluding_SkipsExcludedIssues(t *testing.T) {
+	// Test that NextIssueExcluding skips issues in the skip set.
+	// This is critical for the daemon to skip issues that failed to spawn
+	// (e.g., due to failure report gate) and continue with other issues.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+				{ID: "proj-3", Title: "Third", Priority: 2, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Skip the first issue (simulating failure report gate blocked it)
+	skip := map[string]bool{"proj-1": true}
+
+	issue, err := d.NextIssueExcluding(skip)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssueExcluding() expected issue, got nil")
+	}
+	// Should skip proj-1 and return proj-2
+	if issue.ID != "proj-2" {
+		t.Errorf("NextIssueExcluding() = %q, want 'proj-2' (should skip excluded issue)", issue.ID)
+	}
+}
+
+func TestNextIssueExcluding_SkipsMultipleExcludedIssues(t *testing.T) {
+	// Test that multiple excluded issues are all skipped.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+				{ID: "proj-3", Title: "Third", Priority: 2, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Skip multiple issues
+	skip := map[string]bool{"proj-1": true, "proj-2": true}
+
+	issue, err := d.NextIssueExcluding(skip)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssueExcluding() expected issue, got nil")
+	}
+	// Should skip proj-1 and proj-2, return proj-3
+	if issue.ID != "proj-3" {
+		t.Errorf("NextIssueExcluding() = %q, want 'proj-3' (should skip excluded issues)", issue.ID)
+	}
+}
+
+func TestNextIssueExcluding_ReturnsNilWhenAllExcluded(t *testing.T) {
+	// Test that NextIssueExcluding returns nil when all issues are excluded.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Skip all issues
+	skip := map[string]bool{"proj-1": true, "proj-2": true}
+
+	issue, err := d.NextIssueExcluding(skip)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding() unexpected error: %v", err)
+	}
+	// Should return nil when all issues are excluded
+	if issue != nil {
+		t.Errorf("NextIssueExcluding() = %v, want nil (all issues excluded)", issue)
+	}
+}
+
+func TestNextIssueExcluding_NilSkipWorksLikeNextIssue(t *testing.T) {
+	// Test that passing nil skip set works like NextIssue (returns first issue).
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	issue, err := d.NextIssueExcluding(nil)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding(nil) unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssueExcluding(nil) expected issue, got nil")
+	}
+	// Should return first issue (no exclusions)
+	if issue.ID != "proj-1" {
+		t.Errorf("NextIssueExcluding(nil) = %q, want 'proj-1'", issue.ID)
+	}
+}
+
 func TestIsSpawnableType(t *testing.T) {
 	tests := []struct {
 		issueType string
