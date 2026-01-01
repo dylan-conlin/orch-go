@@ -865,6 +865,49 @@ export async function fetchDeliverables(
 	}
 }
 
+// Spawn context types for the Context tab
+export interface SpawnMetadata {
+	task?: string;          // Task description from TASK: line
+	skill?: string;         // Skill name
+	beads_id?: string;      // Beads issue ID
+	project_dir?: string;   // PROJECT_DIR value
+	spawn_tier?: string;    // SPAWN TIER: light/full
+	session_scope?: string; // SESSION SCOPE value
+}
+
+export interface SpawnContext {
+	content: string;           // Raw SPAWN_CONTEXT.md markdown content
+	workspace_path?: string;   // Full path to workspace directory
+	metadata: SpawnMetadata;   // Extracted spawn metadata
+	error?: string;            // Error message if not found
+}
+
+// Fetch spawn context for an agent
+export async function fetchSpawnContext(workspaceId: string): Promise<SpawnContext> {
+	try {
+		const params = new URLSearchParams({ workspace: workspaceId });
+		
+		const response = await fetch(`${API_BASE}/api/agents/spawn-context?${params}`);
+		const data = await response.json();
+		
+		if (!response.ok || data.error) {
+			return {
+				content: '',
+				metadata: {},
+				error: data.error || `HTTP ${response.status}`,
+			};
+		}
+		
+		return data;
+	} catch (error) {
+		return {
+			content: '',
+			metadata: {},
+			error: error instanceof Error ? error.message : 'Failed to fetch spawn context',
+		};
+	}
+}
+
 export function disconnectSSE(): void {
 	// Increment generation to invalidate any pending reconnect timers
 	connectionGeneration++;

@@ -247,6 +247,9 @@ func runServe(portNum int) error {
 	// GET /api/agents/deliverables - returns deliverables for an agent (commits, files, artifacts)
 	mux.HandleFunc("/api/agents/deliverables", corsHandler(handleAgentDeliverables))
 
+	// GET /api/agents/spawn-context - returns SPAWN_CONTEXT.md content and metadata
+	mux.HandleFunc("/api/agents/spawn-context", corsHandler(handleAgentSpawnContext))
+
 	// GET /api/events - proxies OpenCode SSE stream
 	mux.HandleFunc("/api/events", corsHandler(handleEvents))
 
@@ -4658,4 +4661,155 @@ func collectArtifactLinks(workspacePath, beadsID, workspaceID string) []Artifact
 	}
 
 	return artifacts
+}
+
+// SpawnContextAPIResponse is the JSON structure returned by /api/agents/spawn-context.
+type SpawnContextAPIResponse struct {
+	Content       string            `json:"content"`                  // Raw SPAWN_CONTEXT.md markdown content
+	WorkspacePath string            `json:"workspace_path,omitempty"` // Full path to workspace directory
+	Metadata      SpawnMetadata     `json:"metadata"`                 // Extracted spawn metadata
+	Error         string            `json:"error,omitempty"`          // Error message if not found
+}
+
+// SpawnMetadata contains extracted spawn parameters from SPAWN_CONTEXT.md.
+type SpawnMetadata struct {
+	Task        string `json:"task,omitempty"`         // Task description from TASK: line
+	Skill       string `json:"skill,omitempty"`        // Skill name
+	BeadsID     string `json:"beads_id,omitempty"`     // Beads issue ID
+	ProjectDir  string `json:"project_dir,omitempty"`  // PROJECT_DIR value
+	SpawnTier   string `json:"spawn_tier,omitempty"`   // SPAWN TIER: light/full
+	SessionScope string `json:"session_scope,omitempty"` // SESSION SCOPE value
+}
+
+// handleAgentSpawnContext returns the SPAWN_CONTEXT.md content and metadata for an agent.
+// Query params:
+// - workspace: workspace ID (e.g., "og-feat-dashboard-agent-pane-30dec")
+func handleAgentSpawnContext(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	workspaceID := r.URL.Query().Get("workspace")
+	if workspaceID == "" {
+		http.Error(w, "workspace parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Discover project directories to find the workspace
+	allProjectDirs := discoverAllProjectDirs()
+
+	// Build list of project directories to check
+	projectDirs := make(map[string]bool)
+	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
+		projectDirs[serveEffectiveDir] = true
+	}
+	for _, dir := range allProjectDirs {
+		if dir != "" {
+			projectDirs[dir] = true
+		}
+	}
+
+	// Find workspace across all project directories
+	var workspacePath string
+	for pDir := range projectDirs {
+		candidatePath := filepath.Join(pDir, ".orch", "workspace", workspaceID)
+		if _, err := os.Stat(candidatePath); err == nil {
+			workspacePath = candidatePath
+			break
+		}
+	}
+
+	if workspacePath == "" {
+		resp := SpawnContextAPIResponse{
+			Error: fmt.Sprintf("Workspace not found: %s", workspaceID),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Read SPAWN_CONTEXT.md
+	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+	content, err := os.ReadFile(spawnContextPath)
+	if err != nil {
+		resp := SpawnContextAPIResponse{
+			WorkspacePath: workspacePath,
+			Error:         fmt.Sprintf("SPAWN_CONTEXT.md not found: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Extract metadata from content
+	metadata := extractSpawnMetadata(string(content))
+
+	resp := SpawnContextAPIResponse{
+		Content:       string(content),
+		WorkspacePath: workspacePath,
+		Metadata:      metadata,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// extractSpawnMetadata parses SPAWN_CONTEXT.md to extract key spawn parameters.
+func extractSpawnMetadata(content string) SpawnMetadata {
+	metadata := SpawnMetadata{}
+
+	for _, line := range strings.Split(content, "\n") {
+		lineTrimmed := strings.TrimSpace(line)
+
+		// Extract TASK: line (first line usually)
+		if strings.HasPrefix(lineTrimmed, "TASK:") {
+			metadata.Task = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "TASK:"))
+		}
+
+		// Extract PROJECT_DIR:
+		if strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
+			metadata.ProjectDir = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "PROJECT_DIR:"))
+		}
+
+		// Extract SPAWN TIER:
+		if strings.HasPrefix(lineTrimmed, "SPAWN TIER:") {
+			metadata.SpawnTier = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "SPAWN TIER:"))
+		}
+
+		// Extract SESSION SCOPE:
+		if strings.HasPrefix(lineTrimmed, "SESSION SCOPE:") {
+			metadata.SessionScope = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "SESSION SCOPE:"))
+		}
+
+		// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
+		if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
+			if idx := strings.Index(line, "**"); idx != -1 {
+				rest := line[idx+2:]
+				if endIdx := strings.Index(rest, "**"); endIdx != -1 {
+					metadata.BeadsID = rest[:endIdx]
+				}
+			}
+		} else if metadata.BeadsID == "" && strings.HasPrefix(lineTrimmed, "bd comment ") {
+			// Pattern: "bd comment orch-go-xxxx ..."
+			// Skip template placeholders like "<beads-id>"
+			parts := strings.Fields(lineTrimmed)
+			if len(parts) >= 3 && !strings.Contains(parts[2], "<") {
+				metadata.BeadsID = parts[2]
+			}
+		}
+
+		// Extract skill from "## SKILL GUIDANCE (xxx)" line
+		if strings.HasPrefix(lineTrimmed, "## SKILL GUIDANCE (") {
+			start := strings.Index(lineTrimmed, "(")
+			end := strings.Index(lineTrimmed, ")")
+			if start != -1 && end != -1 && end > start {
+				metadata.Skill = lineTrimmed[start+1 : end]
+			}
+		}
+	}
+
+	return metadata
 }
