@@ -16,35 +16,35 @@
 	const TAB_STORAGE_KEY = 'orch-agent-detail-tab';
 	
 	// Issue creation state
-	let creatingIssue = false;
-	let issueCreationError: string | null = null;
-	let createdIssueId: string | null = null;
+	let creatingIssue = $state(false);
+	let issueCreationError = $state<string | null>(null);
+	let createdIssueId = $state<string | null>(null);
 	
 	// Issue tab state
-	let issueDetails: IssueDetail | null = null;
-	let issueLoading = false;
-	let issueError: string | null = null;
-	let lastFetchedBeadsId: string | null = null;
+	let issueDetails = $state<IssueDetail | null>(null);
+	let issueLoading = $state(false);
+	let issueError = $state<string | null>(null);
+	let lastFetchedBeadsId = $state<string | null>(null);
 	
 	// Deliverables tab state
-	let deliverables: Deliverables | null = null;
-	let deliverablesLoading = false;
-	let lastFetchedWorkspaceId: string | null = null;
+	let deliverables = $state<Deliverables | null>(null);
+	let deliverablesLoading = $state(false);
+	let lastFetchedWorkspaceId = $state<string | null>(null);
 	
 	// Context tab state (spawn context)
-	let spawnContext: SpawnContext | null = null;
-	let spawnContextLoading = false;
-	let lastFetchedContextWorkspaceId: string | null = null;
+	let spawnContext = $state<SpawnContext | null>(null);
+	let spawnContextLoading = $state(false);
+	let lastFetchedContextWorkspaceId = $state<string | null>(null);
 
 	// Track which items were recently copied
-	let copiedItem: string | null = null;
+	let copiedItem = $state<string | null>(null);
 	let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 	
 	// Collapsible details section state (for commands at bottom)
-	let showDetails = false;
+	let showDetails = $state(false);
 	
 	// Active tab - will be set based on agent status and persisted preference
-	let activeTab: TabId = 'activity';
+	let activeTab = $state<TabId>('activity');
 	
 	// Load persisted tab preference
 	function loadTabPreference(): TabId | null {
@@ -388,7 +388,7 @@
 	}
 	
 	// Expanded state for grouped events
-	let expandedGroups: Set<string> = new Set();
+	let expandedGroups = $state<Set<string>>(new Set());
 	
 	function toggleGroup(id: string) {
 		if (expandedGroups.has(id)) {
@@ -396,7 +396,7 @@
 		} else {
 			expandedGroups.add(id);
 		}
-		expandedGroups = expandedGroups; // Trigger reactivity
+		expandedGroups = new Set(expandedGroups); // Trigger reactivity with new Set
 	}
 
 	// Group related events together
@@ -482,7 +482,7 @@
 
 	// Reference to the activity container for auto-scrolling
 	let activityContainer: HTMLDivElement;
-	let shouldAutoScroll = true;
+	let shouldAutoScroll = $state(true);
 
 	// Auto-scroll to bottom when new events arrive
 	async function scrollToBottom() {
