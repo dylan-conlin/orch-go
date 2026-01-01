@@ -937,6 +937,12 @@
 						<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Spawn Metadata</h3>
 						<div class="rounded-lg border bg-muted/20 p-3">
 							<dl class="grid grid-cols-2 gap-3 text-sm">
+								{#if spawnContext?.metadata.task || $selectedAgent.task}
+									<div class="col-span-2">
+										<dt class="text-muted-foreground text-xs">Task</dt>
+										<dd class="font-medium">{spawnContext?.metadata.task || $selectedAgent.task}</dd>
+									</div>
+								{/if}
 								{#if $selectedAgent.skill || spawnContext?.metadata.skill}
 									<div>
 										<dt class="text-muted-foreground text-xs">Skill</dt>
