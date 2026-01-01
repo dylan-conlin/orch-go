@@ -256,9 +256,11 @@ function resolveColor(
  */
 function resolveTheme(themeJson: ThemeJson, mode: 'dark' | 'light'): ResolvedTheme {
 	const defs = themeJson.defs ?? {};
-	const themeObj = themeJson.theme as Record<string, ColorValue>;
+	// Extract only color values from theme, excluding non-color properties like thinkingOpacity
+	const { thinkingOpacity, ...colorProps } = themeJson.theme;
+	const themeObj = colorProps as Record<string, ColorValue>;
 
-	const resolve = (key: keyof typeof themeJson.theme): string => {
+	const resolve = (key: keyof Omit<typeof themeJson.theme, 'thinkingOpacity'>): string => {
 		const value = themeJson.theme[key];
 		if (value === undefined) {
 			// Handle optional properties with defaults
@@ -270,7 +272,7 @@ function resolveTheme(themeJson: ThemeJson, mode: 'dark' | 'light'): ResolvedThe
 			}
 			return '#000000';
 		}
-		return resolveColor(value, mode, defs, themeObj);
+		return resolveColor(value as ColorValue, mode, defs, themeObj);
 	};
 
 	return {

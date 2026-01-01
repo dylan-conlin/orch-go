@@ -130,4 +130,13 @@ concerning the "copy identifiers" features, copying is useful because it help me
 ** human review step?
 
 
-* 
+* i noticed this in the spawn context
+/Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-feat-add-self-describing-30dec/SPAWN_CONTEXT.md
+# Feature Implementation (Unified Framework)
+
+**For orchestrators:** Spawn via `orch spawn feature-impl "task" --phases "..." --mode ... --validation ...`
+
+**For workers:** You've been spawned to implement a feature using a phased approach with specific configuration.
+
+why are we including instructions for orchestrators in the spawn context? isn't the spawn context only 
+* we made changes recently (i think to the oc function in ~/.zshrc) and now i'm seeing what i think is log output in the opencode tui, which is distracting
