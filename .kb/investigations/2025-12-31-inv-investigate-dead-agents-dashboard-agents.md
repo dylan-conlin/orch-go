@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Dead agents occur when OpenCode sessions go stale (3+ min no activity) while beads issues remain in_progress; this two-system gap is intentional to enable orchestrator review.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tested 200+ sessions from OpenCode API - found many "dead" sessions (days old) with matching beads IDs; current in_progress issues have NO sessions at all (complete session loss).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Dashboard correctly identifies orphaned agents; gap between session and issue state is by design to prevent auto-closing partially completed work.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Add quick action buttons to dashboard for dead agents (Complete/Abandon/Respawn) - reduces friction while keeping orchestrator in control.
 
 ---
 
@@ -22,9 +22,9 @@ Fill this at the END of your investigation, before marking Complete.
 **Started:** 2025-12-31
 **Updated:** 2025-12-31
 **Owner:** Spawned agent
-**Phase:** Investigating
-**Next Step:** Document findings and test lifecycle scenarios
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
@@ -130,6 +130,36 @@ if timeSinceUpdate > deadThreshold {
 
 ---
 
+### Finding 5: Two Types of "Dead" Agents Discovered via Testing
+
+**Evidence:** Live testing revealed two distinct failure modes:
+
+**Type A: Stale Sessions (visible in OpenCode API)**
+```
+curl -s http://127.0.0.1:4096/session | python3 analysis
+# Found 200+ dead sessions, many 4000-7000 min old (3-5 days)
+# Example: og-inv-mcp-vs-cli-28dec [orch-go-xnqg] - DEAD 4743 min ago
+```
+These sessions exist in OpenCode but haven't updated in 3+ minutes. Dashboard correctly marks them "dead".
+
+**Type B: Missing Sessions (in_progress issues with no session)**
+```
+# Cross-referenced current in_progress issues:
+orch-go-asep: NO SESSION FOUND
+orch-go-sj88: NO SESSION FOUND  
+orch-go-r3q7: NO SESSION FOUND
+orch-go-bgiu: NO SESSION FOUND
+```
+These have beads issues in_progress but no corresponding OpenCode session at all. The session was completely deleted/lost.
+
+**Source:**
+- `curl http://127.0.0.1:4096/session` - OpenCode API session list
+- `bd list --status in_progress` - Beads issues in progress
+
+**Significance:** Dashboard shows "dead" for Type A (stale sessions) but these Type B orphaned issues may not appear in dashboard at all since there's no session to display. This represents a gap in visibility - orphaned in_progress issues without any session are invisible to the dashboard.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
@@ -163,12 +193,15 @@ Why sessions end without `orch complete`:
 - ✅ Dead threshold is 3 minutes (verified: `pkg/opencode/client.go:386`)
 - ✅ Dashboard computes status from session.time.Updated (verified: `cmd/orch/serve.go:790-821`)
 - ✅ Dashboard shows "orch abandon" guidance for dead agents (verified: `agent-card.svelte:440`)
+- ✅ Found 200+ dead sessions via OpenCode API (verified: `curl http://127.0.0.1:4096/session` with age analysis)
+- ✅ Current in_progress issues have NO sessions (verified: cross-referenced orch-go-asep, orch-go-sj88, etc. - all "NO SESSION FOUND")
 
 **What's untested:**
 
 - ⚠️ SSE monitor backup detection effectiveness (code exists but needs validation)
 - ⚠️ Rate of dead agents in production (no metrics visible)
 - ⚠️ Whether adding auto-close would cause false positives
+- ⚠️ Why sessions completely disappear vs just going stale (may be OpenCode garbage collection)
 
 **What would change this:**
 
@@ -260,6 +293,8 @@ rg "Phase: Complete" --type go
 
 **Related Artifacts:**
 - `pkg/spawn/context.go` - SPAWN_CONTEXT template with completion protocol
+- `.kb/investigations/2025-12-30-inv-dashboard-shows-stale-dead-agents.md` - Related: threshold differences between dashboard and CLI
+- `.kb/investigations/2025-12-30-inv-detect-stale-zombie-sessions-after.md` - Related: fix for IsSessionProcessing on zombie sessions
 
 ---
 
@@ -277,3 +312,22 @@ rg "Phase: Complete" --type go
 **2025-12-31:** Investigation completing
 - Status: Complete
 - Key outcome: Dead agents are expected state for orphaned sessions; dashboard should offer quick actions for common recovery operations
+
+---
+
+## Self-Review
+
+- [x] Real test performed (not code review) - Tested OpenCode API, found 200+ dead sessions, cross-referenced in_progress issues
+- [x] Conclusion from evidence (not speculation) - Based on API test results and code analysis
+- [x] Question answered - Explained why dead agents occur and the intentional two-system gap
+- [x] File complete - All D.E.K.N. sections filled, findings documented
+- [x] D.E.K.N. filled - Replaced placeholders in Summary section
+- [x] Problem scoped - Used rg to find all occurrences of "dead" status handling
+
+**Self-Review Status:** PASSED
+
+**Discovered Work:**
+1. Feature: Dashboard quick actions for dead agents (triage:review - needs orchestrator input on priority)
+2. Feature: Show orphaned in_progress issues in dashboard (triage:review - visibility gap found)
+
+**Leave it Better:** kn command not available in this environment. Constraint noted in SYNTHESIS.md.
