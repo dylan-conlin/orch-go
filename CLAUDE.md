@@ -260,6 +260,23 @@ cd web && npm run dev
 2. Create `pkg/{name}/{name}_test.go`
 3. Import in cmd/orch as needed
 
+## OpenCode API Notes
+
+**Critical knowledge extracted from 23 OpenCode investigations (Dec 2025):**
+
+- **No `/health` endpoint exists** - Use `GET /session` to verify server status. Unknown routes return "redirected too many times" (proxied to desktop.opencode.ai) - this is expected, not a bug.
+
+- **Session storage is project-partitioned** - Sessions stored in `~/.local/share/opencode/storage/session/{projectID}/`. Project ID = first git root commit hash (stable across clones). No "all sessions" API exists - must iterate project directories.
+
+- **`x-opencode-directory` header changes API behavior drastically:**
+  - Without header: Returns only in-memory sessions (2-4 typically)
+  - With header: Returns ALL historical disk sessions for that directory (hundreds)
+  - For `orch status`, call `ListSessions("")` (no header) to get only active sessions
+
+- **Activity-based liveness, not existence** - Sessions persist indefinitely on disk. Use 30-minute idle threshold based on `time.updated`, not existence checks.
+
+- **Model format in API** - Model must be object `{providerID, modelID}`, not string. Use `parseModelSpec()` to convert.
+
 ## Gotchas
 
 - **Window targeting**: Use workspace name, not window index
