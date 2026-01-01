@@ -82,10 +82,12 @@ type HandoffData struct {
 // DEKNSummary contains the Delta, Evidence, Knowledge, Next sections.
 // These are prompts for the human/orchestrator to fill in before handoff.
 type DEKNSummary struct {
-	Delta     string `json:"delta"`     // What changed this session
-	Evidence  string `json:"evidence"`  // Proof of work (commits, tests, validation)
-	Knowledge string `json:"knowledge"` // What was learned
-	Next      string `json:"next"`      // Recommended next actions
+	Delta          string `json:"delta"`                     // What changed this session
+	Evidence       string `json:"evidence"`                  // Proof of work (commits, tests, validation)
+	Knowledge      string `json:"knowledge"`                 // What was learned
+	Next           string `json:"next"`                      // Recommended next actions
+	Friction       string `json:"friction,omitempty"`        // What was harder than it should have been
+	SystemReaction string `json:"system_reaction,omitempty"` // Does this suggest improvements
 }
 
 // FocusInfo contains current focus information.
@@ -784,6 +786,20 @@ const handoffTemplate = `# Session Handoff - {{.Date}}
 {{- else}}
 [SYNTHESIS REQUIRED: What should the next session prioritize?]
 {{- end}}
+{{- end}}
+
+### Friction (What Was Harder Than It Should Be)
+{{- if and .DEKN .DEKN.Friction}}
+{{.DEKN.Friction}}
+{{- else}}
+*(No friction reported)*
+{{- end}}
+
+### System Reaction (Does This Suggest Improvements?)
+{{- if and .DEKN .DEKN.SystemReaction}}
+{{.DEKN.SystemReaction}}
+{{- else}}
+*(No system reaction noted)*
 {{- end}}
 
 ---

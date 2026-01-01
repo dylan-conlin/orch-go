@@ -95,13 +95,27 @@ the session directory, and clears session state.
 If there are in-progress agents, you'll be warned and can choose to continue
 or abort.
 
-Use --no-handoff to skip handoff generation and just clear session state.
+Use --skip-reflection with --reason to skip handoff generation. This implements
+the 'Gate Over Remind' principle - you must provide a reason for skipping.
 
 Examples:
-  orch session end                 # End with handoff generation
-  orch session end --no-handoff    # Just clear session state
-  orch session end --force         # Skip in-progress agent warning`,
+  orch session end                                              # End with handoff generation
+  orch session end --skip-reflection --reason "quick context switch"  # Skip with reason
+  orch session end --force                                      # Skip in-progress agent warning`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Validate --skip-reflection requires --reason
+		if sessionEndSkipReflection && sessionEndSkipReason == "" {
+			return fmt.Errorf("--skip-reflection requires --reason flag with explanation\n\nExample: orch session end --skip-reflection --reason \"quick context switch\"")
+		}
+		
+		// Handle deprecated --no-handoff by treating it as --skip-reflection
+		if sessionEndNoHandoff {
+			sessionEndSkipReflection = true
+			if sessionEndSkipReason == "" {
+				sessionEndSkipReason = "deprecated --no-handoff flag used"
+			}
+		}
+		
 		return runSessionEnd()
 	},
 }
@@ -111,15 +125,22 @@ var (
 	sessionStartIssue string
 
 	// Session end flags
-	sessionEndNoHandoff bool
-	sessionEndForce     bool
+	sessionEndNoHandoff       bool // Deprecated: use --skip-reflection instead
+	sessionEndForce           bool
+	sessionEndSkipReflection  bool
+	sessionEndSkipReason      string
 )
 
 func init() {
 	sessionStartCmd.Flags().StringVar(&sessionStartIssue, "issue", "", "Beads issue ID to associate with focus")
 
-	sessionEndCmd.Flags().BoolVar(&sessionEndNoHandoff, "no-handoff", false, "Skip handoff generation, just clear session state")
+	// Deprecated: --no-handoff is replaced by --skip-reflection
+	sessionEndCmd.Flags().BoolVar(&sessionEndNoHandoff, "no-handoff", false, "DEPRECATED: Use --skip-reflection instead")
+	sessionEndCmd.Flags().MarkDeprecated("no-handoff", "use --skip-reflection --reason instead")
+	
 	sessionEndCmd.Flags().BoolVar(&sessionEndForce, "force", false, "Skip in-progress agent warning")
+	sessionEndCmd.Flags().BoolVar(&sessionEndSkipReflection, "skip-reflection", false, "Skip reflection prompts (requires --reason)")
+	sessionEndCmd.Flags().StringVar(&sessionEndSkipReason, "reason", "", "Reason for skipping reflection (required with --skip-reflection)")
 
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStatusCmd)
@@ -347,9 +368,9 @@ func runSessionEnd() error {
 		}
 	}
 
-	// Handle --no-handoff flag
-	if sessionEndNoHandoff {
-		return endSessionWithoutHandoff(store, session, duration)
+	// Handle --skip-reflection flag (also covers deprecated --no-handoff)
+	if sessionEndSkipReflection {
+		return endSessionWithSkippedReflection(store, session, duration, sessionEndSkipReason)
 	}
 
 	// Generate handoff
@@ -393,6 +414,30 @@ func runSessionEnd() error {
 		fmt.Println("  (skipped)")
 	}
 	handoffData.DEKN.Next = next
+
+	// Friction prompt
+	fmt.Println()
+	fmt.Println("Friction (What was harder than it should have been?):")
+	fmt.Println("  Tool issues, context gaps, process friction.")
+	fmt.Print("  > ")
+	friction, _ := reader.ReadString('\n')
+	friction = strings.TrimSpace(friction)
+	if friction == "" {
+		fmt.Println("  (skipped)")
+	}
+	handoffData.DEKN.Friction = friction
+
+	// System Reaction prompt
+	fmt.Println()
+	fmt.Println("System Reaction (Does this suggest improvements?):")
+	fmt.Println("  Skill update, CLAUDE.md update, new tooling?")
+	fmt.Print("  > ")
+	reaction, _ := reader.ReadString('\n')
+	reaction = strings.TrimSpace(reaction)
+	if reaction == "" {
+		fmt.Println("  (skipped)")
+	}
+	handoffData.DEKN.SystemReaction = reaction
 
 	// Generate markdown
 	markdown, err := generateHandoffMarkdown(handoffData)
@@ -457,7 +502,59 @@ func countSpawnsByStatus(spawns []sessions.SpawnRecord) (complete, inProgress in
 	return
 }
 
+// endSessionWithSkippedReflection ends the session without generating a handoff document,
+// logging the skip reason for pattern detection.
+func endSessionWithSkippedReflection(store *sessions.OrchestratorStore, session *sessions.OrchestratorSession, duration time.Duration, reason string) error {
+	logger := events.NewLogger(events.DefaultLogPath())
+
+	// Log the reflection skip event for pattern detection
+	skipEvent := events.Event{
+		Type:      "session.orchestrator.reflection_skipped",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"session_id": session.ID,
+			"reason":     reason,
+		},
+	}
+	if err := logger.Log(skipEvent); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log reflection skip event: %v\n", err)
+	}
+
+	_, err := store.End()
+	if err != nil {
+		return fmt.Errorf("failed to end session: %w", err)
+	}
+
+	completeCount, _ := countSpawnsByStatus(session.Spawns)
+
+	// Log the session end
+	endEvent := events.Event{
+		Type:      "session.orchestrator.ended",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"session_id":         session.ID,
+			"goal":               session.Goal,
+			"duration":           duration.Seconds(),
+			"spawns":             len(session.Spawns),
+			"spawns_complete":    completeCount,
+			"handoff_saved":      false,
+			"reflection_skipped": true,
+			"skip_reason":        reason,
+		},
+	}
+	if err := logger.Log(endEvent); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("Session ended (reflection skipped: %s).\n", reason)
+	fmt.Println("Tip: Run 'orch handoff' to generate a handoff document for the next session")
+
+	return nil
+}
+
 // endSessionWithoutHandoff ends the session without generating a handoff document.
+// This is called when handoff generation fails mid-process.
 func endSessionWithoutHandoff(store *sessions.OrchestratorStore, session *sessions.OrchestratorSession, duration time.Duration) error {
 	_, err := store.End()
 	if err != nil {
