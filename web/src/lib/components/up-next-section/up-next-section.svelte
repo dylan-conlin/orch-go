@@ -3,8 +3,11 @@
 	import { readyIssues, type ReadyIssue } from '$lib/stores/beads';
 	import { focus } from '$lib/stores/focus';
 
-	export let expanded: boolean = false;
-	export let maxItems: number = 5;
+	interface Props {
+		expanded?: boolean;
+		maxItems?: number;
+	}
+	let { expanded = false, maxItems = 5 }: Props = $props();
 
 	// Track if auto-expand has been triggered (to avoid overriding user collapse)
 	let autoExpandTriggered = false;
@@ -18,27 +21,31 @@
 	}
 
 	// Filter and sort to top priority items
-	$: priorityItems = ($readyIssues?.issues ?? [])
+	let priorityItems = $derived(($readyIssues?.issues ?? [])
 		.slice()
 		.sort((a, b) => a.priority - b.priority)
-		.slice(0, maxItems);
+		.slice(0, maxItems));
 
 	// Check if any P0 or P1 items exist
-	$: hasUrgent = priorityItems.some(i => i.priority <= 1);
+	let hasUrgent = $derived(priorityItems.some(i => i.priority <= 1));
 
 	// Auto-expand if P0 or P1 items exist (only if not already triggered)
-	$: if (hasUrgent && !expanded && !autoExpandTriggered) {
-		expanded = true;
-		autoExpandTriggered = true;
-	}
+	$effect(() => {
+		if (hasUrgent && !expanded && !autoExpandTriggered) {
+			expanded = true;
+			autoExpandTriggered = true;
+		}
+	});
 
 	// Reset auto-expand trigger when urgent items are resolved
-	$: if (!hasUrgent) {
-		autoExpandTriggered = false;
-	}
+	$effect(() => {
+		if (!hasUrgent) {
+			autoExpandTriggered = false;
+		}
+	});
 
 	// Focus alignment check
-	$: focusGoal = $focus?.goal?.toLowerCase() ?? '';
+	let focusGoal = $derived($focus?.goal?.toLowerCase() ?? '');
 	
 	function isFocusAligned(issue: ReadyIssue): boolean {
 		if (!focusGoal) return false;

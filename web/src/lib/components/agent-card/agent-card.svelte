@@ -5,11 +5,14 @@
 	import type { Agent } from '$lib/stores/agents';
 	import { selectedAgentId } from '$lib/stores/agents';
 
-	export let agent: Agent;
+	interface Props {
+		agent: Agent;
+	}
+	let { agent }: Props = $props();
 
-	$: isSelected = $selectedAgentId === agent.id;
-	$: contextIndicator = getContextQualityIndicator(agent);
-	$: displayState = getDisplayState(agent);
+	let isSelected = $derived($selectedAgentId === agent.id);
+	let contextIndicator = $derived(getContextQualityIndicator(agent));
+	let displayState = $derived(getDisplayState(agent));
 
 	function handleClick() {
 		selectedAgentId.set(agent.id);

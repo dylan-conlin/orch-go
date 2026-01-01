@@ -136,7 +136,7 @@
 		return `${firstText} +${wins.length - 1}`;
 	}
 
-	$: collapsedPreview = getCollapsedPreview();
+	let collapsedPreview = $derived(getCollapsedPreview());
 </script>
 
 {#if $recentCompletions.length > 0}

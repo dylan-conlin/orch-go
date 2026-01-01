@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { selectedAgent, selectedAgentId, sseEvents, createIssue, fetchIssueDetails, fetchDeliverables } from '$lib/stores/agents';
-	import type { Agent, SSEEvent, IssueDetail, Deliverables } from '$lib/stores/agents';
+	import { selectedAgent, selectedAgentId, sseEvents, createIssue, fetchIssueDetails, fetchDeliverables, fetchSpawnContext } from '$lib/stores/agents';
+	import type { Agent, SSEEvent, IssueDetail, Deliverables, SpawnContext } from '$lib/stores/agents';
 	import ArtifactViewer from '$lib/components/artifact-viewer/artifact-viewer.svelte';
 	import { onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
@@ -30,6 +30,11 @@
 	let deliverables: Deliverables | null = null;
 	let deliverablesLoading = false;
 	let lastFetchedWorkspaceId: string | null = null;
+	
+	// Context tab state (spawn context)
+	let spawnContext: SpawnContext | null = null;
+	let spawnContextLoading = false;
+	let lastFetchedContextWorkspaceId: string | null = null;
 
 	// Track which items were recently copied
 	let copiedItem: string | null = null;
@@ -495,13 +500,24 @@
 		shouldAutoScroll = scrollHeight - scrollTop - clientHeight < 50;
 	}
 
+	// Filter SSE events for this agent's session
+	let agentEvents = $derived($selectedAgent?.session_id 
+		? $sseEvents.filter(e => {
+			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
+			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
+			return eventSessionId === $selectedAgent?.session_id;
+		}).slice(-50)
+		: []);
+
 	// Watch for new events and auto-scroll
-	$: if (agentEvents.length > 0 && activityContainer) {
-		scrollToBottom();
-	}
+	$effect(() => {
+		if (agentEvents.length > 0 && activityContainer) {
+			scrollToBottom();
+		}
+	});
 
 	// Compute grouped events reactively
-	$: groupedEvents = groupEvents(agentEvents);
+	let groupedEvents = $derived(groupEvents(agentEvents));
 	
 	// Get gap quality color
 	function getGapQualityColor(quality: number): string {
@@ -516,27 +532,22 @@
 		if (quality >= 50) return 'Fair';
 		return 'Limited';
 	}
-
-	// Filter SSE events for this agent's session
-	$: agentEvents = $selectedAgent?.session_id 
-		? $sseEvents.filter(e => {
-			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
-			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
-			return eventSessionId === $selectedAgent?.session_id;
-		}).slice(-50)
-		: [];
 	
 	// Initialize tab when agent changes
-	$: if ($selectedAgent) {
-		const savedTab = loadTabPreference();
-		// Use saved preference if available, otherwise use default based on status
-		activeTab = savedTab || getDefaultTab($selectedAgent);
-	}
+	$effect(() => {
+		if ($selectedAgent) {
+			const savedTab = loadTabPreference();
+			// Use saved preference if available, otherwise use default based on status
+			activeTab = savedTab || getDefaultTab($selectedAgent);
+		}
+	});
 	
 	// Fetch issue details when beads_id changes (or when switching to Issue tab)
-	$: if ($selectedAgent?.beads_id && $selectedAgent.beads_id !== lastFetchedBeadsId) {
-		loadIssueDetails($selectedAgent.beads_id, $selectedAgent.project_dir);
-	}
+	$effect(() => {
+		if ($selectedAgent?.beads_id && $selectedAgent.beads_id !== lastFetchedBeadsId) {
+			loadIssueDetails($selectedAgent.beads_id, $selectedAgent.project_dir);
+		}
+	});
 	
 	async function loadIssueDetails(beadsId: string, projectDir?: string) {
 		issueLoading = true;
@@ -556,12 +567,14 @@
 	}
 	
 	// Fetch deliverables when switching to deliverables tab or agent changes
-	$: if (activeTab === 'deliverables' && $selectedAgent?.id) {
-		const workspaceId = extractWorkspaceName($selectedAgent.id);
-		if (workspaceId !== lastFetchedWorkspaceId) {
-			loadDeliverables(workspaceId, $selectedAgent.spawned_at, $selectedAgent.project_dir, $selectedAgent.beads_id);
+	$effect(() => {
+		if (activeTab === 'deliverables' && $selectedAgent?.id) {
+			const workspaceId = extractWorkspaceName($selectedAgent.id);
+			if (workspaceId !== lastFetchedWorkspaceId) {
+				loadDeliverables(workspaceId, $selectedAgent.spawned_at, $selectedAgent.project_dir, $selectedAgent.beads_id);
+			}
 		}
-	}
+	});
 	
 	async function loadDeliverables(workspaceId: string, spawnedAt?: string, projectDir?: string, beadsId?: string) {
 		deliverablesLoading = true;
@@ -573,6 +586,29 @@
 			console.error('Failed to load deliverables:', error);
 		} finally {
 			deliverablesLoading = false;
+		}
+	}
+	
+	// Fetch spawn context when switching to context tab or agent changes
+	$effect(() => {
+		if (activeTab === 'context' && $selectedAgent?.id) {
+			const workspaceId = extractWorkspaceName($selectedAgent.id);
+			if (workspaceId !== lastFetchedContextWorkspaceId) {
+				loadSpawnContext(workspaceId);
+			}
+		}
+	});
+	
+	async function loadSpawnContext(workspaceId: string) {
+		spawnContextLoading = true;
+		lastFetchedContextWorkspaceId = workspaceId;
+		
+		try {
+			spawnContext = await fetchSpawnContext(workspaceId);
+		} catch (error) {
+			console.error('Failed to load spawn context:', error);
+		} finally {
+			spawnContextLoading = false;
 		}
 	}
 	
@@ -896,6 +932,59 @@
 			<!-- Context Tab -->
 			{#if activeTab === 'context'}
 				<div class="p-4 space-y-4">
+					<!-- Spawn Metadata Summary -->
+					<div>
+						<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Spawn Metadata</h3>
+						<div class="rounded-lg border bg-muted/20 p-3">
+							<dl class="grid grid-cols-2 gap-3 text-sm">
+								{#if $selectedAgent.skill || spawnContext?.metadata.skill}
+									<div>
+										<dt class="text-muted-foreground text-xs">Skill</dt>
+										<dd class="font-medium">{$selectedAgent.skill || spawnContext?.metadata.skill}</dd>
+									</div>
+								{/if}
+								{#if $selectedAgent.beads_id || spawnContext?.metadata.beads_id}
+									<div>
+										<dt class="text-muted-foreground text-xs">Beads Issue</dt>
+										<dd class="font-mono text-xs">{$selectedAgent.beads_id || spawnContext?.metadata.beads_id}</dd>
+									</div>
+								{/if}
+								<div>
+									<dt class="text-muted-foreground text-xs">Spawned</dt>
+									<dd class="font-medium">{formatTime($selectedAgent.spawned_at)}</dd>
+								</div>
+								<div>
+									<dt class="text-muted-foreground text-xs">Duration</dt>
+									<dd class="font-medium">{$selectedAgent.runtime || formatDuration($selectedAgent.spawned_at)}</dd>
+								</div>
+								{#if spawnContext?.metadata.spawn_tier}
+									<div>
+										<dt class="text-muted-foreground text-xs">Spawn Tier</dt>
+										<dd class="font-medium capitalize">{spawnContext.metadata.spawn_tier}</dd>
+									</div>
+								{/if}
+								{#if spawnContext?.metadata.session_scope}
+									<div>
+										<dt class="text-muted-foreground text-xs">Session Scope</dt>
+										<dd class="font-medium">{spawnContext.metadata.session_scope}</dd>
+									</div>
+								{/if}
+								{#if spawnContext?.workspace_path}
+									<div class="col-span-2">
+										<dt class="text-muted-foreground text-xs">Workspace Path</dt>
+										<dd class="font-mono text-xs truncate">{spawnContext.workspace_path}</dd>
+									</div>
+								{/if}
+								{#if spawnContext?.metadata.project_dir}
+									<div class="col-span-2">
+										<dt class="text-muted-foreground text-xs">Project Directory</dt>
+										<dd class="font-mono text-xs truncate">{spawnContext.metadata.project_dir}</dd>
+									</div>
+								{/if}
+							</dl>
+						</div>
+					</div>
+					
 					<!-- Gap Analysis -->
 					{#if $selectedAgent.gap_analysis}
 						<div>
@@ -940,45 +1029,38 @@
 								{/if}
 							</div>
 						</div>
-					{:else}
-						<div class="text-center py-4 text-muted-foreground">
-							<p class="text-sm">No context analysis available</p>
-						</div>
 					{/if}
 					
-					<!-- Project and Skill Info -->
+					<!-- SPAWN_CONTEXT.md Content -->
 					<div>
-						<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Spawn Info</h3>
-						<div class="rounded-lg border bg-muted/20 p-3">
-							<dl class="grid grid-cols-2 gap-3 text-sm">
-								{#if $selectedAgent.project}
-									<div>
-										<dt class="text-muted-foreground text-xs">Project</dt>
-										<dd class="font-medium">{$selectedAgent.project}</dd>
-									</div>
-								{/if}
-								{#if $selectedAgent.skill}
-									<div>
-										<dt class="text-muted-foreground text-xs">Skill</dt>
-										<dd class="font-medium">{$selectedAgent.skill}</dd>
-									</div>
-								{/if}
-								<div>
-									<dt class="text-muted-foreground text-xs">Spawned</dt>
-									<dd class="font-medium">{formatTime($selectedAgent.spawned_at)}</dd>
+						<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
+							<span>📦</span> SPAWN_CONTEXT.md
+						</h3>
+						{#if spawnContextLoading}
+							<div class="flex items-center justify-center py-8">
+								<div class="animate-pulse text-muted-foreground">Loading spawn context...</div>
+							</div>
+						{:else if spawnContext?.error}
+							<div class="rounded-lg border border-muted bg-muted/10 p-4 text-center">
+								<p class="text-sm text-muted-foreground">{spawnContext.error}</p>
+							</div>
+						{:else if spawnContext?.content}
+							<div class="rounded-lg border bg-muted/10 overflow-hidden">
+								<div class="max-h-[500px] overflow-y-auto p-4 prose prose-sm dark:prose-invert max-w-none 
+									prose-headings:text-sm prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2
+									prose-p:text-sm prose-p:leading-relaxed prose-p:my-1
+									prose-ul:my-1 prose-li:my-0.5
+									prose-code:text-xs prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+									prose-pre:bg-muted/50 prose-pre:text-xs">
+									{@html marked(spawnContext.content)}
 								</div>
-								<div>
-									<dt class="text-muted-foreground text-xs">Duration</dt>
-									<dd class="font-medium">{$selectedAgent.runtime || formatDuration($selectedAgent.spawned_at)}</dd>
-								</div>
-								{#if $selectedAgent.project_dir}
-									<div class="col-span-2">
-										<dt class="text-muted-foreground text-xs">Directory</dt>
-										<dd class="font-mono text-xs truncate">{$selectedAgent.project_dir}</dd>
-									</div>
-								{/if}
-							</dl>
-						</div>
+							</div>
+						{:else}
+							<div class="text-center py-8 text-muted-foreground">
+								<p class="text-sm">No spawn context available</p>
+								<p class="text-xs mt-1 opacity-75">This agent may not have a workspace yet</p>
+							</div>
+						{/if}
 					</div>
 				</div>
 			{/if}

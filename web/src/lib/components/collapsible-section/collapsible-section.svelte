@@ -4,11 +4,14 @@
 	import { cubicOut } from 'svelte/easing';
 	import type { Agent } from '$lib/stores/agents';
 
-	export let title: string;
-	export let icon: string;
-	export let agents: Agent[];
-	export let expanded: boolean = false;
-	export let variant: 'active' | 'recent' | 'archive' = 'recent';
+	interface Props {
+		title: string;
+		icon: string;
+		agents: Agent[];
+		expanded?: boolean;
+		variant?: 'active' | 'recent' | 'archive';
+	}
+	let { title, icon, agents, expanded = $bindable(false), variant = 'recent' }: Props = $props();
 
 	function toggle() {
 		expanded = !expanded;
@@ -86,7 +89,7 @@
 		return `${summaries.join(', ')} +${agents.length - 2}`;
 	}
 
-	$: collapsedPreview = getCollapsedPreview(agents);
+	let collapsedPreview = $derived(getCollapsedPreview(agents));
 </script>
 
 <div class="rounded-lg border transition-all duration-200 {getVariantStyles(variant)} {expanded ? 'shadow-sm' : ''}">
