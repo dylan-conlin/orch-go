@@ -26,9 +26,11 @@
 	});
 
 	// Refetch patterns when project filter changes
-	$: if (typeof window !== 'undefined' && projectDir !== undefined) {
-		patterns.fetch(projectDir);
-	}
+	$effect(() => {
+		if (typeof window !== 'undefined' && projectDir !== undefined) {
+			patterns.fetch(projectDir);
+		}
+	});
 
 	// State for issue creation
 	let creatingIssue: { [key: string]: boolean } = {};
@@ -42,53 +44,53 @@
 	let pendingReviewsExpanded = false;
 
 	// 🔴 BLOCKING: Agents at Phase: Complete that need orch complete
-	$: completeAgents = $activeAgents.filter(a => 
+	let completeAgents = $derived($activeAgents.filter(a => 
 		a.phase?.toLowerCase() === 'complete'
-	);
+	));
 
 	// 🔴 BLOCKING: Agents asking questions (BLOCKED status)
-	$: askingQuestions = $activeAgents.filter(a => 
+	let askingQuestions = $derived($activeAgents.filter(a => 
 		a.phase?.toLowerCase().includes('blocked') || 
 		a.phase?.toLowerCase().includes('question')
-	);
+	));
 
 	// Separate light-tier from standard agents for pending reviews
-	$: lightTierAgents = ($pendingReviews?.agents ?? []).filter(a => a.is_light_tier);
-	$: standardAgents = ($pendingReviews?.agents ?? []).filter(a => !a.is_light_tier);
+	let lightTierAgents = $derived(($pendingReviews?.agents ?? []).filter(a => a.is_light_tier));
+	let standardAgents = $derived(($pendingReviews?.agents ?? []).filter(a => !a.is_light_tier));
 	
 	// Count total light-tier unreviewed items
-	$: lightTierTotalUnreviewed = lightTierAgents.reduce((sum, agent) => 
-		sum + getUnreviewedItems(agent).length, 0);
+	let lightTierTotalUnreviewed = $derived(lightTierAgents.reduce((sum, agent) => 
+		sum + getUnreviewedItems(agent).length, 0));
 
 	// Standard reviews that need decision
-	$: standardReviewCount = standardAgents.reduce((sum, agent) => 
-		sum + getUnreviewedItems(agent).length, 0);
+	let standardReviewCount = $derived(standardAgents.reduce((sum, agent) => 
+		sum + getUnreviewedItems(agent).length, 0));
 
 	// ⚠️ DECISION NEEDED: Blocked issues that actually need intervention
 	// Only count issues where needs_action is true (blocked by closed/abandoned, or >7 days)
-	$: actionableBlocked = ($blockedIssues?.issues ?? []).filter(i => i.needs_action);
-	$: totalBlocked = actionableBlocked.length;
+	let actionableBlocked = $derived(($blockedIssues?.issues ?? []).filter(i => i.needs_action));
+	let totalBlocked = $derived(actionableBlocked.length);
 
 	// 📊 PATTERNS: Recurring gaps that could use kb quick constrain
-	$: patternSuggestions = $gaps?.suggestions ?? [];
-	$: hasGapPatterns = patternSuggestions.length > 0;
+	let patternSuggestions = $derived($gaps?.suggestions ?? []);
+	let hasGapPatterns = $derived(patternSuggestions.length > 0);
 
 	// 🔄 BEHAVIORAL: Repeated failures/empty reads from action log
-	$: behavioralPatterns = $patterns?.patterns ?? [];
-	$: hasBehavioralPatterns = behavioralPatterns.length > 0;
+	let behavioralPatterns = $derived($patterns?.patterns ?? []);
+	let hasBehavioralPatterns = $derived(behavioralPatterns.length > 0);
 	// Critical/warning patterns need immediate attention
-	$: criticalBehavioralPatterns = behavioralPatterns.filter(p => p.severity === 'critical' || p.severity === 'warning');
+	let criticalBehavioralPatterns = $derived(behavioralPatterns.filter(p => p.severity === 'critical' || p.severity === 'warning'));
 
 	// Total errors
-	$: totalErrors = $errorEvents.length;
+	let totalErrors = $derived($errorEvents.length);
 
 	// 🟡 USAGE WARNING: Usage >80% needs account switch decision
-	$: usageWarning = $usage && ($usage.five_hour_percent >= 80 || $usage.weekly_percent >= 80 || ($usage.weekly_opus_percent ?? 0) >= 80);
-	$: highestUsagePercent = $usage ? Math.max($usage.five_hour_percent, $usage.weekly_percent, $usage.weekly_opus_percent ?? 0) : 0;
+	let usageWarning = $derived($usage && ($usage.five_hour_percent >= 80 || $usage.weekly_percent >= 80 || ($usage.weekly_opus_percent ?? 0) >= 80));
+	let highestUsagePercent = $derived($usage ? Math.max($usage.five_hour_percent, $usage.weekly_percent, $usage.weekly_opus_percent ?? 0) : 0);
 
 	// Calculate total attention items (keep it small and actionable)
 	// Count the number of CATEGORIES that need attention, not individual items
-	$: totalAttentionItems = 
+	let totalAttentionItems = $derived(
 		(completeAgents.length > 0 ? 1 : 0) +       // BLOCKING: agents at Phase: Complete
 		(askingQuestions.length > 0 ? 1 : 0) +      // BLOCKING: agents asking questions
 		(totalErrors > 0 ? 1 : 0) +                 // ERRORS category
@@ -96,10 +98,11 @@
 		(standardReviewCount > 0 ? 1 : 0) +         // Pending synthesis reviews
 		(usageWarning ? 1 : 0) +                    // Usage warning >80%
 		(hasGapPatterns ? 1 : 0) +                  // Gap PATTERNS category
-		(criticalBehavioralPatterns.length > 0 ? 1 : 0); // BEHAVIORAL patterns category
+		(criticalBehavioralPatterns.length > 0 ? 1 : 0) // BEHAVIORAL patterns category
+	);
 
 	// Helper to check if we have anything to show (excluding light-tier)
-	$: hasAttentionItems = totalAttentionItems > 0;
+	let hasAttentionItems = $derived(totalAttentionItems > 0);
 
 	function getItemKey(workspaceId: string, index: number): string {
 		return `${workspaceId}-${index}`;
