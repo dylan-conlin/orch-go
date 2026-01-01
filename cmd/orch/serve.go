@@ -1324,10 +1324,12 @@ func handleAgentArtifact(w http.ResponseWriter, r *http.Request) {
 
 	// Find workspace across all project directories
 	var workspacePath string
+	var foundProjectDir string
 	for projectDir := range projectDirs {
 		candidatePath := filepath.Join(projectDir, ".orch", "workspace", workspaceID)
 		if _, err := os.Stat(candidatePath); err == nil {
 			workspacePath = candidatePath
+			foundProjectDir = projectDir
 			break
 		}
 	}
@@ -1367,7 +1369,7 @@ func handleAgentArtifact(w http.ResponseWriter, r *http.Request) {
 		}
 		// Fallback: scan .kb/investigations/ for matching file
 		if artifactPath == "" {
-			artifactPath = findInvestigationByWorkspace(workspaceID)
+			artifactPath = findInvestigationByWorkspace(workspaceID, foundProjectDir)
 		}
 		if artifactPath != "" {
 			var data []byte
@@ -1386,7 +1388,7 @@ func handleAgentArtifact(w http.ResponseWriter, r *http.Request) {
 		}
 		// Fallback: scan .kb/decisions/ for matching file
 		if artifactPath == "" {
-			artifactPath = findDecisionByWorkspace(workspaceID)
+			artifactPath = findDecisionByWorkspace(workspaceID, foundProjectDir)
 		}
 		if artifactPath != "" {
 			var data []byte
@@ -1494,7 +1496,13 @@ func getInvestigationPathFromWorkspace(workspacePath string) string {
 
 // findInvestigationByWorkspace scans .kb/investigations/ for a file matching the workspace name.
 // Pattern: looks for files containing workspace ID in the filename or dated files from spawn date.
-func findInvestigationByWorkspace(workspaceID string) string {
+// If projectDir is empty, falls back to serveEffectiveDir.
+func findInvestigationByWorkspace(workspaceID string, projectDir string) string {
+	// Use provided projectDir or fall back to serveEffectiveDir
+	searchRoot := projectDir
+	if searchRoot == "" {
+		searchRoot = serveEffectiveDir
+	}
 	// Extract date suffix from workspace name (e.g., "og-feat-xyz-30dec" -> "30dec")
 	// and search topic (e.g., "og-feat-dashboard-agent-pane" -> "dashboard-agent-pane")
 	parts := strings.Split(workspaceID, "-")
@@ -1531,8 +1539,8 @@ func findInvestigationByWorkspace(workspaceID string) string {
 
 	// Search in .kb/investigations/ (both simple/ and regular)
 	searchDirs := []string{
-		filepath.Join(serveEffectiveDir, ".kb", "investigations", "simple"),
-		filepath.Join(serveEffectiveDir, ".kb", "investigations"),
+		filepath.Join(searchRoot, ".kb", "investigations", "simple"),
+		filepath.Join(searchRoot, ".kb", "investigations"),
 	}
 
 	for _, dir := range searchDirs {
@@ -1564,7 +1572,13 @@ func findInvestigationByWorkspace(workspaceID string) string {
 }
 
 // findDecisionByWorkspace scans .kb/decisions/ for a file matching the workspace name.
-func findDecisionByWorkspace(workspaceID string) string {
+// If projectDir is empty, falls back to serveEffectiveDir.
+func findDecisionByWorkspace(workspaceID string, projectDir string) string {
+	// Use provided projectDir or fall back to serveEffectiveDir
+	searchRoot := projectDir
+	if searchRoot == "" {
+		searchRoot = serveEffectiveDir
+	}
 	// Similar logic to findInvestigationByWorkspace
 	parts := strings.Split(workspaceID, "-")
 	if len(parts) < 3 {
@@ -1592,7 +1606,7 @@ func findDecisionByWorkspace(workspaceID string) string {
 		return ""
 	}
 
-	dir := filepath.Join(serveEffectiveDir, ".kb", "decisions")
+	dir := filepath.Join(searchRoot, ".kb", "decisions")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""
@@ -4461,7 +4475,7 @@ func handleAgentDeliverables(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Collect artifact links
-	artifacts := collectArtifactLinks(workspacePath, beadsID, workspaceID)
+	artifacts := collectArtifactLinks(workspacePath, beadsID, workspaceID, foundProjectDir)
 	resp.Artifacts = artifacts
 
 	w.Header().Set("Content-Type", "application/json")
@@ -4610,7 +4624,8 @@ func getFileDeltaFromCommits(projectDir, spawnedAt string) FileDeltaSummary {
 }
 
 // collectArtifactLinks collects links to artifacts created by the agent.
-func collectArtifactLinks(workspacePath, beadsID, workspaceID string) []ArtifactLink {
+// projectDir is used for cross-project investigation/decision discovery.
+func collectArtifactLinks(workspacePath, beadsID, workspaceID, projectDir string) []ArtifactLink {
 	var artifacts []ArtifactLink
 
 	// Check for SYNTHESIS.md
@@ -4632,7 +4647,7 @@ func collectArtifactLinks(workspacePath, beadsID, workspaceID string) []Artifact
 		investigationPath = getInvestigationPathFromWorkspace(workspacePath)
 	}
 	if investigationPath == "" {
-		investigationPath = findInvestigationByWorkspace(workspaceID)
+		investigationPath = findInvestigationByWorkspace(workspaceID, projectDir)
 	}
 	if investigationPath != "" {
 		name := filepath.Base(investigationPath)
@@ -4649,7 +4664,7 @@ func collectArtifactLinks(workspacePath, beadsID, workspaceID string) []Artifact
 		decisionPath = getDecisionPathFromBeads(beadsID)
 	}
 	if decisionPath == "" {
-		decisionPath = findDecisionByWorkspace(workspaceID)
+		decisionPath = findDecisionByWorkspace(workspaceID, projectDir)
 	}
 	if decisionPath != "" {
 		name := filepath.Base(decisionPath)
