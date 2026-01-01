@@ -393,6 +393,7 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // 6. Build verification for Go projects (blocks when Go files modified but build fails)
 // 7. Git commit verification for code-producing skills (blocks when no commits since spawn)
 // 8. Git diff verification (blocks when SYNTHESIS.md claims files not in actual git diff)
+// 9. Synthesis content verification (warns when SYNTHESIS.md claims are uncorroborated by primary sources)
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
@@ -510,6 +511,17 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 			result.Errors = append(result.Errors, gitDiffResult.Errors...)
 		}
 		result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
+	}
+
+	// Verify SYNTHESIS.md content against primary sources
+	// This cross-validates Evidence section claims against beads comment test patterns
+	// and validates duration claims against actual spawn-to-completion time.
+	// Produces warnings (not errors) for uncorroborated claims - trust but verify.
+	synthesisContentResult := VerifySynthesisContentForCompletion(beadsID, workspacePath, projectDir)
+	if synthesisContentResult != nil {
+		// Note: This only produces warnings, not blocking errors
+		// Uncorroborated claims are flagged but don't block completion
+		result.Warnings = append(result.Warnings, synthesisContentResult.Warnings...)
 	}
 
 	return result, nil

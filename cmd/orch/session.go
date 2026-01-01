@@ -171,6 +171,18 @@ func runSessionStart(goal string) error {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
 
+	// Create session directory and SESSION_CONTEXT.md
+	sessionDir := getSessionDirectory(session.Started)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create session directory: %v\n", err)
+	} else {
+		contextPath := filepath.Join(sessionDir, "SESSION_CONTEXT.md")
+		contextContent := generateSessionContext(session)
+		if err := os.WriteFile(contextPath, []byte(contextContent), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write session context: %v\n", err)
+		}
+	}
+
 	// If goal provided, also set focus
 	if goal != "" {
 		focusStore, err := focus.New("")
@@ -247,6 +259,10 @@ func runSessionStatus() error {
 	if session.Goal != "" {
 		fmt.Printf("Goal: %s\n", session.Goal)
 	}
+
+	// Session directory
+	sessionDir := getSessionDirectory(session.Started)
+	fmt.Printf("Directory: %s\n", sessionDir)
 
 	// Spawns this session
 	fmt.Println()
@@ -593,6 +609,97 @@ func endSessionWithoutHandoff(store *sessions.OrchestratorStore, session *sessio
 func getSessionDirectory(t time.Time) string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".orch", "session", t.Format("2006-01-02"))
+}
+
+// generateSessionContext generates the SESSION_CONTEXT.md content.
+// This creates parity with worker SPAWN_CONTEXT.md files.
+func generateSessionContext(session *sessions.OrchestratorSession) string {
+	var sb strings.Builder
+
+	sb.WriteString("# Orchestrator Session Context\n\n")
+
+	// Session metadata
+	sb.WriteString(fmt.Sprintf("**Session ID:** %s\n", session.ID))
+	sb.WriteString(fmt.Sprintf("**Started:** %s\n", session.Started.Format("2006-01-02 15:04:05")))
+	if session.Goal != "" {
+		sb.WriteString(fmt.Sprintf("**Goal:** %s\n", session.Goal))
+	}
+
+	sb.WriteString("\n---\n\n")
+
+	// Focus section
+	sb.WriteString("## Focus\n\n")
+	if session.Goal != "" {
+		sb.WriteString(session.Goal + "\n")
+	} else {
+		sb.WriteString("No explicit goal set\n")
+	}
+
+	sb.WriteString("\n")
+
+	// Constraints section (to be filled during session)
+	sb.WriteString("## Constraints\n\n")
+	sb.WriteString("(Fill as constraints emerge during session)\n")
+
+	sb.WriteString("\n")
+
+	// Prior context section
+	sb.WriteString("## Prior Context\n\n")
+	// Check for prior session handoff
+	priorHandoff := findPriorSessionHandoff(session.Started)
+	if priorHandoff != "" {
+		sb.WriteString(fmt.Sprintf("See: %s\n", priorHandoff))
+	} else {
+		sb.WriteString("(No prior session handoff found)\n")
+	}
+
+	sb.WriteString("\n")
+
+	// Active agents section (updated during session)
+	sb.WriteString("## Active Agents\n\n")
+	sb.WriteString("(Updated during session via `orch status`)\n")
+
+	return sb.String()
+}
+
+// findPriorSessionHandoff looks for the most recent SESSION_HANDOFF.md before the given time.
+func findPriorSessionHandoff(before time.Time) string {
+	home, _ := os.UserHomeDir()
+	sessionBaseDir := filepath.Join(home, ".orch", "session")
+
+	// List session directories
+	entries, err := os.ReadDir(sessionBaseDir)
+	if err != nil {
+		return ""
+	}
+
+	// Find the most recent session directory before the current session
+	var mostRecent string
+	var mostRecentDate time.Time
+	beforeDate := before.Truncate(24 * time.Hour)
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dirDate, err := time.Parse("2006-01-02", entry.Name())
+		if err != nil {
+			continue
+		}
+		// Only consider directories strictly before the current session's date
+		if dirDate.Before(beforeDate) {
+			handoffPath := filepath.Join(sessionBaseDir, entry.Name(), "SESSION_HANDOFF.md")
+			if _, err := os.Stat(handoffPath); err == nil {
+				// Check if this is more recent than our current best
+				if mostRecent == "" || dirDate.After(mostRecentDate) {
+					mostRecent = handoffPath
+					mostRecentDate = dirDate
+				}
+			}
+		}
+	}
+
+	return mostRecent
 }
 
 // Note: formatDuration is defined in wait.go and shared across commands
