@@ -776,6 +776,88 @@ func TestSwarmStatusPhantomCount(t *testing.T) {
 	}
 }
 
+// TestSwarmStatusDeadCount tests that dead agents are correctly counted and excluded from Active count.
+func TestSwarmStatusDeadCount(t *testing.T) {
+	tests := []struct {
+		name       string
+		agents     []AgentInfo
+		wantActive int
+		wantDead   int
+	}{
+		{
+			name: "all active agents",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1"},
+				{SessionID: "ses_2", BeadsID: "test-2"},
+			},
+			wantActive: 2,
+			wantDead:   0,
+		},
+		{
+			name: "all dead agents",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1", IsDead: true},
+				{SessionID: "ses_2", BeadsID: "test-2", IsDead: true},
+			},
+			wantActive: 0,
+			wantDead:   2,
+		},
+		{
+			name: "mixed active and dead",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1"},
+				{SessionID: "ses_2", BeadsID: "test-2", IsDead: true},
+				{SessionID: "ses_3", BeadsID: "test-3"},
+				{SessionID: "ses_4", BeadsID: "test-4", IsDead: true},
+			},
+			wantActive: 2,
+			wantDead:   2,
+		},
+		{
+			name: "phantom takes precedence over dead",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1", IsPhantom: true, IsDead: true},
+			},
+			wantActive: 0,
+			wantDead:   0, // Dead is not counted because phantom is checked first
+		},
+		{
+			name: "completed takes precedence over dead",
+			agents: []AgentInfo{
+				{SessionID: "ses_1", BeadsID: "test-1", IsCompleted: true, IsDead: true},
+			},
+			wantActive: 0,
+			wantDead:   0, // Dead is not counted because completed is checked first
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Replicate the counting logic from runStatus()
+			activeCount := 0
+			deadCount := 0
+			for _, agent := range tt.agents {
+				if agent.IsPhantom {
+					// Phantom - not counted
+				} else if agent.IsCompleted {
+					// Completed - not counted
+				} else if agent.IsDead {
+					deadCount++
+				} else {
+					activeCount++
+				}
+			}
+
+			if activeCount != tt.wantActive {
+				t.Errorf("activeCount = %d, want %d", activeCount, tt.wantActive)
+			}
+			if deadCount != tt.wantDead {
+				t.Errorf("deadCount = %d, want %d", deadCount, tt.wantDead)
+			}
+		})
+	}
+}
+
 // TestAgentInfoIsPhantomField tests that IsPhantom field is correctly set.
 func TestAgentInfoIsPhantomField(t *testing.T) {
 	// Test that AgentInfo correctly stores phantom status

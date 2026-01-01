@@ -2631,6 +2631,7 @@ type SwarmStatus struct {
 	Active     int `json:"active"`
 	Processing int `json:"processing,omitempty"` // Agents actively generating response
 	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
+	Dead       int `json:"dead,omitempty"`       // Agents with stale session (no activity for > 3 min)
 	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
 	Queued     int `json:"queued"`
 	Completed  int `json:"completed_today"`
@@ -2663,6 +2664,7 @@ type AgentInfo struct {
 	IsCompleted   bool                 `json:"is_completed,omitempty"`   // True if beads issue is closed
 	IsBlocked     bool                 `json:"is_blocked,omitempty"`     // True if agent reported BLOCKED: comment
 	BlockedReason string               `json:"blocked_reason,omitempty"` // Reason from BLOCKED: comment
+	IsDead        bool                 `json:"is_dead,omitempty"`        // True if session has no activity for StaleSessionThreshold (3 min)
 	Tokens        *opencode.TokenStats `json:"tokens,omitempty"`         // Token usage for the session
 }
 
@@ -2727,16 +2729,28 @@ func runStatus(serverURL string) error {
 	// Dashboard marks agents "dead" after StaleSessionThreshold of inactivity
 	maxIdleTime := opencode.StaleSessionThreshold
 
+	// Track stale (dead) sessions separately - these have a session but no activity for > 3 min
+	staleSessionsByBeadsID := make(map[string]*opencode.Session)
+
 	for i := range sessions {
 		s := &sessions[i]
 		sessionMap[s.ID] = s
 
-		// Only consider recently active sessions for beads matching
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" {
+			continue
+		}
+
+		// Check if session is active or stale
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		if now.Sub(updatedAt) <= maxIdleTime {
-			beadsID := extractBeadsIDFromTitle(s.Title)
-			if beadsID != "" {
-				beadsToSession[beadsID] = s
+			// Active session - include in beads matching
+			beadsToSession[beadsID] = s
+		} else {
+			// Stale session - track separately for dead detection
+			// Only add if we don't already have an active session for this beads ID
+			if _, hasActive := beadsToSession[beadsID]; !hasActive {
+				staleSessionsByBeadsID[beadsID] = s
 			}
 		}
 	}
@@ -2789,21 +2803,17 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Phase 2: Collect beads IDs from active OpenCode sessions
+	// Phase 2: Collect beads IDs from OpenCode sessions (both active and stale/dead)
 	type opcodeAgent struct {
 		session *opencode.Session
 		beadsID string
 		skill   string
 		project string
+		isDead  bool // True if session is stale (no activity for > 3 min)
 	}
 	var opcodeAgents []opcodeAgent
 
 	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		if now.Sub(updatedAt) > maxIdleTime {
-			continue
-		}
-
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		if beadsID == "" {
 			continue
@@ -2814,12 +2824,16 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		isDead := now.Sub(updatedAt) > maxIdleTime
+
 		sessionCopy := s // Copy to avoid closure issues
 		opcodeAgents = append(opcodeAgents, opcodeAgent{
 			session: &sessionCopy,
 			beadsID: beadsID,
 			skill:   extractSkillFromTitle(s.Title),
 			project: extractProjectFromBeadsID(beadsID),
+			isDead:  isDead,
 		})
 
 		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
@@ -2854,18 +2868,28 @@ func runStatus(serverURL string) error {
 	for _, ta := range tmuxAgents {
 		// Check if there's an active OpenCode session for this beads ID
 		session := beadsToSession[ta.beadsID]
+		staleSession := staleSessionsByBeadsID[ta.beadsID]
 		sessionID := ""
 		runtime := "unknown"
 		isPhantom := true
 		isProcessing := false
+		isDead := false
 
 		if session != nil {
+			// Active session found
 			sessionID = session.ID
 			createdAt := time.Unix(session.Time.Created/1000, 0)
 			runtime = formatDuration(now.Sub(createdAt))
 			isPhantom = false
 			// Check if the session is actively processing (has pending response)
 			isProcessing = client.IsSessionProcessing(session.ID)
+		} else if staleSession != nil {
+			// Stale session found - session exists but no activity for > 3 min (dead/orphaned)
+			sessionID = staleSession.ID
+			createdAt := time.Unix(staleSession.Time.Created/1000, 0)
+			runtime = formatDuration(now.Sub(createdAt))
+			isPhantom = false
+			isDead = true
 		} else {
 			sessionID = "tmux-stalled"
 		}
@@ -2918,6 +2942,7 @@ func runStatus(serverURL string) error {
 			NoComments:    noComments,
 			IsBlocked:     isBlocked,
 			BlockedReason: blockedReason,
+			IsDead:        isDead,
 		})
 	}
 
@@ -2931,7 +2956,11 @@ func runStatus(serverURL string) error {
 		isPhantom := false
 
 		// Check if the session is actively processing (has pending response)
-		isProcessing := client.IsSessionProcessing(oa.session.ID)
+		// Skip this check for dead sessions - they can't be processing
+		isProcessing := false
+		if !oa.isDead {
+			isProcessing = client.IsSessionProcessing(oa.session.ID)
+		}
 
 		// Get issue for task and closed status
 		issue := allIssues[oa.beadsID]
@@ -2979,6 +3008,7 @@ func runStatus(serverURL string) error {
 			NoComments:    noComments,
 			IsBlocked:     isBlocked,
 			BlockedReason: blockedReason,
+			IsDead:        oa.isDead,
 		})
 	}
 
@@ -3004,6 +3034,7 @@ func runStatus(serverURL string) error {
 	activeCount := 0
 	processingCount := 0
 	idleCount := 0
+	deadCount := 0
 	phantomCount := 0
 	completedCount := 0
 	for _, agent := range agents {
@@ -3012,6 +3043,9 @@ func runStatus(serverURL string) error {
 		} else if agent.IsCompleted {
 			// Completed agents (beads issue closed) don't count as active
 			completedCount++
+		} else if agent.IsDead {
+			// Dead agents (no activity for > 3 min) - session exists but process likely died
+			deadCount++
 		} else {
 			activeCount++
 			if agent.IsProcessing {
@@ -3026,6 +3060,7 @@ func runStatus(serverURL string) error {
 		Active:     activeCount,
 		Processing: processingCount,
 		Idle:       idleCount,
+		Dead:       deadCount,
 		Phantom:    phantomCount,
 		Queued:     0,              // TODO: implement queuing system
 		Completed:  completedCount, // Agents with closed beads issues
@@ -3285,6 +3320,9 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	if output.Swarm.Active > 0 {
 		fmt.Printf(" (running: %d, idle: %d)", output.Swarm.Processing, output.Swarm.Idle)
 	}
+	if output.Swarm.Dead > 0 {
+		fmt.Printf(", 💀 Dead: %d", output.Swarm.Dead)
+	}
 	if output.Swarm.Completed > 0 {
 		fmt.Printf(", Completed: %d", output.Swarm.Completed)
 		if !showAll {
@@ -3454,6 +3492,10 @@ func getAgentStatus(agent AgentInfo) string {
 	}
 	if agent.IsPhantom {
 		return "phantom"
+	}
+	if agent.IsDead {
+		// Session has no activity for StaleSessionThreshold (3 min) - process likely died
+		return "💀 dead"
 	}
 	if agent.IsBlocked {
 		// Agent explicitly reported BLOCKED: comment - needs orchestrator attention

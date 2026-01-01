@@ -143,6 +143,26 @@ func TestGetAgentStatus(t *testing.T) {
 			expected: "phantom",
 		},
 		{
+			name:     "dead takes precedence over blocked and processing",
+			agent:    AgentInfo{IsDead: true, IsBlocked: true, IsProcessing: true},
+			expected: "💀 dead",
+		},
+		{
+			name:     "dead session shows dead status",
+			agent:    AgentInfo{IsDead: true},
+			expected: "💀 dead",
+		},
+		{
+			name:     "blocked takes precedence over stalled",
+			agent:    AgentInfo{IsBlocked: true, NoComments: true},
+			expected: "🚫 blocked",
+		},
+		{
+			name:     "stalled (no comments)",
+			agent:    AgentInfo{NoComments: true},
+			expected: "⚠️ stalled",
+		},
+		{
 			name:     "processing/running",
 			agent:    AgentInfo{IsProcessing: true},
 			expected: "running",
