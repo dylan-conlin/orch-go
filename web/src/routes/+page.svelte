@@ -101,9 +101,19 @@
 		// Load section state from localStorage (sync, instant)
 		loadSectionState();
 
-		// Connect to primary SSE immediately - this triggers agents.fetch() on connection
-		// which is the most critical data for initial render
-		connectSSE();
+		// CRITICAL: Fetch agents BEFORE connecting to SSE.
+		// Chrome limits connections to 6 per host. If multiple dashboard tabs are open,
+		// each tab's SSE connection can saturate all available connections, causing
+		// the agents.fetch() request to queue indefinitely.
+		// By fetching agents first, we ensure the dashboard populates even if SSE
+		// connections later exhaust the connection pool.
+		agents.fetch().then(() => {
+			// Now connect SSE for real-time updates
+			connectSSE();
+		}).catch(() => {
+			// Still connect SSE even if initial fetch fails - SSE will trigger refetch
+			connectSSE();
+		});
 
 		// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP

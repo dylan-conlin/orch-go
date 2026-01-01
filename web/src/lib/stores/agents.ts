@@ -154,9 +154,12 @@ function createAgentStore() {
 		},
 		// Fetch agents from orch-go API with abort support
 		async fetch(): Promise<void> {
-			// Cancel any in-flight request to prevent race conditions
+			// If a fetch is already in progress, skip this request.
+			// The in-progress fetch will complete and update the store.
+			// This prevents race conditions where SSE events trigger fetchDebounced
+			// while the initial fetch is still running (~800ms for 1800+ agents).
 			if (currentFetchController) {
-				currentFetchController.abort();
+				return;
 			}
 			currentFetchController = new AbortController();
 			
@@ -367,7 +370,10 @@ export function connectSSE(): void {
 			return;
 		}
 		connectionStatus.set('connected');
-		// Fetch agents on connection to get current state
+		// Fetch agents on reconnection to refresh state.
+		// On initial load, this will skip since fetch was already triggered before SSE connect
+		// (to avoid Chrome's 6-connection-per-host limit blocking the fetch).
+		// On reconnection after disconnect, this ensures data is refreshed.
 		agents.fetch().catch(console.error);
 	};
 
