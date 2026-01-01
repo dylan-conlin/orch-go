@@ -517,7 +517,7 @@ func InferSkillFromLabels(labels []string) string {
 }
 
 // InferSkillFromIssue determines the skill to use for an issue.
-// Priority order: skill:* label > issue type inference > error
+// Priority order: skill:* label > title pattern > issue type inference > error
 // This respects explicit skill assignments via labels while falling back
 // to type-based inference for issues without skill labels.
 func InferSkillFromIssue(issue *Issue) (string, error) {
@@ -530,8 +530,23 @@ func InferSkillFromIssue(issue *Issue) (string, error) {
 		return skill, nil
 	}
 
+	// Check for title-based patterns
+	if skill := InferSkillFromTitle(issue.Title); skill != "" {
+		return skill, nil
+	}
+
 	// Fall back to type-based inference
 	return InferSkill(issue.IssueType)
+}
+
+// InferSkillFromTitle detects skills from issue title patterns.
+// Returns the skill name if a known pattern is matched, or empty string otherwise.
+func InferSkillFromTitle(title string) string {
+	// Synthesis issues created by kb reflect --create-issue
+	if strings.HasPrefix(title, "Synthesize ") && strings.Contains(title, " investigations") {
+		return "kb-reflect"
+	}
+	return ""
 }
 
 // FormatPreview formats an issue for preview display.

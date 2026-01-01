@@ -375,6 +375,32 @@ func TestInferSkillFromLabels(t *testing.T) {
 	}
 }
 
+func TestInferSkillFromTitle(t *testing.T) {
+	tests := []struct {
+		name  string
+		title string
+		want  string
+	}{
+		{"synthesis issue", "Synthesize daemon investigations (22)", "kb-reflect"},
+		{"synthesis issue with different count", "Synthesize api investigations (10)", "kb-reflect"},
+		{"synthesis issue simple", "Synthesize foo investigations", "kb-reflect"},
+		{"not synthesis - wrong prefix", "Review daemon investigations", ""},
+		{"not synthesis - wrong suffix", "Synthesize daemon reviews", ""},
+		{"regular feature", "Add rate limiting middleware", ""},
+		{"regular bug", "Fix login redirect issue", ""},
+		{"empty title", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := InferSkillFromTitle(tt.title)
+			if got != tt.want {
+				t.Errorf("InferSkillFromTitle(%q) = %q, want %q", tt.title, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestInferSkillFromIssue(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -392,6 +418,24 @@ func TestInferSkillFromIssue(t *testing.T) {
 			name:      "skill label overrides bug type",
 			issue:     &Issue{IssueType: "bug", Labels: []string{"skill:investigation"}},
 			wantSkill: "investigation",
+			wantErr:   false,
+		},
+		{
+			name:      "skill label takes priority over title pattern",
+			issue:     &Issue{Title: "Synthesize foo investigations", IssueType: "task", Labels: []string{"skill:research"}},
+			wantSkill: "research",
+			wantErr:   false,
+		},
+		{
+			name:      "title pattern infers kb-reflect for synthesis issues",
+			issue:     &Issue{Title: "Synthesize daemon investigations (22)", IssueType: "task", Labels: []string{"triage:ready"}},
+			wantSkill: "kb-reflect",
+			wantErr:   false,
+		},
+		{
+			name:      "title pattern takes priority over type",
+			issue:     &Issue{Title: "Synthesize api investigations (10)", IssueType: "task"},
+			wantSkill: "kb-reflect",
 			wantErr:   false,
 		},
 		{
