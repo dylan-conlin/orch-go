@@ -20,10 +20,10 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
-	"github.com/dylan-conlin/orch-go/pkg/sessions"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/question"
+	"github.com/dylan-conlin/orch-go/pkg/sessions"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
@@ -542,8 +542,8 @@ func init() {
 
 var (
 	// Work command flags
-	workInline             bool // Run inline (blocking) with TUI
-	workSkipFailureReview  bool // Bypass failure report review gate (explicit opt-out)
+	workInline            bool // Run inline (blocking) with TUI
+	workSkipFailureReview bool // Bypass failure report review gate (explicit opt-out)
 )
 
 var workCmd = &cobra.Command{
@@ -1060,6 +1060,28 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 	}
 }
 
+// inferSkillFromBeadsIssue infers skill from a beads issue using labels, title, then type.
+func inferSkillFromBeadsIssue(issue *beads.Issue) string {
+	// Check for skill:* labels first
+	for _, label := range issue.Labels {
+		if strings.HasPrefix(label, "skill:") {
+			return strings.TrimPrefix(label, "skill:")
+		}
+	}
+
+	// Check for title patterns (e.g., synthesis issues)
+	if strings.HasPrefix(issue.Title, "Synthesize ") && strings.Contains(issue.Title, " investigations") {
+		return "kb-reflect"
+	}
+
+	// Fall back to type-based inference
+	skill, err := InferSkillFromIssueType(issue.IssueType)
+	if err != nil {
+		return "feature-impl" // Default fallback
+	}
+	return skill
+}
+
 func runWork(serverURL, beadsID string, inline bool) error {
 	// Get issue details
 	issue, err := verify.GetIssue(beadsID)
@@ -1067,10 +1089,19 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Infer skill from issue type
-	skillName, err := InferSkillFromIssueType(issue.IssueType)
+	// Infer skill from issue (labels, title pattern, then type)
+	// Use beads.Issue which has Labels for full skill inference
+	var skillName string
+	beadsClient := beads.NewClient("")
+	beadsIssue, err := beadsClient.Show(beadsID)
 	if err != nil {
-		return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
+		// Fall back to type-only inference if beads fails
+		skillName, err = InferSkillFromIssueType(issue.IssueType)
+		if err != nil {
+			return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
+		}
+	} else {
+		skillName = inferSkillFromBeadsIssue(beadsIssue)
 	}
 
 	// Use issue title and description as the task for full context
@@ -2616,19 +2647,19 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID    string               `json:"session_id"`
-	BeadsID      string               `json:"beads_id,omitempty"`
-	Skill        string               `json:"skill,omitempty"`
-	Account      string               `json:"account,omitempty"`
-	Runtime      string               `json:"runtime"`
-	Title        string               `json:"title,omitempty"`
-	Window       string               `json:"window,omitempty"`
-	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
-	NoComments   bool                 `json:"no_comments,omitempty"`   // True if no beads comments after >1 min (potential failed-to-start)
-	Task         string               `json:"task,omitempty"`          // Task description (truncated)
-	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
-	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
-	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
+	SessionID     string               `json:"session_id"`
+	BeadsID       string               `json:"beads_id,omitempty"`
+	Skill         string               `json:"skill,omitempty"`
+	Account       string               `json:"account,omitempty"`
+	Runtime       string               `json:"runtime"`
+	Title         string               `json:"title,omitempty"`
+	Window        string               `json:"window,omitempty"`
+	Phase         string               `json:"phase,omitempty"`          // Current phase from beads comments
+	NoComments    bool                 `json:"no_comments,omitempty"`    // True if no beads comments after >1 min (potential failed-to-start)
+	Task          string               `json:"task,omitempty"`           // Task description (truncated)
+	Project       string               `json:"project,omitempty"`        // Project name derived from beads ID or workspace
+	IsPhantom     bool                 `json:"is_phantom,omitempty"`     // True if beads issue open but agent not running
+	IsProcessing  bool                 `json:"is_processing,omitempty"`  // True if session is actively generating a response
 	IsCompleted   bool                 `json:"is_completed,omitempty"`   // True if beads issue is closed
 	IsBlocked     bool                 `json:"is_blocked,omitempty"`     // True if agent reported BLOCKED: comment
 	BlockedReason string               `json:"blocked_reason,omitempty"` // Reason from BLOCKED: comment
@@ -4662,12 +4693,12 @@ func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 
 // WorkspaceInfo represents a workspace directory with metadata for cleanup.
 type WorkspaceInfo struct {
-	Name        string    // Directory name
-	Path        string    // Full path
-	Size        int64     // Total size in bytes
-	ModTime     time.Time // Last modification time
-	Age         int       // Age in days
-	HasActiveSession bool // Whether workspace has active OpenCode session
+	Name             string    // Directory name
+	Path             string    // Full path
+	Size             int64     // Total size in bytes
+	ModTime          time.Time // Last modification time
+	Age              int       // Age in days
+	HasActiveSession bool      // Whether workspace has active OpenCode session
 }
 
 // cleanOldWorkspaces finds and removes workspace directories older than the specified days.
