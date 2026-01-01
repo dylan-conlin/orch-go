@@ -25,6 +25,15 @@ export interface GapAnalysis {
 	investigations?: number;
 }
 
+// Token usage stats from OpenCode session
+export interface TokenStats {
+	input_tokens: number;
+	output_tokens: number;
+	reasoning_tokens?: number;
+	cache_read_tokens?: number;
+	total_tokens: number; // input + output + reasoning
+}
+
 // LastActivity from API response (initial load)
 export interface LastActivity {
 	type: string; // "text", "tool", "reasoning", "step-start", "step-finish"
@@ -65,6 +74,7 @@ export interface Agent {
 		text?: string;
 		timestamp: number;
 	};
+	tokens?: TokenStats; // Token usage for the session
 }
 
 // SSE Event types from OpenCode
@@ -271,6 +281,33 @@ export const archivedAgents = derived(agents, ($agents) => {
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt >= RECENT_THRESHOLD_MS;
 	});
+});
+
+// Token usage aggregation across active agents
+// Returns total tokens from all active sessions for the stats bar display
+export interface TotalTokens {
+	total: number;
+	input: number;
+	output: number;
+	agentCount: number; // Number of agents contributing to the total
+}
+
+export const totalTokens = derived(activeAgents, ($activeAgents): TotalTokens => {
+	let total = 0;
+	let input = 0;
+	let output = 0;
+	let agentCount = 0;
+
+	for (const agent of $activeAgents) {
+		if (agent.tokens) {
+			total += agent.tokens.total_tokens || 0;
+			input += agent.tokens.input_tokens || 0;
+			output += agent.tokens.output_tokens || 0;
+			agentCount++;
+		}
+	}
+
+	return { total, input, output, agentCount };
 });
 
 // SSE event stream with deduplication

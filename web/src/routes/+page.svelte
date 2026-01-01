@@ -8,7 +8,8 @@
 	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
 	import { ReadyQueueSection } from '$lib/components/ready-queue-section';
-	// Note: PendingReviewsSection, UpNextSection, RecentWins removed - consolidated into NeedsAttention
+	import { RecentWins } from '$lib/components/recent-wins';
+	// Note: PendingReviewsSection, UpNextSection removed - consolidated into NeedsAttention
 	import { NeedsAttention } from '$lib/components/needs-attention';
 	import {
 		agents,
@@ -21,6 +22,7 @@
 		connectionStatus,
 		connectSSE,
 		disconnectSSE,
+		totalTokens,
 		type Agent,
 		type AgentState
 	} from '$lib/stores/agents';
@@ -97,6 +99,18 @@
 	// Get unique projects from agents
 	$: uniqueProjects = [...new Set($agents.map(a => a.project).filter(Boolean))].sort() as string[];
 
+	// Map project name to project_dir for pattern filtering
+	// Find the first agent with the selected project name and use its project_dir
+	$: currentProjectDir = projectFilter !== 'all' 
+		? $agents.find(a => a.project === projectFilter)?.project_dir 
+		: undefined;
+
+	// Refetch patterns when project filter changes
+	// This ensures cross-project noise is filtered out
+	$: if (typeof window !== 'undefined') {
+		patterns.fetch(currentProjectDir);
+	}
+
 	onMount(() => {
 		// Load section state from localStorage (sync, instant)
 		loadSectionState();
@@ -161,7 +175,7 @@
 				readyIssues.fetch(),
 				daemon.fetch(),
 				pendingReviews.fetch(),
-				patterns.fetch()
+				patterns.fetch(currentProjectDir)
 			]).catch(console.error);
 		}, 60000);
 
@@ -198,6 +212,17 @@
 
 	function formatUnixTime(timestamp: number): string {
 		return new Date(timestamp * 1000).toLocaleTimeString();
+	}
+
+	// Format token count with K/M suffixes for readability
+	function formatTokenCount(count: number): string {
+		if (count >= 1000000) {
+			return `${(count / 1000000).toFixed(1)}M`;
+		}
+		if (count >= 1000) {
+			return `${(count / 1000).toFixed(1)}K`;
+		}
+		return count.toString();
 	}
 
 	function getEventIcon(type: string): string {
@@ -526,6 +551,32 @@
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
+
+			<!-- Token usage indicator (only when active agents have token data) -->
+			{#if $totalTokens.total > 0}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="tokens-indicator">
+								<span class="text-base">🪙</span>
+								<span class="inline-flex items-baseline gap-0.5">
+									<span class="text-lg font-bold tabular-nums">{formatTokenCount($totalTokens.total)}</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">tok</span>
+								</span>
+							</span>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class="font-medium">{formatTokenCount($totalTokens.total)} tokens</p>
+						<p class="text-xs text-muted-foreground">
+							in: {formatTokenCount($totalTokens.input)} • out: {formatTokenCount($totalTokens.output)}
+						</p>
+						<p class="text-xs text-muted-foreground mt-1">
+							From {$totalTokens.agentCount} active agent{$totalTokens.agentCount === 1 ? '' : 's'}
+						</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 		</div>
 		<!-- Connection button and settings - pushed to end, shrinks last -->
 		<div class="ml-auto flex items-center gap-1 shrink-0">
@@ -568,7 +619,10 @@
 	<!-- ATTENTION-FIRST LAYOUT: Single unified view -->
 	
 	<!-- 🔔 Attention Panel (PRIMARY - top, prominent) -->
-	<NeedsAttention />
+	<NeedsAttention projectDir={currentProjectDir} />
+	
+	<!-- ✨ Recently Completed (shows agents completed in last 4h) -->
+	<RecentWins />
 	
 	<!-- 🟢 Active Agents (always visible) -->
 	<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
