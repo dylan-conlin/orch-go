@@ -1835,9 +1835,12 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 
 	// Use retry logic for transient failures (network issues, server temporarily unavailable)
+	// Note: Uses CLI mode (startHeadlessSession) instead of HTTP API (startHeadlessSessionAPI)
+	// because OpenCode's HTTP API ignores the model parameter. CLI mode correctly honors --model flag.
+	// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
 	retryCfg := spawn.DefaultRetryConfig()
 	result, retryResult := spawn.Retry(retryCfg, func() (*headlessSpawnResult, error) {
-		return startHeadlessSessionAPI(client, sessionTitle, minimalPrompt, cfg, verbose)
+		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg, verbose)
 	})
 
 	if retryResult.LastErr != nil {
@@ -2026,6 +2029,15 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
 
+	// Add MCP config if specified (needed for --mcp flag support)
+	if cfg.MCP != "" {
+		mcpConfigContent, err := spawn.GenerateMCPConfig(cfg.MCP)
+		if err != nil {
+			return nil, spawn.WrapSpawnError(err, "Failed to generate MCP config")
+		}
+		cmd.Env = append(cmd.Env, "OPENCODE_CONFIG_CONTENT="+mcpConfigContent)
+	}
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		spawnErr := spawn.WrapSpawnError(err, "Failed to get stdout pipe")
@@ -2073,8 +2085,10 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 }
 
 // startHeadlessSessionAPI creates a session via HTTP API and sends the initial prompt.
-// This is the preferred method for headless spawns as it properly handles the directory.
-// The opencode CLI's --attach mode has a bug where it always uses "/" as the directory.
+// DEPRECATED: This function is no longer used because OpenCode's HTTP API ignores the model parameter.
+// Use startHeadlessSession (CLI mode) instead, which correctly honors the --model flag.
+// Kept for reference and potential fallback if CLI mode has issues.
+// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
 func startHeadlessSessionAPI(client *opencode.Client, sessionTitle, minimalPrompt string, cfg *spawn.Config, verbose bool) (*headlessSpawnResult, error) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "Creating session via API: title=%s, directory=%s\n", sessionTitle, cfg.ProjectDir)
