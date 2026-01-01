@@ -5,6 +5,9 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // TestEvidenceResult represents the result of checking for test execution evidence.
@@ -171,6 +174,9 @@ var codeFileExtensions = []string{
 
 // HasCodeChangesInRecentCommits checks if any code files were modified
 // in recent commits that would require test verification.
+//
+// DEPRECATED: Use HasCodeChangesSinceSpawn for accurate per-agent change detection.
+// This function uses HEAD~5 which includes changes from OTHER agents' commits.
 func HasCodeChangesInRecentCommits(projectDir string) bool {
 	// Get changed files from last 5 commits
 	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
@@ -184,6 +190,34 @@ func HasCodeChangesInRecentCommits(projectDir string) bool {
 		if err != nil {
 			return false
 		}
+	}
+
+	return hasCodeChangesInFiles(string(output))
+}
+
+// HasCodeChangesSinceSpawn checks if any code files were modified
+// in commits since the given spawn time.
+//
+// This is more accurate than HasCodeChangesInRecentCommits because it only
+// considers commits made by THIS agent, not prior agents. This prevents
+// false positives where markdown-only changes trigger the test evidence gate
+// because earlier commits (from other agents) included code changes.
+func HasCodeChangesSinceSpawn(projectDir string, spawnTime time.Time) bool {
+	if spawnTime.IsZero() {
+		// Fall back to recent commits if spawn time is unavailable
+		return HasCodeChangesInRecentCommits(projectDir)
+	}
+
+	// Use git log with --since to get commits since spawn time
+	sinceStr := spawnTime.Format(time.RFC3339)
+	
+	// Get changed files from commits since spawn time
+	cmd := exec.Command("git", "log", "--name-only", "--since="+sinceStr, "--format=")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Fall back to recent commits if git log fails
+		return HasCodeChangesInRecentCommits(projectDir)
 	}
 
 	return hasCodeChangesInFiles(string(output))
@@ -254,8 +288,12 @@ func VerifyTestEvidence(beadsID, workspacePath, projectDir string) TestEvidenceR
 		return result
 	}
 
-	// Check if code files were modified
-	result.HasCodeChanges = HasCodeChangesInRecentCommits(projectDir)
+	// Check if code files were modified since this agent was spawned
+	// Using spawn time ensures we only look at THIS agent's commits,
+	// not prior agents. This prevents false positives where markdown-only
+	// changes trigger the gate because earlier commits had code changes.
+	spawnTime := spawn.ReadSpawnTime(workspacePath)
+	result.HasCodeChanges = HasCodeChangesSinceSpawn(projectDir, spawnTime)
 
 	// No code changes = no test evidence needed
 	if !result.HasCodeChanges {

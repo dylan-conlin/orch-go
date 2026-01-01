@@ -2,6 +2,7 @@ package verify
 
 import (
 	"testing"
+	"time"
 )
 
 func TestIsSkillRequiringTestEvidence(t *testing.T) {
@@ -481,6 +482,101 @@ func TestTestEvidencePatternMatching(t *testing.T) {
 			got, _ := HasTestExecutionEvidence(comments)
 			if got != tc.want {
 				t.Errorf("Pattern test for %q: got %v, want %v", tc.comment, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHasCodeChangesSinceSpawn(t *testing.T) {
+	// Note: This test uses the actual git repo, so results depend on repo state.
+	// The key behavior we're testing is the fallback logic and that it handles
+	// zero time correctly.
+	
+	tests := []struct {
+		name      string
+		spawnTime time.Time
+		desc      string
+	}{
+		{
+			name:      "zero spawn time falls back to recent commits",
+			spawnTime: time.Time{},
+			desc:      "Should fall back to HasCodeChangesInRecentCommits",
+		},
+		{
+			name:      "future spawn time returns false (no commits since)",
+			spawnTime: time.Now().Add(24 * time.Hour),
+			desc:      "No commits can exist since a future time",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use current directory as project dir (this test file's repo)
+			projectDir := "."
+			result := HasCodeChangesSinceSpawn(projectDir, tt.spawnTime)
+			
+			// For future spawn time, we expect false (no commits since future)
+			if tt.spawnTime.After(time.Now()) && result {
+				t.Errorf("HasCodeChangesSinceSpawn with future time = true, want false")
+			}
+			// For zero time, we can't test exact result but it shouldn't panic
+			t.Logf("%s: result=%v", tt.desc, result)
+		})
+	}
+}
+
+func TestMarkdownOnlyChangesScenario(t *testing.T) {
+	// This test verifies the hasCodeChangesInFiles correctly identifies
+	// markdown-only changes as NOT requiring test evidence
+	tests := []struct {
+		name      string
+		gitOutput string
+		want      bool
+		desc      string
+	}{
+		{
+			name:      "markdown only - single file",
+			gitOutput: "README.md\n",
+			want:      false,
+			desc:      "Single markdown file should not require tests",
+		},
+		{
+			name:      "markdown only - multiple files",
+			gitOutput: "README.md\ndocs/DESIGN.md\n.kb/investigations/2025-01-01-test.md\n",
+			want:      false,
+			desc:      "Multiple markdown files should not require tests",
+		},
+		{
+			name:      "markdown plus template files",
+			gitOutput: "SKILL.md\npkg/claudemd/templates/SYNTHESIS.md\n",
+			want:      false,
+			desc:      "Markdown templates should not require tests",
+		},
+		{
+			name:      "markdown with code file",
+			gitOutput: "README.md\npkg/verify/check.go\n",
+			want:      true,
+			desc:      "Mixed markdown and code should require tests",
+		},
+		{
+			name:      "only config files",
+			gitOutput: "config.yaml\npackage.json\n.gitignore\n",
+			want:      false,
+			desc:      "Config files should not require tests",
+		},
+		{
+			name:      "markdown and config only",
+			gitOutput: "README.md\nconfig.yaml\n",
+			want:      false,
+			desc:      "Markdown and config together should not require tests",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hasCodeChangesInFiles(tt.gitOutput)
+			if got != tt.want {
+				t.Errorf("hasCodeChangesInFiles() = %v, want %v (%s)", got, tt.want, tt.desc)
 			}
 		})
 	}
