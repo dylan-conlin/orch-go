@@ -655,9 +655,9 @@
 		aria-label="Close panel"
 	></button>
 
-	<!-- Slide-out Panel - 2/3 width for better content visibility -->
+	<!-- Slide-out Panel - wider for better content visibility -->
 	<div 
-		class="fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l bg-card shadow-xl sm:w-[66vw] lg:w-[60vw] xl:w-[55vw]"
+		class="fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l bg-card shadow-xl sm:w-[80vw] lg:w-[75vw] xl:w-[70vw]"
 		transition:fly={{ x: 500, duration: 200 }}
 		role="dialog"
 		aria-modal="true"
