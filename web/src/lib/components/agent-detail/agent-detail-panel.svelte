@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { selectedAgent, selectedAgentId, sseEvents, createIssue } from '$lib/stores/agents';
-	import type { Agent, SSEEvent } from '$lib/stores/agents';
+	import { selectedAgent, selectedAgentId, sseEvents, createIssue, fetchIssueDetails, fetchDeliverables } from '$lib/stores/agents';
+	import type { Agent, SSEEvent, IssueDetail, Deliverables } from '$lib/stores/agents';
 	import ArtifactViewer from '$lib/components/artifact-viewer/artifact-viewer.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { browser } from '$app/environment';
+	import { marked } from 'marked';
 	
 	// Tab types
 	type TabId = 'issue' | 'context' | 'activity' | 'deliverables';
@@ -18,6 +19,17 @@
 	let creatingIssue = false;
 	let issueCreationError: string | null = null;
 	let createdIssueId: string | null = null;
+	
+	// Issue tab state
+	let issueDetails: IssueDetail | null = null;
+	let issueLoading = false;
+	let issueError: string | null = null;
+	let lastFetchedBeadsId: string | null = null;
+	
+	// Deliverables tab state
+	let deliverables: Deliverables | null = null;
+	let deliverablesLoading = false;
+	let lastFetchedWorkspaceId: string | null = null;
 
 	// Track which items were recently copied
 	let copiedItem: string | null = null;
@@ -201,8 +213,25 @@
 		return date.toLocaleTimeString();
 	}
 
-	// Activity icon
-	function getActivityIcon(type?: string): string {
+	// Activity icon - human-readable icons based on tool/action type
+	function getActivityIcon(type?: string, toolName?: string): string {
+		// Tool-specific icons for common tools
+		if (toolName) {
+			switch (toolName) {
+				case 'edit': return '✏️';
+				case 'read': return '📖';
+				case 'write': return '📝';
+				case 'bash': return '💻';
+				case 'glob': return '🔍';
+				case 'grep': return '🔎';
+				case 'task': return '📋';
+				case 'todoread':
+				case 'todowrite': return '✅';
+				case 'webfetch': return '🌐';
+				default: return '🔧';
+			}
+		}
+		
 		switch (type) {
 			case 'text': return '💬';
 			case 'tool':
@@ -230,6 +259,249 @@
 				return 'border-muted-foreground/20 bg-muted/20';
 		}
 	}
+
+	// Human-readable label for activity events
+	function getHumanReadableLabel(part: any): string {
+		if (!part) return 'Unknown activity';
+		
+		const toolName = part.tool || part.toolName;
+		const state = part.state;
+		
+		// Tool-specific labels
+		if (toolName) {
+			switch (toolName) {
+				case 'edit': {
+					const filePath = state?.input?.filePath || part.input?.filePath;
+					if (filePath) {
+						const shortPath = filePath.split('/').slice(-2).join('/');
+						return `Edit: ${shortPath}`;
+					}
+					return 'Edit file';
+				}
+				case 'read': {
+					const filePath = state?.input?.filePath || part.input?.filePath;
+					if (filePath) {
+						const shortPath = filePath.split('/').slice(-2).join('/');
+						return `Read: ${shortPath}`;
+					}
+					return 'Read file';
+				}
+				case 'write': {
+					const filePath = state?.input?.filePath || part.input?.filePath;
+					if (filePath) {
+						const shortPath = filePath.split('/').slice(-2).join('/');
+						return `Write: ${shortPath}`;
+					}
+					return 'Write file';
+				}
+				case 'bash': {
+					const command = state?.input?.command || part.input?.command;
+					if (command) {
+						const shortCmd = command.length > 50 ? command.substring(0, 50) + '...' : command;
+						return `Run: ${shortCmd}`;
+					}
+					return 'Run command';
+				}
+				case 'glob': {
+					const pattern = state?.input?.pattern || part.input?.pattern;
+					if (pattern) return `Search: ${pattern}`;
+					return 'Search files';
+				}
+				case 'grep': {
+					const pattern = state?.input?.pattern || part.input?.pattern;
+					if (pattern) return `Grep: ${pattern}`;
+					return 'Search content';
+				}
+				case 'task': {
+					const description = state?.input?.description || part.input?.description;
+					if (description) return `Task: ${description}`;
+					return 'Spawn task';
+				}
+				case 'todoread': return 'Read todos';
+				case 'todowrite': return 'Update todos';
+				case 'webfetch': {
+					const url = state?.input?.url || part.input?.url;
+					if (url) {
+						try {
+							const hostname = new URL(url).hostname;
+							return `Fetch: ${hostname}`;
+						} catch {
+							return `Fetch: ${url.substring(0, 30)}...`;
+						}
+					}
+					return 'Fetch URL';
+				}
+				default:
+					if (state?.title) return state.title;
+					return `Using ${toolName}`;
+			}
+		}
+		
+		// Type-specific labels
+		switch (part.type) {
+			case 'text':
+				return part.text?.substring(0, 80) || 'Thinking...';
+			case 'reasoning':
+				return part.text?.substring(0, 80) || 'Reasoning...';
+			case 'step-start':
+				return 'Step started';
+			case 'step-finish':
+				return 'Step completed';
+			default:
+				return part.text || state?.title || part.type?.replace(/-/g, ' ') || 'Working...';
+		}
+	}
+
+	// Get status indicator for tool execution
+	function getToolStatus(part: any): { text: string; class: string } | null {
+		const state = part?.state;
+		if (!state?.status) return null;
+		
+		switch (state.status) {
+			case 'running':
+				return { text: '...', class: 'text-yellow-500 animate-pulse' };
+			case 'completed':
+				return { text: '✓', class: 'text-green-500' };
+			case 'error':
+				return { text: '✗', class: 'text-red-500' };
+			default:
+				return null;
+		}
+	}
+
+	// Group events - combine related events into expandable blocks
+	interface GroupedEvent {
+		id: string;
+		type: 'tool' | 'text' | 'step';
+		primary: SSEEvent;
+		related: SSEEvent[];
+		toolName?: string;
+		label: string;
+		expanded: boolean;
+		timestamp: number;
+		status?: { text: string; class: string } | undefined;
+	}
+	
+	// Expanded state for grouped events
+	let expandedGroups: Set<string> = new Set();
+	
+	function toggleGroup(id: string) {
+		if (expandedGroups.has(id)) {
+			expandedGroups.delete(id);
+		} else {
+			expandedGroups.add(id);
+		}
+		expandedGroups = expandedGroups; // Trigger reactivity
+	}
+
+	// Group related events together
+	function groupEvents(events: SSEEvent[]): GroupedEvent[] {
+		const groups: GroupedEvent[] = [];
+		const processed = new Set<string>();
+		
+		for (let i = 0; i < events.length; i++) {
+			const event = events[i];
+			if (processed.has(event.id)) continue;
+			
+			const part = event.properties?.part;
+			if (!part) continue;
+			
+			const toolName = part.tool || (part as any).toolName;
+			const isToolEvent = part.type === 'tool' || part.type === 'tool-invocation';
+			
+			if (isToolEvent && toolName) {
+				// Group tool invocation with its result (if available)
+				const related: SSEEvent[] = [];
+				
+				// Look for related events (next few events with same tool)
+				for (let j = i + 1; j < Math.min(i + 3, events.length); j++) {
+					const nextEvent = events[j];
+					const nextPart = nextEvent.properties?.part;
+					if (nextPart && (nextPart.tool === toolName || nextPart.type === 'step-finish')) {
+						related.push(nextEvent);
+						processed.add(nextEvent.id);
+					}
+				}
+				
+				groups.push({
+					id: event.id,
+					type: 'tool',
+					primary: event,
+					related,
+					toolName,
+					label: getHumanReadableLabel(part),
+					expanded: expandedGroups.has(event.id),
+					timestamp: event.timestamp || Date.now(),
+					status: getToolStatus(part) || undefined
+				});
+			} else if (part.type === 'text' || part.type === 'reasoning') {
+				groups.push({
+					id: event.id,
+					type: 'text',
+					primary: event,
+					related: [],
+					label: getHumanReadableLabel(part),
+					expanded: expandedGroups.has(event.id),
+					timestamp: event.timestamp || Date.now()
+				});
+			} else if (part.type === 'step-start' || part.type === 'step-finish') {
+				// Skip standalone step events - they'll be grouped with tools
+				if (!processed.has(event.id)) {
+					groups.push({
+						id: event.id,
+						type: 'step',
+						primary: event,
+						related: [],
+						label: getHumanReadableLabel(part),
+						expanded: false,
+						timestamp: event.timestamp || Date.now()
+					});
+				}
+			}
+			
+			processed.add(event.id);
+		}
+		
+		return groups;
+	}
+
+	// Render markdown safely
+	function renderMarkdown(text: string): string {
+		if (!text) return '';
+		try {
+			return marked.parse(text, { async: false }) as string;
+		} catch {
+			return text;
+		}
+	}
+
+	// Reference to the activity container for auto-scrolling
+	let activityContainer: HTMLDivElement;
+	let shouldAutoScroll = true;
+
+	// Auto-scroll to bottom when new events arrive
+	async function scrollToBottom() {
+		if (activityContainer && shouldAutoScroll) {
+			await tick();
+			activityContainer.scrollTop = activityContainer.scrollHeight;
+		}
+	}
+
+	// Check if user has scrolled up (disable auto-scroll if so)
+	function handleActivityScroll() {
+		if (!activityContainer) return;
+		const { scrollTop, scrollHeight, clientHeight } = activityContainer;
+		// If within 50px of bottom, enable auto-scroll
+		shouldAutoScroll = scrollHeight - scrollTop - clientHeight < 50;
+	}
+
+	// Watch for new events and auto-scroll
+	$: if (agentEvents.length > 0 && activityContainer) {
+		scrollToBottom();
+	}
+
+	// Compute grouped events reactively
+	$: groupedEvents = groupEvents(agentEvents);
 	
 	// Get gap quality color
 	function getGapQualityColor(quality: number): string {
@@ -259,6 +531,107 @@
 		const savedTab = loadTabPreference();
 		// Use saved preference if available, otherwise use default based on status
 		activeTab = savedTab || getDefaultTab($selectedAgent);
+	}
+	
+	// Fetch issue details when beads_id changes (or when switching to Issue tab)
+	$: if ($selectedAgent?.beads_id && $selectedAgent.beads_id !== lastFetchedBeadsId) {
+		loadIssueDetails($selectedAgent.beads_id, $selectedAgent.project_dir);
+	}
+	
+	async function loadIssueDetails(beadsId: string, projectDir?: string) {
+		issueLoading = true;
+		issueError = null;
+		lastFetchedBeadsId = beadsId;
+		
+		try {
+			issueDetails = await fetchIssueDetails(beadsId, projectDir);
+			if (issueDetails.error) {
+				issueError = issueDetails.error;
+			}
+		} catch (error) {
+			issueError = error instanceof Error ? error.message : 'Failed to load issue details';
+		} finally {
+			issueLoading = false;
+		}
+	}
+	
+	// Fetch deliverables when switching to deliverables tab or agent changes
+	$: if (activeTab === 'deliverables' && $selectedAgent?.id) {
+		const workspaceId = extractWorkspaceName($selectedAgent.id);
+		if (workspaceId !== lastFetchedWorkspaceId) {
+			loadDeliverables(workspaceId, $selectedAgent.spawned_at, $selectedAgent.project_dir, $selectedAgent.beads_id);
+		}
+	}
+	
+	async function loadDeliverables(workspaceId: string, spawnedAt?: string, projectDir?: string, beadsId?: string) {
+		deliverablesLoading = true;
+		lastFetchedWorkspaceId = workspaceId;
+		
+		try {
+			deliverables = await fetchDeliverables(workspaceId, spawnedAt, projectDir, beadsId);
+		} catch (error) {
+			console.error('Failed to load deliverables:', error);
+		} finally {
+			deliverablesLoading = false;
+		}
+	}
+	
+	// Format commit timestamp to relative time
+	function formatCommitTime(timestamp: string): string {
+		try {
+			const date = new Date(timestamp);
+			const now = new Date();
+			const diffMs = now.getTime() - date.getTime();
+			const diffMins = Math.floor(diffMs / 60000);
+			const diffHours = Math.floor(diffMins / 60);
+			
+			if (diffMins < 1) return 'just now';
+			if (diffMins < 60) return `${diffMins}m ago`;
+			if (diffHours < 24) return `${diffHours}h ago`;
+			return date.toLocaleDateString();
+		} catch {
+			return timestamp;
+		}
+	}
+	
+	// Helper to get priority label and color
+	function getPriorityInfo(priority: number): { label: string; color: string } {
+		switch (priority) {
+			case 0: return { label: 'P0 Critical', color: 'text-red-500' };
+			case 1: return { label: 'P1 High', color: 'text-orange-500' };
+			case 2: return { label: 'P2 Normal', color: 'text-blue-500' };
+			case 3: return { label: 'P3 Low', color: 'text-gray-500' };
+			default: return { label: `P${priority}`, color: 'text-gray-500' };
+		}
+	}
+	
+	// Helper to get status badge variant
+	function getIssueStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+		switch (status?.toLowerCase()) {
+			case 'open': return 'default';
+			case 'in_progress': return 'secondary';
+			case 'closed': return 'outline';
+			case 'blocked': return 'destructive';
+			default: return 'default';
+		}
+	}
+	
+	// Format relative time
+	function formatRelativeTime(isoDate: string | undefined): string {
+		if (!isoDate) return '';
+		const date = new Date(isoDate);
+		if (isNaN(date.getTime())) return '';
+		
+		const now = Date.now();
+		const diff = now - date.getTime();
+		const minutes = Math.floor(diff / 60000);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+		
+		if (days > 0) return `${days}d ago`;
+		if (hours > 0) return `${hours}h ago`;
+		if (minutes > 0) return `${minutes}m ago`;
+		return 'just now';
 	}
 
 	onMount(() => {
@@ -359,46 +732,158 @@
 			{#if activeTab === 'issue'}
 				<div class="p-4 space-y-4">
 					{#if $selectedAgent.beads_id}
-						<div class="space-y-3">
-							<!-- Issue ID and Title -->
-							<div>
-								<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Issue</h3>
-								<div class="rounded-lg border bg-muted/20 p-3">
-									<div class="flex items-start gap-2">
-										<span class="font-mono text-sm font-medium text-primary">{$selectedAgent.beads_id}</span>
+						{#if issueLoading}
+							<div class="flex items-center justify-center py-8">
+								<div class="animate-pulse text-muted-foreground">Loading issue details...</div>
+							</div>
+						{:else if issueError}
+							<div class="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+								<p class="text-sm text-destructive">{issueError}</p>
+								<button 
+									type="button"
+									class="mt-2 text-xs text-primary hover:underline"
+									onclick={() => loadIssueDetails($selectedAgent?.beads_id || '', $selectedAgent?.project_dir)}
+								>
+									Retry
+								</button>
+							</div>
+						{:else if issueDetails}
+							<div class="space-y-4">
+								<!-- Issue Header -->
+								<div class="rounded-lg border bg-muted/20 p-4">
+									<div class="flex flex-wrap items-center gap-2 mb-2">
+										<span class="font-mono text-sm font-medium text-primary">{issueDetails.id}</span>
+										<Badge variant={getIssueStatusVariant(issueDetails.status)}>
+											{issueDetails.status}
+										</Badge>
+										{#if issueDetails.priority !== undefined}
+											{@const priorityInfo = getPriorityInfo(issueDetails.priority)}
+											<span class={`text-xs font-medium ${priorityInfo.color}`}>{priorityInfo.label}</span>
+										{/if}
+										{#if issueDetails.issue_type}
+											<Badge variant="outline" class="text-xs">{issueDetails.issue_type}</Badge>
+										{/if}
 									</div>
-									{#if $selectedAgent.beads_title}
-										<p class="mt-2 text-sm">{$selectedAgent.beads_title}</p>
+									<h3 class="text-lg font-semibold">{issueDetails.title}</h3>
+									{#if issueDetails.labels && issueDetails.labels.length > 0}
+										<div class="flex flex-wrap gap-1 mt-2">
+											{#each issueDetails.labels as label}
+												<span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground">
+													{label}
+												</span>
+											{/each}
+										</div>
 									{/if}
 								</div>
-							</div>
-							
-							<!-- Task Description -->
-							{#if $selectedAgent.task}
+								
+								<!-- Description -->
+								{#if issueDetails.description}
+									<div>
+										<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Description</h4>
+										<div class="rounded-lg border bg-muted/10 p-3 prose prose-sm dark:prose-invert max-w-none prose-headings:text-sm prose-p:text-sm prose-p:leading-relaxed">
+											{@html marked(issueDetails.description)}
+										</div>
+									</div>
+								{/if}
+								
+								<!-- Parent/Child Relationships -->
+								{#if issueDetails.parent || (issueDetails.children && issueDetails.children.length > 0)}
+									<div>
+										<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Relationships</h4>
+										<div class="rounded-lg border bg-muted/10 p-3 space-y-2">
+											{#if issueDetails.parent}
+												<div class="flex items-center gap-2 text-sm">
+													<span class="text-muted-foreground">Parent:</span>
+													<span class="font-mono text-xs text-primary">{issueDetails.parent.id}</span>
+													{#if issueDetails.parent.title}
+														<span class="truncate">{issueDetails.parent.title}</span>
+													{/if}
+													{#if issueDetails.parent.status}
+														<Badge variant="outline" class="text-xs shrink-0">{issueDetails.parent.status}</Badge>
+													{/if}
+												</div>
+											{/if}
+											{#if issueDetails.children && issueDetails.children.length > 0}
+												<div class="space-y-1">
+													<span class="text-sm text-muted-foreground">Children ({issueDetails.children.length}):</span>
+													{#each issueDetails.children as child}
+														<div class="flex items-center gap-2 text-sm pl-4">
+															<span class="font-mono text-xs text-primary">{child.id}</span>
+															{#if child.title}
+																<span class="truncate flex-1">{child.title}</span>
+															{/if}
+															{#if child.status}
+																<Badge variant="outline" class="text-xs shrink-0">{child.status}</Badge>
+															{/if}
+														</div>
+													{/each}
+												</div>
+											{/if}
+										</div>
+									</div>
+								{/if}
+								
+								<!-- Comments Timeline -->
+								{#if issueDetails.comments && issueDetails.comments.length > 0}
+									<div>
+										<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+											Timeline ({issueDetails.comments.length} comments)
+										</h4>
+										<div class="rounded-lg border bg-muted/10 overflow-hidden">
+											<div class="divide-y divide-border/50">
+												{#each issueDetails.comments as comment}
+													<div 
+														class="p-3 text-sm {comment.is_phase ? 'bg-blue-500/5' : ''} {comment.is_phase || comment.is_blocked || comment.is_question ? 'border-l-2' : ''} {comment.is_phase && !comment.is_blocked && !comment.is_question ? 'border-l-blue-500' : ''} {comment.is_blocked ? 'border-l-red-500' : ''} {comment.is_question ? 'border-l-yellow-500' : ''}"
+													>
+														<div class="flex items-center justify-between mb-1">
+															<div class="flex items-center gap-2">
+																{#if comment.is_phase}
+																	<span class="text-blue-500 font-medium">Phase: {comment.phase}</span>
+																{:else if comment.is_blocked}
+																	<span class="text-red-500 font-medium">BLOCKED</span>
+																{:else if comment.is_question}
+																	<span class="text-yellow-500 font-medium">QUESTION</span>
+																{:else}
+																	<span class="text-muted-foreground">{comment.author || 'Agent'}</span>
+																{/if}
+															</div>
+															<span class="text-xs text-muted-foreground">
+																{formatRelativeTime(comment.created_at)}
+															</span>
+														</div>
+														<p class="text-muted-foreground whitespace-pre-wrap break-words">
+															{comment.text}
+														</p>
+													</div>
+												{/each}
+											</div>
+										</div>
+									</div>
+								{:else}
+									<div class="text-center py-4 text-muted-foreground">
+										<p class="text-sm">No comments yet</p>
+									</div>
+								{/if}
+								
+								<!-- Quick Commands -->
 								<div>
-									<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Task</h3>
-									<p class="text-sm leading-relaxed">{$selectedAgent.task}</p>
-								</div>
-							{/if}
-							
-							<!-- Quick Commands for Issue -->
-							<div>
-								<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Commands</h3>
-								<div class="flex flex-wrap gap-2">
-									<button
-										type="button"
-										class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
-										onclick={() => copyToClipboard(`bd show ${$selectedAgent?.beads_id}`, 'show')}
-									>
-										<span class="text-sm">📋</span>
-										<code class="text-xs text-muted-foreground">bd show {$selectedAgent.beads_id}</code>
-										<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-											{copiedItem === 'show' ? '✓' : '📋'}
-										</span>
-									</button>
+									<h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Commands</h4>
+									<div class="flex flex-wrap gap-2">
+										<button
+											type="button"
+											class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
+											onclick={() => copyToClipboard(`bd show ${$selectedAgent?.beads_id}`, 'show')}
+										>
+											<span class="text-sm">📋</span>
+											<code class="text-xs text-muted-foreground">bd show {$selectedAgent?.beads_id}</code>
+											<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+												{copiedItem === 'show' ? '✓' : '📋'}
+											</span>
+										</button>
+									</div>
 								</div>
 							</div>
-						</div>
+						{/if}
 					{:else}
 						<div class="text-center py-8 text-muted-foreground">
 							<p class="text-sm">No beads issue linked</p>
@@ -500,50 +985,60 @@
 
 			<!-- Activity Tab -->
 			{#if activeTab === 'activity'}
-				<div class="p-4">
+				<div class="p-4 flex flex-col h-full">
 					{#if $selectedAgent.status === 'active'}
-						<!-- Live Activity for Active Agents -->
-						<div class="space-y-3">
-							<!-- Current Activity -->
-							{#if $selectedAgent.current_activity}
-								<div class="rounded-lg border {getActivityStyle($selectedAgent.current_activity.type)} p-3">
-									<div class="flex items-start gap-2">
-										<span class="text-lg">{getActivityIcon($selectedAgent.current_activity.type)}</span>
-										<div class="flex-1 min-w-0">
-											<p class="text-sm font-medium">{$selectedAgent.current_activity.text || 'Working...'}</p>
-											<span class="text-xs text-muted-foreground">
-												{$selectedAgent.current_activity.type}
-											</span>
-										</div>
-									</div>
-								</div>
-							{:else if $selectedAgent.last_activity}
-								<div class="rounded-lg border {getActivityStyle($selectedAgent.last_activity.type)} p-3">
-									<div class="flex items-start gap-2">
-										<span class="text-lg">{getActivityIcon($selectedAgent.last_activity.type)}</span>
-										<div class="flex-1 min-w-0">
-											<p class="text-sm font-medium">{$selectedAgent.last_activity.text || 'Working...'}</p>
-											<span class="text-xs text-muted-foreground">
-												{$selectedAgent.last_activity.type}
-												<span class="text-muted-foreground/50">(last known)</span>
-											</span>
-										</div>
-									</div>
-								</div>
-							{/if}
-
-							<!-- Activity Log -->
-							<div>
-								<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Activity Stream</h3>
-								<div class="max-h-[calc(100vh-400px)] space-y-1 overflow-y-auto rounded border bg-muted/20 p-2 font-mono text-xs">
-									{#each agentEvents.slice().reverse() as event (event.id)}
-										{@const part = event.properties?.part}
-										{#if part}
-											<div class="flex items-start gap-2 py-1 text-muted-foreground hover:bg-muted/50 rounded px-1 transition-colors">
-												<span class="shrink-0">{getActivityIcon(part.type)}</span>
-												<span class="flex-1 break-words leading-relaxed">
-													{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
-												</span>
+						<!-- Live Activity for Active Agents - Claude Code style -->
+						<div class="flex flex-col h-full">
+							<!-- Activity Stream - chronological order (oldest at top, newest at bottom) -->
+							<div class="flex-1">
+								<div 
+									bind:this={activityContainer}
+									onscroll={handleActivityScroll}
+									class="h-[calc(100vh-320px)] space-y-1 overflow-y-auto rounded border bg-muted/20 p-2 text-sm"
+								>
+									{#each groupedEvents as group (group.id)}
+										{#if group.type === 'tool'}
+											<!-- Tool invocation - expandable block -->
+											<button
+												type="button"
+												class="w-full flex items-start gap-2 py-1.5 px-2 text-left rounded transition-colors hover:bg-muted/50 border-l-2 {group.status?.class || 'border-blue-500/30'}"
+												onclick={() => toggleGroup(group.id)}
+											>
+												<span class="shrink-0 mt-0.5">{getActivityIcon(group.primary.properties?.part?.type, group.toolName)}</span>
+												<span class="flex-1 break-words leading-relaxed font-medium">{group.label}</span>
+												{#if group.status}
+													<span class="{group.status.class} shrink-0">{group.status.text}</span>
+												{/if}
+												<span class="shrink-0 text-muted-foreground text-xs">{group.expanded ? '▼' : '▶'}</span>
+											</button>
+											
+											{#if group.expanded && group.related.length > 0}
+												<div class="ml-6 pl-2 border-l border-muted-foreground/20 space-y-1 py-1">
+													{#each group.related as related}
+														{@const relatedPart = related.properties?.part}
+														{#if relatedPart}
+															<div class="text-xs text-muted-foreground py-0.5">
+																{relatedPart.state?.output 
+																	? relatedPart.state.output.substring(0, 200) + (relatedPart.state.output.length > 200 ? '...' : '')
+																	: getHumanReadableLabel(relatedPart)}
+															</div>
+														{/if}
+													{/each}
+												</div>
+											{/if}
+										{:else if group.type === 'text'}
+											<!-- Text/reasoning message - render markdown -->
+											<div class="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-muted/50">
+												<span class="shrink-0 mt-0.5">{getActivityIcon(group.primary.properties?.part?.type)}</span>
+												<div class="flex-1 break-words leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-1">
+													{@html renderMarkdown(group.primary.properties?.part?.text || '')}
+												</div>
+											</div>
+										{:else}
+											<!-- Step events - compact display -->
+											<div class="flex items-start gap-2 py-0.5 px-2 text-xs text-muted-foreground">
+												<span class="shrink-0">{getActivityIcon(group.primary.properties?.part?.type)}</span>
+												<span class="flex-1 break-words leading-relaxed">{group.label}</span>
 											</div>
 										{/if}
 									{:else}
@@ -559,6 +1054,17 @@
 										{/if}
 									{/each}
 								</div>
+								
+								<!-- Scroll indicator when auto-scroll is disabled -->
+								{#if !shouldAutoScroll}
+									<button
+										type="button"
+										class="w-full py-1 text-xs text-center text-primary hover:underline"
+										onclick={() => { shouldAutoScroll = true; scrollToBottom(); }}
+									>
+										↓ New messages - click to scroll to bottom
+									</button>
+								{/if}
 							</div>
 						</div>
 					{:else}
@@ -612,45 +1118,161 @@
 
 			<!-- Deliverables Tab -->
 			{#if activeTab === 'deliverables'}
-				<div class="p-4 flex-1">
+				<div class="p-4 flex-1 overflow-y-auto">
 					{#if $selectedAgent.status === 'completed' || $selectedAgent.phase === 'Complete'}
-						<div class="h-[calc(100vh-320px)] min-h-[300px]">
-							<ArtifactViewer 
-								workspaceId={extractWorkspaceName($selectedAgent.id)}
-								beadsId={$selectedAgent.beads_id}
-								skill={$selectedAgent.skill}
-								closeReason={$selectedAgent.close_reason}
-							/>
-						</div>
-						
-						<!-- Next Actions from Synthesis -->
-						{#if $selectedAgent.synthesis?.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
-							<div class="mt-4 pt-4 border-t">
-								<div class="flex items-center justify-between mb-2">
-									<h3 class="text-sm font-medium text-muted-foreground">Next Actions</h3>
-									{#if issueCreationError}
-										<span class="text-xs text-red-500">{issueCreationError}</span>
-									{:else if createdIssueId}
-										<span class="text-xs text-green-500">Created {createdIssueId}</span>
-									{/if}
+						<div class="space-y-4">
+							<!-- Synthesis Section (Primary) -->
+							<div>
+								<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
+									<span>📝</span> Synthesis
+								</h3>
+								<div class="rounded-lg border bg-muted/20 overflow-hidden">
+									<div class="max-h-[300px] overflow-y-auto">
+										<ArtifactViewer 
+											workspaceId={extractWorkspaceName($selectedAgent.id)}
+											beadsId={$selectedAgent.beads_id}
+											skill={$selectedAgent.skill}
+											closeReason={$selectedAgent.close_reason}
+										/>
+									</div>
 								</div>
-								<ul class="space-y-1">
-									{#each $selectedAgent.synthesis.next_actions as action}
-										<li class="flex items-start gap-2 rounded p-1 hover:bg-muted/50 group">
-											<span class="flex-1 text-sm">{action}</span>
-											<button
-												type="button"
-												class="shrink-0 rounded border border-transparent px-2 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-foreground group-hover:opacity-100 disabled:opacity-50"
-												onclick={() => handleCreateIssue(action)}
-												disabled={creatingIssue}
-											>
-												{creatingIssue ? '...' : 'Create Issue'}
-											</button>
-										</li>
-									{/each}
-								</ul>
 							</div>
-						{/if}
+							
+							<!-- Delta Section -->
+							{#if deliverables && (deliverables.file_delta.created.length > 0 || deliverables.file_delta.modified.length > 0 || deliverables.file_delta.deleted.length > 0)}
+								<div>
+									<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
+										<span>📊</span> File Changes
+										<span class="text-[10px] font-normal">
+											({deliverables.file_delta.created.length + deliverables.file_delta.modified.length + deliverables.file_delta.deleted.length} files)
+										</span>
+									</h3>
+									<div class="rounded-lg border bg-muted/20 p-3 space-y-2">
+										{#if deliverables.file_delta.created.length > 0}
+											<div>
+												<span class="text-xs text-green-500 font-medium">+ Created ({deliverables.file_delta.created.length})</span>
+												<ul class="mt-1 space-y-0.5">
+													{#each deliverables.file_delta.created.slice(0, 10) as file}
+														<li class="text-xs font-mono text-green-600 dark:text-green-400 truncate">{file}</li>
+													{/each}
+													{#if deliverables.file_delta.created.length > 10}
+														<li class="text-xs text-muted-foreground">...and {deliverables.file_delta.created.length - 10} more</li>
+													{/if}
+												</ul>
+											</div>
+										{/if}
+										{#if deliverables.file_delta.modified.length > 0}
+											<div>
+												<span class="text-xs text-yellow-500 font-medium">~ Modified ({deliverables.file_delta.modified.length})</span>
+												<ul class="mt-1 space-y-0.5">
+													{#each deliverables.file_delta.modified.slice(0, 10) as file}
+														<li class="text-xs font-mono text-yellow-600 dark:text-yellow-400 truncate">{file}</li>
+													{/each}
+													{#if deliverables.file_delta.modified.length > 10}
+														<li class="text-xs text-muted-foreground">...and {deliverables.file_delta.modified.length - 10} more</li>
+													{/if}
+												</ul>
+											</div>
+										{/if}
+										{#if deliverables.file_delta.deleted.length > 0}
+											<div>
+												<span class="text-xs text-red-500 font-medium">- Deleted ({deliverables.file_delta.deleted.length})</span>
+												<ul class="mt-1 space-y-0.5">
+													{#each deliverables.file_delta.deleted.slice(0, 10) as file}
+														<li class="text-xs font-mono text-red-600 dark:text-red-400 truncate">{file}</li>
+													{/each}
+													{#if deliverables.file_delta.deleted.length > 10}
+														<li class="text-xs text-muted-foreground">...and {deliverables.file_delta.deleted.length - 10} more</li>
+													{/if}
+												</ul>
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/if}
+							
+							<!-- Commits Section -->
+							{#if deliverables && deliverables.commits.length > 0}
+								<div>
+									<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
+										<span>📦</span> Commits ({deliverables.commits.length})
+									</h3>
+									<div class="rounded-lg border bg-muted/20 divide-y divide-muted-foreground/10">
+										{#each deliverables.commits as commit}
+											<div class="p-2 hover:bg-muted/30 transition-colors">
+												<div class="flex items-start gap-2">
+													<span class="font-mono text-xs text-primary shrink-0">{commit.hash}</span>
+													<span class="text-sm flex-1 truncate">{commit.message}</span>
+													<span class="text-xs text-muted-foreground shrink-0">{formatCommitTime(commit.timestamp)}</span>
+												</div>
+												<div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+													<span>{commit.author}</span>
+													{#if commit.files_changed > 0}
+														<span>•</span>
+														<span>{commit.files_changed} file{commit.files_changed > 1 ? 's' : ''}</span>
+													{/if}
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							
+							<!-- Artifacts Section -->
+							{#if deliverables && deliverables.artifacts.length > 0}
+								<div>
+									<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
+										<span>📋</span> Artifacts ({deliverables.artifacts.length})
+									</h3>
+									<div class="rounded-lg border bg-muted/20 divide-y divide-muted-foreground/10">
+										{#each deliverables.artifacts as artifact}
+											<div class="p-2 flex items-center gap-2">
+												<Badge variant="outline" class="shrink-0 capitalize">{artifact.type}</Badge>
+												<span class="text-sm font-mono truncate flex-1">{artifact.name}</span>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							
+							<!-- Loading state -->
+							{#if deliverablesLoading}
+								<div class="text-center py-4 text-muted-foreground">
+									<span class="animate-pulse">Loading deliverables...</span>
+								</div>
+							{/if}
+						
+							<!-- Next Actions from Synthesis -->
+							{#if $selectedAgent.synthesis?.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
+								<div class="pt-4 border-t">
+									<div class="flex items-center justify-between mb-2">
+										<h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+											<span>🎯</span> Next Actions
+										</h3>
+										{#if issueCreationError}
+											<span class="text-xs text-red-500">{issueCreationError}</span>
+										{:else if createdIssueId}
+											<span class="text-xs text-green-500">Created {createdIssueId}</span>
+										{/if}
+									</div>
+									<ul class="space-y-1">
+										{#each $selectedAgent.synthesis.next_actions as action}
+											<li class="flex items-start gap-2 rounded p-1.5 hover:bg-muted/50 group border border-transparent hover:border-muted-foreground/20">
+												<span class="flex-1 text-sm">{action}</span>
+												<button
+													type="button"
+													class="shrink-0 rounded border border-transparent px-2 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-foreground group-hover:opacity-100 disabled:opacity-50"
+													onclick={() => handleCreateIssue(action)}
+													disabled={creatingIssue}
+												>
+													{creatingIssue ? '...' : 'Create Issue'}
+												</button>
+											</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
+						</div>
 					{:else}
 						<!-- Active agent - show what will be available -->
 						<div class="text-center py-8 text-muted-foreground">

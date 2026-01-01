@@ -9,7 +9,10 @@ import (
 	"net/http"
 	_ "net/http/pprof" // Enable pprof for CPU profiling
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -241,6 +244,9 @@ func runServe(portNum int) error {
 	// GET /api/agents/artifact - returns artifact content (synthesis, investigation, decision)
 	mux.HandleFunc("/api/agents/artifact", corsHandler(handleAgentArtifact))
 
+	// GET /api/agents/deliverables - returns deliverables for an agent (commits, files, artifacts)
+	mux.HandleFunc("/api/agents/deliverables", corsHandler(handleAgentDeliverables))
+
 	// GET /api/events - proxies OpenCode SSE stream
 	mux.HandleFunc("/api/events", corsHandler(handleEvents))
 
@@ -261,6 +267,9 @@ func runServe(portNum int) error {
 
 	// GET /api/beads/blocked - returns blocked issues with blocker details for filtering
 	mux.HandleFunc("/api/beads/blocked", corsHandler(handleBeadsBlocked))
+
+	// GET /api/beads/issue - returns detailed issue info with comments timeline
+	mux.HandleFunc("/api/beads/issue", corsHandler(handleBeadsIssue))
 
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
@@ -4122,4 +4131,527 @@ func getLastActivityForSession(client *opencode.Client, sessionID string) *LastA
 	}
 
 	return nil
+}
+
+// IssueDetailAPIResponse is the JSON structure returned by /api/beads/issue.
+type IssueDetailAPIResponse struct {
+	ID          string                    `json:"id"`
+	Title       string                    `json:"title"`
+	Description string                    `json:"description,omitempty"`
+	Status      string                    `json:"status"`
+	Priority    int                       `json:"priority"`
+	IssueType   string                    `json:"issue_type,omitempty"`
+	Labels      []string                  `json:"labels,omitempty"`
+	CloseReason string                    `json:"close_reason,omitempty"`
+	CreatedAt   string                    `json:"created_at,omitempty"`
+	UpdatedAt   string                    `json:"updated_at,omitempty"`
+	ClosedAt    string                    `json:"closed_at,omitempty"`
+	Parent      *IssueRelationship        `json:"parent,omitempty"`
+	Children    []IssueRelationship       `json:"children,omitempty"`
+	Comments    []IssueCommentAPIResponse `json:"comments"`
+	Error       string                    `json:"error,omitempty"`
+}
+
+// IssueRelationship represents a parent or child relationship.
+type IssueRelationship struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}
+
+// IssueCommentAPIResponse is the JSON structure for a single comment.
+type IssueCommentAPIResponse struct {
+	ID        int    `json:"id"`
+	Author    string `json:"author"`
+	Text      string `json:"text"`
+	CreatedAt string `json:"created_at"`
+	// Parsed fields for timeline display
+	IsPhase    bool   `json:"is_phase,omitempty"`    // True if this is a Phase: comment
+	Phase      string `json:"phase,omitempty"`       // The phase name (e.g., "Planning", "Implementing", "Complete")
+	IsBlocked  bool   `json:"is_blocked,omitempty"`  // True if this is a BLOCKED: comment
+	IsQuestion bool   `json:"is_question,omitempty"` // True if this is a QUESTION: comment
+}
+
+// handleBeadsIssue returns detailed issue info with comments timeline.
+// Query params:
+// - id: beads issue ID (required)
+// - project: optional project directory for cross-project issues
+func handleBeadsIssue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	beadsID := r.URL.Query().Get("id")
+	if beadsID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(IssueDetailAPIResponse{
+			Error: "id parameter is required",
+		})
+		return
+	}
+
+	projectDir := r.URL.Query().Get("project")
+
+	// Fetch issue details
+	issue, err := verify.GetIssue(beadsID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(IssueDetailAPIResponse{
+			ID:    beadsID,
+			Error: fmt.Sprintf("Issue not found: %v", err),
+		})
+		return
+	}
+
+	// Fetch comments (with project directory for cross-project support)
+	var comments []beads.Comment
+	if projectDir != "" {
+		comments, _ = verify.GetCommentsWithDir(beadsID, projectDir)
+	} else {
+		comments, _ = verify.GetComments(beadsID)
+	}
+
+	// Get full issue details from beads RPC/CLI for priority and labels
+	var priority int
+	var labels []string
+	var createdAt, updatedAt, closedAt string
+	var parent *IssueRelationship
+	var children []IssueRelationship
+
+	// Try to get more details from beads
+	socketPath, socketErr := beads.FindSocketPath(projectDir)
+	if socketErr == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if fullIssue, err := client.Show(beadsID); err == nil {
+			priority = fullIssue.Priority
+			labels = fullIssue.Labels
+			createdAt = fullIssue.CreatedAt
+			updatedAt = fullIssue.UpdatedAt
+			closedAt = fullIssue.ClosedAt
+
+			// Parse dependencies for parent/children
+			if len(fullIssue.Dependencies) > 0 {
+				parent, children = parseIssueDependencies(fullIssue.Dependencies, client)
+			}
+		}
+	}
+
+	// Convert comments to API response format with parsed fields
+	apiComments := make([]IssueCommentAPIResponse, len(comments))
+	for i, c := range comments {
+		apiComments[i] = IssueCommentAPIResponse{
+			ID:        c.ID,
+			Author:    c.Author,
+			Text:      c.Text,
+			CreatedAt: c.CreatedAt,
+		}
+
+		// Parse for Phase: pattern
+		if strings.HasPrefix(strings.TrimSpace(c.Text), "Phase:") {
+			apiComments[i].IsPhase = true
+			// Extract phase name (e.g., "Phase: Planning - details" -> "Planning")
+			parts := strings.SplitN(strings.TrimPrefix(strings.TrimSpace(c.Text), "Phase:"), " - ", 2)
+			if len(parts) > 0 {
+				apiComments[i].Phase = strings.TrimSpace(parts[0])
+			}
+		}
+
+		// Parse for BLOCKED: pattern
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(c.Text)), "BLOCKED:") {
+			apiComments[i].IsBlocked = true
+		}
+
+		// Parse for QUESTION: pattern
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(c.Text)), "QUESTION:") {
+			apiComments[i].IsQuestion = true
+		}
+	}
+
+	resp := IssueDetailAPIResponse{
+		ID:          issue.ID,
+		Title:       issue.Title,
+		Description: issue.Description,
+		Status:      issue.Status,
+		Priority:    priority,
+		IssueType:   issue.IssueType,
+		Labels:      labels,
+		CloseReason: issue.CloseReason,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
+		ClosedAt:    closedAt,
+		Parent:      parent,
+		Children:    children,
+		Comments:    apiComments,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// parseIssueDependencies parses the dependencies JSON to extract parent/child relationships.
+// Dependencies can be either a list of string IDs or a list of objects with id, title, dependency_type fields.
+func parseIssueDependencies(depRaw json.RawMessage, client *beads.Client) (*IssueRelationship, []IssueRelationship) {
+	if len(depRaw) == 0 {
+		return nil, nil
+	}
+
+	// Try parsing as array of objects with dependency_type
+	type depWithType struct {
+		ID             string `json:"id"`
+		Title          string `json:"title"`
+		Status         string `json:"status"`
+		DependencyType string `json:"dependency_type"`
+	}
+	var depsWithType []depWithType
+	if err := json.Unmarshal(depRaw, &depsWithType); err == nil && len(depsWithType) > 0 {
+		var parent *IssueRelationship
+		var children []IssueRelationship
+
+		for _, dep := range depsWithType {
+			rel := IssueRelationship{
+				ID:     dep.ID,
+				Title:  dep.Title,
+				Status: dep.Status,
+			}
+			if dep.DependencyType == "parent" {
+				parent = &rel
+			} else if dep.DependencyType == "child" {
+				children = append(children, rel)
+			}
+		}
+		return parent, children
+	}
+
+	// Try parsing as array of string IDs (older format)
+	var depIDs []string
+	if err := json.Unmarshal(depRaw, &depIDs); err == nil && len(depIDs) > 0 {
+		// For string IDs, we'd need to fetch each one to get title/status
+		// For now, just return them with ID only
+		var deps []IssueRelationship
+		for _, id := range depIDs {
+			deps = append(deps, IssueRelationship{ID: id})
+		}
+		// Without dependency_type, we can't distinguish parent vs child
+		// Return as children by default
+		return nil, deps
+	}
+
+	return nil, nil
+}
+
+// DeliverablesAPIResponse is the JSON structure returned by /api/agents/deliverables.
+type DeliverablesAPIResponse struct {
+	WorkspaceID string              `json:"workspace_id"`
+	Commits     []DeliverableCommit `json:"commits"`     // Git commits made by the agent
+	FileDelta   FileDeltaSummary    `json:"file_delta"`  // Files created/modified/deleted
+	Artifacts   []ArtifactLink      `json:"artifacts"`   // Links to created artifacts
+	Error       string              `json:"error,omitempty"`
+}
+
+// DeliverableCommit represents a single git commit in the deliverables API.
+type DeliverableCommit struct {
+	Hash      string `json:"hash"`       // Short commit hash
+	Message   string `json:"message"`    // Commit message
+	Author    string `json:"author"`     // Author name
+	Timestamp string `json:"timestamp"`  // ISO 8601 timestamp
+	FilesChanged int `json:"files_changed"` // Number of files changed
+}
+
+// FileDeltaSummary summarizes file changes made by the agent.
+type FileDeltaSummary struct {
+	Created  []string `json:"created"`   // Files created
+	Modified []string `json:"modified"`  // Files modified
+	Deleted  []string `json:"deleted"`   // Files deleted
+}
+
+// ArtifactLink represents a link to a created artifact.
+type ArtifactLink struct {
+	Type string `json:"type"`  // "synthesis", "investigation", "decision"
+	Path string `json:"path"`  // Relative path from project root
+	Name string `json:"name"`  // Display name
+}
+
+// handleAgentDeliverables returns deliverables for an agent.
+// Query params:
+// - workspace: workspace ID (e.g., "og-feat-dashboard-agent-pane-30dec")
+// - project_dir: project directory path (for git operations)
+// - spawned_at: ISO 8601 timestamp of when agent was spawned (for commit filtering)
+// - beads_id: optional beads ID for looking up investigation path from comments
+func handleAgentDeliverables(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	workspaceID := r.URL.Query().Get("workspace")
+	projectDir := r.URL.Query().Get("project_dir")
+	spawnedAt := r.URL.Query().Get("spawned_at")
+	beadsID := r.URL.Query().Get("beads_id")
+
+	if workspaceID == "" {
+		http.Error(w, "workspace parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	resp := DeliverablesAPIResponse{
+		WorkspaceID: workspaceID,
+		Commits:     []DeliverableCommit{},
+		FileDelta:   FileDeltaSummary{Created: []string{}, Modified: []string{}, Deleted: []string{}},
+		Artifacts:   []ArtifactLink{},
+	}
+
+	// Discover project directories to find the workspace
+	allProjectDirs := discoverAllProjectDirs()
+
+	// Build list of project directories to check
+	projectDirs := make(map[string]bool)
+	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
+		projectDirs[serveEffectiveDir] = true
+	}
+	for _, dir := range allProjectDirs {
+		if dir != "" {
+			projectDirs[dir] = true
+		}
+	}
+	if projectDir != "" {
+		projectDirs[projectDir] = true
+	}
+
+	// Find workspace across all project directories
+	var workspacePath string
+	var foundProjectDir string
+	for pDir := range projectDirs {
+		candidatePath := filepath.Join(pDir, ".orch", "workspace", workspaceID)
+		if _, err := os.Stat(candidatePath); err == nil {
+			workspacePath = candidatePath
+			foundProjectDir = pDir
+			break
+		}
+	}
+
+	// If workspace not found, return empty response (not an error - agent may still be active)
+	if workspacePath == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Use the found project dir, or fall back to provided one
+	if foundProjectDir == "" && projectDir != "" {
+		foundProjectDir = projectDir
+	}
+
+	// Get git commits since spawn time
+	if foundProjectDir != "" && spawnedAt != "" {
+		commits := getCommitsSinceSpawn(foundProjectDir, spawnedAt)
+		resp.Commits = commits
+
+		// Build file delta from commits
+		resp.FileDelta = getFileDeltaFromCommits(foundProjectDir, spawnedAt)
+	}
+
+	// Collect artifact links
+	artifacts := collectArtifactLinks(workspacePath, beadsID, workspaceID)
+	resp.Artifacts = artifacts
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// getCommitsSinceSpawn returns git commits made since the given spawn time.
+func getCommitsSinceSpawn(projectDir, spawnedAt string) []DeliverableCommit {
+	// Parse spawn time
+	spawnTime, err := time.Parse(time.RFC3339, spawnedAt)
+	if err != nil {
+		return nil
+	}
+
+	// Format for git --since: "2025-12-31T10:00:00"
+	gitSince := spawnTime.Format("2006-01-02T15:04:05")
+
+	// Run git log with custom format
+	// Format: hash|message|author|timestamp|files_changed
+	cmd := exec.Command("git", "log",
+		"--since="+gitSince,
+		"--format=%h|%s|%an|%aI",
+		"--shortstat",
+	)
+	cmd.Dir = projectDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	return parseGitLogOutput(string(output))
+}
+
+// parseGitLogOutput parses git log output with --shortstat.
+func parseGitLogOutput(output string) []DeliverableCommit {
+	var commits []DeliverableCommit
+	lines := strings.Split(output, "\n")
+
+	var currentCommit *DeliverableCommit
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Check if this is a commit line (contains |)
+		if strings.Contains(line, "|") {
+			parts := strings.SplitN(line, "|", 4)
+			if len(parts) >= 4 {
+				if currentCommit != nil {
+					commits = append(commits, *currentCommit)
+				}
+				currentCommit = &DeliverableCommit{
+					Hash:      parts[0],
+					Message:   parts[1],
+					Author:    parts[2],
+					Timestamp: parts[3],
+				}
+			}
+		} else if currentCommit != nil && strings.Contains(line, "file") {
+			// This is a shortstat line: "3 files changed, 100 insertions(+), 20 deletions(-)"
+			if idx := strings.Index(line, " file"); idx > 0 {
+				numStr := strings.TrimSpace(line[:idx])
+				if num, err := strconv.Atoi(numStr); err == nil {
+					currentCommit.FilesChanged = num
+				}
+			}
+		}
+	}
+
+	// Don't forget the last commit
+	if currentCommit != nil {
+		commits = append(commits, *currentCommit)
+	}
+
+	return commits
+}
+
+// getFileDeltaFromCommits returns the combined file delta from all commits since spawn time.
+func getFileDeltaFromCommits(projectDir, spawnedAt string) FileDeltaSummary {
+	delta := FileDeltaSummary{
+		Created:  []string{},
+		Modified: []string{},
+		Deleted:  []string{},
+	}
+
+	// Parse spawn time
+	spawnTime, err := time.Parse(time.RFC3339, spawnedAt)
+	if err != nil {
+		return delta
+	}
+
+	gitSince := spawnTime.Format("2006-01-02T15:04:05")
+
+	// Get diff stat for files changed since spawn
+	// Use --name-status to get A (added), M (modified), D (deleted)
+	cmd := exec.Command("git", "log",
+		"--since="+gitSince,
+		"--name-status",
+		"--format=",
+		"--diff-filter=AMD",
+	)
+	cmd.Dir = projectDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return delta
+	}
+
+	// Track unique files per status (last status wins for files that changed multiple times)
+	fileStatus := make(map[string]string)
+
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			status := parts[0]
+			filename := parts[1]
+			fileStatus[filename] = status
+		}
+	}
+
+	// Categorize by final status
+	for filename, status := range fileStatus {
+		switch status {
+		case "A":
+			delta.Created = append(delta.Created, filename)
+		case "M":
+			delta.Modified = append(delta.Modified, filename)
+		case "D":
+			delta.Deleted = append(delta.Deleted, filename)
+		}
+	}
+
+	// Sort for consistent output
+	sort.Strings(delta.Created)
+	sort.Strings(delta.Modified)
+	sort.Strings(delta.Deleted)
+
+	return delta
+}
+
+// collectArtifactLinks collects links to artifacts created by the agent.
+func collectArtifactLinks(workspacePath, beadsID, workspaceID string) []ArtifactLink {
+	var artifacts []ArtifactLink
+
+	// Check for SYNTHESIS.md
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	if _, err := os.Stat(synthesisPath); err == nil {
+		artifacts = append(artifacts, ArtifactLink{
+			Type: "synthesis",
+			Path: synthesisPath,
+			Name: "SYNTHESIS.md",
+		})
+	}
+
+	// Check for investigation file
+	var investigationPath string
+	if beadsID != "" {
+		investigationPath = getInvestigationPathFromBeads(beadsID)
+	}
+	if investigationPath == "" {
+		investigationPath = getInvestigationPathFromWorkspace(workspacePath)
+	}
+	if investigationPath == "" {
+		investigationPath = findInvestigationByWorkspace(workspaceID)
+	}
+	if investigationPath != "" {
+		name := filepath.Base(investigationPath)
+		artifacts = append(artifacts, ArtifactLink{
+			Type: "investigation",
+			Path: investigationPath,
+			Name: name,
+		})
+	}
+
+	// Check for decision file
+	var decisionPath string
+	if beadsID != "" {
+		decisionPath = getDecisionPathFromBeads(beadsID)
+	}
+	if decisionPath == "" {
+		decisionPath = findDecisionByWorkspace(workspaceID)
+	}
+	if decisionPath != "" {
+		name := filepath.Base(decisionPath)
+		artifacts = append(artifacts, ArtifactLink{
+			Type: "decision",
+			Path: decisionPath,
+			Name: name,
+		})
+	}
+
+	return artifacts
 }

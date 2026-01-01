@@ -631,6 +631,81 @@ export interface Artifact {
 	error?: string;
 }
 
+// Issue detail types for the Issue tab
+export interface IssueComment {
+	id: number;
+	author: string;
+	text: string;
+	created_at: string;
+	// Parsed fields for timeline display
+	is_phase?: boolean;    // True if this is a Phase: comment
+	phase?: string;        // The phase name (e.g., "Planning", "Implementing", "Complete")
+	is_blocked?: boolean;  // True if this is a BLOCKED: comment
+	is_question?: boolean; // True if this is a QUESTION: comment
+}
+
+export interface IssueRelationship {
+	id: string;
+	title: string;
+	status: string;
+}
+
+export interface IssueDetail {
+	id: string;
+	title: string;
+	description?: string;
+	status: string;
+	priority: number;
+	issue_type?: string;
+	labels?: string[];
+	close_reason?: string;
+	created_at?: string;
+	updated_at?: string;
+	closed_at?: string;
+	parent?: IssueRelationship;
+	children?: IssueRelationship[];
+	comments: IssueComment[];
+	error?: string;
+}
+
+// Fetch issue details with comments timeline
+export async function fetchIssueDetails(
+	beadsId: string,
+	projectDir?: string
+): Promise<IssueDetail> {
+	try {
+		const params = new URLSearchParams({ id: beadsId });
+		if (projectDir) {
+			params.set('project', projectDir);
+		}
+		
+		const response = await fetch(`${API_BASE}/api/beads/issue?${params}`);
+		const data = await response.json();
+		
+		if (!response.ok || data.error) {
+			return {
+				id: beadsId,
+				title: '',
+				status: '',
+				priority: 0,
+				comments: [],
+				error: data.error || `HTTP ${response.status}`,
+			};
+		}
+		
+		return data;
+	} catch (error) {
+		return {
+			id: beadsId,
+			title: '',
+			status: '',
+			priority: 0,
+			comments: [],
+			error: error instanceof Error ? error.message : 'Failed to fetch issue details',
+		};
+	}
+}
+
 // Fetch artifact content for an agent
 export async function fetchArtifact(
 	workspaceId: string, 
@@ -670,6 +745,79 @@ export async function fetchArtifact(
 			content: '',
 			workspace_id: workspaceId,
 			error: error instanceof Error ? error.message : 'Failed to fetch artifact',
+		};
+	}
+}
+
+// Deliverables types for the Deliverables tab
+export interface DeliverableCommit {
+	hash: string;
+	message: string;
+	author: string;
+	timestamp: string;
+	files_changed: number;
+}
+
+export interface FileDeltaSummary {
+	created: string[];
+	modified: string[];
+	deleted: string[];
+}
+
+export interface ArtifactLink {
+	type: 'synthesis' | 'investigation' | 'decision';
+	path: string;
+	name: string;
+}
+
+export interface Deliverables {
+	workspace_id: string;
+	commits: DeliverableCommit[];
+	file_delta: FileDeltaSummary;
+	artifacts: ArtifactLink[];
+	error?: string;
+}
+
+// Fetch deliverables for an agent
+export async function fetchDeliverables(
+	workspaceId: string,
+	spawnedAt?: string,
+	projectDir?: string,
+	beadsId?: string
+): Promise<Deliverables> {
+	try {
+		const params = new URLSearchParams({ workspace: workspaceId });
+		if (spawnedAt) {
+			params.set('spawned_at', spawnedAt);
+		}
+		if (projectDir) {
+			params.set('project_dir', projectDir);
+		}
+		if (beadsId) {
+			params.set('beads_id', beadsId);
+		}
+		
+		const response = await fetch(`${API_BASE}/api/agents/deliverables?${params}`);
+		const data = await response.json();
+		
+		if (!response.ok || data.error) {
+			return {
+				workspace_id: workspaceId,
+				commits: [],
+				file_delta: { created: [], modified: [], deleted: [] },
+				artifacts: [],
+				error: data.error || `HTTP ${response.status}`,
+			};
+		}
+		
+		return data;
+	} catch (error) {
+		return {
+			workspace_id: workspaceId,
+			commits: [],
+			file_delta: { created: [], modified: [], deleted: [] },
+			artifacts: [],
+			error: error instanceof Error ? error.message : 'Failed to fetch deliverables',
 		};
 	}
 }
