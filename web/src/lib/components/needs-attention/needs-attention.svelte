@@ -11,12 +11,24 @@
 	import { usage, getUsageColor, getUsageEmoji } from '$lib/stores/usage';
 	import { onMount } from 'svelte';
 
+	// Accept optional project directory for pattern filtering
+	// This is passed from the parent component to reduce cross-project noise
+	interface Props {
+		projectDir?: string;
+	}
+	let { projectDir }: Props = $props();
+
 	// Fetch gaps, blocked issues, and patterns on mount
 	onMount(() => {
 		gaps.fetch();
 		blockedIssues.fetch();
-		patterns.fetch();
+		patterns.fetch(projectDir);
 	});
+
+	// Refetch patterns when project filter changes
+	$: if (typeof window !== 'undefined' && projectDir !== undefined) {
+		patterns.fetch(projectDir);
+	}
 
 	// State for issue creation
 	let creatingIssue: { [key: string]: boolean } = {};

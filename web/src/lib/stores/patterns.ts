@@ -32,9 +32,13 @@ function createPatternsStore() {
 		subscribe,
 		set,
 		// Fetch patterns from orch-go API
-		async fetch(): Promise<void> {
+		// Accepts optional project directory to filter patterns to a specific project
+		async fetch(projectDir?: string): Promise<void> {
 			try {
-				const response = await fetch(`${API_BASE}/api/patterns`);
+				const url = projectDir 
+					? `${API_BASE}/api/patterns?project=${encodeURIComponent(projectDir)}`
+					: `${API_BASE}/api/patterns`;
+				const response = await fetch(url);
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}

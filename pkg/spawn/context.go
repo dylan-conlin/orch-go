@@ -449,9 +449,10 @@ func GenerateContext(cfg *Config) (string, error) {
 
 	// Generate behavioral patterns context (auto-inject detected patterns)
 	// Use provided context if available, otherwise auto-generate from action-log.jsonl
+	// Filter by project directory to prevent cross-project noise
 	behavioralPatterns := cfg.BehavioralPatterns
 	if behavioralPatterns == "" {
-		behavioralPatterns = GenerateBehavioralPatternsContext(cfg.WorkspaceName)
+		behavioralPatterns = GenerateBehavioralPatternsContextForProject(cfg.WorkspaceName, cfg.ProjectDir)
 	}
 
 	// Compute full workspace path for template (needed for phase file in --no-track spawns)
@@ -966,10 +967,36 @@ func GenerateServerContext(projectDir string) string {
 //
 // Returns empty string if no patterns are detected or if loading fails.
 // Patterns are filtered to those relevant to the current workspace/session.
+// Note: Use GenerateBehavioralPatternsContextForProject for project-filtered patterns.
 func GenerateBehavioralPatternsContext(workspaceName string) string {
+	return GenerateBehavioralPatternsContextForProject(workspaceName, "")
+}
+
+// GenerateBehavioralPatternsContextForProject loads action patterns from action-log.jsonl
+// filtered to a specific project directory. This prevents cross-project noise by only
+// showing patterns relevant to the project being worked on.
+//
+// If projectDir is empty, returns all patterns (global view).
+func GenerateBehavioralPatternsContextForProject(workspaceName, projectDir string) string {
 	tracker, err := action.LoadTracker("")
 	if err != nil {
 		return "" // Fail silently - don't block spawn on action log issues
+	}
+
+	// Filter events by project directory if specified
+	var filteredEvents []action.ActionEvent
+	if projectDir != "" {
+		for _, e := range tracker.Events {
+			// Check if target path or workspace path is within project directory
+			if strings.HasPrefix(e.Target, projectDir) || (e.Workspace != "" && strings.HasPrefix(e.Workspace, projectDir)) {
+				filteredEvents = append(filteredEvents, e)
+			}
+		}
+		// If no project-specific patterns, fall back to global
+		if len(filteredEvents) == 0 {
+			filteredEvents = tracker.Events
+		}
+		tracker = &action.Tracker{Events: filteredEvents}
 	}
 
 	patterns := tracker.FindPatterns()

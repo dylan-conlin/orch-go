@@ -271,13 +271,20 @@ func (l *ActionLog) RecordAction(event ActionEvent) {
 // DetectPatterns analyzes the action log and returns detected behavioral patterns.
 // Only returns patterns that haven't been suppressed.
 func (l *ActionLog) DetectPatterns() []Pattern {
+	return l.DetectPatternsForProject("")
+}
+
+// DetectPatternsForProject analyzes the action log and returns detected behavioral patterns
+// filtered to a specific project directory. If projectDir is empty, returns all patterns.
+// This prevents cross-project noise in the dashboard when viewing a specific project.
+func (l *ActionLog) DetectPatternsForProject(projectDir string) []Pattern {
 	patterns := []Pattern{}
 
 	// Detect repeated empty reads
-	patterns = append(patterns, l.detectRepeatedEmptyReads()...)
+	patterns = append(patterns, l.detectRepeatedEmptyReadsForProject(projectDir)...)
 
 	// Detect repeated errors
-	patterns = append(patterns, l.detectRepeatedErrors()...)
+	patterns = append(patterns, l.detectRepeatedErrorsForProject(projectDir)...)
 
 	// Filter out suppressed patterns
 	patterns = l.filterSuppressedPatterns(patterns)
@@ -297,6 +304,11 @@ func (l *ActionLog) DetectPatterns() []Pattern {
 // with empty results, especially when the workspace context indicates this was expected
 // to fail (e.g., SYNTHESIS.md in a light-tier workspace).
 func (l *ActionLog) detectRepeatedEmptyReads() []Pattern {
+	return l.detectRepeatedEmptyReadsForProject("")
+}
+
+// detectRepeatedEmptyReadsForProject finds repeated empty reads filtered by project directory.
+func (l *ActionLog) detectRepeatedEmptyReadsForProject(projectDir string) []Pattern {
 	// Group by normalized key: tool + normalized target
 	groups := make(map[string][]ActionEvent)
 	for _, e := range l.Events {
@@ -305,6 +317,10 @@ func (l *ActionLog) detectRepeatedEmptyReads() []Pattern {
 		}
 		// Only consider Read tool for now
 		if e.Tool != "Read" && e.Tool != "read" {
+			continue
+		}
+		// Filter by project directory if specified
+		if projectDir != "" && !eventMatchesProject(e, projectDir) {
 			continue
 		}
 		key := normalizeActionKey(e.Tool, e.Target)
@@ -354,10 +370,19 @@ func (l *ActionLog) detectRepeatedEmptyReads() []Pattern {
 
 // detectRepeatedErrors finds cases where the same action failed repeatedly with errors.
 func (l *ActionLog) detectRepeatedErrors() []Pattern {
+	return l.detectRepeatedErrorsForProject("")
+}
+
+// detectRepeatedErrorsForProject finds repeated errors filtered by project directory.
+func (l *ActionLog) detectRepeatedErrorsForProject(projectDir string) []Pattern {
 	// Group by tool + normalized target + error type
 	groups := make(map[string][]ActionEvent)
 	for _, e := range l.Events {
 		if e.Outcome != OutcomeError {
+			continue
+		}
+		// Filter by project directory if specified
+		if projectDir != "" && !eventMatchesProject(e, projectDir) {
 			continue
 		}
 		// Include error type in key for more specific patterns
@@ -392,6 +417,23 @@ func (l *ActionLog) detectRepeatedErrors() []Pattern {
 	}
 
 	return patterns
+}
+
+// eventMatchesProject checks if an event belongs to a specific project.
+// It matches by checking if the Target path or WorkspaceDir starts with the project directory.
+func eventMatchesProject(e ActionEvent, projectDir string) bool {
+	if projectDir == "" {
+		return true
+	}
+	// Check if target path is within project directory
+	if strings.HasPrefix(e.Target, projectDir) {
+		return true
+	}
+	// Check if workspace directory is within project directory
+	if e.WorkspaceDir != "" && strings.HasPrefix(e.WorkspaceDir, projectDir) {
+		return true
+	}
+	return false
 }
 
 // normalizeActionKey creates a normalized key for grouping similar actions.

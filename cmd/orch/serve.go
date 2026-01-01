@@ -4003,6 +4003,8 @@ type PatternsAPIResponse struct {
 }
 
 // handlePatterns returns behavioral pattern analysis from ~/.orch/action-log.json.
+// Accepts optional query parameter ?project=/path/to/project to filter patterns
+// to a specific project directory, reducing cross-project noise.
 func handlePatterns(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -4019,7 +4021,9 @@ func handlePatterns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detected := log.DetectPatterns()
+	// Get optional project filter from query parameter
+	projectDir := r.URL.Query().Get("project")
+	detected := log.DetectPatternsForProject(projectDir)
 
 	apiPatterns := make([]PatternsAPIPattern, 0, len(detected))
 	for _, p := range detected {
