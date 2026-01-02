@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** `orch session` command does not exist - prior agent claimed completion but code was never committed.
+**Delta:** `orch session start/status/end` commands now exist with query-time spawn reconciliation. Status is derived via `GetLiveness()` not stored.
 
-**Evidence:** No session.go in cmd/orch/, `./build/orch session --help` returns "Command not found", session.json only contains `{"session": null}`.
+**Evidence:** `cmd/orch/session.go` provides CLI commands. `pkg/session/session.go` provides Store with `GetSpawnStatuses()` that calls `state.GetLiveness()` for each spawn. All tests pass.
 
-**Knowledge:** Session state tracking currently exists in fragmented form (agent-registry.json, current-session.json, focus.json) but no unified session command exposes it.
+**Knowledge:** Session state follows "derive state, don't duplicate" - SpawnRecord stores only {beads_id, skill, task, spawned_at, project_dir}. Status is derived at query time from actual liveness sources (tmux, OpenCode, beads).
 
-**Next:** Implement `orch session start/status/end` commands with spawn reconciliation via GetLiveness().
+**Next:** Verification complete. Issue can be closed.
 
 ---
 
