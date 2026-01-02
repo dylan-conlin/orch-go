@@ -464,23 +464,9 @@ func (c *Client) CloseIssue(id, reason string) error {
 }
 
 // Create creates a new issue.
-// If Force is false (default), it first checks for existing open issues with
-// the same title and returns the existing issue instead of creating a duplicate.
 func (c *Client) Create(args *CreateArgs) (*Issue, error) {
 	if args == nil {
 		return nil, fmt.Errorf("create args required")
-	}
-
-	// Check for existing issue with same title (unless Force is set)
-	if !args.Force {
-		existing, err := c.FindByTitle(args.Title)
-		if err != nil {
-			// Log warning but continue with creation - dedup is best-effort
-			// We don't want to fail issue creation just because the check failed
-		} else if existing != nil {
-			// Found existing issue - return it instead of creating duplicate
-			return existing, nil
-		}
 	}
 
 	resp, err := c.execute(OpCreate, args)
@@ -654,28 +640,6 @@ func (c *Client) ResolveID(partialID string) (string, error) {
 	return resolvedID, nil
 }
 
-// FindByTitle finds an open issue with the exact given title.
-// Returns nil if no matching issue is found.
-// Only searches open and in_progress issues (not closed).
-func (c *Client) FindByTitle(title string) (*Issue, error) {
-	// Get all open issues and filter by exact title match
-	// We check both "open" and "in_progress" status
-	for _, status := range []string{"open", "in_progress"} {
-		issues, err := c.List(&ListArgs{Status: status})
-		if err != nil {
-			return nil, fmt.Errorf("failed to list %s issues: %w", status, err)
-		}
-
-		for i := range issues {
-			if issues[i].Title == title {
-				return &issues[i], nil
-			}
-		}
-	}
-
-	return nil, nil
-}
-
 // Fallback functions for when daemon is not available.
 // These shell out to the bd CLI as a fallback mechanism.
 
@@ -699,12 +663,7 @@ func FallbackReady() ([]Issue, error) {
 // Note: bd show --json always returns an array, even for a single issue.
 // We unmarshal the array and return the first element.
 func FallbackShow(id string) (*Issue, error) {
-	bdPath := findBdPath()
-	cmd := exec.Command(bdPath, "show", id, "--json")
-	// Set working directory so bd can find .beads/
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
+	cmd := exec.Command("bd", "show", id, "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd show failed: %w", err)
@@ -836,66 +795,4 @@ func FallbackUpdate(id, status string) error {
 		return fmt.Errorf("bd update failed: %w: %s", err, string(output))
 	}
 	return nil
-}
-
-// FallbackRemoveLabel removes a label from an issue via bd CLI.
-func FallbackRemoveLabel(id, label string) error {
-	bdPath := findBdPath()
-	cmd := exec.Command(bdPath, "unlabel", id, label)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("bd unlabel failed: %w: %s", err, string(output))
-	}
-	return nil
-}
-
-// FallbackBlocked retrieves blocked issues via bd CLI.
-// Returns issues with blocked_by information for filtering actionable blockers.
-func FallbackBlocked() ([]BlockedIssue, error) {
-	// Find bd binary - try common locations first since PATH may not be set
-	bdPath := findBdPath()
-
-	cmd := exec.Command(bdPath, "blocked", "--json")
-	// Set working directory so bd can find .beads/
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("bd blocked failed: %w", err)
-	}
-
-	var issues []BlockedIssue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("failed to parse bd blocked output: %w", err)
-	}
-
-	return issues, nil
-}
-
-// findBdPath locates the bd binary, checking common locations before PATH.
-func findBdPath() string {
-	// Try common locations first (PATH may not be set in daemon contexts)
-	paths := []string{
-		filepath.Join(os.Getenv("HOME"), "bin", "bd"),
-		filepath.Join(os.Getenv("HOME"), "go", "bin", "bd"),
-		filepath.Join(os.Getenv("HOME"), ".local", "bin", "bd"),
-	}
-
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-
-	// Fall back to PATH lookup
-	if path, err := exec.LookPath("bd"); err == nil {
-		return path
-	}
-
-	// Default to "bd" and hope for the best
-	return "bd"
 }

@@ -1,0 +1,260 @@
+{
+  "features": [
+    {
+      "id": "feat-001",
+      "title": "Implement 'orch api status' command",
+      "description": "Add dedicated command to check if 'orch serve' API is running. Uses port listening check on 3348 via net.Dial with short timeout. Separates infrastructure status from project server status.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md",
+      "notes": "Consider merging with feat-018 (orch doctor) which provides broader infrastructure health checking."
+    },
+    {
+      "id": "feat-002",
+      "title": "Remove port 3348 from orch-go project allocations",
+      "description": "Run 'orch port release orch-go api' to remove false coupling between project servers and infrastructure API. Prerequisite for feat-001.",
+      "status": "todo",
+      "skill": "manual",
+      "priority": "medium",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-003",
+      "title": "Clean up tmuxinator template API comment",
+      "description": "Remove the '# api server on port 3348' comment from pkg/tmux/tmuxinator.go:92-94 to eliminate confusion. The comment suggests tmuxinator manages the API server when it doesn't.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-004",
+      "title": "Document servers vs API infrastructure distinction",
+      "description": "Update CLAUDE.md and README to clarify: 'orch servers' = project dev servers (ephemeral, tmux-managed), 'orch api' = orchestrator monitoring infrastructure (persistent, standalone).",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-orch-servers.md"
+    },
+    {
+      "id": "feat-005",
+      "title": "Dashboard progressive disclosure: Active/Recent/Archive sections",
+      "description": "Implement collapsible sections in swarm dashboard to group agents by recency and activity. Active (always expanded) shows agents with <10min activity. Recent (collapsed by default) shows idle/completed from last 24h. Archive (collapsed) shows older sessions. Store collapse state in localStorage. Update stats bar to show section counts. File targets: web/src/routes/+page.svelte (grouping logic), create CollapsibleSection.svelte component. Acceptance: Dashboard loads with only Active visible, sections expand/collapse smoothly, state persists across refreshes.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md"
+    },
+    {
+      "id": "feat-006",
+      "title": "Add session deletion to 'orch clean' command",
+      "description": "Extend 'orch clean' with '--sessions' flag to delete OpenCode sessions for completed agents. Requires confirmation prompt before deletion (destructive operation). Should only delete sessions for agents with SYNTHESIS.md or closed beads issues. Updates cmd/orch/main.go runClean() function. Out of scope: Bulk session management UI. Acceptance: 'orch clean --sessions' prompts for confirmation, deletes only completed agent sessions, updates dashboard in real-time.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-23",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md"
+    },
+    {
+      "id": "feat-007",
+      "title": "Implement pkg/beads Go RPC client",
+      "description": "Create pkg/beads/client.go with connection management to beads daemon socket. Pattern after beads internal/rpc/client.go. Include health checks, reconnect logic. Socket at .beads/bd.sock. Types from beads/internal/rpc/protocol.go. File targets: pkg/beads/client.go, pkg/beads/types.go. Out of scope: HTTP API, non-Go clients. Acceptance: Client connects to daemon socket, health check succeeds, types match beads protocol.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md"
+    },
+    {
+      "id": "feat-008",
+      "title": "Migrate daemon.ListReadyIssues to beads RPC",
+      "description": "Replace pkg/daemon/daemon.go:ListReadyIssues() subprocess call with pkg/beads client. Use OpReady operation. Fallback to CLI if daemon unavailable. Depends on feat-007. File targets: pkg/daemon/daemon.go, pkg/beads/ready.go. Acceptance: ListReadyIssues uses RPC when daemon available, falls back to CLI when not.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
+      "depends_on": ["feat-007"]
+    },
+    {
+      "id": "feat-009",
+      "title": "Migrate verify.GetIssue to beads RPC",
+      "description": "Replace pkg/verify/check.go:GetIssue() subprocess call with pkg/beads client. Use OpShow operation. Handle comments via OpCommentList. Depends on feat-007. File targets: pkg/verify/check.go, pkg/beads/show.go. Acceptance: GetIssue uses RPC when daemon available, falls back to CLI when not.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
+      "depends_on": ["feat-007"]
+    },
+    {
+      "id": "feat-010",
+      "title": "Migrate serve beads calls to RPC",
+      "description": "Replace cmd/orch/serve.go handleBeads() subprocess call with pkg/beads client. Use OpStats operation. Update BeadsAPIResponse to match. Depends on feat-007. File targets: cmd/orch/serve.go, pkg/beads/stats.go. Acceptance: handleBeads uses RPC when daemon available, falls back to CLI when not.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
+      "depends_on": ["feat-007"]
+    },
+    {
+      "id": "feat-011",
+      "title": "Add completion lifecycle section to orchestrator skill",
+      "description": "Add explicit 'Orchestrator Completion Lifecycle' section with mode-aware (Active vs Triage) completion workflow, work-type-specific checklists, mental model sync prompts, and follow-up extraction guidance. Update orch-knowledge/skills/src/meta/orchestrator/.skillc/SKILL.md.template. Rebuild with skillc build. File targets: SKILL.md.template, phases/post-completion.md (new). Out of scope: Automated tooling enforcement. Acceptance: Orchestrator skill has explicit completion workflow, distinguishes Active vs Triage modes, provides work-type matrix.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-design-orchestrator-completion-lifecycle-two.md"
+    },
+    {
+      "id": "feat-012",
+      "title": "Add optional requires.servers field to skill.yaml",
+      "description": "Extend skill.yaml schema with optional requires.servers: true field. When present, spawn includes server context from .orch/config.yaml. Replaces hardcoded UIFocusedSkills list in pkg/spawn/config.go. File targets: skillc/pkg/compiler/manifest.go, pkg/spawn/config.go, pkg/skills/loader.go. Out of scope: Changing spawn template structure. Acceptance: Skills can declare server requirements; spawn honors the declaration.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-design-should-we-evolve-skills-where.md",
+      "notes": "Incremental improvement from epic pause decision - adds specific value without full migration"
+    },
+    {
+      "id": "feat-013",
+      "title": "Implement 'kb ask' command for inline mini-investigations",
+      "description": "Add 'kb ask' command to kb-cli that composes kb context with LLM synthesis for quick knowledge base queries. Ephemeral by default with tiered save options (--kn for quick kn entry, --save for full investigation). Strict provenance enforcement: no context = no answer. Uses OpenCode for LLM integration. Interface: kb ask \"question\" [--kn|--save] [--global] [--model flash]. File targets: kb-cli/cmd/kb/ask.go. Out of scope: Direct SDK integration, caching. Acceptance: kb ask returns synthesized answer from context, empty context shows guidance (not hallucination), --kn creates kn entry, --save creates investigation.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-25",
+      "source": ".kb/investigations/2025-12-25-inv-design-kb-ask-command-inline.md",
+      "repo": "kb-cli",
+      "notes": "Implementation sequence: 1) Basic ask with context piping, 2) No-context gate, 3) --kn flag, 4) --save flag, 5) --model flag"
+    },
+    {
+      "id": "feat-014",
+      "title": "Add daemon status file writing to polling loop",
+      "description": "Modify pkg/daemon/daemon.go to write ~/.orch/daemon-status.json on each poll cycle. Contains: running (bool), max_agents, active, available, last_spawn_at (RFC3339), last_poll_at, poll_interval_seconds, label. Use atomic write (temp file + rename) to prevent partial reads. File targets: pkg/daemon/daemon.go, pkg/daemon/status.go (new). Acceptance: daemon-status.json is updated each cycle, atomic write prevents corruption.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md"
+    },
+    {
+      "id": "feat-015",
+      "title": "Add /api/daemon endpoint to orch serve",
+      "description": "Add GET /api/daemon endpoint to cmd/orch/serve.go that combines: 1) launchd process check via 'launchctl list | grep com.orch.daemon', 2) Read ~/.orch/daemon-status.json for pool status. Response: { running, process_id, capacity: { active, max, available }, last_spawn, last_poll_at, config, stalled }. Stalled = queue has ready issues but no spawn in 2x poll_interval. Depends on feat-014. File targets: cmd/orch/serve.go. Acceptance: /api/daemon returns daemon health, stall detection works.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
+      "depends_on": ["feat-014"]
+    },
+    {
+      "id": "feat-016",
+      "title": "Add daemon indicator to dashboard stats bar",
+      "description": "Add daemon status indicator to web/src/routes/+page.svelte stats bar following servers pattern. Emoji: daemon running, stopped, stalled. Primary: 'X/Y' (active/max). Tooltip: last spawn time, stall warning. Color: green (healthy), yellow (at capacity), red (stopped/stalled). Add daemon store (web/src/lib/stores/daemon.ts) and poll with other stats. File targets: web/src/routes/+page.svelte, web/src/lib/stores/daemon.ts (new). Depends on feat-015. Acceptance: Dashboard shows daemon health at a glance, distinguishes healthy/at-capacity/stopped/stalled.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
+      "depends_on": ["feat-015"]
+    },
+    {
+      "id": "feat-017",
+      "title": "Implement multi-project workspace aggregation for dashboard",
+      "description": "Fix cross-project agent visibility by aggregating workspace metadata across multiple projects. Uses OpenCode session.Directory to discover active projects dynamically, builds workspace caches for each unique project directory in parallel, merges beadsToWorkspace and beadsToProjectDir maps for unified lookups. Solves 'Waiting for activity...' issue for agents spawned with --workdir to different projects. File targets: cmd/orch/serve.go (buildMultiProjectWorkspaceCache, extractUniqueProjectDirs). Out of scope: Project filtering API parameter, cross-request caching. Acceptance: Agents spawned with --workdir show correct status/phase in dashboard, no performance regression (<500ms response time).",
+      "status": "done",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "completed": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-inv-design-proper-cross-project-agent.md"
+    },
+    {
+      "id": "feat-018",
+      "title": "Implement 'orch doctor' infrastructure health check command",
+      "description": "Add 'orch doctor' command to check orch ecosystem infrastructure health. Checks: 1) OpenCode server responding (http://127.0.0.1:4096/healthz), 2) orch serve API responding (http://127.0.0.1:3348/api/sessions), 3) orch daemon process running (launchctl list | grep com.orch.daemon), 4) Required plists present (~/Library/LaunchAgents/com.{opencode,orch-go,orch}.*.plist). Output: Green/Red status per check, overall health score. File targets: cmd/orch/doctor.go (new). Out of scope: Auto-repair, plist generation, project server checks (use 'orch servers' for that). Acceptance: 'orch doctor' shows infrastructure health, detects when services are down.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-26",
+      "source": ".kb/investigations/2025-12-26-design-two-infrastructure-failures-revealed-missing.md",
+      "notes": "Reactive detection (not proactive prevention) per Pressure Over Compensation principle. Add checks as services fail, not proactively."
+    },
+    {
+      "id": "feat-019",
+      "title": "Implement Playwright MCP action batching wrapper",
+      "description": "Create MCP server wrapper that adds browser_batch tool to Playwright MCP for sequential action execution. Accepts array of {tool, params} objects, executes sequentially with stop-on-error, returns consolidated results with per-action status. Reduces LLM round-trips by 3-5x for common workflows (login, form fill, navigation chains). Safety limits: max 20 actions, 5s per-action timeout, 60s batch timeout. File targets: pkg/mcp/batch/batch.go, pkg/mcp/batch/executor.go, pkg/mcp/batch/types.go. Acceptance: browser_batch tool executes actions sequentially, returns structured results with failure point, integrates with existing Playwright MCP tools.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-design-action-batching-layer-playwright.md",
+      "notes": "Start as wrapper MCP server, consider upstream PR to microsoft/playwright-mcp once proven."
+    },
+    {
+      "id": "feat-020",
+      "title": "Cross-project completion: auto-detect from workspace metadata with --workdir fallback",
+      "description": "Fix cross-project completion UX when orchestrator runs from orch-go but needs to complete agents spawned in other repos (glass, kb-cli, etc). Solution: 1) Add --workdir flag to orch complete (like orch abandon), 2) Extract PROJECT_DIR from SPAWN_CONTEXT.md when workspace found, 3) Set beads.DefaultDir to target project for beads operations, 4) Update error messages to suggest --workdir option. Enables 'orch complete glass-xyz' from any directory. File targets: cmd/orch/main.go (add flag, modify runComplete()). Out of scope: Cross-repo beads query syntax, changes to beads CLI. Acceptance: 'orch complete glass-xyz' from orch-go auto-detects project and works; 'orch complete unknown-xyz --workdir ~/glass' works as fallback.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-inv-design-cross-project-completion-ux.md",
+      "notes": "Pattern matches existing orch abandon --workdir. Uses existing PROJECT_DIR metadata from SPAWN_CONTEXT.md."
+    },
+    {
+      "id": "feat-021",
+      "title": "Add Glass tool patterns to visual verification",
+      "description": "Add glass_* MCP tool patterns and glass CLI output patterns to pkg/verify/visual.go visualEvidencePatterns. Patterns: glass_snap, glass snap, glass_screenshot, JSON output with screenshot field. This enables Glass-based visual verification to pass the evidence check. File targets: pkg/verify/visual.go (lines 79-104). Out of scope: Glass CLI implementation (separate issue orch-go-l1is). Acceptance: Agents using glass_snap or glass snap commands are detected as having visual verification evidence.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-inv-design-ui-validation-gate-system.md",
+      "notes": "Quick win (~30 min), no dependencies. Part of 3-tier UI validation gate design."
+    },
+    {
+      "id": "feat-022",
+      "title": "Implement 'glass snap --verify' command for orchestrator use",
+      "description": "Add --verify flag to glass snap command that outputs structured JSON proof of browser verification. Output format: {\"screenshot\": \"path\", \"url\": \"...\", \"title\": \"...\", \"timestamp\": \"...\"}. Enables agents to run glass snap --verify and include output in beads comments as machine-parseable evidence. Depends on Glass CLI infrastructure (orch-go-l1is). File targets: glass/cmd/snap.go. Out of scope: Screenshot comparison, baseline management. Acceptance: glass snap --verify outputs JSON, can be parsed by visual verification patterns.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2025-12-27",
+      "source": ".kb/investigations/2025-12-27-inv-design-ui-validation-gate-system.md",
+      "repo": "glass",
+      "depends_on": ["orch-go-l1is"],
+      "notes": "Part of 3-tier UI validation gate design. Decision kn-cc1c45: CLI for orchestrator use."
+    }
+  ],
+  "meta": {
+    "last_updated": "2025-12-27",
+    "total_features": 22,
+    "by_status": {
+      "todo": 21,
+      "in_progress": 0,
+      "done": 1
+    }
+  },
+  "epics": {
+    "paused": [
+      {
+        "id": "orch-go-erdw",
+        "title": "Skill-Manifest-Driven Orchestration",
+        "status": "paused",
+        "reason": "Investigation 2025-12-25-design-should-we-evolve-skills-where.md found current architecture is sound. Separation between skill-domain (procedures, workflows) and orchestrator-domain (beads tracking, phase reporting) is correct. Epic would move orchestration INTO skills, increasing coupling without solving a real problem."
+      }
+    ]
+  }
+}

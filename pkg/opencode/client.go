@@ -17,15 +17,9 @@ import (
 // This prevents hangs when OpenCode is in a bad state (e.g., redirect loop).
 const DefaultHTTPTimeout = 10 * time.Second
 
-// LargeScannerBufferSize is the buffer size for scanning JSON events from opencode output.
-// OpenCode JSON events can be very large (especially tool outputs with file contents),
-// so we use 1MB instead of the default 64KB (bufio.MaxScanTokenSize) to prevent ErrTooLong.
-const LargeScannerBufferSize = 1024 * 1024 // 1MB
-
 // Client handles OpenCode CLI interactions.
 type Client struct {
 	ServerURL  string
-	Directory  string // Project directory for x-opencode-directory header
 	httpClient *http.Client
 }
 
@@ -44,14 +38,6 @@ func NewClient(serverURL string) *Client {
 			},
 		},
 	}
-}
-
-// NewClientWithDirectory creates a new OpenCode client with a specific project directory.
-// The directory is used for the x-opencode-directory header in all API calls.
-func NewClientWithDirectory(serverURL, directory string) *Client {
-	c := NewClient(serverURL)
-	c.Directory = directory
-	return c
 }
 
 // NewClientWithTimeout creates a new OpenCode client with custom timeout.
@@ -75,15 +61,6 @@ func (c *Client) getOpencodeBin() string {
 		return bin
 	}
 	return "opencode"
-}
-
-// setDirectoryHeader adds the x-opencode-directory header to a request.
-// This header tells OpenCode which project directory to use for the session.
-// It's required for all API calls to ensure sessions are stored in the correct location.
-func (c *Client) setDirectoryHeader(req *http.Request) {
-	if c.Directory != "" {
-		req.Header.Set("x-opencode-directory", c.Directory)
-	}
 }
 
 // ParseEvent parses a JSON event from opencode output.
@@ -116,8 +93,6 @@ func ExtractSessionID(events []string) (string, error) {
 // but don't want to block waiting for the process to complete.
 func ExtractSessionIDFromReader(r io.Reader) (string, error) {
 	scanner := bufio.NewScanner(r)
-	// Use large buffer to handle OpenCode's potentially large JSON events
-	scanner.Buffer(make([]byte, 0, LargeScannerBufferSize), LargeScannerBufferSize)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -142,8 +117,6 @@ func ExtractSessionIDFromReader(r io.Reader) (string, error) {
 func ProcessOutput(r io.Reader) (*Result, error) {
 	result := &Result{}
 	scanner := bufio.NewScanner(r)
-	// Use large buffer to handle OpenCode's potentially large JSON events
-	scanner.Buffer(make([]byte, 0, LargeScannerBufferSize), LargeScannerBufferSize)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -177,8 +150,6 @@ func ProcessOutput(r io.Reader) (*Result, error) {
 func ProcessOutputWithStreaming(r io.Reader, streamTo io.Writer) (*Result, error) {
 	result := &Result{}
 	scanner := bufio.NewScanner(r)
-	// Use large buffer to handle OpenCode's potentially large JSON events
-	scanner.Buffer(make([]byte, 0, LargeScannerBufferSize), LargeScannerBufferSize)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -267,7 +238,6 @@ func (c *Client) SendMessageAsync(sessionID, content, model string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -336,7 +306,6 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch session: %w", err)
@@ -364,7 +333,6 @@ func (c *Client) SessionExists(sessionID string) bool {
 	if err != nil {
 		return false
 	}
-	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return false
@@ -390,32 +358,11 @@ func (c *Client) IsSessionActive(sessionID string, maxIdleTime time.Duration) bo
 	return idleTime <= maxIdleTime
 }
 
-// StaleSessionThreshold is the maximum time since last session update before
-// a session is considered "stale" (dead/zombie). Active agents update their
-// session state constantly (every tool call, every message part). A session
-// with no updates for 3 minutes is effectively dead.
-const StaleSessionThreshold = 3 * time.Minute
-
 // IsSessionProcessing checks if a session is actively processing (has a pending assistant response).
-// This is the most reliable signal for detecting truly active agents because it checks:
-// 1. Whether the session has recent activity (within StaleSessionThreshold)
-// 2. Whether the last assistant message has finished (finish != "" and completed != 0)
-//
-// Returns true only if the session is both recently active AND has an incomplete assistant message.
-// Returns false if the session is stale (no updates in 3 minutes) even if the last message
-// appears incomplete - this handles zombie sessions that were killed mid-execution.
+// This is the most reliable signal for detecting truly active agents because it checks
+// whether the last assistant message has finished (finish != "" and completed != 0).
+// Returns true if the session is currently generating a response, false if idle.
 func (c *Client) IsSessionProcessing(sessionID string) bool {
-	// First check if the session is stale - if so, it cannot be processing
-	// This handles zombie sessions that have pending tool calls but are dead
-	session, err := c.GetSession(sessionID)
-	if err != nil {
-		return false
-	}
-	updatedAt := time.Unix(session.Time.Updated/1000, 0)
-	if time.Since(updatedAt) > StaleSessionThreshold {
-		return false // Stale session - no activity in 3 minutes means dead
-	}
-
 	messages, err := c.GetMessages(sessionID)
 	if err != nil || len(messages) == 0 {
 		return false
@@ -425,9 +372,8 @@ func (c *Client) IsSessionProcessing(sessionID string) bool {
 	lastMsg := messages[len(messages)-1]
 
 	// Session is processing if:
-	// 1. Session is not stale (checked above) AND
-	// 2. Last message is from assistant AND
-	// 3. It hasn't finished yet (finish is empty and completed is 0)
+	// 1. Last message is from assistant AND
+	// 2. It hasn't finished yet (finish is empty and completed is 0)
 	if lastMsg.Info.Role == "assistant" {
 		return lastMsg.Info.Finish == "" && lastMsg.Info.Time.Completed == 0
 	}
@@ -470,22 +416,9 @@ type CreateSessionResponse struct {
 	Directory string `json:"directory,omitempty"`
 }
 
-// CreateSessionOptions contains optional configuration for CreateSession.
-type CreateSessionOptions struct {
-	// MCPConfigContent is JSON config content for enabling MCP servers.
-	// Passed via x-opencode-env-OPENCODE_CONFIG_CONTENT header.
-	MCPConfigContent string
-}
-
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
 func (c *Client) CreateSession(title, directory, model string) (*CreateSessionResponse, error) {
-	return c.CreateSessionWithOptions(title, directory, model, nil)
-}
-
-// CreateSessionWithOptions creates a new OpenCode session with additional options.
-// This allows enabling MCP servers via MCPConfigContent.
-func (c *Client) CreateSessionWithOptions(title, directory, model string, opts *CreateSessionOptions) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
@@ -511,12 +444,6 @@ func (c *Client) CreateSessionWithOptions(title, directory, model string, opts *
 	// Set ORCH_WORKER=1 header to signal this is an orch-managed worker session
 	// This allows the session-context plugin to skip loading orchestrator skill
 	req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
-
-	// Set MCP config content if provided
-	// This enables specific MCP servers for this session
-	if opts != nil && opts.MCPConfigContent != "" {
-		req.Header.Set("x-opencode-env-OPENCODE_CONFIG_CONTENT", opts.MCPConfigContent)
-	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -550,7 +477,6 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	c.setDirectoryHeader(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
@@ -720,7 +646,6 @@ func (c *Client) DeleteSession(sessionID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	c.setDirectoryHeader(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -929,112 +854,4 @@ func (c *Client) GetSessionTokens(sessionID string) (*TokenStats, error) {
 	}
 	stats := AggregateTokens(messages)
 	return &stats, nil
-}
-
-// WaitForMessage polls GetMessages until the session has at least one message.
-// This is used to verify that a prompt was actually delivered after SendPrompt,
-// addressing the race condition where SendPrompt returns 200 but the message
-// isn't actually processed by the session.
-//
-// Returns nil if a message is found within the timeout.
-// Returns ErrMessageDeliveryTimeout if the timeout is exceeded.
-// The interval parameter controls how often to poll (recommended: 200-500ms).
-func (c *Client) WaitForMessage(sessionID string, timeout, interval time.Duration) error {
-	deadline := time.Now().Add(timeout)
-
-	for time.Now().Before(deadline) {
-		messages, err := c.GetMessages(sessionID)
-		if err != nil {
-			// Transient error - keep trying
-			time.Sleep(interval)
-			continue
-		}
-
-		if len(messages) > 0 {
-			return nil
-		}
-
-		time.Sleep(interval)
-	}
-
-	return ErrMessageDeliveryTimeout
-}
-
-// SessionModel represents the model used for a session.
-// Combines providerID and modelID into a single normalized string.
-type SessionModel struct {
-	ProviderID string // e.g., "anthropic", "google"
-	ModelID    string // e.g., "claude-opus-4-5-20251101", "gemini-2.5-flash"
-}
-
-// String returns the model in "provider/modelID" format.
-// If provider is empty, returns just the modelID.
-func (m SessionModel) String() string {
-	if m.ProviderID == "" {
-		return m.ModelID
-	}
-	return m.ProviderID + "/" + m.ModelID
-}
-
-// GetSessionModel extracts the model used in a session from OpenCode session messages.
-// Returns the model from the first assistant message that has model information.
-// This is the authoritative source for model identification - more reliable than
-// agent self-reporting in SYNTHESIS.md which may be inconsistent.
-func (c *Client) GetSessionModel(sessionID string) (*SessionModel, error) {
-	messages, err := c.GetMessages(sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if len(messages) == 0 {
-		return nil, nil
-	}
-
-	// Find the first assistant message with model info
-	for _, msg := range messages {
-		if msg.Info.Role == "assistant" && msg.Info.ModelID != "" {
-			return &SessionModel{
-				ProviderID: msg.Info.ProviderID,
-				ModelID:    msg.Info.ModelID,
-			}, nil
-		}
-	}
-
-	return nil, nil // No model info found
-}
-
-// SendPromptWithVerification sends a prompt and verifies it was delivered.
-// This combines SendPrompt with WaitForMessage to provide reliable message delivery.
-// If the initial send doesn't result in a message within the timeout, it retries once.
-//
-// Parameters:
-// - sessionID: The session to send the prompt to
-// - prompt: The message content
-// - model: Optional model specification (can be empty)
-// - timeout: How long to wait for message verification (recommended: 5s)
-// - interval: How often to poll for the message (recommended: 300ms)
-//
-// Returns nil on success, or an error if delivery fails after retry.
-func (c *Client) SendPromptWithVerification(sessionID, prompt, model string, timeout, interval time.Duration) error {
-	// First attempt
-	if err := c.SendPrompt(sessionID, prompt, model); err != nil {
-		return fmt.Errorf("failed to send prompt: %w", err)
-	}
-
-	// Wait for message to appear
-	if err := c.WaitForMessage(sessionID, timeout, interval); err == nil {
-		return nil // Success!
-	}
-
-	// First attempt timed out - retry once
-	// The session may have been in a transient state during first send
-	if err := c.SendPrompt(sessionID, prompt, model); err != nil {
-		return fmt.Errorf("retry send failed: %w", err)
-	}
-
-	// Wait again after retry
-	if err := c.WaitForMessage(sessionID, timeout, interval); err != nil {
-		return fmt.Errorf("message delivery failed after retry: %w", err)
-	}
-
-	return nil
 }

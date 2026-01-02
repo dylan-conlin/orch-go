@@ -29,9 +29,6 @@ type ReflectSuggestions struct {
 
 	// Refine suggestions for kn entries that refine existing principles.
 	Refine []RefineSuggestion `json:"refine,omitempty"`
-
-	// SkillCandidate suggestions for kn entry clusters that may warrant skill updates.
-	SkillCandidate []SkillCandidateSuggestion `json:"skill_candidate,omitempty"`
 }
 
 // SynthesisSuggestion represents a topic with multiple investigations.
@@ -72,23 +69,13 @@ type RefineSuggestion struct {
 	Suggestion string   `json:"suggestion"`
 }
 
-// SkillCandidateSuggestion represents a kn entry cluster that may warrant skill updates.
-type SkillCandidateSuggestion struct {
-	Topic       string   `json:"topic"`
-	Count       int      `json:"count"`
-	EntryTypes  []string `json:"entry_types"`
-	RecentCount int      `json:"recent_count"`
-	Suggestion  string   `json:"suggestion"`
-}
-
 // kbReflectOutput represents the raw output from kb reflect --format json.
 type kbReflectOutput struct {
-	Synthesis      []SynthesisSuggestion      `json:"synthesis,omitempty"`
-	Promote        []PromoteSuggestion        `json:"promote,omitempty"`
-	Stale          []StaleSuggestion          `json:"stale,omitempty"`
-	Drift          []DriftSuggestion          `json:"drift,omitempty"`
-	Refine         []kbRefineOutput           `json:"refine,omitempty"`
-	SkillCandidate []kbSkillCandidateOutput   `json:"skill_candidate,omitempty"`
+	Synthesis []SynthesisSuggestion `json:"synthesis,omitempty"`
+	Promote   []PromoteSuggestion   `json:"promote,omitempty"`
+	Stale     []StaleSuggestion     `json:"stale,omitempty"`
+	Drift     []DriftSuggestion     `json:"drift,omitempty"`
+	Refine    []kbRefineOutput      `json:"refine,omitempty"`
 }
 
 // kbRefineOutput represents the raw refine entry from kb reflect.
@@ -100,15 +87,6 @@ type kbRefineOutput struct {
 	Principle  string   `json:"principle"`
 	MatchTerms []string `json:"match_terms"`
 	Suggestion string   `json:"suggestion"`
-}
-
-// kbSkillCandidateOutput represents the raw skill-candidate entry from kb reflect.
-type kbSkillCandidateOutput struct {
-	Topic       string   `json:"topic"`
-	Count       int      `json:"count"`
-	EntryTypes  []string `json:"entry_types"`
-	RecentCount int      `json:"recent_count"`
-	Suggestion  string   `json:"suggestion"`
 }
 
 // SuggestionsPath returns the default path for storing reflection suggestions.
@@ -146,26 +124,13 @@ func RunReflection() (*ReflectSuggestions, error) {
 		})
 	}
 
-	// Convert skill-candidate output to suggestions
-	var skillCandidate []SkillCandidateSuggestion
-	for _, sc := range rawOutput.SkillCandidate {
-		skillCandidate = append(skillCandidate, SkillCandidateSuggestion{
-			Topic:       sc.Topic,
-			Count:       sc.Count,
-			EntryTypes:  sc.EntryTypes,
-			RecentCount: sc.RecentCount,
-			Suggestion:  sc.Suggestion,
-		})
-	}
-
 	suggestions := &ReflectSuggestions{
-		Timestamp:      time.Now().UTC(),
-		Synthesis:      rawOutput.Synthesis,
-		Promote:        rawOutput.Promote,
-		Stale:          rawOutput.Stale,
-		Drift:          rawOutput.Drift,
-		Refine:         refine,
-		SkillCandidate: skillCandidate,
+		Timestamp: time.Now().UTC(),
+		Synthesis: rawOutput.Synthesis,
+		Promote:   rawOutput.Promote,
+		Stale:     rawOutput.Stale,
+		Drift:     rawOutput.Drift,
+		Refine:    refine,
 	}
 
 	return suggestions, nil
@@ -225,7 +190,7 @@ func (s *ReflectSuggestions) HasSuggestions() bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0 || len(s.SkillCandidate) > 0
+	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0
 }
 
 // TotalCount returns the total number of suggestions across all categories.
@@ -233,7 +198,7 @@ func (s *ReflectSuggestions) TotalCount() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine) + len(s.SkillCandidate)
+	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine)
 }
 
 // Summary returns a human-readable summary of suggestions.
@@ -257,9 +222,6 @@ func (s *ReflectSuggestions) Summary() string {
 	}
 	if len(s.Refine) > 0 {
 		parts = append(parts, fmt.Sprintf("%d principle refinements", len(s.Refine)))
-	}
-	if len(s.SkillCandidate) > 0 {
-		parts = append(parts, fmt.Sprintf("%d skill update candidates", len(s.SkillCandidate)))
 	}
 
 	result := ""

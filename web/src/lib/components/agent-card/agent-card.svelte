@@ -5,14 +5,11 @@
 	import type { Agent } from '$lib/stores/agents';
 	import { selectedAgentId } from '$lib/stores/agents';
 
-	interface Props {
-		agent: Agent;
-	}
-	let { agent }: Props = $props();
+	export let agent: Agent;
 
-	let isSelected = $derived($selectedAgentId === agent.id);
-	let contextIndicator = $derived(getContextQualityIndicator(agent));
-	let displayState = $derived(getDisplayState(agent));
+	$: isSelected = $selectedAgentId === agent.id;
+	$: contextIndicator = getContextQualityIndicator(agent);
+	$: displayState = getDisplayState(agent);
 
 	function handleClick() {
 		selectedAgentId.set(agent.id);
@@ -20,29 +17,41 @@
 
 	/**
 	 * Derive the display state from agent status + phase + activity
-	 * ACTIONABLE CATEGORIES:
-	 * - working: actively doing work (green)
-	 * - ready-for-review: Phase:Complete, needs orch complete (blue)
-	 * - problem: crashed/stalled, needs action (red)
-	 * - completed: done and closed (gray)
-	 * - abandoned: manually abandoned (gray)
+	 * This provides clearer visual distinction between:
+	 * - running: actively processing (is_processing=true)
+	 * - ready-for-review: phase=Complete but status still active
+	 * - idle: no activity for a while
+	 * - waiting: active but no activity yet
 	 */
-	type DisplayState = 'working' | 'ready-for-review' | 'problem' | 'completed' | 'abandoned';
+	type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned';
 	
 	function getDisplayState(agent: Agent): DisplayState {
 		if (agent.status === 'completed') return 'completed';
 		if (agent.status === 'abandoned') return 'abandoned';
-		if (agent.status === 'dead' || agent.status === 'stalled') return 'problem';
 		
-		if (agent.status === 'active' || agent.status === 'idle') {
+		if (agent.status === 'active') {
 			// Phase: Complete means agent reported done, waiting for orchestrator to close
 			if (agent.phase?.toLowerCase() === 'complete') {
 				return 'ready-for-review';
 			}
-			return 'working';
+			
+			// Actively processing
+			if (agent.is_processing) {
+				return 'running';
+			}
+			
+			// Check if idle for too long (no activity in 60+ seconds)
+			if (agent.current_activity?.timestamp) {
+				const idleMs = Date.now() - agent.current_activity.timestamp;
+				if (idleMs > 60000) {
+					return 'idle';
+				}
+			}
+			
+			return 'waiting';
 		}
 		
-		return 'working';
+		return 'waiting';
 	}
 
 	function getStatusVariant(status: Agent['status']) {
@@ -53,9 +62,6 @@
 				return 'completed';
 			case 'abandoned':
 				return 'abandoned';
-			case 'dead':
-			case 'stalled':
-				return 'destructive';
 			default:
 				return 'default';
 		}
@@ -69,10 +75,6 @@
 				return 'bg-blue-500';
 			case 'abandoned':
 				return 'bg-red-500';
-			case 'dead':
-				return 'bg-red-600';
-			case 'stalled':
-				return 'bg-orange-600';
 			default:
 				return 'bg-gray-500';
 		}
@@ -239,15 +241,10 @@
 <button
 	type="button"
 	onclick={handleClick}
-	class="group relative w-full cursor-pointer rounded-lg border bg-card p-2.5 text-left transition-all duration-200 ease-out
-		hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5
-		focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background
-		active:translate-y-0 active:shadow-md
-		{displayState === 'working' ? 'border-green-500/50' : displayState === 'ready-for-review' ? 'border-blue-500/70 shadow-lg shadow-blue-500/15 bg-blue-500/5' : displayState === 'problem' ? 'border-red-500/70 shadow-lg shadow-red-500/15 bg-red-500/5' : 'border-border/60'}
-		{isSelected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary shadow-lg shadow-primary/10' : ''}"
+	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {displayState === 'running' ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : displayState === 'ready-for-review' ? 'border-blue-500 shadow-md shadow-blue-500/20' : displayState === 'idle' ? 'border-orange-500/50' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
 >
-	<!-- Status indicator bar at top - color reflects actionable category -->
-	<div class={`absolute left-0 top-0 h-1 w-full rounded-t-lg transition-all duration-300 ${displayState === 'working' ? 'bg-gradient-to-r from-green-500 to-green-400' : displayState === 'ready-for-review' ? 'bg-gradient-to-r from-blue-500 to-blue-400' : displayState === 'problem' ? 'bg-gradient-to-r from-red-500 to-red-400' : getStatusColor(agent.status)}`}></div>
+	<!-- Status indicator bar at top - color reflects display state -->
+	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t transition-colors duration-500 ${displayState === 'running' ? 'bg-yellow-500' : displayState === 'ready-for-review' ? 'bg-blue-500' : displayState === 'idle' ? 'bg-orange-500' : getStatusColor(agent.status)}`}></div>
 
 	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">
@@ -280,19 +277,15 @@
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
-			{#if displayState === 'working'}
-				{#if agent.is_processing}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500"></span>
-						</Tooltip.Trigger>
-						<Tooltip.Content>
-							<p>Generating response</p>
-						</Tooltip.Content>
-					</Tooltip.Root>
-				{:else}
-					<span class="h-1 w-1 rounded-full bg-green-500"></span>
-				{/if}
+			{#if displayState === 'running'}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>Generating response</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{:else if displayState === 'ready-for-review'}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
@@ -300,19 +293,19 @@
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>Done - pending review</p>
-						<p class="text-xs text-muted-foreground">Run <code>orch complete</code></p>
 					</Tooltip.Content>
 				</Tooltip.Root>
-			{:else if displayState === 'problem'}
+			{:else if displayState === 'idle'}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
-						<span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+						<span class="h-1.5 w-1.5 rounded-full bg-orange-500"></span>
 					</Tooltip.Trigger>
 					<Tooltip.Content>
-						<p class="text-red-500">Problem - {agent.status === 'dead' ? 'crashed/stuck' : 'stalled'}</p>
-						<p class="text-xs text-muted-foreground">Needs investigation or respawn</p>
+						<p>Idle - no recent activity</p>
 					</Tooltip.Content>
 				</Tooltip.Root>
+			{:else if agent.status === 'active'}
+				<span class="h-1 w-1 rounded-full bg-green-500"></span>
 			{/if}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
@@ -385,32 +378,11 @@
 		{/if}
 	</div>
 
-	<!-- Current Activity Summary (for working/review/problem agents) -->
-	{#if agent.status === 'active' || agent.status === 'idle' || agent.status === 'dead' || agent.status === 'stalled'}
+	<!-- Current Activity Summary (for active agents) - always reserve space to prevent height jitter -->
+	{#if agent.status === 'active'}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			{#if displayState === 'problem'}
-				<!-- Problem agent (dead/stalled) - needs action -->
-				<div class="flex items-center gap-1">
-					<span class="text-[10px]">{agent.status === 'dead' ? '💀' : '⚠️'}</span>
-					<p class="flex-1 truncate text-[10px] text-red-400 font-medium">
-						{agent.status === 'dead' ? 'Crashed/stuck' : 'No phase reported'}
-					</p>
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							<span class="text-[9px] text-muted-foreground/70 shrink-0">
-								{agent.runtime || formatDuration(agent.spawned_at)}
-							</span>
-						</Tooltip.Trigger>
-						<Tooltip.Content>
-							<p class="text-red-500">Needs investigation or respawn</p>
-							<p class="text-xs text-muted-foreground mt-1">
-								<code>orch abandon {agent.beads_id}</code> or respawn
-							</p>
-						</Tooltip.Content>
-					</Tooltip.Root>
-				</div>
-			{:else if displayState === 'ready-for-review'}
-				<!-- Ready for review - run orch complete -->
+			{#if displayState === 'ready-for-review'}
+				<!-- Agent reported Phase: Complete, waiting for orchestrator to close -->
 				<div class="flex items-center gap-1">
 					<span class="text-[10px]">✅</span>
 					<p class="flex-1 truncate text-[10px] text-blue-400 font-medium">
@@ -424,12 +396,30 @@
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p>Agent reported Phase: Complete</p>
-							<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to review</p>
+							<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to close</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
+			{:else if displayState === 'idle'}
+				<!-- Agent has been idle for a while - might be stuck or waiting for input -->
+				<div class="flex items-center gap-1">
+					<span class="text-[10px]">💤</span>
+					<p class="flex-1 truncate text-[10px] text-orange-400">
+						Idle
+					</p>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<span class="text-[9px] text-muted-foreground/70 shrink-0">
+								{formatActivityAge(agent.current_activity?.timestamp)}
+							</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							<p>No activity for a while</p>
+							<p class="text-xs text-muted-foreground">May be stuck or waiting for input</p>
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</div>
 			{:else if agent.current_activity}
-				<!-- Working - show real-time activity from SSE -->
 				<div class="flex items-center gap-1">
 					<span class="text-[10px]">{getActivityIcon(agent.current_activity.type)}</span>
 					<p class="flex-1 truncate text-[10px] text-muted-foreground">
@@ -439,29 +429,12 @@
 						{formatActivityAge(agent.current_activity.timestamp)}
 					</span>
 				</div>
-			{:else if agent.last_activity}
-				<!-- Working - show last known activity from API -->
-				<div class="flex items-center gap-1">
-					<span class="text-[10px]">{getActivityIcon(agent.last_activity.type)}</span>
-					<p class="flex-1 truncate text-[10px] text-muted-foreground">
-						{agent.last_activity.text || 'Working...'}
-					</p>
-					<span class="text-[9px] text-muted-foreground/70 shrink-0">
-						{formatActivityAge(agent.last_activity.timestamp)}
-					</span>
-				</div>
 			{:else}
-				<!-- Working - no activity yet -->
+				<!-- Placeholder to maintain consistent card height -->
 				<div class="flex items-center gap-1">
-					<span class="text-[10px] text-muted-foreground/50">{agent.is_processing ? '⚡' : '🟢'}</span>
+					<span class="text-[10px] text-muted-foreground/50">⏳</span>
 					<p class="flex-1 truncate text-[10px] text-muted-foreground/50">
-						{#if agent.phase}
-							{agent.phase}
-						{:else if agent.is_processing}
-							Working...
-						{:else}
-							Starting...
-						{/if}
+						Starting up...
 					</p>
 				</div>
 			{/if}

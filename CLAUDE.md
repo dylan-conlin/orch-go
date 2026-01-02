@@ -12,7 +12,7 @@ orch-go (this binary)
     └── bd CLI                  ← beads integration (shells out)
     │
     ▼
-OpenCode Server (http://localhost:4096)
+OpenCode Server (http://127.0.0.1:4096)
     │
     ▼
 Claude API / Gemini API
@@ -142,58 +142,12 @@ pkg/
 - `daemon preview` - Show what would be spawned
 
 ### Server Management
-- `servers init <project>` - Scan project and generate .orch/servers.yaml
-- `servers up <project>` - Start servers via launchd/Docker (preferred)
-- `servers down <project>` - Stop servers via launchd/Docker
-- `servers gen-plist <project>` - Generate launchd plist files from servers.yaml
 - `servers list` - Show all projects with port allocations and running status
-- `servers start <project>` - Start servers via tmuxinator (legacy)
-- `servers stop <project>` - Stop servers for a project (legacy)
+- `servers start <project>` - Start servers via tmuxinator
+- `servers stop <project>` - Stop servers for a project
 - `servers attach <project>` - Attach to servers window
 - `servers open <project>` - Open web port in browser
 - `servers status` - Show summary view (running/stopped counts)
-
-### Knowledge Base
-- `kb ask "question"` - Get inline answers from knowledge base (~5-10s, avoids spawning agents)
-- `kb ask "question" --save` - Save response to .kb/
-- `kb ask "question" --global` - Search across all projects
-- `kb extract <artifact> --to <project>` - Extract artifact to another project with lineage tracking
-
-### Sessions
-- `sessions list` - List recent OpenCode sessions
-- `sessions list --limit 20` - List last N sessions
-- `sessions list --date 2025-12-25` - Sessions from specific date
-- `sessions search "query"` - Full-text search of session content
-- `sessions search --regex "auth.*token"` - Regex search
-- `sessions show <session-id>` - View specific session details and messages
-
-### Health & Validation
-- `doctor` - Check health of orch-related services (OpenCode, orch serve, beads daemon)
-- `doctor --fix` - Check and automatically start missing services
-- `lint` - Check CLAUDE.md against recommended limits (5K tokens global, 15K project)
-- `lint --all` - Check all known CLAUDE.md files
-- `lint --skills` - Validate CLI command references in skill files
-- `lint --issues` - Validate beads issues for common problems
-
-### Activity & Tokens
-- `tokens` - Show token usage for active sessions
-- `tokens <session-id>` - Detailed breakdown for specific session
-- `tokens --all` - Include completed sessions
-- `synthesis` - Synthesize recent activity (commits, issues, investigations)
-- `synthesis --days 14` - Look back N days
-
-### Batch Operations
-- `swarm --issues id1,id2,id3` - Spawn multiple agents from explicit list
-- `swarm --ready` - Spawn from all triage:ready issues
-- `swarm --ready --concurrency 5` - Control parallel agents (default 3)
-- `swarm --ready --detach` - Fire-and-forget mode
-- `handoff` - Generate session handoff document
-- `handoff -o .orch/` - Write to .orch/SESSION_HANDOFF.md
-
-### Port Management
-- `port allocate <project> <service> <type>` - Allocate port (type: vite, api)
-- `port list` - List all port allocations
-- `port release <project> <service>` - Release a port allocation
 
 ## Development
 
@@ -211,43 +165,6 @@ make install
 orch version
 ```
 
-### Starting the Web UI
-
-The swarm dashboard provides real-time visibility into active agents, beads queue, and system status.
-
-**Architecture:**
-```
-Browser → Web UI (Svelte, port 5188) → orch serve API (port 3348) → OpenCode API (port 4096)
-```
-
-**Quick start (preferred - uses orch servers):**
-```bash
-# Start dev servers (web UI and any project-specific servers)
-orch servers start orch-go
-
-# Open in browser
-orch servers open orch-go
-
-# Stop when done
-orch servers stop orch-go
-```
-
-**Manual start (alternative):**
-```bash
-# Terminal 1: Start the API server
-orch serve
-
-# Terminal 2: Start the Svelte dev server
-cd web && npm run dev
-
-# Open http://localhost:5188 in browser
-```
-
-**Troubleshooting:**
-- If dashboard shows no agents: Ensure `orch serve` is running (`orch serve status`)
-- If agents not updating: Check OpenCode is running (`orch doctor`)
-- Port conflict: Override with `orch serve --port 8080`
-
 ### Adding New Commands
 
 1. Add command to `cmd/orch/main.go` (inline with Cobra)
@@ -259,23 +176,6 @@ cd web && npm run dev
 1. Create `pkg/{name}/{name}.go`
 2. Create `pkg/{name}/{name}_test.go`
 3. Import in cmd/orch as needed
-
-## OpenCode API Notes
-
-**Critical knowledge extracted from 23 OpenCode investigations (Dec 2025):**
-
-- **No `/health` endpoint exists** - Use `GET /session` to verify server status. Unknown routes return "redirected too many times" (proxied to desktop.opencode.ai) - this is expected, not a bug.
-
-- **Session storage is project-partitioned** - Sessions stored in `~/.local/share/opencode/storage/session/{projectID}/`. Project ID = first git root commit hash (stable across clones). No "all sessions" API exists - must iterate project directories.
-
-- **`x-opencode-directory` header changes API behavior drastically:**
-  - Without header: Returns only in-memory sessions (2-4 typically)
-  - With header: Returns ALL historical disk sessions for that directory (hundreds)
-  - For `orch status`, call `ListSessions("")` (no header) to get only active sessions
-
-- **Activity-based liveness, not existence** - Sessions persist indefinitely on disk. Use 30-minute idle threshold based on `time.updated`, not existence checks.
-
-- **Model format in API** - Model must be object `{providerID, modelID}`, not string. Use `parseModelSpec()` to convert.
 
 ## Gotchas
 

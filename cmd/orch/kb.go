@@ -12,16 +12,14 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/spf13/cobra"
 )
 
 var (
-	kbAskSave          bool   // Save result as investigation artifact
-	kbAskModel         string // Model to use for synthesis
-	kbAskLimit         int    // Maximum artifacts to read
-	kbAskGlobal        bool   // Search across all projects
-	kbAskProjectFilter string // Filter results to specific project
+	kbAskSave   bool   // Save result as investigation artifact
+	kbAskModel  string // Model to use for synthesis
+	kbAskLimit  int    // Maximum artifacts to read
+	kbAskGlobal bool   // Search across all projects
 
 	// kb extract flags
 	kbExtractTo           string // Target project name
@@ -105,7 +103,6 @@ func init() {
 	kbAskCmd.Flags().StringVar(&kbAskModel, "model", "", "Model to use (default: sonnet for speed)")
 	kbAskCmd.Flags().IntVar(&kbAskLimit, "limit", 3, "Maximum artifacts to read for context")
 	kbAskCmd.Flags().BoolVarP(&kbAskGlobal, "global", "g", false, "Search across all known projects")
-	kbAskCmd.Flags().StringVarP(&kbAskProjectFilter, "project", "p", "", "Filter results to specific project")
 
 	kbExtractCmd.Flags().StringVar(&kbExtractTo, "to", "", "Target project name (required)")
 	kbExtractCmd.Flags().BoolVar(&kbExtractUpdateSource, "update-source", false, "Add extracted-to reference in original file")
@@ -155,11 +152,6 @@ func runKBAsk(question string) error {
 	contextResult, err := runKBContext(question)
 	if err != nil {
 		return fmt.Errorf("failed to get kb context: %w", err)
-	}
-
-	// Step 1b: Post-filter global results to ecosystem allowlist
-	if kbAskGlobal {
-		contextResult = filterToEcosystem(contextResult)
 	}
 
 	// Step 2: Build context from kn entries and artifacts
@@ -212,9 +204,6 @@ func runKBContext(query string) (*KBContextResult, error) {
 	args := []string{"context", query, "--format", "json"}
 	if kbAskGlobal {
 		args = append(args, "--global")
-	}
-	if kbAskProjectFilter != "" {
-		args = append(args, "--project", kbAskProjectFilter)
 	}
 
 	cmd := exec.Command("kb", args...)
@@ -725,60 +714,6 @@ func addExtractedToReference(sourcePath, targetPath, targetProject string) error
 	newContent := string(content) + extractedToComment
 
 	return os.WriteFile(sourcePath, []byte(newContent), 0644)
-}
-
-// filterToEcosystem filters KBContextResult to only include artifacts from ecosystem repos.
-// This is used when --global is specified to avoid polluting context with non-ecosystem projects.
-func filterToEcosystem(result *KBContextResult) *KBContextResult {
-	if result == nil {
-		return nil
-	}
-
-	return &KBContextResult{
-		// kn entries are not filtered - they're from current project
-		Constraints:    result.Constraints,
-		Decisions:      result.Decisions,
-		Attempts:       result.Attempts,
-		Questions:      result.Questions,
-		// Filter kb artifacts to ecosystem repos only
-		Investigations: filterArtifactsToEcosystem(result.Investigations),
-		KBDecisions:    filterArtifactsToEcosystem(result.KBDecisions),
-	}
-}
-
-// filterArtifactsToEcosystem filters a slice of KBArtifact to only include those from ecosystem repos.
-func filterArtifactsToEcosystem(artifacts []KBArtifact) []KBArtifact {
-	if len(artifacts) == 0 {
-		return artifacts
-	}
-
-	filtered := make([]KBArtifact, 0, len(artifacts))
-	for _, artifact := range artifacts {
-		projectName := extractProjectNameFromPath(artifact.Path)
-		if spawn.IsEcosystemRepo(projectName) {
-			filtered = append(filtered, artifact)
-		}
-	}
-	return filtered
-}
-
-// extractProjectNameFromPath extracts the project name from an artifact path.
-// For paths like /Users/dylan/Documents/personal/orch-go/.kb/investigations/foo.md,
-// returns "orch-go".
-func extractProjectNameFromPath(path string) string {
-	// Find /.kb/ in path and get the directory name before it
-	kbIndex := strings.Index(path, "/.kb/")
-	if kbIndex == -1 {
-		kbIndex = strings.Index(path, "\\.kb\\") // Windows compatibility
-	}
-
-	if kbIndex == -1 {
-		// Fallback: use directory name
-		return filepath.Base(filepath.Dir(path))
-	}
-
-	projectDir := path[:kbIndex]
-	return filepath.Base(projectDir)
 }
 
 // generateSlug creates a URL-safe slug from text.

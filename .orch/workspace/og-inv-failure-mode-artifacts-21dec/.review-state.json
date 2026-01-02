@@ -1,0 +1,12 @@
+{
+  "reviewed_at": "2025-12-26T22:00:46.36446-08:00",
+  "dismissed": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "workspace_id": "og-inv-failure-mode-artifacts-21dec",
+  "beads_id": "orch-go-4kwt.6",
+  "total_recommendations": 4
+}

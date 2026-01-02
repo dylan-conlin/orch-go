@@ -3,7 +3,6 @@ package spawn
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -58,50 +57,6 @@ func DefaultIncludeServersForSkill(skillName string) bool {
 		return include
 	}
 	return false // Don't include for investigation-type skills by default
-}
-
-// SkillRequiresInvestigationFile maps skills to whether they require an investigation file.
-// Skills that produce knowledge artifacts as their primary deliverable require investigation files.
-var SkillRequiresInvestigationFile = map[string]bool{
-	// Skills that always require investigation file
-	"investigation":        true,
-	"research":             true,
-	"architect":            true,
-	"codebase-audit":       true,
-	"systematic-debugging": true,
-
-	// Skills that conditionally require investigation file (based on phases)
-	// feature-impl requires investigation file ONLY when investigation phase is included
-	"feature-impl": false, // Conditional - check phases
-
-	// Skills that never require investigation file
-	"issue-creation":      false,
-	"reliability-testing": false,
-	"design-session":      false, // Uses its own artifact structure
-}
-
-// RequiresInvestigationFile determines if a skill/phase combination requires an investigation file.
-// Returns true if:
-// - The skill is in SkillRequiresInvestigationFile with value true, OR
-// - The skill is "feature-impl" AND phases includes "investigation"
-func RequiresInvestigationFile(skillName, phases string) bool {
-	// Check direct skill requirement first
-	if required, exists := SkillRequiresInvestigationFile[skillName]; exists && required {
-		return true
-	}
-
-	// Special case: feature-impl requires investigation file only when investigation phase is included
-	if skillName == "feature-impl" && phases != "" {
-		phaseList := strings.Split(phases, ",")
-		for _, phase := range phaseList {
-			if strings.TrimSpace(phase) == "investigation" {
-				return true
-			}
-		}
-	}
-
-	// Unknown skills default to false (conservative - don't add unnecessary instructions)
-	return false
 }
 
 // Config holds configuration for spawning an agent.
@@ -162,15 +117,6 @@ type Config struct {
 	// GapAnalysis contains the results of pre-spawn context gap analysis.
 	// Used for surfacing gaps in dashboard and tracking patterns.
 	GapAnalysis *GapAnalysis
-
-	// EcosystemContext is the local project ecosystem context to include in SPAWN_CONTEXT.md
-	// If provided, used directly; otherwise GenerateEcosystemContext() is called to read from ~/.orch/ECOSYSTEM.md
-	EcosystemContext string
-
-	// BehavioralPatterns is the formatted behavioral patterns warning to include in SPAWN_CONTEXT.md
-	// If provided, used directly; otherwise GenerateBehavioralPatternsContext() is called
-	// to detect patterns from action-log.jsonl
-	BehavioralPatterns string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.
@@ -264,45 +210,4 @@ func (c *Config) WorkspacePath() string {
 // ContextFilePath returns the path to SPAWN_CONTEXT.md.
 func (c *Config) ContextFilePath() string {
 	return filepath.Join(c.WorkspacePath(), "SPAWN_CONTEXT.md")
-}
-
-// GenerateUniqueWorkspaceName creates a workspace name and ensures it doesn't collide
-// with an existing workspace directory. If the generated name already exists,
-// appends a numeric suffix (e.g., "-2", "-3") until a unique name is found.
-func GenerateUniqueWorkspaceName(skillName, task, projectDir string) string {
-	baseName := GenerateWorkspaceName(skillName, task)
-	return EnsureUniqueWorkspaceName(baseName, projectDir)
-}
-
-// EnsureUniqueWorkspaceName checks if a workspace with the given name exists
-// and appends a numeric suffix if needed to create a unique name.
-func EnsureUniqueWorkspaceName(baseName, projectDir string) string {
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-
-	// Check if base name is available
-	candidatePath := filepath.Join(workspaceDir, baseName)
-	if !workspaceExists(candidatePath) {
-		return baseName
-	}
-
-	// Base name exists, try with numeric suffixes
-	for i := 2; i <= 99; i++ {
-		candidateName := fmt.Sprintf("%s-%d", baseName, i)
-		candidatePath := filepath.Join(workspaceDir, candidateName)
-		if !workspaceExists(candidatePath) {
-			return candidateName
-		}
-	}
-
-	// Fallback: add timestamp for uniqueness (shouldn't happen in practice)
-	return fmt.Sprintf("%s-%d", baseName, time.Now().Unix())
-}
-
-// workspaceExists checks if a workspace directory exists.
-func workspaceExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
 }

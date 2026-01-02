@@ -4,10 +4,7 @@
 	import { pendingReviews, type PendingReviewAgent, type PendingReviewItem } from '$lib/stores/pending-reviews';
 	import { createIssue } from '$lib/stores/agents';
 
-	interface Props {
-		expanded?: boolean;
-	}
-	let { expanded = true }: Props = $props();
+	export let expanded: boolean = true;
 
 	// State for issue creation
 	let creatingIssue: { [key: string]: boolean } = {};
@@ -16,12 +13,12 @@
 	let dismissingAllLightTier: boolean = false;
 	
 	// Separate light-tier from standard agents
-	let lightTierAgents = $derived($pendingReviews?.agents?.filter(a => a.is_light_tier) ?? []);
-	let standardAgents = $derived($pendingReviews?.agents?.filter(a => !a.is_light_tier) ?? []);
+	$: lightTierAgents = $pendingReviews?.agents?.filter(a => a.is_light_tier) ?? [];
+	$: standardAgents = $pendingReviews?.agents?.filter(a => !a.is_light_tier) ?? [];
 	
 	// Count total light-tier unreviewed items
-	let lightTierTotalUnreviewed = $derived(lightTierAgents.reduce((sum, agent) => 
-		sum + getUnreviewedItems(agent).length, 0));
+	$: lightTierTotalUnreviewed = lightTierAgents.reduce((sum, agent) => 
+		sum + getUnreviewedItems(agent).length, 0);
 
 	function toggle() {
 		expanded = !expanded;

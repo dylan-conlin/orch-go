@@ -7,16 +7,14 @@
 	import { AgentCard } from '$lib/components/agent-card';
 	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
+	import { PendingReviewsSection } from '$lib/components/pending-reviews-section';
 	import { ReadyQueueSection } from '$lib/components/ready-queue-section';
+	import { UpNextSection } from '$lib/components/up-next-section';
 	import { RecentWins } from '$lib/components/recent-wins';
-	// Note: PendingReviewsSection, UpNextSection removed - consolidated into NeedsAttention
 	import { NeedsAttention } from '$lib/components/needs-attention';
 	import {
 		agents,
 		activeAgents,
-		workingAgents,
-		readyForReviewAgents,
-		problemAgents,
 		recentAgents,
 		archivedAgents,
 		completedAgents,
@@ -25,8 +23,8 @@
 		connectionStatus,
 		connectSSE,
 		disconnectSSE,
-		totalTokens,
-		type Agent
+		type Agent,
+		type AgentState
 	} from '$lib/stores/agents';
 	import {
 		agentlogEvents,
@@ -41,19 +39,16 @@
 	import { beads, readyIssues } from '$lib/stores/beads';
 	import { daemon, getDaemonEmoji, getDaemonCapacity } from '$lib/stores/daemon';
 	import { pendingReviews } from '$lib/stores/pending-reviews';
-	// Note: dashboardMode store removed - single unified view now
+	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { config } from '$lib/stores/config';
-	import { patterns } from '$lib/stores/patterns';
 	import { SettingsPanel } from '$lib/components/settings-panel';
 
 	// Filter and sort state
-	// Note: statusFilter removed - sections already categorize by actionable state (Working/Review/Problems/History)
-	// The UI sections ARE the status filter - users click/expand sections to see different states
+	let statusFilter: AgentState | 'all' = 'all';
 	let skillFilter: string = 'all';
 	let projectFilter: string = 'all';
 	let sortBy: 'recent-activity' | 'newest' | 'oldest' | 'alphabetical' | 'project' | 'phase' = 'recent-activity';
 	let activeOnly: boolean = false;
-	let searchQuery: string = '';
 
 	// Section collapse state with localStorage persistence
 	const STORAGE_KEY = 'orch-dashboard-sections';
@@ -102,35 +97,16 @@
 	// Get unique projects from agents
 	$: uniqueProjects = [...new Set($agents.map(a => a.project).filter(Boolean))].sort() as string[];
 
-	// Map project name to project_dir for pattern filtering
-	// Find the first agent with the selected project name and use its project_dir
-	$: currentProjectDir = projectFilter !== 'all' 
-		? $agents.find(a => a.project === projectFilter)?.project_dir 
-		: undefined;
-
-	// Refetch patterns when project filter changes
-	// This ensures cross-project noise is filtered out
-	$: if (typeof window !== 'undefined') {
-		patterns.fetch(currentProjectDir);
-	}
-
 	onMount(() => {
+		// Initialize dashboard mode from localStorage (must be in onMount for SSR)
+		dashboardMode.init();
+
 		// Load section state from localStorage (sync, instant)
 		loadSectionState();
 
-		// CRITICAL: Fetch agents BEFORE connecting to SSE.
-		// Chrome limits connections to 6 per host. If multiple dashboard tabs are open,
-		// each tab's SSE connection can saturate all available connections, causing
-		// the agents.fetch() request to queue indefinitely.
-		// By fetching agents first, we ensure the dashboard populates even if SSE
-		// connections later exhaust the connection pool.
-		agents.fetch().then(() => {
-			// Now connect SSE for real-time updates
-			connectSSE();
-		}).catch(() => {
-			// Still connect SSE even if initial fetch fails - SSE will trigger refetch
-			connectSSE();
-		});
+		// Connect to primary SSE immediately - this triggers agents.fetch() on connection
+		// which is the most critical data for initial render
+		connectSSE();
 
 		// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP
@@ -148,7 +124,6 @@
 			servers.fetch();
 			readyIssues.fetch();
 			daemon.fetch();
-			patterns.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -177,8 +152,7 @@
 				beads.fetch(),
 				readyIssues.fetch(),
 				daemon.fetch(),
-				pendingReviews.fetch(),
-				patterns.fetch(currentProjectDir)
+				pendingReviews.fetch()
 			]).catch(console.error);
 		}, 60000);
 
@@ -215,17 +189,6 @@
 
 	function formatUnixTime(timestamp: number): string {
 		return new Date(timestamp * 1000).toLocaleTimeString();
-	}
-
-	// Format token count with K/M suffixes for readability
-	function formatTokenCount(count: number): string {
-		if (count >= 1000000) {
-			return `${(count / 1000000).toFixed(1)}M`;
-		}
-		if (count >= 1000) {
-			return `${(count / 1000).toFixed(1)}K`;
-		}
-		return count.toString();
 	}
 
 	function getEventIcon(type: string): string {
@@ -267,14 +230,14 @@
 	}
 
 	function clearFilters() {
+		statusFilter = 'all';
 		skillFilter = 'all';
 		projectFilter = 'all';
 		sortBy = 'recent-activity';
 		activeOnly = false;
-		searchQuery = '';
 	}
 
-	$: hasActiveFilters = skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly || searchQuery !== '';
+	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly;
 
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
@@ -366,58 +329,52 @@
 		return agentList.filter(a => a.project === projectFilter);
 	}
 
-	// Apply search filter - searches workspace name (id), beads_id, task, beads_title, skill
-	function applySearchFilter(agentList: Agent[]): Agent[] {
-		if (!searchQuery.trim()) return agentList;
-		const query = searchQuery.toLowerCase().trim();
-		return agentList.filter(a => {
-			// Search across multiple fields
-			const searchableFields = [
-				a.id,              // workspace name
-				a.beads_id,        // beads issue ID
-				a.task,            // task description
-				a.beads_title,     // beads issue title
-				a.skill,           // skill type
-				a.project          // project name
-			];
-			return searchableFields.some(field => 
-				field && field.toLowerCase().includes(query)
-			);
-		});
-	}
-
-	// Apply all filters (skill + project + search)
+	// Apply all filters (skill + project)
 	function applyFilters(agentList: Agent[]): Agent[] {
-		return applySearchFilter(applyProjectFilter(applySkillFilter(agentList)));
+		return applyProjectFilter(applySkillFilter(agentList));
 	}
 
-	// ACTIONABLE CATEGORIES: sorted and filtered agents per section
-	// Working and Ready use stable sort (spawned_at) to prevent jostling from SSE updates
+	// Progressive disclosure: sorted and filtered agents per section
+	// Active and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
 	// Archive uses volatile sort (updated_at) since historical recency matters more there
-	$: sortedWorkingAgents = sortAgents(applyFilters($workingAgents), true);
-	$: sortedReadyForReviewAgents = sortAgents(applyFilters($readyForReviewAgents), true);
-	$: sortedProblemAgents = sortAgents(applyFilters($problemAgents), true);
+	$: sortedActiveAgents = sortAgents(applyFilters($activeAgents), true);
 	$: sortedRecentAgents = sortAgents(applyFilters($recentAgents), true);
 	$: sortedArchivedAgents = sortAgents(applyFilters($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
-	$: totalVisibleAgents = sortedWorkingAgents.length + sortedReadyForReviewAgents.length + sortedProblemAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
+	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
-<div class="space-y-4">
-	<!-- Compact Stats Bar -->
-	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-card/80 backdrop-blur-sm px-3 py-2.5 shadow-sm" data-testid="stats-bar">
-		<!-- Primary indicators group - metrics use whitespace-nowrap to prevent internal breaks -->
-		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+<div class="space-y-3">
+	<!-- Compact Stats Bar with Mode Toggle -->
+	<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-2" data-testid="stats-bar">
+		<!-- Mode Toggle -->
+		<div class="flex items-center gap-1 rounded-md bg-muted p-0.5" data-testid="mode-toggle">
+			<button
+				class="px-2 py-1 rounded text-xs font-medium transition-colors {$dashboardMode === 'operational' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+				onclick={() => dashboardMode.set('operational')}
+			>
+				⚡ Ops
+			</button>
+			<button
+				class="px-2 py-1 rounded text-xs font-medium transition-colors {$dashboardMode === 'historical' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+				onclick={() => dashboardMode.set('historical')}
+			>
+				📦 History
+			</button>
+		</div>
+
+		<!-- Secondary indicators group -->
+		<div class="flex items-center gap-4">
 			<!-- Errors indicator -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
-							<span class="text-base">❌</span>
-							<span class="inline-flex items-baseline gap-0.5">
-								<span class="text-lg font-bold tabular-nums" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
-								<span class="text-xs text-muted-foreground hidden sm:inline">err</span>
+						<span {...props} class="inline-flex items-center gap-2 cursor-default">
+							<span class="text-lg">❌</span>
+							<span class="inline-flex items-baseline gap-1">
+								<span class="text-xl font-bold" class:text-red-500={$errorEvents.length > 0}>{$errorEvents.length}</span>
+								<span class="text-xs text-muted-foreground">errors</span>
 							</span>
 						</span>
 					{/snippet}
@@ -427,75 +384,35 @@
 				</Tooltip.Content>
 			</Tooltip.Root>
 
-			<!-- Working agents indicator (green) -->
+			<!-- Active agents indicator -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
-							<span class="text-base">🟢</span>
-							<span class="inline-flex items-baseline gap-0.5">
-								<span class="text-lg font-bold tabular-nums" class:text-green-500={$workingAgents.length > 0}>{$workingAgents.length}</span>
-								<span class="text-xs text-muted-foreground hidden sm:inline">working</span>
+						<span {...props} class="inline-flex items-center gap-2 cursor-default">
+							<span class="text-lg">🟢</span>
+							<span class="inline-flex items-baseline gap-1">
+								<span class="text-xl font-bold" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
+								<span class="text-xs text-muted-foreground">active</span>
 							</span>
 						</span>
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p>{$workingAgents.length === 0 ? 'No working agents' : `${$workingAgents.length} agent${$workingAgents.length === 1 ? '' : 's'} actively working`}</p>
+					<p>{$activeAgents.length === 0 ? 'No active agents' : `${$activeAgents.length} agent${$activeAgents.length === 1 ? '' : 's'} running`}</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
 
-			<!-- Ready for Review indicator (blue) -->
-			{#if $readyForReviewAgents.length > 0}
+			<!-- Focus indicator (only in historical mode or when drifting) -->
+			{#if $focus?.has_focus && ($dashboardMode === 'historical' || $focus.is_drifting)}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
-								<span class="text-base">🔵</span>
-								<span class="inline-flex items-baseline gap-0.5">
-									<span class="text-lg font-bold tabular-nums text-blue-500">{$readyForReviewAgents.length}</span>
-									<span class="text-xs text-muted-foreground hidden sm:inline">review</span>
-								</span>
-							</span>
-						{/snippet}
-					</Tooltip.Trigger>
-					<Tooltip.Content>
-						<p>{$readyForReviewAgents.length} agent{$readyForReviewAgents.length === 1 ? '' : 's'} ready for review</p>
-						<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to review</p>
-					</Tooltip.Content>
-				</Tooltip.Root>
-			{/if}
-
-			<!-- Problems indicator (red) -->
-			{#if $problemAgents.length > 0}
-				<Tooltip.Root>
-					<Tooltip.Trigger>
-						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
-								<span class="text-base">🔴</span>
-								<span class="inline-flex items-baseline gap-0.5">
-									<span class="text-lg font-bold tabular-nums text-red-500">{$problemAgents.length}</span>
-									<span class="text-xs text-muted-foreground hidden sm:inline">problems</span>
-								</span>
-							</span>
-						{/snippet}
-					</Tooltip.Trigger>
-					<Tooltip.Content>
-						<p class="text-red-500">{$problemAgents.length} agent{$problemAgents.length === 1 ? '' : 's'} crashed/stalled</p>
-						<p class="text-xs text-muted-foreground">Needs investigation or respawn</p>
-					</Tooltip.Content>
-				</Tooltip.Root>
-			{/if}
-
-			<!-- Focus indicator (only when drifting - attention signal) -->
-			{#if $focus?.has_focus && $focus.is_drifting}
-				<Tooltip.Root>
-					<Tooltip.Trigger>
-						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="focus-indicator">
-								<span class="text-base">{getDriftEmoji($focus)}</span>
-								<span class="text-xs truncate max-w-24" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
-									{$focus.is_drifting ? 'drift' : 'focus'}
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="focus-indicator">
+								<span class="text-lg">{getDriftEmoji($focus)}</span>
+								<span class="inline-flex items-baseline gap-1">
+									<span class="text-xs truncate max-w-32" class:text-red-500={$focus.is_drifting} class:text-green-500={!$focus.is_drifting}>
+										{$focus.is_drifting ? 'drifting' : 'focused'}
+									</span>
 								</span>
 							</span>
 						{/snippet}
@@ -509,16 +426,16 @@
 				</Tooltip.Root>
 			{/if}
 
-			<!-- Servers indicator -->
-			{#if $servers && $servers.running_count > 0}
+			<!-- Servers indicator (only in historical mode) -->
+			{#if $servers && $dashboardMode === 'historical'}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="servers-indicator">
-								<span class="text-base">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
-								<span class="inline-flex items-baseline gap-0.5">
-									<span class="text-lg font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
-									<span class="text-xs text-muted-foreground">/{$servers.total_count}</span>
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="servers-indicator">
+								<span class="text-lg">{$servers.running_count > 0 ? '🖥️' : '💤'}</span>
+								<span class="inline-flex items-baseline gap-1">
+									<span class="text-xl font-bold" class:text-green-500={$servers.running_count > 0}>{$servers.running_count}</span>
+									<span class="text-xs text-muted-foreground">/{$servers.total_count} servers</span>
 								</span>
 							</span>
 						{/snippet}
@@ -537,17 +454,17 @@
 						{#snippet child({ props })}
 							<button
 								{...props}
-								class="inline-flex items-center gap-1.5 cursor-pointer hover:bg-accent/50 rounded px-1.5 py-1 transition-colors whitespace-nowrap"
+								class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
 								onclick={() => { sectionState.readyQueue = !sectionState.readyQueue; }}
 								data-testid="beads-indicator"
 							>
-								<span class="text-base">📋</span>
-								<span class="inline-flex items-baseline gap-0.5">
-									<span class="text-lg font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
-									<span class="text-xs text-muted-foreground hidden sm:inline">rdy</span>
+								<span class="text-lg">📋</span>
+								<span class="inline-flex items-baseline gap-1">
+									<span class="text-xl font-bold" class:text-green-500={$beads.ready_issues > 0}>{$beads.ready_issues}</span>
+									<span class="text-xs text-muted-foreground">ready</span>
 								</span>
 								{#if $beads.blocked_issues > 0}
-									<span class="text-xs text-red-500/80">+{$beads.blocked_issues}<span class="hidden sm:inline">blk</span></span>
+									<span class="text-xs text-red-500">({$beads.blocked_issues} blocked)</span>
 								{/if}
 							</button>
 						{/snippet}
@@ -565,14 +482,14 @@
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="daemon-indicator">
-								<span class="text-base">{getDaemonEmoji($daemon)}</span>
-								<span class="inline-flex items-baseline gap-0.5">
+							<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="daemon-indicator">
+								<span class="text-lg">{getDaemonEmoji($daemon)}</span>
+								<span class="inline-flex items-baseline gap-1">
 									{#if $daemon.running}
-										<span class="text-lg font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
-										<span class="text-xs text-muted-foreground hidden sm:inline">slot</span>
+										<span class="text-xl font-bold" class:text-green-500={$daemon.capacity_free > 0} class:text-red-500={$daemon.capacity_free === 0}>{getDaemonCapacity($daemon)}</span>
+										<span class="text-xs text-muted-foreground">slots</span>
 									{:else}
-										<span class="text-xs text-muted-foreground">off</span>
+										<span class="text-xs text-muted-foreground">daemon</span>
 									{/if}
 								</span>
 							</span>
@@ -597,35 +514,9 @@
 					</Tooltip.Content>
 				</Tooltip.Root>
 			{/if}
-
-			<!-- Token usage indicator (only when active agents have token data) -->
-			{#if $totalTokens.total > 0}
-				<Tooltip.Root>
-					<Tooltip.Trigger>
-						{#snippet child({ props })}
-							<span {...props} class="inline-flex items-center gap-1.5 cursor-default whitespace-nowrap" data-testid="tokens-indicator">
-								<span class="text-base">🪙</span>
-								<span class="inline-flex items-baseline gap-0.5">
-									<span class="text-lg font-bold tabular-nums">{formatTokenCount($totalTokens.total)}</span>
-									<span class="text-xs text-muted-foreground hidden sm:inline">tok</span>
-								</span>
-							</span>
-						{/snippet}
-					</Tooltip.Trigger>
-					<Tooltip.Content>
-						<p class="font-medium">{formatTokenCount($totalTokens.total)} tokens</p>
-						<p class="text-xs text-muted-foreground">
-							in: {formatTokenCount($totalTokens.input)} • out: {formatTokenCount($totalTokens.output)}
-						</p>
-						<p class="text-xs text-muted-foreground mt-1">
-							From {$totalTokens.agentCount} active agent{$totalTokens.agentCount === 1 ? '' : 's'}
-						</p>
-					</Tooltip.Content>
-				</Tooltip.Root>
-			{/if}
 		</div>
-		<!-- Connection button and settings - pushed to end, shrinks last -->
-		<div class="ml-auto flex items-center gap-1 shrink-0">
+		<!-- Connection button and settings - pushed to end -->
+		<div class="ml-auto flex items-center gap-1">
 			<SettingsPanel />
 			<Tooltip.Root>
 				<Tooltip.Trigger>
@@ -662,212 +553,363 @@
 		</div>
 	</div>
 
-	<!-- Filter Bar -->
-	<div class="flex flex-wrap items-center gap-2 rounded-lg border bg-card/50 px-3 py-2" data-testid="filter-bar">
-		<!-- Search -->
-		<div class="flex-1 min-w-32">
-			<input
-				type="text"
-				placeholder="Search agents..."
-				bind:value={searchQuery}
-				class="w-full h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-				data-testid="search-input"
-			/>
-		</div>
-
-		<!-- Note: Status filter removed - sections already show actionable categories -->
-		<!-- (Working/Ready for Review/Problems/History) - no need for redundant filter -->
-
-		<!-- Skill Filter -->
-		{#if uniqueSkills.length > 0}
-			<select
-				bind:value={skillFilter}
-				class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-				data-testid="skill-filter"
-			>
-				<option value="all">All Skills</option>
-				{#each uniqueSkills as skill}
-					<option value={skill}>{skill}</option>
-				{/each}
-			</select>
-		{/if}
-
-		<!-- Project Filter -->
-		{#if uniqueProjects.length > 0}
-			<select
-				bind:value={projectFilter}
-				class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-				data-testid="project-filter"
-			>
-				<option value="all">All Projects</option>
-				{#each uniqueProjects as project}
-					<option value={project}>{project}</option>
-				{/each}
-			</select>
-		{/if}
-
-		<!-- Sort -->
-		<select
-			bind:value={sortBy}
-			class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-			data-testid="sort-select"
-		>
-			<option value="recent-activity">Recent Activity</option>
-			<option value="newest">Newest First</option>
-			<option value="oldest">Oldest First</option>
-			<option value="project">By Project</option>
-			<option value="phase">By Phase</option>
-			<option value="alphabetical">A-Z</option>
-		</select>
-
-		<!-- Agent Count -->
-		<span class="text-xs text-muted-foreground whitespace-nowrap" data-testid="filter-count">
-			{totalVisibleAgents} {totalVisibleAgents === 1 ? 'agent' : 'agents'}
-		</span>
-
-		<!-- Clear Filters -->
-		{#if hasActiveFilters}
-			<Button
-				variant="ghost"
-				size="sm"
-				onclick={clearFilters}
-				class="h-7 text-xs"
-				data-testid="clear-filters-button"
-			>
-				Clear filters
-			</Button>
-		{/if}
-	</div>
-
-	<!-- ACTIONABLE LAYOUT: Categories show what ACTION to take -->
-	<div data-testid="agent-sections" class="space-y-3">
-	
-	<!-- 🔔 Attention Panel (PRIMARY - top, prominent) -->
-	<NeedsAttention projectDir={currentProjectDir} />
-	
-	<!-- ✨ Recently Completed (shows agents completed in last 4h) -->
-	<RecentWins />
-	
-	<!-- 🔵 Ready for Review (Phase:Complete - ACTION: run orch complete) -->
-	{#if sortedReadyForReviewAgents.length > 0}
-		<div class="rounded-lg border bg-card border-blue-500/50 shadow-lg shadow-blue-500/10" data-testid="ready-for-review-section">
-			<div class="flex items-center gap-2 px-3 py-2 border-b border-blue-500/30 bg-blue-500/5">
-				<span class="text-sm">🔵</span>
-				<span class="text-sm font-medium text-blue-500">Ready for Review</span>
-				<Badge variant="default" class="h-5 px-1.5 text-xs bg-blue-500">
-					{sortedReadyForReviewAgents.length}
+	{#if $dashboardMode === 'operational'}
+		<!-- OPERATIONAL MODE: Focused daily coordination view -->
+		
+		<!-- Up Next (priority queue visibility) -->
+		<UpNextSection
+			bind:expanded={sectionState.upNext}
+		/>
+		
+		<!-- Active Agents (always visible, main focus) -->
+		<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
+			<div class="flex items-center gap-2 px-3 py-2 border-b">
+				<span class="text-sm">🟢</span>
+				<span class="text-sm font-medium">Active Agents</span>
+				<Badge variant="default" class="h-5 px-1.5 text-xs">
+					{sortedActiveAgents.length}
 				</Badge>
-				<span class="text-[10px] text-muted-foreground ml-1">
-					— run <code class="bg-muted px-1 rounded">orch complete</code>
-				</span>
 			</div>
 			<div class="p-2">
-				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-					{#each sortedReadyForReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
-						<AgentCard {agent} />
-					{/each}
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	<!-- 🟢 Working (actively doing work) -->
-	<div class="rounded-lg border bg-card border-green-500/30" data-testid="working-agents-section">
-		<div class="flex items-center gap-2 px-3 py-2 border-b">
-			<span class="text-sm">🟢</span>
-			<span class="text-sm font-medium">Working</span>
-			<Badge variant="default" class="h-5 px-1.5 text-xs">
-				{sortedWorkingAgents.length}
-			</Badge>
-		</div>
-		<div class="p-2">
-			{#if sortedWorkingAgents.length > 0}
-				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-					{#each sortedWorkingAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
-						<AgentCard {agent} />
-					{/each}
-				</div>
-			{:else}
-				<div class="rounded-lg border-2 border-dashed border-muted-foreground/20 p-8 text-center">
-					<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
-						<span class="text-2xl opacity-50">🤖</span>
-					</div>
-					<p class="text-sm font-medium text-muted-foreground">No working agents</p>
-					<p class="mt-2 text-xs text-muted-foreground">
-						Spawn with <code class="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">orch spawn</code>
-					</p>
-				</div>
-			{/if}
-		</div>
-	</div>
-
-	<!-- 🔴 Problems (crashed/stalled <1hr - ACTION: investigate or respawn) -->
-	{#if sortedProblemAgents.length > 0}
-		<div class="rounded-lg border bg-card border-red-500/50 shadow-lg shadow-red-500/10" data-testid="problems-section">
-			<div class="flex items-center gap-2 px-3 py-2 border-b border-red-500/30 bg-red-500/5">
-				<span class="text-sm">🔴</span>
-				<span class="text-sm font-medium text-red-500">Problems</span>
-				<Badge variant="destructive" class="h-5 px-1.5 text-xs">
-					{sortedProblemAgents.length}
-				</Badge>
-				<span class="text-[10px] text-muted-foreground ml-1">
-					— crashed or stalled, needs action
-				</span>
-			</div>
-			<div class="p-2">
-				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-					{#each sortedProblemAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
-						<AgentCard {agent} />
-					{/each}
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	<!-- 📋 Ready Queue (collapsed by default, secondary) -->
-	<ReadyQueueSection
-		bind:expanded={sectionState.readyQueue}
-	/>
-
-	<!-- 📦 Recent & Archive (collapsed by default, secondary) -->
-	{#if sortedRecentAgents.length > 0 || sortedArchivedAgents.length > 0}
-		<div class="space-y-2">
-			<!-- Recent Section (idle/completed within 24h) -->
-			{#if sortedRecentAgents.length > 0}
-				<CollapsibleSection
-					title="Recent"
-					icon="🕐"
-					agents={sortedRecentAgents}
-					bind:expanded={sectionState.recent}
-					variant="recent"
-				>
+				{#if sortedActiveAgents.length > 0}
 					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-						{#each sortedRecentAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+						{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}
 					</div>
-				</CollapsibleSection>
-			{/if}
+				{:else}
+					<div class="rounded border border-dashed p-6 text-center">
+						<p class="text-sm text-muted-foreground">No active agents</p>
+						<p class="mt-1 text-xs text-muted-foreground">
+							Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+						</p>
+					</div>
+				{/if}
+			</div>
+		</div>
 
-			<!-- Archive Section (older than 24h) -->
-			{#if sortedArchivedAgents.length > 0}
-				<CollapsibleSection
-					title="Archive"
-					icon="📦"
-					agents={sortedArchivedAgents}
-					bind:expanded={sectionState.archive}
-					variant="archive"
-				>
-					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-						{#each sortedArchivedAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+		<!-- Needs Attention (consolidated errors, pending reviews, blocked) -->
+		<NeedsAttention />
+
+		<!-- Recent Wins (completed in last 24h) -->
+		<RecentWins />
+
+		<!-- Ready Queue (collapsed by default) -->
+		<ReadyQueueSection
+			bind:expanded={sectionState.readyQueue}
+		/>
+
+	{:else}
+		<!-- HISTORICAL MODE: Full archive with SSE stream and filters -->
+
+		<!-- Up Next (priority queue visibility) -->
+		<UpNextSection
+			bind:expanded={sectionState.upNext}
+		/>
+
+		<!-- Ready Queue Section (dedicated collapsible section) -->
+		<ReadyQueueSection
+			bind:expanded={sectionState.readyQueue}
+		/>
+
+		<!-- Pending Reviews Section -->
+		<PendingReviewsSection
+			bind:expanded={sectionState.pendingReviews}
+		/>
+
+		<!-- Swarm Map (Primary Focus) -->
+		<div class="rounded-lg border bg-card">
+			<div class="flex items-center justify-between border-b px-3 py-2">
+				<div class="flex items-center gap-2">
+					<h2 class="text-sm font-semibold">Swarm Map</h2>
+					<span class="text-xs text-muted-foreground">Full archive ({$agents.length} agents)</span>
+				</div>
+			</div>
+			<div class="p-2">
+				<!-- Compact Filter Bar -->
+				<div class="mb-2 flex flex-wrap items-center gap-2 text-xs" data-testid="filter-bar">
+					<label class="flex items-center gap-1 cursor-pointer">
+						<input
+							type="checkbox"
+							bind:checked={activeOnly}
+							class="h-3 w-3 rounded border-input"
+							data-testid="active-only-toggle"
+						/>
+						<span class="text-xs">Active Only</span>
+					</label>
+
+					<div class="h-4 w-px bg-border"></div>
+
+					<select
+						id="status-filter"
+						bind:value={statusFilter}
+						class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+						data-testid="status-filter"
+						disabled={activeOnly}
+					>
+						<option value="all">All status</option>
+						<option value="active">Active</option>
+						<option value="idle">Idle</option>
+						<option value="completed">Completed</option>
+						<option value="abandoned">Abandoned</option>
+					</select>
+
+					{#if uniqueSkills.length > 0}
+						<select
+							id="skill-filter"
+							bind:value={skillFilter}
+							class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+							data-testid="skill-filter"
+						>
+							<option value="all">All skills</option>
+							{#each uniqueSkills as skill}
+								<option value={skill}>{skill}</option>
+							{/each}
+						</select>
+					{/if}
+
+					{#if uniqueProjects.length > 0}
+						<select
+							id="project-filter"
+							bind:value={projectFilter}
+							class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+							data-testid="project-filter"
+						>
+							<option value="all">All projects</option>
+							{#each uniqueProjects as project}
+								<option value={project}>{project}</option>
+							{/each}
+						</select>
+					{/if}
+
+					<select
+						id="sort-by"
+						bind:value={sortBy}
+						class="h-6 rounded border border-input bg-background px-1.5 text-xs"
+						data-testid="sort-select"
+					>
+						<option value="recent-activity">Recent Activity</option>
+						<option value="newest">Newest Spawned</option>
+						<option value="oldest">Oldest Spawned</option>
+						<option value="project">By Project</option>
+						<option value="phase">By Phase</option>
+						<option value="alphabetical">A-Z</option>
+					</select>
+
+				{#if hasActiveFilters}
+					<button onclick={clearFilters} class="text-xs text-muted-foreground hover:text-foreground" data-testid="clear-filters-button">
+						Clear
+					</button>
+				{/if}
+
+					<span class="ml-auto text-muted-foreground" data-testid="filter-count">
+						{totalVisibleAgents} agent{totalVisibleAgents === 1 ? '' : 's'}
+					</span>
+				</div>
+
+				<!-- Progressive Disclosure: Collapsible Sections -->
+				<div class="space-y-2" data-testid="agent-sections">
+					{#if activeOnly}
+						<!-- Active Only mode: show flat grid of active agents -->
+						<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" data-testid="agent-grid">
+						{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
+							{:else}
+								<div class="col-span-full rounded border border-dashed p-6 text-center">
+									<p class="text-sm text-muted-foreground">No active agents</p>
+									<p class="mt-1 text-xs text-muted-foreground">
+										Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+									</p>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<!-- Progressive disclosure mode: collapsible sections -->
+						<!-- Active Section (always visible when agents exist) -->
+						{#if sortedActiveAgents.length > 0 || (sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0)}
+							<CollapsibleSection
+								title="Active"
+								icon="🟢"
+								agents={sortedActiveAgents}
+								bind:expanded={sectionState.active}
+								variant="active"
+							>
+								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+									{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+										<AgentCard {agent} />
+									{/each}
+								</div>
+							</CollapsibleSection>
+						{/if}
+
+						<!-- Recent Section (idle/completed within 24h) -->
+						{#if sortedRecentAgents.length > 0}
+							<CollapsibleSection
+								title="Recent"
+								icon="🕐"
+								agents={sortedRecentAgents}
+								bind:expanded={sectionState.recent}
+								variant="recent"
+							>
+								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+									{#each sortedRecentAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+										<AgentCard {agent} />
+									{/each}
+								</div>
+							</CollapsibleSection>
+						{/if}
+
+						<!-- Archive Section (older than 24h) -->
+						{#if sortedArchivedAgents.length > 0}
+							<CollapsibleSection
+								title="Archive"
+								icon="📦"
+								agents={sortedArchivedAgents}
+								bind:expanded={sectionState.archive}
+								variant="archive"
+							>
+								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+									{#each sortedArchivedAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+										<AgentCard {agent} />
+									{/each}
+								</div>
+							</CollapsibleSection>
+						{/if}
+
+						<!-- Empty state when no agents at all -->
+						{#if sortedActiveAgents.length === 0 && sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0}
+							<div class="rounded border border-dashed p-6 text-center">
+								{#if hasActiveFilters}
+									<p class="text-sm text-muted-foreground">No agents match filters</p>
+									<Button variant="link" onclick={clearFilters} class="mt-1 h-auto p-0 text-xs">
+										Clear filters
+									</Button>
+								{:else}
+									<p class="text-sm text-muted-foreground">No agents in the swarm</p>
+									<p class="mt-1 text-xs text-muted-foreground">
+										Spawn with <code class="rounded bg-muted px-1">orch spawn</code>
+									</p>
+								{/if}
+							</div>
+						{/if}
+					{/if}
+				</div>
+			</div>
+		</div>
+
+		<!-- Event Panels (side by side on larger screens) -->
+		<div class="grid gap-2 lg:grid-cols-2">
+			<!-- Agent Lifecycle Events -->
+			<div class="rounded-lg border bg-card">
+				<div class="flex items-center justify-between border-b px-3 py-1.5">
+					<div class="flex items-center gap-2">
+						<h3 class="text-xs font-semibold">Agent Lifecycle</h3>
+						<span class="text-xs text-muted-foreground">~/.orch/events.jsonl</span>
+					</div>
+					<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant={$agentlogConnectionStatus === 'connected' ? 'destructive' : 'ghost'}
+								size="sm"
+								onclick={handleAgentlogConnectClick}
+								class="h-5 px-2 text-xs"
+							>
+								{#if $agentlogConnectionStatus === 'connecting'}
+									...
+								{:else if $agentlogConnectionStatus === 'connected'}
+									Stop
+								{:else}
+									Follow
+								{/if}
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						{#if $agentlogConnectionStatus === 'connected'}
+							<p>Stop following agent lifecycle events</p>
+						{:else if $agentlogConnectionStatus === 'connecting'}
+							<p>Connecting to event stream...</p>
+						{:else}
+							<p>Follow agent lifecycle events</p>
+							<p class="text-xs text-muted-foreground">Watch spawns, completions, and errors</p>
+						{/if}
+					</Tooltip.Content>
+				</Tooltip.Root>
+				</div>
+				<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
+					{#each $agentlogEvents.slice().reverse().slice(0, 20) as event (event.id)}
+						<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
+							<span>{getEventIcon(event.type)}</span>
+							<span class="opacity-60">{formatUnixTime(event.timestamp)}</span>
+							<Badge variant="outline" class="h-4 px-1 text-xs">
+								{getEventLabel(event.type)}
+							</Badge>
+							{#if event.session_id}
+								<span class="font-medium text-foreground">{event.session_id.slice(0, 8)}</span>
+							{/if}
+							{#if event.data?.error}
+								<span class="text-red-500 font-semibold">{event.data.error}</span>
+							{/if}
+						</div>
+					{:else}
+						<p class="py-2 text-center text-muted-foreground">
+							{#if $agentlogConnectionStatus === 'connected'}
+								Waiting...
+							{:else}
+								No events
+							{/if}
+						</p>
+					{/each}
+				</div>
+			</div>
+
+			<!-- SSE Events (collapsible) -->
+			<div class="rounded-lg border bg-card">
+				<button
+					class="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-accent/50 transition-colors border-b"
+					onclick={() => { sectionState.sseStream = !sectionState.sseStream; }}
+					aria-expanded={sectionState.sseStream}
+					data-testid="sse-stream-toggle"
+				>
+					<div class="flex items-center gap-2">
+						<h3 class="text-xs font-semibold">SSE Stream</h3>
+						<span class="text-xs text-muted-foreground">OpenCode events</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<span class="text-xs text-muted-foreground">{$sseEvents.length} events</span>
+						<span class="text-muted-foreground transition-transform {sectionState.sseStream ? 'rotate-180' : ''}">
+							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="6 9 12 15 18 9"></polyline>
+							</svg>
+						</span>
+					</div>
+				</button>
+				{#if sectionState.sseStream}
+					<div class="max-h-64 overflow-y-auto p-2 font-mono text-sm">
+						{#each $sseEvents.slice().reverse().slice(0, 20) as event (event.id)}
+							<div class="flex items-center gap-1 py-0.5 text-muted-foreground">
+								<span class="opacity-60">{formatTime(event.timestamp)}</span>
+								<span class="text-foreground">{event.type}</span>
+								{#if event.properties?.sessionID}
+									<span class="opacity-60">{event.properties.sessionID.slice(0, 8)}</span>
+								{/if}
+							</div>
+						{:else}
+							<p class="py-2 text-center text-muted-foreground">
+								{#if $connectionStatus === 'connected'}
+									Waiting...
+								{:else}
+									Click Connect
+								{/if}
+							</p>
 						{/each}
 					</div>
-				</CollapsibleSection>
-			{/if}
+				{/if}
+			</div>
 		</div>
 	{/if}
-	</div>
 </div>
 
 <!-- Agent Detail Slide-out Panel -->

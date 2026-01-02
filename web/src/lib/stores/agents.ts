@@ -1,9 +1,7 @@
 import { writable, derived } from 'svelte/store';
 
 // Agent types matching orch-go registry
-// 'dead' = session has no activity for >3 minutes (killed/crashed/stuck)
-// 'stalled' = untracked agent with no phase comments after >1 minute
-export type AgentState = 'active' | 'idle' | 'completed' | 'abandoned' | 'deleted' | 'dead' | 'stalled';
+export type AgentState = 'active' | 'idle' | 'completed' | 'abandoned' | 'deleted';
 
 // Synthesis data from SYNTHESIS.md (D.E.K.N. format)
 export interface Synthesis {
@@ -23,22 +21,6 @@ export interface GapAnalysis {
 	constraints?: number;
 	decisions?: number;
 	investigations?: number;
-}
-
-// Token usage stats from OpenCode session
-export interface TokenStats {
-	input_tokens: number;
-	output_tokens: number;
-	reasoning_tokens?: number;
-	cache_read_tokens?: number;
-	total_tokens: number; // input + output + reasoning
-}
-
-// LastActivity from API response (initial load)
-export interface LastActivity {
-	type: string; // "text", "tool", "reasoning", "step-start", "step-finish"
-	text?: string; // Activity description
-	timestamp?: number; // Unix timestamp in milliseconds
 }
 
 export interface Agent {
@@ -67,14 +49,12 @@ export interface Agent {
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
-	last_activity?: LastActivity; // Last activity from API (initial load)
-	// Real-time activity tracking (from SSE, takes precedence over last_activity)
+	// Real-time activity tracking
 	current_activity?: {
 		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';
 		text?: string;
 		timestamp: number;
 	};
-	tokens?: TokenStats; // Token usage for the session
 }
 
 // SSE Event types from OpenCode
@@ -122,7 +102,7 @@ function extractEventId(data: any): string | null {
 }
 
 // API configuration
-const API_BASE = 'http://localhost:3348';
+const API_BASE = 'http://127.0.0.1:3348';
 
 // Fetch state management - prevents race conditions during rapid reloads
 let currentFetchController: AbortController | null = null;
@@ -164,12 +144,9 @@ function createAgentStore() {
 		},
 		// Fetch agents from orch-go API with abort support
 		async fetch(): Promise<void> {
-			// If a fetch is already in progress, skip this request.
-			// The in-progress fetch will complete and update the store.
-			// This prevents race conditions where SSE events trigger fetchDebounced
-			// while the initial fetch is still running (~800ms for 1800+ agents).
+			// Cancel any in-flight request to prevent race conditions
 			if (currentFetchController) {
-				return;
+				currentFetchController.abort();
 			}
 			currentFetchController = new AbortController();
 			
@@ -219,58 +196,11 @@ function createAgentStore() {
 
 export const agents = createAgentStore();
 
-// Time threshold for "Problems" vs "History" - dead/stalled agents older than 1hr go to History
-const PROBLEMS_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
-
-// Helper to check if agent is recent (within threshold)
-function isRecentProblem(agent: Agent): boolean {
-	const updatedAt = agent.updated_at ? new Date(agent.updated_at).getTime() : 0;
-	return Date.now() - updatedAt < PROBLEMS_THRESHOLD_MS;
-}
-
-// Derived stores for ACTIONABLE categories
-// These reflect what ACTION the orchestrator should take, not internal state machine details
-
-// Working agents = actively doing work (active or idle status, NOT Phase:Complete)
-// Excludes Phase:Complete since those are "Ready for Review", not "Working"
-export const workingAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => 
-		(a.status === 'active' || a.status === 'idle') && 
-		a.phase?.toLowerCase() !== 'complete'
-	)
-);
-
-// Ready for Review = agents that reported Phase:Complete but session still open
-// ACTION: Run `orch complete` to review and close
-export const readyForReviewAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => 
-		(a.status === 'active' || a.status === 'idle') && 
-		a.phase?.toLowerCase() === 'complete'
-	)
-);
-
-// Problems = dead/stalled agents that are RECENT (<1hr)
-// ACTION: Investigate why it failed, respawn or abandon
-// Older dead agents go to History (not actionable, just noise)
-export const problemAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => 
-		(a.status === 'dead' || a.status === 'stalled') && 
-		isRecentProblem(a)
-	)
-);
-
-// Legacy alias for backwards compatibility
-export const needsAttentionAgents = problemAgents;
-
-// Active agents = combined working + ready for review + problems (for backwards compatibility)
-// This includes all agents that have sessions and aren't completed.
+// Derived stores for filtered views
 export const activeAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => a.status === 'active' || a.status === 'idle' || a.status === 'dead' || a.status === 'stalled')
+	$agents.filter((a) => a.status === 'active')
 );
 
-// Note: idleAgents is now effectively a subset of activeAgents since both
-// 'idle' and 'active' status agents are shown in the Active Agents section.
-// This store is kept for backwards compatibility but may be deprecated.
 export const idleAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'idle')
 );
@@ -287,31 +217,13 @@ export const abandonedAgents = derived(agents, ($agents) =>
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Progressive disclosure groups
-// Working: active/idle agents NOT Phase:Complete
-// Ready for Review: active/idle agents WITH Phase:Complete  
-// Problems: dead/stalled agents <1hr old
-// Recent: completed/abandoned within 24h, OR old dead/stalled (>1hr - moved to history)
-// Archive: completed/abandoned older than 24h
+// Active: status === 'active' (agents actively processing)
+// Recent: idle/completed within 24 hours
+// Archive: idle/completed older than 24 hours
 export const recentAgents = derived(agents, ($agents) => {
 	const now = Date.now();
 	return $agents.filter((a) => {
-		// Exclude working agents (active/idle not Phase:Complete)
-		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() !== 'complete') return false;
-		// Exclude ready for review (Phase:Complete)
-		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() === 'complete') return false;
-		// Exclude recent problems (dead/stalled <1hr) - they show in Problems section
-		if ((a.status === 'dead' || a.status === 'stalled') && isRecentProblem(a)) return false;
-		// Exclude deleted
-		if (a.status === 'deleted') return false;
-		
-		// Include old dead/stalled agents (>1hr) - they go to History
-		if (a.status === 'dead' || a.status === 'stalled') {
-			const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-			// Only show in Recent if <24hr old, otherwise Archive
-			return now - updatedAt < RECENT_THRESHOLD_MS;
-		}
-		
-		// Include completed/abandoned if <24hr old
+		if (a.status === 'active' || a.status === 'deleted') return false;
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt < RECENT_THRESHOLD_MS;
 	});
@@ -320,52 +232,10 @@ export const recentAgents = derived(agents, ($agents) => {
 export const archivedAgents = derived(agents, ($agents) => {
 	const now = Date.now();
 	return $agents.filter((a) => {
-		// Exclude working agents
-		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() !== 'complete') return false;
-		// Exclude ready for review
-		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() === 'complete') return false;
-		// Exclude recent problems
-		if ((a.status === 'dead' || a.status === 'stalled') && isRecentProblem(a)) return false;
-		// Exclude deleted
-		if (a.status === 'deleted') return false;
-		
-		// Include old dead/stalled agents (>1hr AND >24hr old)
-		if (a.status === 'dead' || a.status === 'stalled') {
-			const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-			return now - updatedAt >= RECENT_THRESHOLD_MS;
-		}
-		
-		// Include completed/abandoned if >24hr old
+		if (a.status === 'active' || a.status === 'deleted') return false;
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt >= RECENT_THRESHOLD_MS;
 	});
-});
-
-// Token usage aggregation across active agents
-// Returns total tokens from all active sessions for the stats bar display
-export interface TotalTokens {
-	total: number;
-	input: number;
-	output: number;
-	agentCount: number; // Number of agents contributing to the total
-}
-
-export const totalTokens = derived(activeAgents, ($activeAgents): TotalTokens => {
-	let total = 0;
-	let input = 0;
-	let output = 0;
-	let agentCount = 0;
-
-	for (const agent of $activeAgents) {
-		if (agent.tokens) {
-			total += agent.tokens.total_tokens || 0;
-			input += agent.tokens.input_tokens || 0;
-			output += agent.tokens.output_tokens || 0;
-			agentCount++;
-		}
-	}
-
-	return { total, input, output, agentCount };
 });
 
 // SSE event stream with deduplication
@@ -465,10 +335,7 @@ export function connectSSE(): void {
 			return;
 		}
 		connectionStatus.set('connected');
-		// Fetch agents on reconnection to refresh state.
-		// On initial load, this will skip since fetch was already triggered before SSE connect
-		// (to avoid Chrome's 6-connection-per-host limit blocking the fetch).
-		// On reconnection after disconnect, this ensures data is refreshed.
+		// Fetch agents on connection to get current state
 		agents.fetch().catch(console.error);
 	};
 
@@ -720,249 +587,6 @@ export async function createIssue(title: string, description?: string, labels?: 
 	} catch (error) {
 		console.error('Failed to create issue:', error);
 		throw error;
-	}
-}
-
-// Artifact types for the artifact viewer
-export interface Artifact {
-	type: 'synthesis' | 'investigation' | 'decision';
-	content: string;
-	path?: string;
-	workspace_id?: string;
-	error?: string;
-}
-
-// Issue detail types for the Issue tab
-export interface IssueComment {
-	id: number;
-	author: string;
-	text: string;
-	created_at: string;
-	// Parsed fields for timeline display
-	is_phase?: boolean;    // True if this is a Phase: comment
-	phase?: string;        // The phase name (e.g., "Planning", "Implementing", "Complete")
-	is_blocked?: boolean;  // True if this is a BLOCKED: comment
-	is_question?: boolean; // True if this is a QUESTION: comment
-}
-
-export interface IssueRelationship {
-	id: string;
-	title: string;
-	status: string;
-}
-
-export interface IssueDetail {
-	id: string;
-	title: string;
-	description?: string;
-	status: string;
-	priority: number;
-	issue_type?: string;
-	labels?: string[];
-	close_reason?: string;
-	created_at?: string;
-	updated_at?: string;
-	closed_at?: string;
-	parent?: IssueRelationship;
-	children?: IssueRelationship[];
-	comments: IssueComment[];
-	error?: string;
-}
-
-// Fetch issue details with comments timeline
-export async function fetchIssueDetails(
-	beadsId: string,
-	projectDir?: string
-): Promise<IssueDetail> {
-	try {
-		const params = new URLSearchParams({ id: beadsId });
-		if (projectDir) {
-			params.set('project', projectDir);
-		}
-		
-		const response = await fetch(`${API_BASE}/api/beads/issue?${params}`);
-		const data = await response.json();
-		
-		if (!response.ok || data.error) {
-			return {
-				id: beadsId,
-				title: '',
-				status: '',
-				priority: 0,
-				comments: [],
-				error: data.error || `HTTP ${response.status}`,
-			};
-		}
-		
-		return data;
-	} catch (error) {
-		return {
-			id: beadsId,
-			title: '',
-			status: '',
-			priority: 0,
-			comments: [],
-			error: error instanceof Error ? error.message : 'Failed to fetch issue details',
-		};
-	}
-}
-
-// Fetch artifact content for an agent
-export async function fetchArtifact(
-	workspaceId: string, 
-	artifactType: 'synthesis' | 'investigation' | 'decision',
-	beadsId?: string
-): Promise<Artifact> {
-	try {
-		const params = new URLSearchParams({
-			workspace: workspaceId,
-			type: artifactType,
-		});
-		if (beadsId) {
-			params.set('beads_id', beadsId);
-		}
-		
-		const response = await fetch(`${API_BASE}/api/agents/artifact?${params}`);
-		const data = await response.json();
-		
-		if (!response.ok || data.error) {
-			return {
-				type: artifactType,
-				content: '',
-				workspace_id: workspaceId,
-				error: data.error || `HTTP ${response.status}`,
-			};
-		}
-		
-		return {
-			type: data.type || artifactType,
-			content: data.content || '',
-			path: data.path,
-			workspace_id: data.workspace_id || workspaceId,
-		};
-	} catch (error) {
-		return {
-			type: artifactType,
-			content: '',
-			workspace_id: workspaceId,
-			error: error instanceof Error ? error.message : 'Failed to fetch artifact',
-		};
-	}
-}
-
-// Deliverables types for the Deliverables tab
-export interface DeliverableCommit {
-	hash: string;
-	message: string;
-	author: string;
-	timestamp: string;
-	files_changed: number;
-}
-
-export interface FileDeltaSummary {
-	created: string[];
-	modified: string[];
-	deleted: string[];
-}
-
-export interface ArtifactLink {
-	type: 'synthesis' | 'investigation' | 'decision';
-	path: string;
-	name: string;
-}
-
-export interface Deliverables {
-	workspace_id: string;
-	commits: DeliverableCommit[];
-	file_delta: FileDeltaSummary;
-	artifacts: ArtifactLink[];
-	error?: string;
-}
-
-// Fetch deliverables for an agent
-export async function fetchDeliverables(
-	workspaceId: string,
-	spawnedAt?: string,
-	projectDir?: string,
-	beadsId?: string
-): Promise<Deliverables> {
-	try {
-		const params = new URLSearchParams({ workspace: workspaceId });
-		if (spawnedAt) {
-			params.set('spawned_at', spawnedAt);
-		}
-		if (projectDir) {
-			params.set('project_dir', projectDir);
-		}
-		if (beadsId) {
-			params.set('beads_id', beadsId);
-		}
-		
-		const response = await fetch(`${API_BASE}/api/agents/deliverables?${params}`);
-		const data = await response.json();
-		
-		if (!response.ok || data.error) {
-			return {
-				workspace_id: workspaceId,
-				commits: [],
-				file_delta: { created: [], modified: [], deleted: [] },
-				artifacts: [],
-				error: data.error || `HTTP ${response.status}`,
-			};
-		}
-		
-		return data;
-	} catch (error) {
-		return {
-			workspace_id: workspaceId,
-			commits: [],
-			file_delta: { created: [], modified: [], deleted: [] },
-			artifacts: [],
-			error: error instanceof Error ? error.message : 'Failed to fetch deliverables',
-		};
-	}
-}
-
-// Spawn context types for the Context tab
-export interface SpawnMetadata {
-	task?: string;          // Task description from TASK: line
-	skill?: string;         // Skill name
-	beads_id?: string;      // Beads issue ID
-	project_dir?: string;   // PROJECT_DIR value
-	spawn_tier?: string;    // SPAWN TIER: light/full
-	session_scope?: string; // SESSION SCOPE value
-}
-
-export interface SpawnContext {
-	content: string;           // Raw SPAWN_CONTEXT.md markdown content
-	workspace_path?: string;   // Full path to workspace directory
-	metadata: SpawnMetadata;   // Extracted spawn metadata
-	error?: string;            // Error message if not found
-}
-
-// Fetch spawn context for an agent
-export async function fetchSpawnContext(workspaceId: string): Promise<SpawnContext> {
-	try {
-		const params = new URLSearchParams({ workspace: workspaceId });
-		
-		const response = await fetch(`${API_BASE}/api/agents/spawn-context?${params}`);
-		const data = await response.json();
-		
-		if (!response.ok || data.error) {
-			return {
-				content: '',
-				metadata: {},
-				error: data.error || `HTTP ${response.status}`,
-			};
-		}
-		
-		return data;
-	} catch (error) {
-		return {
-			content: '',
-			metadata: {},
-			error: error instanceof Error ? error.message : 'Failed to fetch spawn context',
-		};
 	}
 }
 

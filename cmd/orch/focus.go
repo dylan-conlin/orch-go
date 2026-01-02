@@ -266,7 +266,7 @@ func getActiveIssues() []string {
 	}
 
 	// Use default OpenCode server URL
-	client := opencode.NewClient("http://localhost:4096")
+	client := opencode.NewClient("http://127.0.0.1:4096")
 	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return nil
@@ -284,19 +284,93 @@ func getActiveIssues() []string {
 	return issues
 }
 
-// nextCmd is a placeholder that will be replaced by newNextSynthCmd() in next.go.
-// The enhanced next command synthesizes:
-// - bd ready (available work)
-// - orch patterns (behavioral patterns)
-// - orch focus (strategic alignment)
-// See next.go for the full implementation.
+// ============================================================================
+// Next Command - Suggest next action based on current state
+// ============================================================================
+
 var nextCmd = &cobra.Command{
 	Use:   "next",
-	Short: "Suggest next action based on current focus and state (placeholder)",
-	Long:  "This command is replaced by the enhanced next command in next.go.",
+	Short: "Suggest next action based on current focus and state",
+	Long: `Suggest the next action based on current focus and active work.
+
+Recommendations include:
+  - set-focus:  No focus set, suggest setting one
+  - start-work: Focus set but no active work, suggest starting
+  - continue:   Already working on focused issue
+  - refocus:    Working on something else, suggest switching
+
+Examples:
+  orch-go next         # Get suggestion
+  orch-go next --json  # Output in JSON format`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return fmt.Errorf("nextCmd placeholder should not be called - next.go should have replaced this")
+		return runNext()
 	},
+}
+
+var nextJSON bool
+
+func init() {
+	nextCmd.Flags().BoolVar(&nextJSON, "json", false, "Output in JSON format")
+}
+
+func runNext() error {
+	store, err := focus.New("")
+	if err != nil {
+		return fmt.Errorf("failed to load focus: %w", err)
+	}
+
+	// Get active issues from OpenCode sessions
+	activeIssues := getActiveIssues()
+
+	// Get ready issues from beads for additional context
+	readyIssues := getReadyIssues()
+
+	suggestion := store.SuggestNext(activeIssues)
+
+	if nextJSON {
+		data, err := json.MarshalIndent(suggestion, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal suggestion: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	// Format output based on action type
+	switch suggestion.Action {
+	case "set-focus":
+		fmt.Printf("📋 %s\n", suggestion.Description)
+		if len(readyIssues) > 0 {
+			fmt.Printf("\nReady issues:\n")
+			for _, issue := range readyIssues[:min(5, len(readyIssues))] {
+				fmt.Printf("  - %s\n", issue)
+			}
+		}
+
+	case "start-work":
+		fmt.Printf("🚀 %s\n", suggestion.Description)
+		if suggestion.BeadsID != "" {
+			fmt.Printf("\nStart with: orch-go work %s\n", suggestion.BeadsID)
+		}
+
+	case "continue":
+		fmt.Printf("✅ %s\n", suggestion.Description)
+		if suggestion.Goal != "" {
+			fmt.Printf("   Goal: %s\n", suggestion.Goal)
+		}
+
+	case "refocus":
+		fmt.Printf("🔄 %s\n", suggestion.Description)
+		if suggestion.BeadsID != "" {
+			fmt.Printf("\nSwitch with: orch-go work %s\n", suggestion.BeadsID)
+		}
+		fmt.Printf("Or clear focus: orch-go focus clear\n")
+
+	default:
+		fmt.Printf("%s: %s\n", suggestion.Action, suggestion.Description)
+	}
+
+	return nil
 }
 
 // getReadyIssues returns beads issues that are ready for work.

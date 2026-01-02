@@ -53,8 +53,7 @@ func ExtractPhasesFromReader(file *os.File) ([]Phase, error) {
 	inPhaseBlock := false
 
 	// Pattern: <!-- phase: name | required: true/false -->
-	// Phase name can be multi-word with spaces or underscores/hyphens (e.g., "clarifying questions", "self_review")
-	phasePattern := regexp.MustCompile(`<!--\s*phase:\s*([\w]+(?:[\s_-]+[\w]+)*)\s*\|\s*required:\s*(true|false)\s*-->`)
+	phasePattern := regexp.MustCompile(`<!--\s*phase:\s*(\w+)\s*\|\s*required:\s*(true|false)\s*-->`)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -98,9 +97,7 @@ func ExtractPhasesFromReader(file *os.File) ([]Phase, error) {
 // Format: "Phase: <name> - <summary>" or "Phase: <name>"
 func ExtractReportedPhases(comments []Comment) []string {
 	// Pattern: "Phase: <phase>" optionally followed by " - <summary>"
-	// Phase can be multi-word (e.g., "Clarifying Questions", "Self Review")
-	// Capture words (letters only) separated by single spaces, trim trailing spaces
-	phasePattern := regexp.MustCompile(`(?i)Phase:\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)(?:\s*[-–—]\s*(.*))?`)
+	phasePattern := regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
 
 	var phases []string
 	seen := make(map[string]bool)

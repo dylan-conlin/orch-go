@@ -191,11 +191,11 @@ func TestExtractSessionID(t *testing.T) {
 
 // Test build opencode command
 func TestBuildSpawnCommand(t *testing.T) {
-	cmd := BuildSpawnCommand("http://localhost:4096", "say hello", "test-title")
+	cmd := BuildSpawnCommand("http://127.0.0.1:4096", "say hello", "test-title")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://localhost:4096",
+		"--attach", "http://127.0.0.1:4096",
 		"--format", "json",
 		"--title", "test-title",
 		"say hello",
@@ -208,11 +208,11 @@ func TestBuildSpawnCommand(t *testing.T) {
 
 // Test build ask command
 func TestBuildAskCommand(t *testing.T) {
-	cmd := BuildAskCommand("http://localhost:4096", "ses_123", "what did you do?")
+	cmd := BuildAskCommand("http://127.0.0.1:4096", "ses_123", "what did you do?")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://localhost:4096",
+		"--attach", "http://127.0.0.1:4096",
 		"--session", "ses_123",
 		"--format", "json",
 		"what did you do?",

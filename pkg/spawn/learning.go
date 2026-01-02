@@ -52,9 +52,6 @@ type GapEvent struct {
 
 	// ResolutionDetails provides additional context about resolution.
 	ResolutionDetails string `json:"resolution_details,omitempty"`
-
-	// SourceProject is the project where the gap was detected.
-	SourceProject string `json:"source_project,omitempty"`
 }
 
 // GapTracker manages the history of context gaps and learning suggestions.
@@ -142,13 +139,12 @@ type TopicAnalysis struct {
 var trackerPathFunc = defaultTrackerPath
 
 // defaultTrackerPath returns the default path for the gap tracker file.
-// Uses ~/.kb/gap-tracker.json (knowledge-centric location, aligned with kb learn).
 func defaultTrackerPath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(homeDir, ".kb", "gap-tracker.json")
+	return filepath.Join(homeDir, ".orch", "gap-tracker.json")
 }
 
 // TrackerPath returns the path for the gap tracker file.
@@ -246,15 +242,7 @@ func (t *GapTracker) pruneOldEvents() {
 }
 
 // RecordGap adds a new gap event to the tracker.
-// Deprecated: Use RecordGapWithProject instead to capture source project context.
 func (t *GapTracker) RecordGap(analysis *GapAnalysis, skill, task string) {
-	t.RecordGapWithProject(analysis, skill, task, "")
-}
-
-// RecordGapWithProject adds a new gap event to the tracker with source project context.
-// The sourceProject should be the directory name (not full path) where the gap was discovered.
-// This enables cross-project gap tracking for dogfooding improvements.
-func (t *GapTracker) RecordGapWithProject(analysis *GapAnalysis, skill, task, sourceProject string) {
 	if analysis == nil || !analysis.HasGaps {
 		return
 	}
@@ -268,7 +256,6 @@ func (t *GapTracker) RecordGapWithProject(analysis *GapAnalysis, skill, task, so
 			Skill:          skill,
 			Task:           task,
 			ContextQuality: analysis.ContextQuality,
-			SourceProject:  sourceProject,
 		}
 		t.Events = append(t.Events, event)
 	}
@@ -400,7 +387,7 @@ func priorityOrder(priority string) int {
 // determineSuggestion determines what action to suggest based on gap patterns.
 // The remediation type must match the gap type:
 // - no_context → investigate (we don't know what's missing, need discovery)
-// - no_constraints → kb quick constrain (we know constraints are missing)
+// - no_constraints → kn constrain (we know constraints are missing)
 // - no_decisions → bd create (we know decisions are missing, need to establish)
 // - sparse_context/other → investigate (need more understanding)
 func determineSuggestion(query string, events []GapEvent) (suggestionType, suggestion, command string) {
@@ -430,7 +417,7 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 		// Context exists but no constraints - suggest adding constraints
 		return "add_knowledge",
 			fmt.Sprintf("Gap %q has occurred %d times without constraints. Add constraints if they exist.", query, len(events)),
-			fmt.Sprintf(`kb quick constrain "%s" --reason "%s"`, query, reason)
+			fmt.Sprintf(`kn constrain "%s" --reason "%s"`, query, reason)
 	}
 
 	if hasNoDecisions {
@@ -442,7 +429,7 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 
 	if hasNoContext {
 		// No context at all - we don't know what type of knowledge is missing
-		// Suggest investigation to discover what's needed (not kb quick decide which assumes decision is needed)
+		// Suggest investigation to discover what's needed (not kn decide which assumes decision is needed)
 		return "investigate",
 			fmt.Sprintf("Gap %q has occurred %d times with no context. Investigate to discover what knowledge is missing.", query, len(events)),
 			fmt.Sprintf(`orch spawn investigation "what context is needed for %s"`, query)
@@ -454,11 +441,11 @@ func determineSuggestion(query string, events []GapEvent) (suggestionType, sugge
 		fmt.Sprintf(`orch spawn investigation "why does %s lack context"`, query)
 }
 
-// MinReasonLength is the minimum length required by kb quick for --reason argument.
+// MinReasonLength is the minimum length required by kn for --reason argument.
 const MinReasonLength = 20
 
 // generateReasonFromGaps creates a meaningful reason string from gap event context.
-// Ensures the reason is at least MinReasonLength characters to satisfy kb quick validation.
+// Ensures the reason is at least MinReasonLength characters to satisfy kn validation.
 func generateReasonFromGaps(query string, events []GapEvent) string {
 	if len(events) == 0 {
 		return "No context available for this topic"
@@ -518,7 +505,7 @@ func generateReasonFromGaps(query string, events []GapEvent) string {
 
 	reason := strings.Join(parts, ". ")
 
-	// Ensure minimum length for kb quick validation (requires at least 20 chars)
+	// Ensure minimum length for kn validation (requires at least 20 chars)
 	if len(reason) < MinReasonLength {
 		// Pad with query context to meet minimum
 		reason = fmt.Sprintf("Recurring gap for topic: %s. %s", query, reason)
@@ -627,69 +614,6 @@ func (t *GapTracker) GetSkillGapRates() map[string]int {
 	return rates
 }
 
-// GetProjectGapRates returns gap statistics by source project.
-func (t *GapTracker) GetProjectGapRates() map[string]int {
-	rates := make(map[string]int)
-	for _, e := range t.Events {
-		project := e.SourceProject
-		if project == "" {
-			project = "(unknown)"
-		}
-		rates[project]++
-	}
-	return rates
-}
-
-// FilterByProject returns a new GapTracker with only events from the specified project.
-// If external is true, returns events NOT from the specified project (external gaps).
-func (t *GapTracker) FilterByProject(project string, external bool) *GapTracker {
-	filtered := &GapTracker{
-		Events:       []GapEvent{},
-		Improvements: t.Improvements,
-		LastAnalysis: t.LastAnalysis,
-	}
-
-	for _, e := range t.Events {
-		if external {
-			// External mode: include events NOT from this project
-			if e.SourceProject != "" && e.SourceProject != project {
-				filtered.Events = append(filtered.Events, e)
-			}
-		} else {
-			// From mode: include events FROM this project
-			if e.SourceProject == project {
-				filtered.Events = append(filtered.Events, e)
-			}
-		}
-	}
-
-	return filtered
-}
-
-// GetExternalGaps returns gaps discovered in projects other than the specified one.
-// This is used for proactive surfacing when returning to orch-go.
-func (t *GapTracker) GetExternalGaps(currentProject string) []GapEvent {
-	var external []GapEvent
-	for _, e := range t.Events {
-		if e.SourceProject != "" && e.SourceProject != currentProject {
-			external = append(external, e)
-		}
-	}
-	return external
-}
-
-// GetExternalGapSummary returns a summary of gaps discovered in other projects.
-// Returns a map of project -> gap count for display.
-func (t *GapTracker) GetExternalGapSummary(currentProject string) map[string]int {
-	summary := make(map[string]int)
-	for _, e := range t.Events {
-		if e.SourceProject != "" && e.SourceProject != currentProject && e.Resolution == "" {
-			summary[e.SourceProject]++
-		}
-	}
-	return summary
-}
-
 // MeasureImprovementEffectiveness checks if improvements reduced gaps.
 func (t *GapTracker) MeasureImprovementEffectiveness() []ImprovementRecord {
 	// Update gap counts for each improvement
@@ -762,7 +686,7 @@ func (t *GapTracker) Summary() string {
 // This is similar to POSIX shell word splitting.
 // Examples:
 //
-//	`kb quick decide "auth" --reason "test reason"` -> ["kb", "quick", "decide", "auth", "--reason", "test reason"]
+//	`kn decide "auth" --reason "test reason"` -> ["kn", "decide", "auth", "--reason", "test reason"]
 //	`echo "hello world"` -> ["echo", "hello world"]
 func ParseShellCommand(cmdStr string) ([]string, error) {
 	var args []string
@@ -837,8 +761,8 @@ func ValidateCommand(cmdStr string) error {
 
 	// Validate known command patterns
 	switch args[0] {
-	case "kb":
-		return validateKbCommand(args)
+	case "kn":
+		return validateKnCommand(args)
 	case "bd":
 		return validateBdCommand(args)
 	case "orch":
@@ -849,40 +773,33 @@ func ValidateCommand(cmdStr string) error {
 	}
 }
 
-// validateKbCommand checks kb command syntax, especially kb quick subcommands.
-func validateKbCommand(args []string) error {
+// validateKnCommand checks kn command syntax.
+func validateKnCommand(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("kb command requires subcommand (quick, context, etc.)")
+		return fmt.Errorf("kn command requires subcommand (decide, constrain, etc.)")
 	}
 
-	// Handle kb quick subcommands (decide, constrain, tried, question)
-	if args[1] == "quick" {
+	switch args[1] {
+	case "decide", "constrain", "tried":
+		// These require at least a description
 		if len(args) < 3 {
-			return fmt.Errorf("kb quick requires subcommand (decide, constrain, tried, question)")
+			return fmt.Errorf("kn %s requires a description", args[1])
 		}
-
-		switch args[2] {
-		case "decide", "constrain", "tried":
-			// These require at least a description
-			if len(args) < 4 {
-				return fmt.Errorf("kb quick %s requires a description", args[2])
-			}
-			// Check for --reason/--failed flag value and validate minimum length
-			for i, arg := range args {
-				if arg == "--reason" || arg == "--failed" {
-					if i == len(args)-1 {
-						return fmt.Errorf("%s flag requires a value", arg)
-					}
-					reasonValue := args[i+1]
-					if len(reasonValue) < MinReasonLength {
-						return fmt.Errorf("%s must be at least %d characters (got %d)", arg, MinReasonLength, len(reasonValue))
-					}
+		// Check for --reason flag value and validate minimum length
+		for i, arg := range args {
+			if arg == "--reason" {
+				if i == len(args)-1 {
+					return fmt.Errorf("--reason flag requires a value")
+				}
+				reasonValue := args[i+1]
+				if len(reasonValue) < MinReasonLength {
+					return fmt.Errorf("--reason must be at least %d characters (got %d)", MinReasonLength, len(reasonValue))
 				}
 			}
-		case "question":
-			if len(args) < 4 {
-				return fmt.Errorf("kb quick question requires a question text")
-			}
+		}
+	case "question":
+		if len(args) < 3 {
+			return fmt.Errorf("kn question requires a question text")
 		}
 	}
 

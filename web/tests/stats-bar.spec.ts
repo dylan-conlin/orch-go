@@ -7,8 +7,8 @@ test.describe('Stats Bar Visibility', () => {
 		const statsBar = page.getByTestId('stats-bar');
 		await expect(statsBar).toBeVisible();
 		
-		// Check for error count (abbreviated label "err" on larger screens)
-		await expect(statsBar.getByText(/err|❌/)).toBeVisible();
+		// Check for error count
+		await expect(statsBar.getByText('errors')).toBeVisible();
 		
 		// Check for connection button (get the actual button text, not the tooltip trigger)
 		await expect(statsBar.getByRole('button', { name: /Connect|Disconnect/ }).first()).toBeVisible();
@@ -18,8 +18,7 @@ test.describe('Stats Bar Visibility', () => {
 		await page.goto('/');
 		
 		const statsBar = page.getByTestId('stats-bar');
-		// Find the error indicator by its emoji
-		const errorSection = statsBar.locator('span:has-text("❌")').first();
+		const errorSection = statsBar.locator('text=errors').locator('..');
 		
 		// Error count should be visible (will be 0 initially)
 		await expect(errorSection).toBeVisible();
@@ -65,10 +64,10 @@ test.describe('Stats Bar Visibility', () => {
 		
 		// Should show ready count
 		await expect(beadsIndicator).toContainText('12');
-		await expect(beadsIndicator).toContainText(/rdy|ready/); // Abbreviated on narrow screens
+		await expect(beadsIndicator).toContainText('ready');
 		
-		// Should show blocked count (abbreviated "+3blk" format)
-		await expect(beadsIndicator).toContainText(/\+3|3.*blk|blocked/);
+		// Should show blocked count in parentheses
+		await expect(beadsIndicator).toContainText('3 blocked');
 	});
 
 	test('should hide blocked count when zero', async ({ page }) => {
@@ -98,34 +97,9 @@ test.describe('Stats Bar Visibility', () => {
 		
 		// Should show ready count
 		await expect(beadsIndicator).toContainText('8');
-		await expect(beadsIndicator).toContainText(/rdy|ready/); // Abbreviated on narrow screens
+		await expect(beadsIndicator).toContainText('ready');
 		
 		// Should NOT show blocked (since it's 0)
-		await expect(beadsIndicator).not.toContainText('blk');
 		await expect(beadsIndicator).not.toContainText('blocked');
-	});
-
-	test('should display stats bar correctly at 666px width', async ({ page }) => {
-		// Set viewport to 666px width (minimum supported width per constraint)
-		await page.setViewportSize({ width: 666, height: 800 });
-		
-		await page.goto('/');
-		
-		const statsBar = page.getByTestId('stats-bar');
-		await expect(statsBar).toBeVisible();
-		
-		// Stats bar should not cause horizontal scroll
-		const hasHorizontalScroll = await page.evaluate(() => {
-			return document.documentElement.scrollWidth > document.documentElement.clientWidth;
-		});
-		expect(hasHorizontalScroll).toBe(false);
-		
-		// All key metrics should still be visible (by emoji)
-		await expect(statsBar.locator('text=❌')).toBeVisible();
-		await expect(statsBar.locator('text=🟢').first()).toBeVisible();
-		await expect(statsBar.locator('text=📋')).toBeVisible();
-		
-		// Connection button should be visible
-		await expect(statsBar.getByRole('button', { name: /Connect|Disconnect/ }).first()).toBeVisible();
 	});
 });

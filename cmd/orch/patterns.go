@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/action"
-	"github.com/dylan-conlin/orch-go/pkg/patterns"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -19,10 +17,6 @@ import (
 var (
 	patternsJSON    bool
 	patternsVerbose bool
-
-	// suppress subcommand flags
-	suppressReason   string
-	suppressDuration string
 )
 
 var patternsCmd = &cobra.Command{
@@ -48,33 +42,9 @@ Examples:
 	},
 }
 
-var patternsSuppressCmd = &cobra.Command{
-	Use:   "suppress <index>",
-	Short: "Suppress a pattern by its index",
-	Long: `Suppress a behavioral pattern so it no longer appears in pattern reports.
-
-The index corresponds to the position in the 'orch patterns' output (0-based).
-Suppressed patterns can optionally expire after a duration.
-
-Examples:
-  orch patterns suppress 0                    # Suppress first pattern permanently
-  orch patterns suppress 2 --reason "known"   # Suppress with reason
-  orch patterns suppress 1 --duration 7d      # Suppress for 7 days`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runPatternsSuppress(args[0])
-	},
-}
-
 func init() {
 	patternsCmd.Flags().BoolVar(&patternsJSON, "json", false, "Output as JSON for scripting")
 	patternsCmd.Flags().BoolVarP(&patternsVerbose, "verbose", "v", false, "Show detailed pattern information")
-
-	// Add suppress subcommand
-	patternsSuppressCmd.Flags().StringVar(&suppressReason, "reason", "", "Reason for suppressing this pattern")
-	patternsSuppressCmd.Flags().StringVar(&suppressDuration, "duration", "", "Duration to suppress (e.g., 1h, 7d, 30d). Empty means permanent")
-	patternsCmd.AddCommand(patternsSuppressCmd)
-
 	rootCmd.AddCommand(patternsCmd)
 }
 
@@ -188,7 +158,6 @@ func runPatterns() error {
 }
 
 // collectRetryPatterns collects retry patterns from events.jsonl via verify package.
-// Filters out closed issues to avoid flagging resolved work as failures.
 func collectRetryPatterns() ([]DetectedPattern, error) {
 	patterns := []DetectedPattern{}
 
@@ -197,31 +166,7 @@ func collectRetryPatterns() ([]DetectedPattern, error) {
 		return nil, err
 	}
 
-	if len(retryStats) == 0 {
-		return patterns, nil
-	}
-
-	// Collect all beads IDs to batch-fetch their status
-	beadsIDs := make([]string, 0, len(retryStats))
 	for _, stats := range retryStats {
-		beadsIDs = append(beadsIDs, stats.BeadsID)
-	}
-
-	// Batch-fetch issue statuses from beads
-	// This filters out closed issues that shouldn't be flagged as failures
-	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
-	// Ignore error - if beads is unavailable, we'll show all patterns
-	// (better to show potential false positives than hide real issues)
-
-	for _, stats := range retryStats {
-		// Skip closed issues - they're resolved and shouldn't be flagged
-		if issue, ok := issueMap[stats.BeadsID]; ok {
-			status := strings.ToLower(issue.Status)
-			if status == "closed" || status == "deferred" || status == "tombstone" {
-				continue
-			}
-		}
-
 		pattern := DetectedPattern{
 			BeadsID: stats.BeadsID,
 			Count:   stats.SpawnCount,
@@ -290,7 +235,7 @@ func collectGapPatterns() ([]DetectedPattern, error) {
 			pattern.Severity = PatternSeverityCritical
 			pattern.Title = fmt.Sprintf("Empty context: %q", s.Query)
 			pattern.Description = fmt.Sprintf("Query %q has returned no results %d times", s.Query, s.Count)
-			pattern.Suggestion = "Add knowledge via 'kb quick decide', 'kb quick constrain', or 'kb create investigation'"
+			pattern.Suggestion = "Add knowledge via 'kn decide', 'kn constrain', or 'kb create investigation'"
 		} else {
 			if s.Priority == "high" {
 				pattern.Severity = PatternSeverityWarning
@@ -517,75 +462,4 @@ func collectActionPatterns() ([]DetectedPattern, error) {
 	}
 
 	return patterns, nil
-}
-
-// runPatternsSuppress suppresses a pattern by its index.
-func runPatternsSuppress(indexArg string) error {
-	// Parse index
-	index, err := strconv.Atoi(indexArg)
-	if err != nil {
-		return fmt.Errorf("invalid index %q: must be a number", indexArg)
-	}
-
-	// Load action log and detect patterns
-	log, err := patterns.LoadLog()
-	if err != nil {
-		return fmt.Errorf("failed to load action log: %w", err)
-	}
-
-	detected := log.DetectPatterns()
-	if len(detected) == 0 {
-		return fmt.Errorf("no patterns detected to suppress")
-	}
-
-	if index < 0 || index >= len(detected) {
-		return fmt.Errorf("index %d out of range (0-%d)", index, len(detected)-1)
-	}
-
-	// Parse duration if provided
-	var duration time.Duration
-	if suppressDuration != "" {
-		duration, err = parseSuppressDuration(suppressDuration)
-		if err != nil {
-			return fmt.Errorf("invalid duration %q: %w", suppressDuration, err)
-		}
-	}
-
-	// Suppress the pattern
-	pattern := detected[index]
-	log.SuppressPattern(pattern, suppressReason, duration)
-
-	// Save the log
-	if err := log.Save(); err != nil {
-		return fmt.Errorf("failed to save action log: %w", err)
-	}
-
-	// Confirm to user
-	fmt.Printf("Suppressed pattern: %s\n", pattern.Description)
-	if suppressReason != "" {
-		fmt.Printf("  Reason: %s\n", suppressReason)
-	}
-	if duration > 0 {
-		fmt.Printf("  Expires: %s\n", time.Now().Add(duration).Format("2006-01-02 15:04"))
-	} else {
-		fmt.Println("  Duration: permanent")
-	}
-
-	return nil
-}
-
-// parseSuppressDuration parses a duration string with support for days (d).
-// Standard Go durations like "1h", "30m" are supported, plus "d" for days.
-func parseSuppressDuration(s string) (time.Duration, error) {
-	// Handle days suffix
-	if strings.HasSuffix(s, "d") {
-		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
-		if err != nil {
-			return 0, fmt.Errorf("invalid days value: %w", err)
-		}
-		return time.Duration(days) * 24 * time.Hour, nil
-	}
-
-	// Otherwise use standard duration parsing
-	return time.ParseDuration(s)
 }

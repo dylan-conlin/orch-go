@@ -175,22 +175,6 @@ func TestHasVisualVerificationEvidence(t *testing.T) {
 			wantMinLen: 1,
 		},
 		{
-			name: "glass tool mentioned",
-			comments: []Comment{
-				{Text: "Used glass_screenshot to capture the dashboard"},
-			},
-			wantHas:    true,
-			wantMinLen: 1,
-		},
-		{
-			name: "glass command mentioned",
-			comments: []Comment{
-				{Text: "Ran glass navigate to verify the page loads"},
-			},
-			wantHas:    true,
-			wantMinLen: 1,
-		},
-		{
 			name: "verified in browser mentioned",
 			comments: []Comment{
 				{Text: "Verified the changes work correctly in the browser"},
@@ -329,12 +313,6 @@ func TestVisualEvidencePatterns(t *testing.T) {
 		{"checked in browser", true},
 		{"UI smoke test passed", true},
 		{"ran smoke test for UI", true},
-		// Glass browser automation tools
-		{"used glass_screenshot to capture UI", true},
-		{"called glass_navigate to open page", true},
-		{"glass_click on the button", true},
-		{"glass screenshot of dashboard", true},
-		{"glass navigate to settings", true},
 
 		// Should not match
 		{"tests passing", false},

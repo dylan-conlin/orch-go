@@ -254,10 +254,7 @@ func runDaemonLoop() error {
 		}
 
 		// Process issues until queue is empty or at capacity
-		// Track issues that failed to spawn this cycle (e.g., failure report gate)
-		// to skip them and continue with other issues.
 		spawnedThisCycle := 0
-		skippedThisCycle := make(map[string]bool)
 		for {
 			// Check for interrupt
 			select {
@@ -275,24 +272,14 @@ func runDaemonLoop() error {
 				break
 			}
 
-			result, err := d.OnceExcluding(skippedThisCycle)
+			result, err := d.Once()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				break
 			}
 
 			if !result.Processed {
-				// Check if this is a spawn failure (not queue empty or capacity)
-				// If so, skip this issue and try the next one.
-				if result.Issue != nil && result.Error != nil {
-					skippedThisCycle[result.Issue.ID] = true
-					fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
-						timestamp, result.Issue.ID, result.Error)
-					// Continue to try the next issue
-					continue
-				}
-
-				// No more issues or non-issue-specific error
+				// No more issues or spawn blocked (capacity, error, etc.)
 				if daemonVerbose && spawnedThisCycle == 0 {
 					// Use the message from Once() which indicates why processing stopped
 					fmt.Printf("[%s] %s\n", timestamp, result.Message)

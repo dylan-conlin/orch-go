@@ -15,7 +15,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var (
@@ -27,7 +26,6 @@ var (
 	reviewAll         bool
 	reviewNoPrompt    bool
 	reviewLimit       int
-	reviewArchitects  bool
 )
 
 // StaleThreshold defines how long an agent must be in a non-Complete phase to be considered stale.
@@ -63,10 +61,6 @@ Examples:
 		// Single-agent mode if beads ID provided
 		if len(args) > 0 {
 			return runReviewSingle(args[0])
-		}
-		// Architect mode shows only architect recommendations
-		if reviewArchitects {
-			return runReviewArchitects(reviewProject, reviewLimit)
 		}
 		// Batch mode
 		return runReview(reviewProject, reviewNeedsReview, reviewStale, reviewAll, reviewLimit)
@@ -108,7 +102,6 @@ func init() {
 	reviewCmd.Flags().BoolVar(&reviewStale, "stale", false, "Show stale/untracked agents only")
 	reviewCmd.Flags().BoolVar(&reviewAll, "all", false, "Show all agents including stale/untracked")
 	reviewCmd.Flags().IntVarP(&reviewLimit, "limit", "l", 0, "Maximum number of completions to show (0 = no limit)")
-	reviewCmd.Flags().BoolVar(&reviewArchitects, "architects", false, "Show only architect agents with unreviewed recommendations")
 	reviewDoneCmd.Flags().BoolVarP(&reviewDoneYes, "yes", "y", false, "Skip confirmation prompt")
 	reviewDoneCmd.Flags().BoolVar(&reviewNoPrompt, "no-prompt", false, "Skip recommendation prompts (auto-close without reviewing synthesis)")
 	reviewCmd.AddCommand(reviewDoneCmd)
@@ -136,14 +129,13 @@ type CompletionInfo struct {
 // Scans .orch/workspace/ for completed workspaces. Detects both:
 // - Full-tier agents: those with SYNTHESIS.md
 // - Light-tier agents: those with .tier file containing "light" AND Phase: Complete in beads comments
-// Filters out completions whose beads issues are already closed (closed/deferred/tombstone).
 func getCompletionsForReview() ([]CompletionInfo, error) {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	var candidates []CompletionInfo
+	var results []CompletionInfo
 
 	// Scan workspaces for completions
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
@@ -249,139 +241,10 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		// Determine if agent is stale (non-Complete phase for >24h)
 		info.IsStale = isStaleAgent(info.Phase, info.ModTime)
 
-		candidates = append(candidates, info)
-	}
-
-	// Filter out completions whose beads issues are already closed
-	// This prevents showing NEEDS_REVIEW for issues that were force-closed
-	return filterClosedIssues(candidates), nil
-}
-
-// filterClosedIssues removes completions whose beads issues are closed/deferred/tombstone.
-// Uses batch fetching for efficiency. If beads is unavailable, returns all candidates
-// (better to show potential false positives than hide real issues).
-func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
-	if len(candidates) == 0 {
-		return candidates
-	}
-
-	// Collect all beads IDs for batch fetch
-	beadsIDs := make([]string, 0, len(candidates))
-	for _, c := range candidates {
-		if c.BeadsID != "" && !c.IsUntracked {
-			beadsIDs = append(beadsIDs, c.BeadsID)
-		}
-	}
-
-	if len(beadsIDs) == 0 {
-		return candidates
-	}
-
-	// Batch fetch issue statuses
-	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
-	// Ignore error - if beads is unavailable, return all candidates
-
-	// Filter out closed issues
-	var results []CompletionInfo
-	for _, c := range candidates {
-		// Keep untracked agents (no beads issue to check)
-		if c.IsUntracked || c.BeadsID == "" {
-			results = append(results, c)
-			continue
-		}
-
-		// Check if issue is closed
-		if issue, ok := issueMap[c.BeadsID]; ok {
-			status := strings.ToLower(issue.Status)
-			if status == "closed" || status == "deferred" || status == "tombstone" {
-				// Skip closed issues - they're resolved and shouldn't appear in review
-				continue
-			}
-		}
-
-		results = append(results, c)
-	}
-
-	return results
-}
-
-// getCompletionsForSurfacing retrieves completed agents WITHOUT running expensive verification.
-// This is a lightweight version of getCompletionsForReview designed for surfacing recommendations
-// in orch status where we don't need full verification (constraint checks, phase gates, etc.).
-//
-// Parses SYNTHESIS.md and workspace metadata, then filters out closed beads issues.
-// The beads filtering is necessary to avoid showing stale recommendations for resolved issues.
-// Use getCompletionsForReview for actual review workflows that need verification status.
-func getCompletionsForSurfacing() ([]CompletionInfo, error) {
-	projectDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %w", err)
-	}
-
-	var results []CompletionInfo
-
-	// Scan workspaces for completions
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, _ := os.ReadDir(workspaceDir)
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		dirName := entry.Name()
-		dirPath := filepath.Join(workspaceDir, dirName)
-
-		// Check for SYNTHESIS.md (full-tier completion)
-		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
-		hasSynthesis := false
-		if _, err := os.Stat(synthesisPath); err == nil {
-			hasSynthesis = true
-		}
-
-		// Skip workspaces without SYNTHESIS.md (surfacing only needs synthesis data)
-		if !hasSynthesis {
-			continue
-		}
-
-		// Get workspace modification time from directory
-		dirInfo, err := entry.Info()
-		modTime := time.Now()
-		if err == nil {
-			modTime = dirInfo.ModTime()
-		}
-
-		// Extract beads ID from SPAWN_CONTEXT.md
-		beadsID := extractBeadsIDFromWorkspace(dirPath)
-
-		// Extract skill from workspace name
-		skill := extractSkillFromTitle(dirName)
-
-		// Detect if agent is untracked
-		isUntracked := isUntrackedBeadsID(beadsID)
-
-		info := CompletionInfo{
-			WorkspaceID:   dirName,
-			WorkspacePath: dirPath,
-			BeadsID:       beadsID,
-			Project:       extractProject(projectDir),
-			Skill:         skill,
-			ModTime:       modTime,
-			IsUntracked:   isUntracked,
-		}
-
-		// Parse synthesis (the main thing we need for surfacing)
-		s, err := verify.ParseSynthesis(dirPath)
-		if err == nil {
-			info.Synthesis = s
-		}
-
 		results = append(results, info)
 	}
 
-	// Filter out completions whose beads issues are already closed
-	// This prevents showing stale recommendations for resolved issues
-	return filterClosedIssues(results), nil
+	return results, nil
 }
 
 // extractBeadsIDFromWorkspace extracts the beads ID from SPAWN_CONTEXT.md
@@ -776,36 +639,26 @@ func runReviewDone(project string) error {
 		return nil
 	}
 
-	// Confirmation prompt unless --yes flag is set or stdin is not a terminal
+	// Confirmation prompt unless --yes flag is set
 	if !reviewDoneYes {
-		// Auto-skip confirmation when stdin is not a terminal (e.g., daemon, scripts)
-		if !term.IsTerminal(int(os.Stdin.Fd())) {
-			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
-			fmt.Println("(Skipping confirmation - stdin is not a terminal)")
-		} else {
-			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
-			fmt.Print("Continue? [y/N]: ")
-			reader := bufio.NewReader(os.Stdin)
-			response, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read response: %w", err)
-			}
+		fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
+		fmt.Print("Continue? [y/N]: ")
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read response: %w", err)
+		}
 
-			response = strings.TrimSpace(strings.ToLower(response))
-			if response != "y" && response != "yes" {
-				return fmt.Errorf("aborted")
-			}
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response != "y" && response != "yes" {
+			return fmt.Errorf("aborted")
 		}
 	}
 
 	// Process each completion
 	completed := 0
 	var completionErrors []string
-	// Auto-skip prompts when stdin is not a terminal (e.g., daemon, scripts)
-	skipAllPrompts := reviewNoPrompt || !term.IsTerminal(int(os.Stdin.Fd()))
-	if !reviewNoPrompt && skipAllPrompts {
-		fmt.Println("(Skipping recommendation prompts - stdin is not a terminal)")
-	}
+	skipAllPrompts := reviewNoPrompt // Start with flag value
 
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -1161,336 +1014,4 @@ func findBdCommand() (string, error) {
 	}
 
 	return "", fmt.Errorf("bd not found in common locations or PATH")
-}
-
-// ArchitectRecommendation represents an unreviewed recommendation from an architect agent.
-type ArchitectRecommendation struct {
-	WorkspaceID   string // Workspace directory name
-	WorkspacePath string // Full path to workspace directory
-	BeadsID       string // Beads issue ID
-	Project       string
-	Skill         string
-	TLDR          string   // Brief summary of the design work
-	Recommendation string  // Recommended action (spawn-follow-up, close, etc.)
-	NextActions   []string // Specific follow-up items
-	ModTime       time.Time
-}
-
-// runReviewArchitects displays architect agents with unreviewed recommendations.
-// This surfaces strategic design work that needs orchestrator attention.
-func runReviewArchitects(projectFilter string, limit int) error {
-	completions, err := getCompletionsForReview()
-	if err != nil {
-		return err
-	}
-
-	// Filter for architect skill with recommendations
-	var architects []ArchitectRecommendation
-	for _, c := range completions {
-		// Filter by architect skill
-		if c.Skill != "architect" {
-			continue
-		}
-
-		// Filter by project if specified
-		if projectFilter != "" && c.Project != projectFilter {
-			continue
-		}
-
-		// Skip untracked agents
-		if c.IsUntracked {
-			continue
-		}
-
-		// Must have synthesis with recommendations
-		if c.Synthesis == nil {
-			continue
-		}
-
-		// Count actionable items (NextActions, AreasToExplore, Uncertainties)
-		totalItems := len(c.Synthesis.NextActions) + len(c.Synthesis.AreasToExplore) + len(c.Synthesis.Uncertainties)
-		if totalItems == 0 {
-			continue
-		}
-
-		architects = append(architects, ArchitectRecommendation{
-			WorkspaceID:    c.WorkspaceID,
-			WorkspacePath:  c.WorkspacePath,
-			BeadsID:        c.BeadsID,
-			Project:        c.Project,
-			Skill:          c.Skill,
-			TLDR:           c.Synthesis.TLDR,
-			Recommendation: c.Synthesis.Recommendation,
-			NextActions:    c.Synthesis.NextActions,
-			ModTime:        c.ModTime,
-		})
-	}
-
-	// Apply limit if specified
-	totalFound := len(architects)
-	if limit > 0 && len(architects) > limit {
-		architects = architects[:limit]
-	}
-
-	if len(architects) == 0 {
-		if projectFilter != "" {
-			fmt.Printf("No architect recommendations awaiting review for project: %s\n", projectFilter)
-		} else {
-			fmt.Println("No architect recommendations awaiting review")
-		}
-		return nil
-	}
-
-	// Print prominent header
-	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
-	fmt.Printf("│  📐 ARCHITECT RECOMMENDATIONS AWAITING REVIEW (%d)           │\n", totalFound)
-	fmt.Println("├─────────────────────────────────────────────────────────────┤")
-
-	// Group by project
-	byProject := make(map[string][]ArchitectRecommendation)
-	for _, a := range architects {
-		byProject[a.Project] = append(byProject[a.Project], a)
-	}
-
-	// Get sorted project names
-	var projects []string
-	for p := range byProject {
-		projects = append(projects, p)
-	}
-	sort.Strings(projects)
-
-	for _, project := range projects {
-		items := byProject[project]
-		fmt.Printf("│                                                             │\n")
-		fmt.Printf("│  ## %s (%d recommendations)                                  \n", project, len(items))
-
-		for _, a := range items {
-			// Truncate TLDR for display
-			tldr := a.TLDR
-			if len(tldr) > 50 {
-				tldr = tldr[:47] + "..."
-			}
-			tldr = strings.ReplaceAll(tldr, "\n", " ")
-
-			fmt.Printf("│    - %s", a.WorkspaceID)
-			if a.BeadsID != "" {
-				fmt.Printf(" (%s)", a.BeadsID)
-			}
-			fmt.Println()
-			if tldr != "" {
-				fmt.Printf("│      TLDR: %s\n", tldr)
-			}
-			fmt.Printf("│      Items: %d recommendations\n", len(a.NextActions))
-		}
-	}
-
-	fmt.Println("│                                                             │")
-	fmt.Println("├─────────────────────────────────────────────────────────────┤")
-	fmt.Println("│  Review with: orch review <beads-id>                        │")
-	fmt.Println("│  Complete:    orch complete <beads-id>                      │")
-	fmt.Println("└─────────────────────────────────────────────────────────────┘")
-
-	if limit > 0 && totalFound > limit {
-		fmt.Printf("\nShowing %d of %d (use --limit 0 to see all)\n", limit, totalFound)
-	}
-
-	return nil
-}
-
-// GetArchitectRecommendationCount returns the count of architect agents with unreviewed recommendations.
-// Used by orch status to surface pending architect work.
-// Uses getCompletionsForSurfacing() to avoid expensive verification overhead.
-func GetArchitectRecommendationCount() (int, error) {
-	completions, err := getCompletionsForSurfacing()
-	if err != nil {
-		return 0, err
-	}
-
-	count := 0
-	for _, c := range completions {
-		// Filter for architect skill
-		if c.Skill != "architect" {
-			continue
-		}
-
-		// Skip untracked agents
-		if c.IsUntracked {
-			continue
-		}
-
-		// Must have synthesis with recommendations
-		if c.Synthesis == nil {
-			continue
-		}
-
-		// Count actionable items (NextActions, AreasToExplore, Uncertainties)
-		totalItems := len(c.Synthesis.NextActions) + len(c.Synthesis.AreasToExplore) + len(c.Synthesis.Uncertainties)
-		if totalItems > 0 {
-			count++
-		}
-	}
-
-	return count, nil
-}
-
-// ArchitectRecommendationSummary contains a brief summary of a single architect recommendation
-// suitable for display in orch status SessionStart surfacing.
-type ArchitectRecommendationSummary struct {
-	WorkspaceID string // Workspace directory name (e.g., "de-bloat-feature")
-	TLDR        string // Brief summary (e.g., "Feature-impl skill 71% reduction")
-	ItemCount   int    // Number of actionable items
-}
-
-// ArchitectRecommendationsSurface contains all information needed for SessionStart surfacing
-// of unreviewed architect recommendations.
-type ArchitectRecommendationsSurface struct {
-	TotalCount int                              // Total number of architect recommendations awaiting review
-	Summaries  []ArchitectRecommendationSummary // Individual recommendation summaries (limited to first 5)
-}
-
-// GetArchitectRecommendationsSurface returns structured data for surfacing architect recommendations
-// in orch status. This provides the rich detail needed for SessionStart awareness of pending
-// high-value design work.
-//
-// Uses getCompletionsForSurfacing() which skips expensive verification - we only need synthesis
-// data for surfacing, not full verification status. This makes the function fast enough for
-// use in orch status (< 1s vs 1m+ with full verification).
-//
-// Returns summaries of up to 5 recommendations to keep output manageable. Use orch review --architects
-// for the full list.
-func GetArchitectRecommendationsSurface() (*ArchitectRecommendationsSurface, error) {
-	completions, err := getCompletionsForSurfacing()
-	if err != nil {
-		return nil, err
-	}
-
-	var recommendations []ArchitectRecommendationSummary
-	for _, c := range completions {
-		// Filter for architect skill
-		if c.Skill != "architect" {
-			continue
-		}
-
-		// Skip untracked agents
-		if c.IsUntracked {
-			continue
-		}
-
-		// Must have synthesis with recommendations
-		if c.Synthesis == nil {
-			continue
-		}
-
-		// Count actionable items (NextActions, AreasToExplore, Uncertainties)
-		totalItems := len(c.Synthesis.NextActions) + len(c.Synthesis.AreasToExplore) + len(c.Synthesis.Uncertainties)
-		if totalItems == 0 {
-			continue
-		}
-
-		// Extract a concise workspace identifier from the full workspace ID
-		// e.g., "og-arch-de-bloat-feature-27dec" -> "de-bloat-feature"
-		workspaceShort := extractShortWorkspaceName(c.WorkspaceID)
-
-		// Clean up TLDR for single-line display
-		tldr := c.Synthesis.TLDR
-		tldr = strings.ReplaceAll(tldr, "\n", " ")
-		if len(tldr) > 60 {
-			tldr = tldr[:57] + "..."
-		}
-
-		recommendations = append(recommendations, ArchitectRecommendationSummary{
-			WorkspaceID: workspaceShort,
-			TLDR:        tldr,
-			ItemCount:   totalItems,
-		})
-	}
-
-	// Limit to first 5 for display brevity
-	displayed := recommendations
-	if len(displayed) > 5 {
-		displayed = displayed[:5]
-	}
-
-	return &ArchitectRecommendationsSurface{
-		TotalCount: len(recommendations),
-		Summaries:  displayed,
-	}, nil
-}
-
-// extractShortWorkspaceName extracts a concise name from a full workspace ID.
-// e.g., "og-arch-de-bloat-feature-27dec" -> "de-bloat-feature"
-// e.g., "og-feat-beads-integration-27dec" -> "beads-integration"
-func extractShortWorkspaceName(workspaceID string) string {
-	// Remove common prefixes (og-, kb-, etc.) and date suffixes
-	parts := strings.Split(workspaceID, "-")
-	if len(parts) <= 2 {
-		return workspaceID
-	}
-
-	// Skip first part if it's a project prefix (2-3 chars like "og", "kb")
-	start := 0
-	if len(parts[0]) <= 3 {
-		start = 1
-	}
-
-	// Skip second part if it's a skill type (arch, feat, inv, debug)
-	if start < len(parts) {
-		skillTypes := map[string]bool{"arch": true, "feat": true, "inv": true, "debug": true, "research": true, "audit": true}
-		if skillTypes[parts[start]] {
-			start++
-		}
-	}
-
-	// Skip last part if it looks like a date (e.g., "27dec", "21dec")
-	end := len(parts)
-	if end > 0 {
-		lastPart := parts[end-1]
-		// Check if it's a date pattern: digits followed by month abbreviation
-		if len(lastPart) >= 3 && len(lastPart) <= 6 {
-			hasDigit := false
-			for _, c := range lastPart {
-				if c >= '0' && c <= '9' {
-					hasDigit = true
-					break
-				}
-			}
-			if hasDigit {
-				end--
-			}
-		}
-	}
-
-	if start >= end {
-		return workspaceID
-	}
-
-	return strings.Join(parts[start:end], "-")
-}
-
-// FormatArchitectRecommendationsSurface formats the architect recommendations surface
-// for display in orch status. Returns an empty string if there are no recommendations.
-func FormatArchitectRecommendationsSurface(surface *ArchitectRecommendationsSurface) string {
-	if surface == nil || surface.TotalCount == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("⚠️  %d architect recommendation(s) awaiting review:\n", surface.TotalCount))
-
-	for _, s := range surface.Summaries {
-		sb.WriteString(fmt.Sprintf("  - %s (%d items)", s.WorkspaceID, s.ItemCount))
-		if s.TLDR != "" {
-			sb.WriteString(fmt.Sprintf(": %s", s.TLDR))
-		}
-		sb.WriteString("\n")
-	}
-
-	if surface.TotalCount > len(surface.Summaries) {
-		sb.WriteString(fmt.Sprintf("  ... and %d more\n", surface.TotalCount-len(surface.Summaries)))
-	}
-
-	sb.WriteString("Run 'orch review --architects' to process\n")
-
-	return sb.String()
 }

@@ -1,60 +1,89 @@
-# Session Handoff: Jan 2, 2026
+# Session Handoff - Dec 26 Evening
 
-## What Happened
+## Session Summary
 
-Dylan asked about dead/stalled sessions in the UI. Investigation revealed:
-1. Dead sessions accumulate because `orch complete` never cleaned up OpenCode sessions
-2. "Dead" conflates 3 states: completed-and-exited, crashed, and old garbage
-3. Untracked agents can't report phase (no beads issue = no phase comments)
+Major theme: **Review UI improvements and multi-project orchestration design**
 
-Spawned 4-5 agents to fix these issues. Each agent:
-- Wrote plausible-looking code
-- Ran `go test ./...` (which tests OLD code paths)
-- Declared success
-- **Did NOT verify the fix actually works end-to-end**
+### Key Accomplishments
 
-Result: Stack of half-working patches that don't actually solve the problems.
+1. **Pending Reviews Triage** - Cleared 71 → 0 unreviewed recommendations, created 7 actionable issues
 
-## The Real Problem
+2. **Multi-project Architecture** - Designed "global visibility, project-scoped operations" pattern
+   - Dashboard shows all projects ✅
+   - Operations require correct cwd, with helpful error messages
+   - Created orch-go-6u94, orch-go-f5hz for error message improvements
 
-**Agents optimize for "tests pass" not "problem solved."**
+3. **New Features**
+   - `orch fetch-md` - Go replacement for url-to-markdown (chromedp + html-to-markdown)
+   - Debounced gold processing border (5s delay, CSS transitions)
+   - Fixed duplicate key errors (backend dedup + composite keys)
+   - Improved workspace slug generation (better stop words)
 
-The verification gates check for test OUTPUT, not test COVERAGE of the actual bug. An agent can add code, run existing tests, see green, and claim victory - even if the new code path is never exercised.
+4. **Design Investigations**
+   - Up Next section for queue visibility (orch-go-afsz)
+   - Theme system extraction from OpenCode (orch-go-t84l)
+   - Light tier synthesis visibility (orch-go-cafd)
 
-## Git Analysis
+5. **Bug Findings**
+   - Daemon capacity count goes stale after completions (orch-go-per9 investigating)
+   - Light tier agents don't produce SYNTHESIS.md by design - need review tooling update
+   - New CLI commands not prompting for skill docs (orch-go-zkdd implementing auto-detect)
 
-| Period | Commits | Character |
-|--------|---------|-----------|
-| Dec 15-27 | ~20/day | Investigative, exploratory, foundational |
-| Dec 28-Jan 2 | ~50/day | Fix churn, agents fixing agents |
+### Current State
 
-**243 commits in 5 days** - massive acceleration that introduced instability.
+**Stats:**
+- Open: 47 | In Progress: 6 | Ready: 46 | Closed: 567
+- Usage: 51% weekly (49% remaining)
 
-Candidate rollback point: `fb0af37f` (Dec 27) - last commit before the acceleration.
+**Running Agents (5):**
+| Issue | Task | Phase |
+|-------|------|-------|
+| orch-go-per9 | Daemon capacity stale | Investigating |
+| orch-go-afsz | Up Next section | Running |
+| orch-go-cafd | Light tier visibility | Implementing |
+| orch-go-zkdd | CLI command detection | Implementing |
+| orch-go-wh7n | Stale in_progress fix | Complete |
 
-## Open Issues From This Session
+**Idle (need completion):**
+- orch-go-sm33, orch-go-i914
 
-- `orch-go-pbz3` - Untracked agents cannot report phase (fix incomplete)
-- `orch-go-vc8t` - Dead sessions cleanup (claimed fixed, partially works)
-- `orch-go-zbag` - Dashboard simplification (claimed fixed, untested)
-- `orch-go-103i` - SYNTHESIS model field (claimed fixed, untested)
+### High-Priority Next Work
 
-## Options for Next Session
+| Issue | Description | Why |
+|-------|-------------|-----|
+| orch-go-per9 | Daemon capacity stale bug | Blocking autonomous spawning |
+| orch-go-6u94 | Abandon cross-project errors | Multi-project UX |
+| orch-go-f5hz | Complete cross-project errors | Multi-project UX |
+| orch-go-t84l | Theme selection system | Dashboard polish |
 
-1. **Rollback to Dec 27** (`git reset --hard fb0af37f`) - lose 5 days of work but get stability back
-2. **Cherry-pick good commits** - Keep foundational fixes, drop the broken ones
-3. **Manual fixes** - Orchestrator fixes the bugs directly (violates delegation rule but gets unstuck)
-4. **Process fix** - Add end-to-end validation requirement before agents can claim complete
+### Known Issues
 
-## Key Insight
+1. **Daemon capacity** - Shows capacity_used: 3 when orch status shows 0. Restart daemon to unblock, but per9 investigating root cause.
 
-Using AI agents to fix AI agent orchestration tooling is inherently fragile. The feedback loops are too tight and the failure modes are subtle. Consider:
-- Only use agents for non-orch-go projects
-- Manual fixes for orch-go itself
-- Or: much more rigorous validation (spawn test agent, verify behavior, then claim success)
+2. **No remote** - This repo has no git remote configured. All commits are local.
 
-## Dylan's Mood
+3. **Light tier invisible** - Feature-impl quick fixes don't produce SYNTHESIS.md, so they don't appear in pending reviews. orch-go-cafd fixing.
 
-Frustrated. "I'm about ready to scrap this altogether" and "such a shame."
+### Resume Instructions
 
-This is recoverable but needs deliberate work, not more agent churn.
+```bash
+orch doctor          # Check services
+orch status          # See running agents
+orch complete <id> --force  # Complete idle agents
+
+# If daemon stuck at capacity:
+# DON'T restart - let orch-go-per9 investigate
+# Spawn manually if urgent: orch spawn ...
+```
+
+### Session Reflection
+
+**Friction encountered:**
+- Daemon capacity bug hit twice (created pressure via orch-go-per9)
+- CLI commands not surfacing for skill docs (orch-go-zkdd addressing)
+- Light tier completions invisible (orch-go-cafd addressing)
+
+**Pressure applied (not compensated):**
+- Daemon capacity: Created issue, spawned debugger instead of just restarting
+- CLI command docs: Added evidence to orch-go-zkdd, spawned fix
+- Light tier: Investigated root cause, created orch-go-cafd

@@ -4,41 +4,25 @@ Go CLI for OpenCode orchestration - spawn sessions, monitor events, query sessio
 
 ## Installation
 
-Build and install the CLI using make (recommended):
+Build the CLI using the Cobra-based implementation (recommended):
 
 ```bash
-# Build and install (creates symlink ~/bin/orch → build/orch)
-make install
+# Build from cmd/orch directory
+go build -o orch-go ./cmd/orch
 
-# Or just build (symlink makes this sufficient after first install)
+# Or use make
 make build
 ```
 
-The install target creates a symlink from `~/bin/orch` to the build output. This means:
-- `make build` automatically updates what you run (no separate install step needed)
-- The source repo is the single source of truth for the binary
-- Eliminates the "forgot to run `make install`" problem
-
-**First-time setup:**
-```bash
-# Ensure ~/bin is in your PATH (add to ~/.zshrc if needed)
-export PATH="$HOME/bin:$PATH"
-
-# Run install once to create the symlink
-make install
-```
-
-After the initial install, just `make build` is sufficient to update the CLI.
-
-**Note:** The legacy monolithic `main.go` at project root is deprecated and only supports `spawn`, `monitor`, and `ask` commands.
+The legacy monolithic `main.go` at project root is deprecated and only supports `spawn`, `monitor`, and `ask` commands.
 
 ## Usage
 
-All commands support a global `--server` flag to specify the OpenCode server URL (default: `http://localhost:4096`).
+All commands support a global `--server` flag to specify the OpenCode server URL (default: `http://127.0.0.1:4096`).
 
 ### Spawn a new session
 
-Spawn a new OpenCode session with skill context. By default, spawns the agent via HTTP API (headless) and returns immediately. Use `--tmux` to spawn in a tmux window for visual monitoring, or `--inline` to run in the current terminal (blocking).
+Spawn a new OpenCode session with skill context. By default, spawns the agent in a tmux window and returns immediately. Use `--inline` to run in the current terminal (blocking).
 
 ```bash
 # Basic spawn with a task
@@ -59,8 +43,7 @@ orch-go spawn --inline investigation "explore codebase"
 - `--phases <list>`: Feature-impl phases (e.g., implementation,validation)
 - `--mode <tdd|direct>`: Implementation mode (default: tdd)
 - `--validation <none|tests|smoke-test>`: Validation level (default: tests)
-- `--tmux`: Spawn in tmux window for visual monitoring (opt-in)
-- `--inline`: Run inline in current terminal (blocking)
+- `--inline`: Run inline (blocking) instead of in tmux
 
 ### Send a message to an existing session
 
@@ -82,7 +65,7 @@ Monitor the OpenCode server for session events and send notifications on complet
 orch-go monitor
 
 # Output:
-# Monitoring SSE events at http://localhost:4096/event...
+# Monitoring SSE events at http://127.0.0.1:4096/event...
 # [session.status] {"status":"busy","session_id":"ses_abc123"}
 # [session.status] {"status":"idle","session_id":"ses_abc123"}
 # Session ses_abc123 completed!
@@ -133,44 +116,14 @@ All events are logged to `~/.orch/events.jsonl` in JSONL format:
 
 ## Requirements
 
-- OpenCode running at `http://localhost:4096` (default)
+- OpenCode running at `http://127.0.0.1:4096` (default)
 - macOS for desktop notifications (uses beeep library)
-
-### MCP Servers (Browser Automation)
-
-Agents can use browser automation via MCP servers. Use `--mcp` flag when spawning:
-
-```bash
-# Playwright: Isolated browser instances (for E2E tests, visual verification)
-orch-go spawn --mcp playwright feature-impl "add UI feature"
-
-# Glass: Shared Chrome browser (for collaborative work, dashboard interaction)
-orch-go spawn --mcp glass feature-impl "verify dashboard"
-```
-
-**Glass requires Chrome to be launched with remote debugging enabled:**
-
-```bash
-# macOS: Launch Chrome with remote debugging
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
-
-# Or create an alias in ~/.zshrc:
-alias chrome-debug='/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222'
-```
-
-**When to use each:**
-| Tool | Browser Model | Use Case |
-|------|---------------|----------|
-| **Playwright** | Isolated instance | E2E tests, CI/CD, visual regression |
-| **Glass** | Dylan's Chrome (shared) | Dashboard interaction, collaborative browsing |
-
-**Note:** Chrome must be running with `--remote-debugging-port=9222` BEFORE spawning with `--mcp glass`. Glass connects to existing tabs rather than spawning new browser instances.
 
 ## API Patterns
 
 Based on validated manual testing:
 
-1. **Spawn**: `opencode run --attach http://localhost:4096 --format json --title "title" "prompt"`
-2. **Q&A**: `opencode run --attach http://localhost:4096 --session ses_xxx --format json "question"`
-3. **SSE**: `curl http://localhost:4096/event` (server.connected, session.status, etc.)
+1. **Spawn**: `opencode run --attach http://127.0.0.1:4096 --format json --title "title" "prompt"`
+2. **Q&A**: `opencode run --attach http://127.0.0.1:4096 --session ses_xxx --format json "question"`
+3. **SSE**: `curl http://127.0.0.1:4096/event` (server.connected, session.status, etc.)
 4. **Completion**: Watch for `session.status` changing from `busy` to `idle`

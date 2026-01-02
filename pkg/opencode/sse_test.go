@@ -348,7 +348,7 @@ done:
 
 // Test SSEClient constructor
 func TestNewSSEClient(t *testing.T) {
-	url := "http://localhost:4096/event"
+	url := "http://127.0.0.1:4096/event"
 	client := NewSSEClient(url)
 
 	if client == nil {

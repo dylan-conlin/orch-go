@@ -24,17 +24,6 @@ type NotificationConfig struct {
 	Enabled *bool `yaml:"enabled,omitempty"`
 }
 
-// DaemonConfig holds daemon-related settings.
-type DaemonConfig struct {
-	// MaxAgents is the maximum number of concurrent agents (0 = no limit).
-	// Defaults to 3 if not specified.
-	MaxAgents *int `yaml:"max_agents,omitempty"`
-	// MaxSpawnsPerHour is the maximum number of spawns allowed per hour (0 = no limit).
-	// This prevents runaway spawning when many issues are batch-labeled as triage:ready.
-	// Defaults to 20 if not specified.
-	MaxSpawnsPerHour *int `yaml:"max_spawns_per_hour,omitempty"`
-}
-
 // Config represents the user-level orch configuration.
 type Config struct {
 	// Backend specifies the orchestration backend (e.g., "opencode").
@@ -43,8 +32,6 @@ type Config struct {
 	AutoExportTranscript bool `yaml:"auto_export_transcript,omitempty"`
 	// Notifications holds notification-related settings.
 	Notifications NotificationConfig `yaml:"notifications,omitempty"`
-	// Daemon holds daemon-related settings.
-	Daemon DaemonConfig `yaml:"daemon,omitempty"`
 }
 
 // ConfigPath returns the path to the user config file.
@@ -107,22 +94,4 @@ func (c *Config) NotificationsEnabled() bool {
 		return true // Default to enabled
 	}
 	return *c.Notifications.Enabled
-}
-
-// DaemonMaxAgents returns the max concurrent agents for the daemon.
-// Defaults to 3 if not configured.
-func (c *Config) DaemonMaxAgents() int {
-	if c.Daemon.MaxAgents == nil {
-		return 3 // Default
-	}
-	return *c.Daemon.MaxAgents
-}
-
-// DaemonMaxSpawnsPerHour returns the max spawns per hour for the daemon.
-// Defaults to 20 if not configured.
-func (c *Config) DaemonMaxSpawnsPerHour() int {
-	if c.Daemon.MaxSpawnsPerHour == nil {
-		return 20 // Default
-	}
-	return *c.Daemon.MaxSpawnsPerHour
 }

@@ -18,7 +18,6 @@ var (
 	initForce          bool   // Force re-initialization even if directories exist
 	initSkipBeads      bool   // Skip beads initialization
 	initSkipKB         bool   // Skip kb initialization
-	initSkipKN         bool   // Skip kn initialization
 	initSkipClaudeMD   bool   // Skip CLAUDE.md generation
 	initSkipTmuxinator bool   // Skip tmuxinator config generation
 	initBeadsPrefix    string // Custom prefix for beads issues
@@ -34,7 +33,6 @@ Creates:
   - .orch/workspace/     Agent workspaces
   - .orch/templates/     Shared templates (SYNTHESIS.md, etc.)
   - .kb/                 Knowledge base (via 'kb init')
-  - .kn/                 Quick knowledge capture (via 'kn init')
   - .beads/              Issue tracking (via 'bd init')
   - CLAUDE.md            Project context for Claude agents
   - tmuxinator config    Workers session configuration (~/.tmuxinator/workers-{project}.yml)
@@ -53,7 +51,6 @@ Examples:
   orch-go init --type go-cli         # Use go-cli template
   orch-go init --skip-beads          # Skip beads initialization
   orch-go init --skip-kb             # Skip kb initialization
-  orch-go init --skip-kn             # Skip kn initialization
   orch-go init --skip-claude         # Skip CLAUDE.md generation
   orch-go init --skip-tmuxinator     # Skip tmuxinator config generation
   orch-go init --beads-prefix snap   # Use custom beads prefix
@@ -67,7 +64,6 @@ func init() {
 	initCmd.Flags().BoolVar(&initForce, "force", false, "Force re-initialization even if directories exist")
 	initCmd.Flags().BoolVar(&initSkipBeads, "skip-beads", false, "Skip beads initialization")
 	initCmd.Flags().BoolVar(&initSkipKB, "skip-kb", false, "Skip kb initialization")
-	initCmd.Flags().BoolVar(&initSkipKN, "skip-kn", false, "Skip kn initialization")
 	initCmd.Flags().BoolVar(&initSkipClaudeMD, "skip-claude", false, "Skip CLAUDE.md generation")
 	initCmd.Flags().BoolVar(&initSkipTmuxinator, "skip-tmuxinator", false, "Skip tmuxinator config generation")
 	initCmd.Flags().StringVar(&initBeadsPrefix, "beads-prefix", "", "Custom prefix for beads issues (default: directory name)")
@@ -87,10 +83,6 @@ type InitResult struct {
 	KBSkipped         bool
 	KBExisted         bool
 	KBError           error
-	KNInitiated       bool
-	KNSkipped         bool
-	KNExisted         bool
-	KNError           error
 	ClaudeMDCreated   bool
 	ClaudeMDSkipped   bool
 	ClaudeMDExisted   bool
@@ -112,7 +104,7 @@ func runInit() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	result, err := initProject(projectDir, initForce, initSkipBeads, initSkipKB, initSkipKN, initSkipClaudeMD, initSkipTmuxinator, initBeadsPrefix, initProjectType)
+	result, err := initProject(projectDir, initForce, initSkipBeads, initSkipKB, initSkipClaudeMD, initSkipTmuxinator, initBeadsPrefix, initProjectType)
 	if err != nil {
 		return err
 	}
@@ -124,7 +116,7 @@ func runInit() error {
 
 // initProject performs the actual initialization work.
 // This is separated from runInit to make testing easier.
-func initProject(projectDir string, force, skipBeads, skipKB, skipKN, skipClaudeMD, skipTmuxinator bool, beadsPrefix, projectType string) (*InitResult, error) {
+func initProject(projectDir string, force, skipBeads, skipKB, skipClaudeMD, skipTmuxinator bool, beadsPrefix, projectType string) (*InitResult, error) {
 	projectName := filepath.Base(projectDir)
 
 	result := &InitResult{
@@ -176,23 +168,6 @@ func initProject(projectDir string, force, skipBeads, skipKB, skipKN, skipClaude
 			}
 		} else {
 			result.KBExisted = true
-		}
-	}
-
-	// Initialize kn unless skipped
-	if skipKN {
-		result.KNSkipped = true
-	} else {
-		knDir := filepath.Join(projectDir, ".kn")
-		if _, err := os.Stat(knDir); os.IsNotExist(err) || force {
-			if err := initKN(projectDir); err != nil {
-				result.KNError = err
-				fmt.Fprintf(os.Stderr, "Warning: kn initialization failed: %v\n", err)
-			} else {
-				result.KNInitiated = true
-			}
-		} else {
-			result.KNExisted = true
 		}
 	}
 
@@ -351,16 +326,6 @@ func initKB(projectDir string) error {
 	return cmd.Run()
 }
 
-// initKN runs 'kn init' to initialize quick knowledge capture.
-func initKN(projectDir string) error {
-	cmd := exec.Command("kn", "init")
-	cmd.Dir = projectDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
-}
-
 // initBeads runs 'bd init' to initialize beads tracking.
 func initBeads(projectDir, prefix string) error {
 	args := []string{"init", "--quiet"}
@@ -404,17 +369,6 @@ func printInitResult(result *InitResult) {
 		fmt.Printf("\nKB initialization failed: %v\n", result.KBError)
 	} else if result.KBExisted {
 		fmt.Println("\nKB already initialized (.kb/)")
-	}
-
-	// KN status
-	if result.KNInitiated {
-		fmt.Println("\nQuick knowledge initialized (.kn/)")
-	} else if result.KNSkipped {
-		fmt.Println("\nKN initialization skipped (--skip-kn)")
-	} else if result.KNError != nil {
-		fmt.Printf("\nKN initialization failed: %v\n", result.KNError)
-	} else if result.KNExisted {
-		fmt.Println("\nKN already initialized (.kn/)")
 	}
 
 	// Beads status

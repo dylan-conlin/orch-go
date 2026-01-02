@@ -10,7 +10,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/action"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -31,49 +30,20 @@ SPAWN TIER: {{.Tier}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
-{{if .EcosystemContext}}
-## LOCAL PROJECT ECOSYSTEM
-
-The following local projects are part of Dylan's orchestration ecosystem. These are LOCAL repositories on this machine - do NOT search GitHub for them.
-
-{{.EcosystemContext}}
-{{end}}
-{{if .BehavioralPatterns}}
-## BEHAVIORAL PATTERNS WARNING
-
-The following patterns have been detected from prior agent sessions. These are futile actions that agents have repeatedly attempted without success:
-
-{{.BehavioralPatterns}}
-
-**Why this matters:** These patterns indicate files or targets that don't exist, commands that fail, or approaches that don't work. Avoid repeating these actions. If you need similar functionality, try alternative approaches or ask for clarification.
-{{end}}
 {{if .NoTrack}}
 📋 AD-HOC SPAWN (--no-track):
 This is an ad-hoc spawn without beads issue tracking.
 Progress tracking via bd comment is NOT available.
 
-🚨 PHASE REPORTING (WORKSPACE FILE):
-Since bd comment is not available, report phase via workspace file:
-` + "`echo 'Planning' > {{.WorkspacePath}}/.phase`" + `
-
-Update this file at phase transitions:
-- Planning → Implementing → Testing → Complete
-
-This enables orchestrator visibility for untracked agents.
-
 🚨 SESSION COMPLETE PROTOCOL:
-When your work is done (all deliverables ready), complete in this EXACT order:
+After your final commit, BEFORE typing anything else:
 {{if eq .Tier "light"}}
-1. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
-2. Commit any final changes
-3. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
-2. Ensure SYNTHESIS.md is created
-3. Commit all changes (including SYNTHESIS.md)
-4. Run: ` + "`/exit`" + ` to close the agent session
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 {{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
@@ -86,18 +56,16 @@ If Phase is not reported within first 3 actions, you will be flagged as unrespon
 Do NOT skip this - the orchestrator monitors via beads comments.
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
-When your work is done (all deliverables ready), complete in this EXACT order:
+After your final commit, BEFORE typing anything else:
 {{if eq .Tier "light"}}
-1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + ` (report phase FIRST - before commit)
-2. Commit any final changes
-3. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
+2. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + ` (report phase FIRST - before commit)
-2. Ensure SYNTHESIS.md is created
-3. Commit all changes (including SYNTHESIS.md)
-4. Run: ` + "`/exit`" + ` to close the agent session
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
+3. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
@@ -151,7 +119,6 @@ This applies to:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
-{{if .RequiresInvestigationFile}}
 2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
@@ -165,27 +132,14 @@ DELIVERABLES (REQUIRED):
    - Add TLDR at top (1-2 sentence summary of question and finding)
    - Fill sections: What I tried → What I observed → Test performed
    - Only fill Conclusion if you actually tested (this is the key discipline)
-4. **CHECK LINEAGE:** Before marking complete, run ` + "`kb context \"<your-topic>\"`" + ` to check if any prior investigation might be superseded by your work.
-   - If yes: Fill the **Supersedes:** field in your investigation with the path to the prior artifact
-   - Consider whether the prior investigation should have **Superseded-By:** updated (mention in completion comment)
-5. Update Status: field when done (Active → Complete)
-6. [Task-specific deliverables]
+4. Update Status: field when done (Active → Complete)
+5. [Task-specific deliverables]
 {{if ne .Tier "light"}}
-7. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
+6. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
    - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
    - This is CRITICAL for the orchestrator to review your work.
 {{else}}
-7. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
-{{end}}
-{{else}}
-2. [Task-specific deliverables]
-{{if ne .Tier "light"}}
-3. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
-   - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
-   - This is CRITICAL for the orchestrator to review your work.
-{{else}}
-3. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
-{{end}}
+6. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
 {{end}}
 
 STATUS UPDATES:
@@ -196,9 +150,6 @@ Update Status: field in your investigation file:
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
 - Add '**Status:** QUESTION - [question]' when needing input
-
-EXECUTION BEHAVIOR:
-**Listing steps is NOT a stopping point.** If you write "Next steps:" or a numbered action list, execute them immediately. Do not wait for confirmation. Silent waiting is a bug - you are either working, explicitly blocked (Status: BLOCKED), or done (Phase: Complete).
 {{if not .NoTrack}}
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
@@ -269,77 +220,27 @@ CONTEXT AVAILABLE:
 
 {{.ServerContext}}
 {{end}}
-{{if not .NoTrack}}
-## VERIFICATION REQUIREMENTS (orch complete gates)
-
-**Why this exists:** The orchestrator runs ` + "`orch complete`" + ` which verifies your work before closing the issue. These are the checks that WILL BLOCK completion if not satisfied. Capture evidence proactively.
-
-### For ALL skills:
-
-- **Phase: Complete** - Must report via beads comment (checked automatically)
-
-### For code-producing skills (feature-impl, systematic-debugging, reliability-testing):
-
-1. **Git commits exist** - At least one commit must exist since spawn time. No commits = work not done.
-
-2. **Test execution evidence** - Beads comments must contain actual test output, NOT just claims.
-   
-   ✅ **Good** (quantifiable output):
-   ` + "```bash" + `
-   bd comment {{.BeadsID}} "Tests: go test ./pkg/... - PASS (12 tests in 0.8s)"
-   bd comment {{.BeadsID}} "Tests: npm test - 15 passing, 0 failing"
-   bd comment {{.BeadsID}} "Tests: pytest - 8 passed in 2.3s"
-   ` + "```" + `
-   
-   ❌ **Bad** (vague claims that will be REJECTED):
-   - "tests pass" / "all tests pass"
-   - "verified tests pass"
-   - "tests are passing"
-
-3. **Visual verification (if web/ files modified)** - Screenshots or browser verification evidence required.
-   ` + "```bash" + `
-   bd comment {{.BeadsID}} "Visual verification: screenshot captured showing [description]"
-   bd comment {{.BeadsID}} "Tested in browser - [what was verified]"
-   ` + "```" + `
-   
-   Use Playwright MCP (` + "`browser_take_screenshot`" + `) or Glass tools (` + "`glass_screenshot`" + `) to capture evidence.
-
-### Evidence capture timing:
-
-- **Run tests** → Immediately capture output in beads comment
-- **Modify web/ files** → Capture screenshot before moving to next task
-- **Complete implementation** → Verify git status shows commits
-
-**The test:** Before marking Phase: Complete, ask yourself: "Can orch complete find quantifiable evidence of my work?"
-{{end}}
-
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
-When your work is done (all deliverables ready), complete in this EXACT order:
+After your final commit, BEFORE doing anything else:
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
-1. ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
-2. Commit any final changes
-3. ` + "`/exit`" + `
+1. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
-2. Ensure SYNTHESIS.md is created
-3. Commit all changes (including SYNTHESIS.md)
-4. ` + "`/exit`" + `
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. ` + "`/exit`" + `
 {{end}}
 {{else}}
 {{if eq .Tier "light"}}
-1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + ` (report phase FIRST - before commit)
-2. Commit any final changes
-3. ` + "`/exit`" + `
+1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
+2. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + ` (report phase FIRST - before commit)
-2. Ensure SYNTHESIS.md is created
-3. Commit all changes (including SYNTHESIS.md)
-4. ` + "`/exit`" + `
+1. Ensure SYNTHESIS.md is created and committed in your workspace.
+2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
+3. ` + "`/exit`" + `
 {{end}}
 {{end}}
 ⚠️ Your work is NOT complete until you run these commands.
@@ -461,25 +362,21 @@ func StripBeadsInstructions(content string) string {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task                     string
-	BeadsID                  string
-	ProjectDir               string
-	WorkspaceName            string
-	WorkspacePath            string // Full absolute path to workspace directory
-	SkillName                string
-	SkillContent             string
-	InvestigationSlug        string
-	Phases                   string
-	Mode                     string
-	Validation               string
-	InvestigationType        string
-	KBContext                string
-	Tier                     string
-	ServerContext            string
-	EcosystemContext         string // Local project ecosystem from ~/.orch/ECOSYSTEM.md
-	BehavioralPatterns       string // Detected behavioral patterns from action-log.jsonl
-	NoTrack                  bool   // When true, omit beads instructions from spawn context
-	RequiresInvestigationFile bool   // When true, include investigation file setup instructions
+	Task              string
+	BeadsID           string
+	ProjectDir        string
+	WorkspaceName     string
+	SkillName         string
+	SkillContent      string
+	InvestigationSlug string
+	Phases            string
+	Mode              string
+	Validation        string
+	InvestigationType string
+	KBContext         string
+	Tier              string
+	ServerContext     string
+	NoTrack           bool // When true, omit beads instructions from spawn context
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -498,14 +395,6 @@ func GenerateContext(cfg *Config) (string, error) {
 		serverContext = GenerateServerContext(cfg.ProjectDir)
 	}
 
-	// Generate ecosystem context (auto-inject local project registry)
-	// Only include for projects that are part of Dylan's orchestration ecosystem.
-	// Use provided context if available, otherwise auto-generate from ~/.orch/ECOSYSTEM.md.
-	ecosystemContext := cfg.EcosystemContext
-	if ecosystemContext == "" && IsEcosystemRepo(cfg.Project) {
-		ecosystemContext = GenerateEcosystemContext()
-	}
-
 	// Strip beads instructions from skill content when NoTrack is true
 	// This prevents confusing agents with beads commands that won't work
 	skillContent := cfg.SkillContent
@@ -513,40 +402,22 @@ func GenerateContext(cfg *Config) (string, error) {
 		skillContent = StripBeadsInstructions(skillContent)
 	}
 
-	// Generate behavioral patterns context (auto-inject detected patterns)
-	// Use provided context if available, otherwise auto-generate from action-log.jsonl
-	// Filter by project directory to prevent cross-project noise
-	behavioralPatterns := cfg.BehavioralPatterns
-	if behavioralPatterns == "" {
-		behavioralPatterns = GenerateBehavioralPatternsContextForProject(cfg.WorkspaceName, cfg.ProjectDir)
-	}
-
-	// Compute full workspace path for template (needed for phase file in --no-track spawns)
-	workspacePath := filepath.Join(cfg.ProjectDir, ".orch", "workspace", cfg.WorkspaceName)
-
-	// Determine if this skill/phase combination requires an investigation file
-	requiresInvestigationFile := RequiresInvestigationFile(cfg.SkillName, cfg.Phases)
-
 	data := contextData{
-		Task:                      cfg.Task,
-		BeadsID:                   cfg.BeadsID,
-		ProjectDir:                cfg.ProjectDir,
-		WorkspaceName:             cfg.WorkspaceName,
-		WorkspacePath:             workspacePath,
-		SkillName:                 cfg.SkillName,
-		SkillContent:              skillContent,
-		InvestigationSlug:         slug,
-		Phases:                    cfg.Phases,
-		Mode:                      cfg.Mode,
-		Validation:                cfg.Validation,
-		InvestigationType:         cfg.InvestigationType,
-		KBContext:                 cfg.KBContext,
-		Tier:                      cfg.Tier,
-		ServerContext:             serverContext,
-		EcosystemContext:          ecosystemContext,
-		BehavioralPatterns:        behavioralPatterns,
-		NoTrack:                   cfg.NoTrack,
-		RequiresInvestigationFile: requiresInvestigationFile,
+		Task:              cfg.Task,
+		BeadsID:           cfg.BeadsID,
+		ProjectDir:        cfg.ProjectDir,
+		WorkspaceName:     cfg.WorkspaceName,
+		SkillName:         cfg.SkillName,
+		SkillContent:      skillContent,
+		InvestigationSlug: slug,
+		Phases:            cfg.Phases,
+		Mode:              cfg.Mode,
+		Validation:        cfg.Validation,
+		InvestigationType: cfg.InvestigationType,
+		KBContext:         cfg.KBContext,
+		Tier:              cfg.Tier,
+		ServerContext:     serverContext,
+		NoTrack:           cfg.NoTrack,
 	}
 
 	var buf bytes.Buffer
@@ -592,15 +463,6 @@ func WriteContext(cfg *Config) error {
 	// Constraints should only match files created after this spawn, not pre-existing files
 	if err := WriteSpawnTime(workspacePath, time.Now()); err != nil {
 		return fmt.Errorf("failed to write spawn time file: %w", err)
-	}
-
-	// Log spawn telemetry to events.jsonl for observability
-	// This captures context size, kb context stats, and other spawn metrics
-	telemetry := CollectSpawnTelemetry(cfg, content, nil)
-	if err := LogSpawnTelemetry(DefaultTelemetryLogPath(), telemetry); err != nil {
-		// Don't fail the spawn on telemetry error - just warn
-		// Telemetry is observability, not critical path
-		fmt.Fprintf(os.Stderr, "Warning: failed to log spawn telemetry: %v\n", err)
 	}
 
 	return nil
@@ -687,10 +549,10 @@ go test ./...
 ### Constraints Discovered
 - Constraint 1 - Why it matters
 
-### Externalized via ` + "`kb quick`" + `
-- ` + "`kb quick decide \"X\" --reason \"Y\"`" + ` - [if applicable]
-- ` + "`kb quick constrain \"X\" --reason \"Y\"`" + ` - [if applicable]
-- ` + "`kb quick tried \"X\" --failed \"Y\"`" + ` - [if applicable]
+### Externalized via ` + "`kn`" + `
+- ` + "`kn decide \"X\" --reason \"Y\"`" + ` - [if applicable]
+- ` + "`kn constraint \"X\" --reason \"Y\"`" + ` - [if applicable]
+- ` + "`kn tried \"X\" --failed \"Y\"`" + ` - [if applicable]
 
 ---
 
@@ -1024,284 +886,6 @@ func GenerateServerContext(projectDir string) string {
 	sb.WriteString(fmt.Sprintf("- Stop servers: `orch servers stop %s`\n", projectName))
 	sb.WriteString(fmt.Sprintf("- Open in browser: `orch servers open %s`\n", projectName))
 	sb.WriteString("\n")
-
-	return sb.String()
-}
-
-// NOTE: EcosystemFilePath, GenerateEcosystemContext, ExtractQuickReference,
-// and IsEcosystemRepo are now defined in ecosystem.go
-
-// GenerateBehavioralPatternsContext loads action patterns from action-log.jsonl
-// and formats them for inclusion in SPAWN_CONTEXT.md. This surfaces futile action
-// patterns to agents so they don't repeat the same mistakes.
-//
-// Returns empty string if no patterns are detected or if loading fails.
-// Patterns are filtered to those relevant to the current workspace/session.
-// Note: Use GenerateBehavioralPatternsContextForProject for project-filtered patterns.
-func GenerateBehavioralPatternsContext(workspaceName string) string {
-	return GenerateBehavioralPatternsContextForProject(workspaceName, "")
-}
-
-// GenerateBehavioralPatternsContextForProject loads action patterns from action-log.jsonl
-// filtered to a specific project directory. This prevents cross-project noise by only
-// showing patterns relevant to the project being worked on.
-//
-// If projectDir is empty, returns all patterns (global view).
-func GenerateBehavioralPatternsContextForProject(workspaceName, projectDir string) string {
-	tracker, err := action.LoadTracker("")
-	if err != nil {
-		return "" // Fail silently - don't block spawn on action log issues
-	}
-
-	// Filter events by project directory if specified
-	var filteredEvents []action.ActionEvent
-	if projectDir != "" {
-		for _, e := range tracker.Events {
-			// Check if target path or workspace path is within project directory
-			if strings.HasPrefix(e.Target, projectDir) || (e.Workspace != "" && strings.HasPrefix(e.Workspace, projectDir)) {
-				filteredEvents = append(filteredEvents, e)
-			}
-		}
-		// If no project-specific patterns, fall back to global
-		if len(filteredEvents) == 0 {
-			filteredEvents = tracker.Events
-		}
-		tracker = &action.Tracker{Events: filteredEvents}
-	}
-
-	patterns := tracker.FindPatterns()
-	if len(patterns) == 0 {
-		return "" // No patterns detected
-	}
-
-	var sb strings.Builder
-
-	// Limit to top 5 most frequent patterns to avoid context bloat
-	maxPatterns := 5
-	if len(patterns) < maxPatterns {
-		maxPatterns = len(patterns)
-	}
-
-	for i := 0; i < maxPatterns; i++ {
-		p := patterns[i]
-
-		// Format icon based on severity
-		icon := "⚠️"
-		if p.Count >= 5 {
-			icon = "🚫" // Strongly discourage
-		}
-
-		// Format the pattern warning
-		outcomeDesc := ""
-		switch p.Outcome {
-		case action.OutcomeEmpty:
-			outcomeDesc = "returns empty"
-		case action.OutcomeError:
-			outcomeDesc = "fails with error"
-		case action.OutcomeFallback:
-			outcomeDesc = "requires fallback"
-		default:
-			outcomeDesc = "fails"
-		}
-
-		sb.WriteString(fmt.Sprintf("%s **%s** on `%s` %s (%dx in past week)\n",
-			icon, p.Tool, p.Target, outcomeDesc, p.Count))
-	}
-
-	if len(patterns) > 5 {
-		sb.WriteString(fmt.Sprintf("\n... and %d more patterns (run `orch patterns` to see all)\n", len(patterns)-5))
-	}
-
-	return sb.String()
-}
-
-// GenerateBehavioralPatternsContextForWorkspace loads action patterns filtered
-// to a specific workspace. This is useful for showing patterns relevant to
-// the current agent's work context.
-func GenerateBehavioralPatternsContextForWorkspace(workspaceName string) string {
-	tracker, err := action.LoadTracker("")
-	if err != nil {
-		return ""
-	}
-
-	// Filter events to those matching this workspace
-	var workspaceEvents []action.ActionEvent
-	for _, e := range tracker.Events {
-		if e.Workspace != "" && strings.Contains(e.Workspace, workspaceName) {
-			workspaceEvents = append(workspaceEvents, e)
-		}
-	}
-
-	if len(workspaceEvents) == 0 {
-		// Fall back to global patterns if no workspace-specific ones
-		return GenerateBehavioralPatternsContext(workspaceName)
-	}
-
-	// Create a tracker with filtered events and find patterns
-	filteredTracker := &action.Tracker{Events: workspaceEvents}
-	patterns := filteredTracker.FindPatterns()
-
-	if len(patterns) == 0 {
-		// Fall back to global patterns
-		return GenerateBehavioralPatternsContext(workspaceName)
-	}
-
-	var sb strings.Builder
-	sb.WriteString("**Patterns specific to similar workspaces:**\n\n")
-
-	maxPatterns := 3
-	if len(patterns) < maxPatterns {
-		maxPatterns = len(patterns)
-	}
-
-	for i := 0; i < maxPatterns; i++ {
-		p := patterns[i]
-		outcomeDesc := ""
-		switch p.Outcome {
-		case action.OutcomeEmpty:
-			outcomeDesc = "returns empty"
-		case action.OutcomeError:
-			outcomeDesc = "fails"
-		case action.OutcomeFallback:
-			outcomeDesc = "requires fallback"
-		default:
-			outcomeDesc = "fails"
-		}
-
-		sb.WriteString(fmt.Sprintf("- **%s** on `%s` %s (%dx)\n", p.Tool, p.Target, outcomeDesc, p.Count))
-	}
-
-	return sb.String()
-}
-
-// FailureReportStatus represents the result of checking a FAILURE_REPORT.md file.
-type FailureReportStatus struct {
-	Exists              bool     // Whether a FAILURE_REPORT.md exists
-	FilePath            string   // Path to the FAILURE_REPORT.md file
-	WorkspaceName       string   // Name of the workspace containing the report
-	IsFilled            bool     // Whether key sections have been filled out
-	UnfilledSections    []string // Names of sections that still have placeholders
-	WhatWasAttempted    bool     // Whether "What was attempted" has been filled
-	Details             bool     // Whether "Details" under Failure Summary has been filled
-	RootCauseAnalysis   bool     // Whether "Root cause analysis" has been filled
-	WhatShouldDifferent bool     // Whether "If yes, what should be different" has been filled
-}
-
-// Placeholders that indicate unfilled sections in FAILURE_REPORT.md.
-// These are the template placeholders that should be replaced with actual content.
-var failureReportPlaceholders = []string{
-	"[Brief description of what the agent was trying to do]",
-	"[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]",
-	"[If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]",
-	"[Suggestion 1 - different approach]",
-}
-
-// CheckFailureReport checks if a FAILURE_REPORT.md exists for the given beads ID
-// and whether it has been filled out. Returns a status struct describing the state.
-//
-// This implements the "Gate Over Remind" principle: we don't just remind that the
-// file exists, we gate respawning on it being filled out properly.
-func CheckFailureReport(projectDir, beadsID string) *FailureReportStatus {
-	status := &FailureReportStatus{}
-
-	// Find workspace directory for this beads ID
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		return status // No workspace directory, no failure report
-	}
-
-	// Look for FAILURE_REPORT.md in any workspace that was spawned for this beads ID
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		workspacePath := filepath.Join(workspaceDir, entry.Name())
-		reportPath := filepath.Join(workspacePath, "FAILURE_REPORT.md")
-
-		// Check if FAILURE_REPORT.md exists
-		if _, err := os.Stat(reportPath); os.IsNotExist(err) {
-			continue
-		}
-
-		// Found a FAILURE_REPORT.md - check if it's for this beads ID
-		// First check the SPAWN_CONTEXT.md to confirm this workspace was for this issue
-		spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-		if content, err := os.ReadFile(spawnContextPath); err == nil {
-			contentStr := string(content)
-			// Look for "spawned from beads issue: **{beadsID}**" or "beads issue: **{beadsID}**"
-			if !strings.Contains(contentStr, beadsID) {
-				continue // This workspace is for a different issue
-			}
-		} else {
-			continue // Can't read SPAWN_CONTEXT.md, skip this workspace
-		}
-
-		// This workspace was for our beads ID and has a FAILURE_REPORT.md
-		status.Exists = true
-		status.FilePath = reportPath
-		status.WorkspaceName = entry.Name()
-
-		// Read and analyze the failure report
-		content, err := os.ReadFile(reportPath)
-		if err != nil {
-			return status // Exists but can't read - report as unfilled
-		}
-
-		contentStr := string(content)
-		status.IsFilled = true // Assume filled until we find placeholders
-
-		// Check each key section for placeholder content
-		for _, placeholder := range failureReportPlaceholders {
-			if strings.Contains(contentStr, placeholder) {
-				status.IsFilled = false
-
-				// Determine which section this placeholder belongs to
-				switch placeholder {
-				case "[Brief description of what the agent was trying to do]":
-					status.UnfilledSections = append(status.UnfilledSections, "What was attempted")
-				case "[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]":
-					status.UnfilledSections = append(status.UnfilledSections, "Details")
-				case "[If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]":
-					status.UnfilledSections = append(status.UnfilledSections, "Root cause analysis")
-				case "[Suggestion 1 - different approach]":
-					status.UnfilledSections = append(status.UnfilledSections, "What should be different")
-				}
-			}
-		}
-
-		// Set individual field flags
-		status.WhatWasAttempted = !strings.Contains(contentStr, "[Brief description of what the agent was trying to do]")
-		status.Details = !strings.Contains(contentStr, "[Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]")
-		status.RootCauseAnalysis = !strings.Contains(contentStr, "[If known, why did this fail? External dependency? Tool issue? Scope creep? Context exhaustion?]")
-		status.WhatShouldDifferent = !strings.Contains(contentStr, "[Suggestion 1 - different approach]")
-
-		// We found the failure report for this issue - return status
-		return status
-	}
-
-	return status // No failure report found
-}
-
-// FormatFailureReportGateError formats a user-friendly error message when
-// the failure report gate blocks a spawn.
-func FormatFailureReportGateError(status *FailureReportStatus, beadsID string) string {
-	var sb strings.Builder
-
-	sb.WriteString("⛔ FAILURE_REPORT.md has unfilled sections\n\n")
-	sb.WriteString("Before respawning, fill out the failure report to capture learning:\n\n")
-	sb.WriteString(fmt.Sprintf("  File: %s\n\n", status.FilePath))
-	sb.WriteString("  Unfilled sections:\n")
-	for _, section := range status.UnfilledSections {
-		sb.WriteString(fmt.Sprintf("    - %s\n", section))
-	}
-	sb.WriteString("\nWhy this gate exists:\n")
-	sb.WriteString("  • Prevents repeating the same failures\n")
-	sb.WriteString("  • Captures context for the next agent\n")
-	sb.WriteString("  • Creates institutional memory about what didn't work\n")
-	sb.WriteString("\nTo bypass (not recommended):\n")
-	sb.WriteString(fmt.Sprintf("  orch spawn --skip-failure-review --issue %s ...\n", beadsID))
 
 	return sb.String()
 }

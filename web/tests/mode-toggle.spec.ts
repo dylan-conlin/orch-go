@@ -1,50 +1,66 @@
 import { test, expect } from '@playwright/test';
 
-// NOTE: Dashboard mode toggle has been removed in favor of unified attention-first layout
-// These tests verify the new single-view dashboard behavior
-
-test.describe('Dashboard Single View (Mode Toggle Removed)', () => {
-	test('should not have mode toggle', async ({ page }) => {
+test.describe('Dashboard Mode Toggle', () => {
+	test('should switch between operational and historical modes', async ({ page }) => {
 		await page.goto('/');
 		
 		const modeToggle = page.getByTestId('mode-toggle');
-		await expect(modeToggle).not.toBeVisible();
-	});
-
-	test('should show unified view without URL mode switching', async ({ page }) => {
-		// Old URL params should be ignored (or redirect gracefully)
-		await page.goto('/?tab=ops');
+		await expect(modeToggle).toBeVisible();
 		
-		// Mode toggle should not exist
-		const modeToggle = page.getByTestId('mode-toggle');
-		await expect(modeToggle).not.toBeVisible();
+		// Get both buttons
+		const opsButton = modeToggle.getByRole('button', { name: /Ops/ });
+		const historyButton = modeToggle.getByRole('button', { name: /History/ });
 		
-		// Active agents section should be visible (always)
+		await expect(opsButton).toBeVisible();
+		await expect(historyButton).toBeVisible();
+		
+		// Ops button should be active by default (has bg-background class)
+		await expect(opsButton).toHaveClass(/bg-background/);
+		await expect(historyButton).not.toHaveClass(/bg-background/);
+		
+		// Should see operational mode content (active agents section is always visible in ops mode)
 		await expect(page.getByTestId('active-agents-section')).toBeVisible();
+		
+		// Click History button
+		await historyButton.click();
+		
+		// History button should now be active
+		await expect(historyButton).toHaveClass(/bg-background/);
+		await expect(opsButton).not.toHaveClass(/bg-background/);
+		
+		// Should see historical mode content (filter bar is only in historical mode)
+		await expect(page.getByTestId('filter-bar')).toBeVisible();
+		
+		// Click Ops button to switch back
+		await opsButton.click();
+		
+		// Ops button should be active again
+		await expect(opsButton).toHaveClass(/bg-background/);
+		await expect(historyButton).not.toHaveClass(/bg-background/);
+		
+		// Filter bar should be hidden (only in historical mode)
+		await expect(page.getByTestId('filter-bar')).not.toBeVisible();
 	});
 
-	test('should ignore historical mode URL param', async ({ page }) => {
-		await page.goto('/?tab=history');
-		
-		// Mode toggle should not exist
-		const modeToggle = page.getByTestId('mode-toggle');
-		await expect(modeToggle).not.toBeVisible();
-		
-		// Active agents section should be visible (always)
-		await expect(page.getByTestId('active-agents-section')).toBeVisible();
-	});
-
-	test('should maintain backward compatibility for localStorage', async ({ page }) => {
+	test('should persist mode selection in localStorage', async ({ page }) => {
 		await page.goto('/');
 		
-		// Set old localStorage value
-		await page.evaluate(() => {
-			localStorage.setItem('orch-dashboard-mode', 'historical');
+		const modeToggle = page.getByTestId('mode-toggle');
+		const historyButton = modeToggle.getByRole('button', { name: /History/ });
+		
+		// Click History button
+		await historyButton.click();
+		
+		// Verify localStorage was updated
+		const storedMode = await page.evaluate(() => {
+			return localStorage.getItem('orch-dashboard-mode');
 		});
+		expect(storedMode).toBe('historical');
 		
+		// Reload the page
 		await page.reload();
 		
-		// Should still work (ignore the stored mode)
-		await expect(page.getByTestId('active-agents-section')).toBeVisible();
+		// History button should still be active after reload
+		await expect(historyButton).toHaveClass(/bg-background/);
 	});
 });

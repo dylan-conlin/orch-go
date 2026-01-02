@@ -160,91 +160,6 @@ func TestExtractSessionIDFromReader(t *testing.T) {
 	}
 }
 
-// TestExtractSessionIDFromReaderLargeEvent tests that ExtractSessionIDFromReader handles
-// large JSON events that exceed the default bufio.Scanner buffer (64KB).
-// This is important because OpenCode can emit large tool outputs with file contents.
-func TestExtractSessionIDFromReaderLargeEvent(t *testing.T) {
-	// Create a large JSON event that would exceed default 64KB buffer
-	// We use 100KB of content to test the large buffer
-	largeContent := strings.Repeat("x", 100*1024) // 100KB
-	largeEvent := fmt.Sprintf(`{"type":"text","sessionID":"ses_large","content":"%s"}`, largeContent)
-
-	// Test that we can handle the large event
-	input := largeEvent + "\n"
-	reader := bytes.NewBufferString(input)
-	id, err := ExtractSessionIDFromReader(reader)
-	if err != nil {
-		t.Errorf("ExtractSessionIDFromReader() error = %v, want nil (large events should be handled)", err)
-	}
-	if id != "ses_large" {
-		t.Errorf("ExtractSessionIDFromReader() = %v, want ses_large", id)
-	}
-}
-
-// TestProcessOutputLargeEvent tests that ProcessOutput handles large JSON events
-// that exceed the default bufio.Scanner buffer (64KB).
-func TestProcessOutputLargeEvent(t *testing.T) {
-	// Create a large JSON event that would exceed default 64KB buffer
-	largeContent := strings.Repeat("y", 100*1024) // 100KB
-	events := []string{
-		`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_large","step":{"id":"step_1"}}`,
-		fmt.Sprintf(`{"type":"text","sessionID":"ses_large","content":"%s"}`, largeContent),
-		`{"type":"step_finish","sessionID":"ses_large","step":{"id":"step_1"}}`,
-	}
-
-	var output bytes.Buffer
-	for _, e := range events {
-		output.WriteString(e + "\n")
-	}
-
-	result, err := ProcessOutput(&output)
-	if err != nil {
-		t.Fatalf("ProcessOutput() error = %v (large events should be handled)", err)
-	}
-
-	if result.SessionID != "ses_large" {
-		t.Errorf("SessionID = %v, want ses_large", result.SessionID)
-	}
-	if len(result.Events) != 3 {
-		t.Errorf("Events count = %d, want 3", len(result.Events))
-	}
-}
-
-// TestProcessOutputWithStreamingLargeEvent tests that ProcessOutputWithStreaming handles
-// large JSON events that exceed the default bufio.Scanner buffer (64KB).
-func TestProcessOutputWithStreamingLargeEvent(t *testing.T) {
-	// Create a large JSON event that would exceed default 64KB buffer
-	largeContent := strings.Repeat("z", 100*1024) // 100KB
-	events := []string{
-		`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_large","step":{"id":"step_1"}}`,
-		fmt.Sprintf(`{"type":"text","sessionID":"ses_large","content":"%s"}`, largeContent),
-		`{"type":"step_finish","sessionID":"ses_large","step":{"id":"step_1"}}`,
-	}
-
-	var output bytes.Buffer
-	for _, e := range events {
-		output.WriteString(e + "\n")
-	}
-
-	var streamedContent bytes.Buffer
-	result, err := ProcessOutputWithStreaming(&output, &streamedContent)
-	if err != nil {
-		t.Fatalf("ProcessOutputWithStreaming() error = %v (large events should be handled)", err)
-	}
-
-	if result.SessionID != "ses_large" {
-		t.Errorf("SessionID = %v, want ses_large", result.SessionID)
-	}
-	if len(result.Events) != 3 {
-		t.Errorf("Events count = %d, want 3", len(result.Events))
-	}
-
-	// Verify large content was streamed
-	if !strings.Contains(streamedContent.String(), largeContent) {
-		t.Errorf("Streamed content should contain large content")
-	}
-}
-
 func TestProcessOutput(t *testing.T) {
 	// Use actual opencode format with sessionID at top level
 	events := []string{
@@ -272,22 +187,22 @@ func TestProcessOutput(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:4096")
+	client := NewClient("http://127.0.0.1:4096")
 	if client == nil {
 		t.Fatal("NewClient() returned nil")
 	}
-	if client.ServerURL != "http://localhost:4096" {
-		t.Errorf("ServerURL = %v, want http://localhost:4096", client.ServerURL)
+	if client.ServerURL != "http://127.0.0.1:4096" {
+		t.Errorf("ServerURL = %v, want http://127.0.0.1:4096", client.ServerURL)
 	}
 }
 
 func TestBuildSpawnCommand(t *testing.T) {
-	client := NewClient("http://localhost:4096")
+	client := NewClient("http://127.0.0.1:4096")
 	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://localhost:4096",
+		"--attach", "http://127.0.0.1:4096",
 		"--format", "json",
 		"--title", "test-title",
 		"say hello",
@@ -299,12 +214,12 @@ func TestBuildSpawnCommand(t *testing.T) {
 }
 
 func TestBuildSpawnCommandWithModel(t *testing.T) {
-	client := NewClient("http://localhost:4096")
+	client := NewClient("http://127.0.0.1:4096")
 	cmd := client.BuildSpawnCommand("say hello", "test-title", "anthropic/claude-opus-4")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://localhost:4096",
+		"--attach", "http://127.0.0.1:4096",
 		"--format", "json",
 		"--model", "anthropic/claude-opus-4",
 		"--title", "test-title",
@@ -340,7 +255,7 @@ func TestBuildSpawnCommandWithModel(t *testing.T) {
 }
 
 func TestBuildSpawnCommandWithoutModel(t *testing.T) {
-	client := NewClient("http://localhost:4096")
+	client := NewClient("http://127.0.0.1:4096")
 	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
 
 	// Verify --model flag is NOT included when model is empty
@@ -352,12 +267,12 @@ func TestBuildSpawnCommandWithoutModel(t *testing.T) {
 }
 
 func TestBuildAskCommand(t *testing.T) {
-	client := NewClient("http://localhost:4096")
+	client := NewClient("http://127.0.0.1:4096")
 	cmd := client.BuildAskCommand("ses_123", "what did you do?")
 
 	expectedArgs := []string{
 		"run",
-		"--attach", "http://localhost:4096",
+		"--attach", "http://127.0.0.1:4096",
 		"--session", "ses_123",
 		"--format", "json",
 		"what did you do?",
@@ -1047,7 +962,7 @@ func TestListDiskSessions(t *testing.T) {
 
 // TestListDiskSessionsRequiresDirectory tests that ListDiskSessions fails without directory.
 func TestListDiskSessionsRequiresDirectory(t *testing.T) {
-	client := NewClient("http://localhost:4096")
+	client := NewClient("http://127.0.0.1:4096")
 	_, err := client.ListDiskSessions("")
 	if err == nil {
 		t.Error("Expected error when directory is empty")
@@ -1504,27 +1419,13 @@ func TestIsSessionProcessing(t *testing.T) {
 	sessionID := "ses_test123"
 	nowMs := time.Now().UnixMilli()
 
-	// Session data with recent update time (not stale)
-	recentSessionJSON := fmt.Sprintf(`{
-		"id": "%s",
-		"time": {"created": %d, "updated": %d}
-	}`, sessionID, nowMs-10000, nowMs-1000) // updated 1 second ago
-
-	// Session data with stale update time (> 3 minutes ago)
-	staleSessionJSON := fmt.Sprintf(`{
-		"id": "%s",
-		"time": {"created": %d, "updated": %d}
-	}`, sessionID, nowMs-600000, nowMs-300000) // updated 5 minutes ago
-
 	tests := []struct {
 		name           string
-		sessionJSON    string
 		messages       string
 		wantProcessing bool
 	}{
 		{
-			name:        "processing - assistant message with null finish (recent session)",
-			sessionJSON: recentSessionJSON,
+			name: "processing - assistant message with null finish",
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":0},"finish":""},"parts":[]}
@@ -1532,17 +1433,7 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: true,
 		},
 		{
-			name:        "idle - stale session even with incomplete assistant message",
-			sessionJSON: staleSessionJSON,
-			messages: fmt.Sprintf(`[
-				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
-				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":0},"finish":""},"parts":[]}
-			]`, sessionID, nowMs-300000, sessionID, nowMs-300000),
-			wantProcessing: false, // Stale session should not be considered processing
-		},
-		{
-			name:        "idle - assistant message with finish stop",
-			sessionJSON: recentSessionJSON,
+			name: "idle - assistant message with finish stop",
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]}
@@ -1550,8 +1441,7 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: false,
 		},
 		{
-			name:        "idle - assistant message with finish tool-calls",
-			sessionJSON: recentSessionJSON,
+			name: "idle - assistant message with finish tool-calls",
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"tool-calls"},"parts":[]}
@@ -1559,8 +1449,7 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: false,
 		},
 		{
-			name:        "processing - user message just sent (within 30s)",
-			sessionJSON: recentSessionJSON,
+			name: "processing - user message just sent (within 30s)",
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]}
@@ -1568,8 +1457,7 @@ func TestIsSessionProcessing(t *testing.T) {
 			wantProcessing: true,
 		},
 		{
-			name:        "idle - user message old (more than 30s ago)",
-			sessionJSON: recentSessionJSON,
+			name: "idle - user message old (more than 30s ago)",
 			messages: fmt.Sprintf(`[
 				{"info":{"id":"msg_1","sessionID":"%s","role":"assistant","time":{"created":%d,"completed":%d},"finish":"stop"},"parts":[]},
 				{"info":{"id":"msg_2","sessionID":"%s","role":"user","time":{"created":%d}},"parts":[]}
@@ -1578,7 +1466,6 @@ func TestIsSessionProcessing(t *testing.T) {
 		},
 		{
 			name:           "no messages",
-			sessionJSON:    recentSessionJSON,
 			messages:       "[]",
 			wantProcessing: false,
 		},
@@ -1588,12 +1475,7 @@ func TestIsSessionProcessing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				// Handle both session and message requests
-				if strings.Contains(r.URL.Path, "/message") {
-					w.Write([]byte(tt.messages))
-				} else {
-					w.Write([]byte(tt.sessionJSON))
-				}
+				w.Write([]byte(tt.messages))
 			}))
 			defer server.Close()
 
@@ -1797,346 +1679,4 @@ func TestIsSessionActiveNotFound(t *testing.T) {
 	if isActive {
 		t.Error("Expected false when session not found")
 	}
-}
-
-// TestWaitForMessage tests the WaitForMessage method.
-func TestWaitForMessage(t *testing.T) {
-	sessionID := "ses_test123"
-
-	t.Run("success - message appears immediately", func(t *testing.T) {
-		callCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			callCount++
-			w.Header().Set("Content-Type", "application/json")
-			// Return a message immediately
-			w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.WaitForMessage(sessionID, 2*time.Second, 100*time.Millisecond)
-		if err != nil {
-			t.Errorf("WaitForMessage() error = %v, want nil", err)
-		}
-		if callCount != 1 {
-			t.Errorf("Expected 1 API call, got %d", callCount)
-		}
-	})
-
-	t.Run("success - message appears after delay", func(t *testing.T) {
-		callCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			callCount++
-			w.Header().Set("Content-Type", "application/json")
-			if callCount < 3 {
-				// First two calls return empty
-				w.Write([]byte(`[]`))
-			} else {
-				// Third call returns a message
-				w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
-			}
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.WaitForMessage(sessionID, 2*time.Second, 50*time.Millisecond)
-		if err != nil {
-			t.Errorf("WaitForMessage() error = %v, want nil", err)
-		}
-		if callCount != 3 {
-			t.Errorf("Expected 3 API calls, got %d", callCount)
-		}
-	})
-
-	t.Run("timeout - message never appears", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			// Always return empty
-			w.Write([]byte(`[]`))
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.WaitForMessage(sessionID, 200*time.Millisecond, 50*time.Millisecond)
-		if err == nil {
-			t.Error("WaitForMessage() expected timeout error, got nil")
-		}
-		if err != ErrMessageDeliveryTimeout {
-			t.Errorf("WaitForMessage() error = %v, want ErrMessageDeliveryTimeout", err)
-		}
-	})
-
-	t.Run("continues on transient error", func(t *testing.T) {
-		callCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			callCount++
-			if callCount < 3 {
-				// First two calls fail
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			// Third call succeeds with a message
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.WaitForMessage(sessionID, 2*time.Second, 50*time.Millisecond)
-		if err != nil {
-			t.Errorf("WaitForMessage() error = %v, want nil (should recover from transient errors)", err)
-		}
-		if callCount < 3 {
-			t.Errorf("Expected at least 3 API calls (2 failures + 1 success), got %d", callCount)
-		}
-	})
-}
-
-// TestSessionModelString tests the SessionModel.String() method.
-func TestSessionModelString(t *testing.T) {
-	tests := []struct {
-		name     string
-		model    SessionModel
-		expected string
-	}{
-		{
-			name:     "anthropic model",
-			model:    SessionModel{ProviderID: "anthropic", ModelID: "claude-opus-4-5-20251101"},
-			expected: "anthropic/claude-opus-4-5-20251101",
-		},
-		{
-			name:     "google model",
-			model:    SessionModel{ProviderID: "google", ModelID: "gemini-2.5-flash"},
-			expected: "google/gemini-2.5-flash",
-		},
-		{
-			name:     "empty provider",
-			model:    SessionModel{ProviderID: "", ModelID: "claude-opus-4"},
-			expected: "claude-opus-4",
-		},
-		{
-			name:     "both empty",
-			model:    SessionModel{ProviderID: "", ModelID: ""},
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.model.String()
-			if result != tt.expected {
-				t.Errorf("SessionModel.String() = %q, want %q", result, tt.expected)
-			}
-		})
-	}
-}
-
-// TestGetSessionModel tests the GetSessionModel method.
-func TestGetSessionModel(t *testing.T) {
-	sessionID := "ses_test123"
-
-	t.Run("success - assistant message with model info", func(t *testing.T) {
-		mockMessages := `[
-			{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user","time":{"created":1766282439689}},"parts":[]},
-			{"info":{"id":"msg_2","sessionID":"ses_test123","role":"assistant","modelID":"claude-opus-4-5-20251101","providerID":"anthropic","time":{"created":1766282440000}},"parts":[]}
-		]`
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(mockMessages))
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		model, err := client.GetSessionModel(sessionID)
-		if err != nil {
-			t.Fatalf("GetSessionModel() error = %v", err)
-		}
-		if model == nil {
-			t.Fatal("GetSessionModel() returned nil")
-		}
-		if model.ProviderID != "anthropic" {
-			t.Errorf("ProviderID = %s, want anthropic", model.ProviderID)
-		}
-		if model.ModelID != "claude-opus-4-5-20251101" {
-			t.Errorf("ModelID = %s, want claude-opus-4-5-20251101", model.ModelID)
-		}
-		if model.String() != "anthropic/claude-opus-4-5-20251101" {
-			t.Errorf("String() = %s, want anthropic/claude-opus-4-5-20251101", model.String())
-		}
-	})
-
-	t.Run("no model info in messages", func(t *testing.T) {
-		mockMessages := `[
-			{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user","time":{"created":1766282439689}},"parts":[]},
-			{"info":{"id":"msg_2","sessionID":"ses_test123","role":"assistant","time":{"created":1766282440000}},"parts":[]}
-		]`
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(mockMessages))
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		model, err := client.GetSessionModel(sessionID)
-		if err != nil {
-			t.Fatalf("GetSessionModel() error = %v", err)
-		}
-		if model != nil {
-			t.Errorf("GetSessionModel() = %v, want nil when no model info", model)
-		}
-	})
-
-	t.Run("empty messages", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte("[]"))
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		model, err := client.GetSessionModel(sessionID)
-		if err != nil {
-			t.Fatalf("GetSessionModel() error = %v", err)
-		}
-		if model != nil {
-			t.Errorf("GetSessionModel() = %v, want nil for empty session", model)
-		}
-	})
-
-	t.Run("server error", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		_, err := client.GetSessionModel(sessionID)
-		if err == nil {
-			t.Error("Expected error for server error response")
-		}
-	})
-}
-
-// TestSendPromptWithVerification tests the SendPromptWithVerification method.
-func TestSendPromptWithVerification(t *testing.T) {
-	sessionID := "ses_test123"
-	prompt := "test prompt"
-
-	t.Run("success - first attempt", func(t *testing.T) {
-		sendCount := 0
-		messageCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "prompt_async") {
-				sendCount++
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			if strings.Contains(r.URL.Path, "message") {
-				messageCount++
-				w.Header().Set("Content-Type", "application/json")
-				// Message appears immediately
-				w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.SendPromptWithVerification(sessionID, prompt, "", 1*time.Second, 50*time.Millisecond)
-		if err != nil {
-			t.Errorf("SendPromptWithVerification() error = %v, want nil", err)
-		}
-		if sendCount != 1 {
-			t.Errorf("Expected 1 send call, got %d", sendCount)
-		}
-	})
-
-	t.Run("success - retry after timeout", func(t *testing.T) {
-		sendCount := 0
-		messageCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "prompt_async") {
-				sendCount++
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			if strings.Contains(r.URL.Path, "message") {
-				messageCount++
-				w.Header().Set("Content-Type", "application/json")
-				// First few calls return empty (simulating initial send failure)
-				// After retry (sendCount == 2), message appears
-				if sendCount < 2 {
-					w.Write([]byte(`[]`))
-				} else {
-					w.Write([]byte(`[{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user"},"parts":[]}]`))
-				}
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.SendPromptWithVerification(sessionID, prompt, "", 150*time.Millisecond, 30*time.Millisecond)
-		if err != nil {
-			t.Errorf("SendPromptWithVerification() error = %v, want nil", err)
-		}
-		if sendCount != 2 {
-			t.Errorf("Expected 2 send calls (initial + retry), got %d", sendCount)
-		}
-	})
-
-	t.Run("failure - send fails", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "prompt_async") {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.SendPromptWithVerification(sessionID, prompt, "", 500*time.Millisecond, 50*time.Millisecond)
-		if err == nil {
-			t.Error("SendPromptWithVerification() expected error, got nil")
-		}
-		if !strings.Contains(err.Error(), "failed to send prompt") {
-			t.Errorf("Expected 'failed to send prompt' error, got: %v", err)
-		}
-	})
-
-	t.Run("failure - verification times out after retry", func(t *testing.T) {
-		sendCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "prompt_async") {
-				sendCount++
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			if strings.Contains(r.URL.Path, "message") {
-				w.Header().Set("Content-Type", "application/json")
-				// Always return empty - message never appears
-				w.Write([]byte(`[]`))
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer server.Close()
-
-		client := NewClient(server.URL)
-		err := client.SendPromptWithVerification(sessionID, prompt, "", 100*time.Millisecond, 30*time.Millisecond)
-		if err == nil {
-			t.Error("SendPromptWithVerification() expected error, got nil")
-		}
-		if !strings.Contains(err.Error(), "message delivery failed after retry") {
-			t.Errorf("Expected 'message delivery failed after retry' error, got: %v", err)
-		}
-		if sendCount != 2 {
-			t.Errorf("Expected 2 send calls (initial + retry), got %d", sendCount)
-		}
-	})
 }

@@ -2,11 +2,8 @@
 package spawn
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -16,16 +13,12 @@ import (
 // OrchEcosystemRepos defines the allowlist of repos that are relevant for orchestration work.
 // Used for tiered filtering: when global search is needed, results are post-filtered to this set.
 var OrchEcosystemRepos = map[string]bool{
-	"orch-go":          true,
-	"orch-cli":         true,
-	"kb-cli":           true,
-	"orch-knowledge":   true,
-	"beads":            true,
-	"beads-ui-svelte":  true,
-	"kn":               true,
-	"glass":            true,
-	"skillc":           true,
-	"agentlog":         true,
+	"orch-go":        true,
+	"orch-cli":       true,
+	"kb-cli":         true,
+	"orch-knowledge": true,
+	"beads":          true,
+	"kn":             true,
 }
 
 // MinMatchesForLocalSearch is the threshold below which we expand to global search.
@@ -52,32 +45,6 @@ type KBContextMatch struct {
 	Path        string // File path (for kb artifacts)
 	Reason      string // Reason (for kn entries)
 	FullContent string // Full content line for display
-	Delta       string // D.E.K.N. Delta (key finding, for investigations)
-}
-
-// MaxInvestigationsInContext limits the number of investigations to include in spawn context.
-// Keeping this small (2-3) to surface relevant prior work without context bloat.
-const MaxInvestigationsInContext = 3
-
-// MaxChronicleInvestigations limits how many investigations from kb chronicle to include.
-// These are topic-focused investigations that are more likely to be relevant than generic keyword matches.
-const MaxChronicleInvestigations = 3
-
-// ChronicleEntry represents a single entry from kb chronicle JSON output.
-type ChronicleEntry struct {
-	Date    string `json:"date"`
-	Type    string `json:"type"`
-	Title   string `json:"title"`
-	Summary string `json:"summary"`
-	Path    string `json:"path"`
-	ID      string `json:"id"`
-}
-
-// ChronicleResult represents the parsed output of kb chronicle --format json.
-type ChronicleResult struct {
-	Topic          string           `json:"topic"`
-	Timeline       []ChronicleEntry `json:"timeline"`
-	Investigations []ChronicleEntry `json:"investigations"`
 }
 
 // KBContextResult holds the results of a kb context query.
@@ -179,19 +146,16 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 // runKBContextQuery runs a single kb context query with optional --global flag.
 // Uses a 5-second timeout to prevent infinite hangs from kb context --global
 // scanning large directories like ~/Documents.
-// Passes --limit per category to reduce data transfer and parsing overhead.
 func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
 	// Create context with timeout to prevent hangs
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Build command args with limit per category
-	limitStr := fmt.Sprintf("%d", MaxMatchesPerCategory)
 	var cmd *exec.Cmd
 	if global {
-		cmd = exec.CommandContext(ctx, "kb", "context", "--global", "--limit", limitStr, query)
+		cmd = exec.CommandContext(ctx, "kb", "context", "--global", query)
 	} else {
-		cmd = exec.CommandContext(ctx, "kb", "context", "--limit", limitStr, query)
+		cmd = exec.CommandContext(ctx, "kb", "context", query)
 	}
 
 	output, err := cmd.Output()
@@ -472,10 +436,6 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	decisions := filterByType(result.Matches, "decision")
 	investigations := filterByType(result.Matches, "investigation")
 
-	// Enrich investigations with Delta (key findings) and limit to MaxInvestigationsInContext
-	// This helps agents understand prior work and create lineage references
-	investigations = enrichInvestigationsWithDelta(investigations)
-
 	// Try to format with all matches first
 	content := formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
 
@@ -586,9 +546,6 @@ func formatKBContextContent(query string, constraints, decisions, investigations
 		sb.WriteString("### Related Investigations\n")
 		for _, m := range investigations {
 			sb.WriteString(fmt.Sprintf("- %s", m.Title))
-			if m.Delta != "" {
-				sb.WriteString(fmt.Sprintf("\n  - **Key finding:** %s", m.Delta))
-			}
 			if m.Path != "" {
 				sb.WriteString(fmt.Sprintf("\n  - See: %s", m.Path))
 			}
@@ -602,51 +559,6 @@ func formatKBContextContent(query string, constraints, decisions, investigations
 	return sb.String()
 }
 
-// extractDeltaFromInvestigation reads an investigation file and extracts the Delta line.
-// Returns the Delta content (key finding) or empty string if not found.
-func extractDeltaFromInvestigation(path string) string {
-	file, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	// Read up to 50 lines to find the Delta line (usually in first 15)
-	lineCount := 0
-	for scanner.Scan() && lineCount < 50 {
-		line := scanner.Text()
-		lineCount++
-
-		// Look for **Delta:** pattern
-		if strings.HasPrefix(line, "**Delta:**") {
-			delta := strings.TrimPrefix(line, "**Delta:**")
-			delta = strings.TrimSpace(delta)
-			return delta
-		}
-	}
-
-	return ""
-}
-
-// enrichInvestigationsWithDelta reads the Delta from each investigation file
-// and limits to MaxInvestigationsInContext most recent.
-func enrichInvestigationsWithDelta(investigations []KBContextMatch) []KBContextMatch {
-	// Limit to MaxInvestigationsInContext
-	if len(investigations) > MaxInvestigationsInContext {
-		investigations = investigations[:MaxInvestigationsInContext]
-	}
-
-	// Enrich each with Delta
-	for i := range investigations {
-		if investigations[i].Path != "" {
-			investigations[i].Delta = extractDeltaFromInvestigation(investigations[i].Path)
-		}
-	}
-
-	return investigations
-}
-
 func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
 	var filtered []KBContextMatch
 	for _, m := range matches {
@@ -655,82 +567,4 @@ func filterByType(matches []KBContextMatch, matchType string) []KBContextMatch {
 		}
 	}
 	return filtered
-}
-
-// RunKBChronicleCheck runs 'kb chronicle' with the given topic to find related investigations.
-// Uses JSON format for reliable parsing. Returns nil if no matches or command fails.
-// This provides topic-focused investigation discovery (vs generic keyword matching from kb context).
-func RunKBChronicleCheck(topic string) (*ChronicleResult, error) {
-	if topic == "" {
-		return nil, nil
-	}
-
-	// Create context with timeout to prevent hangs
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Run kb chronicle with JSON output, limited to MaxChronicleInvestigations
-	limitStr := fmt.Sprintf("%d", MaxChronicleInvestigations)
-	cmd := exec.CommandContext(ctx, "kb", "chronicle", topic, "--format", "json", "--limit", limitStr)
-
-	output, err := cmd.Output()
-	if err != nil {
-		// kb chronicle may fail if no results or command not available - not an error
-		return nil, nil
-	}
-
-	if len(output) == 0 {
-		return nil, nil
-	}
-
-	var result ChronicleResult
-	if err := json.Unmarshal(output, &result); err != nil {
-		// JSON parse error - log and continue without chronicle context
-		return nil, nil
-	}
-
-	// Filter to only investigation entries from the timeline
-	var investigations []ChronicleEntry
-	for _, entry := range result.Timeline {
-		if entry.Type == "investigation" && len(investigations) < MaxChronicleInvestigations {
-			investigations = append(investigations, entry)
-		}
-	}
-
-	if len(investigations) == 0 {
-		return nil, nil
-	}
-
-	result.Timeline = investigations
-	return &result, nil
-}
-
-// FormatChronicleForSpawn formats kb chronicle results for inclusion in SPAWN_CONTEXT.md.
-// Returns a markdown section showing prior investigations on the topic.
-func FormatChronicleForSpawn(result *ChronicleResult) string {
-	if result == nil || len(result.Timeline) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("### Prior Investigations on This Topic\n\n")
-	sb.WriteString(fmt.Sprintf("*From `kb chronicle %q` - these investigations explored similar questions:*\n\n", result.Topic))
-
-	for _, entry := range result.Timeline {
-		sb.WriteString(fmt.Sprintf("- **%s**\n", entry.Title))
-		if entry.Summary != "" {
-			// Truncate long summaries
-			summary := entry.Summary
-			if len(summary) > 200 {
-				summary = summary[:197] + "..."
-			}
-			sb.WriteString(fmt.Sprintf("  - Summary: %s\n", summary))
-		}
-		if entry.Path != "" {
-			sb.WriteString(fmt.Sprintf("  - See: %s\n", entry.Path))
-		}
-	}
-	sb.WriteString("\n")
-
-	return sb.String()
 }

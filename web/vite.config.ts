@@ -6,10 +6,17 @@ export default defineConfig({
 	server: {
 		port: 5188,
 		proxy: {
-			// Proxy API calls to orch serve
+			// Proxy SSE events from OpenCode
+			'/api/events': {
+				target: 'http://127.0.0.1:4096',
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api/, '')
+			},
+			// Proxy API calls to OpenCode
 			'/api': {
-				target: 'http://localhost:3348',
-				changeOrigin: true
+				target: 'http://127.0.0.1:4096',
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api/, '')
 			}
 		}
 	}

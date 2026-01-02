@@ -3,7 +3,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
@@ -23,7 +21,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/question"
-	"github.com/dylan-conlin/orch-go/pkg/sessions"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
@@ -46,15 +43,6 @@ var (
 )
 
 func main() {
-	// Check for stale binary and auto-rebuild if needed
-	if shouldAutoRebuild() {
-		if err := autoRebuild(); err != nil {
-			// Non-fatal: warn and continue with stale binary
-			fmt.Fprintf(os.Stderr, "⚠️  Auto-rebuild failed: %v\n", err)
-			fmt.Fprintf(os.Stderr, "    Running with stale binary. Manual fix: cd %s && make install\n\n", sourceDir)
-		}
-	}
-
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -72,7 +60,7 @@ sessions, and monitoring session events via SSE.`,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://localhost:4096", "OpenCode server URL")
+	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://127.0.0.1:4096", "OpenCode server URL")
 
 	rootCmd.AddCommand(spawnCmd)
 	sendCmd.Flags().BoolVar(&sendAsync, "async", true, "Send message asynchronously (non-blocking)")
@@ -96,8 +84,6 @@ func init() {
 	rootCmd.AddCommand(portCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(retriesCmd)
-	rootCmd.AddCommand(sessionsCmd)
-	rootCmd.AddCommand(actionCmd)
 }
 
 var (
@@ -167,74 +153,6 @@ func runVersionSource() {
 	}
 }
 
-// shouldAutoRebuild checks if the binary is stale and auto-rebuild is enabled.
-// Auto-rebuild is disabled if ORCH_NO_AUTO_REBUILD=1 is set.
-func shouldAutoRebuild() bool {
-	// Disable auto-rebuild via environment variable
-	if os.Getenv("ORCH_NO_AUTO_REBUILD") == "1" {
-		return false
-	}
-
-	// Skip for dev builds
-	if sourceDir == "unknown" || gitHash == "unknown" {
-		return false
-	}
-
-	// Check if source directory exists
-	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-		return false
-	}
-
-	// Get current git hash
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = sourceDir
-	output, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-
-	currentHash := strings.TrimSpace(string(output))
-	return currentHash != gitHash
-}
-
-// autoRebuild rebuilds and re-executes the binary.
-// This replaces the current process with the fresh binary.
-func autoRebuild() error {
-	fmt.Fprintf(os.Stderr, "🔄 Binary is stale, auto-rebuilding...\n")
-
-	// Run make install
-	cmd := exec.Command("make", "install")
-	cmd.Dir = sourceDir
-	cmd.Stdout = os.Stderr // Show build output on stderr
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("make install failed: %w", err)
-	}
-
-	fmt.Fprintf(os.Stderr, "✓ Rebuilt successfully, re-executing...\n\n")
-
-	// Re-execute the binary with same arguments
-	// The new binary is at ~/bin/orch (where make install puts it)
-	binaryPath := filepath.Join(os.Getenv("HOME"), "bin", "orch")
-
-	// Use syscall.Exec to replace current process (Unix only)
-	// This avoids nested process issues
-	return execReplaceProcess(binaryPath, os.Args)
-}
-
-// execReplaceProcess replaces the current process with a new executable.
-// Uses syscall.Exec to replace the current process (Unix-specific, macOS/Linux).
-func execReplaceProcess(path string, args []string) error {
-	env := os.Environ()
-
-	// Set flag to prevent infinite rebuild loop
-	env = append(env, "ORCH_NO_AUTO_REBUILD=1")
-
-	// syscall.Exec replaces current process - doesn't return on success
-	return syscall.Exec(path, args, env)
-}
-
 // DefaultMaxAgents is the default maximum number of concurrent agents.
 const DefaultMaxAgents = 5
 
@@ -251,8 +169,7 @@ var (
 	spawnAttach            bool   // Attach to tmux window after spawning
 	spawnModel             string // Model to use for standalone spawns
 	spawnNoTrack           bool   // Opt-out of beads tracking
-	spawnMCP               string // MCP server config (e.g., "playwright", "glass")
-	spawnNoMCP             bool   // Disable MCP auto-detection for UI tasks
+	spawnMCP               string // MCP server config (e.g., "playwright")
 	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
 	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
 	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
@@ -262,9 +179,6 @@ var (
 	spawnGateOnGap         bool   // Block spawn if context quality is too low
 	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
-	spawnVerbose           bool   // Show stderr output in real-time for debugging
-	spawnSkipFailureReview bool   // Bypass failure report review gate (explicit opt-out)
-	spawnSkipStaleCheck    bool   // Bypass stale bug check before spawning
 )
 
 var spawnCmd = &cobra.Command{
@@ -305,50 +219,6 @@ Auto-Initialization:
   Use --auto-init to automatically run 'orch init' if .orch/ or .beads/ are missing.
   This is useful for spawning in new projects without prior setup.
 
-Error Visibility:
-  --verbose:          Show stderr output in real-time for debugging headless spawns
-  
-  By default, headless spawns capture stderr and log errors to events.jsonl on failure.
-  Use --verbose to see stderr in real-time when debugging spawn issues.
-
-UI Task Auto-Detection:
-  Automatically detects UI tasks and adds --mcp playwright when:
-  - Task mentions UI-related file paths (web/, frontend/, src/routes/, *.svelte, *.tsx)
-  - Task contains UI keywords (ui, component, visual, browser, dashboard, etc.)
-  - Task references UI elements (button, modal, form, etc.)
-  
-  --no-mcp:  Disable auto-detection (prevents auto-adding --mcp playwright)
-  
-  When auto-detected, you'll see a message showing why UI was detected.
-
-Failure Report Gate (Gate Over Remind):
-  When respawning for an issue that was previously abandoned with --reason, a
-  FAILURE_REPORT.md exists in the prior workspace. Before respawning, key sections
-  must be filled out to capture learning:
-  
-    - What was attempted
-    - Details (what went wrong)
-    - Root cause analysis
-    - What should be different
-  
-  --skip-failure-review:  Explicitly bypass the failure report gate (documents opt-out)
-  
-  This gate enforces the principle: learning should happen before retry.
-
-Stale Bug Gate (Gate Over Remind):
-  Before spawning for a bug issue (--issue), checks git history for commits that
-  may have already fixed the bug (matching issue ID or keywords from title).
-  If potentially related commits are found, spawn is BLOCKED to prevent wasting
-  agent time on already-fixed issues.
-  
-  --skip-stale-check:  Explicitly bypass the stale bug gate (when you've verified
-                       the bug still exists)
-  
-  To resolve when blocked:
-    1. Verify the bug still exists (reproduce manually)
-    2. If fixed: close issue with 'bd close <id> --reason "Already fixed"'
-    3. If persists: use --skip-stale-check to proceed
-
 Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
@@ -374,16 +244,13 @@ Examples:
   orch-go spawn --model opus investigation "analyze code"      # Use Claude Opus
   orch-go spawn --model flash investigation "quick check"      # Use Gemini Flash
   orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
-  orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP (full browser)
-  orch-go spawn --mcp glass feature-impl "verify dashboard"    # With Glass MCP (shared Chrome)
-  orch-go spawn --no-mcp feature-impl "fix UI bug"             # Disable UI auto-detection
+  orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
   orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
   orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
   orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
   orch-go spawn --light feature-impl "quick fix"               # Light tier (no synthesis)
   orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)
-  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project
-  orch-go spawn --verbose investigation "debug spawn issues"   # Show stderr in real-time`,
+  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -404,8 +271,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
-	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config: 'playwright' (full browser) or 'glass' (shared Chrome, requires Chrome --remote-debugging-port=9222)")
-	spawnCmd.Flags().BoolVar(&spawnNoMCP, "no-mcp", false, "Disable MCP auto-detection for UI tasks")
+	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
 	spawnCmd.Flags().IntVar(&spawnMaxAgents, "max-agents", 0, "Maximum concurrent agents (default 5, 0 to disable limit, or use ORCH_MAX_AGENTS env var)")
 	spawnCmd.Flags().BoolVar(&spawnAutoInit, "auto-init", false, "Auto-initialize .orch and .beads if missing")
@@ -415,9 +281,6 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
-	spawnCmd.Flags().BoolVar(&spawnVerbose, "verbose", false, "Show stderr output in real-time for debugging headless spawns")
-	spawnCmd.Flags().BoolVar(&spawnSkipFailureReview, "skip-failure-review", false, "Bypass failure report review gate when respawning (documents explicit opt-out)")
-	spawnCmd.Flags().BoolVar(&spawnSkipStaleCheck, "skip-stale-check", false, "Bypass stale bug gate when commits suggest bug may be fixed (use when verified bug still exists)")
 }
 
 var sendCmd = &cobra.Command{
@@ -456,10 +319,9 @@ var monitorCmd = &cobra.Command{
 
 var (
 	// Status command flags
-	statusJSON         bool
-	statusAll          bool   // Include phantom agents (default: hide)
-	statusProject      string // Filter by project
-	statusSessionStart bool   // Output only surfacing info for SessionStart hooks
+	statusJSON    bool
+	statusAll     bool   // Include phantom agents (default: hide)
+	statusProject string // Filter by project
 )
 
 var statusCmd = &cobra.Command{
@@ -471,20 +333,12 @@ per-account usage percentages, and individual agent details.
 By default, phantom agents (beads issue open but no running agent) are hidden.
 Use --all to include them.
 
-The --session-start flag outputs only SessionStart surfacing info (architect
-recommendations, usage warnings) for use in SessionStart hooks. This creates
-pressure to review high-value design work that would otherwise accumulate silently.
-
 Examples:
-  orch-go status                  # Show active agents only
-  orch-go status --all            # Include phantom agents
-  orch-go status --project snap   # Filter by project
-  orch-go status --json           # Output as JSON for scripting
-  orch-go status --session-start  # Output surfacing info for hooks`,
+  orch-go status              # Show active agents only
+  orch-go status --all        # Include phantom agents
+  orch-go status --project snap  # Filter by project
+  orch-go status --json       # Output as JSON for scripting`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if statusSessionStart {
-			return runStatusSessionStart()
-		}
 		return runStatus(serverURL)
 	},
 }
@@ -493,7 +347,6 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON for scripting")
 	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Include phantom agents")
 	statusCmd.Flags().StringVar(&statusProject, "project", "", "Filter by project")
-	statusCmd.Flags().BoolVar(&statusSessionStart, "session-start", false, "Output only surfacing info for SessionStart hooks")
 }
 
 var (
@@ -542,8 +395,7 @@ func init() {
 
 var (
 	// Work command flags
-	workInline            bool // Run inline (blocking) with TUI
-	workSkipFailureReview bool // Bypass failure report review gate (explicit opt-out)
+	workInline bool // Run inline (blocking) with TUI
 )
 
 var workCmd = &cobra.Command{
@@ -562,14 +414,9 @@ The issue description becomes the task prompt for the spawned agent.
 By default, spawns in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
 
-If a prior agent was abandoned (via 'orch abandon --reason'), a FAILURE_REPORT.md
-exists in the workspace. Before respawning, key sections must be filled out.
-Use --skip-failure-review to bypass this gate (documents explicit opt-out).
-
 Examples:
-  orch-go work proj-123                        # Start work in tmux window (default)
-  orch-go work proj-123 --inline               # Start work inline (blocking TUI)
-  orch-go work proj-123 --skip-failure-review  # Bypass failure report gate`,
+  orch-go work proj-123           # Start work in tmux window (default)
+  orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
@@ -579,13 +426,11 @@ Examples:
 
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
-	workCmd.Flags().BoolVar(&workSkipFailureReview, "skip-failure-review", false, "Bypass failure report review gate when respawning (documents explicit opt-out)")
 }
 
 var (
 	// Tail command flags
-	tailLines   int
-	tailWorkdir string
+	tailLines int
 
 	// Send command flags
 	sendAsync bool
@@ -598,47 +443,24 @@ var tailCmd = &cobra.Command{
 
 Fetches messages from the OpenCode API for the agent's session.
 
-For cross-project agents (spawned with --workdir in another project),
-use --workdir to specify the target project directory.
-
 Examples:
   orch-go tail proj-123              # Capture last 50 lines (default)
   orch-go tail proj-123 --lines 100  # Capture last 100 lines
-  orch-go tail proj-123 -n 20        # Capture last 20 lines
-  orch-go tail kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project tailing`,
+  orch-go tail proj-123 -n 20        # Capture last 20 lines`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runTail(beadsID, tailLines, tailWorkdir)
+		return runTail(beadsID, tailLines)
 	},
 }
 
 func init() {
 	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to capture")
-	tailCmd.Flags().StringVar(&tailWorkdir, "workdir", "", "Target project directory (for cross-project tailing)")
 }
 
-func runTail(beadsID string, lines int, workdir string) error {
-	// Determine project directory - use --workdir if provided, otherwise current directory
-	var projectDir string
-	var err error
-	if workdir != "" {
-		projectDir, err = filepath.Abs(workdir)
-		if err != nil {
-			return fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		// Verify directory exists
-		if stat, err := os.Stat(projectDir); err != nil {
-			return fmt.Errorf("workdir does not exist: %s", projectDir)
-		} else if !stat.IsDir() {
-			return fmt.Errorf("workdir is not a directory: %s", projectDir)
-		}
-	} else {
-		projectDir, _ = os.Getwd()
-	}
-
-	// Create client with directory for x-opencode-directory header
-	client := opencode.NewClientWithDirectory(serverURL, projectDir)
+func runTail(beadsID string, lines int) error {
+	client := opencode.NewClient(serverURL)
+	projectDir, _ := os.Getwd()
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//
@@ -679,12 +501,6 @@ func runTail(beadsID string, lines int, workdir string) error {
 	sessions, err := tmux.ListWorkersSessions()
 	if err != nil {
 		// tmux not available, and no API session found
-		// Provide helpful hint for cross-project issues
-		projectName := filepath.Base(projectDir)
-		issuePrefix := extractIssuePrefix(beadsID)
-		if issuePrefix != "" && issuePrefix != projectName {
-			return fmt.Errorf("no agent found for beads ID: %s (no tmux sessions, no API session)\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch tail %s --workdir ~/path/to/%s", beadsID, issuePrefix, projectName, beadsID, issuePrefix)
-		}
 		return fmt.Errorf("no agent found for beads ID: %s (no tmux sessions, no API session)", beadsID)
 	}
 
@@ -723,12 +539,6 @@ func runTail(beadsID string, lines int, workdir string) error {
 		}
 	}
 
-	// Provide helpful hint for cross-project issues
-	projectName := filepath.Base(projectDir)
-	issuePrefix := extractIssuePrefix(beadsID)
-	if issuePrefix != "" && issuePrefix != projectName {
-		return fmt.Errorf("no agent found for beads ID: %s (checked tmux and API)\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch tail %s --workdir ~/path/to/%s", beadsID, issuePrefix, projectName, beadsID, issuePrefix)
-	}
 	return fmt.Errorf("no agent found for beads ID: %s (checked tmux and API)", beadsID)
 }
 
@@ -1060,28 +870,6 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 	}
 }
 
-// inferSkillFromBeadsIssue infers skill from a beads issue using labels, title, then type.
-func inferSkillFromBeadsIssue(issue *beads.Issue) string {
-	// Check for skill:* labels first
-	for _, label := range issue.Labels {
-		if strings.HasPrefix(label, "skill:") {
-			return strings.TrimPrefix(label, "skill:")
-		}
-	}
-
-	// Check for title patterns (e.g., synthesis issues)
-	if strings.HasPrefix(issue.Title, "Synthesize ") && strings.Contains(issue.Title, " investigations") {
-		return "kb-reflect"
-	}
-
-	// Fall back to type-based inference
-	skill, err := InferSkillFromIssueType(issue.IssueType)
-	if err != nil {
-		return "feature-impl" // Default fallback
-	}
-	return skill
-}
-
 func runWork(serverURL, beadsID string, inline bool) error {
 	// Get issue details
 	issue, err := verify.GetIssue(beadsID)
@@ -1089,19 +877,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Infer skill from issue (labels, title pattern, then type)
-	// Use beads.Issue which has Labels for full skill inference
-	var skillName string
-	beadsClient := beads.NewClient("")
-	beadsIssue, err := beadsClient.Show(beadsID)
+	// Infer skill from issue type
+	skillName, err := InferSkillFromIssueType(issue.IssueType)
 	if err != nil {
-		// Fall back to type-only inference if beads fails
-		skillName, err = InferSkillFromIssueType(issue.IssueType)
-		if err != nil {
-			return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
-		}
-	} else {
-		skillName = inferSkillFromBeadsIssue(beadsIssue)
+		return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
 	}
 
 	// Use issue title and description as the task for full context
@@ -1112,8 +891,6 @@ func runWork(serverURL, beadsID string, inline bool) error {
 
 	// Set the spawnIssue flag so runSpawnWithSkill uses the existing issue
 	spawnIssue = beadsID
-	// Pass through the skip-failure-review flag from work command
-	spawnSkipFailureReview = workSkipFailureReview
 
 	fmt.Printf("Starting work on: %s\n", beadsID)
 	fmt.Printf("  Title:  %s\n", issue.Title)
@@ -1322,11 +1099,6 @@ func checkAndAutoSwitchAccount() error {
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
-	// Validate MCP server name early (fail fast before any work)
-	if err := spawn.ValidateMCPName(spawnMCP); err != nil {
-		return err
-	}
-
 	// Check concurrency limit before spawning
 	if err := checkConcurrencyLimit(); err != nil {
 		return err
@@ -1369,8 +1141,8 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		return err
 	}
 
-	// Generate workspace name with collision avoidance
-	workspaceName := spawn.GenerateUniqueWorkspaceName(skillName, task, projectDir)
+	// Generate workspace name
+	workspaceName := spawn.GenerateWorkspaceName(skillName, task)
 
 	// Load skill content with dependencies (e.g., worker-base patterns)
 	loader := skills.DefaultLoader()
@@ -1396,44 +1168,6 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			if warning != "" {
 				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
 			}
-		}
-	}
-
-	// Check for stale bug issues - BLOCK spawn if commits may have already fixed the bug
-	// Only applies to existing issues (--issue flag) and not skipped
-	// This is a pre-spawn guardrail that prevents wasted agent time on already-fixed bugs
-	if !spawnNoTrack && spawnIssue != "" && !spawnSkipStaleCheck {
-		if result, err := verify.CheckStaleBugForIssue(projectDir, beadsID); err == nil && result.IsPotentiallyStale() {
-			// Block spawn with error message showing evidence and bypass instructions
-			return errors.New(verify.FormatStaleBugGateError(result, beadsID))
-		}
-	}
-	// Log if skip-stale-check was used (documents conscious bypass)
-	if spawnSkipStaleCheck && spawnIssue != "" {
-		// Still check for stale bugs to show what was bypassed
-		if result, err := verify.CheckStaleBugForIssue(projectDir, beadsID); err == nil && result.IsPotentiallyStale() {
-			fmt.Fprintf(os.Stderr, "⚠️  Bypassing stale bug check (--skip-stale-check)\n")
-			fmt.Fprintf(os.Stderr, "   Found %d commit(s) that may have already fixed this bug\n", len(result.RelatedCommits))
-		}
-	}
-
-	// Gate on failure report - require learning before retry (Gate Over Remind)
-	// Only applies when respawning for an existing issue (--issue flag)
-	if !spawnNoTrack && spawnIssue != "" && !spawnSkipFailureReview {
-		failureStatus := spawn.CheckFailureReport(projectDir, beadsID)
-		if failureStatus.Exists && !failureStatus.IsFilled {
-			return errors.New(spawn.FormatFailureReportGateError(failureStatus, beadsID))
-		}
-		// If failure report exists and is filled, note it for context
-		if failureStatus.Exists && failureStatus.IsFilled {
-			fmt.Printf("Note: Prior failure report found and reviewed: %s\n", failureStatus.FilePath)
-		}
-	}
-	// Log if skip-failure-review was used (documents conscious bypass)
-	if spawnSkipFailureReview && spawnIssue != "" {
-		failureStatus := spawn.CheckFailureReport(projectDir, beadsID)
-		if failureStatus.Exists && !failureStatus.IsFilled {
-			fmt.Fprintf(os.Stderr, "⚠️  Bypassing failure report gate (--skip-failure-review): %s\n", failureStatus.FilePath)
 		}
 	}
 
@@ -1476,9 +1210,6 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 			// Continue anyway
 		}
-		// Note: triage:ready label is removed on successful completion (orch complete),
-		// not at spawn time. This ensures failed/abandoned agents leave issues in the
-		// ready queue for daemon to pick up again.
 	}
 
 	// Resolve model - convert aliases to full format
@@ -1541,19 +1272,6 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Determine spawn tier
 	tier := determineSpawnTier(skillName, spawnLight, spawnFull)
 
-	// UI task auto-detection - auto-add --mcp playwright when UI work detected
-	// Only applies when:
-	// - No explicit --mcp was provided
-	// - --no-mcp was not set
-	effectiveMCP := spawnMCP
-	if spawnMCP == "" && !spawnNoMCP {
-		uiResult := spawn.DetectUITask(task, projectDir)
-		if uiResult.ShouldAutoMCP {
-			effectiveMCP = "playwright"
-			fmt.Fprint(os.Stderr, spawn.FormatUIDetectionMessage(uiResult))
-		}
-	}
-
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:              task,
@@ -1567,7 +1285,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		Mode:              spawnMode,
 		Validation:        spawnValidation,
 		Model:             resolvedModel.Format(),
-		MCP:               effectiveMCP,
+		MCP:               spawnMCP,
 		Tier:              tier,
 		NoTrack:           spawnNoTrack,
 		SkipArtifactCheck: spawnSkipArtifactCheck,
@@ -1607,7 +1325,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	}
 
 	// Default: Headless mode - spawn via HTTP API (automation-friendly, no TUI overhead)
-	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task, spawnVerbose)
+	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 }
 
 // formatSessionTitle formats the session title to include beads ID for matching.
@@ -1709,27 +1427,8 @@ func printSpawnSummaryWithGapWarning(gapAnalysis *spawn.GapAnalysis) {
 		fmt.Fprintf(os.Stderr, "│  ⚠️  GAP WARNING: Agent spawned with limited context         │\n")
 		fmt.Fprintf(os.Stderr, "├─────────────────────────────────────────────────────────────┤\n")
 		fmt.Fprintf(os.Stderr, "│  Agent may compensate by guessing patterns/conventions.    │\n")
-		fmt.Fprintf(os.Stderr, "│  Consider: kb quick decide / kb quick constrain             │\n")
+		fmt.Fprintf(os.Stderr, "│  Consider: kn decide / kn constrain / kb create            │\n")
 		fmt.Fprintf(os.Stderr, "└─────────────────────────────────────────────────────────────┘\n")
-	}
-}
-
-// recordSpawnInSession records a spawn in the orchestrator session (if active).
-// This is best-effort - failures are logged but don't block the spawn.
-func recordSpawnInSession(beadsID, skillName, sessionID string) {
-	store, err := sessions.NewOrchestratorStore("")
-	if err != nil {
-		// Store load failed - silently ignore (spawns work without active session)
-		return
-	}
-
-	if !store.IsActive() {
-		// No active session - silently ignore
-		return
-	}
-
-	if err := store.RecordSpawn(beadsID, skillName, sessionID); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record spawn in session: %v\n", err)
 	}
 }
 
@@ -1744,15 +1443,6 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-
-	// Add MCP config if specified
-	if cfg.MCP != "" {
-		mcpConfigContent, err := spawn.GenerateMCPConfig(cfg.MCP)
-		if err != nil {
-			return fmt.Errorf("failed to generate MCP config: %w", err)
-		}
-		cmd.Env = append(cmd.Env, "OPENCODE_CONFIG_CONTENT="+mcpConfigContent)
-	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -1804,9 +1494,6 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Record spawn in orchestrator session (if active)
-	recordSpawnInSession(beadsID, skillName, result.SessionID)
-
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
 
@@ -1820,25 +1507,23 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	return nil
 }
 
-// runSpawnHeadless spawns the agent using the HTTP API without a TUI.
+// runSpawnHeadless spawns the agent using CLI subprocess without a TUI.
 // This is useful for automation and daemon-driven spawns.
-// Uses the HTTP API directly which properly supports directory configuration.
+// Uses opencode CLI with --format json to properly support model selection
+// (the HTTP API ignores the model parameter).
 // Includes retry logic for transient network failures.
-// The verbose flag enables additional logging for debugging.
-func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, verbose bool) error {
-	// Use client with directory so all API calls include x-opencode-directory header
-	client := opencode.NewClientWithDirectory(serverURL, cfg.ProjectDir)
+func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string) error {
+	client := opencode.NewClient(serverURL)
 
+	// Build opencode command using CLI (like inline mode) to support model selection
+	// The HTTP API ignores model parameter - only CLI mode honors --model flag
 	// Format title with beads ID so orch status can match sessions
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
 
 	// Use retry logic for transient failures (network issues, server temporarily unavailable)
-	// Note: Uses CLI mode (startHeadlessSession) instead of HTTP API (startHeadlessSessionAPI)
-	// because OpenCode's HTTP API ignores the model parameter. CLI mode correctly honors --model flag.
-	// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
 	retryCfg := spawn.DefaultRetryConfig()
 	result, retryResult := spawn.Retry(retryCfg, func() (*headlessSpawnResult, error) {
-		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg, verbose)
+		return startHeadlessSession(client, serverURL, sessionTitle, minimalPrompt, cfg)
 	})
 
 	if retryResult.LastErr != nil {
@@ -1858,14 +1543,13 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	sessionID := result.SessionID
 
-	// Start background cleanup to drain stdout and wait for process
-	// This prevents output buffer from blocking and logs any errors
-	result.StartBackgroundCleanup()
-
 	// Write session ID to workspace file for later lookups
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 	}
+
+	// Start background cleanup goroutine
+	result.StartBackgroundCleanup()
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -1897,9 +1581,6 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Record spawn in orchestrator session (if active)
-	recordSpawnInSession(beadsID, skillName, sessionID)
-
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
 
@@ -1917,59 +1598,17 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	// Print context quality with visual indicators
 	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
 
-	// Start background monitoring for first comment (failed-to-start detection)
-	// This is non-blocking - spawns a goroutine that will warn if no comment within 60s
-	if beadsID != "" && !cfg.NoTrack {
-		go monitorFirstComment(beadsID, sessionID, cfg.WorkspaceName)
-	}
-
 	return nil
-}
-
-// monitorFirstComment waits for the first beads comment after spawn.
-// If no comment is received within 60s, logs a warning event for failed-to-start detection.
-// This runs in a background goroutine and is non-blocking.
-func monitorFirstComment(beadsID, sessionID, workspaceName string) {
-	result := verify.WaitForFirstComment(beadsID, 60*time.Second, 5*time.Second)
-
-	if result.Timeout {
-		// No comment within 60s - potential failed-to-start
-		fmt.Fprintf(os.Stderr, "\n⚠️  WARNING: Agent %s has not reported any Phase status after 60s\n", workspaceName)
-		fmt.Fprintf(os.Stderr, "   This may indicate the session failed to start properly.\n")
-		fmt.Fprintf(os.Stderr, "   Run 'orch doctor' for health check or 'orch status' for details.\n\n")
-
-		// Log the warning event
-		logger := events.NewLogger(events.DefaultLogPath())
-		event := events.Event{
-			Type:      "session.no_comment_warning",
-			SessionID: sessionID,
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"beads_id":   beadsID,
-				"session_id": sessionID,
-				"workspace":  workspaceName,
-				"waited_for": result.WaitedFor.Seconds(),
-				"warning":    "no beads comment after 60s",
-			},
-		}
-		if err := logger.Log(event); err != nil {
-			// Silently ignore log errors in background goroutine
-			_ = err
-		}
-	}
 }
 
 // headlessSpawnResult contains the result of starting a headless session.
 type headlessSpawnResult struct {
-	SessionID    string
-	cmd          *exec.Cmd
-	stdout       io.ReadCloser
-	stderrBuffer *bytes.Buffer // Captured stderr for error visibility
-	verbose      bool          // Whether to output stderr in real-time
+	SessionID string
+	cmd       *exec.Cmd
+	stdout    io.ReadCloser
 }
 
-// StartBackgroundCleanup starts a goroutine to drain stdout, wait for the process,
-// and log any stderr output or exit errors to the events log for later analysis.
+// StartBackgroundCleanup starts a goroutine to drain stdout and wait for the process.
 func (r *headlessSpawnResult) StartBackgroundCleanup() {
 	if r.stdout == nil || r.cmd == nil {
 		return
@@ -1978,67 +1617,17 @@ func (r *headlessSpawnResult) StartBackgroundCleanup() {
 		// Drain remaining stdout
 		io.Copy(io.Discard, r.stdout)
 		// Wait for process to complete (cleanup)
-		err := r.cmd.Wait()
-
-		// Check for errors to log
-		var hasError bool
-		var errorDetails []string
-
-		if err != nil {
-			hasError = true
-			errorDetails = append(errorDetails, fmt.Sprintf("exit_error: %v", err))
-		}
-
-		if r.stderrBuffer != nil && r.stderrBuffer.Len() > 0 {
-			stderrContent := strings.TrimSpace(r.stderrBuffer.String())
-			if stderrContent != "" {
-				hasError = true
-				errorDetails = append(errorDetails, fmt.Sprintf("stderr: %s", stderrContent))
-
-				// In verbose mode, stderr was already printed in real-time.
-				// In non-verbose mode, print a warning with the stderr content if there's an error.
-				if !r.verbose && err != nil {
-					fmt.Fprintf(os.Stderr, "\n⚠️  Agent process exited with error.\nStderr output:\n%s\n", stderrContent)
-				}
-			}
-		}
-
-		// Log errors to events for later analysis
-		if hasError {
-			logger := events.NewLogger(events.DefaultLogPath())
-			event := events.Event{
-				Type:      "session.error",
-				SessionID: r.SessionID,
-				Timestamp: time.Now().Unix(),
-				Data: map[string]interface{}{
-					"session_id": r.SessionID,
-					"errors":     errorDetails,
-				},
-			}
-			if logErr := logger.Log(event); logErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log session error: %v\n", logErr)
-			}
-		}
+		r.cmd.Wait()
 	}()
 }
 
 // startHeadlessSession starts an opencode session and extracts the session ID.
 // Returns the result with session ID and resources for cleanup.
-// The verbose flag enables real-time stderr output for debugging.
-func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config, verbose bool) (*headlessSpawnResult, error) {
+func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
-
-	// Add MCP config if specified (needed for --mcp flag support)
-	if cfg.MCP != "" {
-		mcpConfigContent, err := spawn.GenerateMCPConfig(cfg.MCP)
-		if err != nil {
-			return nil, spawn.WrapSpawnError(err, "Failed to generate MCP config")
-		}
-		cmd.Env = append(cmd.Env, "OPENCODE_CONFIG_CONTENT="+mcpConfigContent)
-	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -2046,16 +1635,8 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		return nil, spawnErr
 	}
 
-	// Capture stderr for error visibility
-	// In verbose mode, also tee stderr to os.Stderr for real-time output
-	var stderrBuffer bytes.Buffer
-	if verbose {
-		// Tee stderr to both the buffer and os.Stderr for real-time debugging
-		cmd.Stderr = io.MultiWriter(&stderrBuffer, os.Stderr)
-	} else {
-		// Capture stderr to buffer for logging on errors
-		cmd.Stderr = &stderrBuffer
-	}
+	// Discard stderr in headless mode (no TUI to display it)
+	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
 		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
@@ -2066,11 +1647,6 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	// We need to read at least until we get the session ID
 	sessionID, err := opencode.ExtractSessionIDFromReader(stdout)
 	if err != nil {
-		// Include any stderr content in the error message for visibility
-		stderrContent := strings.TrimSpace(stderrBuffer.String())
-		if stderrContent != "" {
-			err = fmt.Errorf("%w\nStderr: %s", err, stderrContent)
-		}
 		// Try to kill the process if we couldn't get session ID
 		cmd.Process.Kill()
 		spawnErr := spawn.WrapSpawnError(err, "Failed to extract session ID")
@@ -2078,67 +1654,9 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	}
 
 	return &headlessSpawnResult{
-		SessionID:    sessionID,
-		cmd:          cmd,
-		stdout:       stdout,
-		stderrBuffer: &stderrBuffer,
-		verbose:      verbose,
-	}, nil
-}
-
-// startHeadlessSessionAPI creates a session via HTTP API and sends the initial prompt.
-// DEPRECATED: This function is no longer used because OpenCode's HTTP API ignores the model parameter.
-// Use startHeadlessSession (CLI mode) instead, which correctly honors the --model flag.
-// Kept for reference and potential fallback if CLI mode has issues.
-// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
-func startHeadlessSessionAPI(client *opencode.Client, sessionTitle, minimalPrompt string, cfg *spawn.Config, verbose bool) (*headlessSpawnResult, error) {
-	if verbose {
-		fmt.Fprintf(os.Stderr, "Creating session via API: title=%s, directory=%s\n", sessionTitle, cfg.ProjectDir)
-	}
-
-	// Generate MCP config if specified
-	var opts *opencode.CreateSessionOptions
-	if cfg.MCP != "" {
-		mcpConfigContent, err := spawn.GenerateMCPConfig(cfg.MCP)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate MCP config: %w", err)
-		}
-		opts = &opencode.CreateSessionOptions{
-			MCPConfigContent: mcpConfigContent,
-		}
-	}
-
-	// Create session via HTTP API with correct directory
-	session, err := client.CreateSessionWithOptions(sessionTitle, cfg.ProjectDir, cfg.Model, opts)
-	if err != nil {
-		return nil, spawn.WrapSpawnError(err, "Failed to create session via API")
-	}
-
-	if verbose {
-		fmt.Fprintf(os.Stderr, "Created session: %s\n", session.ID)
-	}
-
-	// Send the initial prompt with verification to address race condition
-	// where SendPrompt returns 200 but session isn't ready to receive messages.
-	// Uses 5s timeout with 300ms polling interval, retries once if verification fails.
-	const (
-		messageVerifyTimeout  = 5 * time.Second
-		messageVerifyInterval = 300 * time.Millisecond
-	)
-
-	if err := client.SendPromptWithVerification(session.ID, minimalPrompt, cfg.Model, messageVerifyTimeout, messageVerifyInterval); err != nil {
-		return nil, spawn.WrapSpawnError(err, "Failed to send initial prompt (message delivery verification failed)")
-	}
-
-	if verbose {
-		fmt.Fprintf(os.Stderr, "Sent and verified initial prompt to session %s\n", session.ID)
-	}
-
-	// Return result - no process to manage since we're using the API
-	return &headlessSpawnResult{
-		SessionID: session.ID,
-		// cmd, stdout, stderrBuffer are nil since we're using API
-		verbose: verbose,
+		SessionID: sessionID,
+		cmd:       cmd,
+		stdout:    stdout,
 	}, nil
 }
 
@@ -2160,22 +1678,11 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
-	// Generate MCP config if specified
-	var mcpConfigContent string
-	if cfg.MCP != "" {
-		var err error
-		mcpConfigContent, err = spawn.GenerateMCPConfig(cfg.MCP)
-		if err != nil {
-			return fmt.Errorf("failed to generate MCP config: %w", err)
-		}
-	}
-
 	// Build opencode command using tmux package
 	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
-		ServerURL:        serverURL,
-		ProjectDir:       cfg.ProjectDir,
-		Model:            cfg.Model,
-		MCPConfigContent: mcpConfigContent,
+		ServerURL:  serverURL,
+		ProjectDir: cfg.ProjectDir,
+		Model:      cfg.Model,
 	})
 
 	// Send command and execute
@@ -2251,9 +1758,6 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		// Non-fatal - window was created successfully
 		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
 	}
-
-	// Record spawn in orchestrator session (if active)
-	recordSpawnInSession(beadsID, skillName, sessionID)
 
 	// Print spawn summary with prominent gap warning if needed
 	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
@@ -2362,18 +1866,6 @@ func extractBeadsIDFromTitle(title string) string {
 		}
 	}
 	return ""
-}
-
-// extractIssuePrefix extracts the project name from a beads ID.
-// Beads IDs follow the format "project-name-xxxx" (e.g., "orch-go-3anf", "kb-cli-1abc").
-// Returns the project portion (everything before the last hyphen-separated segment).
-func extractIssuePrefix(beadsID string) string {
-	parts := strings.Split(beadsID, "-")
-	if len(parts) <= 1 {
-		return beadsID
-	}
-	// Join all parts except the last one (which is the issue suffix like "3anf")
-	return strings.Join(parts[:len(parts)-1], "-")
 }
 
 // extractSkillFromTitle extracts skill from an OpenCode session title.
@@ -2647,8 +2139,6 @@ type SwarmStatus struct {
 	Active     int `json:"active"`
 	Processing int `json:"processing,omitempty"` // Agents actively generating response
 	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
-	Dead       int `json:"dead,omitempty"`       // Agents with stale session that died mid-work (no Phase: Complete)
-	Done       int `json:"done,omitempty"`       // Agents with stale session that completed successfully (Phase: Complete)
 	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
 	Queued     int `json:"queued"`
 	Completed  int `json:"completed_today"`
@@ -2665,24 +2155,20 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID     string               `json:"session_id"`
-	BeadsID       string               `json:"beads_id,omitempty"`
-	Skill         string               `json:"skill,omitempty"`
-	Account       string               `json:"account,omitempty"`
-	Runtime       string               `json:"runtime"`
-	Title         string               `json:"title,omitempty"`
-	Window        string               `json:"window,omitempty"`
-	Phase         string               `json:"phase,omitempty"`          // Current phase from beads comments
-	NoComments    bool                 `json:"no_comments,omitempty"`    // True if no beads comments after >1 min (potential failed-to-start)
-	Task          string               `json:"task,omitempty"`           // Task description (truncated)
-	Project       string               `json:"project,omitempty"`        // Project name derived from beads ID or workspace
-	IsPhantom     bool                 `json:"is_phantom,omitempty"`     // True if beads issue open but agent not running
-	IsProcessing  bool                 `json:"is_processing,omitempty"`  // True if session is actively generating a response
-	IsCompleted   bool                 `json:"is_completed,omitempty"`   // True if beads issue is closed
-	IsBlocked     bool                 `json:"is_blocked,omitempty"`     // True if agent reported BLOCKED: comment
-	BlockedReason string               `json:"blocked_reason,omitempty"` // Reason from BLOCKED: comment
-	IsDead        bool                 `json:"is_dead,omitempty"`        // True if session has no activity for StaleSessionThreshold (3 min)
-	Tokens        *opencode.TokenStats `json:"tokens,omitempty"`         // Token usage for the session
+	SessionID    string                 `json:"session_id"`
+	BeadsID      string                 `json:"beads_id,omitempty"`
+	Skill        string                 `json:"skill,omitempty"`
+	Account      string                 `json:"account,omitempty"`
+	Runtime      string                 `json:"runtime"`
+	Title        string                 `json:"title,omitempty"`
+	Window       string                 `json:"window,omitempty"`
+	Phase        string                 `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string                 `json:"task,omitempty"`          // Task description (truncated)
+	Project      string                 `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	IsPhantom    bool                   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool                   `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool                   `json:"is_completed,omitempty"`  // True if beads issue is closed
+	Tokens       *opencode.TokenStats   `json:"tokens,omitempty"`        // Token usage for the session
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -2699,75 +2185,29 @@ func runStatus(serverURL string) error {
 	agents := make([]AgentInfo, 0)
 	seenBeadsIDs := make(map[string]bool)
 
-	// Get current project directory for session queries
-	projectDir, _ := os.Getwd()
-
 	// === OPTIMIZED: Batch fetch all data upfront ===
-	// 1. Fetch OpenCode sessions from current project directory FIRST.
-	// OpenCode stores sessions per-directory, so ListSessions("") only returns global sessions.
-	// Sessions created with x-opencode-directory header need to be queried with that directory.
-	var sessions []opencode.Session
-	seenSessionIDs := make(map[string]bool)
-
-	// Query current project directory first (most likely to have active agents)
-	if projectDir != "" {
-		dirSessions, err := client.ListSessions(projectDir)
-		if err == nil {
-			for _, s := range dirSessions {
-				if !seenSessionIDs[s.ID] {
-					seenSessionIDs[s.ID] = true
-					sessions = append(sessions, s)
-				}
-			}
-		}
-	}
-
-	// Also query global sessions to catch any that weren't created with directory header
-	globalSessions, err := client.ListSessions("")
+	// 1. Fetch all OpenCode sessions in one call (already fast, ~15ms)
+	sessions, err := client.ListSessions("")
 	if err != nil {
-		// Only fail if we have no sessions at all
-		if len(sessions) == 0 {
-			return fmt.Errorf("failed to list sessions: %w", err)
-		}
-	} else {
-		for _, s := range globalSessions {
-			if !seenSessionIDs[s.ID] {
-				seenSessionIDs[s.ID] = true
-				sessions = append(sessions, s)
-			}
-		}
+		return fmt.Errorf("failed to list sessions: %w", err)
 	}
 
 	// Build a map of session ID -> session for quick lookup
 	sessionMap := make(map[string]*opencode.Session)
 	// Also build a map of beadsID -> session for matching
 	beadsToSession := make(map[string]*opencode.Session)
-	// Use same threshold as dashboard (3 min) for consistent "active" vs "dead" determination
-	// Dashboard marks agents "dead" after StaleSessionThreshold of inactivity
-	maxIdleTime := opencode.StaleSessionThreshold
-
-	// Track stale (dead) sessions separately - these have a session but no activity for > 3 min
-	staleSessionsByBeadsID := make(map[string]*opencode.Session)
+	const maxIdleTime = 30 * time.Minute
 
 	for i := range sessions {
 		s := &sessions[i]
 		sessionMap[s.ID] = s
 
-		beadsID := extractBeadsIDFromTitle(s.Title)
-		if beadsID == "" {
-			continue
-		}
-
-		// Check if session is active or stale
+		// Only consider recently active sessions for beads matching
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		if now.Sub(updatedAt) <= maxIdleTime {
-			// Active session - include in beads matching
-			beadsToSession[beadsID] = s
-		} else {
-			// Stale session - track separately for dead detection
-			// Only add if we don't already have an active session for this beads ID
-			if _, hasActive := beadsToSession[beadsID]; !hasActive {
-				staleSessionsByBeadsID[beadsID] = s
+			beadsID := extractBeadsIDFromTitle(s.Title)
+			if beadsID != "" {
+				beadsToSession[beadsID] = s
 			}
 		}
 	}
@@ -2780,6 +2220,9 @@ func runStatus(serverURL string) error {
 
 	// Track project directories for cross-project agents (beadsID -> projectDir)
 	beadsProjectDirs := make(map[string]string)
+
+	// Get current project's workspace directory for workspace lookups
+	projectDir, _ := os.Getwd()
 
 	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
 	type tmuxAgent struct {
@@ -2820,17 +2263,21 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Phase 2: Collect beads IDs from OpenCode sessions (both active and stale/dead)
+	// Phase 2: Collect beads IDs from active OpenCode sessions
 	type opcodeAgent struct {
 		session *opencode.Session
 		beadsID string
 		skill   string
 		project string
-		isDead  bool // True if session is stale (no activity for > 3 min)
 	}
 	var opcodeAgents []opcodeAgent
 
 	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) > maxIdleTime {
+			continue
+		}
+
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		if beadsID == "" {
 			continue
@@ -2841,31 +2288,23 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		isDead := now.Sub(updatedAt) > maxIdleTime
-
 		sessionCopy := s // Copy to avoid closure issues
 		opcodeAgents = append(opcodeAgents, opcodeAgent{
 			session: &sessionCopy,
 			beadsID: beadsID,
 			skill:   extractSkillFromTitle(s.Title),
 			project: extractProjectFromBeadsID(beadsID),
-			isDead:  isDead,
 		})
 
 		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 		seenBeadsIDs[beadsID] = true
 	}
 
-	// Build workspace cache ONCE (O(n) scan) instead of O(n*m) findWorkspaceByBeadsID calls
-	// This is the key performance optimization - we scan 702 dirs once instead of once per beadsID
-	wsCache := buildWorkspaceCache(projectDir)
-
-	// Look up workspaces to get project directories for cross-project agents (O(1) per lookup)
+	// Look up workspaces to get project directories for cross-project agents
 	for _, beadsID := range beadsIDsToFetch {
-		workspacePath := wsCache.lookupWorkspace(beadsID)
+		workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
 		if workspacePath != "" {
-			agentProjectDir := wsCache.lookupProjectDir(beadsID)
+			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
 			if agentProjectDir != "" && agentProjectDir != projectDir {
 				beadsProjectDirs[beadsID] = agentProjectDir
 			}
@@ -2885,28 +2324,18 @@ func runStatus(serverURL string) error {
 	for _, ta := range tmuxAgents {
 		// Check if there's an active OpenCode session for this beads ID
 		session := beadsToSession[ta.beadsID]
-		staleSession := staleSessionsByBeadsID[ta.beadsID]
 		sessionID := ""
 		runtime := "unknown"
 		isPhantom := true
 		isProcessing := false
-		isDead := false
 
 		if session != nil {
-			// Active session found
 			sessionID = session.ID
 			createdAt := time.Unix(session.Time.Created/1000, 0)
 			runtime = formatDuration(now.Sub(createdAt))
 			isPhantom = false
 			// Check if the session is actively processing (has pending response)
 			isProcessing = client.IsSessionProcessing(session.ID)
-		} else if staleSession != nil {
-			// Stale session found - session exists but no activity for > 3 min (dead/orphaned)
-			sessionID = staleSession.ID
-			createdAt := time.Unix(staleSession.Time.Created/1000, 0)
-			runtime = formatDuration(now.Sub(createdAt))
-			isPhantom = false
-			isDead = true
 		} else {
 			sessionID = "tmux-stalled"
 		}
@@ -2914,41 +2343,12 @@ func runStatus(serverURL string) error {
 		// Get phase from pre-fetched comments
 		var phase, task string
 		var isCompleted bool
-		var noComments bool
-		var isBlocked bool
-		var blockedReason string
-		comments, hasComments := commentsMap[ta.beadsID]
-		if hasComments && len(comments) > 0 {
+		if comments, ok := commentsMap[ta.beadsID]; ok {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
 				phase = phaseStatus.Phase
 			}
-			if phaseStatus.IsBlocked {
-				isBlocked = true
-				blockedReason = phaseStatus.BlockedReason
-			}
-		} else {
-			// No comments for this agent - check if session is > 1 min old
-			// to determine if this is a failed-to-start situation
-			if session != nil {
-				createdAt := time.Unix(session.Time.Created/1000, 0)
-				if now.Sub(createdAt) > time.Minute {
-					noComments = true
-				}
-			}
 		}
-
-		// For untracked agents, try reading phase from workspace .phase file
-		// Untracked agents can't report Phase via beads comments (no real issue),
-		// so they write phase to their workspace as an alternative mechanism.
-		if phase == "" && isUntrackedBeadsID(ta.beadsID) {
-			workspacePath := wsCache.lookupWorkspace(ta.beadsID)
-			if wsPhase := readWorkspacePhase(workspacePath); wsPhase != "" {
-				phase = wsPhase
-				noComments = false // They did report, just via .phase file
-			}
-		}
-
 		// Get task and check closed status from pre-fetched issues
 		if issue, ok := allIssues[ta.beadsID]; ok {
 			task = truncate(issue.Title, 40)
@@ -2956,22 +2356,18 @@ func runStatus(serverURL string) error {
 		}
 
 		agents = append(agents, AgentInfo{
-			SessionID:     sessionID,
-			BeadsID:       ta.beadsID,
-			Skill:         ta.skill,
-			Title:         ta.title,
-			Runtime:       runtime,
-			Window:        ta.window,
-			Phase:         phase,
-			Task:          task,
-			Project:       ta.project,
-			IsPhantom:     isPhantom,
-			IsProcessing:  isProcessing,
-			IsCompleted:   isCompleted,
-			NoComments:    noComments,
-			IsBlocked:     isBlocked,
-			BlockedReason: blockedReason,
-			IsDead:        isDead,
+			SessionID:    sessionID,
+			BeadsID:      ta.beadsID,
+			Skill:        ta.skill,
+			Title:        ta.title,
+			Runtime:      runtime,
+			Window:       ta.window,
+			Phase:        phase,
+			Task:         task,
+			Project:      ta.project,
+			IsPhantom:    isPhantom,
+			IsProcessing: isProcessing,
+			IsCompleted:  isCompleted,
 		})
 	}
 
@@ -2985,11 +2381,7 @@ func runStatus(serverURL string) error {
 		isPhantom := false
 
 		// Check if the session is actively processing (has pending response)
-		// Skip this check for dead sessions - they can't be processing
-		isProcessing := false
-		if !oa.isDead {
-			isProcessing = client.IsSessionProcessing(oa.session.ID)
-		}
+		isProcessing := client.IsSessionProcessing(oa.session.ID)
 
 		// Get issue for task and closed status
 		issue := allIssues[oa.beadsID]
@@ -2997,59 +2389,29 @@ func runStatus(serverURL string) error {
 		// Get phase from pre-fetched comments
 		var phase, task string
 		var isCompleted bool
-		var noComments bool
-		var isBlocked bool
-		var blockedReason string
-		comments, hasComments := commentsMap[oa.beadsID]
-		if hasComments && len(comments) > 0 {
+		if comments, ok := commentsMap[oa.beadsID]; ok {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
 				phase = phaseStatus.Phase
 			}
-			if phaseStatus.IsBlocked {
-				isBlocked = true
-				blockedReason = phaseStatus.BlockedReason
-			}
-		} else {
-			// No comments for this agent - check if session is > 1 min old
-			// to determine if this is a failed-to-start situation
-			if now.Sub(createdAt) > time.Minute {
-				noComments = true
-			}
 		}
-
-		// For untracked agents, try reading phase from workspace .phase file
-		// Untracked agents can't report Phase via beads comments (no real issue),
-		// so they write phase to their workspace as an alternative mechanism.
-		if phase == "" && isUntrackedBeadsID(oa.beadsID) {
-			workspacePath := wsCache.lookupWorkspace(oa.beadsID)
-			if wsPhase := readWorkspacePhase(workspacePath); wsPhase != "" {
-				phase = wsPhase
-				noComments = false // They did report, just via .phase file
-			}
-		}
-
 		if issue != nil {
 			task = truncate(issue.Title, 40)
 			isCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
 		agents = append(agents, AgentInfo{
-			SessionID:     oa.session.ID,
-			Title:         oa.session.Title,
-			Runtime:       runtime,
-			BeadsID:       oa.beadsID,
-			Skill:         oa.skill,
-			Phase:         phase,
-			Task:          task,
-			Project:       oa.project,
-			IsPhantom:     isPhantom,
-			IsProcessing:  isProcessing,
-			IsCompleted:   isCompleted,
-			NoComments:    noComments,
-			IsBlocked:     isBlocked,
-			BlockedReason: blockedReason,
-			IsDead:        oa.isDead,
+			SessionID:    oa.session.ID,
+			Title:        oa.session.Title,
+			Runtime:      runtime,
+			BeadsID:      oa.beadsID,
+			Skill:        oa.skill,
+			Phase:        phase,
+			Task:         task,
+			Project:      oa.project,
+			IsPhantom:    isPhantom,
+			IsProcessing: isProcessing,
+			IsCompleted:  isCompleted,
 		})
 	}
 
@@ -3075,8 +2437,6 @@ func runStatus(serverURL string) error {
 	activeCount := 0
 	processingCount := 0
 	idleCount := 0
-	deadCount := 0
-	doneCount := 0
 	phantomCount := 0
 	completedCount := 0
 	for _, agent := range agents {
@@ -3085,15 +2445,6 @@ func runStatus(serverURL string) error {
 		} else if agent.IsCompleted {
 			// Completed agents (beads issue closed) don't count as active
 			completedCount++
-		} else if agent.IsDead {
-			// Differentiate dead agents:
-			// - Done: dead with Phase: Complete (finished work, just needs cleanup)
-			// - Dead: dead without Phase: Complete (died mid-work, needs attention)
-			if strings.Contains(strings.ToLower(agent.Phase), "complete") {
-				doneCount++
-			} else {
-				deadCount++
-			}
 		} else {
 			activeCount++
 			if agent.IsProcessing {
@@ -3108,8 +2459,6 @@ func runStatus(serverURL string) error {
 		Active:     activeCount,
 		Processing: processingCount,
 		Idle:       idleCount,
-		Dead:       deadCount,
-		Done:       doneCount,
 		Phantom:    phantomCount,
 		Queued:     0,              // TODO: implement queuing system
 		Completed:  completedCount, // Agents with closed beads issues
@@ -3150,51 +2499,6 @@ func runStatus(serverURL string) error {
 	return nil
 }
 
-// runStatusSessionStart outputs only SessionStart surfacing info.
-// This is designed for use in SessionStart hooks to create pressure
-// to review high-value design work (architect recommendations) and
-// check usage limits.
-//
-// Output format is human-readable but minimal - just the warnings.
-// If there's nothing to surface, output is empty.
-func runStatusSessionStart() error {
-	var hasOutput bool
-
-	// Surface architect recommendations if any
-	surface, err := GetArchitectRecommendationsSurface()
-	if err == nil && surface.TotalCount > 0 {
-		fmt.Print(FormatArchitectRecommendationsSurface(surface))
-		hasOutput = true
-	}
-
-	// Surface usage warnings if at risk
-	usageWarning := getUsageWarningForSession()
-	if usageWarning != "" {
-		if hasOutput {
-			fmt.Println() // Add separator
-		}
-		fmt.Print(usageWarning)
-		hasOutput = true
-	}
-
-	// If nothing to surface, output is empty (silent success)
-	// This allows hooks to check for empty output
-	return nil
-}
-
-// getUsageWarningForSession returns a usage warning message if usage is high.
-// Returns empty string if usage is OK.
-func getUsageWarningForSession() string {
-	// Get current usage summary (includes warning status)
-	summary, isWarning := usage.GetUsageSummary()
-	if !isWarning {
-		return "" // Usage is OK
-	}
-
-	// Return the warning with action suggestion
-	return fmt.Sprintf("%s\n   Consider: orch account switch <backup-account>\n", summary)
-}
-
 // extractProjectFromBeadsID extracts the project name from a beads ID.
 // Beads IDs follow the format: project-xxxx (e.g., orch-go-3anf)
 func extractProjectFromBeadsID(beadsID string) string {
@@ -3205,8 +2509,7 @@ func extractProjectFromBeadsID(beadsID string) string {
 	// The project is everything before that
 	parts := strings.Split(beadsID, "-")
 	if len(parts) < 2 {
-		// No hyphen means invalid beads ID format, return empty
-		return ""
+		return beadsID
 	}
 	// The last part should be the 4-char hash, join everything else
 	return strings.Join(parts[:len(parts)-1], "-")
@@ -3369,14 +2672,6 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	if output.Swarm.Active > 0 {
 		fmt.Printf(" (running: %d, idle: %d)", output.Swarm.Processing, output.Swarm.Idle)
 	}
-	if output.Swarm.Done > 0 {
-		// Done: dead agents at Phase: Complete (finished work, ready for orch complete)
-		fmt.Printf(", ✅ Done: %d", output.Swarm.Done)
-	}
-	if output.Swarm.Dead > 0 {
-		// Dead: dead agents NOT at Phase: Complete (died mid-work, needs attention)
-		fmt.Printf(", 💀 Dead: %d", output.Swarm.Dead)
-	}
 	if output.Swarm.Completed > 0 {
 		fmt.Printf(", Completed: %d", output.Swarm.Completed)
 		if !showAll {
@@ -3391,12 +2686,6 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	}
 	fmt.Println()
 	fmt.Println()
-
-	// Surface architect recommendations if any (with rich detail for SessionStart awareness)
-	if surface, err := GetArchitectRecommendationsSurface(); err == nil && surface.TotalCount > 0 {
-		fmt.Print(FormatArchitectRecommendationsSurface(surface))
-		fmt.Println()
-	}
 
 	// Print account usage
 	if len(output.Accounts) > 0 {
@@ -3546,25 +2835,6 @@ func getAgentStatus(agent AgentInfo) string {
 	}
 	if agent.IsPhantom {
 		return "phantom"
-	}
-	if agent.IsDead {
-		// Session has no activity for StaleSessionThreshold (3 min)
-		// Differentiate between "done successfully" vs "needs attention":
-		// - If Phase contains "Complete", agent finished its work normally
-		// - Otherwise, agent died mid-work and needs attention
-		if strings.Contains(strings.ToLower(agent.Phase), "complete") {
-			return "✅ done"
-		}
-		// Dead without Phase:Complete - process likely died mid-work
-		return "💀 dead"
-	}
-	if agent.IsBlocked {
-		// Agent explicitly reported BLOCKED: comment - needs orchestrator attention
-		return "🚫 blocked"
-	}
-	if agent.NoComments {
-		// Agent has session but no beads comments after >1 min - potential failed-to-start
-		return "⚠️ stalled"
 	}
 	if agent.IsProcessing {
 		return "running"
@@ -3804,16 +3074,6 @@ func runComplete(beadsID, workdir string) error {
 		}
 	} else {
 		fmt.Println("Skipping phase verification (--force)")
-
-		// Even with --force, warn about missing git commits for code-producing skills
-		// This helps catch false positives where agents claim completion without commits
-		if workspacePath != "" && beadsProjectDir != "" {
-			gitResult := verify.VerifyGitCommitsForCompletion(workspacePath, beadsProjectDir)
-			if gitResult != nil && !gitResult.Passed {
-				fmt.Fprintf(os.Stderr, "⚠️  WARNING: No git commits found since spawn time for code-producing skill '%s'\n", gitResult.SkillName)
-				fmt.Fprintf(os.Stderr, "   This may be a false positive - agent reported complete but has no commits\n")
-			}
-		}
 	}
 
 	// Check liveness before closing - warn if agent appears still running
@@ -3861,77 +3121,80 @@ func runComplete(beadsID, workdir string) error {
 		}
 	}
 
-	// Gate completion on discovered work disposition (workspace already found at top)
-	// This ensures recommendations from agents don't get silently dropped
-	if workspacePath != "" && !completeForce {
+	// Check synthesis for follow-up recommendations (workspace already found at top)
+	if workspacePath != "" {
 		synthesis, err := verify.ParseSynthesis(workspacePath)
 		if err == nil && synthesis != nil {
-			// Collect discovered work items
-			items := verify.CollectDiscoveredWork(synthesis)
+			// Check if there are follow-up recommendations to surface
+			hasFollowUp := false
+			if synthesis.Recommendation == "spawn-follow-up" || synthesis.Recommendation == "escalate" || synthesis.Recommendation == "resume" {
+				hasFollowUp = true
+			}
+			if len(synthesis.NextActions) > 0 {
+				hasFollowUp = true
+			}
 
-			if len(items) > 0 {
-				fmt.Println("\n--- Discovered Work Gate ---")
+			if hasFollowUp {
+				fmt.Println("\n--- Follow-up Recommendations ---")
 
 				if synthesis.Recommendation != "" && synthesis.Recommendation != "close" {
 					fmt.Printf("Recommendation: %s\n", synthesis.Recommendation)
 				}
 
-				fmt.Printf("%d discovered work item(s) require disposition:\n", len(items))
+				// Collect all actionable items
+				var actionableItems []string
+				actionableItems = append(actionableItems, synthesis.NextActions...)
+				actionableItems = append(actionableItems, synthesis.AreasToExplore...)
+				actionableItems = append(actionableItems, synthesis.Uncertainties...)
 
-				// Check if stdin is a terminal for interactive prompting
-				if !term.IsTerminal(int(os.Stdin.Fd())) {
-					fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
-					fmt.Println("⚠️  Use --force to complete without disposition, or run interactively")
-				} else {
-					// Prompt for disposition of each item
-					result, err := verify.PromptDiscoveredWorkDisposition(items, os.Stdin, os.Stdout)
-					if err != nil {
-						return fmt.Errorf("discovered work disposition failed: %w\n\nCompletion blocked. Run again to disposition all items, or use --force to skip", err)
-					}
-
-					if !result.AllDispositioned {
-						return fmt.Errorf("not all discovered work items were dispositioned\n\nCompletion blocked. Run again to disposition all items, or use --force to skip")
-					}
-
-					// File issues for items marked 'y'
-					filedItems := result.FiledItems()
-					createdCount := 0
-					for _, item := range filedItems {
-						// Clean up the item description for issue title
-						title := strings.TrimPrefix(item.Description, "- ")
-						title = strings.TrimPrefix(title, "* ")
-						// Remove numbered prefixes like "1. "
-						if len(title) > 3 && title[0] >= '0' && title[0] <= '9' && (title[1] == '.' || (title[1] >= '0' && title[1] <= '9' && title[2] == '.')) {
-							if idx := strings.Index(title, ". "); idx != -1 && idx < 4 {
-								title = title[idx+2:]
-							}
-						}
-
-						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:review"})
-						if err != nil {
-							fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
-						} else {
-							fmt.Printf("  Created: %s - %s\n", issue.ID, title)
-							createdCount++
-						}
-					}
-
-					if createdCount > 0 {
-						fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
-					}
-
-					// Log skip-all reason if used
-					if result.SkipAllReason != "" {
-						fmt.Printf("Skip-all reason: %s\n", result.SkipAllReason)
-					}
-
-					skippedItems := result.SkippedItems()
-					if len(skippedItems) > 0 {
-						fmt.Printf("Skipped %d item(s)\n", len(skippedItems))
+				if len(actionableItems) > 0 {
+					fmt.Printf("\n%d actionable items found:\n", len(actionableItems))
+					for i, action := range actionableItems {
+						fmt.Printf("  %d. %s\n", i+1, action)
 					}
 				}
 
-				fmt.Println("---------------------------------")
+				fmt.Println("\n---------------------------------")
+
+				// Prompt for each actionable item (only if stdin is a terminal)
+				if len(actionableItems) > 0 {
+					if !term.IsTerminal(int(os.Stdin.Fd())) {
+						fmt.Println("(Skipping interactive prompts - stdin is not a terminal)")
+					} else {
+						reader := bufio.NewReader(os.Stdin)
+						createdCount := 0
+
+						for i, action := range actionableItems {
+							fmt.Printf("\n[%d/%d] %s\n", i+1, len(actionableItems), action)
+							fmt.Print("Create issue? [y/N/q to quit]: ")
+							response, err := reader.ReadString('\n')
+							if err != nil {
+								break
+							}
+							response = strings.TrimSpace(strings.ToLower(response))
+
+							if response == "q" || response == "quit" {
+								fmt.Println("Skipping remaining items.")
+								break
+							}
+
+							if response == "y" || response == "yes" {
+								// Create the issue using beads
+								issue, err := beads.FallbackCreate(action, "", "task", 2, []string{"triage:review"})
+								if err != nil {
+									fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
+								} else {
+									fmt.Printf("  Created: %s\n", issue.ID)
+									createdCount++
+								}
+							}
+						}
+
+						if createdCount > 0 {
+							fmt.Printf("\n✓ Created %d follow-up issue(s)\n", createdCount)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -3954,13 +3217,6 @@ func runComplete(beadsID, workdir string) error {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
 		fmt.Printf("Closed beads issue: %s\n", beadsID)
-
-		// Remove triage:ready label on successful completion
-		// This ensures failed/abandoned agents leave issues in ready queue for daemon retry
-		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
-			// Non-critical - the issue may not have had this label
-			// or it was already removed
-		}
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
@@ -3970,23 +3226,6 @@ func runComplete(beadsID, workdir string) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
 		} else {
 			fmt.Printf("Closed tmux window: %s:%s\n", sessionName, window.Name)
-		}
-	}
-
-	// Clean up OpenCode session if it exists (prevents dead session accumulation)
-	// Read session ID from workspace and delete the session from OpenCode.
-	// This is important because OpenCode sessions persist to disk indefinitely,
-	// causing "dead" sessions to accumulate in orch status.
-	if workspacePath != "" {
-		sessionID := spawn.ReadSessionID(workspacePath)
-		if sessionID != "" {
-			client := opencode.NewClientWithDirectory(serverURL, beadsProjectDir)
-			if err := client.DeleteSession(sessionID); err != nil {
-				// Non-critical - the session may already be gone or OpenCode might not support DELETE
-				fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", sessionID[:12], err)
-			} else {
-				fmt.Printf("Deleted OpenCode session: %s\n", sessionID[:12])
-			}
 		}
 	}
 
@@ -4263,9 +3502,6 @@ var (
 	cleanVerifyOpenCode bool
 	cleanWindows        bool
 	cleanPhantoms       bool
-	cleanWorkspaces     bool
-	cleanOlderThanDays  int
-	cleanForce          bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -4284,24 +3520,18 @@ Optional cleanup actions:
   --windows         Close tmux windows for completed agents
   --phantoms        Close phantom tmux windows (beads ID but no active session)
   --verify-opencode Delete orphaned OpenCode disk sessions (not tracked in workspaces)
-  --workspaces      Remove workspace directories older than N days (default 7)
-  --older-than N    Set age threshold for workspace cleanup in days (default 7)
-  --force           Skip confirmation prompt for workspace deletion
 
-Note: By default, workspace directories are preserved for investigation reference.
-Use --workspaces to remove old workspace directories.
+Note: This command never deletes workspace directories - they are kept for 
+investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
 
 Examples:
-  orch-go clean                         # List completed agents (no changes)
-  orch-go clean --dry-run               # Preview mode (same as default)
-  orch-go clean --windows               # Close tmux windows for completed agents
-  orch-go clean --phantoms              # Close phantom tmux windows
-  orch-go clean --verify-opencode       # Delete orphaned OpenCode disk sessions
-  orch-go clean --workspaces            # Remove workspaces older than 7 days
-  orch-go clean --workspaces --older-than 14  # Remove workspaces older than 14 days
-  orch-go clean --workspaces --force    # Remove old workspaces without confirmation`,
+  orch-go clean                   # List completed agents (no changes)
+  orch-go clean --dry-run         # Preview mode (same as default)
+  orch-go clean --windows         # Close tmux windows for completed agents
+  orch-go clean --phantoms        # Close phantom tmux windows
+  orch-go clean --verify-opencode # Delete orphaned OpenCode disk sessions`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanWorkspaces, cleanOlderThanDays, cleanForce)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms)
 	},
 }
 
@@ -4310,9 +3540,6 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
-	cleanCmd.Flags().BoolVar(&cleanWorkspaces, "workspaces", false, "Remove workspace directories older than N days")
-	cleanCmd.Flags().IntVar(&cleanOlderThanDays, "older-than", 7, "Age threshold in days for workspace cleanup")
-	cleanCmd.Flags().BoolVar(&cleanForce, "force", false, "Skip confirmation prompt for workspace deletion")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -4466,7 +3693,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhantoms bool, doCleanWorkspaces bool, olderThanDays int, force bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -4479,14 +3706,13 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 
 	fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
 
-	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !doCleanPhantoms && !doCleanWorkspaces {
+	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms {
 		fmt.Println("No completed agents found")
 		return nil
 	}
 
 	// Track cleanup stats
 	windowsClosed := 0
-	workspacesDeleted := 0
 
 	// List completed workspaces
 	if len(cleanableWorkspaces) > 0 {
@@ -4523,23 +3749,15 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 
 	// Clean phantom tmux windows (optional)
 	var phantomsClosed int
-	if doCleanPhantoms {
+	if cleanPhantoms {
 		phantomsClosed, err = cleanPhantomWindows(serverURL, dryRun)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean phantom windows: %v\n", err)
 		}
 	}
 
-	// Clean old workspace directories (optional)
-	if doCleanWorkspaces {
-		workspacesDeleted, err = cleanOldWorkspaces(projectDir, olderThanDays, dryRun, force)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clean workspaces: %v\n", err)
-		}
-	}
-
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || doCleanPhantoms || verifyOpenCode || doCleanWorkspaces
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode
 
 	if dryRun {
 		if hasCleanupActions {
@@ -4556,14 +3774,11 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 					fmt.Printf(" Would close %d tmux windows.", windowCount)
 				}
 			}
-			if doCleanPhantoms && phantomsClosed > 0 {
+			if cleanPhantoms && phantomsClosed > 0 {
 				fmt.Printf(" Would close %d phantom windows.", phantomsClosed)
 			}
 			if verifyOpenCode && diskSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d orphaned disk sessions.", diskSessionsDeleted)
-			}
-			if doCleanWorkspaces && workspacesDeleted > 0 {
-				fmt.Printf(" Would delete %d workspace directories.", workspacesDeleted)
 			}
 			fmt.Println()
 		}
@@ -4571,7 +3786,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || workspacesDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -4582,12 +3797,10 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 				"windows_closed":        windowsClosed,
 				"phantoms_closed":       phantomsClosed,
 				"disk_sessions_deleted": diskSessionsDeleted,
-				"workspaces_deleted":    workspacesDeleted,
 				"project":               projectName,
 				"verify_opencode":       verifyOpenCode,
 				"close_windows":         closeWindows,
-				"clean_phantoms":        doCleanPhantoms,
-				"clean_workspaces":      doCleanWorkspaces,
+				"clean_phantoms":        cleanPhantoms,
 			},
 		}
 		if err := logger.Log(event); err != nil {
@@ -4596,7 +3809,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || workspacesDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -4606,9 +3819,6 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, doCleanPhanto
 		}
 		if diskSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d orphaned disk sessions\n", diskSessionsDeleted)
-		}
-		if workspacesDeleted > 0 {
-			fmt.Printf("Deleted %d workspace directories\n", workspacesDeleted)
 		}
 	} else if !hasCleanupActions {
 		// Default: just listing completed workspaces
@@ -4729,8 +3939,7 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
-	// Use same threshold as dashboard (3 min) for consistent "active" vs "dead" determination
-	maxIdleTime := opencode.StaleSessionThreshold
+	const maxIdleTime = 30 * time.Minute
 
 	fmt.Println("\nScanning for phantom tmux windows...")
 
@@ -4816,194 +4025,6 @@ func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 	}
 
 	return closed, nil
-}
-
-// WorkspaceInfo represents a workspace directory with metadata for cleanup.
-type WorkspaceInfo struct {
-	Name             string    // Directory name
-	Path             string    // Full path
-	Size             int64     // Total size in bytes
-	ModTime          time.Time // Last modification time
-	Age              int       // Age in days
-	HasActiveSession bool      // Whether workspace has active OpenCode session
-}
-
-// cleanOldWorkspaces finds and removes workspace directories older than the specified days.
-// Returns the number of workspaces deleted and any error encountered.
-func cleanOldWorkspaces(projectDir string, olderThanDays int, dryRun bool, force bool) (int, error) {
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("\nNo workspace directory found")
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to read workspace directory: %w", err)
-	}
-
-	fmt.Printf("\nScanning workspaces older than %d days...\n", olderThanDays)
-
-	// Build list of active session IDs from OpenCode
-	client := opencode.NewClient(serverURL)
-	activeSessions, err := client.ListSessions("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  Warning: could not fetch active sessions: %v\n", err)
-	}
-	activeSessionIDs := make(map[string]bool)
-	for _, s := range activeSessions {
-		activeSessionIDs[s.ID] = true
-	}
-
-	now := time.Now()
-	cutoff := now.AddDate(0, 0, -olderThanDays)
-	var candidates []WorkspaceInfo
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		dirPath := filepath.Join(workspaceDir, entry.Name())
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		// Get modification time - use directory mod time
-		modTime := info.ModTime()
-
-		// Try to get a more accurate mod time from files inside
-		latestModTime := modTime
-		filepath.Walk(dirPath, func(path string, fi os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			if fi.ModTime().After(latestModTime) {
-				latestModTime = fi.ModTime()
-			}
-			return nil
-		})
-		modTime = latestModTime
-
-		// Skip if modified within the cutoff period
-		if modTime.After(cutoff) {
-			continue
-		}
-
-		// Calculate total size
-		var totalSize int64
-		filepath.Walk(dirPath, func(path string, fi os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			if !fi.IsDir() {
-				totalSize += fi.Size()
-			}
-			return nil
-		})
-
-		// Check if workspace has an active session
-		sessionID := spawn.ReadSessionID(dirPath)
-		hasActiveSession := sessionID != "" && activeSessionIDs[sessionID]
-
-		age := int(now.Sub(modTime).Hours() / 24)
-
-		candidates = append(candidates, WorkspaceInfo{
-			Name:             entry.Name(),
-			Path:             dirPath,
-			Size:             totalSize,
-			ModTime:          modTime,
-			Age:              age,
-			HasActiveSession: hasActiveSession,
-		})
-	}
-
-	if len(candidates) == 0 {
-		fmt.Printf("  No workspaces older than %d days found\n", olderThanDays)
-		return 0, nil
-	}
-
-	// Filter out workspaces with active agents
-	var cleanable []WorkspaceInfo
-	for _, ws := range candidates {
-		if ws.HasActiveSession {
-			fmt.Printf("  Skipping %s (has active session)\n", ws.Name)
-			continue
-		}
-		cleanable = append(cleanable, ws)
-	}
-
-	if len(cleanable) == 0 {
-		fmt.Printf("  All old workspaces have active sessions - nothing to clean\n")
-		return 0, nil
-	}
-
-	// Display candidates
-	var totalSize int64
-	fmt.Printf("\n  Found %d workspaces to clean:\n", len(cleanable))
-	fmt.Printf("  %-50s %10s %15s %8s\n", "NAME", "SIZE", "LAST MODIFIED", "AGE")
-	fmt.Printf("  %s\n", strings.Repeat("-", 87))
-	for _, ws := range cleanable {
-		totalSize += ws.Size
-		fmt.Printf("  %-50s %10s %15s %5dd\n",
-			truncateString(ws.Name, 50),
-			formatBytes(ws.Size),
-			ws.ModTime.Format("Jan 02 15:04"),
-			ws.Age)
-	}
-	fmt.Printf("  %s\n", strings.Repeat("-", 87))
-	fmt.Printf("  %-50s %10s\n", "TOTAL", formatBytes(totalSize))
-
-	if dryRun {
-		return len(cleanable), nil
-	}
-
-	// Prompt for confirmation unless --force
-	if !force {
-		fmt.Printf("\nDelete %d workspace directories (%s)? [y/N] ", len(cleanable), formatBytes(totalSize))
-		reader := bufio.NewReader(os.Stdin)
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			return 0, fmt.Errorf("failed to read input: %w", err)
-		}
-		input = strings.TrimSpace(strings.ToLower(input))
-		if input != "y" && input != "yes" {
-			fmt.Println("Aborted")
-			return 0, nil
-		}
-	}
-
-	// Delete workspaces
-	deleted := 0
-	for _, ws := range cleanable {
-		if err := os.RemoveAll(ws.Path); err != nil {
-			fmt.Fprintf(os.Stderr, "  Failed to delete %s: %v\n", ws.Name, err)
-			continue
-		}
-		fmt.Printf("  Deleted: %s\n", ws.Name)
-		deleted++
-	}
-
-	return deleted, nil
-}
-
-// formatBytes formats bytes into human-readable format.
-func formatBytes(bytes int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-	switch {
-	case bytes >= GB:
-		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(GB))
-	case bytes >= MB:
-		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
-	case bytes >= KB:
-		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
 }
 
 // ============================================================================
@@ -5462,7 +4483,7 @@ func ensureOrchScaffolding(projectDir string, autoInit bool, noTrack bool) error
 		fmt.Println("Auto-initializing orch scaffolding...")
 
 		// Run init with appropriate flags (skip CLAUDE.md and tmuxinator for minimal init)
-		result, err := initProject(projectDir, false, false, false, false, true, true, "", "")
+		result, err := initProject(projectDir, false, false, false, true, true, "", "")
 		if err != nil {
 			return fmt.Errorf("auto-init failed: %w", err)
 		}
@@ -5572,19 +4593,6 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 		contextContent = gapSummary + "\n\n" + contextContent
 	}
 
-	// Also check kb chronicle for topic-focused investigations
-	// This provides better relevance than generic keyword matches
-	chronicleResult, err := spawn.RunKBChronicleCheck(keywords)
-	if err == nil && chronicleResult != nil {
-		chronicleContext := spawn.FormatChronicleForSpawn(chronicleResult)
-		if chronicleContext != "" {
-			// Insert chronicle context before the closing IMPORTANT note
-			// This keeps related investigations visible but not overwhelming
-			contextContent = contextContent + chronicleContext
-			fmt.Printf("Found %d related investigations from kb chronicle.\n", len(chronicleResult.Timeline))
-		}
-	}
-
 	gcr.Context = contextContent
 	return gcr
 }
@@ -5627,11 +4635,8 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 		return
 	}
 
-	// Detect source project from current working directory
-	sourceProject := detectSourceProject()
-
-	// Record the gap with project context
-	tracker.RecordGapWithProject(gapAnalysis, skill, task, sourceProject)
+	// Record the gap
+	tracker.RecordGap(gapAnalysis, skill, task)
 
 	// Check for recurring patterns and display suggestions
 	suggestions := tracker.FindRecurringGaps()
@@ -5653,16 +4658,6 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	if err := tracker.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save gap tracker: %v\n", err)
 	}
-}
-
-// detectSourceProject returns the project directory name from the current working directory.
-// Returns empty string if detection fails.
-func detectSourceProject() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return filepath.Base(cwd)
 }
 
 var retriesCmd = &cobra.Command{

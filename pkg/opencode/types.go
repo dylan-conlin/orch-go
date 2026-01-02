@@ -9,10 +9,6 @@ import (
 // ErrNoSessionID is returned when no session ID is found in output.
 var ErrNoSessionID = errors.New("no session ID found in output")
 
-// ErrMessageDeliveryTimeout is returned when WaitForMessage times out
-// waiting for a message to appear in the session.
-var ErrMessageDeliveryTimeout = errors.New("timeout waiting for message to appear in session")
-
 // Event represents an event from opencode's JSON output.
 type Event struct {
 	Type      string          `json:"type"`
@@ -121,24 +117,9 @@ type MessageTime struct {
 
 // MessagePart represents a part of a message (text, reasoning, tool call, etc.).
 type MessagePart struct {
-	ID        string     `json:"id"`
-	SessionID string     `json:"sessionID"`
-	MessageID string     `json:"messageID"`
-	Type      string     `json:"type"` // "text", "reasoning", "step-start", "step-finish", "tool", etc.
-	Text      string     `json:"text,omitempty"`
-	Tool      string     `json:"tool,omitempty"`   // Tool name for type="tool"
-	CallID    string     `json:"callID,omitempty"` // Tool call ID
-	State     *ToolState `json:"state,omitempty"`  // Tool execution state
-}
-
-// ToolState represents the execution state of a tool call.
-type ToolState struct {
-	Status string        `json:"status"` // "pending", "running", "completed", "error"
-	Time   ToolStateTime `json:"time,omitempty"`
-}
-
-// ToolStateTime contains timing for tool execution.
-type ToolStateTime struct {
-	Start int64 `json:"start,omitempty"`
-	End   int64 `json:"end,omitempty"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionID"`
+	MessageID string `json:"messageID"`
+	Type      string `json:"type"` // "text", "reasoning", "step-start", "step-finish", "tool-invocation", etc.
+	Text      string `json:"text,omitempty"`
 }

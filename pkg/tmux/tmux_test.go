@@ -74,7 +74,7 @@ func TestBuildWindowNameWithBeadsID(t *testing.T) {
 
 func TestBuildSpawnCommand(t *testing.T) {
 	cfg := &SpawnConfig{
-		ServerURL:     "http://localhost:4096",
+		ServerURL:     "http://127.0.0.1:4096",
 		Prompt:        "test prompt",
 		Title:         "test-title",
 		ProjectDir:    "/test/project",
@@ -97,7 +97,7 @@ func TestBuildSpawnCommand(t *testing.T) {
 
 func TestBuildOpencodeAttachCommand(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
-		ServerURL:  "http://localhost:4096",
+		ServerURL:  "http://127.0.0.1:4096",
 		ProjectDir: "/home/user/project",
 		Model:      "anthropic/claude-opus",
 		SessionID:  "ses_123",
@@ -106,7 +106,7 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 	got := BuildOpencodeAttachCommand(cfg)
 	wantParts := []string{
 		"attach",
-		"http://localhost:4096",
+		"http://127.0.0.1:4096",
 		"--dir",
 		"/home/user/project",
 		"--model",
@@ -119,43 +119,6 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		if !strings.Contains(got, part) {
 			t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain %q", got, part)
 		}
-	}
-}
-
-func TestBuildOpencodeAttachCommand_MCPConfig(t *testing.T) {
-	cfg := &OpencodeAttachConfig{
-		ServerURL:        "http://localhost:4096",
-		ProjectDir:       "/home/user/project",
-		Model:            "anthropic/claude-opus",
-		MCPConfigContent: `{"mcp":{"glass":{"type":"local","command":["/Users/test/bin/glass","mcp"],"enabled":true}}}`,
-	}
-
-	got := BuildOpencodeAttachCommand(cfg)
-
-	// Should contain MCP config env var
-	if !strings.Contains(got, "OPENCODE_CONFIG_CONTENT=") {
-		t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain OPENCODE_CONFIG_CONTENT=", got)
-	}
-
-	// Should contain the JSON (single-quoted for shell safety)
-	if !strings.Contains(got, `'{"mcp"`) {
-		t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain single-quoted JSON", got)
-	}
-}
-
-func TestBuildOpencodeAttachCommand_NoMCPConfig(t *testing.T) {
-	cfg := &OpencodeAttachConfig{
-		ServerURL:  "http://localhost:4096",
-		ProjectDir: "/home/user/project",
-		Model:      "anthropic/claude-opus",
-		// No MCPConfigContent
-	}
-
-	got := BuildOpencodeAttachCommand(cfg)
-
-	// Should NOT contain MCP config env var when not set
-	if strings.Contains(got, "OPENCODE_CONFIG_CONTENT") {
-		t.Errorf("BuildOpencodeAttachCommand() = %q, should NOT contain OPENCODE_CONFIG_CONTENT when not set", got)
 	}
 }
 
@@ -568,7 +531,7 @@ func TestBuildRunCommandEnv(t *testing.T) {
 // TestBuildSpawnCommandEnv verifies ORCH_WORKER=1 is set in the command environment.
 func TestBuildSpawnCommandEnv(t *testing.T) {
 	cfg := &SpawnConfig{
-		ServerURL:     "http://localhost:4096",
+		ServerURL:     "http://127.0.0.1:4096",
 		Prompt:        "test prompt",
 		Title:         "test-title",
 		ProjectDir:    "/test/project",
@@ -594,7 +557,7 @@ func TestBuildSpawnCommandEnv(t *testing.T) {
 // TestBuildOpencodeAttachCommandEnv verifies ORCH_WORKER=1 is prefixed in the command string.
 func TestBuildOpencodeAttachCommandEnv(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
-		ServerURL:  "http://localhost:4096",
+		ServerURL:  "http://127.0.0.1:4096",
 		ProjectDir: "/home/user/project",
 		Model:      "anthropic/claude-opus",
 	}

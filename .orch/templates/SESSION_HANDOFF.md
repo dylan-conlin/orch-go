@@ -1,15 +1,3 @@
-<!--
-TEMPLATE: Session Handoff
-This is a template file used by orch-go for orchestrator session handoffs via `orch session end`.
-
-DO NOT: Confuse with instance files - SESSION_HANDOFF.md in .orch/ root is an instance, not the source.
-SOURCE: /Users/dylanconlin/Documents/personal/orch-go/.orch/templates/SESSION_HANDOFF.md
-MODIFY: Edit this file directly, then future `orch session end` will use the updated template.
-UPDATED: 2025-12-30
-
-Instance files (like .orch/SESSION_HANDOFF.md) can be edited freely - they're specific to a session.
--->
-
 # Session Handoff - {date}
 
 ## TLDR

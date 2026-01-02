@@ -238,7 +238,7 @@ func DetectCompletion(events []SSEEvent) (sessionID string, completed bool) {
 // ParseArgs parses CLI arguments
 func ParseArgs(args []string) (Config, error) {
 	cfg := Config{
-		ServerURL: "http://localhost:4096",
+		ServerURL: "http://127.0.0.1:4096",
 	}
 
 	if len(args) < 2 {

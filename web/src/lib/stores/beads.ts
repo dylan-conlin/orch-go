@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 // API configuration
-const API_BASE = 'http://localhost:3348';
+const API_BASE = 'http://127.0.0.1:3348';
 
 // Beads stats response from /api/beads
 export interface BeadsStats {
@@ -29,31 +29,6 @@ export interface ReadyIssue {
 export interface BeadsReadyResponse {
 	issues: ReadyIssue[];
 	count: number;
-	error?: string;
-}
-
-// Blocked issue from /api/beads/blocked
-export interface BlockedIssue {
-	id: string;
-	title: string;
-	priority: number;
-	issue_type: string;
-	labels?: string[];
-	created_at?: string;
-	blocked_by_count: number;
-	blocked_by: string[];
-	// Computed fields for filtering
-	needs_action: boolean;
-	action_reason: string;
-	blocker_status: string;
-	days_blocked: number;
-}
-
-// Blocked issues response from /api/beads/blocked
-export interface BeadsBlockedResponse {
-	issues: BlockedIssue[];
-	total_count: number;
-	action_count: number;
 	error?: string;
 }
 
@@ -117,35 +92,5 @@ function createReadyIssuesStore() {
 	};
 }
 
-// Blocked issues store for dashboard attention filtering
-function createBlockedIssuesStore() {
-	const { subscribe, set } = writable<BeadsBlockedResponse | null>(null);
-
-	return {
-		subscribe,
-		set,
-		// Fetch blocked issues from orch-go API
-		async fetch(): Promise<void> {
-			try {
-				const response = await fetch(`${API_BASE}/api/beads/blocked`);
-				if (!response.ok) {
-					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-				}
-				const data = await response.json();
-				set(data);
-			} catch (error) {
-				console.error('Failed to fetch blocked issues:', error);
-				set({
-					issues: [],
-					total_count: 0,
-					action_count: 0,
-					error: String(error)
-				});
-			}
-		}
-	};
-}
-
 export const beads = createBeadsStore();
 export const readyIssues = createReadyIssuesStore();
-export const blockedIssues = createBlockedIssuesStore();

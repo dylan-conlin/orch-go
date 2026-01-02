@@ -2,17 +2,13 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	_ "net/http/pprof" // Enable pprof for CPU profiling
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +19,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/patterns"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -38,20 +33,11 @@ import (
 const DefaultServePort = 3348
 
 var (
-	servePort    int
-	serveWorkdir string // Optional workdir flag to override compile-time sourceDir
+	servePort int
 
 	// beadsClient is a persistent RPC client for beads operations.
 	// Initialized at startup with auto-reconnect enabled.
 	beadsClient *beads.Client
-
-	// beadsClientPool is a lazy-initialized pool of beads clients per project directory.
-	// Used for multi-project dashboard support via ?project= query param.
-	beadsClientPool *beads.Pool
-
-	// serveEffectiveDir is the effective source directory for this serve instance.
-	// It's either serveWorkdir (if set) or sourceDir (compile-time default).
-	serveEffectiveDir string
 )
 
 var serveCmd = &cobra.Command{
@@ -62,23 +48,14 @@ var serveCmd = &cobra.Command{
 This is orchestration infrastructure (persistent monitoring), NOT a project
 dev server. Use 'orch serve status' to check if the API is running.
 
-Multi-Project Support:
-  The beads endpoints support a ?project=<path> query parameter to fetch
-  data from different project directories. This enables a unified dashboard
-  that shows agents and issues across multiple orchestration projects.
-  
-  Use --workdir to override the default project directory (otherwise uses
-  the compile-time sourceDir).
-
 Endpoints:
   GET /api/agents    - Returns JSON list of active agents from OpenCode/tmux
   GET /api/events    - Proxies the OpenCode SSE stream for real-time updates
   GET /api/agentlog  - Agent lifecycle events
   GET /api/usage     - Claude Max usage stats
   GET /api/focus     - Current focus and drift status
-  GET /api/beads     - Beads stats (ready, blocked, open) [?project=<path>]
-  GET /api/beads/ready - List of ready issues [?project=<path>]
-  GET /api/beads/blocked - Blocked issues with details [?project=<path>]
+  GET /api/beads     - Beads stats (ready, blocked, open)
+  GET /api/beads/ready - List of ready issues for queue visibility
   GET /api/servers   - Servers status across projects
   GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
@@ -88,10 +65,9 @@ Endpoints:
   GET /health        - Health check
 
 Examples:
-  orch-go serve                     # Start server on port 3348
-  orch-go serve --port 8080         # Override with explicit port
-  orch-go serve --workdir ~/proj    # Use different project directory
-  orch-go serve status              # Check if server is running`,
+  orch-go serve              # Start server on port 3348
+  orch-go serve --port 8080  # Override with explicit port
+  orch-go serve status       # Check if server is running`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe(servePort)
 	},
@@ -116,7 +92,6 @@ Examples:
 
 func init() {
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check/listen on")
-	serveCmd.Flags().StringVar(&serveWorkdir, "workdir", "", "Override default project directory (defaults to compile-time sourceDir)")
 	serveStatusCmd.Flags().IntVarP(&servePort, "port", "p", DefaultServePort, "Port to check")
 
 	serveCmd.AddCommand(serveStatusCmd)
@@ -125,7 +100,7 @@ func init() {
 
 // runServeStatus checks if the orch serve API is running on the given port.
 func runServeStatus(portNum int) error {
-	addr := fmt.Sprintf("http://localhost:%d/health", portNum)
+	addr := fmt.Sprintf("http://127.0.0.1:%d/health", portNum)
 
 	client := &http.Client{
 		Timeout: 2 * time.Second,
@@ -156,7 +131,7 @@ func runServeStatus(portNum int) error {
 
 	fmt.Printf("✅ API server is running on port %d\n", portNum)
 	fmt.Printf("   Status: %s\n", health.Status)
-	fmt.Printf("   URL:    http://localhost:%d\n", portNum)
+	fmt.Printf("   URL:    http://127.0.0.1:%d\n", portNum)
 	fmt.Println()
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - Active agents")
@@ -178,30 +153,15 @@ func runServeStatus(portNum int) error {
 }
 
 func runServe(portNum int) error {
-	// Determine effective source directory: --workdir flag overrides compile-time sourceDir
-	serveEffectiveDir = sourceDir
-	if serveWorkdir != "" {
-		// Resolve to absolute path
-		absPath, err := filepath.Abs(serveWorkdir)
-		if err != nil {
-			return fmt.Errorf("invalid workdir: %w", err)
-		}
-		serveEffectiveDir = absPath
-		fmt.Printf("Using workdir override: %s\n", serveEffectiveDir)
-	}
-
 	// Set default directory for beads socket discovery
 	// This is needed because serve may run from any working directory
-	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
-		beads.DefaultDir = serveEffectiveDir
+	if sourceDir != "" && sourceDir != "unknown" {
+		beads.DefaultDir = sourceDir
 	}
 
-	// Initialize beads client pool for multi-project support
-	beadsClientPool = beads.NewPool()
-
-	// Initialize persistent beads client with auto-reconnect for the primary project.
+	// Initialize persistent beads client with auto-reconnect.
 	// This avoids per-request connection overhead and handles daemon restarts.
-	socketPath, err := beads.FindSocketPath(serveEffectiveDir)
+	socketPath, err := beads.FindSocketPath(sourceDir)
 	if err == nil {
 		beadsClient = beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if connErr := beadsClient.Connect(); connErr != nil {
@@ -241,15 +201,6 @@ func runServe(portNum int) error {
 	// GET /api/agents - returns JSON list of agents from OpenCode/tmux
 	mux.HandleFunc("/api/agents", corsHandler(handleAgents))
 
-	// GET /api/agents/artifact - returns artifact content (synthesis, investigation, decision)
-	mux.HandleFunc("/api/agents/artifact", corsHandler(handleAgentArtifact))
-
-	// GET /api/agents/deliverables - returns deliverables for an agent (commits, files, artifacts)
-	mux.HandleFunc("/api/agents/deliverables", corsHandler(handleAgentDeliverables))
-
-	// GET /api/agents/spawn-context - returns SPAWN_CONTEXT.md content and metadata
-	mux.HandleFunc("/api/agents/spawn-context", corsHandler(handleAgentSpawnContext))
-
 	// GET /api/events - proxies OpenCode SSE stream
 	mux.HandleFunc("/api/events", corsHandler(handleEvents))
 
@@ -267,12 +218,6 @@ func runServe(portNum int) error {
 
 	// GET /api/beads/ready - returns list of ready issues for dashboard queue visibility
 	mux.HandleFunc("/api/beads/ready", corsHandler(handleBeadsReady))
-
-	// GET /api/beads/blocked - returns blocked issues with blocker details for filtering
-	mux.HandleFunc("/api/beads/blocked", corsHandler(handleBeadsBlocked))
-
-	// GET /api/beads/issue - returns detailed issue info with comments timeline
-	mux.HandleFunc("/api/beads/issue", corsHandler(handleBeadsIssue))
 
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
@@ -298,50 +243,8 @@ func runServe(portNum int) error {
 	// POST /api/dismiss-review - dismiss a specific recommendation
 	mux.HandleFunc("/api/dismiss-review", corsHandler(handleDismissReview))
 
-	// POST /api/act-on-review - mark a recommendation as acted on (issue created)
-	mux.HandleFunc("/api/act-on-review", corsHandler(handleActOnReview))
-
 	// GET/PUT /api/config - user configuration settings
 	mux.HandleFunc("/api/config", corsHandler(handleConfig))
-
-	// GET /api/patterns - behavioral patterns from action log
-	mux.HandleFunc("/api/patterns", corsHandler(handlePatterns))
-
-	// Serve the dashboard UI if a static build exists.
-	uiRoot := filepath.Join(serveEffectiveDir, "web", "build")
-	if info, err := os.Stat(uiRoot); err == nil && info.IsDir() {
-		fileServer := http.FileServer(http.Dir(uiRoot))
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			cleanPath := filepath.Clean("/" + r.URL.Path)
-			relPath := strings.TrimPrefix(cleanPath, "/")
-			targetPath := filepath.Join(uiRoot, relPath)
-
-			if stat, err := os.Stat(targetPath); err == nil {
-				if stat.IsDir() {
-					indexPath := filepath.Join(targetPath, "index.html")
-					if _, err := os.Stat(indexPath); err == nil {
-						http.ServeFile(w, r, indexPath)
-						return
-					}
-				} else {
-					fileServer.ServeHTTP(w, r)
-					return
-				}
-			}
-
-			fallback := filepath.Join(uiRoot, "index.html")
-			if _, err := os.Stat(fallback); err == nil {
-				http.ServeFile(w, r, fallback)
-				return
-			}
-
-			http.NotFound(w, r)
-		})
-	} else {
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "Dashboard UI not found. Run `cd web && bun run dev` and open http://localhost:5188", http.StatusNotFound)
-		})
-	}
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -351,11 +254,11 @@ func runServe(portNum int) error {
 	})
 
 	// pprof handlers for CPU profiling (useful for debugging CPU runaway)
-	// Access at: http://localhost:3348/debug/pprof/
+	// Access at: http://127.0.0.1:3348/debug/pprof/
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
 
 	addr := fmt.Sprintf(":%d", portNum)
-	fmt.Printf("Starting orch-go API server on http://localhost%s\n", addr)
+	fmt.Printf("Starting orch-go API server on http://127.0.0.1%s\n", addr)
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
@@ -371,9 +274,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
-	fmt.Println("  POST /api/act-on-review - Mark recommendation as acted on (issue created)")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")
-	fmt.Println("  GET /api/patterns  - Behavioral patterns (repeated failures, empty reads)")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -382,34 +283,24 @@ func runServe(portNum int) error {
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID           string                `json:"id"`
-	SessionID    string                `json:"session_id,omitempty"`
-	BeadsID      string                `json:"beads_id,omitempty"`
-	BeadsTitle   string                `json:"beads_title,omitempty"`
-	Skill        string                `json:"skill,omitempty"`
-	Status       string                `json:"status"`            // "active", "idle", "completed", etc.
-	Phase        string                `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task         string                `json:"task,omitempty"`    // Task description from beads issue
-	Project      string                `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
-	Runtime      string                `json:"runtime,omitempty"`
-	Window       string                `json:"window,omitempty"`
-	IsProcessing bool                  `json:"is_processing,omitempty"` // True if actively generating response
-	SpawnedAt    string                `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
-	UpdatedAt    string                `json:"updated_at,omitempty"`    // ISO 8601 timestamp
-	Synthesis    *SynthesisResponse    `json:"synthesis,omitempty"`
-	CloseReason  string                `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
-	GapAnalysis  *GapAPIResponse       `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
-	Tokens       *opencode.TokenStats  `json:"tokens,omitempty"`       // Token usage for the session
-	LastActivity *LastActivityResponse `json:"last_activity,omitempty"` // Last activity from messages (for initial load)
-}
-
-// LastActivityResponse represents the most recent activity for an agent.
-// This is included in the API response so the dashboard has activity data on initial load,
-// rather than waiting for SSE events.
-type LastActivityResponse struct {
-	Type      string `json:"type"`                 // "text", "tool", "reasoning", "step-start", "step-finish"
-	Text      string `json:"text,omitempty"`       // Activity description
-	Timestamp int64  `json:"timestamp,omitempty"`  // Unix timestamp in milliseconds
+	ID           string             `json:"id"`
+	SessionID    string             `json:"session_id,omitempty"`
+	BeadsID      string             `json:"beads_id,omitempty"`
+	BeadsTitle   string             `json:"beads_title,omitempty"`
+	Skill        string             `json:"skill,omitempty"`
+	Status       string             `json:"status"`            // "active", "idle", "completed", etc.
+	Phase        string             `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task         string             `json:"task,omitempty"`    // Task description from beads issue
+	Project      string             `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime      string             `json:"runtime,omitempty"`
+	Window       string             `json:"window,omitempty"`
+	IsProcessing bool               `json:"is_processing,omitempty"` // True if actively generating response
+	SpawnedAt    string             `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt    string             `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
+	CloseReason  string             `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
+	GapAnalysis  *GapAPIResponse    `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`      // Token usage for the session
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -434,10 +325,6 @@ type SynthesisResponse struct {
 	// Condensed sections
 	DeltaSummary string   `json:"delta_summary,omitempty"` // e.g., "3 files created, 2 modified, 5 commits"
 	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
-
-	// Session Metadata
-	Skill string `json:"skill,omitempty"` // Skill used for this session
-	Model string `json:"model,omitempty"` // Model used (authoritative: from OpenCode session, fallback: from SYNTHESIS.md)
 }
 
 // workspaceCache stores pre-computed workspace metadata to avoid repeated directory scans.
@@ -454,77 +341,6 @@ type workspaceCache struct {
 	// workspaceEntryToPath maps directory entry name → absolute workspace path
 	// This is needed for multi-project scenarios where entries come from different projects
 	workspaceEntryToPath map[string]string
-}
-
-// discoverAllProjectDirs scans OpenCode's session storage to find ALL project directories
-// with sessions, regardless of whether sessions are already visible.
-// This solves the chicken-and-egg problem: we can't find cross-project sessions without
-// knowing which directories to query, but we couldn't know the directories without sessions.
-//
-// OpenCode stores sessions in ~/.local/share/opencode/storage/session/{partition_hash}/
-// Each session JSON file contains a "directory" field with the project path.
-func discoverAllProjectDirs() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-
-	sessionStorageDir := filepath.Join(home, ".local", "share", "opencode", "storage", "session")
-	partitions, err := os.ReadDir(sessionStorageDir)
-	if err != nil {
-		return nil
-	}
-
-	seen := make(map[string]bool)
-	var dirs []string
-
-	// Scan each partition directory
-	for _, partition := range partitions {
-		if !partition.IsDir() {
-			continue
-		}
-
-		partitionPath := filepath.Join(sessionStorageDir, partition.Name())
-		sessionFiles, err := os.ReadDir(partitionPath)
-		if err != nil {
-			continue
-		}
-
-		// Read just one session file to get the directory
-		// (all sessions in a partition belong to the same project directory)
-		for _, sessionFile := range sessionFiles {
-			if !strings.HasSuffix(sessionFile.Name(), ".json") {
-				continue
-			}
-
-			sessionPath := filepath.Join(partitionPath, sessionFile.Name())
-			data, err := os.ReadFile(sessionPath)
-			if err != nil {
-				continue
-			}
-
-			// Parse just enough to get the directory field
-			var session struct {
-				Directory string `json:"directory"`
-			}
-			if err := json.Unmarshal(data, &session); err != nil {
-				continue
-			}
-
-			if session.Directory != "" {
-				dir := filepath.Clean(session.Directory)
-				if !seen[dir] {
-					seen[dir] = true
-					dirs = append(dirs, dir)
-				}
-			}
-
-			// Only need one session file per partition
-			break
-		}
-	}
-
-	return dirs
 }
 
 // extractUniqueProjectDirs collects unique project directories from OpenCode sessions.
@@ -672,40 +488,30 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 		var beadsID, agentProjectDir string
 
 		// Parse once, extracting both pieces of info
-		// NOTE: Stop at FIRST match for beads ID, as later lines may contain template placeholders
 		for _, line := range strings.Split(contentStr, "\n") {
 			lineTrimmed := strings.TrimSpace(line)
 
 			// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
-			// Only match if we haven't found one yet (first occurrence is the real one)
-			if beadsID == "" {
-				if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
-					// Pattern: "spawned from beads issue: **orch-go-xxxx**"
-					// Extract the beads ID between ** markers or after the colon
-					if idx := strings.Index(line, "**"); idx != -1 {
-						rest := line[idx+2:]
-						if endIdx := strings.Index(rest, "**"); endIdx != -1 {
-							beadsID = rest[:endIdx]
-						}
+			if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
+				// Pattern: "spawned from beads issue: **orch-go-xxxx**"
+				// Extract the beads ID between ** markers or after the colon
+				if idx := strings.Index(line, "**"); idx != -1 {
+					rest := line[idx+2:]
+					if endIdx := strings.Index(rest, "**"); endIdx != -1 {
+						beadsID = rest[:endIdx]
 					}
-				} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
-					// Pattern: "bd comment orch-go-xxxx ..."
-					// Skip template placeholders like "<beads-id>"
-					parts := strings.Fields(lineTrimmed)
-					if len(parts) >= 3 && !strings.Contains(parts[2], "<") {
-						beadsID = parts[2]
-					}
+				}
+			} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
+				// Pattern: "bd comment orch-go-xxxx ..."
+				parts := strings.Fields(lineTrimmed)
+				if len(parts) >= 3 {
+					beadsID = parts[2]
 				}
 			}
 
-			// Extract PROJECT_DIR (also only first occurrence)
-			if agentProjectDir == "" && strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
+			// Extract PROJECT_DIR
+			if strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
 				agentProjectDir = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "PROJECT_DIR:"))
-			}
-			
-			// Early exit if both found
-			if beadsID != "" && agentProjectDir != "" {
-				break
 			}
 		}
 
@@ -759,59 +565,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	client := opencode.NewClient(serverURL)
 
-	// Discover ALL project directories from OpenCode's session storage.
-	// This solves the chicken-and-egg problem: previously we could only find
-	// cross-project sessions if we already knew about the project directory
-	// from workspace SPAWN_CONTEXT.md, but new cross-project agents wouldn't
-	// have workspaces in the current project yet.
-	//
-	// Strategy:
-	// 1. Scan OpenCode session storage to find ALL project directories with sessions
-	// 2. Query OpenCode sessions for EACH discovered project directory
-	// 3. Build workspace cache from discovered directories
-	// 4. Merge all sessions together for unified view
-	allProjectDirs := discoverAllProjectDirs()
-
-	// Collect unique project directories (merge discovered with current project)
-	projectDirsMap := make(map[string]bool)
-	projectDirsMap[projectDir] = true // Always include current project
-	for _, dir := range allProjectDirs {
-		if dir != "" {
-			projectDirsMap[dir] = true
-		}
-	}
-
-	// Query OpenCode sessions for each project directory
-	// This ensures we find sessions created with x-opencode-directory header
-	var sessions []opencode.Session
-	seenSessionIDs := make(map[string]bool)
-
-	for dir := range projectDirsMap {
-		dirSessions, err := client.ListSessions(dir)
-		if err != nil {
-			// Log but continue - some directories may not have sessions
-			continue
-		}
-		for _, s := range dirSessions {
-			if !seenSessionIDs[s.ID] {
-				seenSessionIDs[s.ID] = true
-				sessions = append(sessions, s)
-			}
-		}
-	}
-
-	// Also query without directory filter to catch any global sessions
-	globalSessions, _ := client.ListSessions("")
-	for _, s := range globalSessions {
-		if !seenSessionIDs[s.ID] {
-			seenSessionIDs[s.ID] = true
-			sessions = append(sessions, s)
-		}
+	// Get active sessions from OpenCode
+	// Don't filter by directory - show all sessions across all projects
+	// (serve process CWD may not match project directory)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	// Build multi-project workspace cache for cross-project agent visibility.
-	// Now that we have sessions from all directories, extract any additional
-	// project directories and rebuild the cache with full coverage.
+	// This aggregates workspace metadata from all projects with active sessions,
+	// enabling the dashboard to show correct status for agents spawned with --workdir.
+	// Previously: Only scanned current project's .orch/workspace/
+	// Now: Scans all unique project directories found in OpenCode sessions
 	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
 	wsCache := buildMultiProjectWorkspaceCache(projectDirs)
 
@@ -830,22 +597,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Filter: only show sessions updated in the last 10 minutes as "active"
 	// Sessions idle > 30 min are filtered out AFTER checking beads Phase status
 	// (completed agents should still be shown regardless of activity time)
-	// Dead threshold: if no activity for 3 minutes, session is dead.
-	// Agents are constantly reading, editing, running commands - 3 min silence = dead.
-	// Uses StaleSessionThreshold from opencode package for consistency.
-	deadThreshold := opencode.StaleSessionThreshold
+	activeThreshold := 10 * time.Minute
 	displayThreshold := 30 * time.Minute
-	// Dead agents have their own display threshold - old dead agents (24h+) don't need attention.
-	// Recent dead agents (< 4h) are kept visible so user knows they need attention.
-	deadDisplayThreshold := 4 * time.Hour
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
 	pendingFilterByBeadsID := make(map[string]bool)
-
-	// Track dead agents that are too old to display (> deadDisplayThreshold)
-	// Key: beadsID, Value: true if should be filtered out
-	deadTooOldByBeadsID := make(map[string]bool)
 
 	// Track agents by title to deduplicate (OpenCode can have multiple sessions with same title)
 	// Keep the most recently updated session for each title
@@ -858,10 +615,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		timeSinceUpdate := now.Sub(updatedAt)
 
 		// Determine status based on recent activity
-		// 3 minutes no activity = dead. Agents constantly do something.
 		status := "active"
-		if timeSinceUpdate > deadThreshold {
-			status = "dead"
+		if timeSinceUpdate > activeThreshold {
+			status = "idle" // Session exists but hasn't had recent activity
 		}
 
 		// NOTE: IsProcessing is now populated client-side via SSE session.status events.
@@ -907,15 +663,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 		// Track if this agent should be filtered after Phase check
 		// Don't filter yet - we need to check beads Phase: Complete first
-		// Dead agents older than displayThreshold get filtered (unless completed)
-		if status == "dead" && timeSinceUpdate > displayThreshold {
+		if status == "idle" && timeSinceUpdate > displayThreshold {
 			pendingFilterByBeadsID[agent.BeadsID] = true
-		}
-
-		// Track dead agents that are too old to display (> deadDisplayThreshold)
-		// These will be filtered out even if dead - old dead agents don't need attention
-		if status == "dead" && timeSinceUpdate > deadDisplayThreshold {
-			deadTooOldByBeadsID[agent.BeadsID] = true
 		}
 
 		// Deduplicate by title - keep the most recently updated session
@@ -1062,8 +811,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						Recommendation: synthesis.Recommendation,
 						DeltaSummary:   summarizeDelta(synthesis.Delta),
 						NextActions:    synthesis.NextActions,
-						Skill:          synthesis.Skill,
-						Model:          synthesis.Model, // Fallback from SYNTHESIS.md; will be overwritten with authoritative source
 					}
 				}
 			}
@@ -1135,54 +882,28 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				phaseStatus := verify.ParsePhaseFromComments(comments)
 				if phaseStatus.Found {
 					agents[i].Phase = phaseStatus.Phase
+					// Update status to completed if phase is Complete.
+					// Phase: Complete is the definitive signal that the agent's work is done,
+					// regardless of whether the OpenCode session is still open. An open session
+					// just means the agent hasn't called /exit yet, but the work is complete.
+					// If an agent is resumed after Phase: Complete, a new Phase comment
+					// (e.g., "Phase: Implementing") would supersede this.
+					if strings.EqualFold(phaseStatus.Phase, "Complete") {
+						agents[i].Status = "completed"
+					}
 				}
 			}
 
-			// For untracked agents, try reading phase from workspace .phase file
-			// Untracked agents can't report Phase via beads comments (no real issue),
-			// so they write phase to their workspace as an alternative mechanism.
-			if agents[i].Phase == "" && isUntrackedBeadsIDServe(agents[i].BeadsID) {
-				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
-				if wsPhase := readWorkspacePhase(workspacePath); wsPhase != "" {
-					agents[i].Phase = wsPhase
-				}
-			}
-
-			// Derive status from beads Phase, NOT from session existence or activity.
-			// Prior decision: "Dashboard agent status derived from beads phase, not session time"
-			//
-			// Phase: Complete is authoritative for completion status. When an agent
-			// reports Phase: Complete via beads comment, the work is done - even if:
-			// - The OpenCode session is still open (agent may not have called /exit yet)
-			// - The session was recently updated (cleanup actions after reporting complete)
-			//
-			// This ensures the dashboard accurately reflects work status, not session status.
-
-			// Check Phase: Complete from beads comments - this is authoritative
-			if strings.EqualFold(agents[i].Phase, "Complete") {
-				agents[i].Status = "completed"
-			}
-
-			// Check SYNTHESIS.md in workspace (fallback for untracked agents with fake beads IDs)
-			// Only check if not already marked completed by Phase
+			// For agents not yet marked completed, check workspace for SYNTHESIS.md
+			// This handles untracked agents (--no-track) which have fake beads IDs
+			// and won't have Phase: Complete in beads comments.
+			// SYNTHESIS.md presence is a definitive signal that the agent completed,
+			// regardless of whether the OpenCode session is still open.
 			if agents[i].Status != "completed" {
+				// Use cached workspace lookup instead of scanning directories
 				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
 				if checkWorkspaceSynthesis(workspacePath) {
 					agents[i].Status = "completed"
-				}
-			}
-
-			// Stalled detection for untracked agents
-			// Untracked agents can't report Phase via beads comments (no real issue exists).
-			// If an untracked agent has no phase AND is > 1 minute old, mark as stalled.
-			// This matches CLI behavior (orch status shows "⚠️ stalled" for NoComments).
-			if agents[i].Status != "completed" && agents[i].Phase == "" && isUntrackedBeadsIDServe(agents[i].BeadsID) {
-				// Check if agent is > 1 minute old using SpawnedAt timestamp
-				if agents[i].SpawnedAt != "" {
-					spawnedAt, err := time.Parse(time.RFC3339, agents[i].SpawnedAt)
-					if err == nil && time.Since(spawnedAt) > time.Minute {
-						agents[i].Status = "stalled"
-					}
 				}
 			}
 
@@ -1205,19 +926,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Post-Phase filtering: remove agents that were dead > displayThreshold
-		// and are NOT Phase: Complete. Completed agents shown regardless of activity time.
-		// Dead agents > deadDisplayThreshold (4h) are also filtered - they're historical.
-		// Recent dead agents (< 4h) are kept visible so user knows they need attention.
+		// Post-Phase filtering: remove agents that were idle > displayThreshold
+		// and are NOT Phase: Complete. This deferred filtering ensures completed
+		// agents are shown regardless of activity time.
 		filtered := make([]AgentAPIResponse, 0, len(agents))
 		for _, agent := range agents {
-			// Skip non-completed, non-dead agents older than displayThreshold
-			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" && agent.Status != "dead" {
-				continue
-			}
-			// Skip dead agents older than deadDisplayThreshold (unless completed)
-			// Old dead agents don't need attention - they're historical
-			if deadTooOldByBeadsID[agent.BeadsID] && agent.Status != "completed" {
+			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" {
+				// Skip idle agents that are not completed
 				continue
 			}
 			filtered = append(filtered, agent)
@@ -1233,120 +948,40 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		tokens *opencode.TokenStats
 	}
 	tokenChan := make(chan tokenResult, len(agents))
-
+	
 	// Limit concurrent HTTP requests to avoid overwhelming the OpenCode server
 	const maxConcurrent = 20
 	sem := make(chan struct{}, maxConcurrent)
-
+	
 	var wg sync.WaitGroup
 	for i := range agents {
 		// Skip agents without session ID or completed agents (token data is static for completed)
 		if agents[i].SessionID == "" || agents[i].Status == "completed" {
 			continue
 		}
-
+		
 		wg.Add(1)
 		go func(idx int, sessionID string) {
 			defer wg.Done()
 			sem <- struct{}{}        // Acquire semaphore
 			defer func() { <-sem }() // Release semaphore
-
+			
 			tokens, err := client.GetSessionTokens(sessionID)
 			if err == nil && tokens != nil {
 				tokenChan <- tokenResult{index: idx, tokens: tokens}
 			}
 		}(i, agents[i].SessionID)
 	}
-
+	
 	// Wait for all goroutines to complete, then close channel
 	go func() {
 		wg.Wait()
 		close(tokenChan)
 	}()
-
+	
 	// Collect results
 	for result := range tokenChan {
 		agents[result.index].Tokens = result.tokens
-	}
-
-	// Fetch last activity for active agents (so dashboard has activity on initial load)
-	// Parallelized like token fetching to avoid blocking the response.
-	type activityResult struct {
-		index    int
-		activity *LastActivityResponse
-	}
-	activityChan := make(chan activityResult, len(agents))
-
-	// Reuse same semaphore limit for concurrent requests
-	var activityWg sync.WaitGroup
-	for i := range agents {
-		// Only fetch for active agents with session ID
-		if agents[i].SessionID == "" || agents[i].Status == "completed" {
-			continue
-		}
-
-		activityWg.Add(1)
-		go func(idx int, sessionID string) {
-			defer activityWg.Done()
-			sem <- struct{}{}        // Acquire semaphore
-			defer func() { <-sem }() // Release semaphore
-
-			activity := getLastActivityForSession(client, sessionID)
-			if activity != nil {
-				activityChan <- activityResult{index: idx, activity: activity}
-			}
-		}(i, agents[i].SessionID)
-	}
-
-	// Wait for all goroutines to complete, then close channel
-	go func() {
-		activityWg.Wait()
-		close(activityChan)
-	}()
-
-	// Collect results
-	for result := range activityChan {
-		agents[result.index].LastActivity = result.activity
-	}
-
-	// Fetch authoritative model info for agents with synthesis
-	// Model from OpenCode session is authoritative - more reliable than agent self-report in SYNTHESIS.md
-	type modelResult struct {
-		index int
-		model string
-	}
-	modelChan := make(chan modelResult, len(agents))
-
-	var modelWg sync.WaitGroup
-	for i := range agents {
-		// Only fetch for agents with synthesis and session ID
-		if agents[i].Synthesis == nil || agents[i].SessionID == "" {
-			continue
-		}
-
-		modelWg.Add(1)
-		go func(idx int, sessionID string) {
-			defer modelWg.Done()
-			sem <- struct{}{}        // Acquire semaphore
-			defer func() { <-sem }() // Release semaphore
-
-			sessionModel, err := client.GetSessionModel(sessionID)
-			if err == nil && sessionModel != nil {
-				modelChan <- modelResult{index: idx, model: sessionModel.String()}
-			}
-		}(i, agents[i].SessionID)
-	}
-
-	go func() {
-		modelWg.Wait()
-		close(modelChan)
-	}()
-
-	// Collect results - overwrite synthesis Model with authoritative source
-	for result := range modelChan {
-		if agents[result.index].Synthesis != nil && result.model != "" {
-			agents[result.index].Synthesis.Model = result.model
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1356,367 +991,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ArtifactAPIResponse is the JSON structure returned by /api/agents/artifact.
-type ArtifactAPIResponse struct {
-	Type        string `json:"type"`                   // "synthesis", "investigation", "decision"
-	Content     string `json:"content"`                // Markdown content
-	Path        string `json:"path,omitempty"`         // File path (for reference)
-	WorkspaceID string `json:"workspace_id,omitempty"` // Workspace that produced this artifact
-	Error       string `json:"error,omitempty"`        // Error message if artifact not found
-}
-
-// handleAgentArtifact returns artifact content for an agent.
-// Query params:
-// - workspace: workspace ID (e.g., "og-feat-dashboard-agent-pane-30dec")
-// - type: artifact type ("synthesis", "investigation", "decision")
-// - beads_id: optional beads ID for looking up investigation path from comments
-func handleAgentArtifact(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	workspaceID := r.URL.Query().Get("workspace")
-	artifactType := r.URL.Query().Get("type")
-	beadsID := r.URL.Query().Get("beads_id")
-
-	if workspaceID == "" {
-		http.Error(w, "workspace parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	if artifactType == "" {
-		http.Error(w, "type parameter is required (synthesis, investigation, decision)", http.StatusBadRequest)
-		return
-	}
-
-	// Discover project directories to find the workspace
-	allProjectDirs := discoverAllProjectDirs()
-
-	// Add current project directory
-	projectDirs := make(map[string]bool)
-	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
-		projectDirs[serveEffectiveDir] = true
-	}
-	for _, dir := range allProjectDirs {
-		if dir != "" {
-			projectDirs[dir] = true
-		}
-	}
-
-	// Find workspace across all project directories
-	var workspacePath string
-	var foundProjectDir string
-	for projectDir := range projectDirs {
-		candidatePath := filepath.Join(projectDir, ".orch", "workspace", workspaceID)
-		if _, err := os.Stat(candidatePath); err == nil {
-			workspacePath = candidatePath
-			foundProjectDir = projectDir
-			break
-		}
-	}
-
-	if workspacePath == "" {
-		resp := ArtifactAPIResponse{
-			Type:  artifactType,
-			Error: fmt.Sprintf("Workspace not found: %s", workspaceID),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	var content string
-	var artifactPath string
-	var err error
-
-	switch artifactType {
-	case "synthesis":
-		artifactPath = filepath.Join(workspacePath, "SYNTHESIS.md")
-		var data []byte
-		data, err = os.ReadFile(artifactPath)
-		if err == nil {
-			content = string(data)
-		}
-
-	case "investigation":
-		// Check beads comments for investigation_path
-		if beadsID != "" {
-			artifactPath = getInvestigationPathFromBeads(beadsID)
-		}
-		// Fallback: check workspace SPAWN_CONTEXT.md for investigation_path
-		if artifactPath == "" {
-			artifactPath = getInvestigationPathFromWorkspace(workspacePath)
-		}
-		// Fallback: scan .kb/investigations/ for matching file
-		if artifactPath == "" {
-			artifactPath = findInvestigationByWorkspace(workspaceID, foundProjectDir)
-		}
-		if artifactPath != "" {
-			var data []byte
-			data, err = os.ReadFile(artifactPath)
-			if err == nil {
-				content = string(data)
-			}
-		} else {
-			err = fmt.Errorf("investigation artifact not found")
-		}
-
-	case "decision":
-		// Check beads comments for decision_path
-		if beadsID != "" {
-			artifactPath = getDecisionPathFromBeads(beadsID)
-		}
-		// Fallback: scan .kb/decisions/ for matching file
-		if artifactPath == "" {
-			artifactPath = findDecisionByWorkspace(workspaceID, foundProjectDir)
-		}
-		if artifactPath != "" {
-			var data []byte
-			data, err = os.ReadFile(artifactPath)
-			if err == nil {
-				content = string(data)
-			}
-		} else {
-			err = fmt.Errorf("decision artifact not found")
-		}
-
-	default:
-		resp := ArtifactAPIResponse{
-			Type:  artifactType,
-			Error: fmt.Sprintf("Unknown artifact type: %s (valid: synthesis, investigation, decision)", artifactType),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	if err != nil {
-		resp := ArtifactAPIResponse{
-			Type:        artifactType,
-			WorkspaceID: workspaceID,
-			Error:       fmt.Sprintf("Artifact not found: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	resp := ArtifactAPIResponse{
-		Type:        artifactType,
-		Content:     content,
-		Path:        artifactPath,
-		WorkspaceID: workspaceID,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-// getInvestigationPathFromBeads extracts the investigation_path from beads comments.
-// Agents report this via: bd comment <id> "investigation_path: /path/to/file.md"
-func getInvestigationPathFromBeads(beadsID string) string {
-	comments, err := verify.GetComments(beadsID)
-	if err != nil {
-		return ""
-	}
-
-	for _, comment := range comments {
-		if strings.HasPrefix(comment.Text, "investigation_path:") {
-			path := strings.TrimSpace(strings.TrimPrefix(comment.Text, "investigation_path:"))
-			// Validate path exists
-			if _, err := os.Stat(path); err == nil {
-				return path
-			}
-		}
-	}
-	return ""
-}
-
-// getDecisionPathFromBeads extracts the decision_path from beads comments.
-// Agents report this via: bd comment <id> "decision_path: /path/to/file.md"
-func getDecisionPathFromBeads(beadsID string) string {
-	comments, err := verify.GetComments(beadsID)
-	if err != nil {
-		return ""
-	}
-
-	for _, comment := range comments {
-		if strings.HasPrefix(comment.Text, "decision_path:") {
-			path := strings.TrimSpace(strings.TrimPrefix(comment.Text, "decision_path:"))
-			// Validate path exists
-			if _, err := os.Stat(path); err == nil {
-				return path
-			}
-		}
-	}
-	return ""
-}
-
-// getInvestigationPathFromWorkspace extracts investigation path from SPAWN_CONTEXT.md.
-func getInvestigationPathFromWorkspace(workspacePath string) string {
-	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-	data, err := os.ReadFile(spawnContextPath)
-	if err != nil {
-		return ""
-	}
-
-	// Look for "investigation_path:" in the content
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "investigation_path:") {
-			path := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "investigation_path:"))
-			if _, err := os.Stat(path); err == nil {
-				return path
-			}
-		}
-	}
-	return ""
-}
-
-// findInvestigationByWorkspace scans .kb/investigations/ for a file matching the workspace name.
-// Pattern: looks for files containing workspace ID in the filename or dated files from spawn date.
-// If projectDir is empty, falls back to serveEffectiveDir.
-func findInvestigationByWorkspace(workspaceID string, projectDir string) string {
-	// Use provided projectDir or fall back to serveEffectiveDir
-	searchRoot := projectDir
-	if searchRoot == "" {
-		searchRoot = serveEffectiveDir
-	}
-	// Extract date suffix from workspace name (e.g., "og-feat-xyz-30dec" -> "30dec")
-	// and search topic (e.g., "og-feat-dashboard-agent-pane" -> "dashboard-agent-pane")
-	parts := strings.Split(workspaceID, "-")
-	if len(parts) < 3 {
-		return ""
-	}
-
-	// Try to extract keywords from workspace name
-	var keywords []string
-	for _, part := range parts {
-		// Skip prefix parts like "og", "feat", "inv", "debug"
-		if part == "og" || part == "feat" || part == "inv" || part == "debug" || part == "arch" {
-			continue
-		}
-		// Skip date suffixes (e.g., "30dec", "01jan")
-		if len(part) > 2 && len(part) <= 5 {
-			// Check if it looks like a date (ends with month abbreviation)
-			lp := strings.ToLower(part)
-			if strings.HasSuffix(lp, "jan") || strings.HasSuffix(lp, "feb") ||
-				strings.HasSuffix(lp, "mar") || strings.HasSuffix(lp, "apr") ||
-				strings.HasSuffix(lp, "may") || strings.HasSuffix(lp, "jun") ||
-				strings.HasSuffix(lp, "jul") || strings.HasSuffix(lp, "aug") ||
-				strings.HasSuffix(lp, "sep") || strings.HasSuffix(lp, "oct") ||
-				strings.HasSuffix(lp, "nov") || strings.HasSuffix(lp, "dec") {
-				continue
-			}
-		}
-		keywords = append(keywords, part)
-	}
-
-	if len(keywords) == 0 {
-		return ""
-	}
-
-	// Search in .kb/investigations/ (both simple/ and regular)
-	searchDirs := []string{
-		filepath.Join(searchRoot, ".kb", "investigations", "simple"),
-		filepath.Join(searchRoot, ".kb", "investigations"),
-	}
-
-	for _, dir := range searchDirs {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := strings.ToLower(entry.Name())
-			// Check if filename contains any of our keywords
-			matchCount := 0
-			for _, kw := range keywords {
-				if strings.Contains(name, strings.ToLower(kw)) {
-					matchCount++
-				}
-			}
-			// Require at least 2 keyword matches for confidence
-			if matchCount >= 2 || (len(keywords) == 1 && matchCount == 1) {
-				return filepath.Join(dir, entry.Name())
-			}
-		}
-	}
-
-	return ""
-}
-
-// findDecisionByWorkspace scans .kb/decisions/ for a file matching the workspace name.
-// If projectDir is empty, falls back to serveEffectiveDir.
-func findDecisionByWorkspace(workspaceID string, projectDir string) string {
-	// Use provided projectDir or fall back to serveEffectiveDir
-	searchRoot := projectDir
-	if searchRoot == "" {
-		searchRoot = serveEffectiveDir
-	}
-	// Similar logic to findInvestigationByWorkspace
-	parts := strings.Split(workspaceID, "-")
-	if len(parts) < 3 {
-		return ""
-	}
-
-	var keywords []string
-	for _, part := range parts {
-		if part == "og" || part == "feat" || part == "inv" || part == "debug" || part == "arch" {
-			continue
-		}
-		lp := strings.ToLower(part)
-		if strings.HasSuffix(lp, "jan") || strings.HasSuffix(lp, "feb") ||
-			strings.HasSuffix(lp, "mar") || strings.HasSuffix(lp, "apr") ||
-			strings.HasSuffix(lp, "may") || strings.HasSuffix(lp, "jun") ||
-			strings.HasSuffix(lp, "jul") || strings.HasSuffix(lp, "aug") ||
-			strings.HasSuffix(lp, "sep") || strings.HasSuffix(lp, "oct") ||
-			strings.HasSuffix(lp, "nov") || strings.HasSuffix(lp, "dec") {
-			continue
-		}
-		keywords = append(keywords, part)
-	}
-
-	if len(keywords) == 0 {
-		return ""
-	}
-
-	dir := filepath.Join(searchRoot, ".kb", "decisions")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := strings.ToLower(entry.Name())
-		matchCount := 0
-		for _, kw := range keywords {
-			if strings.Contains(name, strings.ToLower(kw)) {
-				matchCount++
-			}
-		}
-		if matchCount >= 2 || (len(keywords) == 1 && matchCount == 1) {
-			return filepath.Join(dir, entry.Name())
-		}
-	}
-
-	return ""
-}
-
 // handleEvents proxies the OpenCode SSE stream to the client.
-// It multiplexes SSE connections from all discovered project directories to provide
-// cross-project agent visibility. Each project directory gets its own SSE connection
-// to OpenCode, and events from all streams are forwarded to the client.
+// It connects to http://127.0.0.1:4096/event and forwards events.
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1735,137 +1011,59 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Discover all project directories with OpenCode sessions
-	// This solves cross-project agent visibility: agents spawned with --workdir
-	// have sessions in their target project's directory, not the orchestrator's
-	allProjectDirs := discoverAllProjectDirs()
-
-	// Always include current project directory
-	projectDirs := make(map[string]bool)
-	if sourceDir != "" && sourceDir != "unknown" {
-		projectDirs[sourceDir] = true
-	}
-	for _, dir := range allProjectDirs {
-		if dir != "" {
-			projectDirs[dir] = true
-		}
-	}
-
-	// Limit concurrent connections to prevent resource exhaustion
-	const maxConnections = 10
-	dirList := make([]string, 0, len(projectDirs))
-	for dir := range projectDirs {
-		dirList = append(dirList, dir)
-		if len(dirList) >= maxConnections {
-			break
-		}
-	}
-
-	if len(dirList) == 0 {
-		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"No project directories found\"}\n\n")
-		flusher.Flush()
-		return
-	}
-
-	// Send connected event with info about multiplexed streams
-	fmt.Fprintf(w, "event: connected\ndata: {\"source\": \"multiplexed\", \"directories\": %d}\n\n", len(dirList))
-	flusher.Flush()
-
-	ctx := r.Context()
-
-	// Channel for forwarding events from all streams to the client
-	eventChan := make(chan string, 100)
-
-	// WaitGroup to track all goroutines
-	var wg sync.WaitGroup
-
-	// Start a goroutine for each project directory's SSE stream
-	for _, dir := range dirList {
-		wg.Add(1)
-		go func(projectDir string) {
-			defer wg.Done()
-			streamSSEForDirectory(ctx, projectDir, eventChan)
-		}(dir)
-	}
-
-	// Close eventChan when all streams are done
-	go func() {
-		wg.Wait()
-		close(eventChan)
-	}()
-
-	// Forward events to the client
-	for {
-		select {
-		case <-ctx.Done():
-			// Client disconnected
-			return
-		case line, ok := <-eventChan:
-			if !ok {
-				// All streams closed
-				fmt.Fprintf(w, "event: disconnected\ndata: {\"reason\": \"all upstream streams closed\"}\n\n")
-				flusher.Flush()
-				return
-			}
-			// Forward the line as-is (preserves SSE format)
-			if strings.HasPrefix(line, "data:") {
-				fmt.Printf("Forwarding SSE event: %s", line)
-			}
-			fmt.Fprint(w, line)
-			flusher.Flush()
-		}
-	}
-}
-
-// streamSSEForDirectory connects to OpenCode's SSE stream for a specific project directory
-// and sends events to the provided channel until the context is cancelled or the stream closes.
-func streamSSEForDirectory(ctx context.Context, projectDir string, eventChan chan<- string) {
+	// Connect to OpenCode SSE stream
 	opencodeURL := serverURL + "/event"
-
-	req, err := http.NewRequestWithContext(ctx, "GET", opencodeURL, nil)
+	resp, err := http.Get(opencodeURL)
 	if err != nil {
-		// Don't flood the event channel with connection errors
-		return
-	}
-
-	// Set directory header so OpenCode streams events for this project's sessions
-	req.Header.Set("x-opencode-directory", projectDir)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		// Connection error - could be context cancelled, just return silently
+		// Send error as SSE event
+		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Failed to connect to OpenCode: %s\"}\n\n", err.Error())
+		flusher.Flush()
 		return
 	}
 	defer resp.Body.Close()
 
+	// Check if OpenCode returned an error
 	if resp.StatusCode != http.StatusOK {
-		// OpenCode returned an error for this directory, skip it
+		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"OpenCode returned status %d\"}\n\n", resp.StatusCode)
+		flusher.Flush()
 		return
 	}
+
+	// Send connected event
+	fmt.Fprintf(w, "event: connected\ndata: {\"source\": \"%s\"}\n\n", opencodeURL)
+	flusher.Flush()
+
+	// Create a done channel to handle client disconnect
+	ctx := r.Context()
 
 	// Read and forward SSE events
 	reader := bufio.NewReader(resp.Body)
 	for {
 		select {
 		case <-ctx.Done():
-			// Client disconnected, stop reading
+			// Client disconnected
 			return
 		default:
 			line, err := reader.ReadString('\n')
 			if err != nil {
-				// Stream closed or read error, just return
+				if err == io.EOF {
+					// Connection closed by OpenCode
+					fmt.Fprintf(w, "event: disconnected\ndata: {\"reason\": \"upstream closed\"}\n\n")
+					flusher.Flush()
+					return
+				}
+				// Read error
+				fmt.Fprintf(w, "event: error\ndata: {\"error\": \"Read error: %s\"}\n\n", err.Error())
+				flusher.Flush()
 				return
 			}
 
-			// Send line to event channel (non-blocking with select to prevent deadlock)
-			select {
-			case eventChan <- line:
-			case <-ctx.Done():
-				return
-			default:
-				// Channel full, drop the event to prevent blocking
-				// This is acceptable for SSE where some events can be missed
+			// Forward the line as-is (preserves SSE format)
+			if strings.HasPrefix(line, "data:") {
+				fmt.Printf("Forwarding SSE event: %s", line)
 			}
+			fmt.Fprint(w, line)
+			flusher.Flush()
 		}
 	}
 }
@@ -2185,28 +1383,6 @@ func handleFocus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getBeadsClientForProject returns a beads client for the given project directory.
-// If projectDir is empty, returns the default beadsClient.
-// Falls back to CLI operations if no client is available.
-// Returns (client, projectDir) where projectDir is resolved (may be default if empty).
-func getBeadsClientForProject(projectDir string) (*beads.Client, string) {
-	// If no project specified, use default client and effective directory
-	if projectDir == "" {
-		return beadsClient, serveEffectiveDir
-	}
-
-	// Resolve to absolute path
-	absPath, err := filepath.Abs(projectDir)
-	if err != nil {
-		// Can't resolve path, fall back to default
-		return beadsClient, serveEffectiveDir
-	}
-
-	// Get or create client from pool
-	client := beadsClientPool.GetOrCreate(absPath)
-	return client, absPath
-}
-
 // BeadsAPIResponse is the JSON structure returned by /api/beads.
 type BeadsAPIResponse struct {
 	TotalIssues    int     `json:"total_issues"`
@@ -2216,46 +1392,32 @@ type BeadsAPIResponse struct {
 	ReadyIssues    int     `json:"ready_issues"`
 	ClosedIssues   int     `json:"closed_issues"`
 	AvgLeadTimeHrs float64 `json:"avg_lead_time_hours,omitempty"`
-	ProjectDir     string  `json:"project_dir,omitempty"` // For multi-project visibility
 	Error          string  `json:"error,omitempty"`
 }
 
 // handleBeads returns beads stats by shelling out to `bd stats --json`.
-// Supports ?project=<path> query param for multi-project dashboard support.
 func handleBeads(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Get project directory from query param (optional)
-	projectDir := r.URL.Query().Get("project")
-	client, effectiveDir := getBeadsClientForProject(projectDir)
-
 	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var stats *beads.Stats
 	var err error
 
-	if client != nil {
-		stats, err = client.Stats()
+	if beadsClient != nil {
+		stats, err = beadsClient.Stats()
 		if err != nil {
 			// Fall through to CLI fallback on RPC error
-			// Set DefaultDir temporarily for CLI fallback
-			oldDefault := beads.DefaultDir
-			beads.DefaultDir = effectiveDir
 			stats, err = beads.FallbackStats()
-			beads.DefaultDir = oldDefault
 		}
 	} else {
-		// No client available, use CLI fallback with correct directory
-		oldDefault := beads.DefaultDir
-		beads.DefaultDir = effectiveDir
 		stats, err = beads.FallbackStats()
-		beads.DefaultDir = oldDefault
 	}
 
 	if err != nil {
-		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err), ProjectDir: effectiveDir}
+		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err)}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
@@ -2269,7 +1431,6 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		ReadyIssues:    stats.Summary.ReadyIssues,
 		ClosedIssues:   stats.Summary.ClosedIssues,
 		AvgLeadTimeHrs: stats.Summary.AvgLeadTimeHours,
-		ProjectDir:     effectiveDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2291,52 +1452,37 @@ type ReadyIssueResponse struct {
 
 // BeadsReadyAPIResponse is the JSON structure returned by /api/beads/ready.
 type BeadsReadyAPIResponse struct {
-	Issues     []ReadyIssueResponse `json:"issues"`
-	Count      int                  `json:"count"`
-	ProjectDir string               `json:"project_dir,omitempty"` // For multi-project visibility
-	Error      string               `json:"error,omitempty"`
+	Issues []ReadyIssueResponse `json:"issues"`
+	Count  int                  `json:"count"`
+	Error  string               `json:"error,omitempty"`
 }
 
 // handleBeadsReady returns list of ready issues for dashboard queue visibility.
-// Supports ?project=<path> query param for multi-project dashboard support.
 func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Get project directory from query param (optional)
-	projectDir := r.URL.Query().Get("project")
-	client, effectiveDir := getBeadsClientForProject(projectDir)
-
 	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
 	var issues []beads.Issue
 	var err error
 
-	if client != nil {
-		issues, err = client.Ready(nil)
+	if beadsClient != nil {
+		issues, err = beadsClient.Ready(nil)
 		if err != nil {
 			// Fall through to CLI fallback on RPC error
-			// Set DefaultDir temporarily for CLI fallback
-			oldDefault := beads.DefaultDir
-			beads.DefaultDir = effectiveDir
 			issues, err = beads.FallbackReady()
-			beads.DefaultDir = oldDefault
 		}
 	} else {
-		// No client available, use CLI fallback with correct directory
-		oldDefault := beads.DefaultDir
-		beads.DefaultDir = effectiveDir
 		issues, err = beads.FallbackReady()
-		beads.DefaultDir = oldDefault
 	}
 
 	if err != nil {
 		resp := BeadsReadyAPIResponse{
-			Issues:     []ReadyIssueResponse{},
-			Count:      0,
-			ProjectDir: effectiveDir,
-			Error:      fmt.Sprintf("Failed to get ready issues: %v", err),
+			Issues: []ReadyIssueResponse{},
+			Count:  0,
+			Error:  fmt.Sprintf("Failed to get ready issues: %v", err),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -2357,163 +1503,13 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := BeadsReadyAPIResponse{
-		Issues:     readyIssues,
-		Count:      len(readyIssues),
-		ProjectDir: effectiveDir,
+		Issues: readyIssues,
+		Count:  len(readyIssues),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode beads ready: %v", err), http.StatusInternalServerError)
-		return
-	}
-}
-
-// BlockedIssueResponse represents a blocked issue with blocker information.
-type BlockedIssueResponse struct {
-	ID             string   `json:"id"`
-	Title          string   `json:"title"`
-	Priority       int      `json:"priority"`
-	IssueType      string   `json:"issue_type"`
-	Labels         []string `json:"labels,omitempty"`
-	CreatedAt      string   `json:"created_at,omitempty"`
-	BlockedByCount int      `json:"blocked_by_count"`
-	BlockedBy      []string `json:"blocked_by"`
-	// Computed fields for frontend filtering
-	NeedsAction    bool   `json:"needs_action"`    // True if blocked by closed/abandoned issue
-	ActionReason   string `json:"action_reason"`   // Why this needs attention
-	BlockerStatus  string `json:"blocker_status"`  // Status of the blocker (open, closed, etc.)
-	DaysBlocked    int    `json:"days_blocked"`    // How long it's been blocked
-}
-
-// BeadsBlockedAPIResponse is the JSON structure returned by /api/beads/blocked.
-type BeadsBlockedAPIResponse struct {
-	Issues      []BlockedIssueResponse `json:"issues"`
-	TotalCount  int                    `json:"total_count"`            // All blocked issues
-	ActionCount int                    `json:"action_count"`           // Issues needing action
-	ProjectDir  string                 `json:"project_dir,omitempty"`  // For multi-project visibility
-	Error       string                 `json:"error,omitempty"`
-}
-
-// handleBeadsBlocked returns blocked issues with blocker details for filtering.
-// Supports ?project=<path> query param for multi-project dashboard support.
-func handleBeadsBlocked(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get project directory from query param (optional)
-	projectDir := r.URL.Query().Get("project")
-	_, effectiveDir := getBeadsClientForProject(projectDir)
-
-	// Set DefaultDir temporarily for CLI fallback (no RPC support for blocked yet)
-	oldDefault := beads.DefaultDir
-	beads.DefaultDir = effectiveDir
-
-	// Get blocked issues via CLI fallback (no RPC support yet)
-	blockedIssues, err := beads.FallbackBlocked()
-	beads.DefaultDir = oldDefault
-
-	if err != nil {
-		resp := BeadsBlockedAPIResponse{
-			Issues:      []BlockedIssueResponse{},
-			TotalCount:  0,
-			ActionCount: 0,
-			ProjectDir:  effectiveDir,
-			Error:       fmt.Sprintf("Failed to get blocked issues: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Build response with computed fields
-	issues := make([]BlockedIssueResponse, 0, len(blockedIssues))
-	actionCount := 0
-
-	for _, blocked := range blockedIssues {
-		issue := BlockedIssueResponse{
-			ID:             blocked.ID,
-			Title:          blocked.Title,
-			Priority:       blocked.Priority,
-			IssueType:      blocked.IssueType,
-			Labels:         blocked.Labels,
-			CreatedAt:      blocked.CreatedAt,
-			BlockedByCount: blocked.BlockedByCount,
-			BlockedBy:      blocked.BlockedBy,
-			NeedsAction:    false,
-			ActionReason:   "",
-			BlockerStatus:  "",
-			DaysBlocked:    0,
-		}
-
-		// Calculate days blocked
-		if blocked.CreatedAt != "" {
-			if createdAt, err := time.Parse(time.RFC3339, blocked.CreatedAt); err == nil {
-				issue.DaysBlocked = int(time.Since(createdAt).Hours() / 24)
-			}
-		}
-
-		// Check each blocker to determine if action is needed
-		for _, blockerID := range blocked.BlockedBy {
-			// Look up the blocker issue status (use effectiveDir for cross-project)
-			oldDefault := beads.DefaultDir
-			beads.DefaultDir = effectiveDir
-			blockerIssue, err := beads.FallbackShow(blockerID)
-			beads.DefaultDir = oldDefault
-
-			if err != nil {
-				// Blocker doesn't exist or can't be found - needs action
-				issue.NeedsAction = true
-				issue.ActionReason = fmt.Sprintf("Blocker %s not found", blockerID)
-				issue.BlockerStatus = "missing"
-				break
-			}
-
-			issue.BlockerStatus = blockerIssue.Status
-
-			// Check for actionable conditions
-			switch blockerIssue.Status {
-			case "closed":
-				// Blocked by a closed issue - stale dependency
-				issue.NeedsAction = true
-				issue.ActionReason = fmt.Sprintf("Blocked by closed issue %s - remove stale dependency", blockerID)
-				actionCount++
-			case "abandoned", "wontfix", "duplicate":
-				// Blocked by abandoned/wontfix issue
-				issue.NeedsAction = true
-				issue.ActionReason = fmt.Sprintf("Blocked by %s issue %s - reassign or close", blockerIssue.Status, blockerID)
-				actionCount++
-			case "open", "in_progress":
-				// Normal case - blocked by an active issue
-				// Only flag if blocked for >7 days
-				if issue.DaysBlocked > 7 {
-					issue.NeedsAction = true
-					issue.ActionReason = fmt.Sprintf("Blocked for %d days - blocker %s may be stuck", issue.DaysBlocked, blockerID)
-					actionCount++
-				}
-			}
-
-			// If we found an actionable condition, stop checking other blockers
-			if issue.NeedsAction {
-				break
-			}
-		}
-
-		issues = append(issues, issue)
-	}
-
-	resp := BeadsBlockedAPIResponse{
-		Issues:      issues,
-		TotalCount:  len(issues),
-		ActionCount: actionCount,
-		ProjectDir:  effectiveDir,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode beads blocked: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
@@ -2795,30 +1791,6 @@ func checkWorkspaceSynthesis(workspacePath string) bool {
 	return info.Size() > 0
 }
 
-// isUntrackedBeadsIDServe returns true if the beads ID indicates an untracked agent.
-// Untracked agents are spawned with --no-track and have IDs like "project-untracked-1766695797".
-// Note: Duplicated from review.go to avoid import cycle. Consider moving to shared package.
-func isUntrackedBeadsIDServe(beadsID string) bool {
-	return strings.Contains(beadsID, "-untracked-")
-}
-
-// readWorkspacePhase reads phase from workspace .phase file for untracked agents.
-// Untracked agents can't report Phase via beads comments (no real issue exists),
-// so they write phase to .orch/workspace/{name}/.phase as an alternative.
-// Returns empty string if file doesn't exist or can't be read.
-func readWorkspacePhase(workspacePath string) string {
-	if workspacePath == "" {
-		return ""
-	}
-	phasePath := filepath.Join(workspacePath, ".phase")
-	data, err := os.ReadFile(phasePath)
-	if err != nil {
-		return ""
-	}
-	// Phase file contains just the phase name, e.g., "Planning" or "Implementing"
-	return strings.TrimSpace(string(data))
-}
-
 // getGapAnalysisFromEvents reads spawn events and extracts gap analysis data for given beads IDs.
 // Returns a map of beads ID -> GapAPIResponse.
 func getGapAnalysisFromEvents(beadsIDs []string) map[string]*GapAPIResponse {
@@ -2886,18 +1858,18 @@ type GapsAPIResponse struct {
 	TotalGaps         int                    `json:"total_gaps"`
 	RecurringPatterns int                    `json:"recurring_patterns"`
 	BySkill           map[string]int         `json:"by_skill"`
-	RecentGaps        int                    `json:"recent_gaps,omitempty"` // Gaps in last 7 days
-	Suggestions       []GapSuggestionSummary `json:"suggestions,omitempty"` // Top recurring gap suggestions
+	RecentGaps        int                    `json:"recent_gaps,omitempty"`       // Gaps in last 7 days
+	Suggestions       []GapSuggestionSummary `json:"suggestions,omitempty"`       // Top recurring gap suggestions
 	Error             string                 `json:"error,omitempty"`
 }
 
 // ReflectAPIResponse is the JSON structure returned by /api/reflect.
 // It exposes the reflect-suggestions.json data with synthesis/promote/stale info.
 type ReflectAPIResponse struct {
-	Timestamp string                    `json:"timestamp"`
+	Timestamp string                   `json:"timestamp"`
 	Synthesis []ReflectSynthesisSummary `json:"synthesis"`
-	Refine    []ReflectRefineSummary    `json:"refine,omitempty"`
-	Error     string                    `json:"error,omitempty"`
+	Refine    []ReflectRefineSummary   `json:"refine,omitempty"`
+	Error     string                   `json:"error,omitempty"`
 }
 
 // ReflectRefineSummary represents a kn entry that refines an existing principle.
@@ -3144,24 +2116,24 @@ type ErrorEvent struct {
 
 // ErrorPattern represents a recurring error pattern.
 type ErrorPattern struct {
-	Pattern    string   `json:"pattern"`    // Error message pattern (may be truncated/normalized)
-	Count      int      `json:"count"`      // Number of occurrences
-	LastSeen   string   `json:"last_seen"`  // ISO 8601 timestamp of most recent occurrence
-	BeadsIDs   []string `json:"beads_ids"`  // Affected beads issues
-	Suggestion string   `json:"suggestion"` // Remediation suggestion
+	Pattern    string   `json:"pattern"`     // Error message pattern (may be truncated/normalized)
+	Count      int      `json:"count"`       // Number of occurrences
+	LastSeen   string   `json:"last_seen"`   // ISO 8601 timestamp of most recent occurrence
+	BeadsIDs   []string `json:"beads_ids"`   // Affected beads issues
+	Suggestion string   `json:"suggestion"`  // Remediation suggestion
 }
 
 // ErrorsAPIResponse is the JSON structure returned by /api/errors.
 type ErrorsAPIResponse struct {
-	TotalErrors    int            `json:"total_errors"`            // Total error events
-	ErrorsLast24h  int            `json:"errors_last_24h"`         // Errors in last 24 hours
-	ErrorsLast7d   int            `json:"errors_last_7d"`          // Errors in last 7 days
-	AbandonedCount int            `json:"abandoned_count"`         // Total agent.abandoned events
-	SessionErrors  int            `json:"session_errors"`          // Total session.error events
-	RecentErrors   []ErrorEvent   `json:"recent_errors,omitempty"` // Last 20 error events
-	Patterns       []ErrorPattern `json:"patterns,omitempty"`      // Recurring error patterns
-	ByType         map[string]int `json:"by_type"`                 // Breakdown by error type
-	Error          string         `json:"error,omitempty"`         // Error message if any
+	TotalErrors     int            `json:"total_errors"`               // Total error events
+	ErrorsLast24h   int            `json:"errors_last_24h"`            // Errors in last 24 hours
+	ErrorsLast7d    int            `json:"errors_last_7d"`             // Errors in last 7 days
+	AbandonedCount  int            `json:"abandoned_count"`            // Total agent.abandoned events
+	SessionErrors   int            `json:"session_errors"`             // Total session.error events
+	RecentErrors    []ErrorEvent   `json:"recent_errors,omitempty"`    // Last 20 error events
+	Patterns        []ErrorPattern `json:"patterns,omitempty"`         // Recurring error patterns
+	ByType          map[string]int `json:"by_type"`                    // Breakdown by error type
+	Error           string         `json:"error,omitempty"`            // Error message if any
 }
 
 // handleErrors returns error pattern analysis from ~/.orch/events.jsonl.
@@ -3405,11 +2377,11 @@ func suggestRemediation(pattern string) string {
 type PendingReviewItem struct {
 	WorkspaceID string `json:"workspace_id"`
 	BeadsID     string `json:"beads_id"`
-	Index       int    `json:"index"`     // Index of the recommendation (0-based)
-	Text        string `json:"text"`      // The recommendation text
-	Reviewed    bool   `json:"reviewed"`  // Whether this item has been reviewed
-	ActedOn     bool   `json:"acted_on"`  // Whether an issue was created
-	Dismissed   bool   `json:"dismissed"` // Whether this was dismissed
+	Index       int    `json:"index"`       // Index of the recommendation (0-based)
+	Text        string `json:"text"`        // The recommendation text
+	Reviewed    bool   `json:"reviewed"`    // Whether this item has been reviewed
+	ActedOn     bool   `json:"acted_on"`    // Whether an issue was created
+	Dismissed   bool   `json:"dismissed"`   // Whether this was dismissed
 }
 
 // PendingReviewAgent represents an agent with pending synthesis reviews.
@@ -3426,16 +2398,14 @@ type PendingReviewAgent struct {
 
 // PendingReviewsAPIResponse is the JSON structure returned by /api/pending-reviews.
 type PendingReviewsAPIResponse struct {
-	Agents          []PendingReviewAgent `json:"agents"`
-	TotalAgents     int                  `json:"total_agents"`
-	TotalUnreviewed int                  `json:"total_unreviewed"`
+	Agents           []PendingReviewAgent `json:"agents"`
+	TotalAgents      int                  `json:"total_agents"`
+	TotalUnreviewed  int                  `json:"total_unreviewed"`
 }
 
 // handlePendingReviews returns pending synthesis reviews.
 // This includes both full-tier agents with SYNTHESIS.md and light-tier agents
 // that have completed (Phase: Complete) but have no synthesis by design.
-// Filters out agents whose beads issues are already closed (using the same
-// pattern as filterClosedIssues in review.go).
 func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -3586,10 +2556,6 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Filter out agents whose beads issues are already closed
-	// This mirrors the filterClosedIssues pattern from review.go
-	agents, totalUnreviewed = filterPendingReviewsByClosedIssues(agents)
-
 	resp := PendingReviewsAPIResponse{
 		Agents:          agents,
 		TotalAgents:     len(agents),
@@ -3601,64 +2567,6 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode pending reviews: %v", err), http.StatusInternalServerError)
 		return
 	}
-}
-
-// filterPendingReviewsByClosedIssues removes agents whose beads issues are closed/deferred/tombstone.
-// Uses batch fetching for efficiency. If beads is unavailable, returns all agents
-// (better to show potential false positives than hide real issues).
-// Returns filtered agents and recalculated totalUnreviewed count.
-func filterPendingReviewsByClosedIssues(agents []PendingReviewAgent) ([]PendingReviewAgent, int) {
-	if len(agents) == 0 {
-		return agents, 0
-	}
-
-	// Collect all beads IDs for batch fetch (skip untracked agents)
-	beadsIDs := make([]string, 0, len(agents))
-	for _, a := range agents {
-		if a.BeadsID != "" && !isUntrackedBeadsIDServe(a.BeadsID) {
-			beadsIDs = append(beadsIDs, a.BeadsID)
-		}
-	}
-
-	if len(beadsIDs) == 0 {
-		// All agents are untracked, return as-is with recalculated count
-		totalUnreviewed := 0
-		for _, a := range agents {
-			totalUnreviewed += a.UnreviewedCount
-		}
-		return agents, totalUnreviewed
-	}
-
-	// Batch fetch issue statuses
-	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
-	// Ignore error - if beads is unavailable, return all agents
-
-	// Filter out closed issues
-	var results []PendingReviewAgent
-	totalUnreviewed := 0
-
-	for _, a := range agents {
-		// Keep untracked agents (no beads issue to check)
-		if isUntrackedBeadsIDServe(a.BeadsID) || a.BeadsID == "" {
-			results = append(results, a)
-			totalUnreviewed += a.UnreviewedCount
-			continue
-		}
-
-		// Check if issue is closed
-		if issue, ok := issueMap[a.BeadsID]; ok {
-			status := strings.ToLower(issue.Status)
-			if status == "closed" || status == "deferred" || status == "tombstone" {
-				// Skip closed issues - they're resolved and shouldn't appear in pending reviews
-				continue
-			}
-		}
-
-		results = append(results, a)
-		totalUnreviewed += a.UnreviewedCount
-	}
-
-	return results, totalUnreviewed
 }
 
 // contains checks if a slice contains a value.
@@ -3714,9 +2622,9 @@ type DismissReviewRequest struct {
 
 // DismissReviewResponse is the response for POST /api/dismiss-review.
 type DismissReviewResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Success  bool   `json:"success"`
+	Message  string `json:"message,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // handleDismissReview dismisses a synthesis recommendation.
@@ -3868,120 +2776,6 @@ func handleDismissReview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ActOnReviewRequest is the request body for POST /api/act-on-review.
-type ActOnReviewRequest struct {
-	WorkspaceID string `json:"workspace_id"`
-	Index       int    `json:"index"` // Index of the recommendation that was acted on
-}
-
-// ActOnReviewResponse is the response for POST /api/act-on-review.
-type ActOnReviewResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-	Error   string `json:"error,omitempty"`
-}
-
-// handleActOnReview marks a synthesis recommendation as acted on (issue created).
-func handleActOnReview(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req ActOnReviewRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Invalid request body: %v", err),
-		})
-		return
-	}
-
-	if req.WorkspaceID == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: false,
-			Error:   "workspace_id is required",
-		})
-		return
-	}
-
-	// Build workspace path
-	workspacePath := filepath.Join(sourceDir, ".orch", "workspace", req.WorkspaceID)
-
-	// Load existing review state
-	reviewState, err := verify.LoadReviewState(workspacePath)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to load review state: %v", err),
-		})
-		return
-	}
-
-	// Parse synthesis to get total recommendations
-	synthesis, err := verify.ParseSynthesis(workspacePath)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to parse synthesis: %v", err),
-		})
-		return
-	}
-
-	// Validate index
-	if req.Index < 0 || req.Index >= len(synthesis.NextActions) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Invalid index %d (total recommendations: %d)", req.Index, len(synthesis.NextActions)),
-		})
-		return
-	}
-
-	// Check if already reviewed
-	if contains(reviewState.ActedOn, req.Index) || contains(reviewState.Dismissed, req.Index) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: true,
-			Message: "Already reviewed",
-		})
-		return
-	}
-
-	// Add to acted on
-	reviewState.ActedOn = append(reviewState.ActedOn, req.Index)
-	reviewState.TotalRecommendations = len(synthesis.NextActions)
-	reviewState.WorkspaceID = req.WorkspaceID
-	if reviewState.ReviewedAt.IsZero() {
-		reviewState.ReviewedAt = time.Now()
-	}
-
-	// Extract beads ID if not set
-	if reviewState.BeadsID == "" {
-		reviewState.BeadsID = extractBeadsIDFromWorkspace(workspacePath)
-	}
-
-	// Save updated state
-	if err := verify.SaveReviewState(workspacePath, reviewState); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ActOnReviewResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to save review state: %v", err),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ActOnReviewResponse{
-		Success: true,
-		Message: fmt.Sprintf("Marked recommendation %d as acted on", req.Index),
-	})
-}
-
 // ConfigAPIResponse is the JSON structure returned by GET /api/config.
 type ConfigAPIResponse struct {
 	Backend              string `json:"backend"`
@@ -4078,835 +2872,4 @@ func handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode config: %v", err), http.StatusInternalServerError)
 		return
 	}
-}
-
-// PatternsAPIPattern represents a detected behavioral pattern.
-type PatternsAPIPattern struct {
-	Type        string            `json:"type"`                  // Pattern type (e.g., "repeated_empty_read", "repeated_error")
-	Description string            `json:"description"`           // Human-readable description
-	Severity    string            `json:"severity"`              // "info", "warning", "critical"
-	Count       int               `json:"count"`                 // How many times this pattern occurred
-	Suggestion  string            `json:"suggestion,omitempty"`  // Suggested action
-	Context     map[string]string `json:"context,omitempty"`     // Common context (tier, skill, etc.)
-	Tool        string            `json:"tool,omitempty"`        // Tool that triggered the pattern
-	Target      string            `json:"target,omitempty"`      // Target of the action (file path, command, etc.)
-}
-
-// PatternsAPIResponse is the JSON structure returned by /api/patterns.
-type PatternsAPIResponse struct {
-	TotalEvents   int                  `json:"total_events"`   // Total action events in log
-	TotalPatterns int                  `json:"total_patterns"` // Number of detected patterns
-	Patterns      []PatternsAPIPattern `json:"patterns"`       // Detected patterns
-	Summary       string               `json:"summary"`        // Brief summary of log state
-	Error         string               `json:"error,omitempty"`
-}
-
-// handlePatterns returns behavioral pattern analysis from ~/.orch/action-log.json.
-// Accepts optional query parameter ?project=/path/to/project to filter patterns
-// to a specific project directory, reducing cross-project noise.
-func handlePatterns(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	log, err := patterns.LoadLog()
-	if err != nil {
-		resp := PatternsAPIResponse{
-			Error: fmt.Sprintf("Failed to load action log: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Get optional project filter from query parameter
-	projectDir := r.URL.Query().Get("project")
-	detected := log.DetectPatternsForProject(projectDir)
-
-	apiPatterns := make([]PatternsAPIPattern, 0, len(detected))
-	for _, p := range detected {
-		// Extract tool and target from first event if available
-		var tool, target string
-		if len(p.Events) > 0 {
-			tool = p.Events[0].Tool
-			target = p.Events[0].Target
-		}
-
-		apiPatterns = append(apiPatterns, PatternsAPIPattern{
-			Type:        p.Type,
-			Description: p.Description,
-			Severity:    p.Severity,
-			Count:       p.Count,
-			Suggestion:  p.Suggestion,
-			Context:     p.Context,
-			Tool:        tool,
-			Target:      target,
-		})
-	}
-
-	resp := PatternsAPIResponse{
-		TotalEvents:   len(log.Events),
-		TotalPatterns: len(detected),
-		Patterns:      apiPatterns,
-		Summary:       log.Summary(),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode patterns: %v", err), http.StatusInternalServerError)
-		return
-	}
-}
-
-// getLastActivityForSession fetches the last activity from a session's messages.
-// Returns nil if no activity is available or on error.
-// This provides initial activity data for the dashboard, so it doesn't show
-// "Waiting for activity" until SSE events arrive.
-func getLastActivityForSession(client *opencode.Client, sessionID string) *LastActivityResponse {
-	messages, err := client.GetMessages(sessionID)
-	if err != nil || len(messages) == 0 {
-		return nil
-	}
-
-	// Work backwards through messages to find the last meaningful activity
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-
-		// Skip user messages - we want assistant activity
-		if msg.Info.Role != "assistant" {
-			continue
-		}
-
-		// Work backwards through parts to find the most recent activity
-		for j := len(msg.Parts) - 1; j >= 0; j-- {
-			part := msg.Parts[j]
-
-			// Skip empty parts
-			if part.Type == "" {
-				continue
-			}
-
-			// Extract activity based on part type
-			var activityText string
-			switch part.Type {
-			case "text":
-				// Truncate long text
-				activityText = part.Text
-				if len(activityText) > 100 {
-					activityText = activityText[:100] + "..."
-				}
-			case "tool":
-				if part.Tool != "" {
-					activityText = "Using " + part.Tool
-					if part.State != nil && part.State.Status != "" {
-						activityText += " (" + part.State.Status + ")"
-					}
-				}
-			case "reasoning":
-				activityText = "Reasoning..."
-				if len(part.Text) > 0 {
-					activityText = part.Text
-					if len(activityText) > 100 {
-						activityText = activityText[:100] + "..."
-					}
-				}
-			case "step-start":
-				activityText = "Starting step..."
-			case "step-finish":
-				activityText = "Completed step"
-			default:
-				activityText = strings.ReplaceAll(part.Type, "-", " ")
-			}
-
-			// Get timestamp from message time
-			timestamp := msg.Info.Time.Created
-			if msg.Info.Time.Completed > 0 {
-				timestamp = msg.Info.Time.Completed
-			}
-
-			return &LastActivityResponse{
-				Type:      part.Type,
-				Text:      activityText,
-				Timestamp: timestamp,
-			}
-		}
-	}
-
-	return nil
-}
-
-// IssueDetailAPIResponse is the JSON structure returned by /api/beads/issue.
-type IssueDetailAPIResponse struct {
-	ID          string                    `json:"id"`
-	Title       string                    `json:"title"`
-	Description string                    `json:"description,omitempty"`
-	Status      string                    `json:"status"`
-	Priority    int                       `json:"priority"`
-	IssueType   string                    `json:"issue_type,omitempty"`
-	Labels      []string                  `json:"labels,omitempty"`
-	CloseReason string                    `json:"close_reason,omitempty"`
-	CreatedAt   string                    `json:"created_at,omitempty"`
-	UpdatedAt   string                    `json:"updated_at,omitempty"`
-	ClosedAt    string                    `json:"closed_at,omitempty"`
-	Parent      *IssueRelationship        `json:"parent,omitempty"`
-	Children    []IssueRelationship       `json:"children,omitempty"`
-	Comments    []IssueCommentAPIResponse `json:"comments"`
-	Error       string                    `json:"error,omitempty"`
-}
-
-// IssueRelationship represents a parent or child relationship.
-type IssueRelationship struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
-}
-
-// IssueCommentAPIResponse is the JSON structure for a single comment.
-type IssueCommentAPIResponse struct {
-	ID        int    `json:"id"`
-	Author    string `json:"author"`
-	Text      string `json:"text"`
-	CreatedAt string `json:"created_at"`
-	// Parsed fields for timeline display
-	IsPhase    bool   `json:"is_phase,omitempty"`    // True if this is a Phase: comment
-	Phase      string `json:"phase,omitempty"`       // The phase name (e.g., "Planning", "Implementing", "Complete")
-	IsBlocked  bool   `json:"is_blocked,omitempty"`  // True if this is a BLOCKED: comment
-	IsQuestion bool   `json:"is_question,omitempty"` // True if this is a QUESTION: comment
-}
-
-// handleBeadsIssue returns detailed issue info with comments timeline.
-// Query params:
-// - id: beads issue ID (required)
-// - project: optional project directory for cross-project issues
-func handleBeadsIssue(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	beadsID := r.URL.Query().Get("id")
-	if beadsID == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(IssueDetailAPIResponse{
-			Error: "id parameter is required",
-		})
-		return
-	}
-
-	projectDir := r.URL.Query().Get("project")
-
-	// Fetch issue details
-	issue, err := verify.GetIssue(beadsID)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(IssueDetailAPIResponse{
-			ID:    beadsID,
-			Error: fmt.Sprintf("Issue not found: %v", err),
-		})
-		return
-	}
-
-	// Fetch comments (with project directory for cross-project support)
-	var comments []beads.Comment
-	if projectDir != "" {
-		comments, _ = verify.GetCommentsWithDir(beadsID, projectDir)
-	} else {
-		comments, _ = verify.GetComments(beadsID)
-	}
-
-	// Get full issue details from beads RPC/CLI for priority and labels
-	var priority int
-	var labels []string
-	var createdAt, updatedAt, closedAt string
-	var parent *IssueRelationship
-	var children []IssueRelationship
-
-	// Try to get more details from beads
-	socketPath, socketErr := beads.FindSocketPath(projectDir)
-	if socketErr == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if fullIssue, err := client.Show(beadsID); err == nil {
-			priority = fullIssue.Priority
-			labels = fullIssue.Labels
-			createdAt = fullIssue.CreatedAt
-			updatedAt = fullIssue.UpdatedAt
-			closedAt = fullIssue.ClosedAt
-
-			// Parse dependencies for parent/children
-			if len(fullIssue.Dependencies) > 0 {
-				parent, children = parseIssueDependencies(fullIssue.Dependencies, client)
-			}
-		}
-	}
-
-	// Convert comments to API response format with parsed fields
-	apiComments := make([]IssueCommentAPIResponse, len(comments))
-	for i, c := range comments {
-		apiComments[i] = IssueCommentAPIResponse{
-			ID:        c.ID,
-			Author:    c.Author,
-			Text:      c.Text,
-			CreatedAt: c.CreatedAt,
-		}
-
-		// Parse for Phase: pattern
-		if strings.HasPrefix(strings.TrimSpace(c.Text), "Phase:") {
-			apiComments[i].IsPhase = true
-			// Extract phase name (e.g., "Phase: Planning - details" -> "Planning")
-			parts := strings.SplitN(strings.TrimPrefix(strings.TrimSpace(c.Text), "Phase:"), " - ", 2)
-			if len(parts) > 0 {
-				apiComments[i].Phase = strings.TrimSpace(parts[0])
-			}
-		}
-
-		// Parse for BLOCKED: pattern
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(c.Text)), "BLOCKED:") {
-			apiComments[i].IsBlocked = true
-		}
-
-		// Parse for QUESTION: pattern
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(c.Text)), "QUESTION:") {
-			apiComments[i].IsQuestion = true
-		}
-	}
-
-	resp := IssueDetailAPIResponse{
-		ID:          issue.ID,
-		Title:       issue.Title,
-		Description: issue.Description,
-		Status:      issue.Status,
-		Priority:    priority,
-		IssueType:   issue.IssueType,
-		Labels:      labels,
-		CloseReason: issue.CloseReason,
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
-		ClosedAt:    closedAt,
-		Parent:      parent,
-		Children:    children,
-		Comments:    apiComments,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-// parseIssueDependencies parses the dependencies JSON to extract parent/child relationships.
-// Dependencies can be either a list of string IDs or a list of objects with id, title, dependency_type fields.
-func parseIssueDependencies(depRaw json.RawMessage, client *beads.Client) (*IssueRelationship, []IssueRelationship) {
-	if len(depRaw) == 0 {
-		return nil, nil
-	}
-
-	// Try parsing as array of objects with dependency_type
-	type depWithType struct {
-		ID             string `json:"id"`
-		Title          string `json:"title"`
-		Status         string `json:"status"`
-		DependencyType string `json:"dependency_type"`
-	}
-	var depsWithType []depWithType
-	if err := json.Unmarshal(depRaw, &depsWithType); err == nil && len(depsWithType) > 0 {
-		var parent *IssueRelationship
-		var children []IssueRelationship
-
-		for _, dep := range depsWithType {
-			rel := IssueRelationship{
-				ID:     dep.ID,
-				Title:  dep.Title,
-				Status: dep.Status,
-			}
-			if dep.DependencyType == "parent" {
-				parent = &rel
-			} else if dep.DependencyType == "child" {
-				children = append(children, rel)
-			}
-		}
-		return parent, children
-	}
-
-	// Try parsing as array of string IDs (older format)
-	var depIDs []string
-	if err := json.Unmarshal(depRaw, &depIDs); err == nil && len(depIDs) > 0 {
-		// For string IDs, we'd need to fetch each one to get title/status
-		// For now, just return them with ID only
-		var deps []IssueRelationship
-		for _, id := range depIDs {
-			deps = append(deps, IssueRelationship{ID: id})
-		}
-		// Without dependency_type, we can't distinguish parent vs child
-		// Return as children by default
-		return nil, deps
-	}
-
-	return nil, nil
-}
-
-// DeliverablesAPIResponse is the JSON structure returned by /api/agents/deliverables.
-type DeliverablesAPIResponse struct {
-	WorkspaceID string              `json:"workspace_id"`
-	Commits     []DeliverableCommit `json:"commits"`     // Git commits made by the agent
-	FileDelta   FileDeltaSummary    `json:"file_delta"`  // Files created/modified/deleted
-	Artifacts   []ArtifactLink      `json:"artifacts"`   // Links to created artifacts
-	Error       string              `json:"error,omitempty"`
-}
-
-// DeliverableCommit represents a single git commit in the deliverables API.
-type DeliverableCommit struct {
-	Hash      string `json:"hash"`       // Short commit hash
-	Message   string `json:"message"`    // Commit message
-	Author    string `json:"author"`     // Author name
-	Timestamp string `json:"timestamp"`  // ISO 8601 timestamp
-	FilesChanged int `json:"files_changed"` // Number of files changed
-}
-
-// FileDeltaSummary summarizes file changes made by the agent.
-type FileDeltaSummary struct {
-	Created  []string `json:"created"`   // Files created
-	Modified []string `json:"modified"`  // Files modified
-	Deleted  []string `json:"deleted"`   // Files deleted
-}
-
-// ArtifactLink represents a link to a created artifact.
-type ArtifactLink struct {
-	Type string `json:"type"`  // "synthesis", "investigation", "decision"
-	Path string `json:"path"`  // Relative path from project root
-	Name string `json:"name"`  // Display name
-}
-
-// handleAgentDeliverables returns deliverables for an agent.
-// Query params:
-// - workspace: workspace ID (e.g., "og-feat-dashboard-agent-pane-30dec")
-// - project_dir: project directory path (for git operations)
-// - spawned_at: ISO 8601 timestamp of when agent was spawned (for commit filtering)
-// - beads_id: optional beads ID for looking up investigation path from comments
-func handleAgentDeliverables(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	workspaceID := r.URL.Query().Get("workspace")
-	projectDir := r.URL.Query().Get("project_dir")
-	spawnedAt := r.URL.Query().Get("spawned_at")
-	beadsID := r.URL.Query().Get("beads_id")
-
-	if workspaceID == "" {
-		http.Error(w, "workspace parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	resp := DeliverablesAPIResponse{
-		WorkspaceID: workspaceID,
-		Commits:     []DeliverableCommit{},
-		FileDelta:   FileDeltaSummary{Created: []string{}, Modified: []string{}, Deleted: []string{}},
-		Artifacts:   []ArtifactLink{},
-	}
-
-	// Discover project directories to find the workspace
-	allProjectDirs := discoverAllProjectDirs()
-
-	// Build list of project directories to check
-	projectDirs := make(map[string]bool)
-	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
-		projectDirs[serveEffectiveDir] = true
-	}
-	for _, dir := range allProjectDirs {
-		if dir != "" {
-			projectDirs[dir] = true
-		}
-	}
-	if projectDir != "" {
-		projectDirs[projectDir] = true
-	}
-
-	// Find workspace across all project directories
-	var workspacePath string
-	var foundProjectDir string
-	for pDir := range projectDirs {
-		candidatePath := filepath.Join(pDir, ".orch", "workspace", workspaceID)
-		if _, err := os.Stat(candidatePath); err == nil {
-			workspacePath = candidatePath
-			foundProjectDir = pDir
-			break
-		}
-	}
-
-	// If workspace not found, return empty response (not an error - agent may still be active)
-	if workspacePath == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Use the found project dir, or fall back to provided one
-	if foundProjectDir == "" && projectDir != "" {
-		foundProjectDir = projectDir
-	}
-
-	// Get git commits since spawn time
-	if foundProjectDir != "" && spawnedAt != "" {
-		commits := getCommitsSinceSpawn(foundProjectDir, spawnedAt)
-		resp.Commits = commits
-
-		// Build file delta from commits
-		resp.FileDelta = getFileDeltaFromCommits(foundProjectDir, spawnedAt)
-	}
-
-	// Collect artifact links
-	artifacts := collectArtifactLinks(workspacePath, beadsID, workspaceID, foundProjectDir)
-	resp.Artifacts = artifacts
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-// getCommitsSinceSpawn returns git commits made since the given spawn time.
-func getCommitsSinceSpawn(projectDir, spawnedAt string) []DeliverableCommit {
-	// Parse spawn time
-	spawnTime, err := time.Parse(time.RFC3339, spawnedAt)
-	if err != nil {
-		return nil
-	}
-
-	// Format for git --since: "2025-12-31T10:00:00"
-	gitSince := spawnTime.Format("2006-01-02T15:04:05")
-
-	// Run git log with custom format
-	// Format: hash|message|author|timestamp|files_changed
-	cmd := exec.Command("git", "log",
-		"--since="+gitSince,
-		"--format=%h|%s|%an|%aI",
-		"--shortstat",
-	)
-	cmd.Dir = projectDir
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	return parseGitLogOutput(string(output))
-}
-
-// parseGitLogOutput parses git log output with --shortstat.
-func parseGitLogOutput(output string) []DeliverableCommit {
-	var commits []DeliverableCommit
-	lines := strings.Split(output, "\n")
-
-	var currentCommit *DeliverableCommit
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Check if this is a commit line (contains |)
-		if strings.Contains(line, "|") {
-			parts := strings.SplitN(line, "|", 4)
-			if len(parts) >= 4 {
-				if currentCommit != nil {
-					commits = append(commits, *currentCommit)
-				}
-				currentCommit = &DeliverableCommit{
-					Hash:      parts[0],
-					Message:   parts[1],
-					Author:    parts[2],
-					Timestamp: parts[3],
-				}
-			}
-		} else if currentCommit != nil && strings.Contains(line, "file") {
-			// This is a shortstat line: "3 files changed, 100 insertions(+), 20 deletions(-)"
-			if idx := strings.Index(line, " file"); idx > 0 {
-				numStr := strings.TrimSpace(line[:idx])
-				if num, err := strconv.Atoi(numStr); err == nil {
-					currentCommit.FilesChanged = num
-				}
-			}
-		}
-	}
-
-	// Don't forget the last commit
-	if currentCommit != nil {
-		commits = append(commits, *currentCommit)
-	}
-
-	return commits
-}
-
-// getFileDeltaFromCommits returns the combined file delta from all commits since spawn time.
-func getFileDeltaFromCommits(projectDir, spawnedAt string) FileDeltaSummary {
-	delta := FileDeltaSummary{
-		Created:  []string{},
-		Modified: []string{},
-		Deleted:  []string{},
-	}
-
-	// Parse spawn time
-	spawnTime, err := time.Parse(time.RFC3339, spawnedAt)
-	if err != nil {
-		return delta
-	}
-
-	gitSince := spawnTime.Format("2006-01-02T15:04:05")
-
-	// Get diff stat for files changed since spawn
-	// Use --name-status to get A (added), M (modified), D (deleted)
-	cmd := exec.Command("git", "log",
-		"--since="+gitSince,
-		"--name-status",
-		"--format=",
-		"--diff-filter=AMD",
-	)
-	cmd.Dir = projectDir
-
-	output, err := cmd.Output()
-	if err != nil {
-		return delta
-	}
-
-	// Track unique files per status (last status wins for files that changed multiple times)
-	fileStatus := make(map[string]string)
-
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Fields(line)
-		if len(parts) >= 2 {
-			status := parts[0]
-			filename := parts[1]
-			fileStatus[filename] = status
-		}
-	}
-
-	// Categorize by final status
-	for filename, status := range fileStatus {
-		switch status {
-		case "A":
-			delta.Created = append(delta.Created, filename)
-		case "M":
-			delta.Modified = append(delta.Modified, filename)
-		case "D":
-			delta.Deleted = append(delta.Deleted, filename)
-		}
-	}
-
-	// Sort for consistent output
-	sort.Strings(delta.Created)
-	sort.Strings(delta.Modified)
-	sort.Strings(delta.Deleted)
-
-	return delta
-}
-
-// collectArtifactLinks collects links to artifacts created by the agent.
-// projectDir is used for cross-project investigation/decision discovery.
-func collectArtifactLinks(workspacePath, beadsID, workspaceID, projectDir string) []ArtifactLink {
-	var artifacts []ArtifactLink
-
-	// Check for SYNTHESIS.md
-	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
-	if _, err := os.Stat(synthesisPath); err == nil {
-		artifacts = append(artifacts, ArtifactLink{
-			Type: "synthesis",
-			Path: synthesisPath,
-			Name: "SYNTHESIS.md",
-		})
-	}
-
-	// Check for investigation file
-	var investigationPath string
-	if beadsID != "" {
-		investigationPath = getInvestigationPathFromBeads(beadsID)
-	}
-	if investigationPath == "" {
-		investigationPath = getInvestigationPathFromWorkspace(workspacePath)
-	}
-	if investigationPath == "" {
-		investigationPath = findInvestigationByWorkspace(workspaceID, projectDir)
-	}
-	if investigationPath != "" {
-		name := filepath.Base(investigationPath)
-		artifacts = append(artifacts, ArtifactLink{
-			Type: "investigation",
-			Path: investigationPath,
-			Name: name,
-		})
-	}
-
-	// Check for decision file
-	var decisionPath string
-	if beadsID != "" {
-		decisionPath = getDecisionPathFromBeads(beadsID)
-	}
-	if decisionPath == "" {
-		decisionPath = findDecisionByWorkspace(workspaceID, projectDir)
-	}
-	if decisionPath != "" {
-		name := filepath.Base(decisionPath)
-		artifacts = append(artifacts, ArtifactLink{
-			Type: "decision",
-			Path: decisionPath,
-			Name: name,
-		})
-	}
-
-	return artifacts
-}
-
-// SpawnContextAPIResponse is the JSON structure returned by /api/agents/spawn-context.
-type SpawnContextAPIResponse struct {
-	Content       string            `json:"content"`                  // Raw SPAWN_CONTEXT.md markdown content
-	WorkspacePath string            `json:"workspace_path,omitempty"` // Full path to workspace directory
-	Metadata      SpawnMetadata     `json:"metadata"`                 // Extracted spawn metadata
-	Error         string            `json:"error,omitempty"`          // Error message if not found
-}
-
-// SpawnMetadata contains extracted spawn parameters from SPAWN_CONTEXT.md.
-type SpawnMetadata struct {
-	Task        string `json:"task,omitempty"`         // Task description from TASK: line
-	Skill       string `json:"skill,omitempty"`        // Skill name
-	BeadsID     string `json:"beads_id,omitempty"`     // Beads issue ID
-	ProjectDir  string `json:"project_dir,omitempty"`  // PROJECT_DIR value
-	SpawnTier   string `json:"spawn_tier,omitempty"`   // SPAWN TIER: light/full
-	SessionScope string `json:"session_scope,omitempty"` // SESSION SCOPE value
-}
-
-// handleAgentSpawnContext returns the SPAWN_CONTEXT.md content and metadata for an agent.
-// Query params:
-// - workspace: workspace ID (e.g., "og-feat-dashboard-agent-pane-30dec")
-func handleAgentSpawnContext(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	workspaceID := r.URL.Query().Get("workspace")
-	if workspaceID == "" {
-		http.Error(w, "workspace parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	// Discover project directories to find the workspace
-	allProjectDirs := discoverAllProjectDirs()
-
-	// Build list of project directories to check
-	projectDirs := make(map[string]bool)
-	if serveEffectiveDir != "" && serveEffectiveDir != "unknown" {
-		projectDirs[serveEffectiveDir] = true
-	}
-	for _, dir := range allProjectDirs {
-		if dir != "" {
-			projectDirs[dir] = true
-		}
-	}
-
-	// Find workspace across all project directories
-	var workspacePath string
-	for pDir := range projectDirs {
-		candidatePath := filepath.Join(pDir, ".orch", "workspace", workspaceID)
-		if _, err := os.Stat(candidatePath); err == nil {
-			workspacePath = candidatePath
-			break
-		}
-	}
-
-	if workspacePath == "" {
-		resp := SpawnContextAPIResponse{
-			Error: fmt.Sprintf("Workspace not found: %s", workspaceID),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Read SPAWN_CONTEXT.md
-	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-	content, err := os.ReadFile(spawnContextPath)
-	if err != nil {
-		resp := SpawnContextAPIResponse{
-			WorkspacePath: workspacePath,
-			Error:         fmt.Sprintf("SPAWN_CONTEXT.md not found: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Extract metadata from content
-	metadata := extractSpawnMetadata(string(content))
-
-	resp := SpawnContextAPIResponse{
-		Content:       string(content),
-		WorkspacePath: workspacePath,
-		Metadata:      metadata,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-// extractSpawnMetadata parses SPAWN_CONTEXT.md to extract key spawn parameters.
-func extractSpawnMetadata(content string) SpawnMetadata {
-	metadata := SpawnMetadata{}
-
-	for _, line := range strings.Split(content, "\n") {
-		lineTrimmed := strings.TrimSpace(line)
-
-		// Extract TASK: line (first line usually)
-		if strings.HasPrefix(lineTrimmed, "TASK:") {
-			metadata.Task = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "TASK:"))
-		}
-
-		// Extract PROJECT_DIR:
-		if strings.HasPrefix(lineTrimmed, "PROJECT_DIR:") {
-			metadata.ProjectDir = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "PROJECT_DIR:"))
-		}
-
-		// Extract SPAWN TIER:
-		if strings.HasPrefix(lineTrimmed, "SPAWN TIER:") {
-			metadata.SpawnTier = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "SPAWN TIER:"))
-		}
-
-		// Extract SESSION SCOPE:
-		if strings.HasPrefix(lineTrimmed, "SESSION SCOPE:") {
-			metadata.SessionScope = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "SESSION SCOPE:"))
-		}
-
-		// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
-		if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
-			if idx := strings.Index(line, "**"); idx != -1 {
-				rest := line[idx+2:]
-				if endIdx := strings.Index(rest, "**"); endIdx != -1 {
-					metadata.BeadsID = rest[:endIdx]
-				}
-			}
-		} else if metadata.BeadsID == "" && strings.HasPrefix(lineTrimmed, "bd comment ") {
-			// Pattern: "bd comment orch-go-xxxx ..."
-			// Skip template placeholders like "<beads-id>"
-			parts := strings.Fields(lineTrimmed)
-			if len(parts) >= 3 && !strings.Contains(parts[2], "<") {
-				metadata.BeadsID = parts[2]
-			}
-		}
-
-		// Extract skill from "## SKILL GUIDANCE (xxx)" line
-		if strings.HasPrefix(lineTrimmed, "## SKILL GUIDANCE (") {
-			start := strings.Index(lineTrimmed, "(")
-			end := strings.Index(lineTrimmed, ")")
-			if start != -1 && end != -1 && end > start {
-				metadata.Skill = lineTrimmed[start+1 : end]
-			}
-		}
-	}
-
-	return metadata
 }

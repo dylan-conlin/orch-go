@@ -315,7 +315,7 @@ func TestServeStatusWithMockServer(t *testing.T) {
 	defer server.Close()
 
 	// Parse the port from the test server URL
-	// The URL is in format http://127.0.0.1:PORT (httptest.Server always uses 127.0.0.1)
+	// The URL is in format http://127.0.0.1:PORT
 	var testPort int
 	_, err := fmt.Sscanf(server.URL, "http://127.0.0.1:%d", &testPort)
 	if err != nil {
@@ -1010,123 +1010,6 @@ func TestHandleErrorsWithTestData(t *testing.T) {
 		skill := extractSkillFromAgentID("og-feat-test-26dec")
 		if skill != "feature-impl" {
 			t.Errorf("Expected feature-impl, got %s", skill)
-		}
-	})
-}
-
-// TestIsUntrackedBeadsIDServe tests the untracked beads ID detection function.
-func TestIsUntrackedBeadsIDServe(t *testing.T) {
-	tests := []struct {
-		name    string
-		beadsID string
-		want    bool
-	}{
-		{"standard tracked ID", "orch-go-abc123", false},
-		{"tracked ID with suffix", "orch-go-feat-add-feature-19dec", false},
-		{"untracked ID", "orch-go-untracked-1766695797", true},
-		{"untracked ID other project", "kb-cli-untracked-1766695797", true},
-		{"empty ID", "", false},
-		{"project-untracked-pattern", "snap-untracked-1234567890", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isUntrackedBeadsIDServe(tt.beadsID)
-			if got != tt.want {
-				t.Errorf("isUntrackedBeadsIDServe(%q) = %v, want %v", tt.beadsID, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestReadWorkspacePhase tests the workspace phase file reading function.
-func TestReadWorkspacePhase(t *testing.T) {
-	t.Run("returns empty for non-existent path", func(t *testing.T) {
-		phase := readWorkspacePhase("/nonexistent/path")
-		if phase != "" {
-			t.Errorf("Expected empty string for non-existent path, got %q", phase)
-		}
-	})
-
-	t.Run("returns empty for empty path", func(t *testing.T) {
-		phase := readWorkspacePhase("")
-		if phase != "" {
-			t.Errorf("Expected empty string for empty path, got %q", phase)
-		}
-	})
-
-	t.Run("reads phase from .phase file", func(t *testing.T) {
-		// Create temp workspace
-		tmpDir := t.TempDir()
-		phasePath := filepath.Join(tmpDir, ".phase")
-
-		// Write phase file
-		if err := os.WriteFile(phasePath, []byte("Implementing\n"), 0644); err != nil {
-			t.Fatalf("Failed to write phase file: %v", err)
-		}
-
-		phase := readWorkspacePhase(tmpDir)
-		if phase != "Implementing" {
-			t.Errorf("Expected 'Implementing', got %q", phase)
-		}
-	})
-
-	t.Run("trims whitespace from phase", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		phasePath := filepath.Join(tmpDir, ".phase")
-
-		if err := os.WriteFile(phasePath, []byte("  Planning  \n\n"), 0644); err != nil {
-			t.Fatalf("Failed to write phase file: %v", err)
-		}
-
-		phase := readWorkspacePhase(tmpDir)
-		if phase != "Planning" {
-			t.Errorf("Expected 'Planning', got %q", phase)
-		}
-	})
-}
-
-// TestCheckWorkspaceSynthesis tests the synthesis file detection function.
-func TestCheckWorkspaceSynthesisFunction(t *testing.T) {
-	t.Run("returns false for non-existent path", func(t *testing.T) {
-		result := checkWorkspaceSynthesis("/nonexistent/path")
-		if result {
-			t.Error("Expected false for non-existent path")
-		}
-	})
-
-	t.Run("returns false for empty path", func(t *testing.T) {
-		result := checkWorkspaceSynthesis("")
-		if result {
-			t.Error("Expected false for empty path")
-		}
-	})
-
-	t.Run("returns true when SYNTHESIS.md exists and is non-empty", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		if err := os.WriteFile(synthesisPath, []byte("# Synthesis\n\nContent here"), 0644); err != nil {
-			t.Fatalf("Failed to write synthesis file: %v", err)
-		}
-
-		result := checkWorkspaceSynthesis(tmpDir)
-		if !result {
-			t.Error("Expected true when SYNTHESIS.md exists and is non-empty")
-		}
-	})
-
-	t.Run("returns false when SYNTHESIS.md is empty", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
-
-		if err := os.WriteFile(synthesisPath, []byte(""), 0644); err != nil {
-			t.Fatalf("Failed to write empty synthesis file: %v", err)
-		}
-
-		result := checkWorkspaceSynthesis(tmpDir)
-		if result {
-			t.Error("Expected false when SYNTHESIS.md is empty")
 		}
 	})
 }

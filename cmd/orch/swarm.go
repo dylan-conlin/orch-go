@@ -289,7 +289,7 @@ func printSwarmDryRun(issues []daemon.Issue) error {
 	fmt.Printf("[DRY-RUN] Would spawn %d agents:\n\n", len(issues))
 
 	for i, issue := range issues {
-		skill, err := daemon.InferSkillFromIssue(&issue)
+		skill, err := daemon.InferSkill(issue.IssueType)
 		if err != nil {
 			skill = "unknown"
 		}
@@ -490,8 +490,8 @@ func spawnSwarmAgent(issue daemon.Issue) SwarmResult {
 		Title:   issue.Title,
 	}
 
-	// Infer skill from issue (labels, title pattern, then type)
-	skill, err := daemon.InferSkillFromIssue(&issue)
+	// Infer skill from issue type
+	skill, err := daemon.InferSkill(issue.IssueType)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to infer skill: %w", err)
 		return result

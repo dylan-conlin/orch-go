@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/port"
-	"github.com/dylan-conlin/orch-go/pkg/servers"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
@@ -20,65 +18,20 @@ var serversCmd = &cobra.Command{
 	Long: `Centralized server management across projects.
 	
 Commands:
-  init     Scan project and generate .orch/servers.yaml
-  up       Start servers via launchd/Docker (from servers.yaml)
-  down     Stop servers via launchd/Docker
   list     Show all projects with port allocations and running status
-  start    Start servers via tmuxinator (legacy)
-  stop     Stop servers session (legacy)
+  start    Start servers via tmuxinator
+  stop     Stop servers session
   attach   Attach to servers window
   open     Open servers in browser
-  status   Show server status
+  status   Show summary view
 
 Examples:
-  orch servers init myproject        # Scan and generate servers.yaml
-  orch servers up myproject          # Start servers via launchd/Docker
-  orch servers down myproject        # Stop servers
-  orch servers list                  # Show all projects
-  orch servers status                # Show summary
-  orch servers status myproject      # Show per-server status`,
-}
-
-var serversUpCmd = &cobra.Command{
-	Use:   "up <project>",
-	Short: "Start servers via launchd/Docker",
-	Long: `Start all servers for a project using launchd (for native processes)
-or Docker (for containers).
-
-Reads server definitions from .orch/servers.yaml and starts each server
-based on its type:
-  - command: Uses launchd with generated plist files
-  - docker:  Starts Docker containers with restart policy
-  - launchd: Uses existing launchd service
-
-Examples:
-  orch servers up myproject
-  orch servers up myproject --project-dir /path/to/project`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir, _ := cmd.Flags().GetString("project-dir")
-		return runServersUp(args[0], projectDir)
-	},
-}
-
-var serversDownCmd = &cobra.Command{
-	Use:   "down <project>",
-	Short: "Stop servers via launchd/Docker",
-	Long: `Stop all servers for a project.
-
-Stops servers based on their type:
-  - command: Uses launchctl bootout
-  - docker:  Uses docker stop
-  - launchd: Uses launchctl kill
-
-Examples:
-  orch servers down myproject
-  orch servers down myproject --project-dir /path/to/project`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir, _ := cmd.Flags().GetString("project-dir")
-		return runServersDown(args[0], projectDir)
-	},
+  orch servers list                 # Show all projects
+  orch servers start myproject      # Start servers via tmuxinator
+  orch servers stop myproject       # Stop servers session
+  orch servers attach myproject     # Attach to servers window
+  orch servers open myproject       # Open in browser
+  orch servers status               # Show summary`,
 }
 
 var serversListCmd = &cobra.Command{
@@ -98,13 +51,11 @@ Examples:
 
 var serversStartCmd = &cobra.Command{
 	Use:   "start [project]",
-	Short: "Start servers via tmuxinator (legacy)",
+	Short: "Start servers via tmuxinator",
 	Long: `Start development servers for a project using tmuxinator.
 
 This runs 'tmuxinator start workers-{project}' which creates a tmux
 session with the servers window.
-
-Note: Consider using 'orch servers up' for launchd-based server management.
 
 Examples:
   orch servers start myproject`,
@@ -116,12 +67,10 @@ Examples:
 
 var serversStopCmd = &cobra.Command{
 	Use:   "stop [project]",
-	Short: "Stop servers for a project (legacy)",
+	Short: "Stop servers for a project",
 	Long: `Stop the servers tmux session for a project.
 
 This kills the workers-{project} tmux session.
-
-Note: Consider using 'orch servers down' for launchd-based server management.
 
 Examples:
   orch servers stop myproject`,
@@ -162,126 +111,27 @@ Examples:
 }
 
 var serversStatusCmd = &cobra.Command{
-	Use:   "status [project]",
-	Short: "Show servers status",
-	Long: `Show server status.
+	Use:   "status",
+	Short: "Show servers status summary",
+	Long: `Show a summary of server status across all projects.
 
-Without a project argument, shows a summary of all projects.
-With a project argument, shows per-server status from servers.yaml.
-
-Examples:
-  orch servers status               # Summary view
-  orch servers status myproject     # Per-server status`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir, _ := cmd.Flags().GetString("project-dir")
-		if len(args) == 0 {
-			return runServersStatus("")
-		}
-		return runServersStatusProject(args[0], projectDir)
-	},
-}
-
-var serversGenPlistCmd = &cobra.Command{
-	Use:   "gen-plist <project>",
-	Short: "Generate launchd plist files from servers.yaml",
-	Long: `Generate launchd plist files for a project's servers.
-
-Reads servers from .orch/servers.yaml and generates launchd plist files
-at ~/Library/LaunchAgents/com.<project>.<server>.plist.
-
-Only generates plists for servers with type: command.
-
-Options:
-  --path          Override PATH environment variable
-  --keep-alive    Keep service running (restart on failure)
-  --run-at-load   Start service at login
-  --dry-run       Print plists without writing files
-  --project-dir   Project directory (default: current directory)
+Displays counts of running, allocated, and stopped servers.
 
 Examples:
-  orch servers gen-plist myproject
-  orch servers gen-plist myproject --dry-run
-  orch servers gen-plist myproject --keep-alive --run-at-load`,
-	Args: cobra.ExactArgs(1),
+  orch servers status`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir, _ := cmd.Flags().GetString("project-dir")
-		pathEnv, _ := cmd.Flags().GetString("path")
-		keepAlive, _ := cmd.Flags().GetBool("keep-alive")
-		runAtLoad, _ := cmd.Flags().GetBool("run-at-load")
-		dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-		return runServersGenPlist(args[0], projectDir, pathEnv, keepAlive, runAtLoad, dryRun)
-	},
-}
-
-var serversInitCmd = &cobra.Command{
-	Use:   "init <project>",
-	Short: "Scan project and generate .orch/servers.yaml",
-	Long: `Scan a project directory and generate .orch/servers.yaml with inferred server types.
-
-Detection rules:
-  - docker-compose.yml, docker-compose.yaml, compose.yml, compose.yaml
-    -> docker type servers
-  - package.json with "dev" script
-    -> command type (npm/bun/pnpm/yarn run dev)
-  - go.mod with main.go
-    -> command type (go run .)
-  - web/, frontend/, client/, api/, backend/, server/ subdirectories
-    -> scanned for the above patterns
-
-Options:
-  --project-dir     Project directory (default: current directory)
-  --dry-run         Print detected servers without writing files
-  --gen-plist       Also generate launchd plist files
-  --force           Overwrite existing servers.yaml
-
-Examples:
-  orch servers init myproject
-  orch servers init myproject --project-dir /path/to/project
-  orch servers init myproject --dry-run
-  orch servers init myproject --gen-plist`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		projectDir, _ := cmd.Flags().GetString("project-dir")
-		dryRun, _ := cmd.Flags().GetBool("dry-run")
-		genPlist, _ := cmd.Flags().GetBool("gen-plist")
-		force, _ := cmd.Flags().GetBool("force")
-
-		return runServersInit(args[0], projectDir, dryRun, genPlist, force)
+		return runServersStatus("")
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(serversCmd)
-	serversCmd.AddCommand(serversInitCmd)
-	serversCmd.AddCommand(serversUpCmd)
-	serversCmd.AddCommand(serversDownCmd)
 	serversCmd.AddCommand(serversListCmd)
 	serversCmd.AddCommand(serversStartCmd)
 	serversCmd.AddCommand(serversStopCmd)
 	serversCmd.AddCommand(serversAttachCmd)
 	serversCmd.AddCommand(serversOpenCmd)
 	serversCmd.AddCommand(serversStatusCmd)
-	serversCmd.AddCommand(serversGenPlistCmd)
-
-	// init flags
-	serversInitCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
-	serversInitCmd.Flags().Bool("dry-run", false, "Print detected servers without writing files")
-	serversInitCmd.Flags().Bool("gen-plist", false, "Also generate launchd plist files")
-	serversInitCmd.Flags().Bool("force", false, "Overwrite existing servers.yaml")
-
-	// up/down flags
-	serversUpCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
-	serversDownCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
-	serversStatusCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
-
-	// gen-plist flags
-	serversGenPlistCmd.Flags().String("project-dir", "", "Project directory (default: current directory)")
-	serversGenPlistCmd.Flags().String("path", "", "Override PATH environment variable")
-	serversGenPlistCmd.Flags().Bool("keep-alive", true, "Keep service running (restart on failure)")
-	serversGenPlistCmd.Flags().Bool("run-at-load", false, "Start service at login")
-	serversGenPlistCmd.Flags().Bool("dry-run", false, "Print plists without writing files")
 }
 
 // ProjectServerInfo holds information about a project's servers.
@@ -567,370 +417,6 @@ func runServersStatus(registryPath string) error {
 	fmt.Printf("Stopped:          %d\n", stoppedCount)
 	fmt.Println()
 	fmt.Println("Use 'orch servers list' for detailed view")
-
-	return nil
-}
-
-// runServersUp starts all servers for a project using launchd/Docker.
-func runServersUp(project, projectDir string) error {
-	// Default to current directory if not specified
-	if projectDir == "" {
-		var err error
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Convert to absolute path
-	absProjectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
-
-	// Ensure log directory exists
-	if err := servers.EnsureLogDir(absProjectDir); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
-	}
-
-	fmt.Printf("Starting servers for %s...\n", project)
-	fmt.Println()
-
-	results, err := servers.Up(project, absProjectDir)
-	if err != nil {
-		return err
-	}
-
-	// Print results
-	hasError := false
-	for _, r := range results {
-		if r.Success {
-			fmt.Printf("  ✓ %s: %s\n", r.Server, r.Message)
-		} else {
-			fmt.Printf("  ✗ %s: %s\n", r.Server, r.Message)
-			hasError = true
-		}
-	}
-
-	fmt.Println()
-	if hasError {
-		fmt.Println("Some servers failed to start")
-		return fmt.Errorf("not all servers started successfully")
-	}
-
-	fmt.Printf("All servers started for %s\n", project)
-	fmt.Printf("Check status: orch servers status %s\n", project)
-	return nil
-}
-
-// runServersDown stops all servers for a project.
-func runServersDown(project, projectDir string) error {
-	// Default to current directory if not specified
-	if projectDir == "" {
-		var err error
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Convert to absolute path
-	absProjectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
-
-	fmt.Printf("Stopping servers for %s...\n", project)
-	fmt.Println()
-
-	results, err := servers.Down(project, absProjectDir)
-	if err != nil {
-		return err
-	}
-
-	// Print results
-	hasError := false
-	for _, r := range results {
-		if r.Success {
-			fmt.Printf("  ✓ %s: %s\n", r.Server, r.Message)
-		} else {
-			fmt.Printf("  ✗ %s: %s\n", r.Server, r.Message)
-			hasError = true
-		}
-	}
-
-	fmt.Println()
-	if hasError {
-		fmt.Println("Some servers failed to stop")
-		return fmt.Errorf("not all servers stopped successfully")
-	}
-
-	fmt.Printf("All servers stopped for %s\n", project)
-	return nil
-}
-
-// runServersStatusProject shows per-server status for a project.
-func runServersStatusProject(project, projectDir string) error {
-	// Default to current directory if not specified
-	if projectDir == "" {
-		var err error
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Convert to absolute path
-	absProjectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
-
-	states, err := servers.Status(project, absProjectDir)
-	if err != nil {
-		return err
-	}
-
-	if len(states) == 0 {
-		fmt.Printf("No servers defined in %s\n", servers.DefaultPath(absProjectDir))
-		return nil
-	}
-
-	fmt.Printf("Servers Status: %s\n", project)
-	fmt.Printf("%s\n", strings.Repeat("-", 60))
-	fmt.Printf("%-15s %-10s %-8s %-10s %s\n", "NAME", "TYPE", "PORT", "STATUS", "INFO")
-	fmt.Printf("%s\n", strings.Repeat("-", 60))
-
-	runningCount := 0
-	for _, s := range states {
-		statusIcon := "○"
-		if s.Status == servers.StatusRunning {
-			statusIcon = "●"
-			runningCount++
-		} else if s.Status == servers.StatusError {
-			statusIcon = "✗"
-		}
-
-		fmt.Printf("%-15s %-10s %-8d %s %-8s %s\n",
-			s.Name,
-			s.Type,
-			s.Port,
-			statusIcon,
-			s.Status,
-			s.Message,
-		)
-	}
-
-	fmt.Println()
-	fmt.Printf("Running: %d/%d\n", runningCount, len(states))
-
-	return nil
-}
-
-// runServersGenPlist generates launchd plist files for a project's servers.
-func runServersGenPlist(project, projectDir, pathEnv string, keepAlive, runAtLoad, dryRun bool) error {
-	// Default to current directory if not specified
-	if projectDir == "" {
-		var err error
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Convert to absolute path
-	absProjectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
-
-	// Load servers.yaml
-	cfg, err := servers.Load(absProjectDir)
-	if err != nil {
-		return fmt.Errorf("failed to load servers.yaml: %w", err)
-	}
-
-	if len(cfg.Servers) == 0 {
-		return fmt.Errorf("no servers found in %s", servers.DefaultPath(absProjectDir))
-	}
-
-	// Build options
-	opts := servers.DefaultPlistOptions()
-	if pathEnv != "" {
-		opts.Path = pathEnv
-	}
-	opts.KeepAlive = keepAlive
-	opts.RunAtLoad = runAtLoad
-
-	// Filter to command-type servers only
-	var commandServers []servers.Server
-	for _, s := range cfg.Servers {
-		if s.Type == servers.TypeCommand {
-			commandServers = append(commandServers, s)
-		}
-	}
-
-	if len(commandServers) == 0 {
-		return fmt.Errorf("no command-type servers found in servers.yaml")
-	}
-
-	// Generate plists
-	for _, s := range commandServers {
-		plistCfg := servers.ServerToPlistConfig(project, s, absProjectDir, opts)
-		content := servers.GeneratePlist(plistCfg)
-
-		if dryRun {
-			plistPath, _ := servers.PlistPath(project, s.Name)
-			fmt.Printf("=== %s ===\n", plistPath)
-			fmt.Println(content)
-		} else {
-			if err := servers.WritePlist(project, s.Name, content); err != nil {
-				return fmt.Errorf("failed to write plist for %s: %w", s.Name, err)
-			}
-			plistPath, _ := servers.PlistPath(project, s.Name)
-			fmt.Printf("Generated: %s\n", plistPath)
-		}
-	}
-
-	if !dryRun {
-		fmt.Println()
-		fmt.Println("To load services:")
-		for _, s := range commandServers {
-			plistPath, _ := servers.PlistPath(project, s.Name)
-			fmt.Printf("  launchctl load %s\n", plistPath)
-		}
-		fmt.Println()
-		fmt.Println("To unload services:")
-		for _, s := range commandServers {
-			plistPath, _ := servers.PlistPath(project, s.Name)
-			fmt.Printf("  launchctl unload %s\n", plistPath)
-		}
-	}
-
-	return nil
-}
-
-// runServersInit scans a project directory and generates .orch/servers.yaml.
-func runServersInit(project, projectDir string, dryRun, genPlist, force bool) error {
-	// Default to current directory if not specified
-	if projectDir == "" {
-		var err error
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-	}
-
-	// Convert to absolute path
-	absProjectDir, err := filepath.Abs(projectDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve project directory: %w", err)
-	}
-
-	// Check if servers.yaml already exists
-	configPath := servers.DefaultPath(absProjectDir)
-	if _, err := os.Stat(configPath); err == nil && !force {
-		return fmt.Errorf("servers.yaml already exists at %s\nUse --force to overwrite", configPath)
-	}
-
-	fmt.Printf("Scanning %s for servers...\n", absProjectDir)
-	fmt.Println()
-
-	// Detect servers
-	result, err := servers.Detect(absProjectDir)
-	if err != nil {
-		return fmt.Errorf("detection failed: %w", err)
-	}
-
-	// Print warnings
-	for _, warning := range result.Warnings {
-		fmt.Printf("  [!] %s\n", warning)
-	}
-
-	// Deduplicate by name (keep first occurrence)
-	result.DeduplicateByName()
-
-	if len(result.Servers) == 0 {
-		fmt.Println("No servers detected.")
-		fmt.Println()
-		fmt.Println("Detection looks for:")
-		fmt.Println("  - docker-compose.yml (docker type)")
-		fmt.Println("  - package.json with 'dev' script (command type)")
-		fmt.Println("  - go.mod with main.go (command type)")
-		return nil
-	}
-
-	// Print detected servers
-	fmt.Printf("Detected %d server(s):\n", len(result.Servers))
-	fmt.Println()
-	fmt.Printf("  %-12s %-10s %-8s %s\n", "NAME", "TYPE", "PORT", "SOURCE")
-	fmt.Printf("  %s\n", strings.Repeat("-", 50))
-
-	for _, s := range result.Servers {
-		workdirInfo := ""
-		if s.Workdir != "" && s.Workdir != "." {
-			workdirInfo = fmt.Sprintf(" (workdir: %s)", s.Workdir)
-		}
-		fmt.Printf("  %-12s %-10s %-8d %s%s\n", s.Name, s.Type, s.Port, s.Source, workdirInfo)
-	}
-	fmt.Println()
-
-	if dryRun {
-		fmt.Println("Dry run - no files written")
-		fmt.Println()
-		fmt.Println("Would write to:", configPath)
-		return nil
-	}
-
-	// Convert to config and save
-	cfg := result.ToConfig()
-
-	if err := servers.Save(absProjectDir, cfg); err != nil {
-		return fmt.Errorf("failed to save servers.yaml: %w", err)
-	}
-
-	fmt.Printf("Generated: %s\n", configPath)
-
-	// Generate plists if requested
-	if genPlist {
-		fmt.Println()
-		fmt.Println("Generating launchd plist files...")
-
-		opts := servers.DefaultPlistOptions()
-		opts.KeepAlive = true
-		opts.RunAtLoad = false
-
-		commandCount := 0
-		for _, s := range cfg.Servers {
-			if s.Type != servers.TypeCommand {
-				continue
-			}
-
-			plistCfg := servers.ServerToPlistConfig(project, s, absProjectDir, opts)
-			content := servers.GeneratePlist(plistCfg)
-
-			if err := servers.WritePlist(project, s.Name, content); err != nil {
-				fmt.Printf("  [!] Failed to write plist for %s: %v\n", s.Name, err)
-				continue
-			}
-
-			plistPath, _ := servers.PlistPath(project, s.Name)
-			fmt.Printf("  Generated: %s\n", plistPath)
-			commandCount++
-		}
-
-		if commandCount > 0 {
-			fmt.Println()
-			fmt.Println("Start servers with:")
-			fmt.Printf("  orch servers up %s\n", project)
-		}
-	} else {
-		fmt.Println()
-		fmt.Println("Next steps:")
-		fmt.Printf("  1. Review: %s\n", configPath)
-		fmt.Printf("  2. Generate plists: orch servers gen-plist %s\n", project)
-		fmt.Printf("  3. Start servers: orch servers up %s\n", project)
-	}
 
 	return nil
 }

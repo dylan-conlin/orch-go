@@ -82,19 +82,19 @@ func TestGapTrackerRecordResolution(t *testing.T) {
 		},
 	}
 
-	tracker.RecordResolution("test query", "added_knowledge", "kb quick decide added")
+	tracker.RecordResolution("test query", "added_knowledge", "kn decide added")
 
 	// Should update ALL matching events, not just the most recent
 	if tracker.Events[0].Resolution != "added_knowledge" {
 		t.Errorf("expected older event resolution 'added_knowledge', got %q", tracker.Events[0].Resolution)
 	}
-	if tracker.Events[0].ResolutionDetails != "kb quick decide added" {
+	if tracker.Events[0].ResolutionDetails != "kn decide added" {
 		t.Errorf("expected older event resolution details, got %q", tracker.Events[0].ResolutionDetails)
 	}
 	if tracker.Events[1].Resolution != "added_knowledge" {
 		t.Errorf("expected newer event resolution 'added_knowledge', got %q", tracker.Events[1].Resolution)
 	}
-	if tracker.Events[1].ResolutionDetails != "kb quick decide added" {
+	if tracker.Events[1].ResolutionDetails != "kn decide added" {
 		t.Errorf("expected newer event resolution details, got %q", tracker.Events[1].ResolutionDetails)
 	}
 	// Different query event should be unchanged
@@ -212,7 +212,7 @@ func TestGapTrackerRecordResolutionRemovesFromSuggestions(t *testing.T) {
 	}
 
 	// Resolve the gap
-	tracker.RecordResolution("test gap", "added_knowledge", "kb quick entry added")
+	tracker.RecordResolution("test gap", "added_knowledge", "kn entry added")
 
 	// Verify gap no longer appears in suggestions
 	suggestions = tracker.FindRecurringGaps()
@@ -535,7 +535,7 @@ func TestFormatSuggestions(t *testing.T) {
 			Query:      "authentication",
 			Count:      5,
 			Suggestion: "Add foundational knowledge",
-			Command:    `kb quick decide "auth" --reason "TODO"`,
+			Command:    `kn decide "auth" --reason "TODO"`,
 		},
 	}
 
@@ -620,23 +620,23 @@ func TestParseShellCommand(t *testing.T) {
 		},
 		{
 			name:     "double_quoted_string",
-			input:    `kb quick decide "auth" --reason "test reason"`,
-			expected: []string{"kb", "quick", "decide", "auth", "--reason", "test reason"},
+			input:    `kn decide "auth" --reason "test reason"`,
+			expected: []string{"kn", "decide", "auth", "--reason", "test reason"},
 		},
 		{
 			name:     "single_quoted_string",
-			input:    `kb quick decide 'auth config' --reason 'test reason'`,
-			expected: []string{"kb", "quick", "decide", "auth config", "--reason", "test reason"},
+			input:    `kn decide 'auth config' --reason 'test reason'`,
+			expected: []string{"kn", "decide", "auth config", "--reason", "test reason"},
 		},
 		{
 			name:     "mixed_quotes",
-			input:    `kb quick decide "auth" --reason 'test reason with "quotes"'`,
-			expected: []string{"kb", "quick", "decide", "auth", "--reason", `test reason with "quotes"`},
+			input:    `kn decide "auth" --reason 'test reason with "quotes"'`,
+			expected: []string{"kn", "decide", "auth", "--reason", `test reason with "quotes"`},
 		},
 		{
 			name:     "complex_reason_with_colons",
-			input:    `kb quick decide "auth" --reason "Used by: investigation, feature-impl. Occurred 5 times"`,
-			expected: []string{"kb", "quick", "decide", "auth", "--reason", "Used by: investigation, feature-impl. Occurred 5 times"},
+			input:    `kn decide "auth" --reason "Used by: investigation, feature-impl. Occurred 5 times"`,
+			expected: []string{"kn", "decide", "auth", "--reason", "Used by: investigation, feature-impl. Occurred 5 times"},
 		},
 		{
 			name:     "bd_create_command",
@@ -720,18 +720,18 @@ func TestValidateCommand(t *testing.T) {
 	}{
 		// Valid commands
 		{
-			name:    "valid_kb_quick_decide",
-			input:   `kb quick decide "auth" --reason "This is a valid reason with 20+ characters"`,
+			name:    "valid_kn_decide",
+			input:   `kn decide "auth" --reason "This is a valid reason with 20+ characters"`,
 			wantErr: false,
 		},
 		{
-			name:    "valid_kb_quick_constrain",
-			input:   `kb quick constrain "no magic numbers" --reason "Code quality requires consistent style"`,
+			name:    "valid_kn_constrain",
+			input:   `kn constrain "no magic numbers" --reason "Code quality requires consistent style"`,
 			wantErr: false,
 		},
 		{
-			name:    "valid_kb_quick_question",
-			input:   `kb quick question "should we use JWT?"`,
+			name:    "valid_kn_question",
+			input:   `kn question "should we use JWT?"`,
 			wantErr: false,
 		},
 		{
@@ -757,23 +757,18 @@ func TestValidateCommand(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "kb_no_subcommand",
-			input:   "kb",
+			name:    "kn_no_subcommand",
+			input:   "kn",
 			wantErr: true,
 		},
 		{
-			name:    "kb_quick_no_action",
-			input:   "kb quick",
+			name:    "kn_decide_no_description",
+			input:   "kn decide",
 			wantErr: true,
 		},
 		{
-			name:    "kb_quick_decide_no_description",
-			input:   "kb quick decide",
-			wantErr: true,
-		},
-		{
-			name:    "kb_quick_decide_reason_no_value",
-			input:   `kb quick decide "test" --reason`,
+			name:    "kn_decide_reason_no_value",
+			input:   `kn decide "test" --reason`,
 			wantErr: true,
 		},
 		{
@@ -808,17 +803,17 @@ func TestValidateCommand(t *testing.T) {
 		},
 		{
 			name:    "unterminated_quote",
-			input:   `kb quick decide "test`,
+			input:   `kn decide "test`,
 			wantErr: true,
 		},
 		{
-			name:    "kb_quick_reason_too_short",
-			input:   `kb quick decide "auth" --reason "short"`,
+			name:    "kn_reason_too_short",
+			input:   `kn decide "auth" --reason "short"`,
 			wantErr: true,
 		},
 		{
-			name:    "kb_quick_reason_exactly_20_chars",
-			input:   `kb quick decide "auth" --reason "exactly twenty chars"`,
+			name:    "kn_reason_exactly_20_chars",
+			input:   `kn decide "auth" --reason "exactly twenty chars"`,
 			wantErr: false,
 		},
 	}

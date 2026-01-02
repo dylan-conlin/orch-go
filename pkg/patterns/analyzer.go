@@ -4,7 +4,6 @@
 package patterns
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -136,7 +135,7 @@ func defaultLogPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(homeDir, ".orch", "action-log.jsonl")
+	return filepath.Join(homeDir, ".orch", "action-log.json")
 }
 
 // LogPath returns the path for the action log file.
@@ -146,45 +145,29 @@ func LogPath() string {
 
 // LoadLog loads the action log from disk.
 // Returns an empty log if file doesn't exist.
-// The file is in JSONL format (one JSON object per line).
 func LoadLog() (*ActionLog, error) {
 	path := LogPath()
 	if path == "" {
 		return &ActionLog{Events: []ActionEvent{}}, nil
 	}
 
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &ActionLog{Events: []ActionEvent{}}, nil
 		}
-		return nil, fmt.Errorf("failed to open action log: %w", err)
-	}
-	defer f.Close()
-
-	var events []ActionEvent
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		var event ActionEvent
-		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			continue // Skip malformed lines
-		}
-		events = append(events, event)
-	}
-
-	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to read action log: %w", err)
 	}
 
-	return &ActionLog{Events: events}, nil
+	var log ActionLog
+	if err := json.Unmarshal(data, &log); err != nil {
+		return nil, fmt.Errorf("failed to parse action log: %w", err)
+	}
+
+	return &log, nil
 }
 
-// Save saves the action log to disk in JSONL format.
+// Save saves the action log to disk.
 func (l *ActionLog) Save() error {
 	path := LogPath()
 	if path == "" {
@@ -200,20 +183,13 @@ func (l *ActionLog) Save() error {
 	// Prune old events before saving
 	l.pruneOldEvents()
 
-	f, err := os.Create(path)
+	data, err := json.MarshalIndent(l, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to create log file: %w", err)
+		return fmt.Errorf("failed to marshal log: %w", err)
 	}
-	defer f.Close()
 
-	for _, event := range l.Events {
-		data, err := json.Marshal(event)
-		if err != nil {
-			continue // Skip malformed events
-		}
-		if _, err := f.Write(append(data, '\n')); err != nil {
-			return fmt.Errorf("failed to write event: %w", err)
-		}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write log: %w", err)
 	}
 
 	return nil
@@ -271,20 +247,13 @@ func (l *ActionLog) RecordAction(event ActionEvent) {
 // DetectPatterns analyzes the action log and returns detected behavioral patterns.
 // Only returns patterns that haven't been suppressed.
 func (l *ActionLog) DetectPatterns() []Pattern {
-	return l.DetectPatternsForProject("")
-}
-
-// DetectPatternsForProject analyzes the action log and returns detected behavioral patterns
-// filtered to a specific project directory. If projectDir is empty, returns all patterns.
-// This prevents cross-project noise in the dashboard when viewing a specific project.
-func (l *ActionLog) DetectPatternsForProject(projectDir string) []Pattern {
 	patterns := []Pattern{}
 
 	// Detect repeated empty reads
-	patterns = append(patterns, l.detectRepeatedEmptyReadsForProject(projectDir)...)
+	patterns = append(patterns, l.detectRepeatedEmptyReads()...)
 
 	// Detect repeated errors
-	patterns = append(patterns, l.detectRepeatedErrorsForProject(projectDir)...)
+	patterns = append(patterns, l.detectRepeatedErrors()...)
 
 	// Filter out suppressed patterns
 	patterns = l.filterSuppressedPatterns(patterns)
@@ -304,11 +273,6 @@ func (l *ActionLog) DetectPatternsForProject(projectDir string) []Pattern {
 // with empty results, especially when the workspace context indicates this was expected
 // to fail (e.g., SYNTHESIS.md in a light-tier workspace).
 func (l *ActionLog) detectRepeatedEmptyReads() []Pattern {
-	return l.detectRepeatedEmptyReadsForProject("")
-}
-
-// detectRepeatedEmptyReadsForProject finds repeated empty reads filtered by project directory.
-func (l *ActionLog) detectRepeatedEmptyReadsForProject(projectDir string) []Pattern {
 	// Group by normalized key: tool + normalized target
 	groups := make(map[string][]ActionEvent)
 	for _, e := range l.Events {
@@ -317,10 +281,6 @@ func (l *ActionLog) detectRepeatedEmptyReadsForProject(projectDir string) []Patt
 		}
 		// Only consider Read tool for now
 		if e.Tool != "Read" && e.Tool != "read" {
-			continue
-		}
-		// Filter by project directory if specified
-		if projectDir != "" && !eventMatchesProject(e, projectDir) {
 			continue
 		}
 		key := normalizeActionKey(e.Tool, e.Target)
@@ -370,19 +330,10 @@ func (l *ActionLog) detectRepeatedEmptyReadsForProject(projectDir string) []Patt
 
 // detectRepeatedErrors finds cases where the same action failed repeatedly with errors.
 func (l *ActionLog) detectRepeatedErrors() []Pattern {
-	return l.detectRepeatedErrorsForProject("")
-}
-
-// detectRepeatedErrorsForProject finds repeated errors filtered by project directory.
-func (l *ActionLog) detectRepeatedErrorsForProject(projectDir string) []Pattern {
 	// Group by tool + normalized target + error type
 	groups := make(map[string][]ActionEvent)
 	for _, e := range l.Events {
 		if e.Outcome != OutcomeError {
-			continue
-		}
-		// Filter by project directory if specified
-		if projectDir != "" && !eventMatchesProject(e, projectDir) {
 			continue
 		}
 		// Include error type in key for more specific patterns
@@ -417,23 +368,6 @@ func (l *ActionLog) detectRepeatedErrorsForProject(projectDir string) []Pattern 
 	}
 
 	return patterns
-}
-
-// eventMatchesProject checks if an event belongs to a specific project.
-// It matches by checking if the Target path or WorkspaceDir starts with the project directory.
-func eventMatchesProject(e ActionEvent, projectDir string) bool {
-	if projectDir == "" {
-		return true
-	}
-	// Check if target path is within project directory
-	if strings.HasPrefix(e.Target, projectDir) {
-		return true
-	}
-	// Check if workspace directory is within project directory
-	if e.WorkspaceDir != "" && strings.HasPrefix(e.WorkspaceDir, projectDir) {
-		return true
-	}
-	return false
 }
 
 // normalizeActionKey creates a normalized key for grouping similar actions.

@@ -677,7 +677,7 @@ func TestGapAnalysis_ToAPIResponse(t *testing.T) {
 				Type:        GapTypeNoConstraints,
 				Severity:    GapSeverityWarning,
 				Description: "No constraints found",
-				Suggestion:  "Add via kb quick constrain",
+				Suggestion:  "Add via kn constrain",
 			},
 		},
 	}

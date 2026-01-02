@@ -66,14 +66,6 @@ type ActionEvent struct {
 
 	// Context provides additional context about why the action was taken.
 	Context string `json:"context,omitempty"`
-
-	// IsOrchestrator indicates whether this action was performed by an orchestrator (true)
-	// or a worker agent (false). Detection is based on session title pattern and cwd.
-	IsOrchestrator bool `json:"is_orchestrator"`
-
-	// BeadsID is the beads issue ID associated with this action (for worker agents).
-	// Extracted from session title format: "workspace [beads-id]"
-	BeadsID string `json:"beads_id,omitempty"`
 }
 
 // ActionPattern represents a detected behavioral pattern.
@@ -109,142 +101,28 @@ func (e *ActionEvent) PatternKey() string {
 }
 
 // normalizeTarget normalizes a target for pattern grouping.
-// We keep targets mostly intact to avoid over-grouping unrelated actions.
-// Only normalize very long targets (truncate) and whitespace.
+// This helps group similar actions (e.g., different file paths with same suffix).
 func normalizeTarget(target string) string {
-	target = strings.TrimSpace(target)
-
-	// Truncate very long targets (e.g., long bash commands) for readability
-	// but keep enough to distinguish different commands
-	if len(target) > 80 {
-		return target[:77] + "..."
-	}
-
-	return target
-}
-
-// isExpectedEmpty returns true if the command is expected to produce no output.
-// These should not be flagged as "empty result" patterns.
-func isExpectedEmpty(tool, target string) bool {
-	if tool != "Bash" {
-		return false
-	}
-	target = strings.TrimSpace(target)
-
-	// Commands that are expected to produce no output
-	expectedEmptyPrefixes := []string{
-		"sleep ",
-		"wait",
-		"cd ",
-		"export ",
-		"unset ",
-		"true",
-		":",         // bash no-op
-		"mkdir -p ", // silent on success
-		"touch ",    // silent on success
-		"rm ",       // silent on success (unless -v)
-		"cp ",       // silent on success (unless -v)
-		"mv ",       // silent on success (unless -v)
-		"chmod ",    // silent on success
-		"chown ",    // silent on success
-	}
-
-	for _, prefix := range expectedEmptyPrefixes {
-		if strings.HasPrefix(target, prefix) {
-			return true
+	// For file paths, keep the basename and extension
+	if strings.Contains(target, "/") {
+		base := filepath.Base(target)
+		// Keep the file extension pattern
+		if ext := filepath.Ext(base); ext != "" {
+			return "*" + ext
 		}
+		return base
 	}
-
-	return false
-}
-
-// IsWorkerSession determines if a session is a worker based on its title.
-// Worker sessions have titles matching the pattern: "workspace [beads-id]"
-// e.g., "og-feat-xxx [orch-go-abc]"
-func IsWorkerSession(sessionTitle string) bool {
-	// Check if title contains '[' and ends with ']'
-	if sessionTitle == "" {
-		return false
-	}
-	bracketStart := strings.LastIndex(sessionTitle, "[")
-	bracketEnd := strings.LastIndex(sessionTitle, "]")
-	// Worker pattern: has '[' followed by ']' at the end
-	return bracketStart != -1 && bracketEnd != -1 && bracketEnd > bracketStart && bracketEnd == len(sessionTitle)-1
-}
-
-// IsWorkerWorkspace determines if a path is within a worker workspace.
-// Worker workspaces are located under .orch/workspace/
-func IsWorkerWorkspace(path string) bool {
-	if path == "" {
-		return false
-	}
-	return strings.Contains(path, ".orch/workspace/")
-}
-
-// ExtractBeadsIDFromTitle extracts the beads ID from a session title.
-// Session titles follow format: "workspace-name [beads-id]"
-// e.g., "og-feat-add-feature-24dec [orch-go-3anf]" -> "orch-go-3anf"
-func ExtractBeadsIDFromTitle(title string) string {
-	if title == "" {
-		return ""
-	}
-	// Look for "[beads-id]" pattern at the end
-	start := strings.LastIndex(title, "[")
-	end := strings.LastIndex(title, "]")
-	if start == -1 || end == -1 || end <= start {
-		return ""
-	}
-	return strings.TrimSpace(title[start+1 : end])
-}
-
-// DetectOrchestratorStatus determines if an event is from an orchestrator or worker.
-// It uses session title and workspace path to make the determination.
-// Returns (isOrchestrator, beadsID).
-//
-// Detection logic:
-// - Worker if: session title contains '[' and ends with ']' (e.g., 'og-feat-xxx [orch-go-abc]')
-// - Worker if: workspace contains '.orch/workspace/'
-// - Otherwise: orchestrator
-func DetectOrchestratorStatus(sessionTitle, workspace string) (isOrchestrator bool, beadsID string) {
-	// Check if it's a worker session by title pattern
-	if IsWorkerSession(sessionTitle) {
-		beadsID = ExtractBeadsIDFromTitle(sessionTitle)
-		return false, beadsID
-	}
-
-	// Check if it's a worker by workspace path
-	if IsWorkerWorkspace(workspace) {
-		// Try to extract beads ID from title even if pattern doesn't match perfectly
-		beadsID = ExtractBeadsIDFromTitle(sessionTitle)
-		return false, beadsID
-	}
-
-	// Default to orchestrator
-	return true, ""
+	// For other targets, normalize whitespace
+	return strings.TrimSpace(target)
 }
 
 // Logger handles action outcome logging to a JSONL file.
 type Logger struct {
 	Path string
-	// SessionTitle is the title of the current session, used for orchestrator/worker detection.
-	// If set, Log will automatically populate IsOrchestrator and BeadsID fields.
-	SessionTitle string
 }
 
 // LoggerPathFunc allows customizing the log path for testing.
 var loggerPathFunc = defaultLogPath
-
-// SetLoggerPathFunc sets the function used to determine the default log path.
-// This is primarily used for testing.
-func SetLoggerPathFunc(f func() string) {
-	loggerPathFunc = f
-}
-
-// GetLoggerPathFunc returns the current logger path function.
-// This is primarily used for testing to save and restore the original function.
-func GetLoggerPathFunc() func() string {
-	return loggerPathFunc
-}
 
 // defaultLogPath returns the default path for action-log.jsonl.
 func defaultLogPath() string {
@@ -265,52 +143,16 @@ func NewLogger(path string) *Logger {
 	return &Logger{Path: path}
 }
 
-// NewLoggerWithSession creates a new action logger with a custom path and session title.
-// The session title is used for automatic orchestrator/worker detection.
-func NewLoggerWithSession(path, sessionTitle string) *Logger {
-	return &Logger{Path: path, SessionTitle: sessionTitle}
-}
-
 // NewDefaultLogger creates a new action logger with the default path.
 func NewDefaultLogger() *Logger {
 	return &Logger{Path: DefaultLogPath()}
 }
 
-// NewDefaultLoggerWithSession creates a new action logger with the default path and session title.
-// The session title is used for automatic orchestrator/worker detection.
-func NewDefaultLoggerWithSession(sessionTitle string) *Logger {
-	return &Logger{Path: DefaultLogPath(), SessionTitle: sessionTitle}
-}
-
-// SetSessionTitle sets the session title for orchestrator/worker detection.
-func (l *Logger) SetSessionTitle(title string) {
-	l.SessionTitle = title
-}
-
 // Log appends an action event to the JSONL log file.
-// If the logger has a SessionTitle set, it will automatically populate
-// IsOrchestrator and BeadsID fields using DetectOrchestratorStatus.
 func (l *Logger) Log(event ActionEvent) error {
 	// Set timestamp if not provided
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now().UTC()
-	}
-
-	// Auto-detect orchestrator status if SessionTitle is available and fields aren't set
-	// We check if BeadsID is empty to avoid overwriting explicitly set values
-	if l.SessionTitle != "" && event.BeadsID == "" {
-		isOrch, beadsID := DetectOrchestratorStatus(l.SessionTitle, event.Workspace)
-		event.IsOrchestrator = isOrch
-		event.BeadsID = beadsID
-	} else if l.SessionTitle == "" && event.BeadsID == "" {
-		// No session title available - try to detect from workspace alone
-		// If workspace contains .orch/workspace/, it's a worker
-		if IsWorkerWorkspace(event.Workspace) {
-			event.IsOrchestrator = false
-		} else {
-			// Default to orchestrator when no information available
-			event.IsOrchestrator = true
-		}
 	}
 
 	// Ensure directory exists
@@ -439,10 +281,6 @@ func (t *Tracker) FindPatterns() []ActionPattern {
 		}
 		// Only track non-success outcomes (those are the "futile" actions)
 		if e.Outcome == OutcomeSuccess {
-			continue
-		}
-		// Skip expected-empty commands (sleep, cd, export, etc.)
-		if e.Outcome == OutcomeEmpty && isExpectedEmpty(e.Tool, e.Target) {
 			continue
 		}
 		key := e.PatternKey()
@@ -611,7 +449,7 @@ func FormatPatterns(patterns []ActionPattern) string {
 
 	sb.WriteString("╠══════════════════════════════════════════════════════════════════════════════╣\n")
 	sb.WriteString("║  These patterns may indicate knowledge gaps or system limitations            ║\n")
-	sb.WriteString("║  Consider: kb quick tried \"[action]\" --failed \"[why]\"                         ║\n")
+	sb.WriteString("║  Consider: kn tried \"[action]\" --failed \"[why]\"                              ║\n")
 	sb.WriteString("╚══════════════════════════════════════════════════════════════════════════════╝\n")
 
 	return sb.String()
@@ -625,16 +463,15 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// SuggestKnEntry returns a suggested kb quick command based on a pattern.
-// Note: Function name retained for compatibility, but now suggests kb quick commands.
+// SuggestKnEntry returns a suggested kn command based on a pattern.
 func (p *ActionPattern) SuggestKnEntry() string {
 	switch p.Outcome {
 	case OutcomeEmpty:
-		return fmt.Sprintf(`kb quick tried "%s on %s" --failed "Returns empty - target doesn't exist or has no content"`, p.Tool, p.Target)
+		return fmt.Sprintf(`kn tried "%s on %s" --failed "Returns empty - target doesn't exist or has no content"`, p.Tool, p.Target)
 	case OutcomeError:
-		return fmt.Sprintf(`kb quick tried "%s on %s" --failed "Action fails repeatedly - investigate cause"`, p.Tool, p.Target)
+		return fmt.Sprintf(`kn tried "%s on %s" --failed "Action fails repeatedly - investigate cause"`, p.Tool, p.Target)
 	case OutcomeFallback:
-		return fmt.Sprintf(`kb quick constrain "Avoid %s on %s" --reason "Requires fallback - prefer alternative approach"`, p.Tool, p.Target)
+		return fmt.Sprintf(`kn constrain "Avoid %s on %s" --reason "Requires fallback - prefer alternative approach"`, p.Tool, p.Target)
 	default:
 		return ""
 	}

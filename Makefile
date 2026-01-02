@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean clean-all test install install-restart fmt lint docs version
+.PHONY: all build clean test install install-restart fmt lint docs version
 
 # Default target
 all: build
@@ -32,17 +32,13 @@ test:
 	@echo "Running tests..."
 	go test -v ./...
 
-# Install to ~/bin (symlink to build output)
-# This makes `make build` automatically update the human-accessible CLI
+# Install to ~/bin
 install: build
-	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR) (symlink)..."
+	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
 	@mkdir -p $(INSTALL_DIR)
-	@# Codesign the build output (required for macOS)
-	@codesign --force --sign - $(CURDIR)/$(BUILD_DIR)/$(BINARY_NAME)
-	@# Remove existing file/symlink and create new symlink
-	@rm -f $(INSTALL_DIR)/$(BINARY_NAME)
-	@ln -sf $(CURDIR)/$(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
-	@echo "Linked $(INSTALL_DIR)/$(BINARY_NAME) → $(CURDIR)/$(BUILD_DIR)/$(BINARY_NAME)"
+	cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+	@codesign --force --sign - $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo "Installed to $(INSTALL_DIR)/$(BINARY_NAME)"
 	@echo ""
 	@echo "💡 The orch daemon may need restart to pick up the new binary:"
 	@echo "   launchctl kickstart -k gui/$$(id -u)/com.orch.daemon"
@@ -60,11 +56,6 @@ clean:
 	@echo "Cleaning..."
 	rm -rf $(BUILD_DIR)
 	go clean
-
-# Clean all artifacts including root-level executables
-clean-all: clean
-	@echo "Removing root-level executables..."
-	rm -f orch orch-go orch-new orch-test orch-test-serve test-orch-go *.test
 
 # Format code
 fmt:
@@ -101,10 +92,9 @@ help:
 	@echo "Available targets:"
 	@echo "  build           - Build the binary"
 	@echo "  test            - Run tests"
-	@echo "  install         - Install to ~/bin (symlink to build output)"
+	@echo "  install         - Install to ~/bin"
 	@echo "  install-restart - Install and restart daemon"
 	@echo "  clean           - Clean build artifacts"
-	@echo "  clean-all       - Clean all (including root executables)"
 	@echo "  fmt             - Format code"
 	@echo "  lint            - Run linter"
 	@echo "  vet             - Run go vet"
