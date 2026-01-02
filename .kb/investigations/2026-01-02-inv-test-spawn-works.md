@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** `orch spawn` successfully creates and executes agent sessions with all components working correctly.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Verified workspace creation, metadata files, beads tracking, skill embedding, and orch status visibility.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Spawn system is production-ready; minor note that `bd comment` is deprecated in favor of `bd comments add`.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - no action needed, spawn works.
 
 <!--
 Example D.E.K.N.:
@@ -38,9 +38,9 @@ Guidelines:
 **Started:** 2026-01-02
 **Updated:** 2026-01-02
 **Owner:** Investigation Agent
-**Phase:** Investigating
-**Next Step:** Verify this spawn executed correctly with all expected components
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -66,23 +66,80 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Workspace directory and metadata files created correctly
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- Workspace directory exists at `.orch/workspace/og-inv-test-spawn-works-02jan/`
+- Contains expected files:
+  - `.session_id`: `ses_47f1a692cffepue8XzNZAtIINP` (OpenCode session ID)
+  - `.spawn_time`: `1767394087280889000` (Unix nanoseconds)
+  - `.tier`: `full` (spawn tier determining synthesis requirements)
+  - `SPAWN_CONTEXT.md`: 18,648 bytes with full skill guidance
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+```bash
+ls -la .orch/workspace/og-inv-test-spawn-works-02jan/
+cat .orch/workspace/og-inv-test-spawn-works-02jan/.session_id
+```
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** All workspace metadata files present and correctly populated, enabling orch status tracking and completion workflow.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Beads tracking and bd/kb commands work
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- Beads issue `orch-go-hjz8` created with type `task`, status `open`, priority `P2`
+- Phase comments successfully added via `bd comments add`
+- Investigation path comment recorded: `investigation_path: /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-02-inv-test-spawn-works.md`
+- `kb create investigation` command successfully created investigation file
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+```bash
+bd show orch-go-hjz8  # Shows issue with 3 comments
+bd comments add orch-go-hjz8 "Phase: Planning..."  # Works (though deprecated warning)
+kb create investigation test-spawn-works  # Created file successfully
+```
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Beads integration fully functional - agents can report progress and the orchestrator can track via `bd show`.
+
+---
+
+### Finding 4: orch status shows agent correctly
+
+**Evidence:**
+- `./bin/orch status` output shows:
+  - Agent `orch-go-hjz8` with status `running`, phase `Investigating`
+  - Skill correctly identified as `investigation`
+  - Runtime and token counts tracked
+  - Active agents count: 3 (running: 2, idle: 1)
+
+**Source:**
+```bash
+./bin/orch status
+```
+
+**Significance:** Agent lifecycle tracking works - orchestrator can monitor spawned agents via orch status.
+
+---
+
+### Finding 5: SPAWN_CONTEXT.md contains skill guidance and prior knowledge
+
+**Evidence:**
+- SKILL GUIDANCE section present (1 occurrence)
+- Investigation skill mentioned 33 times throughout document
+- "## PRIOR KNOWLEDGE (from kb context)" section present with 2 related investigations:
+  - `2025-12-25-inv-xyztotallynonexistenttopic.md`
+  - `archived/2025-12-22-inv-test-spawn-works-after-phantom.md`
+
+**Source:**
+```bash
+grep "SKILL GUIDANCE" SPAWN_CONTEXT.md  # Found
+grep -c "investigation" SPAWN_CONTEXT.md  # 33 matches
+grep "PRIOR KNOWLEDGE" SPAWN_CONTEXT.md  # Found
+```
+
+**Significance:** `kb context` integration works - spawn prompts include related prior investigations to prevent duplicate work.
 
 ---
 
@@ -90,15 +147,23 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Spawn system fully functional** - All components work: workspace creation, metadata files, beads tracking, skill embedding, and prior knowledge injection.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Agent lifecycle tracking works** - orch status correctly shows running agents with phase, skill, runtime, and token counts.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Bidirectional communication established** - Agent can report via `bd comments add`, orchestrator can track via `bd show` and `orch status`.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Yes, `orch spawn` successfully creates and executes an agent session with proper workspace setup, beads tracking, and skill context.**
+
+Evidence:
+- Workspace at `.orch/workspace/og-inv-test-spawn-works-02jan/` contains all required metadata files (Finding 2)
+- Beads issue `orch-go-hjz8` created and accepts comments (Finding 3)
+- `kb create investigation` works from within agent session (Finding 3)
+- SPAWN_CONTEXT.md includes full skill guidance (Finding 5)
+- Prior knowledge from `kb context` embedded in spawn prompt (Finding 5)
+- `orch status` shows agent as running with correct skill (Finding 4)
 
 ---
 
@@ -106,120 +171,110 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Workspace directory created (verified: `ls -la` shows directory with 6 items)
+- ✅ Metadata files populated (verified: `.session_id`, `.spawn_time`, `.tier` contain valid data)
+- ✅ Beads issue created (verified: `bd show orch-go-hjz8` returns issue details)
+- ✅ Phase comments work (verified: `bd comments add` adds comments visible in `bd show`)
+- ✅ `kb create investigation` works (verified: created `.kb/investigations/2026-01-02-inv-test-spawn-works.md`)
+- ✅ `orch status` shows agent (verified: shows `orch-go-hjz8` as `running`)
+- ✅ Skill guidance embedded (verified: `grep` finds "SKILL GUIDANCE" and 33 "investigation" mentions)
+- ✅ Prior knowledge included (verified: `grep` finds "PRIOR KNOWLEDGE" section)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ `orch complete` workflow (would need to complete to test)
+- ⚠️ SYNTHESIS.md verification during completion
+- ⚠️ Multiple concurrent spawns coordination
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if `orch spawn` in a different skill failed to embed correct guidance
+- Finding would be wrong if beads tracking broke with high comment volume
+- Finding would be wrong if orch status showed stale/incorrect data
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** This was a verification test - spawn works. No implementation needed.
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**No changes needed** - Spawn system is fully functional and ready for production use.
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+### Notes for Future Reference
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+**Minor observations:**
+- `bd comment` shows deprecation warning: "use 'bd comments add' instead"
+- `orch` binary not in PATH for spawned agents - requires `./bin/orch` or `~/go/bin/orch`
+- Pre-commit hook runs Go build which adds ~1s overhead (but works correctly)
 
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**What worked well:**
+- Skill guidance fully embedded in SPAWN_CONTEXT.md
+- Prior knowledge injection via `kb context` provides relevant context
+- Beads tracking creates searchable progress history
+- Workspace metadata enables orch status tracking
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.orch/workspace/og-inv-test-spawn-works-02jan/SPAWN_CONTEXT.md` - Full spawn context with skill guidance
+- `.orch/workspace/og-inv-test-spawn-works-02jan/.session_id` - OpenCode session ID
+- `.orch/workspace/og-inv-test-spawn-works-02jan/.spawn_time` - Spawn timestamp
+- `.orch/workspace/og-inv-test-spawn-works-02jan/.tier` - Spawn tier (full)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Verify workspace exists
+ls -la .orch/workspace/og-inv-test-spawn-works-02jan/
 
-# [Command description]
-[command]
+# Check beads tracking
+bd show orch-go-hjz8
+bd comments add orch-go-hjz8 "Phase: Planning..."
+
+# Create investigation file
+kb create investigation test-spawn-works
+
+# Check orch status
+./bin/orch status
+
+# Verify skill guidance in spawn context
+grep "SKILL GUIDANCE" SPAWN_CONTEXT.md
+grep -c "investigation" SPAWN_CONTEXT.md
+grep "PRIOR KNOWLEDGE" SPAWN_CONTEXT.md
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/archived/2025-12-22-inv-test-spawn-works-after-phantom.md` - Prior spawn test
+- **Workspace:** `.orch/workspace/og-inv-test-spawn-works-02jan/` - This agent's workspace
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-02 14:48:** Investigation started
+- Initial question: Does `orch spawn` successfully create and execute an agent session?
+- Context: Verify spawn system works after recent changes
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-02 14:49:** Verified all spawn components
+- Workspace exists with metadata files
+- Beads issue created and accepts comments
+- orch status shows agent correctly
+- Skill guidance embedded in SPAWN_CONTEXT.md
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-02 14:50:** Investigation completed
+- Status: Complete
+- Key outcome: Spawn system fully functional - all components work correctly
+
+---
+
+## Self-Review
+
+- [x] Real test performed (not code review) - ran actual commands to verify
+- [x] Conclusion from evidence (not speculation) - based on command outputs
+- [x] Question answered - "Does spawn work?" → Yes
+- [x] File complete - all sections filled
+
+**Self-Review Status:** PASSED
