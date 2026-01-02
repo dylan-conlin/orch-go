@@ -1,40 +1,26 @@
 import { test, expect } from '@playwright/test';
 
-// Helper to switch to historical mode where filter bar is visible
-async function switchToHistoricalMode(page: import('@playwright/test').Page) {
-	const modeToggle = page.getByTestId('mode-toggle');
-	await expect(modeToggle).toBeVisible();
-	// Click the History button (second button in the toggle)
-	await modeToggle.getByRole('button', { name: /History/ }).click();
-}
+// NOTE: Filter bar is now always visible in the unified attention-first layout
+// No mode switching needed - tests work directly on the main view
+// Status filter was removed - sections (Working/Review/Problems/History) serve as the status filter
 
 test.describe('Agent Filtering and Sorting', () => {
 	test('should render filter bar', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
 		const filterBar = page.getByTestId('filter-bar');
 		await expect(filterBar).toBeVisible();
 	});
 
-	test('should have status filter dropdown', async ({ page }) => {
+	test('should have search input', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
-		const statusFilter = page.getByTestId('status-filter');
-		await expect(statusFilter).toBeVisible();
-		
-		// Check default value is "all"
-		await expect(statusFilter).toHaveValue('all');
-		
-		// Check options exist
-		const options = statusFilter.locator('option');
-		await expect(options).toHaveCount(5); // All, Active, Idle, Completed, Abandoned
+		const searchInput = page.getByTestId('search-input');
+		await expect(searchInput).toBeVisible();
 	});
 
 	test('should have sort dropdown', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
 		const sortSelect = page.getByTestId('sort-select');
 		await expect(sortSelect).toBeVisible();
@@ -49,7 +35,6 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should display agent count', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
 		const filterCount = page.getByTestId('filter-count');
 		await expect(filterCount).toBeVisible();
@@ -58,28 +43,8 @@ test.describe('Agent Filtering and Sorting', () => {
 		await expect(filterCount).toContainText(/\d+ agents?/);
 	});
 
-	test('should change status filter', async ({ page }) => {
-		await page.goto('/');
-		await switchToHistoricalMode(page);
-		
-		const statusFilter = page.getByTestId('status-filter');
-		
-		// Change to "active"
-		await statusFilter.selectOption('active');
-		await expect(statusFilter).toHaveValue('active');
-		
-		// Change to "completed"
-		await statusFilter.selectOption('completed');
-		await expect(statusFilter).toHaveValue('completed');
-		
-		// Change back to "all"
-		await statusFilter.selectOption('all');
-		await expect(statusFilter).toHaveValue('all');
-	});
-
 	test('should change sort order', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
 		const sortSelect = page.getByTestId('sort-select');
 		
@@ -98,7 +63,6 @@ test.describe('Agent Filtering and Sorting', () => {
 
 	test('should show clear filters button when filters are active', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
 		// Use data-testid for unambiguous selection (avoids conflict with empty state's "Clear filters" link)
 		const clearButton = page.getByTestId('clear-filters-button');
@@ -106,25 +70,32 @@ test.describe('Agent Filtering and Sorting', () => {
 		// Initially no clear button (default filters)
 		await expect(clearButton).not.toBeVisible();
 		
-		// Change status filter
-		const statusFilter = page.getByTestId('status-filter');
-		await statusFilter.selectOption('active');
+		// Change sort to trigger active filter state
+		const sortSelect = page.getByTestId('sort-select');
+		await sortSelect.selectOption('oldest');
 		
 		// Now clear button should appear
 		await expect(clearButton).toBeVisible();
 		
 		// Click clear and verify filters reset
 		await clearButton.click();
-		await expect(statusFilter).toHaveValue('all');
+		await expect(sortSelect).toHaveValue('recent-activity');
 		await expect(clearButton).not.toBeVisible();
 	});
 
 	test('should render agent sections', async ({ page }) => {
 		await page.goto('/');
-		await switchToHistoricalMode(page);
 		
 		// With progressive disclosure, we now have agent-sections container
 		const agentSections = page.getByTestId('agent-sections');
 		await expect(agentSections).toBeVisible();
+	});
+
+	test('should render working agents section', async ({ page }) => {
+		await page.goto('/');
+		
+		// Working agents section should always be visible (even if empty)
+		const workingSection = page.getByTestId('working-agents-section');
+		await expect(workingSection).toBeVisible();
 	});
 });

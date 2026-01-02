@@ -26,8 +26,7 @@
 		connectSSE,
 		disconnectSSE,
 		totalTokens,
-		type Agent,
-		type AgentState
+		type Agent
 	} from '$lib/stores/agents';
 	import {
 		agentlogEvents,
@@ -48,7 +47,8 @@
 	import { SettingsPanel } from '$lib/components/settings-panel';
 
 	// Filter and sort state
-	let statusFilter: AgentState | 'all' = 'all';
+	// Note: statusFilter removed - sections already categorize by actionable state (Working/Review/Problems/History)
+	// The UI sections ARE the status filter - users click/expand sections to see different states
 	let skillFilter: string = 'all';
 	let projectFilter: string = 'all';
 	let sortBy: 'recent-activity' | 'newest' | 'oldest' | 'alphabetical' | 'project' | 'phase' = 'recent-activity';
@@ -267,7 +267,6 @@
 	}
 
 	function clearFilters() {
-		statusFilter = 'all';
 		skillFilter = 'all';
 		projectFilter = 'all';
 		sortBy = 'recent-activity';
@@ -275,7 +274,7 @@
 		searchQuery = '';
 	}
 
-	$: hasActiveFilters = statusFilter !== 'all' || skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly || searchQuery !== '';
+	$: hasActiveFilters = skillFilter !== 'all' || projectFilter !== 'all' || sortBy !== 'recent-activity' || activeOnly || searchQuery !== '';
 
 	// Helper function to apply sorting to agent arrays
 	// useStableSort: when true, uses spawned_at (immutable) instead of updated_at (volatile) 
@@ -676,18 +675,8 @@
 			/>
 		</div>
 
-		<!-- Status Filter -->
-		<select
-			bind:value={statusFilter}
-			class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-			data-testid="status-filter"
-		>
-			<option value="all">All Status</option>
-			<option value="active">Active</option>
-			<option value="idle">Idle</option>
-			<option value="completed">Completed</option>
-			<option value="abandoned">Abandoned</option>
-		</select>
+		<!-- Note: Status filter removed - sections already show actionable categories -->
+		<!-- (Working/Ready for Review/Problems/History) - no need for redundant filter -->
 
 		<!-- Skill Filter -->
 		{#if uniqueSkills.length > 0}
