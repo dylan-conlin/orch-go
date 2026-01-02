@@ -21,6 +21,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
 	"github.com/dylan-conlin/orch-go/pkg/question"
+	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
@@ -1307,6 +1308,13 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Write SPAWN_CONTEXT.md
 	if err := spawn.WriteContext(cfg); err != nil {
 		return fmt.Errorf("failed to write spawn context: %w", err)
+	}
+
+	// Record spawn in session (if session is active)
+	if sessionStore, err := session.New(""); err == nil {
+		if err := sessionStore.RecordSpawn(beadsID, skillName, task, projectDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record spawn in session: %v\n", err)
+		}
 	}
 
 	// Generate minimal prompt
