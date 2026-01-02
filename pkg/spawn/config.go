@@ -60,6 +60,50 @@ func DefaultIncludeServersForSkill(skillName string) bool {
 	return false // Don't include for investigation-type skills by default
 }
 
+// SkillRequiresInvestigationFile maps skills to whether they require an investigation file.
+// Skills that produce knowledge artifacts as their primary deliverable require investigation files.
+var SkillRequiresInvestigationFile = map[string]bool{
+	// Skills that always require investigation file
+	"investigation":        true,
+	"research":             true,
+	"architect":            true,
+	"codebase-audit":       true,
+	"systematic-debugging": true,
+
+	// Skills that conditionally require investigation file (based on phases)
+	// feature-impl requires investigation file ONLY when investigation phase is included
+	"feature-impl": false, // Conditional - check phases
+
+	// Skills that never require investigation file
+	"issue-creation":      false,
+	"reliability-testing": false,
+	"design-session":      false, // Uses its own artifact structure
+}
+
+// RequiresInvestigationFile determines if a skill/phase combination requires an investigation file.
+// Returns true if:
+// - The skill is in SkillRequiresInvestigationFile with value true, OR
+// - The skill is "feature-impl" AND phases includes "investigation"
+func RequiresInvestigationFile(skillName, phases string) bool {
+	// Check direct skill requirement first
+	if required, exists := SkillRequiresInvestigationFile[skillName]; exists && required {
+		return true
+	}
+
+	// Special case: feature-impl requires investigation file only when investigation phase is included
+	if skillName == "feature-impl" && phases != "" {
+		phaseList := strings.Split(phases, ",")
+		for _, phase := range phaseList {
+			if strings.TrimSpace(phase) == "investigation" {
+				return true
+			}
+		}
+	}
+
+	// Unknown skills default to false (conservative - don't add unnecessary instructions)
+	return false
+}
+
 // Config holds configuration for spawning an agent.
 type Config struct {
 	// Task description

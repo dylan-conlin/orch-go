@@ -1945,3 +1945,315 @@ func TestFormatFailureReportGateError(t *testing.T) {
 		t.Error("expected error to include beads ID")
 	}
 }
+
+func TestRequiresInvestigationFile(t *testing.T) {
+	tests := []struct {
+		name      string
+		skillName string
+		phases    string
+		want      bool
+	}{
+		// Skills that always require investigation file
+		{
+			name:      "investigation skill",
+			skillName: "investigation",
+			phases:    "",
+			want:      true,
+		},
+		{
+			name:      "research skill",
+			skillName: "research",
+			phases:    "",
+			want:      true,
+		},
+		{
+			name:      "architect skill",
+			skillName: "architect",
+			phases:    "",
+			want:      true,
+		},
+		{
+			name:      "codebase-audit skill",
+			skillName: "codebase-audit",
+			phases:    "",
+			want:      true,
+		},
+		{
+			name:      "systematic-debugging skill",
+			skillName: "systematic-debugging",
+			phases:    "",
+			want:      true,
+		},
+
+		// feature-impl with investigation phase
+		{
+			name:      "feature-impl with investigation phase",
+			skillName: "feature-impl",
+			phases:    "investigation,implementation,validation",
+			want:      true,
+		},
+		{
+			name:      "feature-impl with investigation only",
+			skillName: "feature-impl",
+			phases:    "investigation",
+			want:      true,
+		},
+		{
+			name:      "feature-impl with investigation phase and spaces",
+			skillName: "feature-impl",
+			phases:    "investigation, implementation, validation",
+			want:      true,
+		},
+
+		// feature-impl without investigation phase
+		{
+			name:      "feature-impl without investigation phase",
+			skillName: "feature-impl",
+			phases:    "implementation,validation",
+			want:      false,
+		},
+		{
+			name:      "feature-impl with empty phases",
+			skillName: "feature-impl",
+			phases:    "",
+			want:      false,
+		},
+		{
+			name:      "feature-impl with design and implementation",
+			skillName: "feature-impl",
+			phases:    "design,implementation,validation",
+			want:      false,
+		},
+
+		// Skills that never require investigation file
+		{
+			name:      "issue-creation skill",
+			skillName: "issue-creation",
+			phases:    "",
+			want:      false,
+		},
+		{
+			name:      "reliability-testing skill",
+			skillName: "reliability-testing",
+			phases:    "",
+			want:      false,
+		},
+		{
+			name:      "design-session skill",
+			skillName: "design-session",
+			phases:    "",
+			want:      false,
+		},
+
+		// Unknown skill
+		{
+			name:      "unknown skill",
+			skillName: "unknown-skill",
+			phases:    "",
+			want:      false,
+		},
+		{
+			name:      "empty skill name",
+			skillName: "",
+			phases:    "",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RequiresInvestigationFile(tt.skillName, tt.phases)
+			if got != tt.want {
+				t.Errorf("RequiresInvestigationFile(%q, %q) = %v, want %v", tt.skillName, tt.phases, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateContext_WithInvestigationFile(t *testing.T) {
+	t.Run("includes investigation file instructions for investigation skill", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "analyze codebase",
+			SkillName:  "investigation",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Tier:       TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain investigation file setup instructions
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to contain investigation file setup instructions for investigation skill")
+		}
+		if !strings.Contains(content, "kb create investigation") {
+			t.Error("expected content to contain kb create investigation command")
+		}
+		if !strings.Contains(content, "UPDATE investigation file") {
+			t.Error("expected content to contain investigation file update instructions")
+		}
+		if !strings.Contains(content, "CHECK LINEAGE") {
+			t.Error("expected content to contain lineage check instructions")
+		}
+	})
+
+	t.Run("includes investigation file instructions for systematic-debugging skill", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "debug issue",
+			SkillName:  "systematic-debugging",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Tier:       TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain investigation file setup instructions
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to contain investigation file setup instructions for systematic-debugging skill")
+		}
+	})
+
+	t.Run("includes investigation file for feature-impl with investigation phase", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "add feature",
+			SkillName:  "feature-impl",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Phases:     "investigation,implementation,validation",
+			Mode:       "tdd",
+			Validation: "tests",
+			Tier:       TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain investigation file setup instructions
+		if !strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to contain investigation file setup instructions when investigation phase included")
+		}
+	})
+}
+
+func TestGenerateContext_WithoutInvestigationFile(t *testing.T) {
+	t.Run("excludes investigation file instructions for feature-impl without investigation phase", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "implement feature",
+			SkillName:  "feature-impl",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Phases:     "implementation,validation",
+			Mode:       "direct",
+			Validation: "tests",
+			Tier:       TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain investigation file setup instructions
+		if strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to NOT contain investigation file setup instructions for feature-impl without investigation phase")
+		}
+		if strings.Contains(content, "kb create investigation") {
+			t.Error("expected content to NOT contain kb create investigation command")
+		}
+		if strings.Contains(content, "UPDATE investigation file") {
+			t.Error("expected content to NOT contain investigation file update instructions")
+		}
+		if strings.Contains(content, "CHECK LINEAGE") {
+			t.Error("expected content to NOT contain lineage check instructions")
+		}
+
+		// Should still contain basic deliverables
+		if !strings.Contains(content, "DELIVERABLES (REQUIRED)") {
+			t.Error("expected content to contain DELIVERABLES section")
+		}
+		if !strings.Contains(content, "Verify project location") {
+			t.Error("expected content to contain project location verification")
+		}
+	})
+
+	t.Run("excludes investigation file instructions for issue-creation skill", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "create issue",
+			SkillName:  "issue-creation",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Tier:       TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain investigation file setup instructions
+		if strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to NOT contain investigation file setup instructions for issue-creation skill")
+		}
+	})
+
+	t.Run("excludes investigation file instructions for reliability-testing skill", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "test reliability",
+			SkillName:  "reliability-testing",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Tier:       TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain investigation file setup instructions
+		if strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to NOT contain investigation file setup instructions for reliability-testing skill")
+		}
+	})
+
+	t.Run("SYNTHESIS.md still included for full tier without investigation", func(t *testing.T) {
+		cfg := &Config{
+			Task:       "design session",
+			SkillName:  "design-session",
+			Project:    "test-project",
+			ProjectDir: "/tmp/test",
+			BeadsID:    "test-123",
+			Tier:       TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain investigation file setup instructions
+		if strings.Contains(content, "SET UP investigation file") {
+			t.Error("expected content to NOT contain investigation file setup instructions for design-session")
+		}
+
+		// Should still contain SYNTHESIS.md requirement for full tier
+		if !strings.Contains(content, "CREATE SYNTHESIS.md") {
+			t.Error("expected content to contain SYNTHESIS.md requirement for full tier")
+		}
+	})
+}

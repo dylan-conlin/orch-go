@@ -151,6 +151,7 @@ This applies to:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
+{{if .RequiresInvestigationFile}}
 2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
@@ -175,6 +176,16 @@ DELIVERABLES (REQUIRED):
    - This is CRITICAL for the orchestrator to review your work.
 {{else}}
 7. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
+{{end}}
+{{else}}
+2. [Task-specific deliverables]
+{{if ne .Tier "light"}}
+3. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
+   - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
+   - This is CRITICAL for the orchestrator to review your work.
+{{else}}
+3. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
+{{end}}
 {{end}}
 
 STATUS UPDATES:
@@ -450,24 +461,25 @@ func StripBeadsInstructions(content string) string {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task               string
-	BeadsID            string
-	ProjectDir         string
-	WorkspaceName      string
-	WorkspacePath      string // Full absolute path to workspace directory
-	SkillName          string
-	SkillContent       string
-	InvestigationSlug  string
-	Phases             string
-	Mode               string
-	Validation         string
-	InvestigationType  string
-	KBContext          string
-	Tier               string
-	ServerContext      string
-	EcosystemContext   string // Local project ecosystem from ~/.orch/ECOSYSTEM.md
-	BehavioralPatterns string // Detected behavioral patterns from action-log.jsonl
-	NoTrack            bool   // When true, omit beads instructions from spawn context
+	Task                     string
+	BeadsID                  string
+	ProjectDir               string
+	WorkspaceName            string
+	WorkspacePath            string // Full absolute path to workspace directory
+	SkillName                string
+	SkillContent             string
+	InvestigationSlug        string
+	Phases                   string
+	Mode                     string
+	Validation               string
+	InvestigationType        string
+	KBContext                string
+	Tier                     string
+	ServerContext            string
+	EcosystemContext         string // Local project ecosystem from ~/.orch/ECOSYSTEM.md
+	BehavioralPatterns       string // Detected behavioral patterns from action-log.jsonl
+	NoTrack                  bool   // When true, omit beads instructions from spawn context
+	RequiresInvestigationFile bool   // When true, include investigation file setup instructions
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -512,25 +524,29 @@ func GenerateContext(cfg *Config) (string, error) {
 	// Compute full workspace path for template (needed for phase file in --no-track spawns)
 	workspacePath := filepath.Join(cfg.ProjectDir, ".orch", "workspace", cfg.WorkspaceName)
 
+	// Determine if this skill/phase combination requires an investigation file
+	requiresInvestigationFile := RequiresInvestigationFile(cfg.SkillName, cfg.Phases)
+
 	data := contextData{
-		Task:               cfg.Task,
-		BeadsID:            cfg.BeadsID,
-		ProjectDir:         cfg.ProjectDir,
-		WorkspaceName:      cfg.WorkspaceName,
-		WorkspacePath:      workspacePath,
-		SkillName:          cfg.SkillName,
-		SkillContent:       skillContent,
-		InvestigationSlug:  slug,
-		Phases:             cfg.Phases,
-		Mode:               cfg.Mode,
-		Validation:         cfg.Validation,
-		InvestigationType:  cfg.InvestigationType,
-		KBContext:          cfg.KBContext,
-		Tier:               cfg.Tier,
-		ServerContext:      serverContext,
-		EcosystemContext:   ecosystemContext,
-		BehavioralPatterns: behavioralPatterns,
-		NoTrack:            cfg.NoTrack,
+		Task:                      cfg.Task,
+		BeadsID:                   cfg.BeadsID,
+		ProjectDir:                cfg.ProjectDir,
+		WorkspaceName:             cfg.WorkspaceName,
+		WorkspacePath:             workspacePath,
+		SkillName:                 cfg.SkillName,
+		SkillContent:              skillContent,
+		InvestigationSlug:         slug,
+		Phases:                    cfg.Phases,
+		Mode:                      cfg.Mode,
+		Validation:                cfg.Validation,
+		InvestigationType:         cfg.InvestigationType,
+		KBContext:                 cfg.KBContext,
+		Tier:                      cfg.Tier,
+		ServerContext:             serverContext,
+		EcosystemContext:          ecosystemContext,
+		BehavioralPatterns:        behavioralPatterns,
+		NoTrack:                   cfg.NoTrack,
+		RequiresInvestigationFile: requiresInvestigationFile,
 	}
 
 	var buf bytes.Buffer
