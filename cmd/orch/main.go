@@ -2937,6 +2937,18 @@ func runStatus(serverURL string) error {
 				}
 			}
 		}
+
+		// For untracked agents, try reading phase from workspace .phase file
+		// Untracked agents can't report Phase via beads comments (no real issue),
+		// so they write phase to their workspace as an alternative mechanism.
+		if phase == "" && isUntrackedBeadsID(ta.beadsID) {
+			workspacePath := wsCache.lookupWorkspace(ta.beadsID)
+			if wsPhase := readWorkspacePhase(workspacePath); wsPhase != "" {
+				phase = wsPhase
+				noComments = false // They did report, just via .phase file
+			}
+		}
+
 		// Get task and check closed status from pre-fetched issues
 		if issue, ok := allIssues[ta.beadsID]; ok {
 			task = truncate(issue.Title, 40)
@@ -3005,6 +3017,18 @@ func runStatus(serverURL string) error {
 				noComments = true
 			}
 		}
+
+		// For untracked agents, try reading phase from workspace .phase file
+		// Untracked agents can't report Phase via beads comments (no real issue),
+		// so they write phase to their workspace as an alternative mechanism.
+		if phase == "" && isUntrackedBeadsID(oa.beadsID) {
+			workspacePath := wsCache.lookupWorkspace(oa.beadsID)
+			if wsPhase := readWorkspacePhase(workspacePath); wsPhase != "" {
+				phase = wsPhase
+				noComments = false // They did report, just via .phase file
+			}
+		}
+
 		if issue != nil {
 			task = truncate(issue.Title, 40)
 			isCompleted = strings.EqualFold(issue.Status, "closed")
