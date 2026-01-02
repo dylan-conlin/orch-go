@@ -1476,11 +1476,9 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 			// Continue anyway
 		}
-		// Remove triage:ready label since issue is now in_progress
-		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
-			// Don't warn for non-critical label removal - it may not have the label
-			// and that's fine
-		}
+		// Note: triage:ready label is removed on successful completion (orch complete),
+		// not at spawn time. This ensures failed/abandoned agents leave issues in the
+		// ready queue for daemon to pick up again.
 	}
 
 	// Resolve model - convert aliases to full format
@@ -3911,6 +3909,13 @@ func runComplete(beadsID, workdir string) error {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
 		fmt.Printf("Closed beads issue: %s\n", beadsID)
+
+		// Remove triage:ready label on successful completion
+		// This ensures failed/abandoned agents leave issues in ready queue for daemon retry
+		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
+			// Non-critical - the issue may not have had this label
+			// or it was already removed
+		}
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
