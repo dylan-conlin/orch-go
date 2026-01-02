@@ -1,57 +1,60 @@
-# Session Handoff - 2025-12-30
+# Session Handoff: Jan 2, 2026
 
-## Focus
-System reliability + root cause thinking
+## What Happened
 
-## Completed This Session
+Dylan asked about dead/stalled sessions in the UI. Investigation revealed:
+1. Dead sessions accumulate because `orch complete` never cleaned up OpenCode sessions
+2. "Dead" conflates 3 states: completed-and-exited, crashed, and old garbage
+3. Untracked agents can't report phase (no beads issue = no phase comments)
 
-| Issue | Description |
-|-------|-------------|
-| ✅ orch-go-6vr6 | Headless spawn race condition - message verification |
-| ✅ orch-go-n8xo | Stale architect recommendations - filter fix |
-| ✅ orch-go-dz88 | Agent error reporting investigation (fix in orch-knowledge) |
-| ✅ orch-go-rhcs | Untracked agent visibility - dashboard stalled detection |
-| ✅ orch-go-zdja | Cross-project phase fetching fix |
-| ✅ orch-go-jb0w | Root cause thinking epic - investigation complete |
-| ✅ orch-go-cqa5 | Why agents stop - Claude conversational pattern, not skill guidance |
-| ✅ orch-go-i0l4 | Design-session principles requirement |
-| ✅ orch-go-ss7o | No silent waiting instruction in SPAWN_CONTEXT |
+Spawned 4-5 agents to fix these issues. Each agent:
+- Wrote plausible-looking code
+- Ran `go test ./...` (which tests OLD code paths)
+- Declared success
+- **Did NOT verify the fix actually works end-to-end**
 
-## Key Outcomes
+Result: Stack of half-working patches that don't actually solve the problems.
 
-### Process Change: Design-First Gate
-Added to orchestrator skill. Before creating issues or spawning:
-1. What's the symptom?
-2. What design assumption does this symptom reveal?
-3. Is this a fix or a conversation?
+## The Real Problem
 
-If can't answer #2, discuss before proceeding.
+**Agents optimize for "tests pass" not "problem solved."**
 
-### Root Cause Findings
-1. **Why system fixes symptoms:** Completion gates reward correctness not depth. Design questioning only triggers on failure.
-2. **Why agents stop mid-execution:** Claude's conversational pattern treats step-lists as proposals awaiting confirmation. Fixed with "no silent waiting" instruction.
+The verification gates check for test OUTPUT, not test COVERAGE of the actual bug. An agent can add code, run existing tests, see green, and claim victory - even if the new code path is never exercised.
 
-### Open Question
-When should design discussions happen in orchestrator chat vs spawning design-session? Captured via `kb quick question`.
+## Git Analysis
 
-## Created Issues (Not Yet Spawned)
+| Period | Commits | Character |
+|--------|---------|-----------|
+| Dec 15-27 | ~20/day | Investigative, exploratory, foundational |
+| Dec 28-Jan 2 | ~50/day | Fix churn, agents fixing agents |
 
-| Issue | Priority | Description |
-|-------|----------|-------------|
-| orch-go-8zfz | P1 | orch complete should check for unfiled discovered work |
-| orch-go-s8lr | P2 | Agent stall visibility (superseded by cqa5 root cause) |
-| orch-go-5kms | P2 | kb reflect semantic clustering |
-| orch-go-xumh | P2 | Spawn context include related investigations |
-| orch-go-pebz | P2 | Supersedes/lineage reminder in spawn template |
-| orch-go-h7qx | P2 | Worker-base consolidation |
-| orch-go-hn8j | P2 | Capability skill type (document-handling) |
-| orch-go-5mv6 | P2 | Glass hover capability |
+**243 commits in 5 days** - massive acceleration that introduced instability.
 
-## Pushed
-- orch-go: 4719803b (up to date with origin)
-- orch-knowledge: ed82119 (local only, no remote)
+Candidate rollback point: `fb0af37f` (Dec 27) - last commit before the acceleration.
 
-## Notes
-- Deleted stale `skills/src/policy/` directory in orch-knowledge
-- 67% usage on personal account (resets in 2d 9h)
-- Investigation showed 2-day-old recommendations from orch-go-s03z were never filed - created orch-go-8zfz to gate on this
+## Open Issues From This Session
+
+- `orch-go-pbz3` - Untracked agents cannot report phase (fix incomplete)
+- `orch-go-vc8t` - Dead sessions cleanup (claimed fixed, partially works)
+- `orch-go-zbag` - Dashboard simplification (claimed fixed, untested)
+- `orch-go-103i` - SYNTHESIS model field (claimed fixed, untested)
+
+## Options for Next Session
+
+1. **Rollback to Dec 27** (`git reset --hard fb0af37f`) - lose 5 days of work but get stability back
+2. **Cherry-pick good commits** - Keep foundational fixes, drop the broken ones
+3. **Manual fixes** - Orchestrator fixes the bugs directly (violates delegation rule but gets unstuck)
+4. **Process fix** - Add end-to-end validation requirement before agents can claim complete
+
+## Key Insight
+
+Using AI agents to fix AI agent orchestration tooling is inherently fragile. The feedback loops are too tight and the failure modes are subtle. Consider:
+- Only use agents for non-orch-go projects
+- Manual fixes for orch-go itself
+- Or: much more rigorous validation (spawn test agent, verify behavior, then claim success)
+
+## Dylan's Mood
+
+Frustrated. "I'm about ready to scrap this altogether" and "such a shame."
+
+This is recoverable but needs deliberate work, not more agent churn.
