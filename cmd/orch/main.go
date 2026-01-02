@@ -2647,7 +2647,8 @@ type SwarmStatus struct {
 	Active     int `json:"active"`
 	Processing int `json:"processing,omitempty"` // Agents actively generating response
 	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
-	Dead       int `json:"dead,omitempty"`       // Agents with stale session (no activity for > 3 min)
+	Dead       int `json:"dead,omitempty"`       // Agents with stale session that died mid-work (no Phase: Complete)
+	Done       int `json:"done,omitempty"`       // Agents with stale session that completed successfully (Phase: Complete)
 	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
 	Queued     int `json:"queued"`
 	Completed  int `json:"completed_today"`
@@ -3051,6 +3052,7 @@ func runStatus(serverURL string) error {
 	processingCount := 0
 	idleCount := 0
 	deadCount := 0
+	doneCount := 0
 	phantomCount := 0
 	completedCount := 0
 	for _, agent := range agents {
@@ -3060,8 +3062,14 @@ func runStatus(serverURL string) error {
 			// Completed agents (beads issue closed) don't count as active
 			completedCount++
 		} else if agent.IsDead {
-			// Dead agents (no activity for > 3 min) - session exists but process likely died
-			deadCount++
+			// Differentiate dead agents:
+			// - Done: dead with Phase: Complete (finished work, just needs cleanup)
+			// - Dead: dead without Phase: Complete (died mid-work, needs attention)
+			if strings.Contains(strings.ToLower(agent.Phase), "complete") {
+				doneCount++
+			} else {
+				deadCount++
+			}
 		} else {
 			activeCount++
 			if agent.IsProcessing {
@@ -3077,6 +3085,7 @@ func runStatus(serverURL string) error {
 		Processing: processingCount,
 		Idle:       idleCount,
 		Dead:       deadCount,
+		Done:       doneCount,
 		Phantom:    phantomCount,
 		Queued:     0,              // TODO: implement queuing system
 		Completed:  completedCount, // Agents with closed beads issues
@@ -3336,7 +3345,12 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	if output.Swarm.Active > 0 {
 		fmt.Printf(" (running: %d, idle: %d)", output.Swarm.Processing, output.Swarm.Idle)
 	}
+	if output.Swarm.Done > 0 {
+		// Done: dead agents at Phase: Complete (finished work, ready for orch complete)
+		fmt.Printf(", ✅ Done: %d", output.Swarm.Done)
+	}
 	if output.Swarm.Dead > 0 {
+		// Dead: dead agents NOT at Phase: Complete (died mid-work, needs attention)
 		fmt.Printf(", 💀 Dead: %d", output.Swarm.Dead)
 	}
 	if output.Swarm.Completed > 0 {
@@ -3510,7 +3524,14 @@ func getAgentStatus(agent AgentInfo) string {
 		return "phantom"
 	}
 	if agent.IsDead {
-		// Session has no activity for StaleSessionThreshold (3 min) - process likely died
+		// Session has no activity for StaleSessionThreshold (3 min)
+		// Differentiate between "done successfully" vs "needs attention":
+		// - If Phase contains "Complete", agent finished its work normally
+		// - Otherwise, agent died mid-work and needs attention
+		if strings.Contains(strings.ToLower(agent.Phase), "complete") {
+			return "✅ done"
+		}
+		// Dead without Phase:Complete - process likely died mid-work
 		return "💀 dead"
 	}
 	if agent.IsBlocked {
@@ -3925,6 +3946,23 @@ func runComplete(beadsID, workdir string) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
 		} else {
 			fmt.Printf("Closed tmux window: %s:%s\n", sessionName, window.Name)
+		}
+	}
+
+	// Clean up OpenCode session if it exists (prevents dead session accumulation)
+	// Read session ID from workspace and delete the session from OpenCode.
+	// This is important because OpenCode sessions persist to disk indefinitely,
+	// causing "dead" sessions to accumulate in orch status.
+	if workspacePath != "" {
+		sessionID := spawn.ReadSessionID(workspacePath)
+		if sessionID != "" {
+			client := opencode.NewClientWithDirectory(serverURL, beadsProjectDir)
+			if err := client.DeleteSession(sessionID); err != nil {
+				// Non-critical - the session may already be gone or OpenCode might not support DELETE
+				fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", sessionID[:12], err)
+			} else {
+				fmt.Printf("Deleted OpenCode session: %s\n", sessionID[:12])
+			}
 		}
 	}
 

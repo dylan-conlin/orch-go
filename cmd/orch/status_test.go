@@ -153,6 +153,16 @@ func TestGetAgentStatus(t *testing.T) {
 			expected: "💀 dead",
 		},
 		{
+			name:     "dead with Phase:Complete shows done status",
+			agent:    AgentInfo{IsDead: true, Phase: "Complete - All tests passing"},
+			expected: "✅ done",
+		},
+		{
+			name:     "dead with phase complete (lowercase) shows done status",
+			agent:    AgentInfo{IsDead: true, Phase: "complete"},
+			expected: "✅ done",
+		},
+		{
 			name:     "blocked takes precedence over stalled",
 			agent:    AgentInfo{IsBlocked: true, NoComments: true},
 			expected: "🚫 blocked",
