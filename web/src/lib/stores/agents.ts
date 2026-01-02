@@ -220,8 +220,8 @@ function createAgentStore() {
 export const agents = createAgentStore();
 
 // Derived stores for filtered views
-// Active agents = agents with sessions that are not completed.
-// This matches the CLI semantics where "active" means:
+// Working agents = agents actively doing work (active or idle status).
+// This matches the CLI semantics where an agent is "working" if it:
 // - Has an active OpenCode session (session_id exists)
 // - Not completed (status !== 'completed')
 // - Not dead (status !== 'dead' - no activity for >3 min)
@@ -231,12 +231,24 @@ export const agents = createAgentStore();
 // (isProcessing=false) because calling IsSessionProcessing per-session caused
 // 125% CPU. However, the SSE stream updates is_processing in real-time via
 // session.status events. Agents with status='idle' but is_processing=true
-// should still show as active (they ARE processing, API just doesn't know yet).
+// should still show as working (they ARE processing, API just doesn't know yet).
 //
 // We include status='idle' agents because they have active sessions - they're
-// "working" even if momentarily between tasks. 'dead' and 'stalled' agents
-// are shown in the active section too (with visual distinction) so the user
-// knows they need attention.
+// "working" even if momentarily between tasks.
+export const workingAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => a.status === 'active' || a.status === 'idle')
+);
+
+// Needs attention agents = agents that have gone dead or stalled.
+// These need human intervention to resume or clean up.
+// - 'dead' = session has no activity for >3 minutes (killed/crashed/stuck)
+// - 'stalled' = untracked agent with no phase comments after >1 minute
+export const needsAttentionAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => a.status === 'dead' || a.status === 'stalled')
+);
+
+// Active agents = combined working + needs attention (for backwards compatibility)
+// This includes all agents that have sessions and aren't completed.
 export const activeAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'active' || a.status === 'idle' || a.status === 'dead' || a.status === 'stalled')
 );

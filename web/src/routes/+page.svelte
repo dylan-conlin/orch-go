@@ -14,6 +14,8 @@
 	import {
 		agents,
 		activeAgents,
+		workingAgents,
+		needsAttentionAgents,
 		recentAgents,
 		archivedAgents,
 		completedAgents,
@@ -390,14 +392,15 @@
 	}
 
 	// Progressive disclosure: sorted and filtered agents per section
-	// Active and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
+	// Working and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
 	// Archive uses volatile sort (updated_at) since historical recency matters more there
-	$: sortedActiveAgents = sortAgents(applyFilters($activeAgents), true);
+	$: sortedWorkingAgents = sortAgents(applyFilters($workingAgents), true);
+	$: sortedNeedsAttentionAgents = sortAgents(applyFilters($needsAttentionAgents), true);
 	$: sortedRecentAgents = sortAgents(applyFilters($recentAgents), true);
 	$: sortedArchivedAgents = sortAgents(applyFilters($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
-	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
+	$: totalVisibleAgents = sortedWorkingAgents.length + sortedNeedsAttentionAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
 <div class="space-y-4">
@@ -423,21 +426,30 @@
 				</Tooltip.Content>
 			</Tooltip.Root>
 
-			<!-- Active agents indicator -->
+			<!-- Working agents indicator -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
 						<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
 							<span class="text-base">🟢</span>
 							<span class="inline-flex items-baseline gap-0.5">
-								<span class="text-lg font-bold tabular-nums" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
-								<span class="text-xs text-muted-foreground hidden sm:inline">active</span>
+								<span class="text-lg font-bold tabular-nums" class:text-green-500={$workingAgents.length > 0}>{$workingAgents.length}</span>
+								<span class="text-xs text-muted-foreground hidden sm:inline">working</span>
 							</span>
+							{#if $needsAttentionAgents.length > 0}
+								<span class="inline-flex items-baseline gap-0.5 text-amber-500">
+									<span class="text-lg font-bold tabular-nums">+{$needsAttentionAgents.length}</span>
+									<span class="text-xs hidden sm:inline">⚠️</span>
+								</span>
+							{/if}
 						</span>
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p>{$activeAgents.length === 0 ? 'No active agents' : `${$activeAgents.length} agent${$activeAgents.length === 1 ? '' : 's'} running`}</p>
+					<p>{$workingAgents.length === 0 ? 'No working agents' : `${$workingAgents.length} agent${$workingAgents.length === 1 ? '' : 's'} actively working`}</p>
+					{#if $needsAttentionAgents.length > 0}
+						<p class="text-amber-500">{$needsAttentionAgents.length} agent${$needsAttentionAgents.length === 1 ? '' : 's'} need attention (dead/stalled)</p>
+					{/if}
 				</Tooltip.Content>
 			</Tooltip.Root>
 
@@ -624,19 +636,19 @@
 	<!-- ✨ Recently Completed (shows agents completed in last 4h) -->
 	<RecentWins />
 	
-	<!-- 🟢 Active Agents (always visible) -->
-	<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
+	<!-- 🟢 Working Agents (actively doing work) -->
+	<div class="rounded-lg border bg-card border-green-500/30" data-testid="working-agents-section">
 		<div class="flex items-center gap-2 px-3 py-2 border-b">
 			<span class="text-sm">🟢</span>
-			<span class="text-sm font-medium">Active Agents</span>
+			<span class="text-sm font-medium">Working</span>
 			<Badge variant="default" class="h-5 px-1.5 text-xs">
-				{sortedActiveAgents.length}
+				{sortedWorkingAgents.length}
 			</Badge>
 		</div>
 		<div class="p-2">
-			{#if sortedActiveAgents.length > 0}
+			{#if sortedWorkingAgents.length > 0}
 				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-					{#each sortedActiveAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+					{#each sortedWorkingAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 						<AgentCard {agent} />
 					{/each}
 				</div>
@@ -645,7 +657,7 @@
 					<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/50">
 						<span class="text-2xl opacity-50">🤖</span>
 					</div>
-					<p class="text-sm font-medium text-muted-foreground">No active agents</p>
+					<p class="text-sm font-medium text-muted-foreground">No working agents</p>
 					<p class="mt-2 text-xs text-muted-foreground">
 						Spawn with <code class="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">orch spawn</code>
 					</p>
@@ -653,6 +665,29 @@
 			{/if}
 		</div>
 	</div>
+
+	<!-- ⚠️ Needs Attention (dead/stalled agents) -->
+	{#if sortedNeedsAttentionAgents.length > 0}
+		<div class="rounded-lg border bg-card border-amber-500/30" data-testid="needs-attention-agents-section">
+			<div class="flex items-center gap-2 px-3 py-2 border-b border-amber-500/20">
+				<span class="text-sm">⚠️</span>
+				<span class="text-sm font-medium text-amber-500">Needs Attention</span>
+				<Badge variant="outline" class="h-5 px-1.5 text-xs border-amber-500/50 text-amber-500">
+					{sortedNeedsAttentionAgents.length}
+				</Badge>
+				<span class="text-[10px] text-muted-foreground ml-1">
+					— dead or stalled sessions
+				</span>
+			</div>
+			<div class="p-2">
+				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+					{#each sortedNeedsAttentionAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+						<AgentCard {agent} />
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<!-- 📋 Ready Queue (collapsed by default, secondary) -->
 	<ReadyQueueSection
