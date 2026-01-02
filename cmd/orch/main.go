@@ -1369,8 +1369,8 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		return err
 	}
 
-	// Generate workspace name
-	workspaceName := spawn.GenerateWorkspaceName(skillName, task)
+	// Generate workspace name with collision avoidance
+	workspaceName := spawn.GenerateUniqueWorkspaceName(skillName, task, projectDir)
 
 	// Load skill content with dependencies (e.g., worker-base patterns)
 	loader := skills.DefaultLoader()
@@ -1859,6 +1859,10 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	}
 
 	sessionID := result.SessionID
+
+	// Start background cleanup to drain stdout and wait for process
+	// This prevents output buffer from blocking and logs any errors
+	result.StartBackgroundCleanup()
 
 	// Write session ID to workspace file for later lookups
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {

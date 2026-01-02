@@ -160,6 +160,91 @@ func TestExtractSessionIDFromReader(t *testing.T) {
 	}
 }
 
+// TestExtractSessionIDFromReaderLargeEvent tests that ExtractSessionIDFromReader handles
+// large JSON events that exceed the default bufio.Scanner buffer (64KB).
+// This is important because OpenCode can emit large tool outputs with file contents.
+func TestExtractSessionIDFromReaderLargeEvent(t *testing.T) {
+	// Create a large JSON event that would exceed default 64KB buffer
+	// We use 100KB of content to test the large buffer
+	largeContent := strings.Repeat("x", 100*1024) // 100KB
+	largeEvent := fmt.Sprintf(`{"type":"text","sessionID":"ses_large","content":"%s"}`, largeContent)
+
+	// Test that we can handle the large event
+	input := largeEvent + "\n"
+	reader := bytes.NewBufferString(input)
+	id, err := ExtractSessionIDFromReader(reader)
+	if err != nil {
+		t.Errorf("ExtractSessionIDFromReader() error = %v, want nil (large events should be handled)", err)
+	}
+	if id != "ses_large" {
+		t.Errorf("ExtractSessionIDFromReader() = %v, want ses_large", id)
+	}
+}
+
+// TestProcessOutputLargeEvent tests that ProcessOutput handles large JSON events
+// that exceed the default bufio.Scanner buffer (64KB).
+func TestProcessOutputLargeEvent(t *testing.T) {
+	// Create a large JSON event that would exceed default 64KB buffer
+	largeContent := strings.Repeat("y", 100*1024) // 100KB
+	events := []string{
+		`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_large","step":{"id":"step_1"}}`,
+		fmt.Sprintf(`{"type":"text","sessionID":"ses_large","content":"%s"}`, largeContent),
+		`{"type":"step_finish","sessionID":"ses_large","step":{"id":"step_1"}}`,
+	}
+
+	var output bytes.Buffer
+	for _, e := range events {
+		output.WriteString(e + "\n")
+	}
+
+	result, err := ProcessOutput(&output)
+	if err != nil {
+		t.Fatalf("ProcessOutput() error = %v (large events should be handled)", err)
+	}
+
+	if result.SessionID != "ses_large" {
+		t.Errorf("SessionID = %v, want ses_large", result.SessionID)
+	}
+	if len(result.Events) != 3 {
+		t.Errorf("Events count = %d, want 3", len(result.Events))
+	}
+}
+
+// TestProcessOutputWithStreamingLargeEvent tests that ProcessOutputWithStreaming handles
+// large JSON events that exceed the default bufio.Scanner buffer (64KB).
+func TestProcessOutputWithStreamingLargeEvent(t *testing.T) {
+	// Create a large JSON event that would exceed default 64KB buffer
+	largeContent := strings.Repeat("z", 100*1024) // 100KB
+	events := []string{
+		`{"type":"step_start","timestamp":1766199826875,"sessionID":"ses_large","step":{"id":"step_1"}}`,
+		fmt.Sprintf(`{"type":"text","sessionID":"ses_large","content":"%s"}`, largeContent),
+		`{"type":"step_finish","sessionID":"ses_large","step":{"id":"step_1"}}`,
+	}
+
+	var output bytes.Buffer
+	for _, e := range events {
+		output.WriteString(e + "\n")
+	}
+
+	var streamedContent bytes.Buffer
+	result, err := ProcessOutputWithStreaming(&output, &streamedContent)
+	if err != nil {
+		t.Fatalf("ProcessOutputWithStreaming() error = %v (large events should be handled)", err)
+	}
+
+	if result.SessionID != "ses_large" {
+		t.Errorf("SessionID = %v, want ses_large", result.SessionID)
+	}
+	if len(result.Events) != 3 {
+		t.Errorf("Events count = %d, want 3", len(result.Events))
+	}
+
+	// Verify large content was streamed
+	if !strings.Contains(streamedContent.String(), largeContent) {
+		t.Errorf("Streamed content should contain large content")
+	}
+}
+
 func TestProcessOutput(t *testing.T) {
 	// Use actual opencode format with sessionID at top level
 	events := []string{

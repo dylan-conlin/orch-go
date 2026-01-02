@@ -17,6 +17,11 @@ import (
 // This prevents hangs when OpenCode is in a bad state (e.g., redirect loop).
 const DefaultHTTPTimeout = 10 * time.Second
 
+// LargeScannerBufferSize is the buffer size for scanning JSON events from opencode output.
+// OpenCode JSON events can be very large (especially tool outputs with file contents),
+// so we use 1MB instead of the default 64KB (bufio.MaxScanTokenSize) to prevent ErrTooLong.
+const LargeScannerBufferSize = 1024 * 1024 // 1MB
+
 // Client handles OpenCode CLI interactions.
 type Client struct {
 	ServerURL  string
@@ -111,6 +116,8 @@ func ExtractSessionID(events []string) (string, error) {
 // but don't want to block waiting for the process to complete.
 func ExtractSessionIDFromReader(r io.Reader) (string, error) {
 	scanner := bufio.NewScanner(r)
+	// Use large buffer to handle OpenCode's potentially large JSON events
+	scanner.Buffer(make([]byte, 0, LargeScannerBufferSize), LargeScannerBufferSize)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -135,6 +142,8 @@ func ExtractSessionIDFromReader(r io.Reader) (string, error) {
 func ProcessOutput(r io.Reader) (*Result, error) {
 	result := &Result{}
 	scanner := bufio.NewScanner(r)
+	// Use large buffer to handle OpenCode's potentially large JSON events
+	scanner.Buffer(make([]byte, 0, LargeScannerBufferSize), LargeScannerBufferSize)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -168,6 +177,8 @@ func ProcessOutput(r io.Reader) (*Result, error) {
 func ProcessOutputWithStreaming(r io.Reader, streamTo io.Writer) (*Result, error) {
 	result := &Result{}
 	scanner := bufio.NewScanner(r)
+	// Use large buffer to handle OpenCode's potentially large JSON events
+	scanner.Buffer(make([]byte, 0, LargeScannerBufferSize), LargeScannerBufferSize)
 
 	for scanner.Scan() {
 		line := scanner.Text()
