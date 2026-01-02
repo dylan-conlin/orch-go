@@ -15,7 +15,8 @@
 		agents,
 		activeAgents,
 		workingAgents,
-		needsAttentionAgents,
+		readyForReviewAgents,
+		problemAgents,
 		recentAgents,
 		archivedAgents,
 		completedAgents,
@@ -391,16 +392,17 @@
 		return applySearchFilter(applyProjectFilter(applySkillFilter(agentList)));
 	}
 
-	// Progressive disclosure: sorted and filtered agents per section
-	// Working and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
+	// ACTIONABLE CATEGORIES: sorted and filtered agents per section
+	// Working and Ready use stable sort (spawned_at) to prevent jostling from SSE updates
 	// Archive uses volatile sort (updated_at) since historical recency matters more there
 	$: sortedWorkingAgents = sortAgents(applyFilters($workingAgents), true);
-	$: sortedNeedsAttentionAgents = sortAgents(applyFilters($needsAttentionAgents), true);
+	$: sortedReadyForReviewAgents = sortAgents(applyFilters($readyForReviewAgents), true);
+	$: sortedProblemAgents = sortAgents(applyFilters($problemAgents), true);
 	$: sortedRecentAgents = sortAgents(applyFilters($recentAgents), true);
 	$: sortedArchivedAgents = sortAgents(applyFilters($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
-	$: totalVisibleAgents = sortedWorkingAgents.length + sortedNeedsAttentionAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
+	$: totalVisibleAgents = sortedWorkingAgents.length + sortedReadyForReviewAgents.length + sortedProblemAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
 <div class="space-y-4">
@@ -426,7 +428,7 @@
 				</Tooltip.Content>
 			</Tooltip.Root>
 
-			<!-- Working agents indicator -->
+			<!-- Working agents indicator (green) -->
 			<Tooltip.Root>
 				<Tooltip.Trigger>
 					{#snippet child({ props })}
@@ -436,22 +438,55 @@
 								<span class="text-lg font-bold tabular-nums" class:text-green-500={$workingAgents.length > 0}>{$workingAgents.length}</span>
 								<span class="text-xs text-muted-foreground hidden sm:inline">working</span>
 							</span>
-							{#if $needsAttentionAgents.length > 0}
-								<span class="inline-flex items-baseline gap-0.5 text-amber-500">
-									<span class="text-lg font-bold tabular-nums">+{$needsAttentionAgents.length}</span>
-									<span class="text-xs hidden sm:inline">⚠️</span>
-								</span>
-							{/if}
 						</span>
 					{/snippet}
 				</Tooltip.Trigger>
 				<Tooltip.Content>
 					<p>{$workingAgents.length === 0 ? 'No working agents' : `${$workingAgents.length} agent${$workingAgents.length === 1 ? '' : 's'} actively working`}</p>
-					{#if $needsAttentionAgents.length > 0}
-						<p class="text-amber-500">{$needsAttentionAgents.length} agent${$needsAttentionAgents.length === 1 ? '' : 's'} need attention (dead/stalled)</p>
-					{/if}
 				</Tooltip.Content>
 			</Tooltip.Root>
+
+			<!-- Ready for Review indicator (blue) -->
+			{#if $readyForReviewAgents.length > 0}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
+								<span class="text-base">🔵</span>
+								<span class="inline-flex items-baseline gap-0.5">
+									<span class="text-lg font-bold tabular-nums text-blue-500">{$readyForReviewAgents.length}</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">review</span>
+								</span>
+							</span>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p>{$readyForReviewAgents.length} agent{$readyForReviewAgents.length === 1 ? '' : 's'} ready for review</p>
+						<p class="text-xs text-muted-foreground">Run <code>orch complete</code> to review</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
+
+			<!-- Problems indicator (red) -->
+			{#if $problemAgents.length > 0}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<span {...props} class="inline-flex items-center gap-1.5 cursor-default rounded-lg px-1.5 py-1 transition-colors hover:bg-accent/30 whitespace-nowrap">
+								<span class="text-base">🔴</span>
+								<span class="inline-flex items-baseline gap-0.5">
+									<span class="text-lg font-bold tabular-nums text-red-500">{$problemAgents.length}</span>
+									<span class="text-xs text-muted-foreground hidden sm:inline">problems</span>
+								</span>
+							</span>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class="text-red-500">{$problemAgents.length} agent{$problemAgents.length === 1 ? '' : 's'} crashed/stalled</p>
+						<p class="text-xs text-muted-foreground">Needs investigation or respawn</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 
 			<!-- Focus indicator (only when drifting - attention signal) -->
 			{#if $focus?.has_focus && $focus.is_drifting}
@@ -715,8 +750,8 @@
 		{/if}
 	</div>
 
-	<!-- ATTENTION-FIRST LAYOUT: Single unified view -->
-	<div data-testid="agent-sections">
+	<!-- ACTIONABLE LAYOUT: Categories show what ACTION to take -->
+	<div data-testid="agent-sections" class="space-y-3">
 	
 	<!-- 🔔 Attention Panel (PRIMARY - top, prominent) -->
 	<NeedsAttention projectDir={currentProjectDir} />
@@ -724,8 +759,31 @@
 	<!-- ✨ Recently Completed (shows agents completed in last 4h) -->
 	<RecentWins />
 	
-	<!-- 🟢 Working Agents (actively doing work) -->
-	<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
+	<!-- 🔵 Ready for Review (Phase:Complete - ACTION: run orch complete) -->
+	{#if sortedReadyForReviewAgents.length > 0}
+		<div class="rounded-lg border bg-card border-blue-500/50 shadow-lg shadow-blue-500/10" data-testid="ready-for-review-section">
+			<div class="flex items-center gap-2 px-3 py-2 border-b border-blue-500/30 bg-blue-500/5">
+				<span class="text-sm">🔵</span>
+				<span class="text-sm font-medium text-blue-500">Ready for Review</span>
+				<Badge variant="default" class="h-5 px-1.5 text-xs bg-blue-500">
+					{sortedReadyForReviewAgents.length}
+				</Badge>
+				<span class="text-[10px] text-muted-foreground ml-1">
+					— run <code class="bg-muted px-1 rounded">orch complete</code>
+				</span>
+			</div>
+			<div class="p-2">
+				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+					{#each sortedReadyForReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+						<AgentCard {agent} />
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- 🟢 Working (actively doing work) -->
+	<div class="rounded-lg border bg-card border-green-500/30" data-testid="working-agents-section">
 		<div class="flex items-center gap-2 px-3 py-2 border-b">
 			<span class="text-sm">🟢</span>
 			<span class="text-sm font-medium">Working</span>
@@ -754,22 +812,22 @@
 		</div>
 	</div>
 
-	<!-- ⚠️ Needs Attention (dead/stalled agents) -->
-	{#if sortedNeedsAttentionAgents.length > 0}
-		<div class="rounded-lg border bg-card border-amber-500/30" data-testid="needs-attention-agents-section">
-			<div class="flex items-center gap-2 px-3 py-2 border-b border-amber-500/20">
-				<span class="text-sm">⚠️</span>
-				<span class="text-sm font-medium text-amber-500">Needs Attention</span>
-				<Badge variant="outline" class="h-5 px-1.5 text-xs border-amber-500/50 text-amber-500">
-					{sortedNeedsAttentionAgents.length}
+	<!-- 🔴 Problems (crashed/stalled <1hr - ACTION: investigate or respawn) -->
+	{#if sortedProblemAgents.length > 0}
+		<div class="rounded-lg border bg-card border-red-500/50 shadow-lg shadow-red-500/10" data-testid="problems-section">
+			<div class="flex items-center gap-2 px-3 py-2 border-b border-red-500/30 bg-red-500/5">
+				<span class="text-sm">🔴</span>
+				<span class="text-sm font-medium text-red-500">Problems</span>
+				<Badge variant="destructive" class="h-5 px-1.5 text-xs">
+					{sortedProblemAgents.length}
 				</Badge>
 				<span class="text-[10px] text-muted-foreground ml-1">
-					— dead or stalled sessions
+					— crashed or stalled, needs action
 				</span>
 			</div>
 			<div class="p-2">
 				<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-					{#each sortedNeedsAttentionAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+					{#each sortedProblemAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 						<AgentCard {agent} />
 					{/each}
 				</div>

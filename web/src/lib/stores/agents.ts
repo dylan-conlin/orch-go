@@ -219,35 +219,50 @@ function createAgentStore() {
 
 export const agents = createAgentStore();
 
-// Derived stores for filtered views
-// Working agents = agents actively doing work (active or idle status).
-// This matches the CLI semantics where an agent is "working" if it:
-// - Has an active OpenCode session (session_id exists)
-// - Not completed (status !== 'completed')
-// - Not dead (status !== 'dead' - no activity for >3 min)
-// - Not stalled (status !== 'stalled' - untracked with no phase for >1 min)
-//
-// Note: The API sets status='idle' for sessions that aren't actively processing
-// (isProcessing=false) because calling IsSessionProcessing per-session caused
-// 125% CPU. However, the SSE stream updates is_processing in real-time via
-// session.status events. Agents with status='idle' but is_processing=true
-// should still show as working (they ARE processing, API just doesn't know yet).
-//
-// We include status='idle' agents because they have active sessions - they're
-// "working" even if momentarily between tasks.
+// Time threshold for "Problems" vs "History" - dead/stalled agents older than 1hr go to History
+const PROBLEMS_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+// Helper to check if agent is recent (within threshold)
+function isRecentProblem(agent: Agent): boolean {
+	const updatedAt = agent.updated_at ? new Date(agent.updated_at).getTime() : 0;
+	return Date.now() - updatedAt < PROBLEMS_THRESHOLD_MS;
+}
+
+// Derived stores for ACTIONABLE categories
+// These reflect what ACTION the orchestrator should take, not internal state machine details
+
+// Working agents = actively doing work (active or idle status, NOT Phase:Complete)
+// Excludes Phase:Complete since those are "Ready for Review", not "Working"
 export const workingAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => a.status === 'active' || a.status === 'idle')
+	$agents.filter((a) => 
+		(a.status === 'active' || a.status === 'idle') && 
+		a.phase?.toLowerCase() !== 'complete'
+	)
 );
 
-// Needs attention agents = agents that have gone dead or stalled.
-// These need human intervention to resume or clean up.
-// - 'dead' = session has no activity for >3 minutes (killed/crashed/stuck)
-// - 'stalled' = untracked agent with no phase comments after >1 minute
-export const needsAttentionAgents = derived(agents, ($agents) =>
-	$agents.filter((a) => a.status === 'dead' || a.status === 'stalled')
+// Ready for Review = agents that reported Phase:Complete but session still open
+// ACTION: Run `orch complete` to review and close
+export const readyForReviewAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => 
+		(a.status === 'active' || a.status === 'idle') && 
+		a.phase?.toLowerCase() === 'complete'
+	)
 );
 
-// Active agents = combined working + needs attention (for backwards compatibility)
+// Problems = dead/stalled agents that are RECENT (<1hr)
+// ACTION: Investigate why it failed, respawn or abandon
+// Older dead agents go to History (not actionable, just noise)
+export const problemAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => 
+		(a.status === 'dead' || a.status === 'stalled') && 
+		isRecentProblem(a)
+	)
+);
+
+// Legacy alias for backwards compatibility
+export const needsAttentionAgents = problemAgents;
+
+// Active agents = combined working + ready for review + problems (for backwards compatibility)
 // This includes all agents that have sessions and aren't completed.
 export const activeAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'active' || a.status === 'idle' || a.status === 'dead' || a.status === 'stalled')
@@ -272,14 +287,31 @@ export const abandonedAgents = derived(agents, ($agents) =>
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Progressive disclosure groups
-// Active: status === 'active' OR status === 'idle' OR status === 'dead' OR status === 'stalled' (agents with sessions)
-// Recent: completed within 24 hours (not in active section)
-// Archive: completed older than 24 hours
+// Working: active/idle agents NOT Phase:Complete
+// Ready for Review: active/idle agents WITH Phase:Complete  
+// Problems: dead/stalled agents <1hr old
+// Recent: completed/abandoned within 24h, OR old dead/stalled (>1hr - moved to history)
+// Archive: completed/abandoned older than 24h
 export const recentAgents = derived(agents, ($agents) => {
 	const now = Date.now();
 	return $agents.filter((a) => {
-		// Exclude agents shown in active section (active + idle + dead + stalled)
-		if (a.status === 'active' || a.status === 'idle' || a.status === 'dead' || a.status === 'stalled' || a.status === 'deleted') return false;
+		// Exclude working agents (active/idle not Phase:Complete)
+		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() !== 'complete') return false;
+		// Exclude ready for review (Phase:Complete)
+		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() === 'complete') return false;
+		// Exclude recent problems (dead/stalled <1hr) - they show in Problems section
+		if ((a.status === 'dead' || a.status === 'stalled') && isRecentProblem(a)) return false;
+		// Exclude deleted
+		if (a.status === 'deleted') return false;
+		
+		// Include old dead/stalled agents (>1hr) - they go to History
+		if (a.status === 'dead' || a.status === 'stalled') {
+			const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+			// Only show in Recent if <24hr old, otherwise Archive
+			return now - updatedAt < RECENT_THRESHOLD_MS;
+		}
+		
+		// Include completed/abandoned if <24hr old
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt < RECENT_THRESHOLD_MS;
 	});
@@ -288,8 +320,22 @@ export const recentAgents = derived(agents, ($agents) => {
 export const archivedAgents = derived(agents, ($agents) => {
 	const now = Date.now();
 	return $agents.filter((a) => {
-		// Exclude agents shown in active section (active + idle + dead + stalled)
-		if (a.status === 'active' || a.status === 'idle' || a.status === 'dead' || a.status === 'stalled' || a.status === 'deleted') return false;
+		// Exclude working agents
+		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() !== 'complete') return false;
+		// Exclude ready for review
+		if ((a.status === 'active' || a.status === 'idle') && a.phase?.toLowerCase() === 'complete') return false;
+		// Exclude recent problems
+		if ((a.status === 'dead' || a.status === 'stalled') && isRecentProblem(a)) return false;
+		// Exclude deleted
+		if (a.status === 'deleted') return false;
+		
+		// Include old dead/stalled agents (>1hr AND >24hr old)
+		if (a.status === 'dead' || a.status === 'stalled') {
+			const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+			return now - updatedAt >= RECENT_THRESHOLD_MS;
+		}
+		
+		// Include completed/abandoned if >24hr old
 		const updatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
 		return now - updatedAt >= RECENT_THRESHOLD_MS;
 	});
