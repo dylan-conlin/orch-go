@@ -628,7 +628,95 @@
 		</div>
 	</div>
 
+	<!-- Filter Bar -->
+	<div class="flex flex-wrap items-center gap-2 rounded-lg border bg-card/50 px-3 py-2" data-testid="filter-bar">
+		<!-- Search -->
+		<div class="flex-1 min-w-32">
+			<input
+				type="text"
+				placeholder="Search agents..."
+				bind:value={searchQuery}
+				class="w-full h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+				data-testid="search-input"
+			/>
+		</div>
+
+		<!-- Status Filter -->
+		<select
+			bind:value={statusFilter}
+			class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+			data-testid="status-filter"
+		>
+			<option value="all">All Status</option>
+			<option value="active">Active</option>
+			<option value="idle">Idle</option>
+			<option value="completed">Completed</option>
+			<option value="abandoned">Abandoned</option>
+		</select>
+
+		<!-- Skill Filter -->
+		{#if uniqueSkills.length > 0}
+			<select
+				bind:value={skillFilter}
+				class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+				data-testid="skill-filter"
+			>
+				<option value="all">All Skills</option>
+				{#each uniqueSkills as skill}
+					<option value={skill}>{skill}</option>
+				{/each}
+			</select>
+		{/if}
+
+		<!-- Project Filter -->
+		{#if uniqueProjects.length > 0}
+			<select
+				bind:value={projectFilter}
+				class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+				data-testid="project-filter"
+			>
+				<option value="all">All Projects</option>
+				{#each uniqueProjects as project}
+					<option value={project}>{project}</option>
+				{/each}
+			</select>
+		{/if}
+
+		<!-- Sort -->
+		<select
+			bind:value={sortBy}
+			class="h-7 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+			data-testid="sort-select"
+		>
+			<option value="recent-activity">Recent Activity</option>
+			<option value="newest">Newest First</option>
+			<option value="oldest">Oldest First</option>
+			<option value="project">By Project</option>
+			<option value="phase">By Phase</option>
+			<option value="alphabetical">A-Z</option>
+		</select>
+
+		<!-- Agent Count -->
+		<span class="text-xs text-muted-foreground whitespace-nowrap" data-testid="filter-count">
+			{totalVisibleAgents} {totalVisibleAgents === 1 ? 'agent' : 'agents'}
+		</span>
+
+		<!-- Clear Filters -->
+		{#if hasActiveFilters}
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={clearFilters}
+				class="h-7 text-xs"
+				data-testid="clear-filters-button"
+			>
+				Clear filters
+			</Button>
+		{/if}
+	</div>
+
 	<!-- ATTENTION-FIRST LAYOUT: Single unified view -->
+	<div data-testid="agent-sections">
 	
 	<!-- 🔔 Attention Panel (PRIMARY - top, prominent) -->
 	<NeedsAttention projectDir={currentProjectDir} />
@@ -637,7 +725,7 @@
 	<RecentWins />
 	
 	<!-- 🟢 Working Agents (actively doing work) -->
-	<div class="rounded-lg border bg-card border-green-500/30" data-testid="working-agents-section">
+	<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
 		<div class="flex items-center gap-2 px-3 py-2 border-b">
 			<span class="text-sm">🟢</span>
 			<span class="text-sm font-medium">Working</span>
@@ -732,6 +820,7 @@
 			{/if}
 		</div>
 	{/if}
+	</div>
 </div>
 
 <!-- Agent Detail Slide-out Panel -->
