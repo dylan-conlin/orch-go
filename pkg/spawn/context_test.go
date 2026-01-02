@@ -90,6 +90,93 @@ func TestConfigPaths(t *testing.T) {
 	}
 }
 
+func TestEnsureUniqueWorkspaceName(t *testing.T) {
+	t.Run("returns base name when no collision", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		baseName := "og-feat-test-01jan"
+
+		got := EnsureUniqueWorkspaceName(baseName, tmpDir)
+		if got != baseName {
+			t.Errorf("EnsureUniqueWorkspaceName() = %q, want %q", got, baseName)
+		}
+	})
+
+	t.Run("appends suffix when collision exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		baseName := "og-feat-test-01jan"
+
+		// Create the workspace directory to simulate collision
+		workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", baseName)
+		if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		got := EnsureUniqueWorkspaceName(baseName, tmpDir)
+		want := baseName + "-2"
+		if got != want {
+			t.Errorf("EnsureUniqueWorkspaceName() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("appends incrementing suffix with multiple collisions", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		baseName := "og-feat-test-01jan"
+
+		// Create multiple workspace directories
+		for _, name := range []string{baseName, baseName + "-2", baseName + "-3"} {
+			workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", name)
+			if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+				t.Fatalf("failed to create workspace: %v", err)
+			}
+		}
+
+		got := EnsureUniqueWorkspaceName(baseName, tmpDir)
+		want := baseName + "-4"
+		if got != want {
+			t.Errorf("EnsureUniqueWorkspaceName() = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestGenerateUniqueWorkspaceName(t *testing.T) {
+	t.Run("generates unique name for new workspace", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		got := GenerateUniqueWorkspaceName("feature-impl", "test task", tmpDir)
+
+		// Should contain the expected parts
+		if !strings.HasPrefix(got, "og-feat-") {
+			t.Errorf("GenerateUniqueWorkspaceName() = %q, expected to start with 'og-feat-'", got)
+		}
+		if !strings.Contains(got, "test") || !strings.Contains(got, "task") {
+			t.Errorf("GenerateUniqueWorkspaceName() = %q, expected to contain 'test' and 'task'", got)
+		}
+	})
+
+	t.Run("generates unique name when collision exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Generate first workspace name
+		first := GenerateUniqueWorkspaceName("feature-impl", "test task", tmpDir)
+
+		// Create that workspace directory
+		workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", first)
+		if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+
+		// Generate second workspace name - should be different
+		second := GenerateUniqueWorkspaceName("feature-impl", "test task", tmpDir)
+
+		if second == first {
+			t.Errorf("second workspace name should be different from first: both are %q", first)
+		}
+		if !strings.HasSuffix(second, "-2") {
+			t.Errorf("second workspace name should end with '-2', got %q", second)
+		}
+	})
+}
+
 func TestGenerateContext(t *testing.T) {
 	cfg := &Config{
 		Task:       "implement spawn command",

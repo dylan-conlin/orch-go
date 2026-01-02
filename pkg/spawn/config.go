@@ -3,6 +3,7 @@ package spawn
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -219,4 +220,45 @@ func (c *Config) WorkspacePath() string {
 // ContextFilePath returns the path to SPAWN_CONTEXT.md.
 func (c *Config) ContextFilePath() string {
 	return filepath.Join(c.WorkspacePath(), "SPAWN_CONTEXT.md")
+}
+
+// GenerateUniqueWorkspaceName creates a workspace name and ensures it doesn't collide
+// with an existing workspace directory. If the generated name already exists,
+// appends a numeric suffix (e.g., "-2", "-3") until a unique name is found.
+func GenerateUniqueWorkspaceName(skillName, task, projectDir string) string {
+	baseName := GenerateWorkspaceName(skillName, task)
+	return EnsureUniqueWorkspaceName(baseName, projectDir)
+}
+
+// EnsureUniqueWorkspaceName checks if a workspace with the given name exists
+// and appends a numeric suffix if needed to create a unique name.
+func EnsureUniqueWorkspaceName(baseName, projectDir string) string {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+
+	// Check if base name is available
+	candidatePath := filepath.Join(workspaceDir, baseName)
+	if !workspaceExists(candidatePath) {
+		return baseName
+	}
+
+	// Base name exists, try with numeric suffixes
+	for i := 2; i <= 99; i++ {
+		candidateName := fmt.Sprintf("%s-%d", baseName, i)
+		candidatePath := filepath.Join(workspaceDir, candidateName)
+		if !workspaceExists(candidatePath) {
+			return candidateName
+		}
+	}
+
+	// Fallback: add timestamp for uniqueness (shouldn't happen in practice)
+	return fmt.Sprintf("%s-%d", baseName, time.Now().Unix())
+}
+
+// workspaceExists checks if a workspace directory exists.
+func workspaceExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }

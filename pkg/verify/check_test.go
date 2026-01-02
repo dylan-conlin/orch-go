@@ -113,6 +113,50 @@ func TestParsePhaseFromComments(t *testing.T) {
 				Found:   true,
 			},
 		},
+		// Multi-word phase tests
+		{
+			name: "clarifying questions phase (multi-word)",
+			comments: []Comment{
+				{Text: "Phase: Clarifying Questions - Asking about scope"},
+			},
+			want: PhaseStatus{
+				Phase:   "Clarifying Questions",
+				Summary: "Asking about scope",
+				Found:   true,
+			},
+		},
+		{
+			name: "self review phase (multi-word)",
+			comments: []Comment{
+				{Text: "Phase: Self Review - Checking implementation"},
+			},
+			want: PhaseStatus{
+				Phase:   "Self Review",
+				Summary: "Checking implementation",
+				Found:   true,
+			},
+		},
+		{
+			name: "multi-word phase without summary",
+			comments: []Comment{
+				{Text: "Phase: Self Review"},
+			},
+			want: PhaseStatus{
+				Phase: "Self Review",
+				Found: true,
+			},
+		},
+		{
+			name: "multi-word phase with em-dash",
+			comments: []Comment{
+				{Text: "Phase: Clarifying Questions — Need more details"},
+			},
+			want: PhaseStatus{
+				Phase:   "Clarifying Questions",
+				Summary: "Need more details",
+				Found:   true,
+			},
+		},
 		// BLOCKED status tests
 		{
 			name: "simple blocked comment",

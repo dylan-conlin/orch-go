@@ -196,6 +196,48 @@ func TestExtractReportedPhases(t *testing.T) {
 			t.Errorf("expected 0 phases, got %d", len(phases))
 		}
 	})
+
+	t.Run("extracts multi-word phases", func(t *testing.T) {
+		comments := []Comment{
+			{Text: "Phase: Clarifying Questions - asking about scope"},
+			{Text: "Phase: Self Review - checking implementation"},
+			{Text: "Phase: Complete - done"},
+		}
+
+		phases := ExtractReportedPhases(comments)
+
+		expected := []string{"clarifying questions", "self review", "complete"}
+		if len(phases) != len(expected) {
+			t.Fatalf("expected %d phases, got %d: %v", len(expected), len(phases), phases)
+		}
+
+		for i, exp := range expected {
+			if phases[i] != exp {
+				t.Errorf("phases[%d] = %q, want %q", i, phases[i], exp)
+			}
+		}
+	})
+
+	t.Run("multi-word phases with different separators", func(t *testing.T) {
+		comments := []Comment{
+			{Text: "Phase: Clarifying Questions"},          // No summary
+			{Text: "Phase: Self Review — checking code"},   // Em dash
+			{Text: "Phase: Leave It Better – documenting"}, // En dash
+		}
+
+		phases := ExtractReportedPhases(comments)
+
+		expected := []string{"clarifying questions", "self review", "leave it better"}
+		if len(phases) != len(expected) {
+			t.Fatalf("expected %d phases, got %d: %v", len(expected), len(phases), phases)
+		}
+
+		for i, exp := range expected {
+			if phases[i] != exp {
+				t.Errorf("phases[%d] = %q, want %q", i, phases[i], exp)
+			}
+		}
+	})
 }
 
 func TestVerifyPhaseGates(t *testing.T) {
@@ -337,6 +379,74 @@ func TestExtractPhases(t *testing.T) {
 
 		if len(phases) != 2 {
 			t.Errorf("expected 2 phases, got %d", len(phases))
+		}
+	})
+
+	t.Run("extracts multi-word phases with underscores", func(t *testing.T) {
+		workspace := t.TempDir()
+		content := `TASK: Test
+
+<!-- SKILL-PHASES -->
+<!-- phase: clarifying_questions | required: true -->
+<!-- phase: self_review | required: true -->
+<!-- phase: complete | required: true -->
+<!-- /SKILL-PHASES -->
+`
+		if err := os.WriteFile(filepath.Join(workspace, "SPAWN_CONTEXT.md"), []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		phases, err := ExtractPhases(workspace)
+		if err != nil {
+			t.Fatalf("ExtractPhases failed: %v", err)
+		}
+
+		if len(phases) != 3 {
+			t.Errorf("expected 3 phases, got %d", len(phases))
+		}
+
+		// Check that multi-word phases are parsed correctly
+		if phases[0].Name != "clarifying_questions" {
+			t.Errorf("phases[0].Name = %q, want %q", phases[0].Name, "clarifying_questions")
+		}
+		if phases[1].Name != "self_review" {
+			t.Errorf("phases[1].Name = %q, want %q", phases[1].Name, "self_review")
+		}
+	})
+
+	t.Run("extracts multi-word phases with hyphens", func(t *testing.T) {
+		workspace := t.TempDir()
+		content := `TASK: Test
+
+<!-- SKILL-PHASES -->
+<!-- phase: clarifying-questions | required: true -->
+<!-- phase: self-review | required: false -->
+<!-- /SKILL-PHASES -->
+`
+		if err := os.WriteFile(filepath.Join(workspace, "SPAWN_CONTEXT.md"), []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		phases, err := ExtractPhases(workspace)
+		if err != nil {
+			t.Fatalf("ExtractPhases failed: %v", err)
+		}
+
+		if len(phases) != 2 {
+			t.Errorf("expected 2 phases, got %d", len(phases))
+		}
+
+		if phases[0].Name != "clarifying-questions" {
+			t.Errorf("phases[0].Name = %q, want %q", phases[0].Name, "clarifying-questions")
+		}
+		if !phases[0].Required {
+			t.Errorf("phases[0].Required = false, want true")
+		}
+		if phases[1].Name != "self-review" {
+			t.Errorf("phases[1].Name = %q, want %q", phases[1].Name, "self-review")
+		}
+		if phases[1].Required {
+			t.Errorf("phases[1].Required = true, want false")
 		}
 	})
 }

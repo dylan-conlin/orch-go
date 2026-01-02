@@ -79,7 +79,9 @@ func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 // (agent resumed work after being unblocked).
 func ParsePhaseFromComments(comments []Comment) PhaseStatus {
 	// Pattern: "Phase: <phase>" optionally followed by " - <summary>"
-	phasePattern := regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
+	// Phase can be multi-word (e.g., "Clarifying Questions", "Self Review")
+	// Capture words (letters only) separated by single spaces, trim trailing spaces
+	phasePattern := regexp.MustCompile(`(?i)Phase:\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)(?:\s*[-–—]\s*(.*))?`)
 	// Pattern: "BLOCKED:" followed by reason
 	blockedPattern := regexp.MustCompile(`(?i)BLOCKED:\s*(.*)`)
 

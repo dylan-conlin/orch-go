@@ -38,7 +38,7 @@ All commands support a global `--server` flag to specify the OpenCode server URL
 
 ### Spawn a new session
 
-Spawn a new OpenCode session with skill context. By default, spawns the agent in a tmux window and returns immediately. Use `--inline` to run in the current terminal (blocking).
+Spawn a new OpenCode session with skill context. By default, spawns the agent via HTTP API (headless) and returns immediately. Use `--tmux` to spawn in a tmux window for visual monitoring, or `--inline` to run in the current terminal (blocking).
 
 ```bash
 # Basic spawn with a task
@@ -59,7 +59,8 @@ orch-go spawn --inline investigation "explore codebase"
 - `--phases <list>`: Feature-impl phases (e.g., implementation,validation)
 - `--mode <tdd|direct>`: Implementation mode (default: tdd)
 - `--validation <none|tests|smoke-test>`: Validation level (default: tests)
-- `--inline`: Run inline (blocking) instead of in tmux
+- `--tmux`: Spawn in tmux window for visual monitoring (opt-in)
+- `--inline`: Run inline in current terminal (blocking)
 
 ### Send a message to an existing session
 
