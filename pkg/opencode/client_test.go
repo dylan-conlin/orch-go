@@ -1892,6 +1892,133 @@ func TestWaitForMessage(t *testing.T) {
 	})
 }
 
+// TestSessionModelString tests the SessionModel.String() method.
+func TestSessionModelString(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    SessionModel
+		expected string
+	}{
+		{
+			name:     "anthropic model",
+			model:    SessionModel{ProviderID: "anthropic", ModelID: "claude-opus-4-5-20251101"},
+			expected: "anthropic/claude-opus-4-5-20251101",
+		},
+		{
+			name:     "google model",
+			model:    SessionModel{ProviderID: "google", ModelID: "gemini-2.5-flash"},
+			expected: "google/gemini-2.5-flash",
+		},
+		{
+			name:     "empty provider",
+			model:    SessionModel{ProviderID: "", ModelID: "claude-opus-4"},
+			expected: "claude-opus-4",
+		},
+		{
+			name:     "both empty",
+			model:    SessionModel{ProviderID: "", ModelID: ""},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.model.String()
+			if result != tt.expected {
+				t.Errorf("SessionModel.String() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetSessionModel tests the GetSessionModel method.
+func TestGetSessionModel(t *testing.T) {
+	sessionID := "ses_test123"
+
+	t.Run("success - assistant message with model info", func(t *testing.T) {
+		mockMessages := `[
+			{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user","time":{"created":1766282439689}},"parts":[]},
+			{"info":{"id":"msg_2","sessionID":"ses_test123","role":"assistant","modelID":"claude-opus-4-5-20251101","providerID":"anthropic","time":{"created":1766282440000}},"parts":[]}
+		]`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(mockMessages))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		model, err := client.GetSessionModel(sessionID)
+		if err != nil {
+			t.Fatalf("GetSessionModel() error = %v", err)
+		}
+		if model == nil {
+			t.Fatal("GetSessionModel() returned nil")
+		}
+		if model.ProviderID != "anthropic" {
+			t.Errorf("ProviderID = %s, want anthropic", model.ProviderID)
+		}
+		if model.ModelID != "claude-opus-4-5-20251101" {
+			t.Errorf("ModelID = %s, want claude-opus-4-5-20251101", model.ModelID)
+		}
+		if model.String() != "anthropic/claude-opus-4-5-20251101" {
+			t.Errorf("String() = %s, want anthropic/claude-opus-4-5-20251101", model.String())
+		}
+	})
+
+	t.Run("no model info in messages", func(t *testing.T) {
+		mockMessages := `[
+			{"info":{"id":"msg_1","sessionID":"ses_test123","role":"user","time":{"created":1766282439689}},"parts":[]},
+			{"info":{"id":"msg_2","sessionID":"ses_test123","role":"assistant","time":{"created":1766282440000}},"parts":[]}
+		]`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(mockMessages))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		model, err := client.GetSessionModel(sessionID)
+		if err != nil {
+			t.Fatalf("GetSessionModel() error = %v", err)
+		}
+		if model != nil {
+			t.Errorf("GetSessionModel() = %v, want nil when no model info", model)
+		}
+	})
+
+	t.Run("empty messages", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("[]"))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		model, err := client.GetSessionModel(sessionID)
+		if err != nil {
+			t.Fatalf("GetSessionModel() error = %v", err)
+		}
+		if model != nil {
+			t.Errorf("GetSessionModel() = %v, want nil for empty session", model)
+		}
+	})
+
+	t.Run("server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL)
+		_, err := client.GetSessionModel(sessionID)
+		if err == nil {
+			t.Error("Expected error for server error response")
+		}
+	})
+}
+
 // TestSendPromptWithVerification tests the SendPromptWithVerification method.
 func TestSendPromptWithVerification(t *testing.T) {
 	sessionID := "ses_test123"

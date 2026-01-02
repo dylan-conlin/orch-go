@@ -176,6 +176,10 @@ type Synthesis struct {
 	// Parsed fields for easy access
 	Recommendation string   // Extracted from Next section (close, continue, escalate)
 	NextActions    []string // Follow-up items
+
+	// Session Metadata fields
+	Skill string // Skill name used for this session (from Session Metadata section)
+	Model string // Model used for this session (authoritative: from OpenCode session, fallback: from SYNTHESIS.md)
 }
 
 // ParseSynthesis extracts key information from a SYNTHESIS.md file.
@@ -225,6 +229,10 @@ func ParseSynthesis(workspacePath string) (*Synthesis, error) {
 		s.AreasToExplore = extractBoldSubsection(unexploredSection, "Areas worth exploring further")
 		s.Uncertainties = extractBoldSubsection(unexploredSection, "What remains unclear")
 	}
+
+	// Parse Session Metadata fields
+	s.Skill = extractHeaderField(content, "Skill")
+	s.Model = extractHeaderField(content, "Model")
 
 	return s, nil
 }

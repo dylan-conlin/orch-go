@@ -554,6 +554,14 @@ go test ./...
 	if len(got.NextActions) == 0 {
 		t.Error("NextActions should not be empty")
 	}
+
+	// Test Session Metadata extraction (Skill and Model)
+	if got.Skill != "feature-impl" {
+		t.Errorf("Skill = %q, want %q", got.Skill, "feature-impl")
+	}
+	if got.Model != "anthropic/claude-sonnet" {
+		t.Errorf("Model = %q, want %q", got.Model, "anthropic/claude-sonnet")
+	}
 }
 
 func TestParseSynthesisMinimal(t *testing.T) {

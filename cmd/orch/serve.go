@@ -307,6 +307,42 @@ func runServe(portNum int) error {
 	// GET /api/patterns - behavioral patterns from action log
 	mux.HandleFunc("/api/patterns", corsHandler(handlePatterns))
 
+	// Serve the dashboard UI if a static build exists.
+	uiRoot := filepath.Join(serveEffectiveDir, "web", "build")
+	if info, err := os.Stat(uiRoot); err == nil && info.IsDir() {
+		fileServer := http.FileServer(http.Dir(uiRoot))
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			cleanPath := filepath.Clean("/" + r.URL.Path)
+			relPath := strings.TrimPrefix(cleanPath, "/")
+			targetPath := filepath.Join(uiRoot, relPath)
+
+			if stat, err := os.Stat(targetPath); err == nil {
+				if stat.IsDir() {
+					indexPath := filepath.Join(targetPath, "index.html")
+					if _, err := os.Stat(indexPath); err == nil {
+						http.ServeFile(w, r, indexPath)
+						return
+					}
+				} else {
+					fileServer.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			fallback := filepath.Join(uiRoot, "index.html")
+			if _, err := os.Stat(fallback); err == nil {
+				http.ServeFile(w, r, fallback)
+				return
+			}
+
+			http.NotFound(w, r)
+		})
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Dashboard UI not found. Run `cd web && bun run dev` and open http://localhost:5188", http.StatusNotFound)
+		})
+	}
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -398,6 +434,10 @@ type SynthesisResponse struct {
 	// Condensed sections
 	DeltaSummary string   `json:"delta_summary,omitempty"` // e.g., "3 files created, 2 modified, 5 commits"
 	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
+
+	// Session Metadata
+	Skill string `json:"skill,omitempty"` // Skill used for this session
+	Model string `json:"model,omitempty"` // Model used (authoritative: from OpenCode session, fallback: from SYNTHESIS.md)
 }
 
 // workspaceCache stores pre-computed workspace metadata to avoid repeated directory scans.
@@ -1022,6 +1062,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						Recommendation: synthesis.Recommendation,
 						DeltaSummary:   summarizeDelta(synthesis.Delta),
 						NextActions:    synthesis.NextActions,
+						Skill:          synthesis.Skill,
+						Model:          synthesis.Model, // Fallback from SYNTHESIS.md; will be overwritten with authoritative source
 					}
 				}
 			}
@@ -1265,6 +1307,46 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Collect results
 	for result := range activityChan {
 		agents[result.index].LastActivity = result.activity
+	}
+
+	// Fetch authoritative model info for agents with synthesis
+	// Model from OpenCode session is authoritative - more reliable than agent self-report in SYNTHESIS.md
+	type modelResult struct {
+		index int
+		model string
+	}
+	modelChan := make(chan modelResult, len(agents))
+
+	var modelWg sync.WaitGroup
+	for i := range agents {
+		// Only fetch for agents with synthesis and session ID
+		if agents[i].Synthesis == nil || agents[i].SessionID == "" {
+			continue
+		}
+
+		modelWg.Add(1)
+		go func(idx int, sessionID string) {
+			defer modelWg.Done()
+			sem <- struct{}{}        // Acquire semaphore
+			defer func() { <-sem }() // Release semaphore
+
+			sessionModel, err := client.GetSessionModel(sessionID)
+			if err == nil && sessionModel != nil {
+				modelChan <- modelResult{index: idx, model: sessionModel.String()}
+			}
+		}(i, agents[i].SessionID)
+	}
+
+	go func() {
+		modelWg.Wait()
+		close(modelChan)
+	}()
+
+	// Collect results - overwrite synthesis Model with authoritative source
+	for result := range modelChan {
+		if agents[result.index].Synthesis != nil && result.model != "" {
+			agents[result.index].Synthesis.Model = result.model
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

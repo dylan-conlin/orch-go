@@ -960,6 +960,48 @@ func (c *Client) WaitForMessage(sessionID string, timeout, interval time.Duratio
 	return ErrMessageDeliveryTimeout
 }
 
+// SessionModel represents the model used for a session.
+// Combines providerID and modelID into a single normalized string.
+type SessionModel struct {
+	ProviderID string // e.g., "anthropic", "google"
+	ModelID    string // e.g., "claude-opus-4-5-20251101", "gemini-2.5-flash"
+}
+
+// String returns the model in "provider/modelID" format.
+// If provider is empty, returns just the modelID.
+func (m SessionModel) String() string {
+	if m.ProviderID == "" {
+		return m.ModelID
+	}
+	return m.ProviderID + "/" + m.ModelID
+}
+
+// GetSessionModel extracts the model used in a session from OpenCode session messages.
+// Returns the model from the first assistant message that has model information.
+// This is the authoritative source for model identification - more reliable than
+// agent self-reporting in SYNTHESIS.md which may be inconsistent.
+func (c *Client) GetSessionModel(sessionID string) (*SessionModel, error) {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+
+	// Find the first assistant message with model info
+	for _, msg := range messages {
+		if msg.Info.Role == "assistant" && msg.Info.ModelID != "" {
+			return &SessionModel{
+				ProviderID: msg.Info.ProviderID,
+				ModelID:    msg.Info.ModelID,
+			}, nil
+		}
+	}
+
+	return nil, nil // No model info found
+}
+
 // SendPromptWithVerification sends a prompt and verifies it was delivered.
 // This combines SendPrompt with WaitForMessage to provide reliable message delivery.
 // If the initial send doesn't result in a message within the timeout, it retries once.
