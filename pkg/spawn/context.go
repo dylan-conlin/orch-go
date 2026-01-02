@@ -62,16 +62,18 @@ Update this file at phase transitions:
 This enables orchestrator visibility for untracked agents.
 
 🚨 SESSION COMPLETE PROTOCOL:
-After your final commit, BEFORE typing anything else:
+When your work is done (all deliverables ready), complete in this EXACT order:
 {{if eq .Tier "light"}}
-1. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + `
-2. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
+2. Commit any final changes
+3. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + `
-3. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
+2. Ensure SYNTHESIS.md is created
+3. Commit all changes (including SYNTHESIS.md)
+4. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 {{else}}
 🚨 CRITICAL - FIRST 3 ACTIONS:
@@ -84,16 +86,18 @@ If Phase is not reported within first 3 actions, you will be flagged as unrespon
 Do NOT skip this - the orchestrator monitors via beads comments.
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
-After your final commit, BEFORE typing anything else:
+When your work is done (all deliverables ready), complete in this EXACT order:
 {{if eq .Tier "light"}}
-1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-2. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + ` (report phase FIRST - before commit)
+2. Commit any final changes
+3. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
-3. Run: ` + "`/exit`" + ` to close the agent session
+1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + ` (report phase FIRST - before commit)
+2. Ensure SYNTHESIS.md is created
+3. Commit all changes (including SYNTHESIS.md)
+4. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
@@ -254,27 +258,77 @@ CONTEXT AVAILABLE:
 
 {{.ServerContext}}
 {{end}}
+{{if not .NoTrack}}
+## VERIFICATION REQUIREMENTS (orch complete gates)
+
+**Why this exists:** The orchestrator runs ` + "`orch complete`" + ` which verifies your work before closing the issue. These are the checks that WILL BLOCK completion if not satisfied. Capture evidence proactively.
+
+### For ALL skills:
+
+- **Phase: Complete** - Must report via beads comment (checked automatically)
+
+### For code-producing skills (feature-impl, systematic-debugging, reliability-testing):
+
+1. **Git commits exist** - At least one commit must exist since spawn time. No commits = work not done.
+
+2. **Test execution evidence** - Beads comments must contain actual test output, NOT just claims.
+   
+   ✅ **Good** (quantifiable output):
+   ` + "```bash" + `
+   bd comment {{.BeadsID}} "Tests: go test ./pkg/... - PASS (12 tests in 0.8s)"
+   bd comment {{.BeadsID}} "Tests: npm test - 15 passing, 0 failing"
+   bd comment {{.BeadsID}} "Tests: pytest - 8 passed in 2.3s"
+   ` + "```" + `
+   
+   ❌ **Bad** (vague claims that will be REJECTED):
+   - "tests pass" / "all tests pass"
+   - "verified tests pass"
+   - "tests are passing"
+
+3. **Visual verification (if web/ files modified)** - Screenshots or browser verification evidence required.
+   ` + "```bash" + `
+   bd comment {{.BeadsID}} "Visual verification: screenshot captured showing [description]"
+   bd comment {{.BeadsID}} "Tested in browser - [what was verified]"
+   ` + "```" + `
+   
+   Use Playwright MCP (` + "`browser_take_screenshot`" + `) or Glass tools (` + "`glass_screenshot`" + `) to capture evidence.
+
+### Evidence capture timing:
+
+- **Run tests** → Immediately capture output in beads comment
+- **Modify web/ files** → Capture screenshot before moving to next task
+- **Complete implementation** → Verify git status shows commits
+
+**The test:** Before marking Phase: Complete, ask yourself: "Can orch complete find quantifiable evidence of my work?"
+{{end}}
+
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
-After your final commit, BEFORE doing anything else:
+When your work is done (all deliverables ready), complete in this EXACT order:
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
-1. ` + "`/exit`" + `
+1. ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
+2. Commit any final changes
+3. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. ` + "`/exit`" + `
+1. ` + "`echo 'Complete' > {{.WorkspacePath}}/.phase`" + ` (report phase FIRST - before commit)
+2. Ensure SYNTHESIS.md is created
+3. Commit all changes (including SYNTHESIS.md)
+4. ` + "`/exit`" + `
 {{end}}
 {{else}}
 {{if eq .Tier "light"}}
-1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-2. ` + "`/exit`" + `
+1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + ` (report phase FIRST - before commit)
+2. Commit any final changes
+3. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
-1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-3. ` + "`/exit`" + `
+1. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + ` (report phase FIRST - before commit)
+2. Ensure SYNTHESIS.md is created
+3. Commit all changes (including SYNTHESIS.md)
+4. ` + "`/exit`" + `
 {{end}}
 {{end}}
 ⚠️ Your work is NOT complete until you run these commands.
