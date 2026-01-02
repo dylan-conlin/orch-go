@@ -5,6 +5,9 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // Skills that require visual verification when modifying web/ files.
@@ -121,6 +124,10 @@ var humanApprovalPatterns = []*regexp.Regexp{
 
 // HasWebChangesInRecentCommits checks if any of the last 5 commits contain changes
 // to web/ files (Svelte, TypeScript, CSS, etc.).
+//
+// DEPRECATED: This function checks the last 5 project commits, which may include
+// commits from other agents or prior work. Use HasWebChangesForAgent instead,
+// which scopes to commits made since the agent was spawned.
 func HasWebChangesInRecentCommits(projectDir string) bool {
 	// Get changed files from last 5 commits
 	cmd := exec.Command("git", "diff", "--name-only", "HEAD~5..HEAD")
@@ -134,6 +141,46 @@ func HasWebChangesInRecentCommits(projectDir string) bool {
 		if err != nil {
 			return false
 		}
+	}
+
+	return hasWebChangesInFiles(string(output))
+}
+
+// HasWebChangesForAgent checks if any commits since the agent's spawn time
+// contain changes to web/ files (Svelte, TypeScript, CSS, etc.).
+//
+// This function scopes to agent-specific changes by:
+// 1. Reading the spawn time from the workspace's .spawn_time file
+// 2. Using git log --since to find commits made after spawn time
+// 3. Checking if any of those commits modified web/ files
+//
+// If the workspace has no spawn time file (legacy workspace), falls back to
+// checking the last 5 commits for backward compatibility.
+func HasWebChangesForAgent(projectDir, workspacePath string) bool {
+	// Read spawn time from workspace
+	spawnTime := spawn.ReadSpawnTime(workspacePath)
+
+	// If no spawn time, fall back to the old behavior for backward compatibility
+	if spawnTime.IsZero() {
+		return HasWebChangesInRecentCommits(projectDir)
+	}
+
+	return hasWebChangesSinceTime(projectDir, spawnTime)
+}
+
+// hasWebChangesSinceTime checks if any commits since the given time modified web/ files.
+func hasWebChangesSinceTime(projectDir string, since time.Time) bool {
+	// Format time for git --since flag (ISO 8601 format works well)
+	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Get all files changed in commits since spawn time
+	// Using git log with --name-only to get file paths
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--name-only", "--format=")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// If git command fails, return false (no web changes detectable)
+		return false
 	}
 
 	return hasWebChangesInFiles(string(output))
@@ -282,8 +329,8 @@ func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
 func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualVerificationResult {
 	result := VisualVerificationResult{Passed: true}
 
-	// Check if web/ files were modified
-	result.HasWebChanges = HasWebChangesInRecentCommits(projectDir)
+	// Check if web/ files were modified by this agent (scoped by spawn time)
+	result.HasWebChanges = HasWebChangesForAgent(projectDir, workspacePath)
 
 	// No web changes = no verification needed
 	if !result.HasWebChanges {

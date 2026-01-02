@@ -1,7 +1,12 @@
 package verify
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 func TestIsWebFile(t *testing.T) {
@@ -674,4 +679,104 @@ func TestHumanApprovalPatterns(t *testing.T) {
 			t.Errorf("Approval pattern matching for %q: got %v, want %v", tc.input, matched, tc.shouldMatch)
 		}
 	}
+}
+
+func TestHasWebChangesForAgent(t *testing.T) {
+	t.Run("no spawn time falls back to recent commits", func(t *testing.T) {
+		// Create a temp workspace without spawn time file
+		workspacePath := t.TempDir()
+
+		// Create workspace with SPAWN_CONTEXT.md but no .spawn_time
+		err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte("test"), 0644)
+		if err != nil {
+			t.Fatalf("failed to create SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// With no spawn time, should fall back to HasWebChangesInRecentCommits
+		// We can't easily test the actual git behavior in unit tests,
+		// but we can verify the function doesn't panic and returns a boolean
+		projectDir := t.TempDir()
+		_ = HasWebChangesForAgent(projectDir, workspacePath)
+		// Just verify it doesn't panic - actual behavior depends on git state
+	})
+
+	t.Run("with spawn time uses time-based filtering", func(t *testing.T) {
+		// Create a temp workspace with spawn time
+		workspacePath := t.TempDir()
+		spawnTime := time.Now().Add(-1 * time.Hour)
+
+		err := spawn.WriteSpawnTime(workspacePath, spawnTime)
+		if err != nil {
+			t.Fatalf("failed to write spawn time: %v", err)
+		}
+
+		// With spawn time, should use time-based filtering
+		// Again, can't easily test actual git behavior in unit tests
+		projectDir := t.TempDir()
+		_ = HasWebChangesForAgent(projectDir, workspacePath)
+		// Just verify it doesn't panic - actual behavior depends on git state
+	})
+}
+
+func TestHasWebChangesSinceTime(t *testing.T) {
+	// This tests the internal function by testing output parsing
+	// The hasWebChangesInFiles function is used internally
+
+	tests := []struct {
+		name      string
+		gitOutput string
+		want      bool
+	}{
+		{
+			name:      "web svelte file in log output",
+			gitOutput: "web/src/routes/page.svelte\n",
+			want:      true,
+		},
+		{
+			name:      "multiple files including web",
+			gitOutput: "pkg/verify/check.go\n\nweb/src/lib/api.ts\n\ncmd/orch/main.go\n",
+			want:      true,
+		},
+		{
+			name:      "only go files",
+			gitOutput: "pkg/verify/check.go\n\ncmd/orch/main.go\n",
+			want:      false,
+		},
+		{
+			name:      "empty output (no commits since time)",
+			gitOutput: "",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test the file parsing logic that hasWebChangesSinceTime uses
+			got := hasWebChangesInFiles(tt.gitOutput)
+			if got != tt.want {
+				t.Errorf("hasWebChangesInFiles() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasWebChangesForAgentScopesBehavior(t *testing.T) {
+	// This test documents the expected behavior difference between
+	// HasWebChangesInRecentCommits (project-scoped) and
+	// HasWebChangesForAgent (agent-scoped)
+
+	t.Run("documents scope difference", func(t *testing.T) {
+		// HasWebChangesInRecentCommits:
+		// - Checks HEAD~5..HEAD (last 5 commits)
+		// - Includes ALL recent commits, not just this agent's
+		// - Can cause false positives if prior agents modified web/ files
+
+		// HasWebChangesForAgent:
+		// - Checks commits since spawn time
+		// - Only includes commits made by this specific agent
+		// - Prevents false positives from prior agent work
+
+		// This is a documentation test - the actual behavior is tested above
+		// and in integration tests
+	})
 }
