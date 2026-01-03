@@ -1,7 +1,5 @@
 package main
 
-// hello world
-
 import (
 	"bufio"
 	"encoding/json"
