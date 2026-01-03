@@ -5,79 +5,75 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Recovered 4 of 8 bug fixes from Dec 27-Jan 2 commits via cherry-pick; 4 were too entangled with feature work to cherry-pick cleanly.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Build and tests pass for all recovered fixes. Complex commits had conflicts touching main.go state machine code.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Many "bug fix" commits from the spiral period also contain feature additions; pure cherry-pick is only viable for simple, isolated changes.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Orchestrator should note which fixes remain and may need manual extraction later.
 
 ---
 
-# Investigation: Recover Priority Bug Fixes Closed
+# Investigation: Recover Priority Bug Fixes
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Which bug fix commits from Dec 27-Jan 2 can be recovered via cherry-pick without conflicts?
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** og-feat-recover-priority-bug-03jan
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Extracted-From:** N/A
+**Supersedes:** N/A
+**Superseded-By:** N/A
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Successfully recovered 4 fixes
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- `13f852e8`: fix: filter closed issues from orch review NEEDS_REVIEW output - clean cherry-pick
+- `8c9cf054`: fix: suppress plugin output from leaking into OpenCode TUI - minor conflict resolved
+- `5447a47f`: fix: patterns package now reads JSONL format correctly - clean cherry-pick
+- `0c8fedb8`: fix: standardize on localhost instead of 127.0.0.1 - clean cherry-pick
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** git cherry-pick commands, git log
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** These 4 fixes were relatively self-contained and could be applied without breaking the build.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: 4 fixes were too complex to cherry-pick
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `4268e9de`: project filtering action-log - touches many files, conflicts in serve.go, context.go, svelte components
+- `fc1c8482`: filter closed issues pending-reviews - entangled with artifact API feature additions
+- `155e1771`: filter closed issues architect - entangled with SendPromptWithVerification feature
+- `baed7fb1`: HTTP API for headless spawns - conflicts with current main.go struct definitions
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** git cherry-pick --no-commit output showing conflicts
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** These commits were made during active feature development and are interleaved with other changes, making clean extraction difficult.
+
+---
+
+### Finding 3: Build and tests pass after all recovered changes
+
+**Evidence:**
+```
+go build ./... - success
+go test ./pkg/patterns/... ./cmd/orch/... - all tests pass
+```
+
+**Source:** Terminal output
+
+**Significance:** Recovered fixes are safe to use and don't break existing functionality.
 
 ---
 
@@ -85,15 +81,21 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Cherry-pick is effective for isolated fixes** - Commits that touched only a few files with no structural changes merged cleanly.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Spiral period commits are often compound** - Many "fix:" commits also contain features, refactoring, or structural changes.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Manual extraction is needed for complex fixes** - The remaining 4 fixes would need manual code extraction rather than cherry-pick.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+4 of 8 bug fix commits could be recovered via cherry-pick:
+- filterClosedIssues function for orch review (13f852e8)
+- Plugin output suppression (8c9cf054)
+- Patterns JSONL format (5447a47f)
+- Localhost standardization (0c8fedb8)
+
+The remaining 4 are too entangled with feature work and would need manual extraction.
 
 ---
 
@@ -101,120 +103,41 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Build passes after all changes (go build ./...)
+- ✅ Pattern tests pass (go test ./pkg/patterns/...)
+- ✅ CLI tests pass (go test ./cmd/orch/...)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ End-to-end spawn behavior with recovered changes
+- ⚠️ Dashboard UI with localhost changes
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If more tests fail in CI, would need to investigate further
 
 ---
 
-## Implementation Recommendations
+## Commits Recovered
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+| Commit | Description | Status |
+|--------|-------------|--------|
+| 13f852e8 | filter closed issues review | ✅ Recovered |
+| 8c9cf054 | suppress plugin output | ✅ Recovered |
+| 5447a47f | patterns JSONL format | ✅ Recovered |
+| 0c8fedb8 | standardize localhost | ✅ Recovered |
+| 4268e9de | project filtering action-log | ❌ Too complex |
+| fc1c8482 | filter closed issues pending-reviews | ❌ Too complex |
+| 155e1771 | filter closed issues architect | ❌ Too complex |
+| baed7fb1 | HTTP API for headless spawns | ❌ Too complex |
 
 ---
 
-### Implementation Details
+## Self-Review
 
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- [x] Real test performed (build and tests)
+- [x] Conclusion from evidence (based on actual cherry-pick attempts)
+- [x] Question answered (listed which could and couldn't be recovered)
+- [x] File complete
 
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
-
----
-
-## References
-
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
-
-**Commands Run:**
-```bash
-# [Command description]
-[command]
-
-# [Command description]
-[command]
-```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
-
----
-
-## Investigation History
-
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
-
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**Self-Review Status:** PASSED
