@@ -1,83 +1,69 @@
-<!--
-D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
--->
-
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully recovered all Priority 3 infrastructure improvements from Dec 27-Jan 2 commits: pkg/shell package, Makefile symlink pattern, and doctor.go health checks.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Commits 3d8f2656 (pkg/shell by parallel agent) and 96ebf9a2 (symlink + doctor improvements) verified; tests pass for pkg/shell; build succeeds.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Race conditions with parallel agents required atomic file writes; pkg/shell provides testable shell abstraction; doctor now detects stale binaries and stalled sessions.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close - all features recovered and committed.
 
 ---
 
-# Investigation: Recover Priority Infrastructure Pkg Shell
+# Investigation: Recover Priority Infrastructure (pkg/shell, symlink, doctor)
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Can we recover the infrastructure improvements from commits 7e3bd2fc, 68b9cb5a, ce33d291, and 1dee45f4?
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Agent orch-go-9i2q
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Extracted-From:** Lost commits from Dec 27 - Jan 2
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: pkg/shell package already recovered
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Parallel agent (beads recovery task) committed pkg/shell in 3d8f2656. Files exist at pkg/shell/shell.go, pkg/shell/mock.go, pkg/shell/shell_test.go, pkg/shell/mock_test.go. All tests pass.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `git log --oneline pkg/shell/`, `go test ./pkg/shell/...`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** No duplicate work needed for pkg/shell. Package provides Runner interface and MockRunner for testable shell execution.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Makefile symlink pattern recovered
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Changed `make install` from `cp build/orch ~/bin/orch` to `ln -sf $(PWD)/build/orch ~/bin/orch`. Committed in 96ebf9a2.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Makefile:16-17, original commit 68b9cb5a
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Development workflow improved - `make build` now automatically updates installed CLI via symlink without requiring `make install`.
+
+---
+
+### Finding 3: doctor.go stale binary detection recovered
+
+**Evidence:** Added `--stale-only` flag (exit 1 if stale), `checkStaleBinary()` function comparing git commit hash vs embedded binary hash. Committed in 96ebf9a2.
+
+**Source:** cmd/orch/doctor.go, original commit ce33d291
+
+**Significance:** Enables CI/CD and scripts to quickly check if installed binary is outdated. Supports `orch doctor --stale-only && echo "up to date" || make install` pattern.
+
+---
+
+### Finding 4: doctor.go failed-to-start session detection recovered
+
+**Evidence:** Added `checkStalledSessions()` function that detects sessions >1 minute old with no beads comments. Uses pkg/verify/check.go `HasBeadsComment()` helper. Committed in 96ebf9a2.
+
+**Source:** cmd/orch/doctor.go, pkg/verify/check.go, original commit 1dee45f4
+
+**Significance:** Identifies sessions that started but never made progress (likely crashed at startup), helping diagnose agent health issues.
 
 ---
 
@@ -85,15 +71,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Parallel recovery efficiency** - pkg/shell was recovered by another agent working on beads issues, demonstrating effective parallel work distribution.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Doctor improvements complement each other** - Stale binary detection and stalled session detection both contribute to system health monitoring.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Race conditions require atomic operations** - Multiple agents modifying doctor.go caused conflicts; resolved by using atomic file writes.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Yes, all infrastructure improvements were successfully recovered. pkg/shell via parallel agent commit 3d8f2656, and Makefile symlink + doctor improvements via commit 96ebf9a2.
 
 ---
 
@@ -101,120 +87,56 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ pkg/shell tests pass (`go test ./pkg/shell/...` - all pass)
+- ✅ Build succeeds with all changes (`make build` completes)
+- ✅ Makefile symlink creates valid symlink (verified manually)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Stalled session detection timing thresholds (1 minute may need tuning)
+- ⚠️ HasBeadsComment performance with large registries
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
-
----
-
-## Implementation Recommendations
-
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- If stalled session detection has false positives in normal operation
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+**Files Modified:**
+- Makefile - symlink pattern for make install
+- cmd/orch/doctor.go - stale binary + stalled session detection
+- pkg/verify/check.go - HasBeadsComment helper function
 
-**Commands Run:**
-```bash
-# [Command description]
-[command]
+**Commits:**
+- 3d8f2656 - pkg/shell package (parallel agent)
+- 96ebf9a2 - Makefile symlink, doctor improvements (this agent)
 
-# [Command description]
-[command]
-```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+**Original Commits Recovered From:**
+- 7e3bd2fc - pkg/shell package
+- 68b9cb5a - symlink pattern
+- ce33d291 - stale binary detection
+- 1dee45f4 - failed-to-start detection
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-03:** Investigation started
+- Task: Recover Priority 3 infrastructure from lost commits
+- Four commits to recover: pkg/shell, symlink, two doctor features
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-03:** Found pkg/shell already recovered
+- Parallel agent committed pkg/shell in 3d8f2656
+- Shifted focus to remaining three features
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-03:** Recovered remaining features
+- Makefile symlink pattern
+- doctor.go stale binary detection with --stale-only flag
+- doctor.go stalled session detection
+- All committed in 96ebf9a2
+
+**2026-01-03:** Investigation completed
+- Status: Complete
+- Key outcome: All 4 infrastructure improvements recovered across 2 commits
