@@ -12,7 +12,7 @@ orch-go (this binary)
     └── bd CLI                  ← beads integration (shells out)
     │
     ▼
-OpenCode Server (http://127.0.0.1:4096)
+OpenCode Server (http://localhost:4096)
     │
     ▼
 Claude API / Gemini API

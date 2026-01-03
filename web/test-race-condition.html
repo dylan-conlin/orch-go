@@ -9,13 +9,13 @@
             const start = Date.now();
             
             // Parallel fetch + SSE connect (original)
-            fetch('http://127.0.0.1:3333/api/agents')
+            fetch('http://localhost:3333/api/agents')
                 .then(() => console.log(`[${Date.now() - start}ms] Initial fetch completed`))
                 .catch(err => console.error(`[${Date.now() - start}ms] Initial fetch failed:`, err));
             
             // Simulate SSE connection triggering another fetch
             setTimeout(() => {
-                fetch('http://127.0.0.1:3333/api/agents')
+                fetch('http://localhost:3333/api/agents')
                     .then(() => console.log(`[${Date.now() - start}ms] SSE onopen fetch completed`))
                     .catch(err => console.error(`[${Date.now() - start}ms] SSE onopen fetch failed:`, err));
             }, 100);
@@ -27,7 +27,7 @@
             
             // Only SSE connection fetch (fixed)
             setTimeout(() => {
-                fetch('http://127.0.0.1:3333/api/agents')
+                fetch('http://localhost:3333/api/agents')
                     .then(() => console.log(`[${Date.now() - start}ms] SSE onopen fetch completed`))
                     .catch(err => console.error(`[${Date.now() - start}ms] SSE onopen fetch failed:`, err));
             }, 100);

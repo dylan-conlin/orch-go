@@ -100,7 +100,7 @@ func init() {
 
 // runServeStatus checks if the orch serve API is running on the given port.
 func runServeStatus(portNum int) error {
-	addr := fmt.Sprintf("http://127.0.0.1:%d/health", portNum)
+	addr := fmt.Sprintf("http://localhost:%d/health", portNum)
 
 	client := &http.Client{
 		Timeout: 2 * time.Second,
@@ -131,7 +131,7 @@ func runServeStatus(portNum int) error {
 
 	fmt.Printf("✅ API server is running on port %d\n", portNum)
 	fmt.Printf("   Status: %s\n", health.Status)
-	fmt.Printf("   URL:    http://127.0.0.1:%d\n", portNum)
+	fmt.Printf("   URL:    http://localhost:%d\n", portNum)
 	fmt.Println()
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - Active agents")
@@ -254,11 +254,11 @@ func runServe(portNum int) error {
 	})
 
 	// pprof handlers for CPU profiling (useful for debugging CPU runaway)
-	// Access at: http://127.0.0.1:3348/debug/pprof/
+	// Access at: http://localhost:3348/debug/pprof/
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
 
 	addr := fmt.Sprintf(":%d", portNum)
-	fmt.Printf("Starting orch-go API server on http://127.0.0.1%s\n", addr)
+	fmt.Printf("Starting orch-go API server on http://localhost%s\n", addr)
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
@@ -992,7 +992,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleEvents proxies the OpenCode SSE stream to the client.
-// It connects to http://127.0.0.1:4096/event and forwards events.
+// It connects to http://localhost:4096/event and forwards events.
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

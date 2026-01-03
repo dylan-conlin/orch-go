@@ -102,7 +102,7 @@ function extractEventId(data: any): string | null {
 }
 
 // API configuration
-const API_BASE = 'http://127.0.0.1:3348';
+const API_BASE = 'http://localhost:3348';
 
 // Fetch state management - prevents race conditions during rapid reloads
 let currentFetchController: AbortController | null = null;

@@ -18,7 +18,7 @@ The legacy monolithic `main.go` at project root is deprecated and only supports 
 
 ## Usage
 
-All commands support a global `--server` flag to specify the OpenCode server URL (default: `http://127.0.0.1:4096`).
+All commands support a global `--server` flag to specify the OpenCode server URL (default: `http://localhost:4096`).
 
 ### Spawn a new session
 
@@ -65,7 +65,7 @@ Monitor the OpenCode server for session events and send notifications on complet
 orch-go monitor
 
 # Output:
-# Monitoring SSE events at http://127.0.0.1:4096/event...
+# Monitoring SSE events at http://localhost:4096/event...
 # [session.status] {"status":"busy","session_id":"ses_abc123"}
 # [session.status] {"status":"idle","session_id":"ses_abc123"}
 # Session ses_abc123 completed!
@@ -116,14 +116,14 @@ All events are logged to `~/.orch/events.jsonl` in JSONL format:
 
 ## Requirements
 
-- OpenCode running at `http://127.0.0.1:4096` (default)
+- OpenCode running at `http://localhost:4096` (default)
 - macOS for desktop notifications (uses beeep library)
 
 ## API Patterns
 
 Based on validated manual testing:
 
-1. **Spawn**: `opencode run --attach http://127.0.0.1:4096 --format json --title "title" "prompt"`
-2. **Q&A**: `opencode run --attach http://127.0.0.1:4096 --session ses_xxx --format json "question"`
-3. **SSE**: `curl http://127.0.0.1:4096/event` (server.connected, session.status, etc.)
+1. **Spawn**: `opencode run --attach http://localhost:4096 --format json --title "title" "prompt"`
+2. **Q&A**: `opencode run --attach http://localhost:4096 --session ses_xxx --format json "question"`
+3. **SSE**: `curl http://localhost:4096/event` (server.connected, session.status, etc.)
 4. **Completion**: Watch for `session.status` changing from `busy` to `idle`

@@ -315,7 +315,7 @@ func TestServeStatusWithMockServer(t *testing.T) {
 	defer server.Close()
 
 	// Parse the port from the test server URL
-	// The URL is in format http://127.0.0.1:PORT
+	// The URL is in format http://127.0.0.1:PORT (httptest.Server always uses 127.0.0.1)
 	var testPort int
 	_, err := fmt.Sscanf(server.URL, "http://127.0.0.1:%d", &testPort)
 	if err != nil {

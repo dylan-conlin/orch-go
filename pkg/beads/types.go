@@ -66,6 +66,18 @@ type CreateArgs struct {
 	Priority     int      `json:"priority"`
 	Labels       []string `json:"labels,omitempty"`
 	Dependencies []string `json:"dependencies,omitempty"`
+	// Force bypasses duplicate detection - creates issue even if one with same title exists.
+	Force bool `json:"force,omitempty"`
+}
+
+// CreateResult contains the result of a Create operation.
+// If a duplicate was detected and Force was false, Existing will be set
+// and Created will be false.
+type CreateResult struct {
+	Issue    *Issue
+	Created  bool   // True if a new issue was created, false if existing returned
+	Existing bool   // True if an existing issue was returned due to duplicate detection
+	Message  string // Human-readable message about the result
 }
 
 // CloseArgs represents arguments for closing an issue.

@@ -75,7 +75,7 @@ type CompletionServiceConfig struct {
 // DefaultCompletionServiceConfig returns sensible defaults.
 func DefaultCompletionServiceConfig() CompletionServiceConfig {
 	return CompletionServiceConfig{
-		ServerURL:        "http://127.0.0.1:4096",
+		ServerURL:        "http://localhost:4096",
 		ReconnectBackoff: 5 * time.Second,
 		MaxReconnects:    -1, // Infinite reconnects for daemon mode
 	}
