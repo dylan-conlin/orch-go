@@ -1,92 +1,80 @@
-# Session Handoff - Jan 3, 2026
+# Session Handoff - Jan 3, 2026 (Evening)
 
 ## What Happened This Session
 
-Recovered all 6 Priority 1 commits that were lost in the Dec 27 - Jan 2 spiral. Manual extraction approach worked well - no cherry-pick conflicts.
+Completed full recovery from the Dec 27 - Jan 2 spiral. All priority items now recovered and verified.
 
-**Commits recovered:**
-| Commit | Feature | Method |
-|--------|---------|--------|
-| `b2b19b4a` | Daemon skips failing issues | Manual extraction |
-| `bbc95b5e` | Daemon rate limiting (20/hr default) | Manual extraction |
-| `10cc03ca` | Headless spawn honors --model | Already present |
-| `8b42ddd3` | Scanner buffer 1MB for large JSON | Manual extraction |
-| `735ac6a2` | Full skill inference in all spawn paths | Manual extraction |
-| `fb1bc009` | triage:ready removal on complete only | Manual extraction |
+### Priority 1 (Verified Earlier Today)
+- Daemon skips failing issues
+- Daemon rate limiting (20/hr default)
+- Headless spawn honors --model
+- Scanner buffer 1MB for large JSON
+- Full skill inference in all spawn paths
+- triage:ready removal on complete only
 
-**All tests pass (60+ tests).**
+### Priority 2 (Recovered This Session)
 
-## Verification Needed
+**Verification Gates** (`orch-go-n2uw` - closed):
+- `pkg/verify/git_diff.go` - Verifies SYNTHESIS claims match actual git diff
+- `pkg/verify/build_verification.go` - Runs `go build ./...` before completion
+- `pkg/verify/test_evidence.go` - Requires test execution evidence for code changes
+- Markdown-only fix: Uses spawn time to scope git log accurately
 
-Next session should verify recovered functionality works in practice:
+**CLI Commands** (`orch-go-p0ht` - closed):
+- `orch changelog` - Cross-project change visibility
+- `orch reconcile` - Detect/fix zombie in_progress issues
+- `orch history` - Agent history with skill analytics
+- `orch transcript` - Session transcripts
 
-### 1. Daemon Skip Failing Issues
-```bash
-# Create an issue that will fail to spawn (e.g., unfilled FAILURE_REPORT)
-# Run daemon and verify it skips to next issue instead of blocking
-orch daemon run --verbose
-```
+**Beads Improvements** (`orch-go-rsnq` - closed):
+- MockClient.FindByTitle for testing deduplication
+- Deduplication tests
 
-### 2. Rate Limiting
-```bash
-# Check rate limiter is initialized
-orch daemon preview  # Should show RateStatus field
+**Bug Fixes** (`orch-go-yjuq` - closed):
+- Filter closed issues from review output
+- Suppress plugin output leaking into TUI
+- Patterns JSONL format fix
+- Standardize on localhost vs 127.0.0.1
 
-# Spawn several agents and verify rate limit kicks in at 20/hr
-# (or lower with --max-spawns-per-hour)
-```
+### Priority 3 (Recovered This Session)
 
-### 3. Skill Inference
-```bash
-# Create issue with skill:research label
-bd create "Test research" --label skill:research --label triage:ready
+**Infrastructure** (`orch-go-9i2q` - closed):
+- `pkg/shell` package (shell execution abstraction with mock)
+- Makefile symlink pattern for install
+- `orch doctor --stale-only` flag
+- Stalled session detection in doctor
 
-# Verify daemon picks up the label-based skill
-orch daemon preview  # Should show skill: research
-```
+## Verification Done
 
-### 4. triage:ready Label Flow
-```bash
-# Spawn an agent on an issue with triage:ready
-# Verify label remains during work
-# Complete the agent
-orch complete <beads-id>
-# Verify label is removed only after successful completion
-```
-
-### 5. Large JSON Events
-```bash
-# Spawn headless agent that reads/writes large files
-# Verify no scanner buffer overflow errors
-orch spawn feature-impl "Read a large file" --headless
-```
+All recovered features tested and working:
+- `orch changelog --days 1` ✅
+- `orch reconcile` ✅ (found 6 zombies)
+- `orch history` ✅
+- `orch doctor --stale-only` ✅
+- `go test ./...` ✅ (all pass)
+- Verification gates tested programmatically ✅
 
 ## Current State
 
 ```bash
-orch mode         # ops (protected)
-orch status       # Check agent counts
-orch doctor       # Services healthy
-go test ./...     # All pass
+git status          # Clean, up to date with origin
+orch status         # 0 active agents
+bd list --status in_progress  # 0 (zombies reset to open)
+go test ./...       # All pass
 ```
 
-**Git status:**
-- On master, uncommitted changes from recovery
-- Need to commit and push
+## Open Issues Reset to Open (Were Zombies)
 
-## Priority 2 (Not Recovered Yet)
+These were in_progress with no active agent - reset to open for future work:
+- orch-go-bgiu: Gate bd close on Phase: Complete verification
+- orch-go-54y7: Strengthen VerifySynthesis to validate content
+- orch-go-0hw5: Align SPAWN_CONTEXT deliverables with skill
+- orch-go-gba4: orch session status reconcile spawn states
+- orch-go-x7vn: Visual verification checks project git history
+- orch-go-3c02: Test daemon skip functionality
 
-- New CLI commands: reconcile, changelog, sessions, servers
-- Verification gates: git diff, build verification
-- Beads deduplication
+## What's Left (Future Work)
 
-## Key Files Modified
+The spiral recovery is complete. Remaining P2 issues are normal backlog items, not recovery work.
 
-- `pkg/daemon/daemon.go` - NextIssueExcluding, OnceExcluding, RateLimiter
-- `pkg/daemon/daemon_test.go` - New tests for skip and rate limiting
-- `pkg/opencode/client.go` - LargeScannerBufferSize
-- `pkg/verify/check.go` - RemoveTriageReadyLabel
-- `pkg/beads/client.go` - FallbackRemoveLabel
-- `cmd/orch/main.go` - inferSkillFromBeadsIssue, label removal in runComplete
-- `cmd/orch/swarm.go` - InferSkillFromIssue usage
-- `cmd/orch/daemon.go` - OnceExcluding with skip tracking
+Run `bd list --status open --priority P2` to see current backlog.
