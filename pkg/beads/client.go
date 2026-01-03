@@ -796,3 +796,13 @@ func FallbackUpdate(id, status string) error {
 	}
 	return nil
 }
+
+// FallbackRemoveLabel removes a label from an issue via bd CLI.
+func FallbackRemoveLabel(id, label string) error {
+	cmd := exec.Command("bd", "update", id, "--remove-label", label)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))
+	}
+	return nil
+}

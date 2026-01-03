@@ -871,17 +871,55 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 	}
 }
 
+// inferSkillFromBeadsIssue infers skill from a beads issue using labels, title, then type.
+func inferSkillFromBeadsIssue(issue *beads.Issue) string {
+	// Check for skill:* labels first
+	for _, label := range issue.Labels {
+		if strings.HasPrefix(label, "skill:") {
+			return strings.TrimPrefix(label, "skill:")
+		}
+	}
+
+	// Check for title patterns (e.g., synthesis issues)
+	if strings.HasPrefix(issue.Title, "Synthesize ") && strings.Contains(issue.Title, " investigations") {
+		return "kb-reflect"
+	}
+
+	// Fall back to type-based inference
+	skill, err := InferSkillFromIssueType(issue.IssueType)
+	if err != nil {
+		return "feature-impl" // Default fallback
+	}
+	return skill
+}
+
 func runWork(serverURL, beadsID string, inline bool) error {
-	// Get issue details
+	// Get issue details from verify (for description)
 	issue, err := verify.GetIssue(beadsID)
 	if err != nil {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Infer skill from issue type
-	skillName, err := InferSkillFromIssueType(issue.IssueType)
-	if err != nil {
-		return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
+	// Infer skill from issue (labels, title pattern, then type)
+	// Use beads.Issue which has Labels for full skill inference
+	var skillName string
+	socketPath, connErr := beads.FindSocketPath("")
+	if connErr == nil {
+		beadsClient := beads.NewClient(socketPath)
+		if connErr := beadsClient.Connect(); connErr == nil {
+			defer beadsClient.Close()
+			beadsIssue, showErr := beadsClient.Show(beadsID)
+			if showErr == nil {
+				skillName = inferSkillFromBeadsIssue(beadsIssue)
+			}
+		}
+	}
+	// Fall back to type-only inference if beads fails
+	if skillName == "" {
+		skillName, err = InferSkillFromIssueType(issue.IssueType)
+		if err != nil {
+			return fmt.Errorf("cannot work on issue %s: %w", beadsID, err)
+		}
 	}
 
 	// Use issue title and description as the task for full context
@@ -1631,6 +1669,9 @@ func (r *headlessSpawnResult) StartBackgroundCleanup() {
 
 // startHeadlessSession starts an opencode session and extracts the session ID.
 // Returns the result with session ID and resources for cleanup.
+// Note: Uses CLI mode instead of HTTP API because OpenCode's HTTP API ignores the model parameter.
+// CLI mode correctly honors the --model flag.
+// See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
 func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
 	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
 	cmd.Dir = cfg.ProjectDir
@@ -3233,6 +3274,13 @@ func runComplete(beadsID, workdir string) error {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
 		fmt.Printf("Closed beads issue: %s\n", beadsID)
+
+		// Remove triage:ready label on successful completion
+		// This ensures failed/abandoned agents leave issues in ready queue for daemon retry
+		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
+			// Non-critical - the issue may not have had this label
+			// or it was already removed
+		}
 	}
 	fmt.Printf("Reason: %s\n", reason)
 

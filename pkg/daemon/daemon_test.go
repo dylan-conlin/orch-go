@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +119,112 @@ func TestNextIssue_SkipsInProgressIssues(t *testing.T) {
 	}
 	if issue.Status != "open" {
 		t.Errorf("NextIssue() status = %q, want 'open'", issue.Status)
+	}
+}
+
+func TestNextIssueExcluding_SkipsExcludedIssues(t *testing.T) {
+	// Test that NextIssueExcluding skips issues in the skip set.
+	// This is critical for the daemon to skip issues that failed to spawn
+	// (e.g., due to failure report gate) and continue with other issues.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+				{ID: "proj-3", Title: "Third", Priority: 2, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Skip the first issue (simulating failure report gate blocked it)
+	skip := map[string]bool{"proj-1": true}
+
+	issue, err := d.NextIssueExcluding(skip)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssueExcluding() expected issue, got nil")
+	}
+	// Should skip proj-1 and return proj-2
+	if issue.ID != "proj-2" {
+		t.Errorf("NextIssueExcluding() = %q, want 'proj-2' (should skip excluded issue)", issue.ID)
+	}
+}
+
+func TestNextIssueExcluding_SkipsMultipleExcludedIssues(t *testing.T) {
+	// Test that multiple excluded issues are all skipped.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+				{ID: "proj-3", Title: "Third", Priority: 2, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Skip multiple issues
+	skip := map[string]bool{"proj-1": true, "proj-2": true}
+
+	issue, err := d.NextIssueExcluding(skip)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding() unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssueExcluding() expected issue, got nil")
+	}
+	// Should skip proj-1 and proj-2, return proj-3
+	if issue.ID != "proj-3" {
+		t.Errorf("NextIssueExcluding() = %q, want 'proj-3' (should skip excluded issues)", issue.ID)
+	}
+}
+
+func TestNextIssueExcluding_ReturnsNilWhenAllExcluded(t *testing.T) {
+	// Test that NextIssueExcluding returns nil when all issues are excluded.
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	// Skip all issues
+	skip := map[string]bool{"proj-1": true, "proj-2": true}
+
+	issue, err := d.NextIssueExcluding(skip)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding() unexpected error: %v", err)
+	}
+	// Should return nil when all issues are excluded
+	if issue != nil {
+		t.Errorf("NextIssueExcluding() = %v, want nil (all issues excluded)", issue)
+	}
+}
+
+func TestNextIssueExcluding_NilSkipWorksLikeNextIssue(t *testing.T) {
+	// Test that passing nil skip set works like NextIssue (returns first issue).
+	d := &Daemon{
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "proj-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	issue, err := d.NextIssueExcluding(nil)
+	if err != nil {
+		t.Fatalf("NextIssueExcluding(nil) unexpected error: %v", err)
+	}
+	if issue == nil {
+		t.Fatal("NextIssueExcluding(nil) expected issue, got nil")
+	}
+	// Should return first issue (no exclusions)
+	if issue.ID != "proj-1" {
+		t.Errorf("NextIssueExcluding(nil) = %q, want 'proj-1'", issue.ID)
 	}
 }
 
@@ -1376,5 +1483,248 @@ func TestGetClosedIssuesBatch_Integration(t *testing.T) {
 	// Should return empty or error gracefully
 	if result == nil {
 		t.Error("getClosedIssuesBatch() returned nil, want non-nil map")
+	}
+}
+
+// =============================================================================
+// Tests for RateLimiter
+// =============================================================================
+
+func TestNewRateLimiter(t *testing.T) {
+	r := NewRateLimiter(20)
+
+	if r.MaxPerHour != 20 {
+		t.Errorf("NewRateLimiter(20).MaxPerHour = %d, want 20", r.MaxPerHour)
+	}
+	if len(r.SpawnHistory) != 0 {
+		t.Errorf("NewRateLimiter(20).SpawnHistory should be empty, got %d entries", len(r.SpawnHistory))
+	}
+	if r.nowFunc == nil {
+		t.Error("NewRateLimiter(20).nowFunc should not be nil")
+	}
+}
+
+func TestRateLimiter_CanSpawn_NoLimit(t *testing.T) {
+	r := NewRateLimiter(0) // No limit
+
+	canSpawn, count, msg := r.CanSpawn()
+	if !canSpawn {
+		t.Error("CanSpawn() should return true when no limit is set")
+	}
+	if count != 0 {
+		t.Errorf("CanSpawn() count = %d, want 0 (no tracking)", count)
+	}
+	if msg != "" {
+		t.Errorf("CanSpawn() msg = %q, want empty", msg)
+	}
+}
+
+func TestRateLimiter_CanSpawn_BelowLimit(t *testing.T) {
+	r := NewRateLimiter(5)
+
+	// Record 3 spawns
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	canSpawn, count, msg := r.CanSpawn()
+	if !canSpawn {
+		t.Error("CanSpawn() should return true when below limit")
+	}
+	if count != 3 {
+		t.Errorf("CanSpawn() count = %d, want 3", count)
+	}
+	if msg != "" {
+		t.Errorf("CanSpawn() msg = %q, want empty", msg)
+	}
+}
+
+func TestRateLimiter_CanSpawn_AtLimit(t *testing.T) {
+	r := NewRateLimiter(3)
+
+	// Record exactly 3 spawns
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	canSpawn, count, msg := r.CanSpawn()
+	if canSpawn {
+		t.Error("CanSpawn() should return false when at limit")
+	}
+	if count != 3 {
+		t.Errorf("CanSpawn() count = %d, want 3", count)
+	}
+	if msg == "" {
+		t.Error("CanSpawn() should return a message when at limit")
+	}
+}
+
+func TestRateLimiter_CanSpawn_ExpiredHistory(t *testing.T) {
+	r := NewRateLimiter(3)
+
+	// Use a mock time function
+	baseTime := time.Now()
+	r.nowFunc = func() time.Time { return baseTime }
+
+	// Record 3 spawns at base time
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	// Move time forward by more than an hour
+	r.nowFunc = func() time.Time { return baseTime.Add(61 * time.Minute) }
+
+	// Old spawns should be expired
+	canSpawn, count, _ := r.CanSpawn()
+	if !canSpawn {
+		t.Error("CanSpawn() should return true when old spawns are expired")
+	}
+	if count != 0 {
+		t.Errorf("CanSpawn() count = %d, want 0 (expired)", count)
+	}
+}
+
+func TestRateLimiter_RecordSpawn(t *testing.T) {
+	r := NewRateLimiter(10)
+
+	r.RecordSpawn()
+	if len(r.SpawnHistory) != 1 {
+		t.Errorf("RecordSpawn() should add one entry, got %d", len(r.SpawnHistory))
+	}
+
+	r.RecordSpawn()
+	r.RecordSpawn()
+	if len(r.SpawnHistory) != 3 {
+		t.Errorf("RecordSpawn() should have 3 entries, got %d", len(r.SpawnHistory))
+	}
+}
+
+func TestRateLimiter_SpawnsRemaining(t *testing.T) {
+	tests := []struct {
+		name     string
+		max      int
+		spawns   int
+		wantLeft int
+	}{
+		{"no limit", 0, 10, 100},
+		{"none used", 5, 0, 5},
+		{"some used", 10, 3, 7},
+		{"all used", 5, 5, 0},
+		{"over limit", 3, 5, 0}, // Can't have negative remaining
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewRateLimiter(tt.max)
+			for i := 0; i < tt.spawns; i++ {
+				r.RecordSpawn()
+			}
+
+			got := r.SpawnsRemaining()
+			if got != tt.wantLeft {
+				t.Errorf("SpawnsRemaining() = %d, want %d", got, tt.wantLeft)
+			}
+		})
+	}
+}
+
+func TestRateLimiter_Status(t *testing.T) {
+	r := NewRateLimiter(10)
+	for i := 0; i < 3; i++ {
+		r.RecordSpawn()
+	}
+
+	status := r.Status()
+	if status.MaxPerHour != 10 {
+		t.Errorf("Status().MaxPerHour = %d, want 10", status.MaxPerHour)
+	}
+	if status.SpawnsLastHour != 3 {
+		t.Errorf("Status().SpawnsLastHour = %d, want 3", status.SpawnsLastHour)
+	}
+	if status.SpawnsRemaining != 7 {
+		t.Errorf("Status().SpawnsRemaining = %d, want 7", status.SpawnsRemaining)
+	}
+	if status.LimitReached {
+		t.Error("Status().LimitReached should be false")
+	}
+}
+
+func TestDaemon_OnceExcluding_RateLimited(t *testing.T) {
+	// Test that OnceExcluding respects rate limiting
+	d := &Daemon{
+		Config: Config{MaxSpawnsPerHour: 2},
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnFunc: func(id string) error { return nil },
+	}
+	d.RateLimiter = NewRateLimiter(2)
+
+	// First spawn should succeed
+	result, err := d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("First spawn should be processed")
+	}
+
+	// Second spawn should succeed
+	result, err = d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("Second spawn should be processed")
+	}
+
+	// Third spawn should be rate limited
+	result, err = d.OnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("OnceExcluding() unexpected error: %v", err)
+	}
+	if result.Processed {
+		t.Error("Third spawn should be rate limited")
+	}
+	if result.Message == "" || !strings.Contains(result.Message, "Rate limited") {
+		t.Errorf("Rate limited message expected, got: %q", result.Message)
+	}
+}
+
+func TestDaemon_Preview_RateLimited(t *testing.T) {
+	d := &Daemon{
+		Config: Config{MaxSpawnsPerHour: 1},
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+	d.RateLimiter = NewRateLimiter(1)
+
+	// First preview should show rate status
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+	if result.RateLimited {
+		t.Error("First preview should not be rate limited")
+	}
+	if result.RateStatus == "" {
+		t.Error("Rate status should be set")
+	}
+
+	// Record a spawn to hit limit
+	d.RateLimiter.RecordSpawn()
+
+	// Preview should now show rate limited
+	result, err = d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+	if !result.RateLimited {
+		t.Error("Second preview should be rate limited")
 	}
 }

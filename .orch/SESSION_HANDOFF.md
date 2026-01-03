@@ -2,86 +2,91 @@
 
 ## What Happened This Session
 
-System spiraled Dec 27 - Jan 2. 347 commits, 40 "fixes," dashboard state machine grew from 5 to 7 states with time thresholds. Everything reported "working" while nothing actually worked. User lost trust.
+Recovered all 6 Priority 1 commits that were lost in the Dec 27 - Jan 2 spiral. Manual extraction approach worked well - no cherry-pick conflicts.
 
-**Actions taken:**
-1. Rolled back to Dec 27 (`fb0af37f`)
-2. Wrote post-mortem: `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md`
-3. Implemented Dev/Ops mode protection system
-4. Cherry-picked TTY detection fix
-5. Manually added daemon skill inference (labels, title patterns)
-6. Spawned investigation to analyze what's recoverable
+**Commits recovered:**
+| Commit | Feature | Method |
+|--------|---------|--------|
+| `b2b19b4a` | Daemon skips failing issues | Manual extraction |
+| `bbc95b5e` | Daemon rate limiting (20/hr default) | Manual extraction |
+| `10cc03ca` | Headless spawn honors --model | Already present |
+| `8b42ddd3` | Scanner buffer 1MB for large JSON | Manual extraction |
+| `735ac6a2` | Full skill inference in all spawn paths | Manual extraction |
+| `fb1bc009` | triage:ready removal on complete only | Manual extraction |
 
-## Dev/Ops Mode (NEW)
+**All tests pass (60+ tests).**
 
-Structural protection to prevent agents modifying agent infrastructure during operations.
+## Verification Needed
 
+Next session should verify recovered functionality works in practice:
+
+### 1. Daemon Skip Failing Issues
 ```bash
-orch mode          # Show current mode (ops by default)
-orch mode dev "reason"   # Enable infra changes
-orch mode ops      # Protect infra
+# Create an issue that will fail to spawn (e.g., unfilled FAILURE_REPORT)
+# Run daemon and verify it skips to next issue instead of blocking
+orch daemon run --verbose
 ```
 
-- Pre-commit hook blocks infra changes unless `.dev-mode` exists
-- `orch status` shows warning when in dev mode
-- Bypass: `ORCH_INFRA_BYPASS="reason" git commit` (logged)
+### 2. Rate Limiting
+```bash
+# Check rate limiter is initialized
+orch daemon preview  # Should show RateStatus field
 
-**Protected paths:**
-- cmd/orch/serve.go, main.go, status.go
-- pkg/state/, pkg/opencode/
-- web/src/lib/stores/agents.ts, daemon.ts
-- web/src/lib/components/agent-card/
+# Spawn several agents and verify rate limit kicks in at 20/hr
+# (or lower with --max-spawns-per-hour)
+```
 
-## Recovery Status
+### 3. Skill Inference
+```bash
+# Create issue with skill:research label
+bd create "Test research" --label skill:research --label triage:ready
 
-Investigation completed: `.kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md`
+# Verify daemon picks up the label-based skill
+orch daemon preview  # Should show skill: research
+```
 
-**Already recovered:**
-- `4304b7dd` - TTY detection fix
-- `75b0f389` - daemon skill inference (manually added)
+### 4. triage:ready Label Flow
+```bash
+# Spawn an agent on an issue with triage:ready
+# Verify label remains during work
+# Complete the agent
+orch complete <beads-id>
+# Verify label is removed only after successful completion
+```
 
-**Priority 1 (Critical) - Still need:**
-| Commit | Description | Notes |
-|--------|-------------|-------|
-| `10cc03ca` | headless spawn honors --model flag | Conflicts in main.go |
-| `8b42ddd3` | headless spawn lifecycle cleanup | Conflicts in main.go |
-| `735ac6a2` | full skill inference in spawn paths | Conflicts in main.go |
-| `fb1bc009` | move triage:ready removal to complete | Conflicts in main.go |
-| `b2b19b4a` | daemon skips failing issues | May be cleaner |
-| `bbc95b5e` | daemon rate limiting | New feature |
-
-**Priority 2 (High Value):**
-- New CLI commands: reconcile, changelog, sessions, servers
-- Verification gates: git diff, build verification
-- Beads deduplication
-
-**Approach:** Manual extraction recommended over cherry-pick due to conflicts in main.go
+### 5. Large JSON Events
+```bash
+# Spawn headless agent that reads/writes large files
+# Verify no scanner buffer overflow errors
+orch spawn feature-impl "Read a large file" --headless
+```
 
 ## Current State
 
 ```bash
 orch mode         # ops (protected)
-orch status       # Should show 3 idle agents from this session
+orch status       # Check agent counts
 orch doctor       # Services healthy
+go test ./...     # All pass
 ```
 
 **Git status:**
-- On master, ahead of origin by ~12 commits
-- Clean working tree
-- Tests pass
+- On master, uncommitted changes from recovery
+- Need to commit and push
 
-## Next Session Focus
+## Priority 2 (Not Recovered Yet)
 
-Recover Priority 1 commits using manual extraction:
-1. Read each commit's diff
-2. Extract the relevant function/logic
-3. Apply to current codebase
-4. Test after each
+- New CLI commands: reconcile, changelog, sessions, servers
+- Verification gates: git diff, build verification
+- Beads deduplication
 
-Start with `b2b19b4a` (daemon skips failing issues) - likely cleaner since it's in pkg/daemon/ not main.go.
+## Key Files Modified
 
-## Key Files
-
-- Post-mortem: `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md`
-- Recovery investigation: `.kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md`
-- Mode history: `.orch/mode-history.jsonl`
+- `pkg/daemon/daemon.go` - NextIssueExcluding, OnceExcluding, RateLimiter
+- `pkg/daemon/daemon_test.go` - New tests for skip and rate limiting
+- `pkg/opencode/client.go` - LargeScannerBufferSize
+- `pkg/verify/check.go` - RemoveTriageReadyLabel
+- `pkg/beads/client.go` - FallbackRemoveLabel
+- `cmd/orch/main.go` - inferSkillFromBeadsIssue, label removal in runComplete
+- `cmd/orch/swarm.go` - InferSkillFromIssue usage
+- `cmd/orch/daemon.go` - OnceExcluding with skip tracking
