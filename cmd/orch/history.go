@@ -19,6 +19,14 @@ var (
 	historyDays       int
 	historyJSONOutput bool
 	historyProject    string
+
+	// Pre-compiled regex patterns for history.go
+	regexSkillGuidance   = regexp.MustCompile(`## SKILL GUIDANCE \(([a-z0-9-]+)\)`)
+	regexSkillField      = regexp.MustCompile(`(?:^|\n)(?:\*\*|\-\s+)?[Ss]kill:(?:\*\*)?\s*([a-z0-9-]+)`)
+	regexSkillUsing      = regexp.MustCompile(`(?i)Using\s+([a-z0-9-]+)\s+skill:`)
+	regexPhaseField      = regexp.MustCompile(`(?m)^\*\*Phase:\*\*\s*(\w+)`)
+	regexStartedField    = regexp.MustCompile(`(?m)^\*\*Started:\*\*\s*(\d{4}-\d{2}-\d{2})`)
+	regexLastUpdated     = regexp.MustCompile(`(?m)^\*\*Last Updated:\*\*\s*(\d{4}-\d{2}-\d{2})`)
 )
 
 var historyCmd = &cobra.Command{
@@ -240,23 +248,20 @@ func extractSkillFromWorkspace(workspacePath, workspaceName string) *SkillUsage 
 	var skillName string
 
 	// Pattern 1: "## SKILL GUIDANCE (skill-name)"
-	skillPattern1 := regexp.MustCompile(`## SKILL GUIDANCE \(([a-z0-9-]+)\)`)
-	if match := skillPattern1.FindStringSubmatch(contentStr); match != nil {
+	if match := regexSkillGuidance.FindStringSubmatch(contentStr); match != nil {
 		skillName = match[1]
 	}
 
 	// Pattern 2: "**Skill:**", "- Skill:", "Skill:"
 	if skillName == "" {
-		skillPattern2 := regexp.MustCompile(`(?:^|\n)(?:\*\*|\-\s+)?[Ss]kill:(?:\*\*)?\s*([a-z0-9-]+)`)
-		if match := skillPattern2.FindStringSubmatch(contentStr); match != nil {
+		if match := regexSkillField.FindStringSubmatch(contentStr); match != nil {
 			skillName = match[1]
 		}
 	}
 
 	// Pattern 3: "Using skill-name skill:"
 	if skillName == "" {
-		skillPattern3 := regexp.MustCompile(`(?i)Using\s+([a-z0-9-]+)\s+skill:`)
-		if match := skillPattern3.FindStringSubmatch(contentStr); match != nil {
+		if match := regexSkillUsing.FindStringSubmatch(contentStr); match != nil {
 			skillName = match[1]
 		}
 	}
@@ -267,15 +272,13 @@ func extractSkillFromWorkspace(workspacePath, workspaceName string) *SkillUsage 
 
 	// Extract phase
 	var phase string
-	phasePattern := regexp.MustCompile(`(?m)^\*\*Phase:\*\*\s*(\w+)`)
-	if match := phasePattern.FindStringSubmatch(contentStr); match != nil {
+	if match := regexPhaseField.FindStringSubmatch(contentStr); match != nil {
 		phase = match[1]
 	}
 
 	// Extract started date
 	var started *time.Time
-	startedPattern := regexp.MustCompile(`(?m)^\*\*Started:\*\*\s*(\d{4}-\d{2}-\d{2})`)
-	if match := startedPattern.FindStringSubmatch(contentStr); match != nil {
+	if match := regexStartedField.FindStringSubmatch(contentStr); match != nil {
 		if t, err := time.Parse("2006-01-02", match[1]); err == nil {
 			started = &t
 		}
@@ -287,8 +290,7 @@ func extractSkillFromWorkspace(workspacePath, workspaceName string) *SkillUsage 
 	// Extract completion date
 	var completed *time.Time
 	if success {
-		updatedPattern := regexp.MustCompile(`(?m)^\*\*Last Updated:\*\*\s*(\d{4}-\d{2}-\d{2})`)
-		if match := updatedPattern.FindStringSubmatch(contentStr); match != nil {
+		if match := regexLastUpdated.FindStringSubmatch(contentStr); match != nil {
 			if t, err := time.Parse("2006-01-02", match[1]); err == nil {
 				completed = &t
 			}

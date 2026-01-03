@@ -14,6 +14,9 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 )
 
+// Pre-compiled regex patterns for sessions.go
+var regexMultipleNewlines = regexp.MustCompile(`\n+`)
+
 // DefaultStoragePath returns the default OpenCode storage path.
 func DefaultStoragePath() string {
 	home, err := os.UserHomeDir()
@@ -355,7 +358,7 @@ func extractSnippet(text string, start, end, contextLen int) string {
 		suffix = "..."
 	}
 
-	snippet = regexp.MustCompile("\n+").ReplaceAllString(snippet, " ")
+	snippet = regexMultipleNewlines.ReplaceAllString(snippet, " ")
 
 	return prefix + snippet + suffix
 }

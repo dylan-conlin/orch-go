@@ -14,6 +14,13 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
+// Pre-compiled regex patterns for check.go
+var (
+	regexPhaseComment     = regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
+	regexRecommendation   = regexp.MustCompile(`(?m)\*\*Recommendation:\*\*\s*(\w+)`)
+	regexNumberedPattern  = regexp.MustCompile(`^\d+\.`)
+)
+
 // Comment is an alias for beads.Comment for compatibility.
 type Comment = beads.Comment
 
@@ -94,13 +101,10 @@ func HasBeadsComment(beadsID string) (bool, error) {
 // ParsePhaseFromComments extracts the latest Phase status from comments.
 // Looks for comments matching "Phase: <phase> - <summary>" pattern.
 func ParsePhaseFromComments(comments []Comment) PhaseStatus {
-	// Pattern: "Phase: <phase>" optionally followed by " - <summary>"
-	phasePattern := regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
-
 	var latestPhase PhaseStatus
 
 	for _, comment := range comments {
-		matches := phasePattern.FindStringSubmatch(comment.Text)
+		matches := regexPhaseComment.FindStringSubmatch(comment.Text)
 		if len(matches) >= 2 {
 			latestPhase = PhaseStatus{
 				Phase: matches[1],
@@ -259,9 +263,7 @@ func extractSectionWithVariant(content, name1, name2 string) string {
 // extractRecommendation extracts the recommendation from the Next section.
 // Looks for patterns like "**Recommendation:** close" or just "close" on its own line.
 func extractRecommendation(nextSection string) string {
-	// Try explicit recommendation field
-	recPattern := regexp.MustCompile(`(?m)\*\*Recommendation:\*\*\s*(\w+)`)
-	matches := recPattern.FindStringSubmatch(nextSection)
+	matches := regexRecommendation.FindStringSubmatch(nextSection)
 	if len(matches) >= 2 {
 		return strings.ToLower(strings.TrimSpace(matches[1]))
 	}
@@ -307,7 +309,6 @@ func extractNextActions(content string) []string {
 func parseActionItems(section string) []string {
 	var items []string
 	lines := strings.Split(section, "\n")
-	numberedPattern := regexp.MustCompile(`^\d+\.`)
 
 	for _, line := range lines {
 		// Skip indented lines - they're continuation/metadata, not separate items
@@ -322,7 +323,7 @@ func parseActionItems(section string) []string {
 		}
 		// Match bullet points: "- item" or "* item" (with space after marker)
 		// Using "* " to avoid matching markdown bold syntax like "**Skill:**"
-		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || numberedPattern.MatchString(line) {
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || regexNumberedPattern.MatchString(line) {
 			items = append(items, line)
 		}
 	}

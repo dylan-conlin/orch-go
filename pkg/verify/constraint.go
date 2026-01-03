@@ -13,6 +13,9 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
+// Pre-compiled regex pattern for constraint.go
+var regexConstraintPattern = regexp.MustCompile(`<!--\s*(required|optional):\s*(.+?)\s*\|\s*(.+?)\s*-->`)
+
 // ConstraintType indicates whether a constraint is required or optional.
 type ConstraintType string
 
@@ -70,9 +73,6 @@ func ExtractConstraintsFromReader(file *os.File) ([]Constraint, error) {
 	var constraints []Constraint
 	inConstraintBlock := false
 
-	// Pattern: <!-- required: pattern | description --> or <!-- optional: pattern | description -->
-	constraintPattern := regexp.MustCompile(`<!--\s*(required|optional):\s*(.+?)\s*\|\s*(.+?)\s*-->`)
-
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -92,8 +92,8 @@ func ExtractConstraintsFromReader(file *os.File) ([]Constraint, error) {
 			continue
 		}
 
-		// Extract constraint
-		matches := constraintPattern.FindStringSubmatch(line)
+		// Extract constraint (pattern: <!-- required: pattern | description --> or <!-- optional: pattern | description -->)
+		matches := regexConstraintPattern.FindStringSubmatch(line)
 		if len(matches) == 4 {
 			constraintType := ConstraintRequired
 			if matches[1] == "optional" {

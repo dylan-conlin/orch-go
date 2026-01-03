@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// Pre-compiled regex patterns for config.go
+var regexAlphanumeric = regexp.MustCompile(`[a-zA-Z0-9]+`)
+
 // Tier constants define the spawn tiers.
 const (
 	TierLight = "light" // Lightweight spawn - skips SYNTHESIS.md requirement
@@ -182,8 +185,7 @@ func generateSlug(text string, maxWords int) string {
 	}
 
 	// Extract words (lowercase, alphanumeric only)
-	re := regexp.MustCompile(`[a-zA-Z0-9]+`)
-	matches := re.FindAllString(strings.ToLower(text), -1)
+	matches := regexAlphanumeric.FindAllString(strings.ToLower(text), -1)
 
 	var words []string
 	for _, word := range matches {

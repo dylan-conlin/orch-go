@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+// Pre-compiled regex patterns for review.go
+var (
+	regexFilesChanged = regexp.MustCompile(`(\d+) files? changed`)
+	regexInsertion    = regexp.MustCompile(`(\d+) insertion`)
+	regexDeletion     = regexp.MustCompile(`(\d+) deletion`)
+)
+
 // AgentReview contains comprehensive information about an agent's work for review.
 type AgentReview struct {
 	// Agent identification
@@ -234,16 +241,12 @@ func getGitDelta(projectDir, workspacePath string) ([]CommitInfo, int, int) {
 			currentCommit.Stats = line
 
 			// Parse file changes
-			createdPattern := regexp.MustCompile(`(\d+) files? changed`)
-			if matches := createdPattern.FindStringSubmatch(line); len(matches) > 1 {
+			if matches := regexFilesChanged.FindStringSubmatch(line); len(matches) > 1 {
 				fmt.Sscanf(matches[1], "%d", &filesModified)
 			}
 
 			// Check for insertions/deletions for rough file count
-			insertPattern := regexp.MustCompile(`(\d+) insertion`)
-			deletePattern := regexp.MustCompile(`(\d+) deletion`)
-
-			if insertPattern.MatchString(line) && !deletePattern.MatchString(line) {
+			if regexInsertion.MatchString(line) && !regexDeletion.MatchString(line) {
 				// Likely new files
 				filesCreated++
 			}

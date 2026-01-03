@@ -13,6 +13,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Pre-compiled regex patterns for skill_outputs.go
+var (
+	regexSkillGuidanceHeader = regexp.MustCompile(`(?i)##\s*SKILL\s+GUIDANCE\s*\(([a-z0-9-]+)\)`)
+	regexSkillNameField      = regexp.MustCompile(`(?i)(?:\*\*Skill:\*\*|^name:)\s*([a-z0-9-]+)`)
+)
+
 // SkillOutput represents a required output from a skill's outputs.required section.
 type SkillOutput struct {
 	Pattern     string `yaml:"pattern"`
@@ -60,23 +66,17 @@ func ExtractSkillNameFromSpawnContext(workspacePath string) (string, error) {
 	}
 	defer file.Close()
 
-	// Patterns to match skill name
-	// Pattern 1: ## SKILL GUIDANCE (skill-name)
-	skillGuidancePattern := regexp.MustCompile(`(?i)##\s*SKILL\s+GUIDANCE\s*\(([a-z0-9-]+)\)`)
-	// Pattern 2: **Skill:** skill-name or name: skill-name in YAML front matter
-	skillNamePattern := regexp.MustCompile(`(?i)(?:\*\*Skill:\*\*|^name:)\s*([a-z0-9-]+)`)
-
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 
 		// Check for SKILL GUIDANCE pattern first (more reliable)
-		if matches := skillGuidancePattern.FindStringSubmatch(line); len(matches) >= 2 {
+		if matches := regexSkillGuidanceHeader.FindStringSubmatch(line); len(matches) >= 2 {
 			return matches[1], nil
 		}
 
 		// Check for skill name in YAML-like format
-		if matches := skillNamePattern.FindStringSubmatch(line); len(matches) >= 2 {
+		if matches := regexSkillNameField.FindStringSubmatch(line); len(matches) >= 2 {
 			return matches[1], nil
 		}
 	}

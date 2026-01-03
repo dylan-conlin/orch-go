@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+// Pre-compiled regex patterns for phase_gates.go
+var (
+	regexPhaseDeclaration = regexp.MustCompile(`<!--\s*phase:\s*(\w+)\s*\|\s*required:\s*(true|false)\s*-->`)
+	regexPhaseReport      = regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
+)
+
 // Phase represents a phase declaration extracted from SPAWN_CONTEXT.md.
 type Phase struct {
 	Name     string // Phase name (e.g., "investigation", "design", "implementation")
@@ -52,9 +58,6 @@ func ExtractPhasesFromReader(file *os.File) ([]Phase, error) {
 	var phases []Phase
 	inPhaseBlock := false
 
-	// Pattern: <!-- phase: name | required: true/false -->
-	phasePattern := regexp.MustCompile(`<!--\s*phase:\s*(\w+)\s*\|\s*required:\s*(true|false)\s*-->`)
-
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -74,8 +77,8 @@ func ExtractPhasesFromReader(file *os.File) ([]Phase, error) {
 			continue
 		}
 
-		// Extract phase
-		matches := phasePattern.FindStringSubmatch(line)
+		// Extract phase (pattern: <!-- phase: name | required: true/false -->)
+		matches := regexPhaseDeclaration.FindStringSubmatch(line)
 		if len(matches) == 3 {
 			required := strings.ToLower(matches[2]) == "true"
 			phases = append(phases, Phase{
@@ -96,14 +99,11 @@ func ExtractPhasesFromReader(file *os.File) ([]Phase, error) {
 // Returns phases in the order they were reported.
 // Format: "Phase: <name> - <summary>" or "Phase: <name>"
 func ExtractReportedPhases(comments []Comment) []string {
-	// Pattern: "Phase: <phase>" optionally followed by " - <summary>"
-	phasePattern := regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
-
 	var phases []string
 	seen := make(map[string]bool)
 
 	for _, comment := range comments {
-		matches := phasePattern.FindStringSubmatch(comment.Text)
+		matches := regexPhaseReport.FindStringSubmatch(comment.Text)
 		if len(matches) >= 2 {
 			phase := strings.ToLower(matches[1])
 			// Only add each phase once (first occurrence)

@@ -23,6 +23,10 @@ var (
 	waitTimeout  string
 	waitInterval int
 	waitQuiet    bool
+
+	// Pre-compiled regex patterns for wait.go
+	regexTimeoutPattern       = regexp.MustCompile(`(\d+)([smhSMH])`)
+	regexBeadsIDFromSpawnCtx  = regexp.MustCompile(`spawned from beads issue:\s*\*\*([a-z0-9-]+)\*\*`)
 )
 
 var waitCmd = &cobra.Command{
@@ -80,8 +84,7 @@ func parseTimeout(timeout string) (time.Duration, error) {
 
 	// Parse duration components
 	var total time.Duration
-	pattern := regexp.MustCompile(`(\d+)([smhSMH])`)
-	matches := pattern.FindAllStringSubmatch(strings.ToLower(timeout), -1)
+	matches := regexTimeoutPattern.FindAllStringSubmatch(strings.ToLower(timeout), -1)
 
 	if len(matches) == 0 {
 		return 0, fmt.Errorf("invalid timeout format: %s", timeout)
@@ -235,9 +238,7 @@ func resolveBeadsID(serverURL, identifier string) (string, error) {
 // extractBeadsIDFromSpawnContext extracts the beads issue ID from SPAWN_CONTEXT.md content.
 // Looks for patterns like "You were spawned from beads issue: **beads-id**"
 func extractBeadsIDFromSpawnContext(content string) string {
-	// Pattern: "spawned from beads issue: **beads-id**"
-	pattern := regexp.MustCompile(`spawned from beads issue:\s*\*\*([a-z0-9-]+)\*\*`)
-	matches := pattern.FindStringSubmatch(content)
+	matches := regexBeadsIDFromSpawnCtx.FindStringSubmatch(content)
 	if len(matches) >= 2 {
 		return matches[1]
 	}

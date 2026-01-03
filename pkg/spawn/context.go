@@ -14,6 +14,15 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
+// Pre-compiled regex patterns for context.go
+var (
+	regexBeadsSectionHeader    = regexp.MustCompile(`(?i)^#+\s*(report\s+(via|to)\s+beads|beads\s+(progress\s+)?tracking)`)
+	regexNextSectionHeader     = regexp.MustCompile(`^#{1,6}\s+[A-Z]`)
+	regexBeadsReportedCriteria = regexp.MustCompile(`(?i)\*\*Reported\*\*.*bd\s+comment`)
+	regexBeadsIDPlaceholder    = regexp.MustCompile(`bd\s+(comment|close|show)\s+<beads-id>`)
+	regexMultiNewline          = regexp.MustCompile(`\n{3,}`)
+)
+
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
@@ -266,15 +275,7 @@ func StripBeadsInstructions(content string) string {
 	skipUntilNextSection := false
 	inCodeBlockDuringSkip := false // Track if we entered a code block while skipping
 
-	// Pattern to match "### Report via Beads" or similar section headers
-	beadsSectionPattern := regexp.MustCompile(`(?i)^#+\s*(report\s+(via|to)\s+beads|beads\s+(progress\s+)?tracking)`)
-	// Pattern to match the next section header (any heading)
-	// Must start with 1-6 # followed by a space and an uppercase letter
-	nextSectionPattern := regexp.MustCompile(`^#{1,6}\s+[A-Z]`)
-	// Pattern to match completion criteria line with beads reporting
-	beadsReportedPattern := regexp.MustCompile(`(?i)\*\*Reported\*\*.*bd\s+comment`)
-	// Pattern to match lines with <beads-id> placeholder in code context
-	beadsIDPattern := regexp.MustCompile(`bd\s+(comment|close|show)\s+<beads-id>`)
+
 
 	for i, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
@@ -288,7 +289,7 @@ func StripBeadsInstructions(content string) string {
 		}
 
 		// Check if we're starting a beads-related section
-		if beadsSectionPattern.MatchString(line) {
+		if regexBeadsSectionHeader.MatchString(line) {
 			skipUntilNextSection = true
 			inCodeBlockDuringSkip = false // Reset code block tracking
 			continue
@@ -296,7 +297,7 @@ func StripBeadsInstructions(content string) string {
 
 		// Check if we've reached a new section (exit beads section)
 		// But ONLY if we're not inside a code block
-		if skipUntilNextSection && !inCodeBlockDuringSkip && nextSectionPattern.MatchString(line) && !beadsSectionPattern.MatchString(line) {
+		if skipUntilNextSection && !inCodeBlockDuringSkip && regexNextSectionHeader.MatchString(line) && !regexBeadsSectionHeader.MatchString(line) {
 			skipUntilNextSection = false
 			// Include this line (the new section header)
 		}
@@ -318,7 +319,7 @@ func StripBeadsInstructions(content string) string {
 			// Look ahead to see if this code block contains beads commands
 			hasBeadsCommand := false
 			for j := i + 1; j < len(lines) && !strings.HasPrefix(strings.TrimSpace(lines[j]), "```"); j++ {
-				if beadsIDPattern.MatchString(lines[j]) {
+				if regexBeadsIDPlaceholder.MatchString(lines[j]) {
 					hasBeadsCommand = true
 					break
 				}
@@ -335,12 +336,12 @@ func StripBeadsInstructions(content string) string {
 		}
 
 		// Skip individual lines with beads completion criteria
-		if beadsReportedPattern.MatchString(line) {
+		if regexBeadsReportedCriteria.MatchString(line) {
 			continue
 		}
 
 		// Skip lines that are just beads commands with <beads-id>
-		if beadsIDPattern.MatchString(line) && strings.TrimSpace(line) != "" {
+		if regexBeadsIDPlaceholder.MatchString(line) && strings.TrimSpace(line) != "" {
 			// Only skip if it's a standalone command line (not part of documentation)
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "bd ") || strings.HasPrefix(trimmed, "- `bd ") {
@@ -354,8 +355,7 @@ func StripBeadsInstructions(content string) string {
 	// Clean up excessive blank lines that may result from stripping
 	output := strings.Join(result, "\n")
 	// Replace 3+ consecutive newlines with 2
-	multiNewline := regexp.MustCompile(`\n{3,}`)
-	output = multiNewline.ReplaceAllString(output, "\n\n")
+	output = regexMultiNewline.ReplaceAllString(output, "\n\n")
 
 	return output
 }

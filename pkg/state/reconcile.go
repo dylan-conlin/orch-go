@@ -13,6 +13,9 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
+// Pre-compiled regex patterns for reconcile.go
+var regexBracketPattern = regexp.MustCompile(`\[([a-zA-Z0-9-]+)\]`)
+
 // LivenessResult contains the liveness status from multiple sources.
 type LivenessResult struct {
 	// TmuxLive indicates if a tmux window exists for this agent.
@@ -224,8 +227,7 @@ func containsBeadsIssueReference(content, beadsID string) bool {
 // - "Task description [beadsID]"
 func extractBeadsIDFromTitle(title string) string {
 	// Try bracket pattern first: "[beadsID]"
-	bracketPattern := regexp.MustCompile(`\[([a-zA-Z0-9-]+)\]`)
-	matches := bracketPattern.FindStringSubmatch(title)
+	matches := regexBracketPattern.FindStringSubmatch(title)
 	if len(matches) >= 2 {
 		return matches[1]
 	}

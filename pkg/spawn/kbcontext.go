@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -79,8 +78,7 @@ func ExtractKeywords(task string, maxWords int) string {
 	}
 
 	// Extract words (lowercase, alphanumeric only)
-	re := regexp.MustCompile(`[a-zA-Z0-9]+`)
-	matches := re.FindAllString(strings.ToLower(task), -1)
+	matches := regexAlphanumeric.FindAllString(strings.ToLower(task), -1)
 
 	var words []string
 	for _, word := range matches {
