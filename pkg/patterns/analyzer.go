@@ -4,6 +4,7 @@
 package patterns
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -135,7 +136,7 @@ func defaultLogPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(homeDir, ".orch", "action-log.json")
+	return filepath.Join(homeDir, ".orch", "action-log.jsonl")
 }
 
 // LogPath returns the path for the action log file.
@@ -145,29 +146,45 @@ func LogPath() string {
 
 // LoadLog loads the action log from disk.
 // Returns an empty log if file doesn't exist.
+// The file is in JSONL format (one JSON object per line).
 func LoadLog() (*ActionLog, error) {
 	path := LogPath()
 	if path == "" {
 		return &ActionLog{Events: []ActionEvent{}}, nil
 	}
 
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &ActionLog{Events: []ActionEvent{}}, nil
 		}
+		return nil, fmt.Errorf("failed to open action log: %w", err)
+	}
+	defer f.Close()
+
+	var events []ActionEvent
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var event ActionEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue // Skip malformed lines
+		}
+		events = append(events, event)
+	}
+
+	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to read action log: %w", err)
 	}
 
-	var log ActionLog
-	if err := json.Unmarshal(data, &log); err != nil {
-		return nil, fmt.Errorf("failed to parse action log: %w", err)
-	}
-
-	return &log, nil
+	return &ActionLog{Events: events}, nil
 }
 
-// Save saves the action log to disk.
+// Save saves the action log to disk in JSONL format.
 func (l *ActionLog) Save() error {
 	path := LogPath()
 	if path == "" {
@@ -183,13 +200,20 @@ func (l *ActionLog) Save() error {
 	// Prune old events before saving
 	l.pruneOldEvents()
 
-	data, err := json.MarshalIndent(l, "", "  ")
+	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("failed to marshal log: %w", err)
+		return fmt.Errorf("failed to create log file: %w", err)
 	}
+	defer f.Close()
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write log: %w", err)
+	for _, event := range l.Events {
+		data, err := json.Marshal(event)
+		if err != nil {
+			continue // Skip malformed events
+		}
+		if _, err := f.Write(append(data, '\n')); err != nil {
+			return fmt.Errorf("failed to write event: %w", err)
+		}
 	}
 
 	return nil
