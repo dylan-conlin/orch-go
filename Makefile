@@ -32,13 +32,17 @@ test:
 	@echo "Running tests..."
 	go test -v ./...
 
-# Install to ~/bin
+# Install to ~/bin (symlink to build output)
+# This makes `make build` automatically update the human-accessible CLI
 install: build
-	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
+	@echo "Installing $(BINARY_NAME) to $(INSTALL_DIR) (symlink)..."
 	@mkdir -p $(INSTALL_DIR)
-	cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
-	@codesign --force --sign - $(INSTALL_DIR)/$(BINARY_NAME)
-	@echo "Installed to $(INSTALL_DIR)/$(BINARY_NAME)"
+	@# Codesign the build output (required for macOS)
+	@codesign --force --sign - $(CURDIR)/$(BUILD_DIR)/$(BINARY_NAME)
+	@# Remove existing file/symlink and create new symlink
+	@rm -f $(INSTALL_DIR)/$(BINARY_NAME)
+	@ln -sf $(CURDIR)/$(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+	@echo "Linked $(INSTALL_DIR)/$(BINARY_NAME) → $(CURDIR)/$(BUILD_DIR)/$(BINARY_NAME)"
 	@echo ""
 	@echo "💡 The orch daemon may need restart to pick up the new binary:"
 	@echo "   launchctl kickstart -k gui/$$(id -u)/com.orch.daemon"
@@ -92,7 +96,7 @@ help:
 	@echo "Available targets:"
 	@echo "  build           - Build the binary"
 	@echo "  test            - Run tests"
-	@echo "  install         - Install to ~/bin"
+	@echo "  install         - Install to ~/bin (symlink to build output)"
 	@echo "  install-restart - Install and restart daemon"
 	@echo "  clean           - Clean build artifacts"
 	@echo "  fmt             - Format code"

@@ -80,6 +80,17 @@ func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 	return comments, nil
 }
 
+// HasBeadsComment checks if a beads issue has any comments.
+// Returns true if the issue has at least one comment, false otherwise.
+// This is useful for detecting stalled sessions that never reported progress.
+func HasBeadsComment(beadsID string) (bool, error) {
+	comments, err := GetComments(beadsID)
+	if err != nil {
+		return false, err
+	}
+	return len(comments) > 0, nil
+}
+
 // ParsePhaseFromComments extracts the latest Phase status from comments.
 // Looks for comments matching "Phase: <phase> - <summary>" pattern.
 func ParsePhaseFromComments(comments []Comment) PhaseStatus {
