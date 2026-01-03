@@ -244,6 +244,97 @@ func TestInferSkill(t *testing.T) {
 	}
 }
 
+func TestInferSkillFromLabels(t *testing.T) {
+	tests := []struct {
+		labels    []string
+		wantSkill string
+	}{
+		{[]string{"skill:research"}, "research"},
+		{[]string{"skill:kb-reflect"}, "kb-reflect"},
+		{[]string{"priority:P0", "skill:investigation"}, "investigation"},
+		{[]string{"priority:P0", "triage:ready"}, ""},
+		{[]string{}, ""},
+		{nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v", tt.labels), func(t *testing.T) {
+			got := InferSkillFromLabels(tt.labels)
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestInferSkillFromTitle(t *testing.T) {
+	tests := []struct {
+		title     string
+		wantSkill string
+	}{
+		{"Synthesize 49 dashboard investigations", "kb-reflect"},
+		{"Synthesize agent investigations into consolidated findings", "kb-reflect"},
+		{"Fix dashboard bug", ""},
+		{"Add synthesis feature", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			got := InferSkillFromTitle(tt.title)
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromTitle(%q) = %q, want %q", tt.title, got, tt.wantSkill)
+			}
+		})
+	}
+}
+
+func TestInferSkillFromIssue(t *testing.T) {
+	tests := []struct {
+		name      string
+		issue     *Issue
+		wantSkill string
+		wantErr   bool
+	}{
+		{
+			name:      "nil issue",
+			issue:     nil,
+			wantSkill: "",
+			wantErr:   true,
+		},
+		{
+			name:      "skill label takes priority",
+			issue:     &Issue{Labels: []string{"skill:research"}, Title: "Some task", IssueType: "task"},
+			wantSkill: "research",
+			wantErr:   false,
+		},
+		{
+			name:      "title pattern for synthesis",
+			issue:     &Issue{Labels: []string{}, Title: "Synthesize 49 dashboard investigations", IssueType: "task"},
+			wantSkill: "kb-reflect",
+			wantErr:   false,
+		},
+		{
+			name:      "falls back to issue type",
+			issue:     &Issue{Labels: []string{}, Title: "Fix the bug", IssueType: "bug"},
+			wantSkill: "systematic-debugging",
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InferSkillFromIssue(tt.issue)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InferSkillFromIssue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.wantSkill {
+				t.Errorf("InferSkillFromIssue() = %q, want %q", got, tt.wantSkill)
+			}
+		})
+	}
+}
+
 func TestDaemon_Once_NoIssues(t *testing.T) {
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {
