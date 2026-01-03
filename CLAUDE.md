@@ -58,6 +58,41 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
+## Server Management Architecture (Three Layers)
+
+The orchestration system uses three distinct layers for server management:
+
+| Layer | Component | Purpose | Lifecycle |
+|-------|-----------|---------|-----------|
+| **1. Persistent Services** | launchd plists | Background services that run always | macOS-managed, auto-restart |
+| **2. Project Dev Servers** | tmuxinator | Per-project vite/API servers | Manual via `orch servers` |
+| **3. CLI Wrapper** | `orch servers` | User-facing commands | Wraps tmuxinator |
+
+### Layer 1: Persistent Services (launchd)
+
+Located in `~/Library/LaunchAgents/`:
+- `com.orch.daemon.plist` - Agent spawner daemon, polls beads for triage:ready issues
+- `com.orch-go.serve.plist` - API server for dashboard (port 3348)
+- `com.orch-go.web.plist` - Dashboard dev server (vite on port 5188)
+
+These run continuously and auto-restart on failure.
+
+### Layer 2: Project Dev Servers (tmuxinator)
+
+Located in `~/.tmuxinator/workers-{project}.yml`:
+- Per-project tmux sessions with "servers" window
+- Project-specific vite/API/docker commands
+- Started/stopped manually or via `orch servers`
+
+### Layer 3: CLI Wrapper (orch servers)
+
+Wraps tmuxinator with port registry awareness:
+- `orch servers list` - Shows projects with ports and status
+- `orch servers start <project>` - Runs `tmuxinator start workers-{project}`
+- `orch servers stop <project>` - Kills the tmux session
+
+**Key insight:** Layer 1 is for orch-go infrastructure. Layer 2 is for OTHER projects' dev servers. Don't run orch-go vite in both layers.
+
 ## Key Packages
 
 ### cmd/orch/main.go (Entry Point)
