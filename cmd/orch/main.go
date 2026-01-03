@@ -2163,20 +2163,20 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID    string                 `json:"session_id"`
-	BeadsID      string                 `json:"beads_id,omitempty"`
-	Skill        string                 `json:"skill,omitempty"`
-	Account      string                 `json:"account,omitempty"`
-	Runtime      string                 `json:"runtime"`
-	Title        string                 `json:"title,omitempty"`
-	Window       string                 `json:"window,omitempty"`
-	Phase        string                 `json:"phase,omitempty"`         // Current phase from beads comments
-	Task         string                 `json:"task,omitempty"`          // Task description (truncated)
-	Project      string                 `json:"project,omitempty"`       // Project name derived from beads ID or workspace
-	IsPhantom    bool                   `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
-	IsProcessing bool                   `json:"is_processing,omitempty"` // True if session is actively generating a response
-	IsCompleted  bool                   `json:"is_completed,omitempty"`  // True if beads issue is closed
-	Tokens       *opencode.TokenStats   `json:"tokens,omitempty"`        // Token usage for the session
+	SessionID    string               `json:"session_id"`
+	BeadsID      string               `json:"beads_id,omitempty"`
+	Skill        string               `json:"skill,omitempty"`
+	Account      string               `json:"account,omitempty"`
+	Runtime      string               `json:"runtime"`
+	Title        string               `json:"title,omitempty"`
+	Window       string               `json:"window,omitempty"`
+	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string               `json:"task,omitempty"`          // Task description (truncated)
+	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool                 `json:"is_completed,omitempty"`  // True if beads issue is closed
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`        // Token usage for the session
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -2675,6 +2675,14 @@ func printSwarmStatus(output StatusOutput, showAll bool) {
 
 // printSwarmStatusWithWidth prints swarm status with explicit width (for testing).
 func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int) {
+	// Check for dev mode and warn
+	if devModeInfo, err := readDevModeFile(".dev-mode"); err == nil {
+		duration := time.Since(devModeInfo.Started).Round(time.Minute)
+		fmt.Printf("⚠️  DEV MODE ACTIVE (%s): %s\n", duration, devModeInfo.Reason)
+		fmt.Println("   Infrastructure is unprotected. Run 'orch mode ops' when done.")
+		fmt.Println()
+	}
+
 	// Print swarm summary header with processing breakdown
 	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
 	if output.Swarm.Active > 0 {

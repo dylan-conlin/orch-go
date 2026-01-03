@@ -24,3 +24,6 @@ web/node_modules/
 web/.svelte-kit/
 web/build/
 tmp/
+
+# Dev/Ops mode (local state, not committed)
+.dev-mode
