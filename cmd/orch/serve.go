@@ -9,6 +9,7 @@ import (
 	_ "net/http/pprof" // Enable pprof for CPU profiling
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,7 @@ Endpoints:
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET/PUT /api/config - User configuration settings (~/.orch/config.yaml)
+  GET /api/changelog - Aggregated changelog (?days=7&project=all)
   GET /health        - Health check
 
 Examples:
@@ -147,6 +149,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/gaps      - Gap tracker stats")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions")
 	fmt.Println("  GET /api/errors    - Error pattern analysis")
+	fmt.Println("  GET /api/changelog - Aggregated changelog")
 	fmt.Println("  GET /health        - Health check")
 
 	return nil
@@ -246,6 +249,9 @@ func runServe(portNum int) error {
 	// GET/PUT /api/config - user configuration settings
 	mux.HandleFunc("/api/config", corsHandler(handleConfig))
 
+	// GET /api/changelog - aggregated changelog across ecosystem repos
+	mux.HandleFunc("/api/changelog", corsHandler(handleChangelog))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -275,6 +281,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")
+	fmt.Println("  GET /api/changelog - Aggregated changelog (?days=7&project=all)")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
@@ -2870,6 +2877,45 @@ func handleConfigPut(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode config: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleChangelog returns aggregated changelog data across ecosystem repos.
+// Query parameters:
+//   - days: Number of days to include (default: 7)
+//   - project: Project to filter (default: "all" for all repos)
+func handleChangelog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse query parameters
+	daysStr := r.URL.Query().Get("days")
+	project := r.URL.Query().Get("project")
+
+	// Default values
+	days := 7
+	if daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 {
+			days = d
+		}
+	}
+	if project == "" {
+		project = "all"
+	}
+
+	// Get changelog data using the reusable function from changelog.go
+	result, err := GetChangelog(days, project)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get changelog: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode changelog: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

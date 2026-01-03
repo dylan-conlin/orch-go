@@ -536,8 +536,10 @@ func inferSemanticCategory(files []string) string {
 	return "" // Use default category
 }
 
-func runChangelog() error {
-	repos := getEcosystemRepos()
+// GetChangelog retrieves changelog data for the specified time range and project.
+// This is the core logic reused by both the CLI and API.
+func GetChangelog(days int, project string) (*ChangelogResult, error) {
+	repos := getEcosystemReposFor(project)
 	
 	var allCommits []CommitInfo
 	var missingRepos []string
@@ -550,10 +552,9 @@ func runChangelog() error {
 			continue
 		}
 		
-		commits, err := getGitLog(repoPath, changelogDays)
+		commits, err := getGitLog(repoPath, days)
 		if err != nil {
-			// Warn but continue with other repos
-			fmt.Fprintf(os.Stderr, "Warning: failed to get git log for %s: %v\n", repoName, err)
+			// Skip repos with errors (non-fatal)
 			continue
 		}
 		
@@ -575,9 +576,9 @@ func runChangelog() error {
 	}
 	
 	// Build result
-	result := ChangelogResult{
+	result := &ChangelogResult{
 		DateRange: DateRange{
-			Start: time.Now().AddDate(0, 0, -changelogDays).Format("2006-01-02"),
+			Start: time.Now().AddDate(0, 0, -days).Format("2006-01-02"),
 			End:   time.Now().Format("2006-01-02"),
 		},
 		TotalCommits:      len(allCommits),
@@ -586,6 +587,32 @@ func runChangelog() error {
 		CommitsByDate:     commitsByDate,
 		CommitsByCategory: commitsByCategory,
 		RepoStats:         repoStats,
+	}
+	
+	return result, nil
+}
+
+// getEcosystemReposFor returns the list of ecosystem repos to scan for a given project.
+// If project is "all" or empty, returns all ecosystem repos.
+func getEcosystemReposFor(project string) []string {
+	if project != "" && project != "all" {
+		// Single project requested
+		return []string{project}
+	}
+	
+	// All ecosystem repos
+	var repos []string
+	for repo := range spawn.ExpandedOrchEcosystemRepos {
+		repos = append(repos, repo)
+	}
+	sort.Strings(repos)
+	return repos
+}
+
+func runChangelog() error {
+	result, err := GetChangelog(changelogDays, changelogProject)
+	if err != nil {
+		return err
 	}
 	
 	if changelogJSON {
@@ -598,7 +625,7 @@ func runChangelog() error {
 	}
 	
 	// Format human-readable output
-	output := formatChangelog(result)
+	output := formatChangelog(*result)
 	fmt.Println(output)
 	return nil
 }
