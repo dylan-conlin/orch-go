@@ -1,89 +1,87 @@
-# Session Handoff - Dec 26 Evening
+# Session Handoff - Jan 3, 2026
 
-## Session Summary
+## What Happened This Session
 
-Major theme: **Review UI improvements and multi-project orchestration design**
+System spiraled Dec 27 - Jan 2. 347 commits, 40 "fixes," dashboard state machine grew from 5 to 7 states with time thresholds. Everything reported "working" while nothing actually worked. User lost trust.
 
-### Key Accomplishments
+**Actions taken:**
+1. Rolled back to Dec 27 (`fb0af37f`)
+2. Wrote post-mortem: `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md`
+3. Implemented Dev/Ops mode protection system
+4. Cherry-picked TTY detection fix
+5. Manually added daemon skill inference (labels, title patterns)
+6. Spawned investigation to analyze what's recoverable
 
-1. **Pending Reviews Triage** - Cleared 71 → 0 unreviewed recommendations, created 7 actionable issues
+## Dev/Ops Mode (NEW)
 
-2. **Multi-project Architecture** - Designed "global visibility, project-scoped operations" pattern
-   - Dashboard shows all projects ✅
-   - Operations require correct cwd, with helpful error messages
-   - Created orch-go-6u94, orch-go-f5hz for error message improvements
-
-3. **New Features**
-   - `orch fetch-md` - Go replacement for url-to-markdown (chromedp + html-to-markdown)
-   - Debounced gold processing border (5s delay, CSS transitions)
-   - Fixed duplicate key errors (backend dedup + composite keys)
-   - Improved workspace slug generation (better stop words)
-
-4. **Design Investigations**
-   - Up Next section for queue visibility (orch-go-afsz)
-   - Theme system extraction from OpenCode (orch-go-t84l)
-   - Light tier synthesis visibility (orch-go-cafd)
-
-5. **Bug Findings**
-   - Daemon capacity count goes stale after completions (orch-go-per9 investigating)
-   - Light tier agents don't produce SYNTHESIS.md by design - need review tooling update
-   - New CLI commands not prompting for skill docs (orch-go-zkdd implementing auto-detect)
-
-### Current State
-
-**Stats:**
-- Open: 47 | In Progress: 6 | Ready: 46 | Closed: 567
-- Usage: 51% weekly (49% remaining)
-
-**Running Agents (5):**
-| Issue | Task | Phase |
-|-------|------|-------|
-| orch-go-per9 | Daemon capacity stale | Investigating |
-| orch-go-afsz | Up Next section | Running |
-| orch-go-cafd | Light tier visibility | Implementing |
-| orch-go-zkdd | CLI command detection | Implementing |
-| orch-go-wh7n | Stale in_progress fix | Complete |
-
-**Idle (need completion):**
-- orch-go-sm33, orch-go-i914
-
-### High-Priority Next Work
-
-| Issue | Description | Why |
-|-------|-------------|-----|
-| orch-go-per9 | Daemon capacity stale bug | Blocking autonomous spawning |
-| orch-go-6u94 | Abandon cross-project errors | Multi-project UX |
-| orch-go-f5hz | Complete cross-project errors | Multi-project UX |
-| orch-go-t84l | Theme selection system | Dashboard polish |
-
-### Known Issues
-
-1. **Daemon capacity** - Shows capacity_used: 3 when orch status shows 0. Restart daemon to unblock, but per9 investigating root cause.
-
-2. **No remote** - This repo has no git remote configured. All commits are local.
-
-3. **Light tier invisible** - Feature-impl quick fixes don't produce SYNTHESIS.md, so they don't appear in pending reviews. orch-go-cafd fixing.
-
-### Resume Instructions
+Structural protection to prevent agents modifying agent infrastructure during operations.
 
 ```bash
-orch doctor          # Check services
-orch status          # See running agents
-orch complete <id> --force  # Complete idle agents
-
-# If daemon stuck at capacity:
-# DON'T restart - let orch-go-per9 investigate
-# Spawn manually if urgent: orch spawn ...
+orch mode          # Show current mode (ops by default)
+orch mode dev "reason"   # Enable infra changes
+orch mode ops      # Protect infra
 ```
 
-### Session Reflection
+- Pre-commit hook blocks infra changes unless `.dev-mode` exists
+- `orch status` shows warning when in dev mode
+- Bypass: `ORCH_INFRA_BYPASS="reason" git commit` (logged)
 
-**Friction encountered:**
-- Daemon capacity bug hit twice (created pressure via orch-go-per9)
-- CLI commands not surfacing for skill docs (orch-go-zkdd addressing)
-- Light tier completions invisible (orch-go-cafd addressing)
+**Protected paths:**
+- cmd/orch/serve.go, main.go, status.go
+- pkg/state/, pkg/opencode/
+- web/src/lib/stores/agents.ts, daemon.ts
+- web/src/lib/components/agent-card/
 
-**Pressure applied (not compensated):**
-- Daemon capacity: Created issue, spawned debugger instead of just restarting
-- CLI command docs: Added evidence to orch-go-zkdd, spawned fix
-- Light tier: Investigated root cause, created orch-go-cafd
+## Recovery Status
+
+Investigation completed: `.kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md`
+
+**Already recovered:**
+- `4304b7dd` - TTY detection fix
+- `75b0f389` - daemon skill inference (manually added)
+
+**Priority 1 (Critical) - Still need:**
+| Commit | Description | Notes |
+|--------|-------------|-------|
+| `10cc03ca` | headless spawn honors --model flag | Conflicts in main.go |
+| `8b42ddd3` | headless spawn lifecycle cleanup | Conflicts in main.go |
+| `735ac6a2` | full skill inference in spawn paths | Conflicts in main.go |
+| `fb1bc009` | move triage:ready removal to complete | Conflicts in main.go |
+| `b2b19b4a` | daemon skips failing issues | May be cleaner |
+| `bbc95b5e` | daemon rate limiting | New feature |
+
+**Priority 2 (High Value):**
+- New CLI commands: reconcile, changelog, sessions, servers
+- Verification gates: git diff, build verification
+- Beads deduplication
+
+**Approach:** Manual extraction recommended over cherry-pick due to conflicts in main.go
+
+## Current State
+
+```bash
+orch mode         # ops (protected)
+orch status       # Should show 3 idle agents from this session
+orch doctor       # Services healthy
+```
+
+**Git status:**
+- On master, ahead of origin by ~12 commits
+- Clean working tree
+- Tests pass
+
+## Next Session Focus
+
+Recover Priority 1 commits using manual extraction:
+1. Read each commit's diff
+2. Extract the relevant function/logic
+3. Apply to current codebase
+4. Test after each
+
+Start with `b2b19b4a` (daemon skips failing issues) - likely cleaner since it's in pkg/daemon/ not main.go.
+
+## Key Files
+
+- Post-mortem: `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md`
+- Recovery investigation: `.kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md`
+- Mode history: `.orch/mode-history.jsonl`
