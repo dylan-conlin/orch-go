@@ -130,13 +130,14 @@ type CompletionInfo struct {
 // Scans .orch/workspace/ for completed workspaces. Detects both:
 // - Full-tier agents: those with SYNTHESIS.md
 // - Light-tier agents: those with .tier file containing "light" AND Phase: Complete in beads comments
+// Filters out completions whose beads issues are already closed (closed/deferred/tombstone).
 func getCompletionsForReview() ([]CompletionInfo, error) {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	var results []CompletionInfo
+	var candidates []CompletionInfo
 
 	// Scan workspaces for completions
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
@@ -242,10 +243,60 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		// Determine if agent is stale (non-Complete phase for >24h)
 		info.IsStale = isStaleAgent(info.Phase, info.ModTime)
 
-		results = append(results, info)
+		candidates = append(candidates, info)
 	}
 
-	return results, nil
+	// Filter out completions whose beads issues are already closed
+	// This prevents showing NEEDS_REVIEW for issues that were force-closed
+	return filterClosedIssues(candidates), nil
+}
+
+// filterClosedIssues removes completions whose beads issues are closed/deferred/tombstone.
+// Uses batch fetching for efficiency. If beads is unavailable, returns all candidates
+// (better to show potential false positives than hide real issues).
+func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
+	if len(candidates) == 0 {
+		return candidates
+	}
+
+	// Collect all beads IDs for batch fetch
+	beadsIDs := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		if c.BeadsID != "" && !c.IsUntracked {
+			beadsIDs = append(beadsIDs, c.BeadsID)
+		}
+	}
+
+	if len(beadsIDs) == 0 {
+		return candidates
+	}
+
+	// Batch fetch issue statuses
+	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
+	// Ignore error - if beads is unavailable, return all candidates
+
+	// Filter out closed issues
+	var results []CompletionInfo
+	for _, c := range candidates {
+		// Keep untracked agents (no beads issue to check)
+		if c.IsUntracked || c.BeadsID == "" {
+			results = append(results, c)
+			continue
+		}
+
+		// Check if issue is closed
+		if issue, ok := issueMap[c.BeadsID]; ok {
+			status := strings.ToLower(issue.Status)
+			if status == "closed" || status == "deferred" || status == "tombstone" {
+				// Skip closed issues - they're resolved and shouldn't appear in review
+				continue
+			}
+		}
+
+		results = append(results, c)
+	}
+
+	return results
 }
 
 // extractBeadsIDFromWorkspace extracts the beads ID from SPAWN_CONTEXT.md
