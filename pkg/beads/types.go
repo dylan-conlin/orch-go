@@ -97,6 +97,8 @@ type ListArgs struct {
 	LabelsAny []string `json:"labels_any,omitempty"`
 	IDs       []string `json:"ids,omitempty"`
 	Limit     int      `json:"limit,omitempty"`
+	// Title filters by title text (case-insensitive substring match).
+	Title string `json:"title,omitempty"`
 }
 
 // ShowArgs represents arguments for showing an issue.

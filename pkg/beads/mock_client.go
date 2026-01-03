@@ -217,6 +217,8 @@ func (m *MockClient) CloseIssue(id, reason string) error {
 }
 
 // Create creates a new issue.
+// If Force is false (default), it first checks for existing open issues with
+// the same title and returns the existing issue instead of creating a duplicate.
 func (m *MockClient) Create(args *CreateArgs) (*Issue, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -228,6 +230,15 @@ func (m *MockClient) Create(args *CreateArgs) (*Issue, error) {
 
 	if args == nil {
 		return nil, fmt.Errorf("create args required")
+	}
+
+	// Check for existing issue with same title (unless Force is set)
+	if !args.Force {
+		for _, issue := range m.Issues {
+			if issue.Title == args.Title && (issue.Status == "open" || issue.Status == "in_progress") {
+				return issue, nil
+			}
+		}
 	}
 
 	// Generate ID if not provided
@@ -396,6 +407,27 @@ func (m *MockClient) GetCalls(method string) []MockCall {
 		}
 	}
 	return calls
+}
+
+// FindByTitle finds an open issue with the exact given title.
+// Returns nil if no matching issue is found.
+// Only searches open and in_progress issues (not closed).
+func (m *MockClient) FindByTitle(title string) (*Issue, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	m.recordCall("FindByTitle", title)
+
+	if err := m.getError("findbytitle", ""); err != nil {
+		return nil, err
+	}
+
+	for _, issue := range m.Issues {
+		if issue.Title == title && (issue.Status == "open" || issue.Status == "in_progress") {
+			return issue, nil
+		}
+	}
+
+	return nil, nil
 }
 
 // Ensure MockClient implements BeadsClient.
