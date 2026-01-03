@@ -5,79 +5,75 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully recovered 3 new CLI commands from Dec 27-Jan 2 commits: reconcile, changelog, and sessions.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Build passes for cmd/orch/..., files created and committed (484c71b4).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Manual extraction approach works for recovering lost commits when cherry-picks have conflicts.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close this issue. Some lower-priority items (transcript, history, workspace cleanup, servers lifecycle) remain unrecovered but are medium priority.
 
 ---
 
 # Investigation: Recover Priority Cli Commands Reconcile
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Can we recover the new CLI commands from the Dec 27-Jan 2 commits using manual extraction?
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Feature Implementation Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Commits identified for recovery
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** From the parent investigation, the following commits were targeted:
+- 2a736036: orch reconcile
+- 73adffea: workspace cleanup option  
+- 75dab6c3: patterns suppress (already exists)
+- e5bc1d76: orch changelog
+- 69171a4f: orch sessions
+- 2424381b: orch session start (already exists)
+- 6a47598c: orch servers (already exists)
+- a49cd2a5: transcript, history
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** .kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Clear scope for what needed to be recovered.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Three new commands successfully implemented
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Created files:
+- cmd/orch/reconcile.go: Detect and fix zombie in_progress issues
+- cmd/orch/changelog.go: Show aggregated changelog across ecosystem repos  
+- cmd/orch/sessions.go: Search and list OpenCode session history
+- pkg/sessions/sessions.go: Session storage access layer
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+Build verified: `/opt/homebrew/bin/go build ./cmd/orch/...` passes
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** git commit 484c71b4
+
+**Significance:** Core CLI functionality recovered.
+
+---
+
+### Finding 3: Some lower-priority items deferred
+
+**Evidence:** The following were not recovered in this session:
+- transcript.go and history.go (commit a49cd2a5)
+- workspace cleanup in orch clean (commit 73adffea) 
+- servers lifecycle package (commit 6a47598c)
+
+**Source:** Spawn context scope assessment
+
+**Significance:** These are medium priority and can be recovered in follow-up work.
 
 ---
 
@@ -85,15 +81,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Manual extraction works** - Reading old commit content and recreating files is effective when cherry-picks fail.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Some features already existed** - patterns suppress, session start, and servers commands were already in the codebase.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Build verification is essential** - The Go compiler catches issues like undefined references immediately.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Yes, manual extraction successfully recovered 3 new CLI commands. The approach of `git show <commit>:<file>` to extract content and then manually writing the files works well for self-contained additions like new commands.
 
 ---
 
@@ -101,120 +97,53 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Build passes for cmd/orch/... (verified: go build ./cmd/orch/...)
+- ✅ Files are committed to git (verified: git status)
+- ✅ Commands are registered with rootCmd (verified: init() functions present)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Runtime behavior of reconcile command (not tested against live beads)
+- ⚠️ Runtime behavior of changelog command (not tested against git repos)
+- ⚠️ Runtime behavior of sessions command (not tested against OpenCode API)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
-
----
-
-## Implementation Recommendations
-
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- Runtime tests could reveal missing dependencies or API incompatibilities
+- Pre-existing bugs from the original commits would still be present
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- git show 2a736036:cmd/orch/reconcile.go - Original reconcile command
+- git show e5bc1d76:cmd/orch/changelog.go - Original changelog command
+- git show 69171a4f:cmd/orch/sessions.go - Original sessions command
+- git show 69171a4f:pkg/sessions/sessions.go - Original sessions package
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Build verification
+/opt/homebrew/bin/go build ./cmd/orch/...
 
-# [Command description]
-[command]
+# Commit
+git add cmd/orch/reconcile.go cmd/orch/changelog.go cmd/orch/sessions.go pkg/sessions/sessions.go
+git commit -m "feat: recover CLI commands (reconcile, changelog, sessions)"
 ```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-03 13:00:** Investigation started
+- Initial question: Recover CLI commands from Dec 27-Jan 2 commits
+- Context: Part of priority 2 recovery work
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-03 13:20:** Three commands implemented
+- reconcile, changelog, sessions commands created
+- pkg/sessions package created
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-03 13:25:** Investigation completed
+- Status: Complete
+- Key outcome: 3/8 CLI command commits recovered, lower priority items deferred
