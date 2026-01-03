@@ -447,6 +447,39 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 		result.Warnings = append(result.Warnings, visualResult.Warnings...)
 	}
 
+	// Verify test execution evidence for code changes
+	// This gates completion when code files are modified without test execution evidence
+	testEvidenceResult := VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir)
+	if testEvidenceResult != nil {
+		if !testEvidenceResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, testEvidenceResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
+	}
+
+	// Verify git diff against SYNTHESIS claims
+	// This detects false positives where agent claims to modify files but didn't
+	gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
+	if gitDiffResult != nil {
+		if !gitDiffResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, gitDiffResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
+	}
+
+	// Verify build for Go projects
+	// This gates completion when Go files are modified but the project doesn't build
+	buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
+	if buildResult != nil {
+		if !buildResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, buildResult.Errors...)
+		}
+		result.Warnings = append(result.Warnings, buildResult.Warnings...)
+	}
+
 	return result, nil
 }
 
