@@ -1,80 +1,95 @@
-# Session Handoff - Jan 3, 2026 (Evening)
+# Session Handoff - Jan 3, 2026 (Late Evening)
 
 ## What Happened This Session
 
-Completed full recovery from the Dec 27 - Jan 2 spiral. All priority items now recovered and verified.
+Continued from earlier session. Focused on infrastructure clarity and backlog cleanup.
 
-### Priority 1 (Verified Earlier Today)
-- Daemon skips failing issues
-- Daemon rate limiting (20/hr default)
-- Headless spawn honors --model
-- Scanner buffer 1MB for large JSON
-- Full skill inference in all spawn paths
-- triage:ready removal on complete only
+### Server Architecture Fixed
 
-### Priority 2 (Recovered This Session)
+**Problem:** Confusion about ports (5188 vs 3348 vs 4096) and why vite processes kept piling up.
 
-**Verification Gates** (`orch-go-n2uw` - closed):
-- `pkg/verify/git_diff.go` - Verifies SYNTHESIS claims match actual git diff
-- `pkg/verify/build_verification.go` - Runs `go build ./...` before completion
-- `pkg/verify/test_evidence.go` - Requires test execution evidence for code changes
-- Markdown-only fix: Uses spawn time to scope git log accurately
+**Root cause found:** Three-layer architecture was undocumented:
+- Layer 1: **launchd** (persistent services) - daemon, orch serve, web UI, opencode
+- Layer 2: **tmuxinator** (project dev servers) - per-project vite/API
+- Layer 3: **orch servers** (CLI wrapper) - convenience commands
 
-**CLI Commands** (`orch-go-p0ht` - closed):
-- `orch changelog` - Cross-project change visibility
-- `orch reconcile` - Detect/fix zombie in_progress issues
-- `orch history` - Agent history with skill analytics
-- `orch transcript` - Session transcripts
+**Vite pileup cause:** `com.orch-go.web.plist` lacked `AbandonProcessGroup`, so child vite processes orphaned on restart.
 
-**Beads Improvements** (`orch-go-rsnq` - closed):
-- MockClient.FindByTitle for testing deduplication
-- Deduplication tests
+**Fixes applied:**
+- Added `AbandonProcessGroup` to plist
+- Removed duplicate vite from tmuxinator (launchd owns it now)
+- Added comprehensive server architecture docs to CLAUDE.md
+- Added launchd operations commands (restart, reload after plist edit)
 
-**Bug Fixes** (`orch-go-yjuq` - closed):
-- Filter closed issues from review output
-- Suppress plugin output leaking into TUI
-- Patterns JSONL format fix
-- Standardize on localhost vs 127.0.0.1
+**Commits:** 557c0676, d37bec01
 
-### Priority 3 (Recovered This Session)
+### Pending Reviews Cleared
 
-**Infrastructure** (`orch-go-9i2q` - closed):
-- `pkg/shell` package (shell execution abstraction with mock)
-- Makefile symlink pattern for install
-- `orch doctor --stale-only` flag
-- Stalled session detection in doctor
+- Dismissed 255+ OK reviews
+- Force-closed 7 abandoned Dec agents
+- Deleted 14 orphaned workspaces
+- ~13K lines of stale workspace cruft removed
 
-## Verification Done
+### Backlog Cleaned Up
 
-All recovered features tested and working:
-- `orch changelog --days 1` ✅
-- `orch reconcile` ✅ (found 6 zombies)
-- `orch history` ✅
-- `orch doctor --stale-only` ✅
-- `go test ./...` ✅ (all pass)
-- Verification gates tested programmatically ✅
+**Before:** 68 open issues (many stale from pre-revert period)
+**After:** 25 open issues (all relevant)
+
+Closed:
+- 18 issues already at Phase: Complete but never closed
+- 15 stale synthesis tasks (triage:review)
+- 5 stale web UI issues
+- 5 stale 6-month roadmap epic children
+
+### Recovery Status Update
+
+All zombie issues from earlier session handoff are now closed:
+- orch-go-bgiu ✅ (already implemented in beads)
+- orch-go-54y7 ✅ (already implemented)
+- orch-go-0hw5 ✅ (already implemented)
+- orch-go-gba4 ✅ (already fixed)
+- orch-go-x7vn ✅ (already fixed)
+- orch-go-3c02 ✅ (duplicate spawn, tests pass)
 
 ## Current State
 
 ```bash
-git status          # Clean, up to date with origin
-orch status         # 0 active agents
-bd list --status in_progress  # 0 (zombies reset to open)
-go test ./...       # All pass
+git status          # Clean, pushed to origin
+orch status         # 1 idle (untracked investigation)
+bd stats            # 25 open, 985 closed
+launchctl list | grep orch  # All 4 services running
 ```
 
-## Open Issues Reset to Open (Were Zombies)
+### Launchd Services (All Healthy)
 
-These were in_progress with no active agent - reset to open for future work:
-- orch-go-bgiu: Gate bd close on Phase: Complete verification
-- orch-go-54y7: Strengthen VerifySynthesis to validate content
-- orch-go-0hw5: Align SPAWN_CONTEXT deliverables with skill
-- orch-go-gba4: orch session status reconcile spawn states
-- orch-go-x7vn: Visual verification checks project git history
-- orch-go-3c02: Test daemon skip functionality
+| Service | Port | Status |
+|---------|------|--------|
+| `com.opencode.serve` | 4096 | Running |
+| `com.orch-go.serve` | 3348 | Running |
+| `com.orch-go.web` | 5188 | Running |
+| `com.orch.daemon` | N/A | Running |
+
+### Dashboard Access
+
+- **http://localhost:5188** - Vite dev server (frontend)
+- **http://localhost:3348** - orch serve API (backend)
+
+## Ready Work
+
+```
+bd ready  # Shows 10 ready issues
+```
+
+Top items:
+1. [P2] orch-go-0xra: Empty investigation templates from early-dying agents
+2. [P2] orch-go-lxcc: Pre-commit hook blocks automation
+3. [P2] orch-go-xnqg: MCP vs CLI value proposition investigation
 
 ## What's Left (Future Work)
 
-The spiral recovery is complete. Remaining P2 issues are normal backlog items, not recovery work.
+- P1 changelog epic (v7qs + children) - cross-project visibility
+- P2 refactoring (main.go 5571 lines, serve.go 4125 lines)
+- P2 Self-Evaluation epic (idmr + phases)
+- Various P2/P3 features in backlog
 
-Run `bd list --status open --priority P2` to see current backlog.
+Run `bd list --status open` to see full backlog (25 issues).
