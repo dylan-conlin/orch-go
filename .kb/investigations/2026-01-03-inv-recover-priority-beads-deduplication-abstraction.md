@@ -5,79 +5,63 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully recovered beads deduplication and abstraction layer from lost commits (aacecd87, 1a155626, 231b21f6, ecb79dc2).
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** All tests pass (go test ./pkg/beads/... passes), deduplication prevents duplicate issues with same title.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The abstraction layer (interface.go, cli_client.go) was already recovered in prior commits; only MockClient deduplication and tests were missing.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** None - work is complete and committed.
 
 ---
 
 # Investigation: Recover Priority Beads Deduplication Abstraction
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Recover beads improvements from Dec 27 - Jan 2 commits per recovery plan
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Worker Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Extracted-From:** .kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md
+**Supersedes:** N/A
+**Superseded-By:** N/A
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Abstraction layer already recovered
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Files interface.go, cli_client.go, mock_client.go exist and are tracked in git from prior recovery work.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** git ls-files pkg/beads/interface.go, pkg/beads/cli_client.go, pkg/beads/mock_client.go
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The BeadsClient interface and CLIClient implementation were already in place. Only deduplication logic and tests were missing.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Missing deduplication in MockClient
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** MockClient.Create() lacked the deduplication check and FindByTitle() method that CLIClient and Client already had.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** git diff pkg/beads/mock_client.go showed missing Force flag handling and FindByTitle
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** MockClient needed to match the interface for testing to work properly with deduplication.
+
+---
+
+### Finding 3: Types missing Force and Title fields
+
+**Evidence:** CreateArgs lacked Force bool field, ListArgs lacked Title string field.
+
+**Source:** pkg/beads/types.go lines 59-69 and 78-88
+
+**Significance:** These fields are required for the deduplication feature to work across all client implementations.
 
 ---
 
@@ -85,15 +69,21 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Partial recovery was complete** - The interface and CLI client were already recovered, reducing scope of this task.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Test parity matters** - MockClient needs to implement the same deduplication behavior as real clients for tests to be meaningful.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Type definitions are foundational** - Adding Force to CreateArgs and Title to ListArgs enables the entire deduplication feature.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The beads improvements have been recovered. The commit 3d8f2656 adds:
+- FindByTitle method to MockClient
+- Deduplication check in MockClient.Create (respects Force flag)
+- Title field to ListArgs for filtering
+- Comprehensive deduplication tests (6 test cases)
+
+All pkg/beads tests pass.
 
 ---
 
@@ -101,120 +91,89 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ All beads package tests pass (go test ./pkg/beads/... = ok)
+- ✅ FindByTitle finds open/in_progress issues, not closed
+- ✅ Create returns existing issue when duplicate title found
+- ✅ Force=true bypasses deduplication
+- ✅ Case-sensitive title matching works
+- ✅ Closed issues don't block new creation
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ CLI client deduplication with real bd daemon (integration test)
+- ⚠️ RPC client deduplication with real bd daemon (integration test)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if MockClient behavior differs from real clients in production
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Recovery complete - no further implementation needed.
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Recovery Complete** - All target commits have been recovered to pkg/beads.
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+**Files modified:**
+- pkg/beads/mock_client.go - Added FindByTitle, deduplication in Create
+- pkg/beads/types.go - Added Title to ListArgs  
+- pkg/beads/dedup_test.go - Added comprehensive dedup tests
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**Commit:** 3d8f2656
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- .kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md - Recovery plan
+- pkg/beads/client.go - RPC client implementation (already had FindByTitle)
+- pkg/beads/cli_client.go - CLI client implementation (already had FindByTitle)
+- pkg/beads/mock_client.go - Mock client (needed updates)
+- pkg/beads/types.go - Type definitions (needed Force and Title)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Verify test pass
+go test ./pkg/beads/... -v
 
-# [Command description]
-[command]
+# Check what was already tracked
+git ls-files pkg/beads/*.go
+
+# Commit changes
+git add pkg/beads/mock_client.go pkg/beads/types.go pkg/beads/dedup_test.go
+git commit -m "feat(beads): complete deduplication and abstraction layer recovery"
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** .kb/investigations/2026-01-03-inv-analyze-commits-between-fb0af37f-dec.md - Parent investigation with full recovery plan
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-03:** Investigation started
+- Initial question: Recover beads improvements from commits aacecd87, 1a155626, 231b21f6, ecb79dc2
+- Context: Post-mortem recovery of valuable changes lost in system spiral
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-03:** Found abstraction layer already recovered
+- interface.go, cli_client.go already had FindByTitle and deduplication
+- Only MockClient needed updates
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-03:** Investigation completed
+- Status: Complete
+- Key outcome: Beads deduplication recovered, all tests pass, commit 3d8f2656
+
+---
+
+## Self-Review
+
+- [x] Real test performed (go test ./pkg/beads/... passes)
+- [x] Conclusion from evidence (based on test results and git commits)
+- [x] Question answered (recovered all target functionality)
+- [x] File complete
+
+**Self-Review Status:** PASSED
