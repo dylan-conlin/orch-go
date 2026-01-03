@@ -15,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -639,26 +640,36 @@ func runReviewDone(project string) error {
 		return nil
 	}
 
-	// Confirmation prompt unless --yes flag is set
+	// Confirmation prompt unless --yes flag is set or stdin is not a terminal
 	if !reviewDoneYes {
-		fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
-		fmt.Print("Continue? [y/N]: ")
-		reader := bufio.NewReader(os.Stdin)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
-		}
+		// Auto-skip confirmation when stdin is not a terminal (e.g., daemon, scripts)
+		if !term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
+			fmt.Println("(Skipping confirmation - stdin is not a terminal)")
+		} else {
+			fmt.Printf("\nThis will close %d beads issues and clean up resources.\n", len(canComplete))
+			fmt.Print("Continue? [y/N]: ")
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read response: %w", err)
+			}
 
-		response = strings.TrimSpace(strings.ToLower(response))
-		if response != "y" && response != "yes" {
-			return fmt.Errorf("aborted")
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "y" && response != "yes" {
+				return fmt.Errorf("aborted")
+			}
 		}
 	}
 
 	// Process each completion
 	completed := 0
 	var completionErrors []string
-	skipAllPrompts := reviewNoPrompt // Start with flag value
+	// Auto-skip prompts when stdin is not a terminal (e.g., daemon, scripts)
+	skipAllPrompts := reviewNoPrompt || !term.IsTerminal(int(os.Stdin.Fd()))
+	if !reviewNoPrompt && skipAllPrompts {
+		fmt.Println("(Skipping recommendation prompts - stdin is not a terminal)")
+	}
 
 	projectDir, err := os.Getwd()
 	if err != nil {
