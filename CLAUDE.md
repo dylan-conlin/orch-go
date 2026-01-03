@@ -93,6 +93,40 @@ Wraps tmuxinator with port registry awareness:
 
 **Key insight:** Layer 1 is for orch-go infrastructure. Layer 2 is for OTHER projects' dev servers. Don't run orch-go vite in both layers.
 
+### Launchd Operations (Restarting Services)
+
+**All services:**
+```bash
+# Check status
+launchctl list | grep -E "orch|opencode"
+
+# Service-specific restart (preferred - uses kickstart)
+launchctl kickstart -k gui/$(id -u)/com.orch.daemon
+launchctl kickstart -k gui/$(id -u)/com.orch-go.serve
+launchctl kickstart -k gui/$(id -u)/com.orch-go.web
+launchctl kickstart -k gui/$(id -u)/com.opencode.serve
+```
+
+**After editing a plist file:**
+```bash
+# Unload, then reload (required for plist changes)
+launchctl bootout gui/$(id -u)/com.orch-go.web
+launchctl load ~/Library/LaunchAgents/com.orch-go.web.plist
+```
+
+**Service ports:**
+| Service | Port | Purpose |
+|---------|------|---------|
+| `com.opencode.serve` | 4096 | OpenCode server (Claude sessions) |
+| `com.orch-go.serve` | 3348 | orch serve API (dashboard backend) |
+| `com.orch-go.web` | 5188 | Vite dev server (dashboard frontend) |
+| `com.orch.daemon` | N/A | Agent spawner (no port) |
+
+**Gotchas:**
+- Use `kickstart -k` for restart (not `stop`/`start`)
+- After plist edits, must `bootout` then `load` (not just restart)
+- Check logs: `~/.orch/logs/` for orch services, `~/.orch/daemon.log` for daemon
+
 ## Key Packages
 
 ### cmd/orch/main.go (Entry Point)
