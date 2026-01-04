@@ -699,7 +699,7 @@ func GetIssue(beadsID string) (*Issue, error) {
 
 // GetIssuesBatch retrieves multiple issues efficiently.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
-// Uses List(IDs: beadsIDs) to fetch specific issues by ID in one call.
+// Uses individual Show() calls which handle short ID resolution (e.g., '51jz' -> 'orch-go-51jz').
 // This includes closed issues, unlike List(nil) which only returns open issues.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
@@ -707,7 +707,15 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 		return make(map[string]*Issue), nil
 	}
 
+	// Use mutex-protected map for thread-safe writes
+	var mu sync.Mutex
 	result := make(map[string]*Issue, len(beadsIDs))
+
+	// Limit concurrent RPC calls to avoid overwhelming the server
+	const maxConcurrent = 20
+	sem := make(chan struct{}, maxConcurrent)
+
+	var wg sync.WaitGroup
 
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
@@ -718,41 +726,64 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 		}
 		client := beads.NewClient(socketPath, opts...)
 
-		// Fetch specific issues by ID (includes closed issues)
-		issues, err := client.List(&beads.ListArgs{IDs: beadsIDs})
-		if err == nil {
-			for i := range issues {
-				result[issues[i].ID] = &Issue{
-					ID:          issues[i].ID,
-					Title:       issues[i].Title,
-					Description: issues[i].Description,
-					Status:      issues[i].Status,
-					IssueType:   issues[i].IssueType,
-					CloseReason: issues[i].CloseReason,
+		// Fetch each issue via Show() which handles short ID resolution
+		for _, beadsID := range beadsIDs {
+			wg.Add(1)
+			go func(id string, c *beads.Client) {
+				defer wg.Done()
+				sem <- struct{}{}        // Acquire semaphore
+				defer func() { <-sem }() // Release semaphore
+
+				issue, err := c.Show(id)
+				if err == nil && issue != nil {
+					mu.Lock()
+					// Store by the original ID passed in, so callers can find their result
+					result[id] = &Issue{
+						ID:          issue.ID,
+						Title:       issue.Title,
+						Description: issue.Description,
+						Status:      issue.Status,
+						IssueType:   issue.IssueType,
+						CloseReason: issue.CloseReason,
+					}
+					mu.Unlock()
 				}
-			}
+			}(beadsID, client)
+		}
+
+		wg.Wait()
+		if len(result) > 0 {
 			return result, nil
 		}
-		// Fall through to CLI if RPC failed
+		// Fall through to CLI if RPC returned no results
 	}
 
-	// Fallback to CLI - fetch specific issues by ID (includes closed)
-	issues, err := beads.FallbackListByIDs(beadsIDs)
-	if err != nil {
-		return result, nil // Return empty on error (don't fail the whole request)
+	// Fallback to CLI - fetch each issue via bd show which handles short ID resolution
+	for _, beadsID := range beadsIDs {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire semaphore
+			defer func() { <-sem }() // Release semaphore
+
+			issue, err := beads.FallbackShow(id)
+			if err == nil && issue != nil {
+				mu.Lock()
+				// Store by the original ID passed in, so callers can find their result
+				result[id] = &Issue{
+					ID:          issue.ID,
+					Title:       issue.Title,
+					Description: issue.Description,
+					Status:      issue.Status,
+					IssueType:   issue.IssueType,
+					CloseReason: issue.CloseReason,
+				}
+				mu.Unlock()
+			}
+		}(beadsID)
 	}
 
-	for i := range issues {
-		result[issues[i].ID] = &Issue{
-			ID:          issues[i].ID,
-			Title:       issues[i].Title,
-			Description: issues[i].Description,
-			Status:      issues[i].Status,
-			IssueType:   issues[i].IssueType,
-			CloseReason: issues[i].CloseReason,
-		}
-	}
-
+	wg.Wait()
 	return result, nil
 }
 
