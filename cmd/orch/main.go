@@ -184,11 +184,13 @@ var monitorCmd = &cobra.Command{
 
 var (
 	// Complete command flags
-	completeForce          bool
-	completeReason         string
-	completeApprove        bool
-	completeWorkdir        string
+	completeForce            bool
+	completeReason           string
+	completeApprove          bool
+	completeWorkdir          string
 	completeNoChangelogCheck bool
+	completeSkipReproCheck   bool
+	completeSkipReproReason  string
 )
 
 var completeCmd = &cobra.Command{
@@ -207,12 +209,16 @@ For cross-project completion (agents spawned with --workdir in another project),
 the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
 Use --workdir as explicit override when auto-detection fails.
 
+For bug-type issues, prompts the orchestrator to verify that the original
+reproduction no longer occurs. Use --skip-repro-check with --reason to bypass.
+
 Examples:
   orch-go complete proj-123
   orch-go complete proj-123 --reason "All tests passing"
   orch-go complete proj-123 --approve       # Approve UI changes after visual review
   orch-go complete proj-123 --force         # Skip all verification
-  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion`,
+  orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion
+  orch-go complete proj-123 --skip-repro-check --reason "Repro verified via automated test"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
@@ -226,6 +232,8 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")
 	completeCmd.Flags().StringVar(&completeWorkdir, "workdir", "", "Target project directory (for cross-project completion)")
 	completeCmd.Flags().BoolVar(&completeNoChangelogCheck, "no-changelog-check", false, "Skip changelog detection for notable changes")
+	completeCmd.Flags().BoolVar(&completeSkipReproCheck, "skip-repro-check", false, "Skip reproduction verification for bug issues (requires --reason)")
+	completeCmd.Flags().StringVar(&completeSkipReproReason, "skip-repro-reason", "", "Reason for skipping reproduction verification")
 }
 
 var (
@@ -920,6 +928,78 @@ func runComplete(beadsID, workdir string) error {
 			}
 
 			fmt.Println("Proceeding with completion despite liveness warning...")
+		}
+	}
+
+	// Reproduction verification for bug issues
+	// This gates completion on verifying the original bug symptom is resolved
+	if !completeForce && !completeSkipReproCheck {
+		reproResult, err := verify.GetReproForCompletion(beadsID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to check reproduction: %v\n", err)
+		} else if reproResult != nil && reproResult.IsBug {
+			// This is a bug - prompt for reproduction verification
+			fmt.Println("\n--- Bug Reproduction Verification ---")
+			fmt.Printf("Original reproduction:\n%s\n", reproResult.Repro)
+			fmt.Println()
+
+			// Check if stdin is a terminal for interactive prompting
+			if !term.IsTerminal(int(os.Stdin.Fd())) {
+				return fmt.Errorf("bug issue requires reproduction verification; use --skip-repro-check --skip-repro-reason 'reason' or --force to bypass")
+			}
+
+			// Prompt for verification
+			fmt.Print("Is this bug symptom resolved? [y/n/could-not-reproduce]: ")
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read response: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+
+			switch {
+			case response == "y" || response == "yes":
+				// Bug confirmed fixed - proceed with completion
+				fmt.Println("✓ Bug symptom verified as resolved")
+				// Add verification comment
+				if err := beads.FallbackAddComment(beadsID, "Reproduction verification: ✅ Bug symptom confirmed resolved by orchestrator"); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to add verification comment: %v\n", err)
+				}
+			case response == "n" || response == "no":
+				// Bug not fixed - block completion
+				fmt.Println("\n⚠️  Bug symptom NOT resolved")
+				fmt.Println("Recommendations:")
+				fmt.Printf("  1. Re-spawn for additional investigation: orch spawn systematic-debugging \"[task]\" --issue %s\n", beadsID)
+				fmt.Printf("  2. Add more context to the issue: bd comments add %s \"Additional findings: ...\"\n", beadsID)
+				fmt.Println("  3. Force completion if this is expected: orch complete --force")
+				return fmt.Errorf("completion blocked: bug symptom not resolved")
+			case response == "c" || response == "cnr" || response == "could-not-reproduce":
+				// Could not reproduce - close with distinct status
+				fmt.Println("📋 Marked as 'could not reproduce'")
+				// Update the close reason to indicate could not reproduce
+				completeReason = "Could not reproduce: " + completeReason
+				if completeReason == "Could not reproduce: " {
+					completeReason = "Could not reproduce"
+				}
+				// Add comment documenting the outcome
+				if err := beads.FallbackAddComment(beadsID, "Reproduction verification: ⚠️ Could not reproduce. Closing with 'could not reproduce' status."); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to add verification comment: %v\n", err)
+				}
+			default:
+				return fmt.Errorf("invalid response: %q (expected y/n/could-not-reproduce)", response)
+			}
+		}
+	} else if completeSkipReproCheck {
+		// Log that repro check was skipped with reason
+		skipReason := completeSkipReproReason
+		if skipReason == "" {
+			skipReason = "(no reason provided)"
+		}
+		fmt.Printf("Skipping reproduction verification: %s\n", skipReason)
+		// Add comment documenting the skip
+		if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Reproduction verification: ⏭️ Skipped - %s", skipReason)); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to add skip comment: %v\n", err)
 		}
 	}
 
