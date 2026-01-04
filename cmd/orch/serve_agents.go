@@ -91,6 +91,35 @@ const (
 	defaultCommentsTTL   = 5 * time.Second  // Comments change more often (phase updates)
 )
 
+// invalidate clears all cached data, forcing fresh fetches on next request.
+// This is called when agents complete to ensure the dashboard shows current status.
+func (c *beadsCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Reset all cached data
+	c.openIssues = make(map[string]*verify.Issue)
+	c.allIssues = make(map[string]*verify.Issue)
+	c.comments = make(map[string][]beads.Comment)
+
+	// Reset timestamps to force refetch
+	c.openIssuesFetchedAt = time.Time{}
+	c.allIssuesFetchedAt = time.Time{}
+	c.commentsFetchedAt = time.Time{}
+	c.allIssuesFetchedFor = nil
+	c.commentsFetchedFor = nil
+}
+
+// invalidate clears the cached workspace data, forcing a fresh scan on next request.
+// This is called when agents complete to ensure the dashboard shows current status.
+func (c *globalWorkspaceCacheType) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.cache = nil
+	c.fetchedAt = time.Time{}
+}
+
 // Global beads cache instance, initialized in runServe
 var globalBeadsCache *beadsCache
 
@@ -1298,4 +1327,28 @@ func extractGapAnalysisFromEvent(data map[string]interface{}) *GapAPIResponse {
 		Decisions:      decisions,
 		Investigations: investigations,
 	}
+}
+
+// handleCacheInvalidate clears all dashboard caches to force fresh data on next request.
+// This is called by orch complete to ensure the dashboard shows updated agent status.
+// Without this, the TTL cache holds stale "active" status after agents complete.
+func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Invalidate beads cache (open issues, all issues, comments)
+	if globalBeadsCache != nil {
+		globalBeadsCache.invalidate()
+	}
+
+	// Invalidate workspace cache (workspace metadata)
+	globalWorkspaceCacheInstance.invalidate()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "Cache invalidated",
+	})
 }

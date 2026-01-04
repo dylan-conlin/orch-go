@@ -240,6 +240,10 @@ func runServe(portNum int) error {
 	// GET /api/changelog - aggregated changelog across ecosystem repos
 	mux.HandleFunc("/api/changelog", corsHandler(handleChangelog))
 
+	// POST /api/cache/invalidate - invalidate caches to force fresh data
+	// Called by orch complete to ensure dashboard shows updated status
+	mux.HandleFunc("/api/cache/invalidate", corsHandler(handleCacheInvalidate))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

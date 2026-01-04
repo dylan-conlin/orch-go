@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1199,7 +1200,32 @@ func runComplete(beadsID, workdir string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
+	// Invalidate orch serve cache to ensure dashboard shows updated status immediately.
+	// Without this, the TTL cache holds stale "active" status after completion.
+	invalidateServeCache()
+
 	return nil
+}
+
+// invalidateServeCache sends a request to orch serve to invalidate its caches.
+// This ensures the dashboard shows updated agent status immediately after completion.
+// Silently fails if orch serve is not running (cache will refresh via TTL).
+func invalidateServeCache() {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	resp, err := client.Post(
+		fmt.Sprintf("http://localhost:%d/api/cache/invalidate", DefaultServePort),
+		"application/json",
+		nil,
+	)
+	if err != nil {
+		// Silent failure - orch serve might not be running
+		return
+	}
+	defer resp.Body.Close()
+	// We don't care about the response - if it worked, great; if not, TTL will eventually refresh
 }
 
 // addApprovalComment adds an approval comment to a beads issue.

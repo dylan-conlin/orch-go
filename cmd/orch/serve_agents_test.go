@@ -623,3 +623,143 @@ func TestWorkspaceCacheLookupMethods(t *testing.T) {
 		t.Errorf("Expected /default/workspace/dir/unknown-entry, got %s", path)
 	}
 }
+
+func TestBeadsCacheInvalidate(t *testing.T) {
+	// Create a cache with some data
+	cache := newBeadsCache()
+
+	// Populate the cache with test data
+	cache.mu.Lock()
+	cache.openIssues["test-id"] = nil // Just need a key to verify invalidation
+	cache.allIssues["test-id"] = nil
+	cache.comments["test-id"] = nil
+	cache.openIssuesFetchedAt = time.Now()
+	cache.allIssuesFetchedAt = time.Now()
+	cache.commentsFetchedAt = time.Now()
+	cache.allIssuesFetchedFor = []string{"test-id"}
+	cache.commentsFetchedFor = []string{"test-id"}
+	cache.mu.Unlock()
+
+	// Verify cache has data
+	cache.mu.RLock()
+	if len(cache.openIssues) != 1 {
+		t.Errorf("Expected 1 open issue before invalidate, got %d", len(cache.openIssues))
+	}
+	cache.mu.RUnlock()
+
+	// Invalidate the cache
+	cache.invalidate()
+
+	// Verify cache is cleared
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+
+	if len(cache.openIssues) != 0 {
+		t.Errorf("Expected 0 open issues after invalidate, got %d", len(cache.openIssues))
+	}
+	if len(cache.allIssues) != 0 {
+		t.Errorf("Expected 0 all issues after invalidate, got %d", len(cache.allIssues))
+	}
+	if len(cache.comments) != 0 {
+		t.Errorf("Expected 0 comments after invalidate, got %d", len(cache.comments))
+	}
+	if !cache.openIssuesFetchedAt.IsZero() {
+		t.Errorf("Expected zero openIssuesFetchedAt after invalidate")
+	}
+	if !cache.allIssuesFetchedAt.IsZero() {
+		t.Errorf("Expected zero allIssuesFetchedAt after invalidate")
+	}
+	if !cache.commentsFetchedAt.IsZero() {
+		t.Errorf("Expected zero commentsFetchedAt after invalidate")
+	}
+	if cache.allIssuesFetchedFor != nil {
+		t.Errorf("Expected nil allIssuesFetchedFor after invalidate")
+	}
+	if cache.commentsFetchedFor != nil {
+		t.Errorf("Expected nil commentsFetchedFor after invalidate")
+	}
+}
+
+func TestGlobalWorkspaceCacheInvalidate(t *testing.T) {
+	// Setup the global cache with some data
+	globalWorkspaceCacheInstance.mu.Lock()
+	globalWorkspaceCacheInstance.cache = &workspaceCache{
+		beadsToWorkspace: map[string]string{"test-id": "/path/to/workspace"},
+	}
+	globalWorkspaceCacheInstance.fetchedAt = time.Now()
+	globalWorkspaceCacheInstance.mu.Unlock()
+
+	// Verify cache has data
+	globalWorkspaceCacheInstance.mu.RLock()
+	if globalWorkspaceCacheInstance.cache == nil {
+		t.Errorf("Expected cache to be set before invalidate")
+	}
+	globalWorkspaceCacheInstance.mu.RUnlock()
+
+	// Invalidate the cache
+	globalWorkspaceCacheInstance.invalidate()
+
+	// Verify cache is cleared
+	globalWorkspaceCacheInstance.mu.RLock()
+	defer globalWorkspaceCacheInstance.mu.RUnlock()
+
+	if globalWorkspaceCacheInstance.cache != nil {
+		t.Errorf("Expected cache to be nil after invalidate")
+	}
+	if !globalWorkspaceCacheInstance.fetchedAt.IsZero() {
+		t.Errorf("Expected zero fetchedAt after invalidate")
+	}
+}
+
+func TestHandleCacheInvalidate(t *testing.T) {
+	// Initialize the global cache
+	if globalBeadsCache == nil {
+		globalBeadsCache = newBeadsCache()
+	}
+
+	// Populate with some test data
+	globalBeadsCache.mu.Lock()
+	globalBeadsCache.openIssues["test"] = nil
+	globalBeadsCache.openIssuesFetchedAt = time.Now()
+	globalBeadsCache.mu.Unlock()
+
+	// Test that POST works
+	req := httptest.NewRequest(http.MethodPost, "/api/cache/invalidate", nil)
+	w := httptest.NewRecorder()
+
+	handleCacheInvalidate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify JSON response
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Errorf("Expected valid JSON response, got error: %v", err)
+	}
+	if result["status"] != "ok" {
+		t.Errorf("Expected status 'ok', got '%s'", result["status"])
+	}
+
+	// Verify cache was invalidated
+	globalBeadsCache.mu.RLock()
+	if len(globalBeadsCache.openIssues) != 0 {
+		t.Errorf("Expected cache to be empty after invalidate")
+	}
+	globalBeadsCache.mu.RUnlock()
+}
+
+func TestHandleCacheInvalidateMethodNotAllowed(t *testing.T) {
+	// Test GET method is not allowed
+	req := httptest.NewRequest(http.MethodGet, "/api/cache/invalidate", nil)
+	w := httptest.NewRecorder()
+
+	handleCacheInvalidate(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", resp.StatusCode)
+	}
+}
