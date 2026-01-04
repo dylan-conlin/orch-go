@@ -51,12 +51,21 @@ func GetComments(beadsID string) ([]Comment, error) {
 // GetCommentsWithDir retrieves comments for a beads issue from a specific project directory.
 // This is used for cross-project agent visibility where the beads issue is in a different
 // project than the current working directory.
-// If projectDir is empty, uses the current working directory.
+// If projectDir is empty, uses beads.DefaultDir if set, otherwise the current working directory.
 func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
+	// Use DefaultDir if projectDir is empty
+	if projectDir == "" && beads.DefaultDir != "" {
+		projectDir = beads.DefaultDir
+	}
+
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath(projectDir)
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if projectDir != "" {
+			opts = append(opts, beads.WithCwd(projectDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 		comments, err := client.Comments(beadsID)
 		if err == nil {
 			return comments, nil
@@ -567,11 +576,16 @@ func ReadTierFromWorkspace(workspacePath string) string {
 
 // CloseIssue closes a beads issue with the given reason.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func CloseIssue(beadsID, reason string) error {
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 		if err := client.CloseIssue(beadsID, reason); err == nil {
 			return nil
 		}
@@ -584,11 +598,16 @@ func CloseIssue(beadsID, reason string) error {
 
 // UpdateIssueStatus updates the status of a beads issue.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func UpdateIssueStatus(beadsID, status string) error {
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 		statusPtr := &status
 		_, err := client.Update(&beads.UpdateArgs{
 			ID:     beadsID,
@@ -608,13 +627,18 @@ func UpdateIssueStatus(beadsID, status string) error {
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // This should be called after orch complete successfully closes the issue, not at spawn time.
 // This ensures failed/abandoned agents leave issues in the ready queue for daemon retry.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func RemoveTriageReadyLabel(beadsID string) error {
 	const triageReadyLabel = "triage:ready"
 
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 		if connErr := client.Connect(); connErr == nil {
 			defer client.Close()
 			err := client.RemoveLabel(beadsID, triageReadyLabel)
@@ -631,11 +655,16 @@ func RemoveTriageReadyLabel(beadsID string) error {
 
 // GetIssue retrieves issue details from beads.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func GetIssue(beadsID string) (*Issue, error) {
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 		issue, err := client.Show(beadsID)
 		if err == nil {
 			// Convert beads.Issue to verify.Issue
@@ -672,6 +701,7 @@ func GetIssue(beadsID string) (*Issue, error) {
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
 // Uses List() to get all issues in one call, then filters by requested IDs.
 // This is much faster than individual Show() calls (1 call vs N calls).
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	if len(beadsIDs) == 0 {
 		return make(map[string]*Issue), nil
@@ -688,7 +718,11 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 
 		// Fetch ALL issues in one call, then filter
 		allIssues, err := client.List(nil)
@@ -735,13 +769,18 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 // ListOpenIssues retrieves all open issues in a single call.
 // Returns a map from beadsID to Issue.
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func ListOpenIssues() (map[string]*Issue, error) {
 	result := make(map[string]*Issue)
 
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 
 		// List all issues via RPC
 		issues, err := client.List(nil)
@@ -792,6 +831,7 @@ func ListOpenIssues() (map[string]*Issue, error) {
 // GetCommentsBatch fetches comments for multiple issues sequentially.
 // Returns a map from beadsID to comments. Errors are silently skipped.
 // Uses the beads RPC client with auto-reconnect, so no concurrency control needed.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 	if len(beadsIDs) == 0 {
 		return make(map[string][]Comment)
@@ -802,7 +842,11 @@ func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
 
 		// Fetch comments sequentially via RPC
 		for _, beadsID := range beadsIDs {
@@ -858,10 +902,20 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 
 	// Process each project directory group in parallel
 	for projectDir, ids := range byProjectDir {
+		// Determine effective directory (use DefaultDir if projectDir is empty)
+		effectiveDir := projectDir
+		if effectiveDir == "" && beads.DefaultDir != "" {
+			effectiveDir = beads.DefaultDir
+		}
+
 		// Try RPC client first
-		socketPath, err := beads.FindSocketPath(projectDir)
+		socketPath, err := beads.FindSocketPath(effectiveDir)
 		if err == nil {
-			client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+			opts := []beads.Option{beads.WithAutoReconnect(3)}
+			if effectiveDir != "" {
+				opts = append(opts, beads.WithCwd(effectiveDir))
+			}
+			client := beads.NewClient(socketPath, opts...)
 
 			// Fetch comments in parallel via RPC
 			for _, beadsID := range ids {
@@ -894,7 +948,7 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 						commentMap[id] = comments
 						mu.Unlock()
 					}
-				}(beadsID, projectDir)
+				}(beadsID, effectiveDir)
 			}
 		}
 	}

@@ -644,10 +644,17 @@ func (c *Client) ResolveID(partialID string) (string, error) {
 // These shell out to the bd CLI as a fallback mechanism.
 
 // FallbackReady retrieves ready issues via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackReady() ([]Issue, error) {
 	cmd := exec.Command("bd", "ready", "--json")
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd ready failed: %w: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("bd ready failed: %w", err)
 	}
 
@@ -662,10 +669,17 @@ func FallbackReady() ([]Issue, error) {
 // FallbackShow retrieves an issue via bd CLI.
 // Note: bd show --json always returns an array, even for a single issue.
 // We unmarshal the array and return the first element.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackShow(id string) (*Issue, error) {
 	cmd := exec.Command("bd", "show", id, "--json")
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd show failed: %w: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("bd show failed: %w", err)
 	}
 
@@ -683,6 +697,7 @@ func FallbackShow(id string) (*Issue, error) {
 }
 
 // FallbackList retrieves issues via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackList(status string) ([]Issue, error) {
 	args := []string{"list", "--json"}
 	if status != "" {
@@ -690,8 +705,14 @@ func FallbackList(status string) ([]Issue, error) {
 	}
 
 	cmd := exec.Command("bd", args...)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd list failed: %w: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("bd list failed: %w", err)
 	}
 
@@ -704,10 +725,17 @@ func FallbackList(status string) ([]Issue, error) {
 }
 
 // FallbackStats retrieves stats via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackStats() (*Stats, error) {
 	cmd := exec.Command("bd", "stats", "--json")
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd stats failed: %w: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("bd stats failed: %w", err)
 	}
 
@@ -720,10 +748,17 @@ func FallbackStats() (*Stats, error) {
 }
 
 // FallbackComments retrieves comments via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackComments(id string) ([]Comment, error) {
 	cmd := exec.Command("bd", "comments", id, "--json")
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd comments failed: %w: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("bd comments failed: %w", err)
 	}
 
@@ -736,6 +771,7 @@ func FallbackComments(id string) ([]Comment, error) {
 }
 
 // FallbackClose closes an issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackClose(id, reason string) error {
 	args := []string{"close", id}
 	if reason != "" {
@@ -743,10 +779,18 @@ func FallbackClose(id, reason string) error {
 	}
 
 	cmd := exec.Command("bd", args...)
-	return cmd.Run()
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd close failed: %w: %s", err, string(output))
+	}
+	return nil
 }
 
 // FallbackCreate creates an issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackCreate(title, description, issueType string, priority int, labels []string) (*Issue, error) {
 	args := []string{"create", title, "--json"}
 	if description != "" {
@@ -763,8 +807,14 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 	}
 
 	cmd := exec.Command("bd", args...)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd create failed: %w: %s", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("bd create failed: %w", err)
 	}
 
@@ -777,19 +827,31 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 }
 
 // FallbackAddComment adds a comment via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackAddComment(id, text string) error {
-	cmd := exec.Command("bd", "comment", id, text)
-	return cmd.Run()
+	cmd := exec.Command("bd", "comments", "add", id, text)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd comments add failed: %w: %s", err, string(output))
+	}
+	return nil
 }
 
 // FallbackUpdate updates an issue via bd CLI.
 // Currently supports updating the status field.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackUpdate(id, status string) error {
 	args := []string{"update", id}
 	if status != "" {
 		args = append(args, "--status", status)
 	}
 	cmd := exec.Command("bd", args...)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd update failed: %w: %s", err, string(output))
@@ -798,8 +860,12 @@ func FallbackUpdate(id, status string) error {
 }
 
 // FallbackRemoveLabel removes a label from an issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackRemoveLabel(id, label string) error {
 	cmd := exec.Command("bd", "update", id, "--remove-label", label)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))
