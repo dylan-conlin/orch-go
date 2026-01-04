@@ -1,83 +1,94 @@
-<!--
-D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
--->
-
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** 815 fmt.Print calls break down into ~700 CLI user output (keep fmt) and ~115 daemon/service logging (convert to slog).
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Analyzed all Go files - cmd/orch/*.go is user-facing output with emojis and formatting; pkg/daemon/*.go has DEBUG prints that need structure.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** CLI output and operational logging are fundamentally different concerns - structured logging only applies to background/daemon processes.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Created decision record with implementation plan. See `.kb/decisions/2026-01-03-structured-logging-orch-go.md`.
 
 ---
 
-# Investigation: Structured Logging Orch Go 808
+# Investigation: Structured Logging for orch-go
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** What logging library should orch-go adopt, and how should it handle the 815 existing fmt.Printf calls?
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** design-session agent
+**Phase:** Complete
+**Next Step:** None - decision record created
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Output Call Distribution
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- Total `fmt.Print*` calls: 815
+- Top files by count:
+  - cmd/orch/main.go: 247 (CLI user output)
+  - cmd/orch/review.go: 66 (CLI user output)
+  - cmd/orch/daemon.go: 56 (mix of CLI and daemon)
+  - pkg/daemon/daemon.go: 15 (daemon debug logging)
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `rg 'fmt\.Print' --type go -c | sort -rn`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Not all 815 calls need structured logging. CLI output (emojis, interactive prompts, status displays) should stay as fmt.Printf. Only daemon/background service logging needs structure.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Existing Logging Infrastructure
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `pkg/events/logger.go` - JSONL logger for agent lifecycle events (spawn, complete, error)
+- Uses pattern: `~/.orch/events.jsonl`
+- Already has: LogSpawn, LogCompleted, LogError, LogStatusChange, LogAutoCompleted
+- 86 existing `log.*` calls scattered across codebase
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/events/logger.go (154 lines)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The events logger is for "what happened" (lifecycle events). We need a separate concern for "why/how" (debug/operational logging). These complement, don't replace each other.
+
+---
+
+### Finding 3: Daemon Debug Pattern
+
+**Evidence:**
+```go
+// Current pattern in pkg/daemon/daemon.go
+if d.Config.Verbose {
+    fmt.Printf("  DEBUG: Skipping %s (type %s not spawnable)\n", issue.ID, issue.IssueType)
+}
+```
+- Guarded by Verbose flag
+- Uses "DEBUG:" prefix convention
+- No structured fields
+- Output goes to stdout (lost when running via launchd)
+
+**Source:** pkg/daemon/daemon.go:294-339
+
+**Significance:** Daemon debug output needs:
+1. JSON format for machine parsing
+2. File destination (not stdout)
+3. Log levels instead of "DEBUG:" prefix
+4. Structured fields for querying
+
+---
+
+### Finding 4: Go Version Enables stdlib slog
+
+**Evidence:**
+- go.mod: `go 1.24.0`
+- log/slog added in Go 1.21
+- No external logging dependencies currently
+
+**Source:** go.mod, `go version`
+
+**Significance:** Can use stdlib slog without adding dependencies. Aligns with Go ecosystem direction.
 
 ---
 
@@ -85,15 +96,20 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **CLI output is not logging** - The 700+ calls in cmd/orch/*.go are user-facing output with emojis, formatting, and interactive elements. Converting these to structured logging would make output worse, not better.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Daemon needs structured logging** - The ~115 calls in pkg/* are operational/debug logging that would benefit from JSON format, log levels, and structured fields for analysis.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Zero-dependency solution available** - stdlib slog provides everything needed without adding external dependencies.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Adopt **stdlib log/slog** with a hybrid approach:
+- **Daemon/services:** Use slog with JSON handler to `~/.orch/daemon.log`
+- **CLI commands:** Keep fmt.Printf for user-facing output
+- **Error returns:** Keep `fmt.Errorf()` pattern as-is
+
+This right-sizes the solution: structured logging where it helps (daemon debugging), simple output where it's appropriate (CLI).
 
 ---
 
@@ -101,120 +117,103 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ 815 fmt.Print calls counted (ran: `rg 'fmt\.Print' --type go -c`)
+- ✅ pkg/daemon has verbose-guarded DEBUG prints (read: daemon.go)
+- ✅ Go 1.24 includes slog (verified: go.mod and Go docs)
+- ✅ events.jsonl pattern works for lifecycle events (read: pkg/events/logger.go)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Log rotation for daemon.log (assumed logrotate or manual)
+- ⚠️ Performance of JSON serialization (assumed negligible for CLI tool)
+- ⚠️ How daemon.log interacts with existing events.jsonl (assumed complementary)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If sub-millisecond logging needed → zerolog
+- If CLI output needs internationalization → different approach
+- If log aggregation/shipping needed → may need different handler
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Bridge from investigation findings to actionable implementation.
 
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
+### Recommended Approach: stdlib slog with Hybrid Handling
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Zero dependencies (matches orch-go's minimal dependency philosophy)
+- Future-proof (slog is Go's standard direction)
+- Right-sized (not over-engineering a CLI tool)
+- Clear separation (logging vs output are different concerns)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- CLI output stays as fmt.Printf (intentional, not technical debt)
+- No fancy log aggregation (not needed for single-user CLI)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Create `pkg/log/log.go` with daemon/CLI mode initialization
+2. Replace pkg/daemon DEBUG prints with slog calls
+3. Replace other pkg/*.go service logging
+4. Leave cmd/orch/*.go untouched
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: zerolog**
+- **Pros:** Zero-allocation, very fast, fluent API
+- **Cons:** External dependency, overkill for CLI tool
+- **When to use instead:** High-throughput server applications
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: zap**
+- **Pros:** Battle-tested at Uber scale, flexible
+- **Cons:** Heavy dependency, complex config
+- **When to use instead:** Large distributed systems
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+**Rationale for recommendation:** stdlib slog provides exactly what we need without the complexity or dependencies of external libraries. The hybrid approach respects that CLI output and operational logging are fundamentally different.
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- go.mod - Dependency and Go version check
+- pkg/events/logger.go - Existing JSONL logging pattern
+- pkg/daemon/daemon.go - Current DEBUG printing approach
+- cmd/orch/main.go - CLI output patterns (247 prints)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Count fmt.Print calls
+rg 'fmt\.Print' --type go -c | awk -F: '{sum += $2} END {print sum}'
+# Result: 815
 
-# [Command description]
-[command]
+# Find daemon DEBUG pattern
+rg 'fmt\.Printf.*DEBUG' --type go -l
+# Result: pkg/daemon/daemon.go
+
+# Check Go version
+go version
+# Result: go1.23.5 darwin/arm64 (go.mod specifies 1.24.0)
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Decision:** `.kb/decisions/2026-01-03-structured-logging-orch-go.md` - Implementation decision
+- **Prior constraint:** Action logging uses action-log.jsonl pattern (from kb context)
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-03 14:xx:** Investigation started
+- Initial question: How to handle 815 fmt.Printf calls for structured logging
+- Context: Task spawned from orchestrator
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-03 14:xx:** Context gathering complete
+- Analyzed codebase structure
+- Identified CLI vs daemon output split
+- Reviewed existing events logger
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-03 14:xx:** Investigation completed
+- Status: Complete
+- Key outcome: Decision record created with hybrid slog approach
