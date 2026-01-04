@@ -421,22 +421,29 @@ func TestVerifyConstraintsWithSpawnTime(t *testing.T) {
 			t.Fatalf("failed to create dir: %v", err)
 		}
 
-		// Create a file that exists before spawn time
+		// Set spawn time to a fixed reference point
+		spawnTime := time.Now()
+
+		// Create a file that exists before spawn time (use Chtimes for deterministic mtime)
 		oldFilePath := filepath.Join(kbDir, "2025-12-22-inv-old.md")
 		if err := os.WriteFile(oldFilePath, []byte("# Old Investigation"), 0644); err != nil {
 			t.Fatalf("failed to write old file: %v", err)
 		}
+		// Set mtime to 1 hour before spawn time
+		oldTime := spawnTime.Add(-time.Hour)
+		if err := os.Chtimes(oldFilePath, oldTime, oldTime); err != nil {
+			t.Fatalf("failed to set old file mtime: %v", err)
+		}
 
-		// Set spawn time to now
-		spawnTime := time.Now()
-
-		// Wait a tiny bit to ensure mtime difference
-		time.Sleep(10 * time.Millisecond)
-
-		// Create a file after spawn time
+		// Create a file after spawn time (use Chtimes for deterministic mtime)
 		newFilePath := filepath.Join(kbDir, "2025-12-23-inv-new.md")
 		if err := os.WriteFile(newFilePath, []byte("# New Investigation"), 0644); err != nil {
 			t.Fatalf("failed to write new file: %v", err)
+		}
+		// Set mtime to 1 second after spawn time
+		newTime := spawnTime.Add(time.Second)
+		if err := os.Chtimes(newFilePath, newTime, newTime); err != nil {
+			t.Fatalf("failed to set new file mtime: %v", err)
 		}
 
 		constraints := []Constraint{
@@ -470,15 +477,19 @@ func TestVerifyConstraintsWithSpawnTime(t *testing.T) {
 			t.Fatalf("failed to create dir: %v", err)
 		}
 
-		// Create a file that exists before spawn time
+		// Set spawn time first
+		spawnTime := time.Now()
+
+		// Create a file that exists before spawn time (use Chtimes for deterministic mtime)
 		oldFilePath := filepath.Join(kbDir, "2025-12-22-inv-old.md")
 		if err := os.WriteFile(oldFilePath, []byte("# Old Investigation"), 0644); err != nil {
 			t.Fatalf("failed to write old file: %v", err)
 		}
-
-		// Wait and set spawn time to now (after file creation)
-		time.Sleep(10 * time.Millisecond)
-		spawnTime := time.Now()
+		// Set mtime to 1 hour before spawn time
+		oldTime := spawnTime.Add(-time.Hour)
+		if err := os.Chtimes(oldFilePath, oldTime, oldTime); err != nil {
+			t.Fatalf("failed to set old file mtime: %v", err)
+		}
 
 		constraints := []Constraint{
 			{Type: ConstraintRequired, Pattern: ".kb/investigations/{date}-inv-*.md", Description: "Investigation file"},
@@ -535,21 +546,27 @@ func TestVerifyConstraintsForCompletionWithSpawnTime(t *testing.T) {
 			t.Fatalf("failed to write SPAWN_CONTEXT.md: %v", err)
 		}
 
-		// Setup project dir with a file that was created BEFORE spawn time
+		// Setup project dir
 		projectDir := t.TempDir()
 		kbDir := filepath.Join(projectDir, ".kb", "investigations")
 		if err := os.MkdirAll(kbDir, 0755); err != nil {
 			t.Fatalf("failed to create dir: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(kbDir, "2025-12-22-inv-old.md"), []byte("# Old"), 0644); err != nil {
-			t.Fatalf("failed to write old investigation: %v", err)
-		}
 
-		// Write spawn time AFTER the old file was created
-		time.Sleep(10 * time.Millisecond)
+		// Write spawn time first
 		spawnTime := time.Now()
 		if err := spawn.WriteSpawnTime(workspace, spawnTime); err != nil {
 			t.Fatalf("failed to write spawn time: %v", err)
+		}
+
+		// Create a file with mtime BEFORE spawn time (use Chtimes for deterministic mtime)
+		oldFilePath := filepath.Join(kbDir, "2025-12-22-inv-old.md")
+		if err := os.WriteFile(oldFilePath, []byte("# Old"), 0644); err != nil {
+			t.Fatalf("failed to write old investigation: %v", err)
+		}
+		oldTime := spawnTime.Add(-time.Hour)
+		if err := os.Chtimes(oldFilePath, oldTime, oldTime); err != nil {
+			t.Fatalf("failed to set old file mtime: %v", err)
 		}
 
 		// Verification should fail because old file is filtered out
@@ -562,10 +579,14 @@ func TestVerifyConstraintsForCompletionWithSpawnTime(t *testing.T) {
 			t.Error("expected verification to fail when only old files exist")
 		}
 
-		// Now create a new file after spawn time
-		time.Sleep(10 * time.Millisecond)
-		if err := os.WriteFile(filepath.Join(kbDir, "2025-12-23-inv-new.md"), []byte("# New"), 0644); err != nil {
+		// Create a new file with mtime AFTER spawn time (use Chtimes for deterministic mtime)
+		newFilePath := filepath.Join(kbDir, "2025-12-23-inv-new.md")
+		if err := os.WriteFile(newFilePath, []byte("# New"), 0644); err != nil {
 			t.Fatalf("failed to write new investigation: %v", err)
+		}
+		newTime := spawnTime.Add(time.Second)
+		if err := os.Chtimes(newFilePath, newTime, newTime); err != nil {
+			t.Fatalf("failed to set new file mtime: %v", err)
 		}
 
 		// Verification should now pass

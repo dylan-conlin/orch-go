@@ -10,6 +10,12 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
+// gitTimestampGranularity is the sleep duration needed to ensure git commit
+// timestamps are distinct. Git commit timestamps have second granularity,
+// so we sleep 1.1 seconds to guarantee a different timestamp.
+// This is a known limitation of git's timestamp resolution.
+const gitTimestampGranularity = 1100 * time.Millisecond
+
 func TestParseDeltaFiles(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -195,7 +201,7 @@ func TestGetGitDiffFiles(t *testing.T) {
 
 	// Record time before new commits
 	beforeCommits := time.Now()
-	time.Sleep(1100 * time.Millisecond) // Git has second granularity
+	time.Sleep(gitTimestampGranularity) // Required: git commits have second-precision timestamps
 
 	// Create a new file and commit
 	newFile := filepath.Join(tmpDir, "main.go")
@@ -275,7 +281,7 @@ func TestVerifyGitDiff_ClaimsMatchDiff(t *testing.T) {
 		t.Fatalf("failed to write spawn time: %v", err)
 	}
 
-	time.Sleep(1100 * time.Millisecond) // Git has second granularity
+	time.Sleep(gitTimestampGranularity) // Required: git commits have second-precision timestamps
 
 	// Create and commit a file
 	mainFile := filepath.Join(tmpDir, "main.go")

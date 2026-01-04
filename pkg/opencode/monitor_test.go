@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/internal/testutil"
 )
 
 // TestMonitorDetectsCompletion verifies the monitor detects busy->idle transitions.
@@ -114,8 +116,12 @@ func TestMonitorHandleEvent(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_abc"}`,
 	})
 
-	// Wait a bit for async handler
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async handler to execute
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(completions) >= 1
+	}, "completion to be recorded")
 
 	mu.Lock()
 	if len(completions) != 1 {
@@ -163,7 +169,12 @@ func TestMonitorNewFormatSSE(t *testing.T) {
 		Data:  `{"type":"session.status","properties":{"sessionID":"ses_new","status":{"type":"idle"}}}`,
 	})
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async handler to execute
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(completions) >= 1
+	}, "completion for new format to be recorded")
 
 	mu.Lock()
 	if len(completions) != 1 {
@@ -226,7 +237,12 @@ func TestMonitorMultipleSessions(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_1"}`,
 	})
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for first completion
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(completions) >= 1
+	}, "first completion")
 
 	// Session 2 should still be busy
 	state2 := monitor.GetSessionState("ses_2")
@@ -240,7 +256,12 @@ func TestMonitorMultipleSessions(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_2"}`,
 	})
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for second completion
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(completions) >= 2
+	}, "second completion")
 
 	mu.Lock()
 	if len(completions) != 2 {
@@ -295,7 +316,15 @@ func TestMonitorNoCompletionForDirectIdle(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_idle_only"}`,
 	})
 
-	time.Sleep(100 * time.Millisecond)
+	// For negative tests, we can't use WaitFor since condition should never be true.
+	// A short timeout with Eventually returning false is the correct approach.
+	if testutil.Eventually(func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(completions) > 0
+	}, 100*time.Millisecond) {
+		t.Errorf("Expected 0 completions for direct idle, got some")
+	}
 
 	mu.Lock()
 	if len(completions) != 0 {
@@ -338,8 +367,12 @@ func TestMonitorSessionCleanupAfterCompletion(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_cleanup"}`,
 	})
 
-	// Wait for async handler
-	time.Sleep(100 * time.Millisecond)
+	// Wait for async handler and session cleanup
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(completions) >= 1
+	}, "completion to be recorded")
 
 	// Verify completion was triggered
 	mu.Lock()
@@ -349,6 +382,7 @@ func TestMonitorSessionCleanupAfterCompletion(t *testing.T) {
 	mu.Unlock()
 
 	// CRITICAL: Verify session was removed from the map to prevent memory leak
+	// Session cleanup happens synchronously in handleEvent, so no additional wait needed
 	if len(monitor.sessions) != 0 {
 		t.Errorf("Expected 0 sessions in map after completion (memory leak!), got %d", len(monitor.sessions))
 	}
@@ -380,8 +414,7 @@ func TestMonitorSessionCleanupMultipleSessions(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_a"}`,
 	})
 
-	time.Sleep(50 * time.Millisecond)
-
+	// Session cleanup happens synchronously in handleEvent, verify immediately
 	if len(monitor.sessions) != 2 {
 		t.Errorf("Expected 2 sessions after first completion, got %d", len(monitor.sessions))
 	}
@@ -392,8 +425,7 @@ func TestMonitorSessionCleanupMultipleSessions(t *testing.T) {
 		Data:  `{"status":"idle","session_id":"ses_b"}`,
 	})
 
-	time.Sleep(50 * time.Millisecond)
-
+	// Session cleanup happens synchronously
 	if len(monitor.sessions) != 1 {
 		t.Errorf("Expected 1 session after second completion, got %d", len(monitor.sessions))
 	}

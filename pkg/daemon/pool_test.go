@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/internal/testutil"
 )
 
 func TestNewWorkerPool(t *testing.T) {
@@ -197,8 +199,8 @@ func TestWorkerPool_WakesWaiters(t *testing.T) {
 		}
 	}()
 
-	// Give goroutine time to start waiting
-	time.Sleep(10 * time.Millisecond)
+	// Give goroutine time to start blocking on cond.Wait()
+	testutil.YieldForGoroutine()
 
 	// Release - should wake waiter
 	p.Release(slot1)
@@ -227,7 +229,7 @@ func TestWorkerPool_ConcurrentAccess(t *testing.T) {
 			if err != nil {
 				return // Timeout is acceptable
 			}
-			// Hold briefly
+			// Simulate work by holding the slot briefly
 			time.Sleep(5 * time.Millisecond)
 			p.Release(slot)
 		}()
@@ -432,8 +434,8 @@ func TestWorkerPool_Reconcile_WakesWaiters(t *testing.T) {
 		}
 	}()
 
-	// Give goroutine time to start waiting
-	time.Sleep(10 * time.Millisecond)
+	// Give goroutine time to start blocking on cond.Wait()
+	testutil.YieldForGoroutine()
 
 	// Reconcile to free the slot (simulating agent completed)
 	freed := p.Reconcile(0)

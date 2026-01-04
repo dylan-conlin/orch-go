@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/internal/testutil"
 	"github.com/dylan-conlin/orch-go/pkg/account"
 )
 
@@ -202,8 +203,8 @@ func TestAcquireSlot_WakesWaitersOnRelease(t *testing.T) {
 		}
 	}()
 
-	// Give goroutine time to start waiting
-	time.Sleep(10 * time.Millisecond)
+	// Give goroutine time to start blocking on cond.Wait()
+	testutil.YieldForGoroutine()
 
 	// Release - should wake waiter
 	m.ReleaseSlot(slot1)
@@ -242,7 +243,7 @@ func TestConcurrentAccess(t *testing.T) {
 			if err != nil {
 				return // might timeout
 			}
-			// Hold briefly
+			// Simulate work by holding the slot briefly
 			time.Sleep(5 * time.Millisecond)
 			m.ReleaseSlot(slot)
 		}()

@@ -4,6 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/internal/testutil"
 )
 
 func TestCompletionService_Track(t *testing.T) {
@@ -175,15 +177,15 @@ func TestCompletionService_OnCompletionHandler(t *testing.T) {
 	// Simulate completion (calling the internal handler directly)
 	cs.handleCompletion("session-1")
 
-	// Give the handler time to execute (it runs in a goroutine in real usage)
-	time.Sleep(10 * time.Millisecond)
+	// Wait for async handler to execute
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return handlerCalled
+	}, "completion handler to be called")
 
 	mu.Lock()
 	defer mu.Unlock()
-
-	if !handlerCalled {
-		t.Error("completion handler should have been called")
-	}
 
 	if receivedEvent.SessionID != "session-1" {
 		t.Errorf("expected SessionID 'session-1', got '%s'", receivedEvent.SessionID)
@@ -251,9 +253,8 @@ func TestCompletionService_CompletionForUntrackedSession(t *testing.T) {
 	// Don't track any session, but try to complete one
 	cs.handleCompletion("unknown-session")
 
-	// Handler should not be called for untracked sessions
-	time.Sleep(10 * time.Millisecond)
-	if handlerCalled {
+	// For negative tests, use Eventually returning false (short timeout is acceptable)
+	if testutil.Eventually(func() bool { return handlerCalled }, 50*testutil.DefaultInterval) {
 		t.Error("handler should not be called for untracked sessions")
 	}
 }
@@ -292,7 +293,12 @@ func TestCompletionService_MultipleHandlers(t *testing.T) {
 	cs.Track("session-1", "beads-1", nil)
 	cs.handleCompletion("session-1")
 
-	time.Sleep(10 * time.Millisecond)
+	// Wait for both async handlers to execute
+	testutil.WaitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return handler1Called && handler2Called
+	}, "both handlers to be called")
 
 	mu.Lock()
 	defer mu.Unlock()
