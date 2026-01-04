@@ -15,6 +15,11 @@ import (
 )
 
 func TestHandleAgents(t *testing.T) {
+	// Initialize the global caches that handleAgents depends on
+	if globalBeadsCache == nil {
+		globalBeadsCache = newBeadsCache()
+	}
+
 	// Create a test request
 	req := httptest.NewRequest(http.MethodGet, "/api/agents", nil)
 	w := httptest.NewRecorder()

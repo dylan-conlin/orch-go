@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
@@ -19,6 +20,182 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
+
+// beadsCache provides TTL-based caching for beads data to prevent excessive
+// bd process spawning when the dashboard polls /api/agents frequently.
+// Without caching, each request can spawn 20+ concurrent bd processes for 600+ workspaces.
+type beadsCache struct {
+	mu sync.RWMutex
+
+	// Cached data
+	openIssues   map[string]*verify.Issue
+	allIssues    map[string]*verify.Issue
+	comments     map[string][]beads.Comment
+
+	// Cache metadata
+	openIssuesFetchedAt   time.Time
+	allIssuesFetchedAt    time.Time
+	allIssuesFetchedFor   []string // Track which beads IDs were fetched
+	commentsFetchedAt     time.Time
+	commentsFetchedFor    []string // Track which beads IDs were fetched
+
+	// TTL configuration
+	openIssuesTTL  time.Duration
+	allIssuesTTL   time.Duration
+	commentsTTL    time.Duration
+}
+
+// globalWorkspaceCache provides TTL-based caching for workspace metadata.
+// Without caching, each /api/agents request scans 600+ SPAWN_CONTEXT.md files.
+type globalWorkspaceCacheType struct {
+	mu sync.RWMutex
+
+	// Cached data
+	cache *workspaceCache
+
+	// Cache metadata
+	fetchedAt time.Time
+	ttl       time.Duration
+}
+
+// Global workspace cache
+var globalWorkspaceCacheInstance = &globalWorkspaceCacheType{
+	ttl: 30 * time.Second, // Workspace metadata changes infrequently
+}
+
+// getCachedWorkspace returns cached workspace data or builds fresh if stale.
+func (c *globalWorkspaceCacheType) getCachedWorkspace(projectDirs []string) *workspaceCache {
+	c.mu.RLock()
+	if c.cache != nil && time.Since(c.fetchedAt) < c.ttl {
+		result := c.cache
+		c.mu.RUnlock()
+		return result
+	}
+	c.mu.RUnlock()
+
+	// Build fresh workspace cache
+	wsCache := buildMultiProjectWorkspaceCache(projectDirs)
+
+	c.mu.Lock()
+	c.cache = wsCache
+	c.fetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return wsCache
+}
+
+// Default TTLs for cached data
+const (
+	defaultOpenIssuesTTL = 10 * time.Second // Open issues change infrequently
+	defaultAllIssuesTTL  = 30 * time.Second // Closed issues change even less
+	defaultCommentsTTL   = 5 * time.Second  // Comments change more often (phase updates)
+)
+
+// Global beads cache instance, initialized in runServe
+var globalBeadsCache *beadsCache
+
+// newBeadsCache creates a new beads cache with default TTLs.
+func newBeadsCache() *beadsCache {
+	return &beadsCache{
+		openIssues:     make(map[string]*verify.Issue),
+		allIssues:      make(map[string]*verify.Issue),
+		comments:       make(map[string][]beads.Comment),
+		openIssuesTTL:  defaultOpenIssuesTTL,
+		allIssuesTTL:   defaultAllIssuesTTL,
+		commentsTTL:    defaultCommentsTTL,
+	}
+}
+
+// getOpenIssues returns cached open issues or fetches fresh data if cache is stale.
+func (c *beadsCache) getOpenIssues() (map[string]*verify.Issue, error) {
+	c.mu.RLock()
+	if time.Since(c.openIssuesFetchedAt) < c.openIssuesTTL && len(c.openIssues) > 0 {
+		result := c.openIssues
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Fetch fresh data
+	issues, err := verify.ListOpenIssues()
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.openIssues = issues
+	c.openIssuesFetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return issues, nil
+}
+
+// getAllIssues returns cached issues or fetches fresh data if cache is stale.
+// The beadsIDs parameter specifies which issues to fetch. If the cached set
+// matches the requested set and is not expired, returns cached data.
+func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, error) {
+	c.mu.RLock()
+	if time.Since(c.allIssuesFetchedAt) < c.allIssuesTTL && c.containsAllIDs(c.allIssuesFetchedFor, beadsIDs) {
+		result := c.allIssues
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Fetch fresh data
+	issues, err := verify.GetIssuesBatch(beadsIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.allIssues = issues
+	c.allIssuesFetchedAt = time.Now()
+	c.allIssuesFetchedFor = beadsIDs
+	c.mu.Unlock()
+
+	return issues, nil
+}
+
+// getComments returns cached comments or fetches fresh data if cache is stale.
+// The beadsIDs and projectDirs parameters specify which comments to fetch.
+func (c *beadsCache) getComments(beadsIDs []string, projectDirs map[string]string) map[string][]beads.Comment {
+	c.mu.RLock()
+	if time.Since(c.commentsFetchedAt) < c.commentsTTL && c.containsAllIDs(c.commentsFetchedFor, beadsIDs) {
+		result := c.comments
+		c.mu.RUnlock()
+		return result
+	}
+	c.mu.RUnlock()
+
+	// Fetch fresh data
+	comments := verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
+
+	c.mu.Lock()
+	c.comments = comments
+	c.commentsFetchedAt = time.Now()
+	c.commentsFetchedFor = beadsIDs
+	c.mu.Unlock()
+
+	return comments
+}
+
+// containsAllIDs checks if cachedIDs contains all requestedIDs.
+func (c *beadsCache) containsAllIDs(cachedIDs, requestedIDs []string) bool {
+	if len(cachedIDs) == 0 {
+		return false
+	}
+	cachedSet := make(map[string]bool, len(cachedIDs))
+	for _, id := range cachedIDs {
+		cachedSet[id] = true
+	}
+	for _, id := range requestedIDs {
+		if !cachedSet[id] {
+			return false
+		}
+	}
+	return true
+}
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
@@ -318,8 +495,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// enabling the dashboard to show correct status for agents spawned with --workdir.
 	// Previously: Only scanned current project's .orch/workspace/
 	// Now: Scans all unique project directories found in OpenCode sessions
+	// CACHED: Workspace scanning is slow (600+ files), so cache with 30s TTL.
 	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
-	wsCache := buildMultiProjectWorkspaceCache(projectDirs)
+	wsCache := globalWorkspaceCacheInstance.getCachedWorkspace(projectDirs)
 
 	now := time.Now()
 	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
@@ -381,17 +559,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			agent.Skill = extractSkillFromTitle(s.Title)
 			agent.Project = extractProjectFromBeadsID(agent.BeadsID)
 
-			// Collect beads ID for batch fetch
-			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
-				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
-				seenBeadsIDs[agent.BeadsID] = true
-
-				// For cross-project agent visibility: use cached PROJECT_DIR
-				// This replaces expensive directory scanning with O(1) lookup
-				if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
-					beadsProjectDirs[agent.BeadsID] = agentProjectDir
-				}
-			}
 		}
 
 		// Only include sessions that were spawned via orch spawn (have beads ID)
@@ -404,6 +571,21 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// Don't filter yet - we need to check beads Phase: Complete first
 		if status == "idle" && timeSinceUpdate > displayThreshold {
 			pendingFilterByBeadsID[agent.BeadsID] = true
+		}
+
+		// OPTIMIZATION: Only fetch beads data for RECENTLY ACTIVE agents.
+		// Idle agents (>30min since update) are likely complete or stale - skip fetching.
+		// This prevents CPU spikes from spawning bd processes for 300+ idle sessions.
+		// Phase updates only matter for agents actively working.
+		if status == "active" && agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
+			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
+			seenBeadsIDs[agent.BeadsID] = true
+
+			// For cross-project agent visibility: use cached PROJECT_DIR
+			// This replaces expensive directory scanning with O(1) lookup
+			if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
+				beadsProjectDirs[agent.BeadsID] = agentProjectDir
+			}
 		}
 
 		// Deduplicate by title - keep the most recently updated session
@@ -562,37 +744,29 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 			agent.Skill = extractSkillFromTitle(entry.Name())
 
-			// Extract PROJECT_DIR from workspace for cross-project agent visibility
-			// This allows fetching beads comments from the correct project's database
-			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
-
-			// Collect beads ID for batch fetch (to get close_reason for light-tier)
-			if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
-				beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
-				seenBeadsIDs[agent.BeadsID] = true
-				// Store project directory for cross-project comment fetching
-				if agentProjectDir != "" {
-					beadsProjectDirs[agent.BeadsID] = agentProjectDir
-				}
-			}
+			// NOTE: We intentionally DON'T extract PROJECT_DIR or fetch beads data for completed workspaces.
+			// Completed workspaces have already done their work - they don't need phase updates.
+			// The close_reason is nice-to-have but not worth spawning bd processes.
+			// This optimization prevents CPU spikes from fetching beads data for 600+ historical workspaces.
 
 			agents = append(agents, agent)
 		}
 	}
 
 	// Batch fetch beads data (phase from comments, task from issues, close_reason for completed)
-	// This is the same pattern used by orch status for efficiency
+	// This is the same pattern used by orch status for efficiency.
+	// Uses TTL cache to prevent CPU spikes from spawning 20+ bd processes per request.
 	if len(beadsIDsToFetch) > 0 {
-		// Fetch all open issues in one call
-		openIssues, _ := verify.ListOpenIssues()
+		// Fetch all open issues in one call (cached with TTL)
+		openIssues, _ := globalBeadsCache.getOpenIssues()
 
-		// Batch fetch all issues (including closed) for close_reason
+		// Batch fetch all issues (including closed) for close_reason (cached with TTL)
 		// Uses bd show which works for any issue status
-		allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
+		allIssues, _ := globalBeadsCache.getAllIssues(beadsIDsToFetch)
 
-		// Batch fetch comments for all beads IDs
+		// Batch fetch comments for all beads IDs (cached with TTL)
 		// Use project-aware batch fetch for cross-project agent visibility
-		commentsMap := verify.GetCommentsBatchWithProjectDirs(beadsIDsToFetch, beadsProjectDirs)
+		commentsMap := globalBeadsCache.getComments(beadsIDsToFetch, beadsProjectDirs)
 
 		// Populate phase, task, and close_reason for each agent
 		for i := range agents {
@@ -694,8 +868,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	
 	var wg sync.WaitGroup
 	for i := range agents {
-		// Skip agents without session ID or completed agents (token data is static for completed)
-		if agents[i].SessionID == "" || agents[i].Status == "completed" {
+		// Skip agents without session ID, completed agents, or idle agents.
+		// Token data is static for completed agents, and idle agents are unlikely to have changed.
+		// This prevents CPU spikes from making HTTP calls to OpenCode for 300+ inactive sessions.
+		if agents[i].SessionID == "" || agents[i].Status == "completed" || agents[i].Status == "idle" {
 			continue
 		}
 		

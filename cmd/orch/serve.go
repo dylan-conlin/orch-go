@@ -158,6 +158,10 @@ func runServe(portNum int) error {
 		}
 	}
 
+	// Initialize beads cache to prevent CPU spikes from excessive bd spawning.
+	// Without caching, each /api/agents request spawns 20+ bd processes for 600+ workspaces.
+	globalBeadsCache = newBeadsCache()
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
