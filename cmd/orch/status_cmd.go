@@ -82,10 +82,12 @@ type AgentInfo struct {
 	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
 	Task         string               `json:"task,omitempty"`          // Task description (truncated)
 	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	ProjectDir   string               `json:"project_dir,omitempty"`   // Full path to project directory (for cross-project agents)
 	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
 	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
 	IsCompleted  bool                 `json:"is_completed,omitempty"`  // True if beads issue is closed
 	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`        // Token usage for the session
+	ContextRisk  *verify.ContextExhaustionRisk `json:"context_risk,omitempty"` // Context exhaustion risk assessment
 }
 
 // StatusOutput represents the full status output for JSON serialization.
@@ -272,6 +274,12 @@ func runStatus(serverURL string) error {
 			isCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
+		// Get project directory for this agent (for context risk assessment)
+		agentProjectDir := projectDir
+		if dir, ok := beadsProjectDirs[ta.beadsID]; ok {
+			agentProjectDir = dir
+		}
+
 		agents = append(agents, AgentInfo{
 			SessionID:    sessionID,
 			BeadsID:      ta.beadsID,
@@ -282,6 +290,7 @@ func runStatus(serverURL string) error {
 			Phase:        phase,
 			Task:         task,
 			Project:      ta.project,
+			ProjectDir:   agentProjectDir,
 			IsPhantom:    isPhantom,
 			IsProcessing: isProcessing,
 			IsCompleted:  isCompleted,
@@ -317,6 +326,12 @@ func runStatus(serverURL string) error {
 			isCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
+		// Get project directory for this agent (for context risk assessment)
+		agentProjectDir := projectDir
+		if dir, ok := beadsProjectDirs[oa.beadsID]; ok {
+			agentProjectDir = dir
+		}
+
 		agents = append(agents, AgentInfo{
 			SessionID:    oa.session.ID,
 			Title:        oa.session.Title,
@@ -326,6 +341,7 @@ func runStatus(serverURL string) error {
 			Phase:        phase,
 			Task:         task,
 			Project:      oa.project,
+			ProjectDir:   agentProjectDir,
 			IsPhantom:    isPhantom,
 			IsProcessing: isProcessing,
 			IsCompleted:  isCompleted,
@@ -391,6 +407,28 @@ func runStatus(serverURL string) error {
 			if err == nil && tokens != nil {
 				filteredAgents[i].Tokens = tokens
 			}
+		}
+	}
+
+	// Assess context exhaustion risk for each agent
+	for i := range filteredAgents {
+		agent := &filteredAgents[i]
+		// Skip phantom or completed agents
+		if agent.IsPhantom || agent.IsCompleted {
+			continue
+		}
+		// Get total tokens for risk assessment
+		totalTokens := 0
+		if agent.Tokens != nil {
+			totalTokens = agent.Tokens.TotalTokens
+			if totalTokens == 0 {
+				totalTokens = agent.Tokens.InputTokens + agent.Tokens.OutputTokens
+			}
+		}
+		// Assess risk (uses ProjectDir for git status check)
+		risk := verify.AssessContextRisk(totalTokens, agent.ProjectDir, agent.IsProcessing)
+		if risk.IsAtRisk() {
+			agent.ContextRisk = &risk
 		}
 	}
 
@@ -636,10 +674,24 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 }
 
 // printAgentsWideFormat prints agents in full table format (>120 chars).
-// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS
+// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS, RISK
 func printAgentsWideFormat(agents []AgentInfo) {
-	fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
-	fmt.Printf("  %s\n", strings.Repeat("-", 115))
+	// Check if any agent has risk to show RISK column
+	hasRisk := false
+	for _, agent := range agents {
+		if agent.ContextRisk != nil && agent.ContextRisk.IsAtRisk() {
+			hasRisk = true
+			break
+		}
+	}
+
+	if hasRisk {
+		fmt.Printf("  %-18s %-8s %-12s %-25s %-12s %-7s %-16s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
+		fmt.Printf("  %s\n", strings.Repeat("-", 120))
+	} else {
+		fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
+		fmt.Printf("  %s\n", strings.Repeat("-", 115))
+	}
 
 	for _, agent := range agents {
 		beadsID := agent.BeadsID
@@ -661,15 +713,41 @@ func printAgentsWideFormat(agents []AgentInfo) {
 		status := getAgentStatus(agent)
 		tokens := formatTokenStatsCompact(agent.Tokens)
 
-		fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n",
-			beadsID,
-			status,
-			truncate(phase, 10),
-			truncate(task, 26),
-			truncate(skill, 13),
-			agent.Runtime,
-			tokens)
+		if hasRisk {
+			risk := formatContextRisk(agent.ContextRisk)
+			fmt.Printf("  %-18s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
+				beadsID,
+				status,
+				truncate(phase, 10),
+				truncate(task, 23),
+				truncate(skill, 10),
+				agent.Runtime,
+				tokens,
+				risk)
+		} else {
+			fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n",
+				beadsID,
+				status,
+				truncate(phase, 10),
+				truncate(task, 26),
+				truncate(skill, 13),
+				agent.Runtime,
+				tokens)
+		}
 	}
+}
+
+// formatContextRisk returns a formatted string for context exhaustion risk.
+func formatContextRisk(risk *verify.ContextExhaustionRisk) string {
+	if risk == nil || !risk.IsAtRisk() {
+		return ""
+	}
+	emoji := risk.FormatRiskEmoji()
+	status := risk.FormatRiskStatus()
+	if emoji != "" {
+		return emoji + " " + status
+	}
+	return status
 }
 
 // printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
@@ -729,11 +807,19 @@ func printAgentsCardFormat(agents []AgentInfo) {
 			skill = "-"
 		}
 		status := getAgentStatus(agent)
+		riskStr := formatContextRisk(agent.ContextRisk)
 
-		fmt.Printf("  %s [%s]\n", beadsID, status)
+		if riskStr != "" {
+			fmt.Printf("  %s [%s] %s\n", beadsID, status, riskStr)
+		} else {
+			fmt.Printf("  %s [%s]\n", beadsID, status)
+		}
 		fmt.Printf("    Phase: %s | Skill: %s\n", phase, skill)
 		fmt.Printf("    Task: %s\n", truncate(task, 50))
 		fmt.Printf("    Runtime: %s | Tokens: %s\n", agent.Runtime, formatTokenStats(agent.Tokens))
+		if agent.ContextRisk != nil && agent.ContextRisk.Reason != "" {
+			fmt.Printf("    Risk: %s\n", agent.ContextRisk.Reason)
+		}
 	}
 }
 
