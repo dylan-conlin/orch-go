@@ -5,6 +5,124 @@ import (
 	"testing"
 )
 
+func TestShouldCountFileWithExclusions(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		exclusions []string
+		expected   bool
+	}{
+		// Default exclusions should filter data/config files
+		{
+			name:       "json file excluded by default",
+			path:       "data/events.json",
+			exclusions: defaultExclusions,
+			expected:   false,
+		},
+		{
+			name:       "jsonl file excluded by default",
+			path:       "logs/events.jsonl",
+			exclusions: defaultExclusions,
+			expected:   false,
+		},
+		{
+			name:       "lock file excluded by default",
+			path:       "package-lock.json",
+			exclusions: defaultExclusions,
+			expected:   false,
+		},
+		{
+			name:       "yarn.lock excluded by default",
+			path:       "yarn.lock",
+			exclusions: defaultExclusions,
+			expected:   false,
+		},
+		{
+			name:       "go.sum excluded by default",
+			path:       "go.sum",
+			exclusions: defaultExclusions,
+			expected:   false,
+		},
+		{
+			name:       "source file not excluded",
+			path:       "cmd/orch/main.go",
+			exclusions: defaultExclusions,
+			expected:   true,
+		},
+		// Custom exclusions
+		{
+			name:       "custom exclusion pattern",
+			path:       "internal/config.yaml",
+			exclusions: []string{"*.yaml"},
+			expected:   false,
+		},
+		{
+			name:       "file matching custom exclusion",
+			path:       "scripts/deploy.sh",
+			exclusions: []string{"*.sh"},
+			expected:   false,
+		},
+		// Empty exclusions should not filter these files
+		{
+			name:       "json file allowed with empty exclusions",
+			path:       "data/events.json",
+			exclusions: []string{},
+			expected:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shouldCountFileWithExclusions(tt.path, tt.exclusions)
+			if result != tt.expected {
+				t.Errorf("shouldCountFileWithExclusions(%q, %v) = %v, want %v", tt.path, tt.exclusions, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDefaultExclusions(t *testing.T) {
+	// Verify default exclusions include the expected patterns
+	expectedPatterns := []string{"*.jsonl", "*.json", "*.lock", "go.sum"}
+	for _, pattern := range expectedPatterns {
+		found := false
+		for _, exclusion := range defaultExclusions {
+			if exclusion == pattern {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("defaultExclusions should contain %q", pattern)
+		}
+	}
+}
+
+func TestMatchesExclusionPattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		pattern  string
+		expected bool
+	}{
+		{"exact match", "go.sum", "go.sum", true},
+		{"glob extension match", "data/events.json", "*.json", true},
+		{"glob extension no match", "cmd/main.go", "*.json", false},
+		{"nested path glob match", "logs/2024/events.jsonl", "*.jsonl", true},
+		{"lock file match", "yarn.lock", "*.lock", true},
+		{"package-lock.json matches .json", "package-lock.json", "*.json", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := matchesExclusionPattern(tt.path, tt.pattern)
+			if result != tt.expected {
+				t.Errorf("matchesExclusionPattern(%q, %q) = %v, want %v", tt.path, tt.pattern, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestShouldCountFile(t *testing.T) {
 	tests := []struct {
 		path     string
@@ -304,5 +422,127 @@ func TestFormatHotspotWarning(t *testing.T) {
 	}
 	if !hotspotContains(warning, "architect") {
 		t.Errorf("Warning should recommend architect: %s", warning)
+	}
+}
+
+// TestCheckSpawnHotspots_CmdOrchMainGo tests the specific case of cmd/orch/main.go
+// being detected as a hotspot when it appears in a task description.
+// This validates the hotspot warning feature for high-churn files.
+func TestCheckSpawnHotspots_CmdOrchMainGo(t *testing.T) {
+	// Simulate the real-world scenario where cmd/orch/main.go is a hotspot
+	// In the actual codebase, this file has 49 fix commits (CRITICAL level)
+	hotspots := []Hotspot{
+		{
+			Path:           "cmd/orch/main.go",
+			Type:           "fix-density",
+			Score:          49,
+			Details:        "49 fix commits in last 28 days",
+			Recommendation: "CRITICAL: Consider spawning architect to redesign main.go - excessive fix churn indicates structural issues",
+		},
+	}
+
+	tests := []struct {
+		name          string
+		task          string
+		shouldMatch   bool
+		expectedScore int
+	}{
+		{
+			name:          "direct file reference",
+			task:          "fix bug in cmd/orch/main.go",
+			shouldMatch:   true,
+			expectedScore: 49,
+		},
+		{
+			name:          "file reference with context",
+			task:          "refactor the spawn logic in cmd/orch/main.go to improve readability",
+			shouldMatch:   true,
+			expectedScore: 49,
+		},
+		{
+			name:          "quoted file path",
+			task:          "review changes to \"cmd/orch/main.go\"",
+			shouldMatch:   true,
+			expectedScore: 49,
+		},
+		{
+			name:          "unrelated task",
+			task:          "add new feature to the dashboard",
+			shouldMatch:   false,
+			expectedScore: 0,
+		},
+		{
+			name:          "different file in same directory",
+			task:          "fix bug in cmd/orch/serve.go",
+			shouldMatch:   false,
+			expectedScore: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkSpawnHotspots(tt.task, hotspots)
+			if result.HasHotspots != tt.shouldMatch {
+				t.Errorf("checkSpawnHotspots(%q) HasHotspots = %v, want %v",
+					tt.task, result.HasHotspots, tt.shouldMatch)
+			}
+			if result.MaxScore != tt.expectedScore {
+				t.Errorf("checkSpawnHotspots(%q) MaxScore = %d, want %d",
+					tt.task, result.MaxScore, tt.expectedScore)
+			}
+			// If it matched, verify the warning is formatted correctly
+			if tt.shouldMatch && result.Warning == "" {
+				t.Error("Expected non-empty warning when hotspot matches")
+			}
+			if tt.shouldMatch {
+				// Verify warning contains key elements
+				if !hotspotContains(result.Warning, "HOTSPOT WARNING") {
+					t.Errorf("Warning should contain 'HOTSPOT WARNING': %s", result.Warning)
+				}
+				if !hotspotContains(result.Warning, "cmd/orch/main.go") {
+					t.Errorf("Warning should mention the file path: %s", result.Warning)
+				}
+				if !hotspotContains(result.Warning, "architect") {
+					t.Errorf("Warning should recommend architect review: %s", result.Warning)
+				}
+			}
+		})
+	}
+}
+
+// TestCheckSpawnHotspots_CriticalVsHighSeverity validates that different scores
+// result in appropriate severity levels in warnings.
+func TestCheckSpawnHotspots_CriticalVsHighSeverity(t *testing.T) {
+	tests := []struct {
+		name           string
+		score          int
+		expectedLevel  string // CRITICAL, HIGH, or MODERATE
+	}{
+		{"score 10 is critical", 10, "CRITICAL"},
+		{"score 49 is critical", 49, "CRITICAL"},
+		{"score 7 is high", 7, "HIGH"},
+		{"score 5 is moderate", 5, "MODERATE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hotspots := []Hotspot{
+				{
+					Path:           "cmd/orch/main.go",
+					Type:           "fix-density",
+					Score:          tt.score,
+					Recommendation: generateFixRecommendation("main.go", tt.score),
+				},
+			}
+
+			result := checkSpawnHotspots("fix bug in cmd/orch/main.go", hotspots)
+			if !result.HasHotspots {
+				t.Fatal("Expected hotspot match")
+			}
+			if !hotspotContains(result.MatchedHotspots[0].Recommendation, tt.expectedLevel) {
+				t.Errorf("Score %d should have %s recommendation, got: %s",
+					tt.score, tt.expectedLevel, result.MatchedHotspots[0].Recommendation)
+			}
+		})
 	}
 }

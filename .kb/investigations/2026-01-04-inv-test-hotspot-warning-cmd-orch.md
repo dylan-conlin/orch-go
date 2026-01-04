@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Testing hotspot warning functionality for cmd/orch/main.go to verify detection accuracy.
+**Delta:** Hotspot warning feature correctly detects cmd/orch/main.go (score 49, CRITICAL) and generates warnings when referenced in task descriptions.
 
-**Evidence:** [To be filled after testing]
+**Evidence:** `orch hotspot --json` shows score 49; unit tests verify path extraction, matching, and warning generation all work correctly.
 
-**Knowledge:** [To be filled after testing]
+**Knowledge:** The hotspot warning system works end-to-end. cmd/orch/main.go has exceptional fix churn indicating architectural issues worth addressing.
 
-**Next:** [To be filled after testing]
+**Next:** Close investigation. Consider architectural review of cmd/orch/main.go (2705 lines with 49 fix commits suggests splitting).
 
 <!--
 Example D.E.K.N.:
@@ -38,9 +38,9 @@ Guidelines:
 **Started:** 2026-01-04
 **Updated:** 2026-01-04
 **Owner:** Investigation Agent
-**Phase:** Investigating
-**Next Step:** Run hotspot analysis and test task matching
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -51,7 +51,7 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Starting approach - understanding hotspot implementation
+### Finding 1: Understanding hotspot implementation
 
 **Evidence:** The hotspot warning feature is implemented in:
 - `cmd/orch/hotspot.go` (597 lines) - core analysis and warning logic
@@ -61,27 +61,45 @@ Guidelines:
 
 **Source:** File discovery via glob: `cmd/orch/**/*.go`, `pkg/daemon/hotspot*.go`
 
-**Significance:** The hotspot feature analyzes git history for fix commit density (files with 5+ fix commits) and investigation clusters (topics with 3+ investigations). Need to test if cmd/orch/main.go would trigger warnings.
+**Significance:** The hotspot feature analyzes git history for fix commit density (files with 5+ fix commits) and investigation clusters (topics with 3+ investigations).
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: cmd/orch/main.go IS a hotspot (score 49)
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Running `orch hotspot --json` shows:
+```json
+{
+  "path": "cmd/orch/main.go",
+  "type": "fix-density",
+  "score": 49,
+  "details": "49 fix commits in last 28 days",
+  "recommendation": "CRITICAL: Consider spawning architect to redesign main.go - excessive fix churn indicates structural issues"
+}
+```
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `go run ./cmd/orch hotspot --json` output on 2026-01-04
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** cmd/orch/main.go has the second-highest fix-density score in the project (only .beads/issues.jsonl is higher at 119). This confirms the file is a legitimate hotspot that should trigger warnings.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Path extraction and matching works correctly for cmd/orch/main.go
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Unit tests verify:
+1. `extractPathsFromTask("fix bug in cmd/orch/main.go")` → `["cmd/orch/main.go"]`
+2. `matchPathToHotspots("cmd/orch/main.go", hotspots)` → true, score 49
+3. `checkSpawnHotspots("fix bug in cmd/orch/main.go", hotspots)` → warning generated
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** New tests added in `cmd/orch/hotspot_test.go`:
+- `TestCheckSpawnHotspots_CmdOrchMainGo`
+- `TestCheckSpawnHotspots_CriticalVsHighSeverity`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The full pipeline (task text → path extraction → hotspot matching → warning generation) works correctly for cmd/orch/main.go.
+
+---
+
+
 
 ---
 
@@ -89,15 +107,23 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Hotspot warning feature works correctly for cmd/orch/main.go** - The hotspot detection, path extraction, matching, and warning generation all function as designed. When a task references cmd/orch/main.go, the system correctly identifies it as a CRITICAL hotspot (score 49).
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **The file has significant fix churn** - 49 fix commits in 28 days is exceptional and indicates architectural issues. This validates the hotspot detection algorithm is surfacing real concerns.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Test coverage was incomplete for real-world scenarios** - The existing tests used mock data with only 3 hotspots (spawn.go, daemon.go, auth topic). Added new tests that simulate the actual cmd/orch/main.go hotspot scenario.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Yes, the hotspot warning feature correctly detects and warns about cmd/orch/main.go when it appears in a task description. The feature was verified through:
+1. Running `orch hotspot --json` to confirm cmd/orch/main.go is detected as a hotspot (score 49, CRITICAL)
+2. Unit tests verifying path extraction from task descriptions
+3. Unit tests verifying hotspot matching against extracted paths
+4. Unit tests verifying warning generation for matched hotspots
+
+Two new test functions were added to validate this specific scenario:
+- `TestCheckSpawnHotspots_CmdOrchMainGo`
+- `TestCheckSpawnHotspots_CriticalVsHighSeverity`
 
 ---
 
@@ -105,21 +131,21 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ cmd/orch/main.go is detected as hotspot with score 49 (verified: `go run ./cmd/orch hotspot --json`)
+- ✅ Path extraction correctly parses "cmd/orch/main.go" from task text (verified: `TestCheckSpawnHotspots_CmdOrchMainGo`)
+- ✅ Hotspot matching returns true for cmd/orch/main.go (verified: unit tests)
+- ✅ Warning is generated with file path and architect recommendation (verified: unit tests)
+- ✅ All existing hotspot tests still pass (verified: `go test -run Hotspot`)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Integration with actual spawn command (would require spawning a real agent)
+- ⚠️ Warning display in spawn command output (tested formatHotspotWarning, not full CLI integration)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if cmd/orch/main.go fix commit count drops below threshold (5)
+- Finding would be wrong if path extraction regex is modified to not match the file path format
 
 ---
 
@@ -129,96 +155,98 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**No code changes needed** - The hotspot warning feature works correctly for cmd/orch/main.go.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- All tests pass including new tests specifically for cmd/orch/main.go
+- The feature correctly detects, matches, and warns about the file
+- This was a validation investigation, not a bug fix
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- The warning message is generic (doesn't include score in summary text) - this is intentional design
+- New tests added to improve coverage
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. New tests added: `TestCheckSpawnHotspots_CmdOrchMainGo` and `TestCheckSpawnHotspots_CriticalVsHighSeverity`
+2. Tests verified to pass
+3. No code changes to hotspot.go required - functionality works as designed
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+N/A - This was a validation investigation confirming existing functionality works correctly.
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** The investigation confirmed the hotspot warning feature works. The only change needed was adding test coverage for the specific cmd/orch/main.go scenario.
 
 ---
 
 ### Implementation Details
 
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+**What was implemented:**
+- Two new test functions added to `cmd/orch/hotspot_test.go`
+- Tests validate the specific cmd/orch/main.go hotspot scenario
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ If git history is cleaned/rebased, hotspot scores will change
+- ⚠️ The 28-day window means scores are time-sensitive
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Consider whether cmd/orch/main.go should be split into smaller files (score 49 indicates architectural issues)
+- Consider adding integration tests for the full spawn → hotspot warning flow
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ All hotspot tests pass (verified)
+- ✅ cmd/orch/main.go is detected as hotspot with appropriate severity (verified)
+- ✅ Task descriptions mentioning the file trigger warnings (verified)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/hotspot.go` - Core hotspot analysis and warning logic
+- `cmd/orch/hotspot_test.go` - Existing and new unit tests
+- `pkg/daemon/hotspot.go` - Daemon integration types
+- `pkg/daemon/hotspot_test.go` - Daemon hotspot tests
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Run hotspot analysis to see current state
+go run ./cmd/orch hotspot --json
 
-# [Command description]
-[command]
+# Run all hotspot tests
+go test -v ./cmd/orch/... -run Hotspot
+go test -v ./pkg/daemon/... -run Hotspot
+
+# Run specific new tests
+go test -v ./cmd/orch/... -run "TestCheckSpawnHotspots_CmdOrchMainGo|TestCheckSpawnHotspots_CriticalVsHighSeverity"
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- None required
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Workspace:** `.orch/workspace/og-inv-test-hotspot-warning-04jan/` - This investigation workspace
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-04 12:30:** Investigation started
+- Initial question: Does hotspot warning feature work for cmd/orch/main.go?
+- Context: Task spawned to test hotspot warning functionality
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-04 12:35:** Ran orch hotspot analysis
+- Discovered cmd/orch/main.go has score 49 (CRITICAL level)
+- Second highest fix-density in project
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-04 12:40:** Ran existing tests
+- All hotspot tests pass (cmd/orch and pkg/daemon)
+
+**2026-01-04 12:45:** Added new tests for cmd/orch/main.go scenario
+- TestCheckSpawnHotspots_CmdOrchMainGo
+- TestCheckSpawnHotspots_CriticalVsHighSeverity
+- All tests pass
+
+**2026-01-04 12:50:** Investigation completed
+- Status: Complete
+- Key outcome: Hotspot warning feature correctly detects and warns about cmd/orch/main.go. New tests added for coverage.
