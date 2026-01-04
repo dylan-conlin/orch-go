@@ -296,3 +296,16 @@ grep "spawned from beads issue" .orch/workspace/*/SPAWN_CONTEXT.md
 **2026-01-03 22:10:** Investigation completed
 - Status: Complete
 - Key outcome: Missing Phase: Complete is caused by short ID resolution failure in spawn, not tier differences
+
+---
+
+## Self-Review
+
+- [x] Real test performed (not code review) - Tested bd comment with short and full IDs
+- [x] Conclusion from evidence (not speculation) - Based on actual command outputs and beads DB queries
+- [x] Question answered - Original question about tier correlation answered (no correlation; short IDs are the cause)
+- [x] File complete - All sections filled
+- [x] D.E.K.N. filled - Summary section completed
+- [x] NOT DONE claims verified - N/A (no NOT DONE claims made)
+
+**Self-Review Status:** PASSED
