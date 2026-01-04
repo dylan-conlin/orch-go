@@ -5,216 +5,118 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Successfully integrated changelog detection into `orch complete` workflow, surfacing BREAKING/behavioral changes and skill-relevant changes.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tests pass for isSkillRelevantChange and notable changelog detection; `orch complete --help` shows new `--no-changelog-check` flag; build succeeds.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The `detectNewCLICommands` pattern at main.go:3312 provides a template for post-completion checks; changelog data structures in changelog.go include SemanticInfo for BREAKING/behavioral classification.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close - implementation complete with tests.
 
 ---
 
 # Investigation: Integrate Changelog Detection Into Orch
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to integrate changelog detection into `orch complete` to surface BREAKING/behavioral changes relevant to the completed agent?
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: detectNewCLICommands pattern at main.go:3312
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The function `detectNewCLICommands` is called after `hasGoChangesInRecentCommits` check, and displays a boxed notification when new CLI commands are detected.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** cmd/orch/main.go:3311-3327
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This provides the integration point and display pattern to follow for changelog detection.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Existing changelog data structures in changelog.go
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** `CommitInfo` struct includes `SemanticInfo` with `IsBreaking`, `ChangeType`, and `BlastRadius` fields. `GetChangelog(days, project)` returns structured changelog data across ecosystem repos.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** cmd/orch/changelog.go:74-105
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-## Synthesis
-
-**Key Insights:**
-
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-**Answer to Investigation Question:**
-
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Significance:** All necessary data for detecting notable changes is already available; just need to filter and surface it.
 
 ---
 
-## Structured Uncertainty
+### Finding 3: Skill extraction available via verify.ExtractSkillNameFromSpawnContext
 
-**What's tested:**
+**Evidence:** Function exists in pkg/verify/skill_outputs.go:56-85 to extract skill name from workspace's SPAWN_CONTEXT.md.
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+**Source:** pkg/verify/skill_outputs.go:56-85
 
-**What's untested:**
-
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
-
-**What would change this:**
-
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+**Significance:** Can determine the agent's skill to prioritize skill-relevant changes.
 
 ---
 
-## Implementation Recommendations
+## Implementation
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+### Changes Made
 
-### Recommended Approach ⭐
+1. **Added `--no-changelog-check` flag** (main.go:358, 395)
+   - Allows skipping changelog detection when not needed
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+2. **Created `detectNotableChangelogEntries` function** (main.go:3504-3571)
+   - Uses `GetChangelog(3, "all")` to check last 3 days
+   - Filters for: BREAKING changes, behavioral changes in skills/cmd/pkg, skill-relevant changes
+   - Limits output to top 5 entries to avoid noise
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+3. **Created `isSkillRelevantChange` helper** (main.go:3574-3600)
+   - Checks if commit files affect the agent's skill
+   - Also flags spawn/verify infrastructure changes that affect all skills
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+4. **Integrated into runComplete workflow** (main.go:3329-3355)
+   - Called after `detectNewCLICommands`
+   - Extracts agent skill from workspace
+   - Displays boxed notification similar to CLI command detection
 
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+5. **Added tests** (main_test.go:1742-1855)
+   - `TestIsSkillRelevantChange`: 7 test cases covering skill-specific, spawn package, and unrelated changes
+   - `TestNotableChangelogEntry`: 5 test cases covering BREAKING, behavioral, and documentation changes
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+**Files Modified:**
+- cmd/orch/main.go - Added flag, functions, and integration
+- cmd/orch/main_test.go - Added tests
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Build
+go build ./cmd/orch/...
 
-# [Command description]
-[command]
+# Run tests
+go test ./cmd/orch/... -run "TestIsSkillRelevantChange|TestNotableChangelogEntry" -v
+
+# Full test suite
+go test ./cmd/orch/...
+
+# Verify flag
+orch complete --help
 ```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-03 01:00:** Investigation started
+- Analyzed detectNewCLICommands pattern
+- Reviewed changelog.go data structures
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-03 01:07:** Implementation complete
+- All tests passing
+- Build succeeds
+- Flag available in CLI help

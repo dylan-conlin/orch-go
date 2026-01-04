@@ -352,10 +352,11 @@ func init() {
 
 var (
 	// Complete command flags
-	completeForce   bool
-	completeReason  string
-	completeApprove bool
-	completeWorkdir string
+	completeForce          bool
+	completeReason         string
+	completeApprove        bool
+	completeWorkdir        string
+	completeNoChangelogCheck bool
 )
 
 var completeCmd = &cobra.Command{
@@ -392,6 +393,7 @@ func init() {
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")
 	completeCmd.Flags().StringVar(&completeWorkdir, "workdir", "", "Target project directory (for cross-project completion)")
+	completeCmd.Flags().BoolVar(&completeNoChangelogCheck, "no-changelog-check", false, "Skip changelog detection for notable changes")
 }
 
 var (
@@ -3326,6 +3328,36 @@ func runComplete(beadsID, workdir string) error {
 		}
 	}
 
+	// Check for notable changelog entries (BREAKING/behavioral changes, especially skill changes)
+	if !completeNoChangelogCheck {
+		// Extract agent's skill from workspace if available
+		var agentSkill string
+		if workspacePath != "" {
+			agentSkill, _ = verify.ExtractSkillNameFromSpawnContext(workspacePath)
+		}
+		
+		notableEntries := detectNotableChangelogEntries(beadsProjectDir, agentSkill)
+		if len(notableEntries) > 0 {
+			fmt.Println()
+			fmt.Println("┌─────────────────────────────────────────────────────────────┐")
+			fmt.Println("│  ⚠️  NOTABLE ECOSYSTEM CHANGES DETECTED                      │")
+			fmt.Println("├─────────────────────────────────────────────────────────────┤")
+			for _, entry := range notableEntries {
+				// Wrap long entries
+				if len(entry) > 55 {
+					fmt.Printf("│  %s\n", entry[:55])
+					fmt.Printf("│    %s\n", entry[55:])
+				} else {
+					fmt.Printf("│  %s\n", entry)
+				}
+			}
+			fmt.Println("├─────────────────────────────────────────────────────────────┤")
+			fmt.Println("│  Review recent changes that may affect agent behavior       │")
+			fmt.Println("│  Run: orch changelog --days 3                               │")
+			fmt.Println("└─────────────────────────────────────────────────────────────┘")
+		}
+	}
+
 	// Log the completion
 	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
@@ -3465,6 +3497,106 @@ func detectNewCLICommands(projectDir string) []string {
 	}
 
 	return newCommands
+}
+
+// NotableChangelogEntry represents a notable change from the changelog.
+type NotableChangelogEntry struct {
+	Commit   CommitInfo
+	Reason   string // Why this is notable (e.g., "BREAKING", "skill-relevant", "behavioral")
+}
+
+// detectNotableChangelogEntries checks recent commits across ecosystem repos for
+// notable changes that the orchestrator should be aware of:
+// - BREAKING changes
+// - Behavioral changes (feat/fix commits)
+// - Skill changes relevant to the agent's skill
+// Returns formatted strings for display.
+func detectNotableChangelogEntries(projectDir string, agentSkill string) []string {
+	var entries []string
+
+	// Get changelog data for last 3 days (recent enough to be relevant)
+	result, err := GetChangelog(3, "all")
+	if err != nil {
+		return nil
+	}
+
+	// Iterate through commits looking for notable entries
+	for _, dateCommits := range result.CommitsByDate {
+		for _, commit := range dateCommits {
+			var reasons []string
+
+			// Check for BREAKING changes
+			if commit.SemanticInfo.IsBreaking {
+				reasons = append(reasons, "BREAKING")
+			}
+
+			// Check for behavioral changes (feat/fix)
+			if commit.SemanticInfo.ChangeType == ChangeTypeBehavioral {
+				// Only surface if it's in a category that could affect agents
+				if commit.Category == "skills" || commit.Category == "skill-behavioral" ||
+					commit.Category == "cmd" || commit.Category == "pkg" {
+					reasons = append(reasons, "behavioral")
+				}
+			}
+
+			// Check for skill-relevant changes
+			if agentSkill != "" && isSkillRelevantChange(commit, agentSkill) {
+				reasons = append(reasons, fmt.Sprintf("relevant to %s", agentSkill))
+			}
+
+			// If we have reasons, add to the list
+			if len(reasons) > 0 {
+				icon := "📌"
+				if commit.SemanticInfo.IsBreaking {
+					icon = "🚨"
+				} else if strings.Contains(strings.Join(reasons, ","), "relevant to") {
+					icon = "🎯"
+				}
+
+				entry := fmt.Sprintf("%s [%s] %s (%s)",
+					icon,
+					commit.Repo,
+					truncateString(commit.Subject, 40),
+					strings.Join(reasons, ", "))
+				entries = append(entries, entry)
+			}
+		}
+	}
+
+	// Limit to top 5 most notable entries to avoid noise
+	if len(entries) > 5 {
+		entries = entries[:5]
+	}
+
+	return entries
+}
+
+// isSkillRelevantChange checks if a commit affects files related to a specific skill.
+func isSkillRelevantChange(commit CommitInfo, skillName string) bool {
+	for _, file := range commit.Files {
+		// Check for skill-specific paths (handles both "skills/" prefix and "/skills/")
+		if strings.Contains(file, "skills/") {
+			// Check if this skill is mentioned in the path
+			if strings.Contains(file, "/"+skillName+"/") ||
+				strings.Contains(file, "/"+skillName+".") ||
+				strings.HasPrefix(file, "skills/"+skillName+"/") ||
+				strings.Contains(file, "/skills/"+skillName+"/") {
+				return true
+			}
+		}
+
+		// Check for SPAWN_CONTEXT or spawn package changes (affects all skills)
+		if strings.Contains(file, "SPAWN_CONTEXT") ||
+			strings.Contains(file, "pkg/spawn/") {
+			return true
+		}
+
+		// Check for skill verification changes
+		if strings.Contains(file, "pkg/verify/skill") {
+			return true
+		}
+	}
+	return false
 }
 
 // runAutoRebuild runs make install in the project directory.

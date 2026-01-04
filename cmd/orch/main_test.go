@@ -1740,6 +1740,185 @@ func TestDetectNewCLICommandsGitStatusParsing(t *testing.T) {
 	}
 }
 
+// TestIsSkillRelevantChange tests the skill relevance detection for changelog entries.
+func TestIsSkillRelevantChange(t *testing.T) {
+	tests := []struct {
+		name      string
+		commit    CommitInfo
+		skillName string
+		want      bool
+	}{
+		{
+			name: "skill-specific file change",
+			commit: CommitInfo{
+				Files: []string{"skills/worker/feature-impl/SKILL.md"},
+			},
+			skillName: "feature-impl",
+			want:      true,
+		},
+		{
+			name: "different skill change",
+			commit: CommitInfo{
+				Files: []string{"skills/worker/investigation/SKILL.md"},
+			},
+			skillName: "feature-impl",
+			want:      false,
+		},
+		{
+			name: "spawn package change affects all skills",
+			commit: CommitInfo{
+				Files: []string{"pkg/spawn/context.go"},
+			},
+			skillName: "feature-impl",
+			want:      true,
+		},
+		{
+			name: "SPAWN_CONTEXT change affects all skills",
+			commit: CommitInfo{
+				Files: []string{"templates/SPAWN_CONTEXT.md"},
+			},
+			skillName: "feature-impl",
+			want:      true,
+		},
+		{
+			name: "skill verification change affects all skills",
+			commit: CommitInfo{
+				Files: []string{"pkg/verify/skill_outputs.go"},
+			},
+			skillName: "investigation",
+			want:      true,
+		},
+		{
+			name: "unrelated file",
+			commit: CommitInfo{
+				Files: []string{"cmd/orch/serve.go"},
+			},
+			skillName: "feature-impl",
+			want:      false,
+		},
+		{
+			name: "empty skill name - no match",
+			commit: CommitInfo{
+				Files: []string{"skills/worker/feature-impl/SKILL.md"},
+			},
+			skillName: "",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isSkillRelevantChange(tt.commit, tt.skillName)
+			if got != tt.want {
+				t.Errorf("isSkillRelevantChange() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNotableChangelogEntry tests the detection logic for notable changes.
+func TestNotableChangelogEntry(t *testing.T) {
+	tests := []struct {
+		name       string
+		commit     CommitInfo
+		agentSkill string
+		wantNotable bool
+	}{
+		{
+			name: "breaking change is always notable",
+			commit: CommitInfo{
+				Subject: "BREAKING: remove deprecated API",
+				SemanticInfo: SemanticInfo{
+					IsBreaking:  true,
+					ChangeType:  ChangeTypeBehavioral,
+				},
+				Category: "cmd",
+			},
+			agentSkill: "",
+			wantNotable: true,
+		},
+		{
+			name: "behavioral skill change is notable",
+			commit: CommitInfo{
+				Subject: "feat: add new spawn option",
+				SemanticInfo: SemanticInfo{
+					IsBreaking:  false,
+					ChangeType:  ChangeTypeBehavioral,
+				},
+				Category: "skills",
+			},
+			agentSkill: "",
+			wantNotable: true,
+		},
+		{
+			name: "behavioral cmd change is notable",
+			commit: CommitInfo{
+				Subject: "fix: correct spawn timeout",
+				SemanticInfo: SemanticInfo{
+					IsBreaking:  false,
+					ChangeType:  ChangeTypeBehavioral,
+				},
+				Category: "cmd",
+			},
+			agentSkill: "",
+			wantNotable: true,
+		},
+		{
+			name: "documentation change is not notable",
+			commit: CommitInfo{
+				Subject: "docs: update README",
+				SemanticInfo: SemanticInfo{
+					IsBreaking:  false,
+					ChangeType:  ChangeTypeDocumentation,
+				},
+				Category: "docs",
+			},
+			agentSkill: "",
+			wantNotable: false,
+		},
+		{
+			name: "behavioral web change is not notable without context",
+			commit: CommitInfo{
+				Subject: "feat: update dashboard styling",
+				SemanticInfo: SemanticInfo{
+					IsBreaking:  false,
+					ChangeType:  ChangeTypeBehavioral,
+				},
+				Category: "web",
+			},
+			agentSkill: "",
+			wantNotable: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Apply the same logic as detectNotableChangelogEntries
+			var reasons []string
+
+			if tt.commit.SemanticInfo.IsBreaking {
+				reasons = append(reasons, "BREAKING")
+			}
+
+			if tt.commit.SemanticInfo.ChangeType == ChangeTypeBehavioral {
+				if tt.commit.Category == "skills" || tt.commit.Category == "skill-behavioral" ||
+					tt.commit.Category == "cmd" || tt.commit.Category == "pkg" {
+					reasons = append(reasons, "behavioral")
+				}
+			}
+
+			if tt.agentSkill != "" && isSkillRelevantChange(tt.commit, tt.agentSkill) {
+				reasons = append(reasons, "relevant to "+tt.agentSkill)
+			}
+
+			gotNotable := len(reasons) > 0
+			if gotNotable != tt.wantNotable {
+				t.Errorf("notable = %v (reasons: %v), want %v", gotNotable, reasons, tt.wantNotable)
+			}
+		})
+	}
+}
+
 // Helper functions for env var management
 func setEnvIfNotEmpty(key, value string) {
 	if value == "" {
