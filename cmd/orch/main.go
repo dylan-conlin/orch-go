@@ -750,6 +750,14 @@ func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error 
 }
 
 func runComplete(beadsID, workdir string) error {
+	// Resolve short beads ID to full ID (e.g., "qdaa" -> "orch-go-qdaa")
+	// This ensures all downstream operations use the full ID consistently
+	resolvedID, err := resolveShortBeadsID(beadsID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve beads ID: %w", err)
+	}
+	beadsID = resolvedID
+
 	// Get current directory as base project dir
 	currentDir, err := os.Getwd()
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -265,4 +266,36 @@ func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
 	}
 
 	return nil, nil // Not found (no error, just not found)
+}
+
+// resolveShortBeadsID resolves a potentially short beads ID to a full ID.
+// Short IDs like "57dn" are resolved to full IDs like "orch-go-57dn".
+// This ensures commands receive full IDs that bd commands can use.
+// If resolution fails, returns the original ID (best effort).
+func resolveShortBeadsID(id string) (string, error) {
+	// Try RPC client first for ID resolution
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath)
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+
+			resolvedID, err := client.ResolveID(id)
+			if err == nil && resolvedID != "" {
+				return resolvedID, nil
+			}
+			// Fall through to CLI fallback on RPC error
+		}
+	}
+
+	// Fallback: Use bd show to resolve the ID
+	// bd show handles short ID resolution and returns the full ID
+	issue, err := beads.FallbackShow(id)
+	if err != nil {
+		// If resolution fails completely, return original ID with warning
+		fmt.Fprintf(os.Stderr, "Warning: could not resolve beads ID '%s': %v\n", id, err)
+		return id, nil
+	}
+
+	return issue.ID, nil
 }

@@ -1209,38 +1209,6 @@ func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTr
 	return beadsID, nil
 }
 
-// resolveShortBeadsID resolves a potentially short beads ID to a full ID.
-// Short IDs like "57dn" are resolved to full IDs like "orch-go-57dn".
-// This ensures SPAWN_CONTEXT.md contains full IDs that bd commands can use.
-// If resolution fails, returns the original ID (best effort).
-func resolveShortBeadsID(id string) (string, error) {
-	// Try RPC client first for ID resolution
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			resolvedID, err := client.ResolveID(id)
-			if err == nil && resolvedID != "" {
-				return resolvedID, nil
-			}
-			// Fall through to CLI fallback on RPC error
-		}
-	}
-
-	// Fallback: Use bd show to resolve the ID
-	// bd show handles short ID resolution and returns the full ID
-	issue, err := beads.FallbackShow(id)
-	if err != nil {
-		// If resolution fails completely, return original ID with warning
-		fmt.Fprintf(os.Stderr, "Warning: could not resolve beads ID '%s': %v\n", id, err)
-		return id, nil
-	}
-
-	return issue.ID, nil
-}
-
 // createBeadsIssue creates a new beads issue for tracking the agent.
 // It uses the beads RPC client when available, falling back to the bd CLI.
 func createBeadsIssue(projectName, skillName, task string) (string, error) {

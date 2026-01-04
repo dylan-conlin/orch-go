@@ -5,19 +5,21 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Added `resolveShortBeadsID()` function to spawn_cmd.go that resolves short beads IDs to full IDs before generating SPAWN_CONTEXT.md.
+**Delta:** 
+1. Moved `resolveShortBeadsID()` from spawn_cmd.go to shared.go for reuse
+2. Added short ID resolution to `runComplete()` in main.go
 
-**Evidence:** Build passes, all tests pass, manual testing confirms `oux7` → `orch-go-oux7` resolution works.
+**Evidence:** Build passes, all tests pass, smoke test confirms `orch complete qdaa` correctly resolves to `orch-go-qdaa`.
 
-**Knowledge:** The beads RPC client already has `ResolveID()` method; the fix only required calling it from `determineBeadsID()`.
+**Knowledge:** The beads RPC client already has `ResolveID()` method; both spawn and complete commands now resolve short IDs consistently.
 
-**Next:** Commit and close - fix is complete and verified.
+**Next:** Close - both spawn and complete now handle short beads IDs correctly.
 
 ---
 
 # Investigation: Fix Short Beads Id Resolution
 
-**Question:** How to fix short beads ID resolution in spawn so SPAWN_CONTEXT.md contains full IDs that `bd comment` can use?
+**Question:** How to fix short beads ID resolution in both `orch spawn` and `orch complete` commands?
 
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
@@ -133,12 +135,13 @@ The fix required adding a `resolveShortBeadsID()` helper function and calling it
 ## References
 
 **Files Modified:**
-- `cmd/orch/spawn_cmd.go` - Added `resolveShortBeadsID()` and modified `determineBeadsID()`
+- `cmd/orch/shared.go` - Added `resolveShortBeadsID()` for reuse across commands
+- `cmd/orch/spawn_cmd.go` - Removed duplicate function, now uses shared.go
+- `cmd/orch/main.go` - Added short ID resolution to `runComplete()`
 
 **Files Examined:**
 - `pkg/beads/client.go:625-641` - Existing `ResolveID()` method
 - `pkg/beads/types.go:29,254-257` - `OpResolveID` constant and `ResolveIDArgs` type
-- `.kb/investigations/2026-01-03-inv-agents-report-phase-complete-via.md` - Prior investigation
 
 **Commands Run:**
 ```bash
@@ -146,11 +149,15 @@ The fix required adding a `resolveShortBeadsID()` helper function and calling it
 /opt/homebrew/bin/go build ./cmd/orch
 
 # Test verification
-/opt/homebrew/bin/go test ./... 
+/opt/homebrew/bin/go test ./cmd/orch/... -run TestComplete
 
-# Manual testing of short ID resolution
-/opt/homebrew/bin/go run /tmp/test_resolve.go oux7
-# Output: orch-go-oux7
+# Smoke test with short ID
+./orch complete qdaa
+# Output shows: (beads: orch-go-qdaa) - correctly resolved
+
+# Smoke test with full ID
+./orch complete orch-go-qdaa
+# Same output - works correctly
 ```
 
 **Related Artifacts:**
