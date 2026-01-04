@@ -1,4 +1,5 @@
 import { writable, derived } from 'svelte/store';
+import { createSSEConnection, type SSEConnection } from '../services/sse-connection';
 
 // Agent lifecycle event from events.jsonl
 export interface AgentLogEvent {
@@ -107,113 +108,75 @@ export const errorEvents = derived(agentlogEvents, ($events) =>
 // Agentlog SSE connection status
 export const agentlogConnectionStatus = writable<'connected' | 'disconnected' | 'connecting'>('disconnected');
 
-// Agentlog SSE connection manager
-let agentlogEventSource: EventSource | null = null;
-let agentlogReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-// Connection generation counter - prevents stale reconnect timers from firing
-let connectionGeneration = 0;
+// Agentlog SSE connection manager - uses shared service for connection lifecycle
+let agentlogConnection: SSEConnection | null = null;
+
+// Build event listeners for the agentlog SSE connection
+function buildAgentlogEventListeners(): Record<string, (event: MessageEvent) => void> {
+	return {
+		'agentlog': (event: MessageEvent) => {
+			try {
+				const data = JSON.parse(event.data);
+				agentlogEvents.addEvent(data);
+
+				// Trigger agent list refresh on relevant events (debounced to prevent race conditions)
+				import('./agents').then(({ agents }) => {
+					agents.fetchDebounced();
+				});
+			} catch (e) {
+				console.error('Failed to parse agentlog event:', e);
+			}
+		},
+		'connected': (event: MessageEvent) => {
+			try {
+				const data = JSON.parse(event.data);
+				console.log('Agentlog SSE connected to:', data.source);
+			} catch (e) {
+				console.log('Agentlog SSE connected');
+			}
+		},
+		'error': (event: MessageEvent) => {
+			try {
+				const data = JSON.parse(event.data);
+				console.error('Agentlog SSE error event:', data.error);
+			} catch (e) {
+				// Ignore parse errors for error events
+			}
+		}
+	};
+}
 
 export function connectAgentlogSSE(): void {
-	// Increment generation to invalidate any pending reconnect timers
-	const thisGeneration = ++connectionGeneration;
-	
-	// Clear any pending reconnect timer from previous connection
-	if (agentlogReconnectTimeout) {
-		clearTimeout(agentlogReconnectTimeout);
-		agentlogReconnectTimeout = null;
-	}
-	
-	if (agentlogEventSource) {
-		agentlogEventSource.close();
-		agentlogEventSource = null;
+	// Create connection if not exists
+	if (!agentlogConnection) {
+		agentlogConnection = createSSEConnection(`${API_BASE}/api/agentlog?follow=true`, {
+			onOpen: () => {
+				agentlogConnectionStatus.set('connected');
+				// Fetch initial events on connection
+				agentlogEvents.fetch().catch(console.error);
+			},
+			onDisconnect: () => {
+				agentlogConnectionStatus.set('disconnected');
+			},
+			eventListeners: buildAgentlogEventListeners(),
+			reconnectDelayMs: 5000,
+			autoReconnect: true
+		});
+
+		// Sync the connection status from the service to our local store
+		agentlogConnection.status.subscribe((status) => {
+			agentlogConnectionStatus.set(status);
+		});
 	}
 
+	// Mark as connecting and initiate connection
 	agentlogConnectionStatus.set('connecting');
-
-	agentlogEventSource = new EventSource(`${API_BASE}/api/agentlog?follow=true`);
-
-	agentlogEventSource.onopen = () => {
-		// Ignore if this connection is stale (newer connection started)
-		if (thisGeneration !== connectionGeneration) {
-			agentlogEventSource?.close();
-			return;
-		}
-		agentlogConnectionStatus.set('connected');
-		// Fetch initial events on connection
-		agentlogEvents.fetch().catch(console.error);
-	};
-
-	agentlogEventSource.onerror = () => {
-		// Ignore if this connection is stale (newer connection started)
-		if (thisGeneration !== connectionGeneration) {
-			return;
-		}
-		
-		// Don't log errors during page unload (expected behavior)
-		agentlogConnectionStatus.set('disconnected');
-		agentlogEventSource?.close();
-		agentlogEventSource = null;
-
-		// Auto-reconnect after 5 seconds
-		// Use generation check to prevent stale timer from firing
-		if (agentlogReconnectTimeout) {
-			clearTimeout(agentlogReconnectTimeout);
-		}
-		agentlogReconnectTimeout = setTimeout(() => {
-			// Only reconnect if no newer connection was started
-			if (thisGeneration === connectionGeneration) {
-				connectAgentlogSSE();
-			}
-		}, 5000);
-	};
-
-	// Handle agentlog events
-	agentlogEventSource.addEventListener('agentlog', (event) => {
-		try {
-			const data = JSON.parse((event as MessageEvent).data);
-			agentlogEvents.addEvent(data);
-
-			// Trigger agent list refresh on relevant events (debounced to prevent race conditions)
-			import('./agents').then(({ agents }) => {
-				agents.fetchDebounced();
-			});
-		} catch (e) {
-			console.error('Failed to parse agentlog event:', e);
-		}
-	});
-
-	// Handle connected event
-	agentlogEventSource.addEventListener('connected', (event) => {
-		try {
-			const data = JSON.parse((event as MessageEvent).data);
-			console.log('Agentlog SSE connected to:', data.source);
-		} catch (e) {
-			console.log('Agentlog SSE connected');
-		}
-	});
-
-	// Handle error event
-	agentlogEventSource.addEventListener('error', (event) => {
-		try {
-			const data = JSON.parse((event as MessageEvent).data);
-			console.error('Agentlog SSE error event:', data.error);
-		} catch (e) {
-			// Ignore parse errors for error events
-		}
-	});
+	agentlogConnection.connect();
 }
 
 export function disconnectAgentlogSSE(): void {
-	// Increment generation to invalidate any pending reconnect timers
-	connectionGeneration++;
-	
-	if (agentlogReconnectTimeout) {
-		clearTimeout(agentlogReconnectTimeout);
-		agentlogReconnectTimeout = null;
-	}
-	if (agentlogEventSource) {
-		agentlogEventSource.close();
-		agentlogEventSource = null;
+	if (agentlogConnection) {
+		agentlogConnection.disconnect();
 	}
 	// Cancel any pending fetch operations
 	agentlogEvents.cancelPending();

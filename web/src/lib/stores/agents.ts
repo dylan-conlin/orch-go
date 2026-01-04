@@ -1,4 +1,5 @@
 import { writable, derived } from 'svelte/store';
+import { createSSEConnection, type SSEConnection } from '../services/sse-connection';
 
 // Agent types matching orch-go registry
 export type AgentState = 'active' | 'idle' | 'completed' | 'abandoned' | 'deleted';
@@ -303,96 +304,30 @@ export const selectedAgent = derived([agents, selectedAgentId], ([$agents, $sele
 	return $agents.find((a) => a.id === $selectedAgentId) || null;
 });
 
-// SSE connection manager
-let eventSource: EventSource | null = null;
-let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-// Connection generation counter - prevents stale reconnect timers from firing
-let connectionGeneration = 0;
+// SSE connection manager - uses shared service for connection lifecycle
+let sseConnection: SSEConnection | null = null;
 
-export function connectSSE(): void {
-	// Increment generation to invalidate any pending reconnect timers
-	const thisGeneration = ++connectionGeneration;
-	
-	// Clear any pending reconnect timer from previous connection
-	if (reconnectTimeout) {
-		clearTimeout(reconnectTimeout);
-		reconnectTimeout = null;
-	}
-	
-	if (eventSource) {
-		eventSource.close();
-		eventSource = null;
-	}
-
-	connectionStatus.set('connecting');
-
-	eventSource = new EventSource(`${API_BASE}/api/events`);
-
-	eventSource.onopen = () => {
-		// Ignore if this connection is stale (newer connection started)
-		if (thisGeneration !== connectionGeneration) {
-			eventSource?.close();
-			return;
-		}
-		connectionStatus.set('connected');
-		// Fetch agents on connection to get current state
-		agents.fetch().catch(console.error);
-	};
-
-	eventSource.onerror = () => {
-		// Ignore if this connection is stale (newer connection started)
-		if (thisGeneration !== connectionGeneration) {
-			return;
-		}
-		
-		// Don't log errors during page unload (expected behavior)
-		connectionStatus.set('disconnected');
-		eventSource?.close();
-		eventSource = null;
-
-		// Auto-reconnect after 5 seconds (unless page is unloading)
-		// Use generation check to prevent stale timer from firing
-		if (reconnectTimeout) {
-			clearTimeout(reconnectTimeout);
-		}
-		reconnectTimeout = setTimeout(() => {
-			// Only reconnect if no newer connection was started
-			if (thisGeneration === connectionGeneration) {
-				connectSSE();
-			}
-		}, 5000);
-	};
-
-	eventSource.onmessage = (event) => {
-		try {
-			const data = JSON.parse(event.data);
-			handleSSEEvent(data);
-		} catch (e) {
-			// Non-JSON data, create simple event
-			sseEvents.addEvent({
-				type: 'raw',
-				timestamp: Date.now()
-			});
-		}
-	};
+// Build event listeners for the SSE connection
+function buildSSEEventListeners(): Record<string, (event: MessageEvent) => void> {
+	const listeners: Record<string, (event: MessageEvent) => void> = {};
 
 	// Handle specific event types if sent with event: prefix
 	const eventTypes = ['session.status', 'session.created', 'session.deleted', 'agent.completed', 'agent.abandoned'];
 	eventTypes.forEach((type) => {
-		eventSource?.addEventListener(type, (event) => {
+		listeners[type] = (event: MessageEvent) => {
 			try {
-				const data = JSON.parse((event as MessageEvent).data);
+				const data = JSON.parse(event.data);
 				handleSSEEvent({ ...data, type });
 			} catch (e) {
 				console.error(`Failed to parse ${type} event:`, e);
 			}
-		});
+		};
 	});
 
 	// Handle custom events from our proxy
-	eventSource.addEventListener('connected', (event) => {
+	listeners['connected'] = (event: MessageEvent) => {
 		try {
-			const data = JSON.parse((event as MessageEvent).data);
+			const data = JSON.parse(event.data);
 			sseEvents.addEvent({
 				type: 'proxy.connected',
 				timestamp: Date.now()
@@ -401,19 +336,19 @@ export function connectSSE(): void {
 		} catch (e) {
 			console.log('SSE connected');
 		}
-	});
+	};
 
-	eventSource.addEventListener('disconnected', () => {
+	listeners['disconnected'] = () => {
 		connectionStatus.set('disconnected');
 		sseEvents.addEvent({
 			type: 'proxy.disconnected',
 			timestamp: Date.now()
 		});
-	});
+	};
 
-	eventSource.addEventListener('error', (event) => {
+	listeners['error'] = (event: MessageEvent) => {
 		try {
-			const data = JSON.parse((event as MessageEvent).data);
+			const data = JSON.parse(event.data);
 			console.error('SSE proxy error:', data.error);
 			sseEvents.addEvent({
 				type: 'proxy.error',
@@ -422,7 +357,49 @@ export function connectSSE(): void {
 		} catch (e) {
 			// Ignore parse errors for error events
 		}
-	});
+	};
+
+	return listeners;
+}
+
+export function connectSSE(): void {
+	// Create connection if not exists
+	if (!sseConnection) {
+		sseConnection = createSSEConnection(`${API_BASE}/api/events`, {
+			onOpen: () => {
+				connectionStatus.set('connected');
+				// Fetch agents on connection to get current state
+				agents.fetch().catch(console.error);
+			},
+			onMessage: (event: MessageEvent) => {
+				try {
+					const data = JSON.parse(event.data);
+					handleSSEEvent(data);
+				} catch (e) {
+					// Non-JSON data, create simple event
+					sseEvents.addEvent({
+						type: 'raw',
+						timestamp: Date.now()
+					});
+				}
+			},
+			onDisconnect: () => {
+				connectionStatus.set('disconnected');
+			},
+			eventListeners: buildSSEEventListeners(),
+			reconnectDelayMs: 5000,
+			autoReconnect: true
+		});
+
+		// Sync the connection status from the service to our local store
+		sseConnection.status.subscribe((status) => {
+			connectionStatus.set(status);
+		});
+	}
+
+	// Mark as connecting and initiate connection
+	connectionStatus.set('connecting');
+	sseConnection.connect();
 }
 
 function handleSSEEvent(data: any) {
@@ -591,16 +568,8 @@ export async function createIssue(title: string, description?: string, labels?: 
 }
 
 export function disconnectSSE(): void {
-	// Increment generation to invalidate any pending reconnect timers
-	connectionGeneration++;
-	
-	if (reconnectTimeout) {
-		clearTimeout(reconnectTimeout);
-		reconnectTimeout = null;
-	}
-	if (eventSource) {
-		eventSource.close();
-		eventSource = null;
+	if (sseConnection) {
+		sseConnection.disconnect();
 	}
 	// Cancel any pending fetch operations
 	agents.cancelPending();
