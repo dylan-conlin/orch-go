@@ -1,108 +1,109 @@
-# Session Handoff - Jan 4, 2026 (Night)
+# Session Handoff - Jan 4, 2026 (Evening)
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Completed main.go epic (93% reduction), advanced 4 more hotspot epics, discovered lost discovered_work.go feature from spiral revert.
+**Delta:** Frame shift insight captured - orchestrator→meta-orchestrator is a vantage point change, not incremental improvement. Fixed 2 P1 bugs from transcript analysis. Closed 3 refactoring epics.
 
-**Evidence:** main.go 2705→195 lines. serve_agents, dashboard, daemon, verify epics all have design + Phase 1 complete. Git archaeology found c4e117a7 had gating for recommendation-to-issue flow.
+**Evidence:** Decision `.kb/decisions/2026-01-04-meta-orchestrator-frame-shift.md`. Bugs fixed: daemon rejection diagnostics, untracked agent cleanup. 4 design investigations completed (proposed incremental, but frame shift is the real need).
 
-**Knowledge:** Hotspot-driven refactoring pipeline works well - spawn architect for design, daemon picks up implementation phases automatically. The recommendation extraction feature EXISTS in current code but lacks the gate that was lost in Jan 2 rollback.
+**Knowledge:** Agents reasoning AS orchestrators can only propose incremental improvements - they can't see outside their own frame. The meta-orchestrator vantage point treats orchestrator sessions as objects to spawn/monitor/complete, just like orchestrators treat workers.
 
-**Next:** discovered_work.go restoration running. Continue hotspot epic phases via daemon. Push changes.
+**Next:** Create issue for spawnable orchestrator sessions with full infrastructure (not just verification flags). Define `orch spawn orchestrator` spec.
 
 ---
 
 ## What Happened This Session
 
-**Focus:** Address hotspots in orch-go
+**Focus:** Session transcript analysis → meta-orchestrator architecture exploration
 
 ### Completed
 
-1. **Epic: main.go split (orch-go-uf4u)** ✅
-   - 2705 → 195 lines (93% reduction)
-   - Extracted: complete_cmd.go (792), clean_cmd.go (691), account_cmd.go, port_cmd.go, send_cmd.go, tail_cmd.go, question_cmd.go, retries_cmd.go, abandon_cmd.go
-   - 4 phases, all complete
+1. **Session ses_474f transcript analysis**
+   - Identified 4 friction points, 5 gaps
+   - Created 5 issues from friction analysis
 
-2. **serve_agents.go (orch-go-25s2)** - Phase 1 ✅
-   - Extracted serve_agents_cache.go (~470 lines)
-   - Phase 2 (events) queued
+2. **P1 Bugs Fixed:**
+   - `orch-go-78jw`: Daemon now shows rejection reasons in preview ✅
+   - `orch-go-roxx`: Untracked agents now have cleanup path ✅
 
-3. **Dashboard UI (orch-go-eysk)** - Phase 1-2 ✅
-   - Extracted SSE connection manager
-   - Extracted StatsBar component
-   - Phase 3 (status model) queued
+3. **Epics Closed:**
+   - `orch-go-w9h4`: verify/check.go refactor (979→224 lines)
+   - `orch-go-f884`: daemon.go refactor (1362→610 lines)
+   - `orch-go-25s2`: serve_agents.go refactor (1399→724 lines)
 
-4. **daemon.go (orch-go-f884)** - Design + Phase 1 ✅
-   - Extracted rate_limiter.go, skill_inference.go, issue_queue.go
-   - Phase 2 queued
+4. **Issues Closed:**
+   - `orch-go-6g1r`: orch patterns - already implemented, wasn't reverted
+   - `orch-go-xqwu`: Dashboard beadsId - fixed by server restart
 
-5. **verify/check.go (orch-go-w9h4)** - Design + Phase 1 ✅
-   - Extracted beads_api.go (~600 lines)
-   - Phase 2 queued
+### Key Insight
 
-### Investigations
+**Frame Shift Pattern:**
 
-- **features.json:** Orphaned artifact, no code reads it. Recommend deprecation.
-- **recommendation extraction:** Feature EXISTS in complete_cmd.go but lost gating from discovered_work.go (c4e117a7)
+| Transition | What It Is | What It Unlocks |
+|------------|------------|-----------------|
+| Worker → Orchestrator | Thinking ABOUT workers | Patterns across workers, deciding WHAT to work on |
+| Orchestrator → Meta-Orchestrator | Thinking ABOUT orchestrators | Patterns across sessions, managing orchestration itself |
 
-### Key Discovery
+**Why agents kept missing this:** They reason AS orchestrators, so they optimize orchestration. They can't propose their own frame's obsolescence.
 
-`pkg/verify/discovered_work.go` was lost in Jan 2 rollback. It provided:
-- Gate requiring disposition of ALL follow-up items
-- skip-all required documented reason
-- Blocked completion until handled
-
-Current code has prompting but allows silent skip. Issue orch-go-r350 created to restore gating.
+**Decision captured:** `.kb/decisions/2026-01-04-meta-orchestrator-frame-shift.md`
 
 ---
 
-## Active Work
+## Investigations Completed
 
-```
-orch-go-r350     running  Restore discovered_work.go gating
-```
+All proposed incremental improvements (useful details, wrong vantage point):
 
-## Ready Queue (daemon will pick up)
+1. `.kb/investigations/2026-01-04-design-orchestrator-skill-spawnable-agent-gap.md`
+   - Found: orchestrators ARE structurally spawnable
+   - Proposed: add verification, not new mechanism
 
-| Epic | Next Phase | Task |
-|------|------------|------|
-| orch-go-25s2 | Phase 2 | Extract serve_agents_events.go |
-| orch-go-eysk | Phase 3 | Consolidate agent status model |
-| orch-go-f884 | Phase 2 | Extract active_count, issue_adapter, completion_processing |
-| orch-go-w9h4 | Phase 2 | Extract synthesis_parser.go |
+2. `.kb/investigations/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md`
+   - Found: three-tier hierarchy exists implicitly
+   - Proposed: incremental enhancement
+
+3. `.kb/investigations/2026-01-04-design-meta-orchestrator-role-definition.md`
+   - Found: meta-orchestrator = Dylan, WHICH vs HOW distinction
+   - Proposed: add section to orchestrator skill
+
+4. `.kb/investigations/2026-01-04-inv-dashboard-api-returns-null-beadsid.md`
+   - Found: bug no longer reproduces after server restart
 
 ---
 
-## Files Changed (Major)
+## What Dylan Actually Needs (Not Built Yet)
+
+Spawnable orchestrator sessions with **full infrastructure**:
+
+```bash
+# From meta-orchestrator context
+orch spawn orchestrator "Triage orch-go backlog" --project orch-go
+```
+
+This would:
+1. Create workspace at `.orch/workspace/orchestrator-{name}/`
+2. Generate ORCHESTRATOR_CONTEXT.md (like SPAWN_CONTEXT.md)
+3. Open tmux window (visible, not headless)
+4. Gate completion on handoff artifact
+5. Be inspectable by meta-orchestrator
+
+**Dylan's role as meta-orchestrator:**
+- Decide WHICH projects need orchestration attention
+- Spawn orchestrator sessions with clear goals
+- Review orchestrator session handoffs
+- Make cross-project strategic decisions
+- NOT do tactical orchestration work
+
+---
+
+## Backlog State
 
 ```
-# main.go split
-cmd/orch/complete_cmd.go (new)
-cmd/orch/clean_cmd.go (new)
-cmd/orch/account_cmd.go (new)
-cmd/orch/port_cmd.go (new)
-cmd/orch/send_cmd.go (new)
-cmd/orch/tail_cmd.go (new)
-cmd/orch/question_cmd.go (new)
-cmd/orch/retries_cmd.go (new)
-cmd/orch/abandon_cmd.go (new)
-cmd/orch/main.go (2705→195 lines)
-
-# serve_agents extraction
-cmd/orch/serve_agents_cache.go (new)
-
-# dashboard extraction  
-web/src/lib/services/sse-connection.ts (new)
-web/src/lib/components/stats-bar/ (new)
-
-# daemon extraction
-pkg/daemon/rate_limiter.go (new)
-pkg/daemon/skill_inference.go (new)
-pkg/daemon/issue_queue.go (new)
-
-# verify extraction
-pkg/verify/beads_api.go (new)
+Open: 11 issues (0 in progress)
+P2: Dashboard epic has 1 phase remaining (orch-go-eysk.4)
 ```
+
+No agents running. Daemon idle.
 
 ---
 
@@ -110,11 +111,18 @@ pkg/verify/beads_api.go (new)
 
 ```bash
 orch status
-orch complete orch-go-r350  # If done
-bd ready                     # Check queue
-# Daemon handles the rest
+bd ready
+
+# Priority: Create issue for spawnable orchestrator sessions
+# This is the frame shift infrastructure, not incremental
 ```
 
-## Key Insight
+---
 
-Hotspot detection → architect design → phased extraction works well as a pipeline. The daemon automatically picks up implementation phases after design completes. This session processed ~15 agent completions across 5 epics with minimal orchestrator intervention once the pipeline was set up.
+## Friction This Session
+
+1. **Dashboard wasn't showing agents** - beadsId null in API. Server restart fixed it.
+
+2. **Agents kept proposing incremental improvements** - 4 design agents, all from inside orchestrator frame. Dylan had to articulate frame shift himself.
+
+3. **No workspace for this orchestrator session** - producing this handoff manually with no inspection infrastructure. Exactly the problem we identified.
