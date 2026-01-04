@@ -236,13 +236,24 @@
       "repo": "glass",
       "depends_on": ["orch-go-l1is"],
       "notes": "Part of 3-tier UI validation gate design. Decision kn-cc1c45: CLI for orchestrator use."
+    },
+    {
+      "id": "feat-023",
+      "title": "Simplify dashboard agent status with Priority Cascade model",
+      "description": "Replace ~10 scattered status conditions in serve_agents.go with single determineAgentStatus() function using priority cascade: 1) Beads closed → completed, 2) Phase: Complete → completed, 3) SYNTHESIS.md exists → completed, 4) Session activity → active/idle. Remove line 609 optimization that skips idle agents from beads fetching. Remove duplicate SYNTHESIS.md checks (lines 862-868 and 909-930). File targets: cmd/orch/serve_agents.go (new determineAgentStatus function, refactor handleAgents). Acceptance: Idle agent with Phase: Complete shows as 'completed', all status logic in one function, no duplicate checks.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-dashboard-agent-status-model.md",
+      "notes": "Root cause of SESSION_HANDOFF dashboard bugs. Line 609 optimization causes more bugs than CPU it saves."
     }
   ],
   "meta": {
-    "last_updated": "2025-12-27",
-    "total_features": 22,
+    "last_updated": "2026-01-04",
+    "total_features": 23,
     "by_status": {
-      "todo": 21,
+      "todo": 22,
       "in_progress": 0,
       "done": 1
     }
