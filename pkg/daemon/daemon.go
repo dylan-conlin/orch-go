@@ -56,35 +56,14 @@ func DefaultConfig() Config {
 	}
 }
 
-// Issue represents a beads issue for processing.
-type Issue struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Priority    int      `json:"priority"`
-	Status      string   `json:"status"`
-	IssueType   string   `json:"issue_type"`
-	Labels      []string `json:"labels"`
-}
-
-// HasLabel checks if an issue has a specific label.
-func (i *Issue) HasLabel(label string) bool {
-	for _, l := range i.Labels {
-		if strings.EqualFold(l, label) {
-			return true
-		}
-	}
-	return false
-}
-
 // PreviewResult contains the result of a preview operation.
 type PreviewResult struct {
 	Issue           *Issue
 	Skill           string
 	Message         string
-	RateLimited     bool              // True if rate limit would prevent spawning
-	RateStatus      string            // Rate limit status message (e.g., "5/20 spawns in last hour")
-	HotspotWarnings []HotspotWarning  // Warnings about hotspot areas this issue may touch
+	RateLimited     bool             // True if rate limit would prevent spawning
+	RateStatus      string           // Rate limit status message (e.g., "5/20 spawns in last hour")
+	HotspotWarnings []HotspotWarning // Warnings about hotspot areas this issue may touch
 }
 
 // HasHotspotWarnings returns true if there are any hotspot warnings.
@@ -109,115 +88,6 @@ type OnceResult struct {
 	Skill     string
 	Message   string
 	Error     error
-}
-
-// RateLimiter tracks spawn history to enforce hourly rate limits.
-type RateLimiter struct {
-	// MaxPerHour is the maximum spawns allowed per hour (0 = no limit).
-	MaxPerHour int
-	// SpawnHistory tracks timestamps of recent spawns.
-	SpawnHistory []time.Time
-	// nowFunc allows injecting time for testing.
-	nowFunc func() time.Time
-}
-
-// NewRateLimiter creates a new rate limiter with the given limit.
-func NewRateLimiter(maxPerHour int) *RateLimiter {
-	return &RateLimiter{
-		MaxPerHour:   maxPerHour,
-		SpawnHistory: make([]time.Time, 0),
-		nowFunc:      time.Now,
-	}
-}
-
-// CanSpawn returns true if spawning is allowed under the hourly rate limit.
-// Returns (allowed bool, spawnsInLastHour int, message string).
-func (r *RateLimiter) CanSpawn() (bool, int, string) {
-	if r.MaxPerHour <= 0 {
-		return true, 0, ""
-	}
-
-	now := r.nowFunc()
-	oneHourAgo := now.Add(-time.Hour)
-
-	// Count spawns in the last hour
-	count := 0
-	for _, t := range r.SpawnHistory {
-		if t.After(oneHourAgo) {
-			count++
-		}
-	}
-
-	if count >= r.MaxPerHour {
-		return false, count, fmt.Sprintf("Rate limit reached: %d/%d spawns in the last hour", count, r.MaxPerHour)
-	}
-
-	return true, count, ""
-}
-
-// RecordSpawn records a spawn at the current time.
-func (r *RateLimiter) RecordSpawn() {
-	now := r.nowFunc()
-	r.SpawnHistory = append(r.SpawnHistory, now)
-	r.prune()
-}
-
-// prune removes spawn history older than 1 hour to prevent unbounded growth.
-func (r *RateLimiter) prune() {
-	now := r.nowFunc()
-	oneHourAgo := now.Add(-time.Hour)
-
-	// Find first entry that's within the hour
-	cutoff := 0
-	for i, t := range r.SpawnHistory {
-		if t.After(oneHourAgo) {
-			cutoff = i
-			break
-		}
-		cutoff = i + 1 // All entries are old
-	}
-
-	if cutoff > 0 {
-		r.SpawnHistory = r.SpawnHistory[cutoff:]
-	}
-}
-
-// SpawnsRemaining returns how many spawns are available before hitting the limit.
-// Returns a high number if no limit is set.
-func (r *RateLimiter) SpawnsRemaining() int {
-	if r.MaxPerHour <= 0 {
-		return 100 // No limit
-	}
-
-	_, count, _ := r.CanSpawn()
-	remaining := r.MaxPerHour - count
-	if remaining < 0 {
-		return 0
-	}
-	return remaining
-}
-
-// RateLimiterStatus returns current rate limiter status for monitoring.
-type RateLimiterStatus struct {
-	MaxPerHour      int
-	SpawnsLastHour  int
-	SpawnsRemaining int
-	LimitReached    bool
-}
-
-// Status returns the current rate limiter status.
-func (r *RateLimiter) Status() RateLimiterStatus {
-	canSpawn, count, _ := r.CanSpawn()
-	remaining := r.MaxPerHour - count
-	if remaining < 0 {
-		remaining = 0
-	}
-	return RateLimiterStatus{
-		MaxPerHour:      r.MaxPerHour,
-		SpawnsLastHour:  count,
-		SpawnsRemaining: remaining,
-		LimitReached:    !canSpawn,
-	}
 }
 
 // Daemon manages autonomous issue processing.
@@ -518,77 +388,6 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	}
 
 	return result, nil
-}
-
-// IsSpawnableType returns true if the issue type can be spawned.
-func IsSpawnableType(issueType string) bool {
-	switch issueType {
-	case "bug", "feature", "task", "investigation":
-		return true
-	default:
-		return false
-	}
-}
-
-// InferSkill maps issue types to skills.
-func InferSkill(issueType string) (string, error) {
-	switch issueType {
-	case "bug":
-		return "systematic-debugging", nil
-	case "feature":
-		return "feature-impl", nil
-	case "task":
-		return "feature-impl", nil
-	case "investigation":
-		return "investigation", nil
-	default:
-		return "", fmt.Errorf("cannot infer skill for issue type: %s", issueType)
-	}
-}
-
-// InferSkillFromLabels extracts a skill name from skill:* labels.
-// Returns the skill name if found (e.g., "research" from "skill:research"),
-// or empty string if no skill label is present.
-func InferSkillFromLabels(labels []string) string {
-	for _, label := range labels {
-		if strings.HasPrefix(label, "skill:") {
-			return strings.TrimPrefix(label, "skill:")
-		}
-	}
-	return ""
-}
-
-// InferSkillFromTitle detects skills from issue title patterns.
-// Returns the skill name if a known pattern is matched, or empty string otherwise.
-func InferSkillFromTitle(title string) string {
-	// Synthesis issues created by kb reflect --create-issue
-	if strings.HasPrefix(title, "Synthesize ") && strings.Contains(title, " investigations") {
-		return "kb-reflect"
-	}
-	return ""
-}
-
-// InferSkillFromIssue determines the skill to use for an issue.
-// Priority order: skill:* label > title pattern > issue type inference > error
-// This respects explicit skill assignments via labels while falling back
-// to type-based inference for issues without skill labels.
-func InferSkillFromIssue(issue *Issue) (string, error) {
-	if issue == nil {
-		return "", fmt.Errorf("cannot infer skill for nil issue")
-	}
-
-	// First, check for explicit skill:* label
-	if skill := InferSkillFromLabels(issue.Labels); skill != "" {
-		return skill, nil
-	}
-
-	// Check for title-based patterns
-	if skill := InferSkillFromTitle(issue.Title); skill != "" {
-		return skill, nil
-	}
-
-	// Fall back to type-based inference
-	return InferSkill(issue.IssueType)
 }
 
 // FormatPreview formats an issue for preview display.
