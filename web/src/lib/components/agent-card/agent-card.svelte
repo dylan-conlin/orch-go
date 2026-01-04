@@ -4,8 +4,12 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Agent } from '$lib/stores/agents';
 	import { selectedAgentId } from '$lib/stores/agents';
+	import { hotspots, getHotspotForAgent, type Hotspot } from '$lib/stores/hotspot';
 
 	export let agent: Agent;
+
+	// Check if agent is working in a hotspot area
+	$: agentHotspot = getHotspotForAgent(agent.beads_id, agent.task, agent.skill, $hotspots);
 
 	$: isSelected = $selectedAgentId === agent.id;
 	$: contextIndicator = getContextQualityIndicator(agent);
@@ -259,6 +263,23 @@
 			{/if}
 		</div>
 		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+			{#if agentHotspot}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class="text-orange-500 animate-pulse">🔥</span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class="font-medium text-orange-500">Hotspot Area</p>
+						<p class="text-xs">{agentHotspot.path}</p>
+						<p class="text-xs text-muted-foreground mt-1">
+							{agentHotspot.type === 'fix-density' 
+								? `${agentHotspot.score} fix commits` 
+								: `${agentHotspot.score} investigations`}
+						</p>
+						<p class="text-xs text-orange-400 mt-1">{agentHotspot.recommendation}</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 			{#if contextIndicator}
 				<Tooltip.Root>
 					<Tooltip.Trigger>

@@ -154,3 +154,155 @@ func hotspotContainsSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestExtractPathsFromTask(t *testing.T) {
+	tests := []struct {
+		name     string
+		task     string
+		expected []string
+	}{
+		{
+			name:     "single file path",
+			task:     "fix bug in cmd/orch/spawn.go",
+			expected: []string{"cmd/orch/spawn.go"},
+		},
+		{
+			name:     "multiple file paths",
+			task:     "refactor pkg/spawn/context.go and cmd/orch/main.go",
+			expected: []string{"pkg/spawn/context.go", "cmd/orch/main.go"},
+		},
+		{
+			name:     "file path with extension",
+			task:     "update web/src/components/Dashboard.tsx",
+			expected: []string{"web/src/components/Dashboard.tsx"},
+		},
+		{
+			name:     "no file paths",
+			task:     "investigate auth issues",
+			expected: []string{},
+		},
+		{
+			name:     "directory path",
+			task:     "reorganize pkg/daemon/ package",
+			expected: []string{"pkg/daemon/"},
+		},
+		{
+			name:     "mixed content",
+			task:     "The file at cmd/orch/serve.go has 10+ conditions",
+			expected: []string{"cmd/orch/serve.go"},
+		},
+		{
+			name:     "path in quotes",
+			task:     "fix issue in \"pkg/auth/token.go\"",
+			expected: []string{"pkg/auth/token.go"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractPathsFromTask(tt.task)
+			if len(result) != len(tt.expected) {
+				t.Errorf("extractPathsFromTask(%q) = %v, want %v", tt.task, result, tt.expected)
+				return
+			}
+			for i, path := range result {
+				if path != tt.expected[i] {
+					t.Errorf("extractPathsFromTask(%q)[%d] = %q, want %q", tt.task, i, path, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMatchPathToHotspots(t *testing.T) {
+	hotspots := []Hotspot{
+		{Path: "cmd/orch/spawn.go", Type: "fix-density", Score: 7},
+		{Path: "pkg/daemon/daemon.go", Type: "fix-density", Score: 5},
+		{Path: "auth", Type: "investigation-cluster", Score: 4},
+	}
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedMatch  bool
+		expectedScore  int
+	}{
+		{
+			name:          "exact match",
+			path:          "cmd/orch/spawn.go",
+			expectedMatch: true,
+			expectedScore: 7,
+		},
+		{
+			name:          "directory contains path",
+			path:          "pkg/daemon/",
+			expectedMatch: true,
+			expectedScore: 5,
+		},
+		{
+			name:          "no match",
+			path:          "cmd/orch/main.go",
+			expectedMatch: false,
+			expectedScore: 0,
+		},
+		{
+			name:          "topic match in path",
+			path:          "pkg/auth/token.go",
+			expectedMatch: true,
+			expectedScore: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, score := matchPathToHotspots(tt.path, hotspots)
+			if matched != tt.expectedMatch {
+				t.Errorf("matchPathToHotspots(%q) matched = %v, want %v", tt.path, matched, tt.expectedMatch)
+			}
+			if score != tt.expectedScore {
+				t.Errorf("matchPathToHotspots(%q) score = %d, want %d", tt.path, score, tt.expectedScore)
+			}
+		})
+	}
+}
+
+func TestCheckSpawnHotspots(t *testing.T) {
+	// Create mock hotspot data
+	hotspots := []Hotspot{
+		{Path: "cmd/orch/spawn.go", Type: "fix-density", Score: 7, Recommendation: "HIGH: Review spawn.go"},
+		{Path: "status", Type: "investigation-cluster", Score: 5, Recommendation: "HIGH: Consider design-session for 'status'"},
+	}
+
+	result := checkSpawnHotspots("fix bug in cmd/orch/spawn.go related to status", hotspots)
+
+	if !result.HasHotspots {
+		t.Error("Expected HasHotspots=true")
+	}
+	if len(result.MatchedHotspots) != 2 {
+		t.Errorf("Expected 2 matched hotspots, got %d", len(result.MatchedHotspots))
+	}
+	if result.MaxScore != 7 {
+		t.Errorf("Expected MaxScore=7, got %d", result.MaxScore)
+	}
+}
+
+func TestFormatHotspotWarning(t *testing.T) {
+	result := &SpawnHotspotResult{
+		HasHotspots: true,
+		MatchedHotspots: []Hotspot{
+			{Path: "cmd/orch/spawn.go", Score: 7, Recommendation: "HIGH: Review spawn.go"},
+		},
+		MaxScore: 7,
+	}
+
+	warning := formatHotspotWarning(result)
+	if warning == "" {
+		t.Error("Expected non-empty warning")
+	}
+	if !hotspotContains(warning, "HOTSPOT WARNING") {
+		t.Errorf("Warning should contain 'HOTSPOT WARNING': %s", warning)
+	}
+	if !hotspotContains(warning, "architect") {
+		t.Errorf("Warning should recommend architect: %s", warning)
+	}
+}

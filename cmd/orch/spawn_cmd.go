@@ -509,6 +509,24 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		fmt.Fprintf(os.Stderr, "Warning: auto-switch failed: %v\n", err)
 	}
 
+	// Get project directory early for hotspot check
+	var preCheckDir string
+	if spawnWorkdir != "" {
+		if absPath, err := filepath.Abs(spawnWorkdir); err == nil {
+			preCheckDir = absPath
+		}
+	} else {
+		preCheckDir, _ = os.Getwd()
+	}
+
+	// Check for hotspots in task target area (warning only, non-blocking)
+	if preCheckDir != "" {
+		if hotspotResult, err := RunHotspotCheckForSpawn(preCheckDir, task); err == nil && hotspotResult != nil {
+			// Print warning to stderr (doesn't block spawn)
+			fmt.Fprint(os.Stderr, hotspotResult.Warning)
+		}
+	}
+
 	// Get project directory - use --workdir if provided, otherwise current directory
 	var projectDir string
 	var err error

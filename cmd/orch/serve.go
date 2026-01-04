@@ -46,6 +46,7 @@ Endpoints:
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
+  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET/PUT /api/config - User configuration settings (~/.orch/config.yaml)
   GET /api/changelog - Aggregated changelog (?days=7&project=all)
   GET /health        - Health check
@@ -244,6 +245,9 @@ func runServe(portNum int) error {
 	// Called by orch complete to ensure dashboard shows updated status
 	mux.HandleFunc("/api/cache/invalidate", corsHandler(handleCacheInvalidate))
 
+	// GET /api/hotspot - returns hotspot analysis (fix density, investigation clusters)
+	mux.HandleFunc("/api/hotspot", corsHandler(handleHotspot))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -270,6 +274,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
+	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")

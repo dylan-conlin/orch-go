@@ -377,3 +377,220 @@ func outputText(report HotspotReport) error {
 func intToStr(n int) string {
 	return strconv.Itoa(n)
 }
+
+// SpawnHotspotResult contains the result of checking hotspots for a spawn task.
+type SpawnHotspotResult struct {
+	HasHotspots     bool      `json:"has_hotspots"`
+	MatchedHotspots []Hotspot `json:"matched_hotspots,omitempty"`
+	MaxScore        int       `json:"max_score"`
+	Warning         string    `json:"warning,omitempty"`
+}
+
+// extractPathsFromTask extracts file/directory paths from a task description.
+// Returns a list of paths found in the task text.
+func extractPathsFromTask(task string) []string {
+	var paths []string
+
+	// Pattern matches file paths like:
+	// - cmd/orch/spawn.go
+	// - pkg/daemon/daemon.go
+	// - web/src/components/Dashboard.tsx
+	// - "pkg/auth/token.go" (quoted)
+	// - pkg/daemon/ (directories)
+	pathPattern := regexp.MustCompile(`(?:^|[\s"'])([a-zA-Z0-9_\-./]+(?:\.[a-zA-Z0-9]+|/))(?:[\s"']|$)`)
+
+	matches := pathPattern.FindAllStringSubmatch(task, -1)
+	seen := make(map[string]bool)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			path := strings.Trim(match[1], `"'`)
+			// Validate it looks like a real path (has at least one directory separator or extension)
+			if (strings.Contains(path, "/") || strings.Contains(path, ".")) && !seen[path] {
+				// Filter out common non-path patterns
+				if !isLikelyNotAPath(path) {
+					paths = append(paths, path)
+					seen[path] = true
+				}
+			}
+		}
+	}
+
+	return paths
+}
+
+// isLikelyNotAPath returns true if the string is unlikely to be a file path.
+func isLikelyNotAPath(s string) bool {
+	// URLs
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+		return true
+	}
+	// Very short paths are probably not real
+	if len(s) < 4 {
+		return true
+	}
+	// Common words that might match the pattern but aren't paths
+	nonPaths := []string{"e.g.", "i.e.", "etc.", "vs.", "no."}
+	for _, np := range nonPaths {
+		if s == np {
+			return true
+		}
+	}
+	return false
+}
+
+// matchPathToHotspots checks if a path matches any hotspot.
+// Returns true and the highest matching score if a match is found.
+func matchPathToHotspots(path string, hotspots []Hotspot) (bool, int) {
+	maxScore := 0
+	matched := false
+
+	for _, h := range hotspots {
+		switch h.Type {
+		case "fix-density":
+			// For fix-density, check for:
+			// 1. Exact file match
+			// 2. Path is a directory that contains the hotspot file
+			// 3. Hotspot is a directory that the path is in
+			if path == h.Path {
+				// Exact match
+				matched = true
+			} else if strings.HasSuffix(path, "/") && strings.HasPrefix(h.Path, path) {
+				// Path is a directory containing the hotspot
+				matched = true
+			} else if strings.HasSuffix(h.Path, "/") && strings.HasPrefix(path, h.Path) {
+				// Hotspot is a directory containing the path
+				matched = true
+			}
+			if matched && h.Score > maxScore {
+				maxScore = h.Score
+			}
+		case "investigation-cluster":
+			// For investigation clusters, check if the topic appears in the path
+			if strings.Contains(strings.ToLower(path), strings.ToLower(h.Path)) {
+				matched = true
+				if h.Score > maxScore {
+					maxScore = h.Score
+				}
+			}
+		}
+	}
+
+	return matched, maxScore
+}
+
+// checkSpawnHotspots checks if a task description references any hotspot areas.
+// Returns a SpawnHotspotResult with details about matched hotspots.
+func checkSpawnHotspots(task string, hotspots []Hotspot) *SpawnHotspotResult {
+	result := &SpawnHotspotResult{}
+
+	// Extract paths from task
+	paths := extractPathsFromTask(task)
+
+	// Also check for investigation-cluster topic matches directly in task text
+	taskLower := strings.ToLower(task)
+
+	// Check each hotspot
+	for _, h := range hotspots {
+		matched := false
+
+		// Check extracted paths against this hotspot
+		for _, path := range paths {
+			if pathMatches, _ := matchPathToHotspots(path, []Hotspot{h}); pathMatches {
+				matched = true
+				break
+			}
+		}
+
+		// For investigation clusters, also check if topic appears in task text
+		if !matched && h.Type == "investigation-cluster" {
+			if strings.Contains(taskLower, strings.ToLower(h.Path)) {
+				matched = true
+			}
+		}
+
+		if matched {
+			result.HasHotspots = true
+			result.MatchedHotspots = append(result.MatchedHotspots, h)
+			if h.Score > result.MaxScore {
+				result.MaxScore = h.Score
+			}
+		}
+	}
+
+	if result.HasHotspots {
+		result.Warning = formatHotspotWarning(result)
+	}
+
+	return result
+}
+
+// formatHotspotWarning formats a warning message for hotspot matches.
+func formatHotspotWarning(result *SpawnHotspotResult) string {
+	if !result.HasHotspots || len(result.MatchedHotspots) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString("┌─────────────────────────────────────────────────────────────────────────────┐\n")
+	sb.WriteString("│  🔥 HOTSPOT WARNING: Task targets high-churn area                          │\n")
+	sb.WriteString("├─────────────────────────────────────────────────────────────────────────────┤\n")
+
+	for _, h := range result.MatchedHotspots {
+		typeIcon := "🔧"
+		if h.Type == "investigation-cluster" {
+			typeIcon = "📚"
+		}
+		line := fmt.Sprintf("│  %s [%d] %s", typeIcon, h.Score, h.Path)
+		// Pad to box width
+		if len(line) < 78 {
+			line += strings.Repeat(" ", 78-len(line))
+		}
+		sb.WriteString(line + "│\n")
+	}
+
+	sb.WriteString("├─────────────────────────────────────────────────────────────────────────────┤\n")
+	sb.WriteString("│  💡 RECOMMENDATION: Consider spawning architect first to review design     │\n")
+	sb.WriteString("│     orch spawn architect \"Review design for [area]\"                        │\n")
+	sb.WriteString("└─────────────────────────────────────────────────────────────────────────────┘\n")
+
+	return sb.String()
+}
+
+// RunHotspotCheckForSpawn runs hotspot analysis and checks task against results.
+// This is the main entry point for spawn integration.
+// Returns nil if no hotspots detected, otherwise returns the result with warning.
+func RunHotspotCheckForSpawn(projectDir, task string) (*SpawnHotspotResult, error) {
+	// Run hotspot analysis (reuse existing logic)
+	report := HotspotReport{
+		GeneratedAt:    time.Now().Format(time.RFC3339),
+		AnalysisPeriod: fmt.Sprintf("Last %d days", 28), // Default to 28 days
+		FixThreshold:   5,                               // Default threshold
+		InvThreshold:   3,                               // Default threshold
+		Hotspots:       []Hotspot{},
+	}
+
+	// Analyze git history for fix commit density
+	fixHotspots, _, err := analyzeFixCommits(projectDir, 28, 5)
+	if err == nil {
+		report.Hotspots = append(report.Hotspots, fixHotspots...)
+	}
+
+	// Analyze investigation clusters (silent failure if kb not available)
+	invHotspots, _, _ := analyzeInvestigationClusters(projectDir, 3)
+	report.Hotspots = append(report.Hotspots, invHotspots...)
+
+	if len(report.Hotspots) == 0 {
+		return nil, nil
+	}
+
+	// Check task against hotspots
+	result := checkSpawnHotspots(task, report.Hotspots)
+
+	if !result.HasHotspots {
+		return nil, nil
+	}
+
+	return result, nil
+}
