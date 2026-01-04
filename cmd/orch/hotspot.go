@@ -20,7 +20,17 @@ var (
 	hotspotFixThreshold  int
 	hotspotInvThreshold  int
 	hotspotDaysBack      int
+	hotspotExclude       []string
 )
+
+// defaultExclusions are file patterns excluded by default from hotspot analysis.
+// These are data/config files where fix commits are expected, not code hotspots.
+var defaultExclusions = []string{
+	"*.jsonl",
+	"*.json",
+	"*.lock",
+	"go.sum",
+}
 
 var hotspotCmd = &cobra.Command{
 	Use:   "hotspot",
@@ -42,7 +52,9 @@ Examples:
   orch hotspot --days 14             # Analyze last 2 weeks only
   orch hotspot --threshold 3         # Flag files with 3+ fix commits
   orch hotspot --inv-threshold 5     # Flag topics with 5+ investigations
-  orch hotspot --format json         # Output as JSON for scripting`,
+  orch hotspot --format json         # Output as JSON for scripting
+  orch hotspot --exclude ""          # Include all files (disable default exclusions)
+  orch hotspot --exclude "*.yaml"    # Exclude only YAML files`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runHotspot()
 	},
@@ -53,6 +65,7 @@ func init() {
 	hotspotCmd.Flags().IntVar(&hotspotFixThreshold, "threshold", 5, "Minimum fix commits to flag as hotspot")
 	hotspotCmd.Flags().IntVar(&hotspotInvThreshold, "inv-threshold", 3, "Minimum investigations to flag as hotspot")
 	hotspotCmd.Flags().IntVar(&hotspotDaysBack, "days", 28, "Days of git history to analyze")
+	hotspotCmd.Flags().StringSliceVar(&hotspotExclude, "exclude", defaultExclusions, "File patterns to exclude (e.g., *.json, go.sum)")
 	rootCmd.AddCommand(hotspotCmd)
 }
 
@@ -196,8 +209,35 @@ func analyzeFixCommits(projectDir string, daysBack, threshold int) ([]Hotspot, i
 	return hotspots, totalFixes, nil
 }
 
-// shouldCountFile returns true if the file should be counted in hotspot analysis.
-func shouldCountFile(path string) bool {
+// matchesExclusionPattern checks if a file path matches an exclusion pattern.
+// Supports exact matches and glob patterns like *.json, *.lock.
+func matchesExclusionPattern(path, pattern string) bool {
+	// Exact match
+	if filepath.Base(path) == pattern || path == pattern {
+		return true
+	}
+
+	// Glob pattern matching (e.g., *.json)
+	if strings.HasPrefix(pattern, "*") {
+		suffix := pattern[1:] // Remove the *
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// shouldCountFileWithExclusions returns true if the file should be counted in hotspot analysis,
+// considering the provided exclusion patterns.
+func shouldCountFileWithExclusions(path string, exclusions []string) bool {
+	// Check exclusion patterns first
+	for _, pattern := range exclusions {
+		if matchesExclusionPattern(path, pattern) {
+			return false
+		}
+	}
+
 	// Skip test files - they're expected to change with fixes
 	if strings.HasSuffix(path, "_test.go") || strings.HasSuffix(path, ".test.ts") || strings.HasSuffix(path, ".test.js") {
 		return false
@@ -215,6 +255,12 @@ func shouldCountFile(path string) bool {
 		return false
 	}
 	return true
+}
+
+// shouldCountFile returns true if the file should be counted in hotspot analysis.
+// Uses the global hotspotExclude patterns.
+func shouldCountFile(path string) bool {
+	return shouldCountFileWithExclusions(path, hotspotExclude)
 }
 
 // generateFixRecommendation creates a recommendation based on fix patterns.
