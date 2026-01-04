@@ -247,13 +247,50 @@
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-design-dashboard-agent-status-model.md",
       "notes": "Root cause of SESSION_HANDOFF dashboard bugs. Line 609 optimization causes more bugs than CPU it saves."
+    },
+    {
+      "id": "feat-024",
+      "title": "Deprecate unused kb templates (RESEARCH.md, KNOWLEDGE.md)",
+      "description": "Add deprecation notices to RESEARCH.md and KNOWLEDGE.md templates in ~/.kb/templates/. Both have 0 usage - Investigation covers research with external sources, Guide covers evolved patterns. Pattern: Add <!-- DEPRECATED --> header with reason and 'use Investigation/Guide instead'. File targets: ~/.kb/templates/RESEARCH.md, ~/.kb/templates/KNOWLEDGE.md. Acceptance: Templates have deprecation notices, kb create shows warning for deprecated types.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-too-many-knowledge-artifact-types.md",
+      "repo": "kb-cli",
+      "notes": "Part of knowledge artifact taxonomy cleanup. Quick win (~30 min)."
+    },
+    {
+      "id": "feat-025",
+      "title": "Create GUIDE.md template for synthesized references",
+      "description": "Create GUIDE.md template in ~/.kb/templates/ for synthesized authoritative references. Structure: Purpose (single sentence), Last verified date, Key concepts, Common problems, Debugging checklist, Key decisions from kn. Based on existing guides (agent-lifecycle.md, daemon.md, completion-gates.md). File targets: ~/.kb/templates/GUIDE.md. Acceptance: Template exists, kb create guide works, format matches existing guides.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-too-many-knowledge-artifact-types.md",
+      "repo": "kb-cli",
+      "notes": "Formalizes what guides already look like organically."
+    },
+    {
+      "id": "feat-026",
+      "title": "Update kb reflect to propose Guide creation for investigation clusters",
+      "description": "When kb reflect detects 10+ investigations on a topic, output 'Create guide: {topic}' instead of 'Create synthesis investigation'. Updates kb-cli reflect command to recognize when cluster threshold is met and recommend guide creation. File targets: kb-cli/cmd/kb/reflect.go. Acceptance: kb reflect on topic with 10+ investigations suggests guide creation.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-too-many-knowledge-artifact-types.md",
+      "repo": "kb-cli",
+      "depends_on": ["feat-025"],
+      "notes": "Closes the kb reflect feedback loop - synthesis output is Guide, not more Investigation."
     }
   ],
   "meta": {
     "last_updated": "2026-01-04",
-    "total_features": 23,
+    "total_features": 26,
     "by_status": {
-      "todo": 22,
+      "todo": 25,
       "in_progress": 0,
       "done": 1
     }
