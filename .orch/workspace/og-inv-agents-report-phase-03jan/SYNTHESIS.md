@@ -66,7 +66,7 @@ sqlite3 .beads/beads.db "SELECT id, close_reason FROM issues WHERE status='close
 - Some agents can infer full IDs from context, others fail silently
 
 ### Externalized via `kn`
-- None needed - findings are fully documented in investigation file
+- Leave it Better: `kn` not available in this environment. Constraint documented in investigation file: "bd comment requires full beads ID (e.g., orch-go-57dn, not 57dn)"
 
 ---
 
