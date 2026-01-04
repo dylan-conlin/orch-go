@@ -3,3 +3,12 @@
 {"time":"2026-01-03T10:21:53.726645-08:00","action":"dev","reason":"testing that dev mode allows infra commits"}
 {"time":"2026-01-03T10:22:19.432596-08:00","action":"ops","reason":"was in dev mode for 0s: testing that dev mode allows infra commits"}
 {"time":"2026-01-03T10:22:48.952171-08:00","action":"dev","reason":"implementing dev/ops mode protection system"}
+{"time":"2026-01-03T14:35:05-08:00","action":"bypass","reason":"Adding new read-only API endpoint, no impact on existing ops"}
+{"time":"2026-01-03T14:56:07-08:00","action":"bypass","reason":"regex refactoring is low risk, no behavior change"}
+{"time":"2026-01-03T17:08:40-08:00","action":"bypass","reason":"implementing changelog detection feature per spawn task"}
+{"time":"2026-01-03T17:22:41-08:00","action":"bypass","reason":"Orchestrator-requested refactoring: extract shared.go from main.go Phase 1"}
+{"time":"2026-01-03T17:32:01-08:00","action":"bypass","reason":"status extraction is refactoring not behavior change"}
+{"time":"2026-01-03T17:58:05-08:00","action":"bypass","reason":"agent completed spawn_cmd extraction, committing completed work"}
+{"time":"2026-01-03T19:06:36-08:00","action":"bypass","reason":"Completing approved Phase 1 serve.go refactoring - work already reviewed"}
+{"time":"2026-01-03T19:07:40-08:00","action":"bypass","reason":"Amending to include completed investigation file"}
+{"time":"2026-01-03T19:24:47-08:00","action":"bypass","reason":"serve.go refactoring - extracting handlers to separate files, no behavioral changes"}
