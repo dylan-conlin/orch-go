@@ -1,83 +1,79 @@
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
 -->
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** SSE connection logic extracted from agents.ts and agentlog.ts into shared service at web/src/lib/services/sse-connection.ts.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Build succeeds, TypeScript check passes, duplicate SSE patterns (generation counters, reconnect timers, event source management) consolidated into single module.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The duplicate patterns (70+ lines each) can be unified with callbacks for domain-specific handling while keeping the connection lifecycle in one place.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** None - Phase 1 complete. Phases 2-3 (StatsBar extraction, status model consolidation) remain as future work.
 
 ---
 
-# Investigation: Phase Extract Sse Connection Manager
+# Investigation: Phase 1 - Extract SSE Connection Manager
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to extract duplicate SSE connection logic from agents.ts and agentlog.ts into a shared service?
 
 **Started:** 2026-01-04
 **Updated:** 2026-01-04
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** Worker Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Both Files Had Nearly Identical SSE Connection Patterns
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Duplicate code in both files:
+- `connectionGeneration` counter for stale timer handling
+- `reconnectTimeout` with 5-second delay
+- `EventSource` lifecycle (create, onopen, onerror, close)
+- Generation check in onerror to prevent stale reconnects
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `web/src/lib/stores/agents.ts:306-426` (before refactor)
+- `web/src/lib/stores/agentlog.ts:107-221` (before refactor)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This duplication was the root cause of 10 SSE-related fix commits. Changes to SSE handling had to be made in both places, increasing bug surface.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Domain Logic is Separable from Connection Management
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The event handlers (handleSSEEvent, agentlog listeners) contain domain-specific logic that should stay in their respective stores, while connection lifecycle is generic.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `agents.ts:handleSSEEvent` - Processes agent state from SSE events
+- `agentlog.ts:buildAgentlogEventListeners` - Adds events to agentlog store
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Clean separation allows shared service to handle infrastructure (connect/disconnect/reconnect) while domain stores handle event semantics.
+
+---
+
+### Finding 3: Service API Design
+
+**Evidence:** Created API with callbacks and reactive status:
+```typescript
+interface SSEConnectionOptions {
+  onOpen?: () => void;
+  onMessage?: (event: MessageEvent) => void;
+  onDisconnect?: () => void;
+  eventListeners?: Record<string, (event: MessageEvent) => void>;
+  reconnectDelayMs?: number;
+  autoReconnect?: boolean;
+}
+```
+
+**Source:** `web/src/lib/services/sse-connection.ts:5-18`
+
+**Significance:** Flexible API supports both generic onMessage handler and custom event listeners, matching the different needs of agents.ts (generic + custom) and agentlog.ts (custom only).
 
 ---
 
@@ -85,15 +81,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Infrastructure vs Domain** - SSE connection management is infrastructure; event handling is domain. This separation makes each concern testable and maintainable independently.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Callback-based Composition** - Using callbacks allows the shared service to be agnostic to what happens on connect/disconnect, while giving callers full control.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Reactive Status** - Exposing connection status as a Svelte store enables components to react to connection state changes without custom wiring.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Extract SSE connection logic by creating a factory function (`createSSEConnection`) that encapsulates EventSource lifecycle, generation counter, and reconnect logic. Callers provide callbacks for domain-specific behavior. This eliminated ~70 lines of duplicate code and centralizes future SSE-related fixes.
 
 ---
 
@@ -101,120 +97,86 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ TypeScript compilation succeeds (verified: `npm run check` passes for modified files)
+- ✅ Build succeeds (verified: `npm run build` produces valid output)
+- ✅ Duplicate patterns removed (verified: `grep` for old patterns returns empty)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Runtime behavior unchanged (not validated with running server)
+- ⚠️ Reconnection works as expected (not tested with network interruption)
+- ⚠️ Memory leaks from subscription patterns (not profiled)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If runtime shows connection issues, may need to add more lifecycle hooks
+- If memory profiling shows leaks, subscription cleanup may need adjustment
+- If future SSE needs require different reconnect strategies, may need strategy pattern
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Document what was implemented for Phase 1 of the dashboard UI hotspots refactor.
 
-### Recommended Approach ⭐
+### Implemented Approach
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Shared SSE Connection Service** - Factory function that creates managed SSE connections with automatic reconnection.
 
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+**Implementation sequence completed:**
+1. Created `web/src/lib/services/sse-connection.ts` with `createSSEConnection` factory
+2. Updated `agents.ts` to use shared service, keeping `handleSSEEvent` domain logic
+3. Updated `agentlog.ts` to use shared service, keeping event listener domain logic
 
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+### Success criteria (achieved):
 
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Duplicate SSE patterns consolidated (agents.ts -32 lines, agentlog.ts -38 lines)
+- ✅ Build passes with no new TypeScript errors
+- ✅ Domain-specific event handling preserved in original stores
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `web/src/lib/stores/agents.ts` - Primary SSE consumer (612 lines before)
+- `web/src/lib/stores/agentlog.ts` - Secondary SSE consumer (222 lines before)
+- `.kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md` - Parent investigation
+
+**Files Created/Modified:**
+- `web/src/lib/services/sse-connection.ts` (created, 171 lines)
+- `web/src/lib/stores/agents.ts` (modified, now 580 lines)
+- `web/src/lib/stores/agentlog.ts` (modified, now 184 lines)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check for TypeScript errors
+npm run check
 
-# [Command description]
-[command]
+# Verify build succeeds
+npm run build
+
+# Verify duplicate patterns removed
+grep -E "connectionGeneration|reconnectTimeout" web/src/lib/stores/*.ts
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md` - Parent hotspot analysis
+- **Commit:** `8c4ea99b` - Implements this extraction
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-04 14:00:** Investigation started
+- Initial question: How to extract duplicate SSE connection logic?
+- Context: Phase 1 of dashboard UI hotspots refactor (addressing 10/32 fix commits)
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-04 14:30:** Implementation complete
+- Created shared service with factory pattern
+- Migrated both consumers to use shared service
+- Build and TypeScript checks pass
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-04 14:35:** Investigation completed
+- Status: Complete
+- Key outcome: SSE connection logic consolidated, 70+ duplicate lines eliminated
