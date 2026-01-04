@@ -1899,163 +1899,6 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 	return issue.ID, nil
 }
 
-// truncate truncates a string to maxLen characters.
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}
-
-// extractBeadsIDFromTitle extracts beads ID from an OpenCode session title.
-// Looks for patterns like "[beads-id]" at the end of the title.
-func extractBeadsIDFromTitle(title string) string {
-	// Look for "[beads-id]" pattern
-	if start := strings.LastIndex(title, "["); start != -1 {
-		if end := strings.LastIndex(title, "]"); end != -1 && end > start {
-			return strings.TrimSpace(title[start+1 : end])
-		}
-	}
-	return ""
-}
-
-// extractSkillFromTitle extracts skill from an OpenCode session title.
-// Infers skill from common workspace name prefixes (og-feat-, og-inv-, og-debug-, etc.)
-func extractSkillFromTitle(title string) string {
-	titleLower := strings.ToLower(title)
-	// Check for workspace name patterns
-	if strings.Contains(titleLower, "-feat-") {
-		return "feature-impl"
-	}
-	if strings.Contains(titleLower, "-inv-") {
-		return "investigation"
-	}
-	if strings.Contains(titleLower, "-debug-") {
-		return "systematic-debugging"
-	}
-	if strings.Contains(titleLower, "-arch-") {
-		return "architect"
-	}
-	if strings.Contains(titleLower, "-audit-") {
-		return "codebase-audit"
-	}
-	if strings.Contains(titleLower, "-research-") {
-		return "research"
-	}
-	return ""
-}
-
-// extractBeadsIDFromWindowName extracts beads ID from a tmux window name.
-// Window names follow format: "emoji workspace-name [beads-id]"
-func extractBeadsIDFromWindowName(name string) string {
-	// Look for "[beads-id]" pattern
-	if start := strings.LastIndex(name, "["); start != -1 {
-		if end := strings.LastIndex(name, "]"); end != -1 && end > start {
-			return strings.TrimSpace(name[start+1 : end])
-		}
-	}
-	return ""
-}
-
-// extractSkillFromWindowName extracts skill from a tmux window name.
-// First tries to match skill emoji, then falls back to workspace name patterns.
-func extractSkillFromWindowName(name string) string {
-	// Try emoji matching first (most reliable)
-	for skill, emoji := range tmux.SKILL_EMOJIS {
-		if strings.Contains(name, emoji) {
-			return skill
-		}
-	}
-	// Fall back to workspace name patterns
-	return extractSkillFromTitle(name)
-}
-
-// resolveSessionID resolves an identifier to an OpenCode session ID.
-// The identifier can be:
-// 1. A full OpenCode session ID (ses_xxx) - verified against API, returned if valid
-// 2. A beads ID (project-xxxx) - looked up via workspace SPAWN_CONTEXT.md or API
-// 3. A workspace name - looked up via workspace file
-//
-// Returns the resolved session ID or an error if resolution fails.
-func resolveSessionID(serverURL, identifier string) (string, error) {
-	// If it looks like a full session ID, verify it exists
-	if strings.HasPrefix(identifier, "ses_") {
-		// Validate the session ID has content after the prefix
-		suffix := strings.TrimPrefix(identifier, "ses_")
-		if len(suffix) < 8 { // Session IDs have substantial content after ses_
-			return "", fmt.Errorf("invalid session ID format: %s (too short)", identifier)
-		}
-		// Verify the session exists in OpenCode
-		client := opencode.NewClient(serverURL)
-		_, err := client.GetSession(identifier)
-		if err != nil {
-			return "", fmt.Errorf("session not found in OpenCode: %s", identifier)
-		}
-		return identifier, nil
-	}
-
-	client := opencode.NewClient(serverURL)
-	projectDir, _ := os.Getwd()
-
-	// Strategy 1: Use findWorkspaceByBeadsID which scans SPAWN_CONTEXT.md
-	// This is the authoritative way to find workspace by beads ID
-	workspacePath, _ := findWorkspaceByBeadsID(projectDir, identifier)
-	if workspacePath != "" {
-		sessionID := spawn.ReadSessionID(workspacePath)
-		if sessionID != "" {
-			return sessionID, nil
-		}
-	}
-
-	// Strategy 2: Direct workspace name match (for workspace name identifiers)
-	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
-	if entries, err := os.ReadDir(workspaceBase); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() && strings.Contains(entry.Name(), identifier) {
-				wp := filepath.Join(workspaceBase, entry.Name())
-				sessionID := spawn.ReadSessionID(wp)
-				if sessionID != "" {
-					return sessionID, nil
-				}
-			}
-		}
-	}
-
-	// Strategy 3: API lookup - search sessions by title containing identifier
-	allSessions, err := client.ListSessions(projectDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to list sessions: %w", err)
-	}
-
-	for _, s := range allSessions {
-		// Match session by title containing identifier (beads ID or workspace name)
-		if strings.Contains(s.Title, identifier) || extractBeadsIDFromTitle(s.Title) == identifier {
-			return s.ID, nil
-		}
-	}
-
-	// Strategy 4: tmux window lookup as last resort - find window, then try to get session
-	sessions, err := tmux.ListWorkersSessions()
-	if err == nil {
-		for _, session := range sessions {
-			window, err := tmux.FindWindowByBeadsID(session, identifier)
-			if err != nil || window == nil {
-				continue
-			}
-
-			// Found tmux window - try to find matching OpenCode session by window name
-			// Window names have workspace names in them
-			for _, s := range allSessions {
-				if strings.Contains(window.Name, s.Title) || strings.Contains(s.Title, identifier) {
-					return s.ID, nil
-				}
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no session found for identifier: %s (checked workspace files, API sessions, and tmux windows)", identifier)
-}
-
 func runSend(serverURL, identifier, message string) error {
 	// First, try to resolve identifier to OpenCode session ID
 	sessionID, resolveErr := resolveSessionID(serverURL, identifier)
@@ -2153,36 +1996,6 @@ func sendViaTmux(windowInfo *tmux.WindowInfo, identifier, message string) error 
 
 	fmt.Printf("✓ Message sent to %s (via tmux %s)\n", identifier, windowInfo.Target)
 	return nil
-}
-
-// findTmuxWindowByIdentifier searches for a tmux window matching the identifier.
-// The identifier can be a beads ID, workspace name, or partial match.
-func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
-	sessions, err := tmux.ListWorkersSessions()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, session := range sessions {
-		// First try exact beads ID match (format: "[beads-id]" in window name)
-		window, err := tmux.FindWindowByBeadsID(session, identifier)
-		if err == nil && window != nil {
-			return window, nil
-		}
-
-		// Also try partial match on window name (for workspace name matches)
-		windows, err := tmux.ListWindows(session)
-		if err != nil {
-			continue
-		}
-		for i := range windows {
-			if strings.Contains(windows[i].Name, identifier) {
-				return &windows[i], nil
-			}
-		}
-	}
-
-	return nil, nil // Not found (no error, just not found)
 }
 
 // SwarmStatus represents aggregate swarm information.
@@ -2550,21 +2363,7 @@ func runStatus(serverURL string) error {
 	return nil
 }
 
-// extractProjectFromBeadsID extracts the project name from a beads ID.
-// Beads IDs follow the format: project-xxxx (e.g., orch-go-3anf)
-func extractProjectFromBeadsID(beadsID string) string {
-	if beadsID == "" {
-		return ""
-	}
-	// Find the last hyphen followed by 4 alphanumeric characters (the hash)
-	// The project is everything before that
-	parts := strings.Split(beadsID, "-")
-	if len(parts) < 2 {
-		return beadsID
-	}
-	// The last part should be the 4-char hash, join everything else
-	return strings.Join(parts[:len(parts)-1], "-")
-}
+
 
 // extractDateFromWorkspaceName parses the date suffix from a workspace name.
 // Workspace names follow format: prefix-description-DDmon (e.g., og-feat-add-feature-24dec)
@@ -2964,55 +2763,7 @@ func formatTokenStatsCompact(tokens *opencode.TokenStats) string {
 		formatTokenCount(tokens.OutputTokens))
 }
 
-// findWorkspaceByBeadsID searches for a workspace directory spawned from the beads ID.
-// Looks in .orch/workspace/ for directories that match the beads ID in their name
-// or contain a SPAWN_CONTEXT.md with "spawned from beads issue: **beadsID**".
-// Returns the workspace path and agent name (directory name) if found.
-func findWorkspaceByBeadsID(projectDir, beadsID string) (workspacePath, agentName string) {
-	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
-	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		return "", ""
-	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		dirName := entry.Name()
-		dirPath := filepath.Join(workspaceDir, dirName)
-
-		// Check if the beads ID is in the directory name
-		// Workspace names follow format: og-feat-description-21dec
-		// Beads ID format: project-xxxx (e.g., orch-go-3anf)
-		if strings.Contains(dirName, beadsID) {
-			return dirPath, dirName
-		}
-
-		// Check SPAWN_CONTEXT.md for authoritative "spawned from beads issue" line
-		// This is more precise than just checking if beadsID appears anywhere
-		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
-		if content, err := os.ReadFile(spawnContextPath); err == nil {
-			contentStr := string(content)
-			// Look for the authoritative beads issue declaration
-			// Pattern: "spawned from beads issue: **orch-go-xxxx**" or similar
-			for _, line := range strings.Split(contentStr, "\n") {
-				lineLower := strings.ToLower(line)
-				if strings.Contains(lineLower, "spawned from beads issue:") {
-					if strings.Contains(line, beadsID) {
-						return dirPath, dirName
-					}
-					// Found the authoritative line but beads ID doesn't match
-					// Don't continue searching this file - this workspace has a different ID
-					break
-				}
-			}
-		}
-	}
-
-	return "", ""
-}
 
 func runComplete(beadsID, workdir string) error {
 	// Get current directory as base project dir
