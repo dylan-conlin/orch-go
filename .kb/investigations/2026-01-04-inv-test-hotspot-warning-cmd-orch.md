@@ -188,6 +188,7 @@ N/A - This was a validation investigation confirming existing functionality work
 **Things to watch out for:**
 - ⚠️ If git history is cleaned/rebased, hotspot scores will change
 - ⚠️ The 28-day window means scores are time-sensitive
+- ⚠️ Commit 2b3a3631 includes tests that depend on uncommitted hotspot.go changes (exclusions feature from another agent). Build will fail until hotspot.go is committed.
 
 **Areas needing further investigation:**
 - Consider whether cmd/orch/main.go should be split into smaller files (score 49 indicates architectural issues)
