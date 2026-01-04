@@ -1,0 +1,815 @@
+// Package main provides the status command for showing swarm status and active agents.
+// Extracted from main.go as part of the main.go refactoring (Phase 3).
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/usage"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
+)
+
+var (
+	// Status command flags
+	statusJSON    bool
+	statusAll     bool   // Include phantom agents (default: hide)
+	statusProject string // Filter by project
+)
+
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show swarm status and active agents",
+	Long: `Show swarm status including active/queued/completed agent counts,
+per-account usage percentages, and individual agent details.
+
+By default, phantom agents (beads issue open but no running agent) are hidden.
+Use --all to include them.
+
+Examples:
+  orch-go status              # Show active agents only
+  orch-go status --all        # Include phantom agents
+  orch-go status --project snap  # Filter by project
+  orch-go status --json       # Output as JSON for scripting`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runStatus(serverURL)
+	},
+}
+
+func init() {
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON for scripting")
+	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Include phantom agents")
+	statusCmd.Flags().StringVar(&statusProject, "project", "", "Filter by project")
+}
+
+// SwarmStatus represents aggregate swarm information.
+type SwarmStatus struct {
+	Active     int `json:"active"`
+	Processing int `json:"processing,omitempty"` // Agents actively generating response
+	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
+	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
+	Queued     int `json:"queued"`
+	Completed  int `json:"completed_today"`
+}
+
+// AccountUsage represents usage info for a single account.
+type AccountUsage struct {
+	Name        string  `json:"name"`
+	Email       string  `json:"email,omitempty"`
+	UsedPercent float64 `json:"used_percent"`
+	ResetTime   string  `json:"reset_time,omitempty"`
+	IsActive    bool    `json:"is_active"`
+}
+
+// AgentInfo represents information about an active agent.
+type AgentInfo struct {
+	SessionID    string               `json:"session_id"`
+	BeadsID      string               `json:"beads_id,omitempty"`
+	Skill        string               `json:"skill,omitempty"`
+	Account      string               `json:"account,omitempty"`
+	Runtime      string               `json:"runtime"`
+	Title        string               `json:"title,omitempty"`
+	Window       string               `json:"window,omitempty"`
+	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string               `json:"task,omitempty"`          // Task description (truncated)
+	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool                 `json:"is_completed,omitempty"`  // True if beads issue is closed
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`        // Token usage for the session
+}
+
+// StatusOutput represents the full status output for JSON serialization.
+type StatusOutput struct {
+	Swarm    SwarmStatus    `json:"swarm"`
+	Accounts []AccountUsage `json:"accounts"`
+	Agents   []AgentInfo    `json:"agents"`
+}
+
+func runStatus(serverURL string) error {
+	client := opencode.NewClient(serverURL)
+	now := time.Now()
+
+	agents := make([]AgentInfo, 0)
+	seenBeadsIDs := make(map[string]bool)
+
+	// === OPTIMIZED: Batch fetch all data upfront ===
+	// 1. Fetch all OpenCode sessions in one call (already fast, ~15ms)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	// Build a map of session ID -> session for quick lookup
+	sessionMap := make(map[string]*opencode.Session)
+	// Also build a map of beadsID -> session for matching
+	beadsToSession := make(map[string]*opencode.Session)
+	const maxIdleTime = 30 * time.Minute
+
+	for i := range sessions {
+		s := &sessions[i]
+		sessionMap[s.ID] = s
+
+		// Only consider recently active sessions for beads matching
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) <= maxIdleTime {
+			beadsID := extractBeadsIDFromTitle(s.Title)
+			if beadsID != "" {
+				beadsToSession[beadsID] = s
+			}
+		}
+	}
+
+	// 2. Collect beads IDs first, then batch fetch issues later
+	// (openIssues removed - we now use allIssues to check both open and closed status)
+
+	// 3. Collect all beads IDs we need comments for
+	var beadsIDsToFetch []string
+
+	// Track project directories for cross-project agents (beadsID -> projectDir)
+	beadsProjectDirs := make(map[string]string)
+
+	// Get current project's workspace directory for workspace lookups
+	projectDir, _ := os.Getwd()
+
+	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
+	type tmuxAgent struct {
+		beadsID string
+		skill   string
+		project string
+		window  string
+		title   string
+	}
+	var tmuxAgents []tmuxAgent
+
+	workersSessions, _ := tmux.ListWorkersSessions()
+	for _, sessionName := range workersSessions {
+		windows, _ := tmux.ListWindows(sessionName)
+		for _, w := range windows {
+			// Skip known non-agent windows
+			if w.Name == "servers" || w.Name == "zsh" {
+				continue
+			}
+
+			beadsID := extractBeadsIDFromWindowName(w.Name)
+			if beadsID == "" {
+				continue
+			}
+
+			tmuxAgents = append(tmuxAgents, tmuxAgent{
+				beadsID: beadsID,
+				skill:   extractSkillFromWindowName(w.Name),
+				project: extractProjectFromBeadsID(beadsID),
+				window:  w.Target,
+				title:   w.Name,
+			})
+
+			if beadsID != "" && !seenBeadsIDs[beadsID] {
+				beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+				seenBeadsIDs[beadsID] = true
+			}
+		}
+	}
+
+	// Phase 2: Collect beads IDs from active OpenCode sessions
+	type opcodeAgent struct {
+		session *opencode.Session
+		beadsID string
+		skill   string
+		project string
+	}
+	var opcodeAgents []opcodeAgent
+
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) > maxIdleTime {
+			continue
+		}
+
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" {
+			continue
+		}
+
+		// Skip if already tracked via tmux
+		if seenBeadsIDs[beadsID] {
+			continue
+		}
+
+		sessionCopy := s // Copy to avoid closure issues
+		opcodeAgents = append(opcodeAgents, opcodeAgent{
+			session: &sessionCopy,
+			beadsID: beadsID,
+			skill:   extractSkillFromTitle(s.Title),
+			project: extractProjectFromBeadsID(beadsID),
+		})
+
+		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+		seenBeadsIDs[beadsID] = true
+	}
+
+	// Look up workspaces to get project directories for cross-project agents
+	for _, beadsID := range beadsIDsToFetch {
+		workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
+		if workspacePath != "" {
+			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
+			if agentProjectDir != "" && agentProjectDir != projectDir {
+				beadsProjectDirs[beadsID] = agentProjectDir
+			}
+		}
+	}
+
+	// 4. Batch fetch all comments with project-aware lookup for cross-project agents
+	commentsMap := verify.GetCommentsBatchWithProjectDirs(beadsIDsToFetch, beadsProjectDirs)
+
+	// 5. Batch fetch issue details to check closed status
+	// This also provides task info for closed issues (not returned by ListOpenIssues)
+	allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
+
+	// === Now build agents from collected data ===
+
+	// Process tmux agents
+	for _, ta := range tmuxAgents {
+		// Check if there's an active OpenCode session for this beads ID
+		session := beadsToSession[ta.beadsID]
+		sessionID := ""
+		runtime := "unknown"
+		isPhantom := true
+		isProcessing := false
+
+		if session != nil {
+			sessionID = session.ID
+			createdAt := time.Unix(session.Time.Created/1000, 0)
+			runtime = formatDuration(now.Sub(createdAt))
+			isPhantom = false
+			// Check if the session is actively processing (has pending response)
+			isProcessing = client.IsSessionProcessing(session.ID)
+		} else {
+			sessionID = "tmux-stalled"
+		}
+
+		// Get phase from pre-fetched comments
+		var phase, task string
+		var isCompleted bool
+		if comments, ok := commentsMap[ta.beadsID]; ok {
+			phaseStatus := verify.ParsePhaseFromComments(comments)
+			if phaseStatus.Found {
+				phase = phaseStatus.Phase
+			}
+		}
+		// Get task and check closed status from pre-fetched issues
+		if issue, ok := allIssues[ta.beadsID]; ok {
+			task = truncate(issue.Title, 40)
+			isCompleted = strings.EqualFold(issue.Status, "closed")
+		}
+
+		agents = append(agents, AgentInfo{
+			SessionID:    sessionID,
+			BeadsID:      ta.beadsID,
+			Skill:        ta.skill,
+			Title:        ta.title,
+			Runtime:      runtime,
+			Window:       ta.window,
+			Phase:        phase,
+			Task:         task,
+			Project:      ta.project,
+			IsPhantom:    isPhantom,
+			IsProcessing: isProcessing,
+			IsCompleted:  isCompleted,
+		})
+	}
+
+	// Process OpenCode agents (not in tmux)
+	for _, oa := range opcodeAgents {
+		createdAt := time.Unix(oa.session.Time.Created/1000, 0)
+		runtime := formatDuration(now.Sub(createdAt))
+
+		// OpenCode agents are NOT phantom because they have a running session.
+		// Phantom means "beads issue open but agent not running" - but these agents ARE running.
+		isPhantom := false
+
+		// Check if the session is actively processing (has pending response)
+		isProcessing := client.IsSessionProcessing(oa.session.ID)
+
+		// Get issue for task and closed status
+		issue := allIssues[oa.beadsID]
+
+		// Get phase from pre-fetched comments
+		var phase, task string
+		var isCompleted bool
+		if comments, ok := commentsMap[oa.beadsID]; ok {
+			phaseStatus := verify.ParsePhaseFromComments(comments)
+			if phaseStatus.Found {
+				phase = phaseStatus.Phase
+			}
+		}
+		if issue != nil {
+			task = truncate(issue.Title, 40)
+			isCompleted = strings.EqualFold(issue.Status, "closed")
+		}
+
+		agents = append(agents, AgentInfo{
+			SessionID:    oa.session.ID,
+			Title:        oa.session.Title,
+			Runtime:      runtime,
+			BeadsID:      oa.beadsID,
+			Skill:        oa.skill,
+			Phase:        phase,
+			Task:         task,
+			Project:      oa.project,
+			IsPhantom:    isPhantom,
+			IsProcessing: isProcessing,
+			IsCompleted:  isCompleted,
+		})
+	}
+
+	// Phase 3: Filter agents based on flags
+	filteredAgents := make([]AgentInfo, 0)
+	for _, agent := range agents {
+		// Filter by project if specified
+		if statusProject != "" && agent.Project != statusProject {
+			continue
+		}
+		// Filter phantoms unless --all is set
+		if agent.IsPhantom && !statusAll {
+			continue
+		}
+		// Filter completed agents (beads issue closed) unless --all is set
+		if agent.IsCompleted && !statusAll {
+			continue
+		}
+		filteredAgents = append(filteredAgents, agent)
+	}
+
+	// Phase 4: Build swarm status (counts before filtering)
+	activeCount := 0
+	processingCount := 0
+	idleCount := 0
+	phantomCount := 0
+	completedCount := 0
+	for _, agent := range agents {
+		if agent.IsPhantom {
+			phantomCount++
+		} else if agent.IsCompleted {
+			// Completed agents (beads issue closed) don't count as active
+			completedCount++
+		} else {
+			activeCount++
+			if agent.IsProcessing {
+				processingCount++
+			} else {
+				idleCount++
+			}
+		}
+	}
+
+	swarm := SwarmStatus{
+		Active:     activeCount,
+		Processing: processingCount,
+		Idle:       idleCount,
+		Phantom:    phantomCount,
+		Queued:     0,              // TODO: implement queuing system
+		Completed:  completedCount, // Agents with closed beads issues
+	}
+
+	// Fetch account usage information
+	accounts := getAccountUsage()
+
+	// Fetch token usage for each agent with a valid session ID
+	for i := range filteredAgents {
+		if filteredAgents[i].SessionID != "" && filteredAgents[i].SessionID != "tmux-stalled" {
+			tokens, err := client.GetSessionTokens(filteredAgents[i].SessionID)
+			if err == nil && tokens != nil {
+				filteredAgents[i].Tokens = tokens
+			}
+		}
+	}
+
+	// Build output (use filtered agents for display)
+	output := StatusOutput{
+		Swarm:    swarm,
+		Accounts: accounts,
+		Agents:   filteredAgents,
+	}
+
+	// Output as JSON if flag is set
+	if statusJSON {
+		data, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	// Print human-readable output
+	printSwarmStatus(output, statusAll)
+	return nil
+}
+
+// extractDateFromWorkspaceName parses the date suffix from a workspace name.
+// Workspace names follow format: prefix-description-DDmon (e.g., og-feat-add-feature-24dec)
+// Returns zero time if no valid date found.
+func extractDateFromWorkspaceName(name string) time.Time {
+	// Month abbreviations (lowercase)
+	months := map[string]time.Month{
+		"jan": time.January,
+		"feb": time.February,
+		"mar": time.March,
+		"apr": time.April,
+		"may": time.May,
+		"jun": time.June,
+		"jul": time.July,
+		"aug": time.August,
+		"sep": time.September,
+		"oct": time.October,
+		"nov": time.November,
+		"dec": time.December,
+	}
+
+	// Get the last segment after the final hyphen
+	parts := strings.Split(name, "-")
+	if len(parts) == 0 {
+		return time.Time{}
+	}
+	lastPart := strings.ToLower(parts[len(parts)-1])
+
+	// Pattern: 1-2 digits followed by 3-letter month abbreviation (e.g., "24dec", "5jan")
+	if len(lastPart) < 4 || len(lastPart) > 5 {
+		return time.Time{}
+	}
+
+	// Extract the month abbreviation (last 3 chars)
+	monthStr := lastPart[len(lastPart)-3:]
+	month, ok := months[monthStr]
+	if !ok {
+		return time.Time{}
+	}
+
+	// Extract the day (remaining digits)
+	dayStr := lastPart[:len(lastPart)-3]
+	day, err := strconv.Atoi(dayStr)
+	if err != nil || day < 1 || day > 31 {
+		return time.Time{}
+	}
+
+	// Use current year, adjusting for year boundary
+	// (if the date is in the future within this calendar, it's probably from last year)
+	now := time.Now()
+	year := now.Year()
+	parsedDate := time.Date(year, month, day, 12, 0, 0, 0, time.Local)
+
+	// If the parsed date is more than a week in the future, assume it's from last year
+	if parsedDate.After(now.AddDate(0, 0, 7)) {
+		parsedDate = time.Date(year-1, month, day, 12, 0, 0, 0, time.Local)
+	}
+
+	return parsedDate
+}
+
+// getPhaseAndTask retrieves the current phase and task description from beads.
+func getPhaseAndTask(beadsID string) (phase, task string) {
+	// Get issue for task description
+	issue, err := verify.GetIssue(beadsID)
+	if err == nil {
+		task = truncate(issue.Title, 40)
+	}
+
+	// Get phase from comments
+	status, err := verify.GetPhaseStatus(beadsID)
+	if err == nil && status.Found {
+		phase = status.Phase
+	}
+
+	return phase, task
+}
+
+// getAccountUsage fetches usage info for all configured accounts.
+func getAccountUsage() []AccountUsage {
+	var accounts []AccountUsage
+
+	// Get current account usage
+	currentUsage := usage.FetchUsage()
+	if currentUsage.Error == "" && currentUsage.SevenDay != nil {
+		current := AccountUsage{
+			Name:        "current",
+			Email:       currentUsage.Email,
+			UsedPercent: currentUsage.SevenDay.Utilization,
+			IsActive:    true,
+		}
+		if currentUsage.SevenDay.ResetsAt != nil {
+			current.ResetTime = currentUsage.SevenDay.TimeUntilReset()
+		}
+		accounts = append(accounts, current)
+	}
+
+	// Try to get saved accounts info (without switching)
+	cfg, err := account.LoadConfig()
+	if err == nil {
+		for name, acc := range cfg.Accounts {
+			if acc.Source == "saved" {
+				// Check if this is the current account (by email match)
+				isCurrentAccount := false
+				for i := range accounts {
+					if accounts[i].Email == acc.Email {
+						accounts[i].Name = name // Update name to the saved account name
+						isCurrentAccount = true
+						break
+					}
+				}
+				if !isCurrentAccount {
+					// Add as a saved account (no live usage data without switching)
+					accounts = append(accounts, AccountUsage{
+						Name:     name,
+						Email:    acc.Email,
+						IsActive: false,
+					})
+				}
+			}
+		}
+	}
+
+	return accounts
+}
+
+// Terminal width thresholds for adaptive output
+const (
+	termWidthWide   = 120 // Full table with all columns
+	termWidthNarrow = 100 // Drop TASK column, abbreviate SKILL
+	termWidthMin    = 80  // Minimum supported width (vertical card format)
+)
+
+// getTerminalWidth returns the current terminal width, or a default if detection fails.
+// Returns the width and whether we're outputting to a real terminal.
+func getTerminalWidth() (int, bool) {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		// Not a terminal (piped output) - use wide format
+		return termWidthWide + 1, false
+	}
+	return width, true
+}
+
+// printSwarmStatus prints the swarm status in human-readable format.
+// Adapts output format based on terminal width.
+func printSwarmStatus(output StatusOutput, showAll bool) {
+	width, _ := getTerminalWidth()
+	printSwarmStatusWithWidth(output, showAll, width)
+}
+
+// printSwarmStatusWithWidth prints swarm status with explicit width (for testing).
+func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int) {
+	// Check for dev mode and warn
+	if devModeInfo, err := readDevModeFile(".dev-mode"); err == nil {
+		duration := time.Since(devModeInfo.Started).Round(time.Minute)
+		fmt.Printf("WARNING: DEV MODE ACTIVE (%s): %s\n", duration, devModeInfo.Reason)
+		fmt.Println("   Infrastructure is unprotected. Run 'orch mode ops' when done.")
+		fmt.Println()
+	}
+
+	// Print swarm summary header with processing breakdown
+	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
+	if output.Swarm.Active > 0 {
+		fmt.Printf(" (running: %d, idle: %d)", output.Swarm.Processing, output.Swarm.Idle)
+	}
+	if output.Swarm.Completed > 0 {
+		fmt.Printf(", Completed: %d", output.Swarm.Completed)
+		if !showAll {
+			fmt.Printf(" (use --all to show)")
+		}
+	}
+	if output.Swarm.Phantom > 0 {
+		fmt.Printf(", Phantom: %d", output.Swarm.Phantom)
+		if !showAll {
+			fmt.Printf(" (use --all to show)")
+		}
+	}
+	fmt.Println()
+	fmt.Println()
+
+	// Print account usage
+	if len(output.Accounts) > 0 {
+		fmt.Println("ACCOUNTS")
+		for _, acc := range output.Accounts {
+			activeMarker := ""
+			if acc.IsActive {
+				activeMarker = " *"
+			}
+			usageStr := "N/A"
+			if acc.UsedPercent > 0 || acc.IsActive {
+				usageStr = fmt.Sprintf("%.0f%% used", acc.UsedPercent)
+				if acc.ResetTime != "" {
+					usageStr += fmt.Sprintf(" (resets in %s)", acc.ResetTime)
+				}
+			}
+			name := acc.Name
+			if acc.Email != "" && acc.Name == "current" {
+				name = acc.Email
+			}
+			fmt.Printf("  %-20s %s%s\n", name+":", usageStr, activeMarker)
+		}
+		fmt.Println()
+	}
+
+	// Print agents in format appropriate for terminal width
+	if len(output.Agents) > 0 {
+		fmt.Println("AGENTS")
+		if termWidth < termWidthMin {
+			printAgentsCardFormat(output.Agents)
+		} else if termWidth < termWidthNarrow {
+			printAgentsNarrowFormat(output.Agents)
+		} else {
+			printAgentsWideFormat(output.Agents)
+		}
+	} else {
+		fmt.Println("No active agents")
+	}
+}
+
+// printAgentsWideFormat prints agents in full table format (>120 chars).
+// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS
+func printAgentsWideFormat(agents []AgentInfo) {
+	fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 115))
+
+	for _, agent := range agents {
+		beadsID := agent.BeadsID
+		if beadsID == "" {
+			beadsID = "-"
+		}
+		phase := agent.Phase
+		if phase == "" {
+			phase = "-"
+		}
+		task := agent.Task
+		if task == "" {
+			task = "-"
+		}
+		skill := agent.Skill
+		if skill == "" {
+			skill = "-"
+		}
+		status := getAgentStatus(agent)
+		tokens := formatTokenStatsCompact(agent.Tokens)
+
+		fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n",
+			beadsID,
+			status,
+			truncate(phase, 10),
+			truncate(task, 26),
+			truncate(skill, 13),
+			agent.Runtime,
+			tokens)
+	}
+}
+
+// printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
+// Drops TASK column, abbreviates SKILL.
+// Columns: BEADS ID, STATUS, PHASE, SKILL, RUNTIME, TOKENS
+func printAgentsNarrowFormat(agents []AgentInfo) {
+	fmt.Printf("  %-18s %-8s %-12s %-10s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 75))
+
+	for _, agent := range agents {
+		beadsID := agent.BeadsID
+		if beadsID == "" {
+			beadsID = "-"
+		}
+		phase := agent.Phase
+		if phase == "" {
+			phase = "-"
+		}
+		skill := abbreviateSkill(agent.Skill)
+		if skill == "" {
+			skill = "-"
+		}
+		status := getAgentStatus(agent)
+		tokens := formatTokenStatsCompact(agent.Tokens)
+
+		fmt.Printf("  %-18s %-8s %-12s %-10s %-8s %s\n",
+			beadsID,
+			status,
+			truncate(phase, 10),
+			truncate(skill, 8),
+			agent.Runtime,
+			tokens)
+	}
+}
+
+// printAgentsCardFormat prints agents in vertical card format (<80 chars).
+// Each agent is a multi-line block for readability on very narrow terminals.
+func printAgentsCardFormat(agents []AgentInfo) {
+	for i, agent := range agents {
+		if i > 0 {
+			fmt.Println()
+		}
+		beadsID := agent.BeadsID
+		if beadsID == "" {
+			beadsID = "-"
+		}
+		phase := agent.Phase
+		if phase == "" {
+			phase = "-"
+		}
+		task := agent.Task
+		if task == "" {
+			task = "-"
+		}
+		skill := agent.Skill
+		if skill == "" {
+			skill = "-"
+		}
+		status := getAgentStatus(agent)
+
+		fmt.Printf("  %s [%s]\n", beadsID, status)
+		fmt.Printf("    Phase: %s | Skill: %s\n", phase, skill)
+		fmt.Printf("    Task: %s\n", truncate(task, 50))
+		fmt.Printf("    Runtime: %s | Tokens: %s\n", agent.Runtime, formatTokenStats(agent.Tokens))
+	}
+}
+
+// getAgentStatus returns a status string based on agent state.
+func getAgentStatus(agent AgentInfo) string {
+	if agent.IsCompleted {
+		return "completed"
+	}
+	if agent.IsPhantom {
+		return "phantom"
+	}
+	if agent.IsProcessing {
+		return "running"
+	}
+	return "idle"
+}
+
+// abbreviateSkill returns a shortened version of skill names for narrow displays.
+func abbreviateSkill(skill string) string {
+	abbreviations := map[string]string{
+		"feature-impl":         "feat",
+		"investigation":        "inv",
+		"systematic-debugging": "debug",
+		"architect":            "arch",
+		"codebase-audit":       "audit",
+		"reliability-testing":  "rel-test",
+		"issue-creation":       "issue",
+		"design-session":       "design",
+		"research":             "research",
+	}
+	if abbr, ok := abbreviations[skill]; ok {
+		return abbr
+	}
+	return skill
+}
+
+// formatTokenCount formats a token count with K/M suffixes for readability.
+func formatTokenCount(count int) string {
+	if count < 1000 {
+		return fmt.Sprintf("%d", count)
+	}
+	if count < 1000000 {
+		return fmt.Sprintf("%.1fK", float64(count)/1000)
+	}
+	return fmt.Sprintf("%.1fM", float64(count)/1000000)
+}
+
+// formatTokenStats returns a formatted string of token usage.
+func formatTokenStats(tokens *opencode.TokenStats) string {
+	if tokens == nil {
+		return "-"
+	}
+	// Format: "in:X out:Y (cache:Z)"
+	result := fmt.Sprintf("in:%s out:%s", formatTokenCount(tokens.InputTokens), formatTokenCount(tokens.OutputTokens))
+	if tokens.CacheReadTokens > 0 {
+		result += fmt.Sprintf(" (cache:%s)", formatTokenCount(tokens.CacheReadTokens))
+	}
+	return result
+}
+
+// formatTokenStatsCompact returns a compact formatted string of token usage for table display.
+// Shows total tokens with input/output breakdown: "12.5K (8K/4K)"
+func formatTokenStatsCompact(tokens *opencode.TokenStats) string {
+	if tokens == nil {
+		return "-"
+	}
+	total := tokens.TotalTokens
+	if total == 0 {
+		total = tokens.InputTokens + tokens.OutputTokens
+	}
+	if total == 0 {
+		return "-"
+	}
+	// Format: "total (in/out)" for quick scanning
+	return fmt.Sprintf("%s (%s/%s)",
+		formatTokenCount(total),
+		formatTokenCount(tokens.InputTokens),
+		formatTokenCount(tokens.OutputTokens))
+}
