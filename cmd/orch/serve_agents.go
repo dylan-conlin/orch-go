@@ -28,21 +28,21 @@ type beadsCache struct {
 	mu sync.RWMutex
 
 	// Cached data
-	openIssues   map[string]*verify.Issue
-	allIssues    map[string]*verify.Issue
-	comments     map[string][]beads.Comment
+	openIssues map[string]*verify.Issue
+	allIssues  map[string]*verify.Issue
+	comments   map[string][]beads.Comment
 
 	// Cache metadata
-	openIssuesFetchedAt   time.Time
-	allIssuesFetchedAt    time.Time
-	allIssuesFetchedFor   []string // Track which beads IDs were fetched
-	commentsFetchedAt     time.Time
-	commentsFetchedFor    []string // Track which beads IDs were fetched
+	openIssuesFetchedAt time.Time
+	allIssuesFetchedAt  time.Time
+	allIssuesFetchedFor []string // Track which beads IDs were fetched
+	commentsFetchedAt   time.Time
+	commentsFetchedFor  []string // Track which beads IDs were fetched
 
 	// TTL configuration
-	openIssuesTTL  time.Duration
-	allIssuesTTL   time.Duration
-	commentsTTL    time.Duration
+	openIssuesTTL time.Duration
+	allIssuesTTL  time.Duration
+	commentsTTL   time.Duration
 }
 
 // globalWorkspaceCache provides TTL-based caching for workspace metadata.
@@ -126,12 +126,12 @@ var globalBeadsCache *beadsCache
 // newBeadsCache creates a new beads cache with default TTLs.
 func newBeadsCache() *beadsCache {
 	return &beadsCache{
-		openIssues:     make(map[string]*verify.Issue),
-		allIssues:      make(map[string]*verify.Issue),
-		comments:       make(map[string][]beads.Comment),
-		openIssuesTTL:  defaultOpenIssuesTTL,
-		allIssuesTTL:   defaultAllIssuesTTL,
-		commentsTTL:    defaultCommentsTTL,
+		openIssues:    make(map[string]*verify.Issue),
+		allIssues:     make(map[string]*verify.Issue),
+		comments:      make(map[string][]beads.Comment),
+		openIssuesTTL: defaultOpenIssuesTTL,
+		allIssuesTTL:  defaultAllIssuesTTL,
+		commentsTTL:   defaultCommentsTTL,
 	}
 }
 
@@ -228,24 +228,24 @@ func (c *beadsCache) containsAllIDs(cachedIDs, requestedIDs []string) bool {
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID           string             `json:"id"`
-	SessionID    string             `json:"session_id,omitempty"`
-	BeadsID      string             `json:"beads_id,omitempty"`
-	BeadsTitle   string             `json:"beads_title,omitempty"`
-	Skill        string             `json:"skill,omitempty"`
-	Status       string             `json:"status"`            // "active", "idle", "completed", etc.
-	Phase        string             `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task         string             `json:"task,omitempty"`    // Task description from beads issue
-	Project      string             `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
-	Runtime      string             `json:"runtime,omitempty"`
-	Window       string             `json:"window,omitempty"`
-	IsProcessing bool               `json:"is_processing,omitempty"` // True if actively generating response
-	SpawnedAt    string             `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
-	UpdatedAt    string             `json:"updated_at,omitempty"`    // ISO 8601 timestamp
-	Synthesis    *SynthesisResponse `json:"synthesis,omitempty"`
-	CloseReason  string             `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
-	GapAnalysis  *GapAPIResponse    `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
-	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`      // Token usage for the session
+	ID           string               `json:"id"`
+	SessionID    string               `json:"session_id,omitempty"`
+	BeadsID      string               `json:"beads_id,omitempty"`
+	BeadsTitle   string               `json:"beads_title,omitempty"`
+	Skill        string               `json:"skill,omitempty"`
+	Status       string               `json:"status"`            // "active", "idle", "completed", etc.
+	Phase        string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task         string               `json:"task,omitempty"`    // Task description from beads issue
+	Project      string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime      string               `json:"runtime,omitempty"`
+	Window       string               `json:"window,omitempty"`
+	IsProcessing bool                 `json:"is_processing,omitempty"` // True if actively generating response
+	SpawnedAt    string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt    string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis    *SynthesisResponse   `json:"synthesis,omitempty"`
+	CloseReason  string               `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
+	GapAnalysis  *GapAPIResponse      `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
+	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`       // Token usage for the session
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -602,11 +602,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
-		// OPTIMIZATION: Only fetch beads data for RECENTLY ACTIVE agents.
-		// Idle agents (>30min since update) are likely complete or stale - skip fetching.
-		// This prevents CPU spikes from spawning bd processes for 300+ idle sessions.
-		// Phase updates only matter for agents actively working.
-		if status == "active" && agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
+		// Collect beads ID for batch fetch - include ALL agents with beads ID.
+		// Previously this had a `status == "active"` optimization that skipped idle agents,
+		// but this caused incorrect status for idle agents with Phase: Complete.
+		// The TTL cache prevents CPU spikes, so we can safely fetch for all agents.
+		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
+		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
 			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 			seenBeadsIDs[agent.BeadsID] = true
 
@@ -797,7 +798,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// Use project-aware batch fetch for cross-project agent visibility
 		commentsMap := globalBeadsCache.getComments(beadsIDsToFetch, beadsProjectDirs)
 
-		// Populate phase, task, and close_reason for each agent
+		// Populate phase, task, close_reason, and status for each agent using Priority Cascade model.
+		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md for design.
 		for i := range agents {
 			if agents[i].BeadsID == "" {
 				continue
@@ -819,53 +821,42 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Get phase from comments
+			// Gather completion signals for Priority Cascade model
+			issueClosed := false
+			phaseComplete := false
+
+			// Check if beads issue is closed (Priority 1)
+			if issue, ok := allIssues[agents[i].BeadsID]; ok {
+				issueClosed = strings.EqualFold(issue.Status, "closed")
+				// Capture close_reason if available
+				if issueClosed && issue.CloseReason != "" && agents[i].CloseReason == "" {
+					agents[i].CloseReason = issue.CloseReason
+				}
+			}
+
+			// Get phase from comments (Priority 2)
 			if comments, ok := commentsMap[agents[i].BeadsID]; ok {
 				phaseStatus := verify.ParsePhaseFromComments(comments)
 				if phaseStatus.Found {
 					agents[i].Phase = phaseStatus.Phase
-					// Update status to completed if phase is Complete.
-					// Phase: Complete is the definitive signal that the agent's work is done,
-					// regardless of whether the OpenCode session is still open. An open session
-					// just means the agent hasn't called /exit yet, but the work is complete.
-					// If an agent is resumed after Phase: Complete, a new Phase comment
-					// (e.g., "Phase: Implementing") would supersede this.
-					if strings.EqualFold(phaseStatus.Phase, "Complete") {
-						agents[i].Status = "completed"
-					}
+					phaseComplete = strings.EqualFold(phaseStatus.Phase, "Complete")
 				}
 			}
 
-			// Check if beads issue is closed (definitive source of truth for completion).
-			// This handles the case where orch complete closed the issue but:
-			// 1. The OpenCode session is still open (agent didn't call /exit)
-			// 2. The workspace exists with SPAWN_CONTEXT.md but no SYNTHESIS.md
-			// A closed beads issue means the orchestrator verified and closed the work,
-			// so the agent should show as completed regardless of session/workspace state.
-			if agents[i].Status != "completed" {
-				if issue, ok := allIssues[agents[i].BeadsID]; ok {
-					if strings.EqualFold(issue.Status, "closed") {
-						agents[i].Status = "completed"
-						// Also capture close_reason if available
-						if issue.CloseReason != "" && agents[i].CloseReason == "" {
-							agents[i].CloseReason = issue.CloseReason
-						}
-					}
+			// Get workspace path for SYNTHESIS.md check (Priority 3)
+			workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
+			// Fallback: For untracked agents, try looking up by workspace name from session title
+			if workspacePath == "" && agents[i].ID != "" {
+				workspaceName := agents[i].ID
+				if idx := strings.Index(workspaceName, " ["); idx != -1 {
+					workspaceName = workspaceName[:idx]
 				}
+				workspacePath = wsCache.lookupWorkspacePathByEntry(workspaceName)
 			}
 
-			// For agents not yet marked completed, check workspace for SYNTHESIS.md
-			// This handles untracked agents (--no-track) which have fake beads IDs
-			// and won't have Phase: Complete in beads comments.
-			// SYNTHESIS.md presence is a definitive signal that the agent completed,
-			// regardless of whether the OpenCode session is still open.
-			if agents[i].Status != "completed" {
-				// Use cached workspace lookup instead of scanning directories
-				workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
-				if checkWorkspaceSynthesis(workspacePath) {
-					agents[i].Status = "completed"
-				}
-			}
+			// Use Priority Cascade to determine final status
+			// Priority order: issueClosed > phaseComplete > SYNTHESIS.md > sessionStatus
+			agents[i].Status = determineAgentStatus(issueClosed, phaseComplete, workspacePath, agents[i].Status)
 
 			// For completed agents, also check close_reason if synthesis is null
 			if agents[i].Status == "completed" && agents[i].Synthesis == nil && agents[i].CloseReason == "" {
@@ -900,6 +891,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		agents = filtered
 	}
 
+	// NOTE: The duplicate SYNTHESIS.md check that was here has been removed.
+	// All agents are now included in beadsIDsToFetch, so the Priority Cascade
+	// in determineAgentStatus() handles all status determination in one place.
+	// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
+
 	// Fetch token usage for agents with valid session IDs
 	// Parallelized to avoid sequential HTTP calls causing ~20s delays with 200+ agents.
 	// Uses goroutines with semaphore to limit concurrent requests.
@@ -908,11 +904,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		tokens *opencode.TokenStats
 	}
 	tokenChan := make(chan tokenResult, len(agents))
-	
+
 	// Limit concurrent HTTP requests to avoid overwhelming the OpenCode server
 	const maxConcurrent = 20
 	sem := make(chan struct{}, maxConcurrent)
-	
+
 	var wg sync.WaitGroup
 	for i := range agents {
 		// Skip agents without session ID, completed agents, or idle agents.
@@ -921,26 +917,26 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		if agents[i].SessionID == "" || agents[i].Status == "completed" || agents[i].Status == "idle" {
 			continue
 		}
-		
+
 		wg.Add(1)
 		go func(idx int, sessionID string) {
 			defer wg.Done()
 			sem <- struct{}{}        // Acquire semaphore
 			defer func() { <-sem }() // Release semaphore
-			
+
 			tokens, err := client.GetSessionTokens(sessionID)
 			if err == nil && tokens != nil {
 				tokenChan <- tokenResult{index: idx, tokens: tokens}
 			}
 		}(i, agents[i].SessionID)
 	}
-	
+
 	// Wait for all goroutines to complete, then close channel
 	go func() {
 		wg.Wait()
 		close(tokenChan)
 	}()
-	
+
 	// Collect results
 	for result := range tokenChan {
 		agents[result.index].Tokens = result.tokens
@@ -1234,6 +1230,37 @@ func checkWorkspaceSynthesis(workspacePath string) bool {
 	}
 	// SYNTHESIS.md must exist and be non-empty
 	return info.Size() > 0
+}
+
+// determineAgentStatus implements the Priority Cascade model for agent status.
+// This is the single source of truth for determining agent status.
+//
+// Priority order (highest to lowest):
+//  1. Beads issue closed → "completed" (orchestrator verified completion)
+//  2. Phase: Complete reported → "completed" (agent declared done)
+//  3. SYNTHESIS.md exists → "completed" (artifact proves completion)
+//  4. Session activity → sessionStatus ("active" or "idle")
+//
+// This replaces the scattered status determination logic with a clear, deterministic model.
+// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md for design rationale.
+func determineAgentStatus(issueClosed bool, phaseComplete bool, workspacePath string, sessionStatus string) string {
+	// Priority 1: Beads issue closed → completed (orchestrator verified completion)
+	if issueClosed {
+		return "completed"
+	}
+
+	// Priority 2: Phase: Complete reported → completed (agent declared done)
+	if phaseComplete {
+		return "completed"
+	}
+
+	// Priority 3: SYNTHESIS.md exists → completed (artifact proves completion)
+	if checkWorkspaceSynthesis(workspacePath) {
+		return "completed"
+	}
+
+	// Priority 4: Session activity (fallback)
+	return sessionStatus
 }
 
 // getGapAnalysisFromEvents reads spawn events and extracts gap analysis data for given beads IDs.

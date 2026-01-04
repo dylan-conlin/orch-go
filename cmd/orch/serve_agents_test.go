@@ -763,3 +763,147 @@ func TestHandleCacheInvalidateMethodNotAllowed(t *testing.T) {
 		t.Errorf("Expected status 405, got %d", resp.StatusCode)
 	}
 }
+
+// TestDetermineAgentStatus tests the Priority Cascade model for agent status determination.
+// Priority order:
+//  1. Beads issue closed → "completed"
+//  2. Phase: Complete reported → "completed"
+//  3. SYNTHESIS.md exists → "completed"
+//  4. Session activity → "active" (<10min) or "idle" (>=10min)
+func TestDetermineAgentStatus(t *testing.T) {
+	// Create a temporary workspace with SYNTHESIS.md for testing
+	tmpDir := t.TempDir()
+	synthesisPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+
+	tests := []struct {
+		name           string
+		issueClosed    bool
+		phaseComplete  bool
+		hasSynthesis   bool
+		sessionStatus  string // "active" or "idle" based on activity
+		expectedStatus string
+	}{
+		// Priority 1: Beads closed overrides everything
+		{
+			name:           "beads_closed_overrides_all",
+			issueClosed:    true,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "beads_closed_even_if_idle",
+			issueClosed:    true,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		// Priority 2: Phase: Complete overrides synthesis and session
+		{
+			name:           "phase_complete_overrides_session",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   false,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "phase_complete_overrides_idle",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   false,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		// Priority 3: SYNTHESIS.md overrides session
+		{
+			name:           "synthesis_overrides_session",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   true,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "synthesis_overrides_idle",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   true,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		// Priority 4: Session activity is the fallback
+		{
+			name:           "active_session",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "active",
+			expectedStatus: "active",
+		},
+		{
+			name:           "idle_session",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "idle",
+			expectedStatus: "idle",
+		},
+		// Combined scenarios - higher priority wins
+		{
+			name:           "beads_closed_with_phase_complete",
+			issueClosed:    true,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "idle",
+			expectedStatus: "completed",
+		},
+		{
+			name:           "phase_complete_with_synthesis",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "active",
+			expectedStatus: "completed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up or remove SYNTHESIS.md based on test case
+			if tt.hasSynthesis {
+				if err := os.WriteFile(synthesisPath, []byte("# Synthesis\nTLDR: Test"), 0644); err != nil {
+					t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+				}
+			} else {
+				os.Remove(synthesisPath)
+			}
+
+			result := determineAgentStatus(tt.issueClosed, tt.phaseComplete, tmpDir, tt.sessionStatus)
+
+			if result != tt.expectedStatus {
+				t.Errorf("determineAgentStatus() = %q, want %q", result, tt.expectedStatus)
+			}
+		})
+	}
+}
+
+// TestDetermineAgentStatusEmptyWorkspace tests that empty workspace path is handled correctly.
+func TestDetermineAgentStatusEmptyWorkspace(t *testing.T) {
+	// With empty workspace, SYNTHESIS.md check should be skipped
+	result := determineAgentStatus(false, false, "", "idle")
+	if result != "idle" {
+		t.Errorf("Expected 'idle' for empty workspace, got %q", result)
+	}
+}
+
+// TestDetermineAgentStatusNonExistentWorkspace tests non-existent workspace path.
+func TestDetermineAgentStatusNonExistentWorkspace(t *testing.T) {
+	// With non-existent workspace, SYNTHESIS.md check should return false
+	result := determineAgentStatus(false, false, "/nonexistent/path/workspace", "active")
+	if result != "active" {
+		t.Errorf("Expected 'active' for non-existent workspace, got %q", result)
+	}
+}
