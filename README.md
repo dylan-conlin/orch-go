@@ -104,6 +104,38 @@ orch-go complete proj-123 --force
 - `--force`, `-f`: Skip phase verification
 - `--reason <text>`, `-r`: Reason for closing (default: uses phase summary)
 
+### View ecosystem changelog
+
+Aggregate git commits across all repos in Dylan's orchestration ecosystem, grouped by date and categorized by type (skills, kb, cmd, pkg, etc.).
+
+```bash
+# Show last 7 days across all ecosystem repos
+orch-go changelog
+
+# Show last 14 days
+orch-go changelog --days 14
+
+# Filter to a specific repo
+orch-go changelog --project orch-go
+
+# Output as JSON (for scripting)
+orch-go changelog --json
+```
+
+**Flags:**
+- `--days <n>`: Number of days to include (default: 7)
+- `--project <name>`: Project to filter, or "all" for all repos (default: all)
+- `--json`: Output as JSON instead of human-readable format
+
+**Output includes:**
+- Summary statistics (total commits, repo count)
+- Commits grouped by date
+- Category breakdown (skills, kb, cmd, pkg, web, docs, config)
+- Semantic labels for breaking changes, behavioral vs documentation changes
+- Blast radius indicators (local, cross-skill, infrastructure)
+
+See [Changelog System Documentation](docs/changelog-system.md) for details on semantic parsing, adding new repos, and API integration.
+
 ## Event Logging
 
 All events are logged to `~/.orch/events.jsonl` in JSONL format:
