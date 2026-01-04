@@ -208,7 +208,10 @@ func buildCompleteCmd() *cobra.Command {
 		Long: `Complete an agent's work by verifying Phase: Complete and closing the beads issue.
 
 Checks that the agent has reported "Phase: Complete" via beads comments before
-closing the issue. Use --force to skip phase verification.
+closing the issue. Use --force to skip phase and liveness verification.
+
+For bug-type issues, repro verification always runs (even with --force).
+Use --skip-repro-check with --skip-repro-reason to bypass.
 
 Examples:
   orch-go complete proj-123
@@ -217,7 +220,7 @@ Examples:
 		Run: noopRun,
 	}
 
-	cmd.Flags().BoolP("force", "f", false, "Skip phase verification")
+	cmd.Flags().BoolP("force", "f", false, "Skip phase and liveness verification (repro still runs)")
 	cmd.Flags().StringP("reason", "r", "", "Reason for closing (default: uses phase summary)")
 
 	return cmd

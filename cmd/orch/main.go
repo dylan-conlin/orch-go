@@ -199,7 +199,7 @@ var completeCmd = &cobra.Command{
 	Long: `Complete an agent's work by verifying Phase: Complete and closing the beads issue.
 
 Checks that the agent has reported "Phase: Complete" via beads comments before
-closing the issue. Use --force to skip phase verification.
+closing the issue. Use --force to skip phase and liveness verification.
 
 For agents that modified web/ files (UI tasks), --approve is required to explicitly
 confirm human review of the visual changes. This prevents agents from self-certifying
@@ -210,15 +210,16 @@ the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
 Use --workdir as explicit override when auto-detection fails.
 
 For bug-type issues, prompts the orchestrator to verify that the original
-reproduction no longer occurs. Use --skip-repro-check with --reason to bypass.
+reproduction no longer occurs. This repro verification runs even with --force.
+Use --skip-repro-check with --skip-repro-reason to bypass.
 
 Examples:
   orch-go complete proj-123
   orch-go complete proj-123 --reason "All tests passing"
   orch-go complete proj-123 --approve       # Approve UI changes after visual review
-  orch-go complete proj-123 --force         # Skip all verification
+  orch-go complete proj-123 --force         # Skip phase/liveness verification (not repro)
   orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion
-  orch-go complete proj-123 --skip-repro-check --reason "Repro verified via automated test"`,
+  orch-go complete proj-123 --skip-repro-check --skip-repro-reason "Repro verified via automated test"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
@@ -227,7 +228,7 @@ Examples:
 }
 
 func init() {
-	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase verification")
+	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase and liveness verification (repro still runs)")
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")
 	completeCmd.Flags().StringVar(&completeWorkdir, "workdir", "", "Target project directory (for cross-project completion)")
@@ -933,7 +934,9 @@ func runComplete(beadsID, workdir string) error {
 
 	// Reproduction verification for bug issues
 	// This gates completion on verifying the original bug symptom is resolved
-	if !completeForce && !completeSkipReproCheck {
+	// NOTE: --force does NOT bypass repro verification. Use --skip-repro-check for that.
+	// This is intentional: repro verification is critical for bug fixes.
+	if !completeSkipReproCheck {
 		reproResult, err := verify.GetReproForCompletion(beadsID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to check reproduction: %v\n", err)
@@ -945,7 +948,7 @@ func runComplete(beadsID, workdir string) error {
 
 			// Check if stdin is a terminal for interactive prompting
 			if !term.IsTerminal(int(os.Stdin.Fd())) {
-				return fmt.Errorf("bug issue requires reproduction verification; use --skip-repro-check --skip-repro-reason 'reason' or --force to bypass")
+				return fmt.Errorf("bug issue requires reproduction verification; use --skip-repro-check --skip-repro-reason 'reason' to bypass")
 			}
 
 			// Prompt for verification
@@ -972,7 +975,7 @@ func runComplete(beadsID, workdir string) error {
 				fmt.Println("Recommendations:")
 				fmt.Printf("  1. Re-spawn for additional investigation: orch spawn systematic-debugging \"[task]\" --issue %s\n", beadsID)
 				fmt.Printf("  2. Add more context to the issue: bd comments add %s \"Additional findings: ...\"\n", beadsID)
-				fmt.Println("  3. Force completion if this is expected: orch complete --force")
+				fmt.Println("  3. Force completion if this is expected: orch complete --skip-repro-check --skip-repro-reason 'reason'")
 				return fmt.Errorf("completion blocked: bug symptom not resolved")
 			case response == "c" || response == "cnr" || response == "could-not-reproduce":
 				// Could not reproduce - close with distinct status
