@@ -60,9 +60,18 @@ pkg/
 
 ## Key References
 
-**Before debugging lifecycle issues, read:** `.kb/guides/agent-lifecycle.md`
+**Before debugging, check the relevant guide in `.kb/guides/`:**
 
-This covers: spawn → work → complete → dashboard flow, source of truth (beads), common problems, and debugging checklist. Created after repeatedly re-investigating documented problems.
+| Topic | Guide | When to Read |
+|-------|-------|--------------|
+| Agent lifecycle | `agent-lifecycle.md` | Agents not completing, dashboard wrong |
+| Spawn | `spawn.md` | Spawn failures, wrong context, flags |
+| Status/Dashboard | `status-dashboard.md` | Wrong status, dashboard issues |
+| Beads integration | `beads-integration.md` | bd commands failing, issue tracking |
+| Skill system | `skill-system.md` | Skill not loading, wrong behavior |
+| Daemon | `daemon.md` | Auto-spawn issues, triage workflow |
+
+These guides synthesize 280+ investigations into authoritative references. Created Jan 4, 2026 after repeatedly re-investigating documented problems.
 
 ## Server Management Architecture (Three Layers)
 
