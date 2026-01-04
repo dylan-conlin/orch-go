@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [To be filled after investigation]
+**Delta:** main.go contains 10 command groups with shared utilities - can be split into 6 domain files plus 2 utility files without circular imports.
 
-**Evidence:** [To be filled after investigation]
+**Evidence:** Analyzed 4964 lines, mapped 26 command definitions, 85+ functions, and identified 4 categories of shared state/helpers.
 
-**Knowledge:** [To be filled after investigation]
+**Knowledge:** The existing pattern (daemon.go, review.go, focus.go) shows the correct approach: keep commands + run* functions together in domain files, share utilities via shared.go.
 
-**Next:** [To be filled after investigation]
+**Next:** Implement Phase 1 (spawn.go, status.go, shared.go) to validate approach, then continue with remaining domains.
 
 ---
 
@@ -22,14 +22,9 @@ Fill this at the END of your investigation, before marking Complete.
 **Started:** 2026-01-03
 **Updated:** 2026-01-03
 **Owner:** Investigation agent
-**Phase:** Investigating
-**Next Step:** Map all commands, identify shared state/helpers, analyze import dependencies
-**Status:** In Progress
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
@@ -40,31 +35,150 @@ Fill this at the END of your investigation, before marking Complete.
 **Evidence:** 
 - main.go: 4964 lines (god object containing most command implementations)
 - cmd/orch/ total: 26,176 lines across ~45 files
-- Already separated: serve.go (2921), review.go (1079), handoff.go (898), kb.go (745), changelog.go (769)
+- Already separated: serve.go (2921), review.go (1079), handoff.go (898), kb.go (745), changelog.go (769), daemon.go (559), focus.go (340+), init.go (448), learn.go (455), patterns.go (591), session.go (509+), servers.go (350+), swarm.go (667), tokens.go (352), reconcile.go (370+)
 
 **Source:** `wc -l cmd/orch/*.go | sort -n`
 
-**Significance:** Some commands are already factored out (serve, review, handoff, etc.) but main.go still contains the bulk of command implementations. Need to identify which commands remain in main.go and what shared state they depend on.
+**Significance:** About 15 command files have already been extracted following a consistent pattern. main.go still contains the core commands (spawn, status, complete, send, tail, question, abandon, work, clean, account, port, retries, version).
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Commands in main.go can be grouped into 6 logical domains
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Analysis of the 26 cobra.Command definitions in main.go:
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+| Domain | Commands | Lines Est. | Dependencies |
+|--------|----------|------------|--------------|
+| **Spawn** | spawn, work | ~750 | beads, spawn pkg, skills, events, opencode, tmux, model |
+| **Agent Ops** | send, tail, question, abandon | ~550 | opencode, tmux, events, beads, verify |
+| **Status** | status | ~500 | opencode, tmux, beads, verify, account, usage |
+| **Complete** | complete | ~450 | verify, beads, events, spawn, changelog detection |
+| **Clean** | clean | ~300 | opencode, tmux, events, verify |
+| **Account** | account (list/switch/add/remove), usage | ~250 | account pkg, usage pkg |
+| **Port** | port (allocate/list/release/tmuxinator) | ~200 | port pkg, tmux pkg |
+| **Utility** | version, retries | ~150 | verify pkg |
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** `grep -n "var.*Cmd = &cobra.Command" cmd/orch/main.go`
+
+**Significance:** Clear domain boundaries exist. Each group has cohesive dependencies and could be extracted following the existing pattern.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Shared state and utilities are concentrated in 4 categories
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**1. Global flags (lines 35-183):**
+```go
+var serverURL string  // Used by 8+ commands
+var spawnSkill, spawnIssue, spawnPhases, ... // 20+ spawn flags
+var statusJSON, statusAll, statusProject // status flags
+var completeForce, completeReason, ... // complete flags
+```
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**2. Shared utility functions (used across domains):**
+```go
+extractBeadsIDFromTitle(title string) string           // Used in: status, send, tail, question, abandon, complete, focus, handoff, doctor
+extractSkillFromTitle(title string) string             // Used in: status
+extractBeadsIDFromWindowName(name string) string       // Used in: status
+extractSkillFromWindowName(name string) string         // Used in: status
+extractProjectFromBeadsID(beadsID string) string       // Used in: status
+findWorkspaceByBeadsID(projectDir, beadsID string)     // Used in: tail, question, abandon, complete, status
+resolveSessionID(serverURL, identifier string) string  // Used in: send
+truncate(s string, maxLen int) string                  // Used in: spawn, status
+formatDuration(d time.Duration) string                 // Used in: status (note: defined elsewhere, reused)
+```
+
+**3. Shared types:**
+```go
+type SwarmStatus struct { ... }      // Used by status
+type AccountUsage struct { ... }     // Used by status  
+type AgentInfo struct { ... }        // Used by status
+type StatusOutput struct { ... }     // Used by status
+type GapCheckResult struct { ... }   // Used by spawn
+type CleanableWorkspace struct { ... } // Used by clean
+type headlessSpawnResult struct { ... } // Used by spawn
+```
+
+**4. Shared initialization (multiple init() functions):**
+- rootCmd.AddCommand() calls in main init()
+- Flag registration in command-specific init()s
+
+**Source:** `grep -n "^func " cmd/orch/main.go`, code analysis of function call sites
+
+**Significance:** The shared utilities are the main challenge for splitting. They need to either:
+1. Live in a shared.go file (same package, no import issues)
+2. Move to pkg/ (requires exporting, more refactoring)
+
+---
+
+### Finding 4: Existing extracted files follow a consistent pattern
+
+**Evidence:** Examining daemon.go, focus.go, review.go patterns:
+
+```go
+// daemon.go - 559 lines
+package main
+
+import (...)
+
+var daemonCmd = &cobra.Command{...}
+var daemonRunCmd = &cobra.Command{...}
+// ... more subcommands
+
+var (
+    // Daemon-specific flags
+    daemonDelay int
+    daemonDryRun bool
+    ...
+)
+
+func init() {
+    daemonCmd.AddCommand(daemonRunCmd)
+    // flag registration
+}
+
+func runDaemonLoop() error {...}
+func runDaemonOnce() error {...}
+// ... more run* functions
+```
+
+**Pattern observed:**
+1. File contains cobra Command definitions + their init() + their run* implementations
+2. Domain-specific flags are defined in the file
+3. Root command registration happens in main.go init()
+4. Utility functions that serve ONLY that domain stay in the file
+5. Cross-domain utilities could be extracted to shared.go
+
+**Source:** `head -150 cmd/orch/daemon.go`, `head -100 cmd/orch/focus.go`
+
+**Significance:** The pattern is already established and working. Following it ensures consistency.
+
+---
+
+### Finding 5: Import dependencies don't create circular import risk
+
+**Evidence:** All commands import from pkg/ packages, never from each other:
+- `github.com/dylan-conlin/orch-go/pkg/account`
+- `github.com/dylan-conlin/orch-go/pkg/beads`
+- `github.com/dylan-conlin/orch-go/pkg/events`
+- `github.com/dylan-conlin/orch-go/pkg/model`
+- `github.com/dylan-conlin/orch-go/pkg/opencode`
+- `github.com/dylan-conlin/orch-go/pkg/port`
+- `github.com/dylan-conlin/orch-go/pkg/question`
+- `github.com/dylan-conlin/orch-go/pkg/session`
+- `github.com/dylan-conlin/orch-go/pkg/skills`
+- `github.com/dylan-conlin/orch-go/pkg/spawn`
+- `github.com/dylan-conlin/orch-go/pkg/tmux`
+- `github.com/dylan-conlin/orch-go/pkg/usage`
+- `github.com/dylan-conlin/orch-go/pkg/verify`
+- `github.com/spf13/cobra`
+
+Since all cmd/orch/*.go files are in `package main`, they can freely call each other's functions without import statements.
+
+**Source:** Lines 4-33 of main.go, cross-referencing with other command files
+
+**Significance:** Splitting main.go within `package main` (same directory) avoids all circular import risks. The only constraint is that shared utilities must be defined before use (compilation order), but Go handles this automatically within a package.
 
 ---
 
@@ -72,15 +186,35 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Clean domain boundaries exist** - The 10 command groups have natural cohesion and can be split without fragmenting related logic.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Shared utilities are the key challenge** - 9 utility functions are used across multiple domains and must be extracted to a shared.go file.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Existing pattern works well** - The daemon.go, focus.go, review.go examples show the proven approach: command + flags + init + run functions in one file.
+
+4. **No circular import risk** - All files stay in `package main`, so cross-file function calls work without imports.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Split main.go into 8 files following the existing pattern:
+1. `spawn_cmd.go` - spawn, work commands + spawn helpers (~750 lines)
+2. `agent_ops.go` - send, tail, question, abandon commands (~550 lines)
+3. `status_cmd.go` - status command + display helpers (~500 lines)
+4. `complete_cmd.go` - complete command + verification (~450 lines)
+5. `clean_cmd.go` - clean command (~300 lines)
+6. `account_cmd.go` - account, usage commands (~250 lines)
+7. `port_cmd.go` - port commands (~200 lines)
+8. `shared.go` - extractBeadsIDFromTitle, findWorkspaceByBeadsID, truncate, etc. (~200 lines)
+
+Keep in main.go:
+- main() function
+- rootCmd definition
+- Global serverURL flag
+- Version command (small)
+- Retries command (small)
+- Root init() registering all commands
+
+This reduces main.go from ~4964 lines to ~400 lines.
 
 ---
 
@@ -88,120 +222,146 @@ Fill this at the END of your investigation, before marking Complete.
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Existing extracted files (daemon.go, focus.go) compile and work (verified: project builds)
+- ✅ All imports are from pkg/ packages, not cross-cmd files (verified: analyzed import statements)
+- ✅ Shared utilities have clear call sites (verified: grep for each function name)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Actual line counts after extraction (estimates based on code analysis)
+- ⚠️ Build time impact of more files (likely negligible but not measured)
+- ⚠️ IDE performance with 25+ files in cmd/orch/ (should be fine but untested)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if a utility function has hidden dependencies not identified
+- Finding would be wrong if test files have cross-dependencies that complicate the split
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern.
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Incremental domain extraction** - Extract one domain at a time, test builds after each, starting with the most self-contained domains.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Each extraction is independently testable
+- Failures are isolated and easy to fix
+- Progress is visible and reversible
+- Follows the proven pattern from daemon.go extraction
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Takes longer than a single big refactor
+- Multiple PRs or commits instead of one
+- Why acceptable: Lower risk, easier review, can pause if issues arise
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Phase 1: Create shared.go** - Extract 9 shared utility functions first. This establishes the foundation.
+2. **Phase 2: Extract spawn_cmd.go** - Largest domain (~750 lines), high value, well-bounded
+3. **Phase 3: Extract status_cmd.go** - Complex but self-contained
+4. **Phase 4: Extract remaining domains** - agent_ops, complete_cmd, clean_cmd, account_cmd, port_cmd
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Single big refactor**
+- **Pros:** Done in one PR, no intermediate states
+- **Cons:** High risk, hard to review, hard to bisect if bugs introduced
+- **When to use instead:** If the team is confident and wants speed over safety
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Move to cmd/orch/spawn/, cmd/orch/status/ subpackages**
+- **Pros:** Stronger encapsulation, clearer boundaries
+- **Cons:** Would require exporting functions, changing import paths, major restructure
+- **When to use instead:** If the project needs stricter modularity later
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Incremental extraction is lower risk and can be paused at any point. The existing pattern (daemon.go, focus.go) proves the approach works.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+1. Create `shared.go` with these functions:
+   - `extractBeadsIDFromTitle(title string) string`
+   - `extractSkillFromTitle(title string) string`
+   - `extractBeadsIDFromWindowName(name string) string`
+   - `extractSkillFromWindowName(name string) string`
+   - `extractProjectFromBeadsID(beadsID string) string`
+   - `findWorkspaceByBeadsID(projectDir, beadsID string) (string, string)`
+   - `resolveSessionID(serverURL, identifier string) (string, error)`
+   - `truncate(s string, maxLen int) string`
+   - `findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error)`
+
+2. Extract spawn_cmd.go:
+   - Move: spawnCmd, workCmd, and all spawn* flags
+   - Move: spawn init() function
+   - Move: runSpawnWithSkill, runSpawnInline, runSpawnHeadless, runSpawnTmux
+   - Move: determineBeadsID, createBeadsIssue, determineSpawnTier
+   - Move: checkConcurrencyLimit, checkAndAutoSwitchAccount
+   - Move: headlessSpawnResult type, startHeadlessSession, formatSessionTitle
+   - Move: gap analysis helpers (checkGapGating, recordGapForLearning, etc.)
+   - Move: InferSkillFromIssueType, inferSkillFromBeadsIssue, runWork
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Multiple init() functions: Go supports multiple init() per package, but order is undefined. Flag registration order shouldn't matter.
+- ⚠️ Variable shadowing: When moving code, ensure local variables don't shadow package-level ones
+- ⚠️ Deleted function references: After moving a function, ensure all call sites still compile
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Test file dependencies (main_test.go may need adjustment)
+- Whether any functions should move to pkg/ instead (for external use)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ `go build ./cmd/orch` succeeds after each extraction phase
+- ✅ `go test ./cmd/orch` passes after each extraction phase
+- ✅ main.go reduced to <500 lines
+- ✅ Each new file is <1000 lines
+- ✅ No function appears in multiple files
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/main.go` - Primary target (4964 lines)
+- `cmd/orch/daemon.go` - Example of extracted command (559 lines)
+- `cmd/orch/focus.go` - Example of extracted command (340+ lines)
+- `cmd/orch/review.go` - Example of extracted command (1079 lines)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Count lines in all Go files
+wc -l cmd/orch/*.go | sort -n
 
-# [Command description]
-[command]
+# Find all command definitions
+grep -n "var.*Cmd = &cobra.Command" cmd/orch/main.go
+
+# Find all function definitions
+grep -n "^func " cmd/orch/main.go
+
+# Find shared utility usage
+grep -rn "extractBeadsIDFromTitle\|findWorkspaceByBeadsID" cmd/orch/*.go
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- None directly related; this is a new investigation
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-03 17:00:** Investigation started
+- Initial question: How to split 4964-line main.go into maintainable files
+- Context: God object growing, hard to navigate and maintain
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-03 17:30:** Major findings complete
+- Identified 10 command domains
+- Mapped shared utilities
+- Confirmed no circular import risk
+- Validated against existing extracted files
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-03 18:00:** Investigation completed
+- Status: Complete
+- Key outcome: Detailed split strategy with 8 new files, incremental implementation plan
