@@ -1,7 +1,7 @@
 # Session Synthesis
 
 **Agent:** og-inv-test-completion-works-04jan
-**Issue:** N/A (ad-hoc spawn, --no-track)
+**Issue:** orch-go-jtj4
 **Duration:** 2026-01-04 → 2026-01-04 (< 5 minutes)
 **Outcome:** success
 
@@ -16,7 +16,7 @@ Simple test to verify completion workflow works. Agent spawned, said hello, crea
 ## Delta (What Changed)
 
 ### Files Created
-- `.kb/investigations/2026-01-04-inv-test-completion-works-say-hello.md` - Investigation file confirming task completion
+- `.kb/investigations/2026-01-04-inv-test-completion-works-04jan.md` - Investigation file confirming task completion
 - `.orch/workspace/og-inv-test-completion-works-04jan/SYNTHESIS.md` - This synthesis file
 
 ### Files Modified
@@ -85,5 +85,5 @@ Straightforward session, no unexplored territory.
 **Skill:** investigation
 **Model:** claude
 **Workspace:** `.orch/workspace/og-inv-test-completion-works-04jan/`
-**Investigation:** `.kb/investigations/2026-01-04-inv-test-completion-works-say-hello.md`
-**Beads:** N/A (ad-hoc spawn)
+**Investigation:** `.kb/investigations/2026-01-04-inv-test-completion-works-04jan.md`
+**Beads:** `bd show orch-go-jtj4`
