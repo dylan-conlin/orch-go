@@ -1123,6 +1123,106 @@ func TestGenerateContext_SurfaceBeforeCircumvent(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_BugReproduction(t *testing.T) {
+	t.Run("includes reproduction section for bug issues", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "fix login bug",
+			SkillName:     "systematic-debugging",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-debug-test-03jan",
+			BeadsID:       "test-123",
+			IsBug:         true,
+			ReproSteps:    "1. Navigate to /login\n2. Enter invalid credentials\n3. Click submit\n4. Observe blank screen instead of error message",
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain reproduction section
+		if !strings.Contains(content, "## REPRODUCTION (BUG FIX)") {
+			t.Error("expected content to contain REPRODUCTION section for bug issue")
+		}
+
+		// Should contain bug indicator
+		if !strings.Contains(content, "This is a bug fix issue") {
+			t.Error("expected content to contain bug fix indicator")
+		}
+
+		// Should contain the actual repro steps
+		if !strings.Contains(content, "Navigate to /login") {
+			t.Error("expected content to contain reproduction steps")
+		}
+
+		// Should contain verification requirement
+		if !strings.Contains(content, "Verification Requirement") {
+			t.Error("expected content to contain verification requirement")
+		}
+
+		// Should contain beads comment instruction for verification
+		if !strings.Contains(content, "bd comment test-123 \"Reproduction verified:") {
+			t.Error("expected content to contain reproduction verification beads command")
+		}
+
+		// Should contain the warning about completion criteria
+		if !strings.Contains(content, "bug fix is only complete when the original reproduction steps pass") {
+			t.Error("expected content to contain completion warning")
+		}
+	})
+
+	t.Run("excludes reproduction section for non-bug issues", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "add new feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-03jan",
+			BeadsID:       "test-123",
+			IsBug:         false,
+			ReproSteps:    "", // No repro steps for non-bug issues
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should NOT contain reproduction section
+		if strings.Contains(content, "## REPRODUCTION (BUG FIX)") {
+			t.Error("expected content to NOT contain REPRODUCTION section for non-bug issue")
+		}
+	})
+
+	t.Run("handles empty repro steps for bug issue", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "fix mysterious bug",
+			SkillName:     "systematic-debugging",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-debug-test-03jan",
+			BeadsID:       "test-123",
+			IsBug:         true,
+			ReproSteps:    "", // No explicit repro steps
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should still contain reproduction section (template will render it)
+		// The section header should appear even if repro steps are empty
+		if !strings.Contains(content, "## REPRODUCTION (BUG FIX)") {
+			t.Error("expected content to contain REPRODUCTION section for bug issue even with empty repro")
+		}
+	})
+}
+
 func TestGenerateContext_NoTrack(t *testing.T) {
 	t.Run("excludes beads instructions when NoTrack is true", func(t *testing.T) {
 		cfg := &Config{

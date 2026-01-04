@@ -120,6 +120,14 @@ type Config struct {
 	// GapAnalysis contains the results of pre-spawn context gap analysis.
 	// Used for surfacing gaps in dashboard and tracking patterns.
 	GapAnalysis *GapAnalysis
+
+	// IsBug indicates whether the associated beads issue is a bug type.
+	// When true, ReproSteps will be included in SPAWN_CONTEXT.md.
+	IsBug bool
+
+	// ReproSteps contains reproduction steps extracted from a bug issue.
+	// Included in SPAWN_CONTEXT.md to help agents understand how to verify the fix.
+	ReproSteps string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

@@ -686,6 +686,19 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Determine spawn tier
 	tier := determineSpawnTier(skillName, spawnLight, spawnFull)
 
+	// Extract reproduction info for bug issues
+	var isBug bool
+	var reproSteps string
+	if !spawnNoTrack && beadsID != "" {
+		if reproResult, err := verify.GetReproForCompletion(beadsID); err == nil && reproResult != nil {
+			isBug = reproResult.IsBug
+			reproSteps = reproResult.Repro
+			if isBug && reproSteps != "" {
+				fmt.Printf("🐛 Bug issue detected - reproduction steps included in context\n")
+			}
+		}
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:              task,
@@ -706,6 +719,8 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		KBContext:         kbContext,
 		IncludeServers:    spawn.DefaultIncludeServersForSkill(skillName),
 		GapAnalysis:       gapAnalysis,
+		IsBug:             isBug,
+		ReproSteps:        reproSteps,
 	}
 
 	// Pre-spawn token estimation and validation

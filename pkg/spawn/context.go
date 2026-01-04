@@ -39,6 +39,22 @@ SPAWN TIER: {{.Tier}}
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .IsBug}}
+## REPRODUCTION (BUG FIX)
+
+🐛 **This is a bug fix issue.** The fix is verified when the reproduction steps no longer produce the bug.
+
+**Original Reproduction:**
+{{.ReproSteps}}
+
+**Verification Requirement:**
+Before marking Phase: Complete, you MUST:
+1. Attempt to reproduce the original bug using the steps above
+2. Confirm the bug NO LONGER reproduces after your fix
+3. Report verification via: ` + "`bd comment {{.BeadsID}} \"Reproduction verified: [describe test performed]\"`" + `
+
+⚠️ A bug fix is only complete when the original reproduction steps pass.
+{{end}}
 {{if .NoTrack}}
 📋 AD-HOC SPAWN (--no-track):
 This is an ad-hoc spawn without beads issue tracking.
@@ -376,7 +392,9 @@ type contextData struct {
 	KBContext         string
 	Tier              string
 	ServerContext     string
-	NoTrack           bool // When true, omit beads instructions from spawn context
+	NoTrack           bool   // When true, omit beads instructions from spawn context
+	IsBug             bool   // When true, this is a bug issue with reproduction info
+	ReproSteps        string // Reproduction steps from bug issue
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -418,6 +436,8 @@ func GenerateContext(cfg *Config) (string, error) {
 		Tier:              cfg.Tier,
 		ServerContext:     serverContext,
 		NoTrack:           cfg.NoTrack,
+		IsBug:             cfg.IsBug,
+		ReproSteps:        cfg.ReproSteps,
 	}
 
 	var buf bytes.Buffer
