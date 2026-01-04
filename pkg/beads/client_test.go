@@ -1238,3 +1238,159 @@ func TestStatusResponse_JSON(t *testing.T) {
 		t.Error("AutoCommit should be true")
 	}
 }
+
+// TestParseDependencies tests parsing dependencies from raw JSON.
+func TestParseDependencies(t *testing.T) {
+	tests := []struct {
+		name        string
+		deps        json.RawMessage
+		wantCount   int
+		wantBlocker string
+	}{
+		{
+			name:      "nil dependencies",
+			deps:      nil,
+			wantCount: 0,
+		},
+		{
+			name:      "empty array",
+			deps:      json.RawMessage(`[]`),
+			wantCount: 0,
+		},
+		{
+			name:        "single blocking dependency",
+			deps:        json.RawMessage(`[{"id":"dep-1","title":"Blocker","status":"open","dependency_type":"blocks"}]`),
+			wantCount:   1,
+			wantBlocker: "dep-1",
+		},
+		{
+			name:      "closed dependency (not blocking)",
+			deps:      json.RawMessage(`[{"id":"dep-2","title":"Done","status":"closed","dependency_type":"blocks"}]`),
+			wantCount: 1,
+		},
+		{
+			name:      "multiple dependencies",
+			deps:      json.RawMessage(`[{"id":"dep-1","title":"Blocker","status":"open","dependency_type":"blocks"},{"id":"dep-2","title":"Done","status":"closed","dependency_type":"blocks"}]`),
+			wantCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issue := Issue{
+				ID:           "test-issue",
+				Dependencies: tt.deps,
+			}
+
+			deps := issue.ParseDependencies()
+			if len(deps) != tt.wantCount {
+				t.Errorf("ParseDependencies() returned %d deps, want %d", len(deps), tt.wantCount)
+			}
+			if tt.wantBlocker != "" && len(deps) > 0 && deps[0].ID != tt.wantBlocker {
+				t.Errorf("first dep ID = %q, want %q", deps[0].ID, tt.wantBlocker)
+			}
+		})
+	}
+}
+
+// TestGetBlockingDependencies tests filtering for open/in_progress dependencies.
+func TestGetBlockingDependencies(t *testing.T) {
+	tests := []struct {
+		name          string
+		deps          json.RawMessage
+		wantCount     int
+		wantBlockerID string
+	}{
+		{
+			name:      "nil dependencies",
+			deps:      nil,
+			wantCount: 0,
+		},
+		{
+			name:      "all closed (no blockers)",
+			deps:      json.RawMessage(`[{"id":"dep-1","title":"Done","status":"closed","dependency_type":"blocks"},{"id":"dep-2","title":"Also Done","status":"closed","dependency_type":"blocks"}]`),
+			wantCount: 0,
+		},
+		{
+			name:          "one open (blocking)",
+			deps:          json.RawMessage(`[{"id":"dep-1","title":"Blocker","status":"open","dependency_type":"blocks"}]`),
+			wantCount:     1,
+			wantBlockerID: "dep-1",
+		},
+		{
+			name:          "one in_progress (blocking)",
+			deps:          json.RawMessage(`[{"id":"dep-1","title":"In Progress","status":"in_progress","dependency_type":"blocks"}]`),
+			wantCount:     1,
+			wantBlockerID: "dep-1",
+		},
+		{
+			name:          "mixed - one open, one closed",
+			deps:          json.RawMessage(`[{"id":"dep-1","title":"Open","status":"open","dependency_type":"blocks"},{"id":"dep-2","title":"Closed","status":"closed","dependency_type":"blocks"}]`),
+			wantCount:     1,
+			wantBlockerID: "dep-1",
+		},
+		{
+			name:      "all statuses - two blocking",
+			deps:      json.RawMessage(`[{"id":"dep-1","title":"Open","status":"open","dependency_type":"blocks"},{"id":"dep-2","title":"In Progress","status":"in_progress","dependency_type":"blocks"},{"id":"dep-3","title":"Closed","status":"closed","dependency_type":"blocks"}]`),
+			wantCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issue := Issue{
+				ID:           "test-issue",
+				Dependencies: tt.deps,
+			}
+
+			blockers := issue.GetBlockingDependencies()
+			if len(blockers) != tt.wantCount {
+				t.Errorf("GetBlockingDependencies() returned %d blockers, want %d", len(blockers), tt.wantCount)
+			}
+			if tt.wantBlockerID != "" && len(blockers) > 0 && blockers[0].ID != tt.wantBlockerID {
+				t.Errorf("first blocker ID = %q, want %q", blockers[0].ID, tt.wantBlockerID)
+			}
+		})
+	}
+}
+
+// TestBlockingDependencyError tests the error message formatting.
+func TestBlockingDependencyError(t *testing.T) {
+	err := &BlockingDependencyError{
+		IssueID: "proj-xyz",
+		Blockers: []BlockingDependency{
+			{ID: "proj-abc", Title: "First blocker", Status: "open"},
+			{ID: "proj-def", Title: "Second blocker", Status: "in_progress"},
+		},
+		ForceMessage: "Use --force to override",
+	}
+
+	errStr := err.Error()
+
+	// Check that the error message contains expected parts
+	if !containsString(errStr, "proj-xyz") {
+		t.Errorf("error message should contain issue ID: %s", errStr)
+	}
+	if !containsString(errStr, "proj-abc (open)") {
+		t.Errorf("error message should contain first blocker: %s", errStr)
+	}
+	if !containsString(errStr, "proj-def (in_progress)") {
+		t.Errorf("error message should contain second blocker: %s", errStr)
+	}
+	if !containsString(errStr, "Use --force to override") {
+		t.Errorf("error message should contain force message: %s", errStr)
+	}
+}
+
+func containsString(s, substr string) bool {
+	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

@@ -335,6 +335,23 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			}
 			continue
 		}
+		// Skip issues with blocking dependencies (open/in_progress dependencies)
+		blockers, err := beads.CheckBlockingDependencies(issue.ID)
+		if err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Warning: could not check dependencies for %s: %v\n", issue.ID, err)
+			}
+			// Continue checking - don't skip issue just because we can't check dependencies
+		} else if len(blockers) > 0 {
+			if d.Config.Verbose {
+				var blockerIDs []string
+				for _, b := range blockers {
+					blockerIDs = append(blockerIDs, fmt.Sprintf("%s (%s)", b.ID, b.Status))
+				}
+				fmt.Printf("  DEBUG: Skipping %s (blocked by dependencies: %s)\n", issue.ID, strings.Join(blockerIDs, ", "))
+			}
+			continue
+		}
 		if d.Config.Verbose {
 			fmt.Printf("  DEBUG: Selected %s (type=%s, labels=%v)\n", issue.ID, issue.IssueType, issue.Labels)
 		}

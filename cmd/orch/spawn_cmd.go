@@ -57,6 +57,7 @@ var (
 	spawnGateOnGap         bool   // Block spawn if context quality is too low
 	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
+	spawnForce             bool   // Force spawn even if issue has blocking dependencies
 )
 
 var spawnCmd = &cobra.Command{
@@ -87,6 +88,15 @@ Gap Gating (Gate Over Remind):
   When gating is enabled and context quality is below threshold, spawn is blocked
   with a prominent message explaining the gap and how to fix it. This enforces
   the principle: 'gaps should be harder to ignore than to fix'.
+
+Dependency Checking (--issue spawns only):
+  When spawning with --issue, orch checks if the issue has blocking dependencies.
+  If any dependent issues are still open, the spawn is blocked with an error
+  showing which issues are blocking. Use --force to override this check.
+  
+  Example error:
+    Error: orch-go-xyz is blocked by orch-go-abc (open)
+    Use --force to override
 
 Concurrency Limiting:
   By default, limits concurrent agents to 5. This prevents runaway agent spawning.
@@ -128,7 +138,10 @@ Examples:
   orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
   orch-go spawn --light feature-impl "quick fix"               # Light tier (no synthesis)
   orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)
-  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project`,
+  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project
+  
+  # Dependency checking (--issue spawns)
+  orch-go spawn --issue proj-123 --force feature-impl "task"   # Force spawn despite blocking deps`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -159,6 +172,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
+	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force spawn even if issue has blocking dependencies (bypasses dependency check)")
 }
 
 var (
@@ -552,6 +566,21 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 			warning := verify.FormatRetryWarning(stats)
 			if warning != "" {
 				fmt.Fprintf(os.Stderr, "\n%s\n", warning)
+			}
+		}
+	}
+
+	// Check for blocking dependencies (only when spawning with --issue and not --force)
+	if !spawnNoTrack && spawnIssue != "" && !spawnForce {
+		blockers, err := beads.CheckBlockingDependencies(beadsID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not check dependencies for %s: %v\n", beadsID, err)
+			// Continue - don't block spawn just because we can't check dependencies
+		} else if len(blockers) > 0 {
+			return &beads.BlockingDependencyError{
+				IssueID:      beadsID,
+				Blockers:     blockers,
+				ForceMessage: "Use --force to override",
 			}
 		}
 	}

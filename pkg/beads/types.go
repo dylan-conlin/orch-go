@@ -150,6 +150,59 @@ type Issue struct {
 	CloseReason  string          `json:"close_reason,omitempty"`
 }
 
+// Dependency represents a dependency relationship returned by bd show.
+// When an issue has dependencies, bd show returns full Issue objects
+// with an additional dependency_type field.
+type Dependency struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Status         string `json:"status"`
+	DependencyType string `json:"dependency_type"` // e.g., "blocks"
+}
+
+// ParseDependencies parses the raw dependencies JSON into a slice of Dependency objects.
+// Returns nil if there are no dependencies or if parsing fails.
+func (i *Issue) ParseDependencies() []Dependency {
+	if len(i.Dependencies) == 0 {
+		return nil
+	}
+
+	var deps []Dependency
+	if err := json.Unmarshal(i.Dependencies, &deps); err != nil {
+		return nil
+	}
+	return deps
+}
+
+// BlockingDependency represents a dependency that is blocking this issue.
+type BlockingDependency struct {
+	ID     string
+	Title  string
+	Status string
+}
+
+// GetBlockingDependencies returns a list of dependencies that are still open or in_progress.
+// These are issues that must be completed before this issue can be worked on.
+func (i *Issue) GetBlockingDependencies() []BlockingDependency {
+	deps := i.ParseDependencies()
+	if deps == nil {
+		return nil
+	}
+
+	var blocking []BlockingDependency
+	for _, dep := range deps {
+		// A dependency blocks if it's not closed
+		if dep.Status != "closed" {
+			blocking = append(blocking, BlockingDependency{
+				ID:     dep.ID,
+				Title:  dep.Title,
+				Status: dep.Status,
+			})
+		}
+	}
+	return blocking
+}
+
 // Comment represents a comment on a beads issue.
 type Comment struct {
 	ID        int    `json:"id"`

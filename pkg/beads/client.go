@@ -903,3 +903,53 @@ func FallbackRemoveLabel(id, label string) error {
 	}
 	return nil
 }
+
+// CheckBlockingDependencies checks if an issue has any blocking dependencies.
+// Returns a list of blocking dependencies if any exist, or nil if the issue can be worked on.
+// Uses RPC client if available, falls back to CLI otherwise.
+func CheckBlockingDependencies(issueID string) ([]BlockingDependency, error) {
+	// Try RPC client first
+	socketPath, err := FindSocketPath("")
+	if err == nil {
+		client := NewClient(socketPath, WithAutoReconnect(2))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			issue, err := client.Show(issueID)
+			if err == nil {
+				return issue.GetBlockingDependencies(), nil
+			}
+			// Fall through to CLI on error
+		}
+	}
+
+	// Fallback to CLI
+	issue, err := FallbackShow(issueID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get issue %s: %w", issueID, err)
+	}
+
+	return issue.GetBlockingDependencies(), nil
+}
+
+// BlockingDependencyError represents an error when an issue is blocked by dependencies.
+type BlockingDependencyError struct {
+	IssueID      string
+	Blockers     []BlockingDependency
+	ForceMessage string
+}
+
+func (e *BlockingDependencyError) Error() string {
+	if len(e.Blockers) == 0 {
+		return fmt.Sprintf("issue %s has unknown blockers", e.IssueID)
+	}
+
+	var blockerStrs []string
+	for _, b := range e.Blockers {
+		blockerStrs = append(blockerStrs, fmt.Sprintf("%s (%s)", b.ID, b.Status))
+	}
+
+	return fmt.Sprintf("%s is blocked by: %s\n%s",
+		e.IssueID,
+		strings.Join(blockerStrs, ", "),
+		e.ForceMessage)
+}
