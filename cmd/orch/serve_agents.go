@@ -836,6 +836,24 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// Check if beads issue is closed (definitive source of truth for completion).
+			// This handles the case where orch complete closed the issue but:
+			// 1. The OpenCode session is still open (agent didn't call /exit)
+			// 2. The workspace exists with SPAWN_CONTEXT.md but no SYNTHESIS.md
+			// A closed beads issue means the orchestrator verified and closed the work,
+			// so the agent should show as completed regardless of session/workspace state.
+			if agents[i].Status != "completed" {
+				if issue, ok := allIssues[agents[i].BeadsID]; ok {
+					if strings.EqualFold(issue.Status, "closed") {
+						agents[i].Status = "completed"
+						// Also capture close_reason if available
+						if issue.CloseReason != "" && agents[i].CloseReason == "" {
+							agents[i].CloseReason = issue.CloseReason
+						}
+					}
+				}
+			}
+
 			// For agents not yet marked completed, check workspace for SYNTHESIS.md
 			// This handles untracked agents (--no-track) which have fake beads IDs
 			// and won't have Phase: Complete in beads comments.
