@@ -5,29 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** `.orch/features.json` is an orphaned architect artifact - no code reads it, and all its fields can be expressed in beads.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** No Go/TS/Svelte code references features.json; beads has skill:* labels, dependencies, parent-child, description, priority that map to all features.json fields; cross-repo beads databases exist.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** features.json emerged from architect sessions as a design output but was never integrated into tooling - it's a human-readable backlog that drifted from the active beads-based workflow.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Recommend deprecation - migrate remaining 29 todo features to beads issues, then delete features.json.
 
 ---
 
@@ -38,9 +22,9 @@ Guidelines:
 **Started:** 2026-01-04
 **Updated:** 2026-01-04
 **Owner:** Investigation agent
-**Phase:** Investigating
-**Next Step:** Compare features.json fields vs beads issue fields
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** N/A
@@ -51,33 +35,65 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Starting approach - comparing features.json vs beads
+### Finding 1: features.json is not read by any code
 
-**Evidence:** Initial examination shows features.json has 31 entries tracking feature requests with fields: id, title, description, status, skill, priority, created, source, notes, depends_on, repo, completed. Beads has 1077 total issues with similar lifecycle tracking.
+**Evidence:** Searched all Go, TypeScript, Svelte, and shell files for "features.json" - zero matches in actual codebase (only Playwright node_modules has unrelated reference). No struct definitions parse this file. No CLI commands load it.
 
-**Source:** `.orch/features.json` (369 lines), `bd stats`, `bd list`
+**Source:** `grep -r "features\.json" . --include="*.go" --include="*.ts" --include="*.svelte" --include="*.sh"` - only match was `./web/node_modules/playwright-core/types/protocol.d.ts` (unrelated)
 
-**Significance:** Need to determine if features.json fields map directly to beads, and whether there's active code reading features.json
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This is an orphaned artifact - no tooling integration means it serves purely as human-readable documentation. It has drifted from the actual work tracking system (beads).
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: All features.json fields map to beads capabilities
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Field-by-field comparison:
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+| features.json field | beads equivalent |
+|---------------------|------------------|
+| id | id (e.g., orch-go-7rgz) |
+| title | title |
+| description | description |
+| status (todo/done) | status (open/closed) |
+| skill | label skill:feature-impl (confirmed: 87 issues have this) |
+| priority | priority (1-4) |
+| created | created_at |
+| source | Can be in description or label |
+| notes | Can be in description |
+| depends_on | dependencies with dependency_type |
+| repo | Separate .beads/ per repo exists (kb-cli, glass both have .beads/) |
+| completed | closed_at / close_reason |
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** `bd help create`, `bd label list-all` (shows 22 unique labels including skill:*), `bd show orch-go-f884 --json` (shows dependencies structure)
+
+**Significance:** There is no field in features.json that cannot be expressed in beads. The only potential difference is features.json being a single cross-repo file, but separate beads databases exist per repo.
+
+---
+
+### Finding 3: features.json is an architect artifact
+
+**Evidence:** Git history shows features.json was created/modified by architect sessions, not by automated tooling:
+- First commit: `25ca65ef architect: add feature list with servers/API separation recommendations`
+- Recent commits: All `architect:` prefix commits
+- 25 total commits since Dec 1, 2025
+
+**Source:** `git log --oneline .orch/features.json | head -20`
+
+**Significance:** features.json emerged organically as architect agents produced design recommendations. It was never intended as a tracking system but evolved into one. The artifact format is stable but disconnected from the actual work dispatch system (beads + daemon).
+
+---
+
+### Finding 4: features.json has stale/duplicate data
+
+**Evidence:** 
+- features.json shows 29 todo, 2 done (31 total)
+- beads has 15 open issues, 1062 closed (1077 total)
+- Many features.json entries likely already exist as beads issues (e.g., feat-005 "Dashboard progressive disclosure" is marked done but may or may not have corresponding beads issue)
+- No synchronization between systems
+
+**Source:** `.orch/features.json` meta section, `bd stats`
+
+**Significance:** Maintaining two tracking systems creates confusion about source of truth. The daemon and orchestrator use beads exclusively - features.json is orphaned from the actual workflow.
 
 ---
 
@@ -85,15 +101,22 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Orphaned artifact pattern** - features.json is a design-time output that was never integrated into runtime tooling. Architect agents write recommendations here, but no tooling reads them.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Beads is the source of truth** - The daemon spawns from beads issues, orch complete closes beads issues, bd stats shows work status. features.json has no integration.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Cross-repo isn't a unique value** - While features.json is cross-repo (tracks glass, kb-cli work), each of those repos has its own .beads/ database that can track local work. The orchestrator skill already documents using `--workdir` for cross-repo spawning.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Why does features.json exist?** It emerged from architect sessions as a structured output format for design recommendations. When architect agents analyze codebases, they produce feature lists. This artifact accumulated over time.
+
+**What is it tracking that beads doesn't?** Nothing. Every field maps to beads capabilities. The `source` field (linking to investigation origin) could be stored in beads description. The cross-repo tracking is handled by separate per-repo beads databases.
+
+**Should it be deprecated?** Yes. The recommendation is:
+1. Migrate remaining 29 todo entries to beads issues (respecting per-repo boundaries)
+2. Delete features.json
+3. Update architect skill to output beads issues directly instead of features.json
 
 ---
 
@@ -101,21 +124,20 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- No code reads features.json (verified: grep across all code files)
+- Beads has skill:* labels (verified: `bd label list-all` shows 87 skill:feature-impl issues)
+- Beads has dependency tracking (verified: `bd show orch-go-f884 --json` shows dependencies)
+- Cross-repo beads exist (verified: ls ~/Documents/personal/{kb-cli,glass}/.beads/)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- Whether all 29 todo entries already have corresponding beads issues (would require manual comparison)
+- Whether any external tools or humans rely on features.json format (soft dependency)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If tooling was discovered that reads features.json, deprecation would need migration path
+- If a use case emerged for cross-repo aggregation that beads doesn't support, features.json might have value
 
 ---
 
@@ -123,98 +145,112 @@ Guidelines:
 
 **Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
 
-### Recommended Approach ⭐
+### Recommended Approach: Migrate to Beads + Delete
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Migrate remaining features.json entries to beads issues, then delete the file.**
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Eliminates dual-tracking confusion
+- Integrates design outputs into the operational workflow (daemon can spawn)
+- Reduces maintenance burden (one system to update)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Loses the single-file cross-repo view (acceptable: orchestrator skill handles cross-repo)
+- Migration effort for 29 entries (one-time cost)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Create migration script: `bd create "title" -d "description" -l skill:feature-impl -l source:investigation` for each features.json entry
+2. For cross-repo entries (repo: kb-cli, glass), create in those repos' beads
+3. Verify all entries migrated, then delete features.json
+4. Update architect skill template to output `bd create` commands instead of JSON
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Keep features.json as read-only archive**
+- **Pros:** No migration work, preserves history
+- **Cons:** Continues dual-tracking, architect sessions keep adding to dead file
+- **When to use instead:** If migration effort is blocked
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Integrate features.json into tooling**
+- **Pros:** Would make it useful
+- **Cons:** Duplicates beads functionality, significant development effort
+- **When to use instead:** Never - beads already exists
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Option A (migrate + delete) is the only option that eliminates the root problem (orphaned artifact). Options B and C both preserve the dual-tracking issue.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Create beads issues for features.json entries that don't already exist in beads
+- Use labels to preserve metadata: `skill:*`, `source:investigation`
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- Check if features.json entries already exist in beads (avoid duplicates)
+- Cross-repo entries (repo: kb-cli, glass) need to be created in those repos
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Whether architect skill template needs updating (out of scope for this investigation)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- All 29 todo entries exist as beads issues (or confirmed duplicate)
+- features.json deleted from repo
+- No code references to features.json
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.orch/features.json` - The file under investigation (369 lines, 31 features)
+- `pkg/verify/visual.go` - Checked for "features" references (found only skill name, not file reference)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check for code references
+grep -r "features\.json" . --include="*.go" --include="*.ts" --include="*.svelte" --include="*.sh"
 
-# [Command description]
-[command]
+# Check beads capabilities
+bd stats
+bd label list-all
+bd show orch-go-f884 --json
+bd help create
+
+# Check git history
+git log --oneline .orch/features.json | head -20
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- None
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** N/A
+- **Workspace:** N/A
+
+---
+
+## Self-Review
+
+- [x] Real test performed (not code review) - ran grep, bd commands, git log
+- [x] Conclusion from evidence (not speculation) - based on actual field comparison and code search
+- [x] Question answered - yes: features.json is orphaned, should be deprecated
+- [x] File complete - all sections filled
+
+**Self-Review Status:** PASSED
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-04 13:50:** Investigation started
+- Initial question: Why does features.json exist and should it be deprecated?
+- Context: Orchestrator observed potential duplication between features.json and beads
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-04 14:05:** Core finding confirmed
+- No code reads features.json - it's an orphaned architect artifact
+- All fields map to beads capabilities
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-04 14:15:** Investigation completed
+- Status: Complete
+- Key outcome: features.json should be deprecated - migrate 29 entries to beads, then delete
