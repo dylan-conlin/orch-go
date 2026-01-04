@@ -45,11 +45,13 @@
       "id": "feat-005",
       "title": "Dashboard progressive disclosure: Active/Recent/Archive sections",
       "description": "Implement collapsible sections in swarm dashboard to group agents by recency and activity. Active (always expanded) shows agents with <10min activity. Recent (collapsed by default) shows idle/completed from last 24h. Archive (collapsed) shows older sessions. Store collapse state in localStorage. Update stats bar to show section counts. File targets: web/src/routes/+page.svelte (grouping logic), create CollapsibleSection.svelte component. Acceptance: Dashboard loads with only Active visible, sections expand/collapse smoothly, state persists across refreshes.",
-      "status": "todo",
+      "status": "done",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2025-12-23",
-      "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md"
+      "completed": "2025-12-24",
+      "source": ".kb/investigations/2025-12-23-inv-design-question-should-swarm-dashboard.md",
+      "notes": "Implemented: CollapsibleSection component exists, localStorage persistence works. Verified during 2026-01-04 hotspot analysis."
     },
     {
       "id": "feat-006",
@@ -307,15 +309,50 @@
       "source": ".kb/investigations/2026-01-04-inv-analyze-serve-agents-go-1399.md",
       "depends_on": ["feat-027"],
       "notes": "Phase 2 of serve_agents.go refactor. Smaller extraction but completes separation of concerns."
+    },
+    {
+      "id": "feat-029",
+      "title": "Extract SSE Connection Manager from dashboard stores (Phase 1)",
+      "description": "Create shared SSE connection manager at web/src/lib/services/sse-connection.ts. Extract from agents.ts and agentlog.ts: generation counters, reconnect timeout logic, abort controllers, connection status management. API: createSSEConnection(url, options) → { connect, disconnect, status, onEvent }. Keep domain-specific event handlers in original files. File targets: web/src/lib/services/sse-connection.ts (new), web/src/lib/stores/agents.ts, web/src/lib/stores/agentlog.ts. Acceptance: Both stores use shared SSE service, reconnect logic works, no duplicate connection management code.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md",
+      "notes": "Phase 1 of dashboard hotspot refactor. Addresses 10/32 fix commits. Creates reusable pattern."
+    },
+    {
+      "id": "feat-030",
+      "title": "Extract StatsBar component from +page.svelte (Phase 2)",
+      "description": "Create StatsBar component at web/src/lib/components/stats-bar/. Move from +page.svelte lines 352-557: mode toggle, all status indicators (errors, active, focus, servers, beads, daemon), connection button, settings panel. Props: all stores passed in, sectionState for toggle buttons. Events: modeChange, sectionToggle. File targets: web/src/lib/components/stats-bar/stats-bar.svelte (new), web/src/lib/components/stats-bar/index.ts (new), web/src/routes/+page.svelte. Acceptance: +page.svelte under 700 lines, StatsBar handles all header functionality, responsive behavior preserved.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md",
+      "depends_on": ["feat-029"],
+      "notes": "Phase 2 of dashboard hotspot refactor. Reduces +page.svelte by 200+ lines."
+    },
+    {
+      "id": "feat-031",
+      "title": "Consolidate agent status model in agents.ts (Phase 3)",
+      "description": "Add computeDisplayState(agent: Agent) function to agents.ts that returns unified display state. Move logic from agent-card.svelte getDisplayState(). States: running (is_processing), ready-for-review (Phase: Complete), idle (no recent activity), waiting (active, no activity yet), completed, abandoned. Update agent-card to use store function. File targets: web/src/lib/stores/agents.ts, web/src/lib/components/agent-card/agent-card.svelte. Acceptance: Status logic in one place, agent-card imports and uses store function, no duplicate state computation.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md",
+      "depends_on": ["feat-030"],
+      "notes": "Phase 3 of dashboard hotspot refactor. Addresses status model complexity (4 fixes)."
     }
   ],
   "meta": {
     "last_updated": "2026-01-04",
-    "total_features": 28,
+    "total_features": 31,
     "by_status": {
-      "todo": 27,
+      "todo": 29,
       "in_progress": 0,
-      "done": 1
+      "done": 2
     }
   },
   "epics": {
