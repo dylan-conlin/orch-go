@@ -344,13 +344,49 @@
       "source": ".kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md",
       "depends_on": ["feat-030"],
       "notes": "Phase 3 of dashboard hotspot refactor. Addresses status model complexity (4 fixes)."
+    },
+    {
+      "id": "feat-032",
+      "title": "Add --require-handoff flag to orch session end",
+      "description": "Gate orch session end on SESSION_HANDOFF.md existence. When --require-handoff is set: 1) Check ~/.orch/session/{date}/SESSION_HANDOFF.md exists, 2) If missing, create from template and prompt to fill, 3) Allow --skip-handoff --reason 'X' for explicit bypass. Template at .orch/templates/SESSION_HANDOFF.md. File targets: cmd/orch/session.go (sessionEndCmd), pkg/session/handoff.go (new). Out of scope: Making --require-handoff the default. Acceptance: 'orch session end --require-handoff' blocks without handoff, bypass is documented.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md",
+      "notes": "Phase 1 of meta-orchestrator architecture. Establishes artifact production habit."
+    },
+    {
+      "id": "feat-033",
+      "title": "Add orchestrator session to dashboard stats bar",
+      "description": "Show current orchestrator session status in dashboard. Add /api/session endpoint returning: { active, goal, started_at, duration, spawn_count, handoff_exists }. Update stats bar to show: goal (or 'No session'), duration, spawn count. Click to view SESSION_HANDOFF.md if exists. Pattern follows daemon stats indicator. File targets: cmd/orch/serve.go (handleSession), web/src/routes/+page.svelte (stats bar). Out of scope: Session history view. Acceptance: Dashboard shows current session goal, duration updates in real-time.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md",
+      "depends_on": ["feat-032"],
+      "notes": "Phase 2 of meta-orchestrator architecture. Provides meta-visibility layer."
+    },
+    {
+      "id": "feat-034",
+      "title": "Add kb reflect --type orchestrator for session pattern analysis",
+      "description": "Extend kb reflect to analyze orchestrator SESSION_HANDOFF.md files. Scan ~/.orch/session/*/SESSION_HANDOFF.md. Detect patterns: 1) Recurring friction (same complaints in multiple handoffs), 2) Abandoned sessions (started but no handoff), 3) Missing learnings (no kn entries referenced). Output: Actionable suggestions like 'Create constraint for X' or 'Add to CLAUDE.md'. File targets: kb-cli/cmd/kb/reflect.go. Out of scope: Cross-project session analysis. Acceptance: kb reflect --type orchestrator produces actionable suggestions from handoff analysis.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md",
+      "repo": "kb-cli",
+      "depends_on": ["feat-032"],
+      "notes": "Phase 3 of meta-orchestrator architecture. Closes learning feedback loop."
     }
   ],
   "meta": {
     "last_updated": "2026-01-04",
-    "total_features": 31,
+    "total_features": 34,
     "by_status": {
-      "todo": 29,
+      "todo": 32,
       "in_progress": 0,
       "done": 2
     }

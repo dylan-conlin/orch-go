@@ -27,3 +27,55 @@
 12:10:12 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
 12:10:35 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
 12:10:35 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+1:39:50 PM [vite] (client) hmr update /src/routes/+layout.svelte, /src/app.css, /src/routes/+page.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte
+1:39:50 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+1:40:22 PM [vite] (client) hmr update /src/routes/+layout.svelte, /src/app.css, /src/routes/+page.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte
+1:40:22 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+1:40:31 PM [vite] (client) hmr update /src/routes/+layout.svelte, /src/app.css, /src/routes/+page.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte
+1:40:31 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+1:40:44 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/lib/components/needs-attention/needs-attention.svelte
+1:40:44 PM [vite] (ssr) page reload src/lib/stores/agentlog.ts
+1:41:17 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/lib/components/needs-attention/needs-attention.svelte
+1:41:17 PM [vite] (ssr) page reload src/lib/stores/agentlog.ts
+1:42:07 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+1:42:07 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+1:42:07 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+1:42:07 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+1:42:07 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+1:42:07 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+1:42:07 PM [vite] (client) page reload .svelte-kit/generated/root.js
+1:42:07 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+1:42:19 PM [vite] (client) page reload build/index.html
+1:42:19 PM [vite] (client) page reload build/index.html
+1:54:23 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:54:23 PM [vite] (ssr) page reload src/routes/+page.svelte
+1:55:29 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:55:29 PM [vite] (ssr) page reload src/routes/+page.svelte
+1:55:37 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:55:37 PM [vite] (ssr) page reload src/routes/+page.svelte
+1:55:47 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:55:47 PM [vite] (ssr) page reload src/routes/+page.svelte
+1:55:56 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:55:56 PM [vite] (ssr) page reload src/routes/+page.svelte
+1:56:15 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:56:15 PM [vite] (ssr) page reload src/routes/+page.svelte
+1:56:35 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+1:56:35 PM [vite] (ssr) page reload src/routes/+page.svelte
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 498 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 517 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
