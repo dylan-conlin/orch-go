@@ -724,6 +724,37 @@ func FallbackList(status string) ([]Issue, error) {
 	return issues, nil
 }
 
+// FallbackListByIDs retrieves specific issues by ID via bd CLI.
+// Uses --id and --all flags to fetch issues regardless of status.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+func FallbackListByIDs(ids []string) ([]Issue, error) {
+	if len(ids) == 0 {
+		return []Issue{}, nil
+	}
+
+	// Use --id with comma-separated IDs and --all to include closed issues
+	args := []string{"list", "--json", "--all", "--id", strings.Join(ids, ",")}
+
+	cmd := exec.Command("bd", args...)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd list --id failed: %w: %s", err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("bd list --id failed: %w", err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse bd list output: %w", err)
+	}
+
+	return issues, nil
+}
+
 // FallbackStats retrieves stats via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackStats() (*Stats, error) {

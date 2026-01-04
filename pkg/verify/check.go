@@ -699,18 +699,12 @@ func GetIssue(beadsID string) (*Issue, error) {
 
 // GetIssuesBatch retrieves multiple issues efficiently.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
-// Uses List() to get all issues in one call, then filters by requested IDs.
-// This is much faster than individual Show() calls (1 call vs N calls).
+// Uses List(IDs: beadsIDs) to fetch specific issues by ID in one call.
+// This includes closed issues, unlike List(nil) which only returns open issues.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	if len(beadsIDs) == 0 {
 		return make(map[string]*Issue), nil
-	}
-
-	// Build a set of requested IDs for O(1) lookup
-	requestedIDs := make(map[string]bool, len(beadsIDs))
-	for _, id := range beadsIDs {
-		requestedIDs[id] = true
 	}
 
 	result := make(map[string]*Issue, len(beadsIDs))
@@ -724,19 +718,17 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 		}
 		client := beads.NewClient(socketPath, opts...)
 
-		// Fetch ALL issues in one call, then filter
-		allIssues, err := client.List(nil)
+		// Fetch specific issues by ID (includes closed issues)
+		issues, err := client.List(&beads.ListArgs{IDs: beadsIDs})
 		if err == nil {
-			for i := range allIssues {
-				if requestedIDs[allIssues[i].ID] {
-					result[allIssues[i].ID] = &Issue{
-						ID:          allIssues[i].ID,
-						Title:       allIssues[i].Title,
-						Description: allIssues[i].Description,
-						Status:      allIssues[i].Status,
-						IssueType:   allIssues[i].IssueType,
-						CloseReason: allIssues[i].CloseReason,
-					}
+			for i := range issues {
+				result[issues[i].ID] = &Issue{
+					ID:          issues[i].ID,
+					Title:       issues[i].Title,
+					Description: issues[i].Description,
+					Status:      issues[i].Status,
+					IssueType:   issues[i].IssueType,
+					CloseReason: issues[i].CloseReason,
 				}
 			}
 			return result, nil
@@ -744,22 +736,20 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 		// Fall through to CLI if RPC failed
 	}
 
-	// Fallback to CLI - List all issues in one call
-	allIssues, err := beads.FallbackList("")
+	// Fallback to CLI - fetch specific issues by ID (includes closed)
+	issues, err := beads.FallbackListByIDs(beadsIDs)
 	if err != nil {
 		return result, nil // Return empty on error (don't fail the whole request)
 	}
 
-	for i := range allIssues {
-		if requestedIDs[allIssues[i].ID] {
-			result[allIssues[i].ID] = &Issue{
-				ID:          allIssues[i].ID,
-				Title:       allIssues[i].Title,
-				Description: allIssues[i].Description,
-				Status:      allIssues[i].Status,
-				IssueType:   allIssues[i].IssueType,
-				CloseReason: allIssues[i].CloseReason,
-			}
+	for i := range issues {
+		result[issues[i].ID] = &Issue{
+			ID:          issues[i].ID,
+			Title:       issues[i].Title,
+			Description: issues[i].Description,
+			Status:      issues[i].Status,
+			IssueType:   issues[i].IssueType,
+			CloseReason: issues[i].CloseReason,
 		}
 	}
 
