@@ -1429,10 +1429,11 @@ func runMonitor(serverURL string) error {
 
 var (
 	// Clean command flags
-	cleanDryRun         bool
-	cleanVerifyOpenCode bool
-	cleanWindows        bool
-	cleanPhantoms       bool
+	cleanDryRun          bool
+	cleanVerifyOpenCode  bool
+	cleanWindows         bool
+	cleanPhantoms        bool
+	cleanInvestigations  bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -1451,18 +1452,20 @@ Optional cleanup actions:
   --windows         Close tmux windows for completed agents
   --phantoms        Close phantom tmux windows (beads ID but no active session)
   --verify-opencode Delete orphaned OpenCode disk sessions (not tracked in workspaces)
+  --investigations  Archive empty investigation files (agents died before filling template)
 
 Note: This command never deletes workspace directories - they are kept for 
 investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
 
 Examples:
-  orch-go clean                   # List completed agents (no changes)
-  orch-go clean --dry-run         # Preview mode (same as default)
-  orch-go clean --windows         # Close tmux windows for completed agents
-  orch-go clean --phantoms        # Close phantom tmux windows
-  orch-go clean --verify-opencode # Delete orphaned OpenCode disk sessions`,
+  orch-go clean                    # List completed agents (no changes)
+  orch-go clean --dry-run          # Preview mode (same as default)
+  orch-go clean --windows          # Close tmux windows for completed agents
+  orch-go clean --phantoms         # Close phantom tmux windows
+  orch-go clean --verify-opencode  # Delete orphaned OpenCode disk sessions
+  orch-go clean --investigations   # Archive empty investigation templates`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations)
 	},
 }
 
@@ -1471,6 +1474,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
+	cleanCmd.Flags().BoolVar(&cleanInvestigations, "investigations", false, "Archive empty investigation files to .kb/investigations/archived/")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -1624,7 +1628,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -1637,7 +1641,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 
 	fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
 
-	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms {
+	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms && !cleanInvestigations {
 		fmt.Println("No completed agents found")
 		return nil
 	}
@@ -1687,8 +1691,17 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	// Clean empty investigation files (optional)
+	var investigationsArchived int
+	if cleanInvestigations {
+		investigationsArchived, err = archiveEmptyInvestigations(projectDir, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to archive empty investigations: %v\n", err)
+		}
+	}
+
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations
 
 	if dryRun {
 		if hasCleanupActions {
@@ -1711,27 +1724,32 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if verifyOpenCode && diskSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d orphaned disk sessions.", diskSessionsDeleted)
 			}
+			if cleanInvestigations && investigationsArchived > 0 {
+				fmt.Printf(" Would archive %d empty investigations.", investigationsArchived)
+			}
 			fmt.Println()
 		}
 		return nil
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
 			Type:      "agents.cleaned",
 			Timestamp: time.Now().Unix(),
 			Data: map[string]interface{}{
-				"completed_workspaces":  len(cleanableWorkspaces),
-				"windows_closed":        windowsClosed,
-				"phantoms_closed":       phantomsClosed,
-				"disk_sessions_deleted": diskSessionsDeleted,
-				"project":               projectName,
-				"verify_opencode":       verifyOpenCode,
-				"close_windows":         closeWindows,
-				"clean_phantoms":        cleanPhantoms,
+				"completed_workspaces":     len(cleanableWorkspaces),
+				"windows_closed":           windowsClosed,
+				"phantoms_closed":          phantomsClosed,
+				"disk_sessions_deleted":    diskSessionsDeleted,
+				"investigations_archived":  investigationsArchived,
+				"project":                  projectName,
+				"verify_opencode":          verifyOpenCode,
+				"close_windows":            closeWindows,
+				"clean_phantoms":           cleanPhantoms,
+				"clean_investigations":     cleanInvestigations,
 			},
 		}
 		if err := logger.Log(event); err != nil {
@@ -1740,7 +1758,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -1751,9 +1769,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		if diskSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d orphaned disk sessions\n", diskSessionsDeleted)
 		}
+		if investigationsArchived > 0 {
+			fmt.Printf("Archived %d empty investigation files\n", investigationsArchived)
+		}
 	} else if !hasCleanupActions {
 		// Default: just listing completed workspaces
-		fmt.Printf("\nNote: Workspace directories are preserved. Use --windows, --phantoms, or --verify-opencode to clean up resources.\n")
+		fmt.Printf("\nNote: Workspace directories are preserved. Use --windows, --phantoms, --verify-opencode, or --investigations to clean up resources.\n")
 	}
 
 	return nil
@@ -1956,6 +1977,127 @@ func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 	}
 
 	return closed, nil
+}
+
+// emptyInvestigationPlaceholders are patterns that indicate an investigation file was never filled in.
+// These are template placeholders from kb create investigation that agents should replace.
+var emptyInvestigationPlaceholders = []string{
+	"[Brief, descriptive title]",
+	"[Clear, specific question",
+	"[Concrete observations, data, examples]",
+	"[File paths with line numbers",
+	"[Explanation of the insight",
+}
+
+// isEmptyInvestigation checks if an investigation file still has template placeholders.
+// Returns true if the file contains multiple placeholder patterns, indicating it was never filled in.
+func isEmptyInvestigation(path string) bool {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+
+	contentStr := string(content)
+	placeholderCount := 0
+	for _, placeholder := range emptyInvestigationPlaceholders {
+		if strings.Contains(contentStr, placeholder) {
+			placeholderCount++
+		}
+	}
+
+	// Require at least 2 placeholder patterns to be considered empty
+	// (to avoid false positives from files that just mention placeholders in documentation)
+	return placeholderCount >= 2
+}
+
+// archiveEmptyInvestigations moves empty investigation files to .kb/investigations/archived/.
+// Returns the number of files archived and any error encountered.
+func archiveEmptyInvestigations(projectDir string, dryRun bool) (int, error) {
+	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
+	archivedDir := filepath.Join(investigationsDir, "archived")
+
+	// Check if investigations directory exists
+	if _, err := os.Stat(investigationsDir); os.IsNotExist(err) {
+		fmt.Println("\nNo .kb/investigations directory found")
+		return 0, nil
+	}
+
+	fmt.Println("\nScanning for empty investigation files...")
+
+	// Find all empty investigation files
+	var emptyFiles []string
+	err := filepath.Walk(investigationsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip files we can't access
+		}
+
+		// Skip directories and non-markdown files
+		if info.IsDir() || !strings.HasSuffix(path, ".md") {
+			return nil
+		}
+
+		// Skip files already in archived folder
+		if strings.Contains(path, "/archived/") {
+			return nil
+		}
+
+		if isEmptyInvestigation(path) {
+			emptyFiles = append(emptyFiles, path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to scan investigations: %w", err)
+	}
+
+	if len(emptyFiles) == 0 {
+		fmt.Println("  No empty investigation files found")
+		return 0, nil
+	}
+
+	fmt.Printf("  Found %d empty investigation files:\n", len(emptyFiles))
+
+	// Create archived directory if needed
+	if !dryRun {
+		if err := os.MkdirAll(archivedDir, 0755); err != nil {
+			return 0, fmt.Errorf("failed to create archived directory: %w", err)
+		}
+	}
+
+	// Archive empty files
+	archived := 0
+	for _, path := range emptyFiles {
+		filename := filepath.Base(path)
+
+		// Preserve subdirectory structure (e.g., simple/)
+		relPath, _ := filepath.Rel(investigationsDir, path)
+		destDir := filepath.Join(archivedDir, filepath.Dir(relPath))
+		destPath := filepath.Join(destDir, filename)
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would archive: %s\n", relPath)
+			archived++
+			continue
+		}
+
+		// Create destination subdirectory if needed
+		if err := os.MkdirAll(destDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to create directory %s: %v\n", destDir, err)
+			continue
+		}
+
+		// Move file to archived
+		if err := os.Rename(path, destPath); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to archive %s: %v\n", relPath, err)
+			continue
+		}
+
+		fmt.Printf("    Archived: %s\n", relPath)
+		archived++
+	}
+
+	return archived, nil
 }
 
 // ============================================================================
