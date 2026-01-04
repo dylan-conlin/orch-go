@@ -284,13 +284,36 @@
       "repo": "kb-cli",
       "depends_on": ["feat-025"],
       "notes": "Closes the kb reflect feedback loop - synthesis output is Guide, not more Investigation."
+    },
+    {
+      "id": "feat-027",
+      "title": "Extract serve_agents_cache.go from serve_agents.go (Phase 1)",
+      "description": "Extract caching infrastructure from serve_agents.go (~470 lines) into serve_agents_cache.go. Move: beadsCache (struct + 7 methods), globalWorkspaceCacheType (struct + 2 methods), workspaceCache (struct + 4 methods), buildWorkspaceCache, buildMultiProjectWorkspaceCache, extractUniqueProjectDirs, TTL constants, global instances. Keep handleCacheInvalidate in core (it's an HTTP handler). File targets: cmd/orch/serve_agents.go, cmd/orch/serve_agents_cache.go (new). Out of scope: Moving to pkg/cache/. Acceptance: go build ./cmd/orch/ succeeds, go test ./cmd/orch/ passes, serve_agents.go reduced by ~470 lines.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-inv-analyze-serve-agents-go-1399.md",
+      "notes": "Phase 1 of serve_agents.go refactor. Higher impact than Phase 2 due to larger extraction."
+    },
+    {
+      "id": "feat-028",
+      "title": "Extract serve_agents_events.go from serve_agents.go (Phase 2)",
+      "description": "Extract SSE event handlers from serve_agents.go (~230 lines) into serve_agents_events.go. Move: handleEvents, handleAgentlog, handleAgentlogJSON, handleAgentlogSSE, readLastNEvents. These handlers are independent of caching and agent listing logic. File targets: cmd/orch/serve_agents.go, cmd/orch/serve_agents_events.go (new). Depends on feat-027. Out of scope: Changing event handler behavior. Acceptance: go build ./cmd/orch/ succeeds, go test ./cmd/orch/ passes, serve_agents.go reduced to ~700 lines total.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "low",
+      "created": "2026-01-04",
+      "source": ".kb/investigations/2026-01-04-inv-analyze-serve-agents-go-1399.md",
+      "depends_on": ["feat-027"],
+      "notes": "Phase 2 of serve_agents.go refactor. Smaller extraction but completes separation of concerns."
     }
   ],
   "meta": {
     "last_updated": "2026-01-04",
-    "total_features": 26,
+    "total_features": 28,
     "by_status": {
-      "todo": 25,
+      "todo": 27,
       "in_progress": 0,
       "done": 1
     }
