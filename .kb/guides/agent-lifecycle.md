@@ -69,10 +69,9 @@ The dashboard (`orch serve`) determines status in this order:
 
 **Cause:** Gates were added that require verification before closing.
 
-**Likely gates:**
-- Liveness check: "agent still running" → use `--force`
-- Repro verification: "bug requires reproduction verification" → disabled Jan 4, 2026
-- Dependency check: "issue has blocking dependencies" → disabled Jan 4, 2026
+**See:** `.kb/guides/completion-gates.md` for full reference on all 11 gates.
+
+**Quick bypass:** `orch complete <id> --force` skips all verification gates.
 
 **If completion requires multiple flags to work, that's a smell.** The gates may be adding friction without value.
 

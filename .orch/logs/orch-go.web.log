@@ -17,3 +17,13 @@
 
   ➜  Local:   http://localhost:5188/
   ➜  Network: use --host to expose
+12:09:47 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+12:09:47 PM [vite] (ssr) page reload src/routes/+page.svelte
+12:09:56 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+12:09:56 PM [vite] (ssr) page reload src/routes/+page.svelte
+12:10:03 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+12:10:03 PM [vite] (ssr) page reload src/routes/+page.svelte
+12:10:12 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+12:10:12 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+12:10:35 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+12:10:35 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte

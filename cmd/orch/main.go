@@ -888,47 +888,56 @@ func runComplete(beadsID, workdir string) error {
 	}
 
 	// Check liveness before closing - warn if agent appears still running
+	// BUT: Skip this check if Phase: Complete was reported - agent said it's done,
+	// so whether its session is still open is irrelevant.
+	// This prevents false positives from OpenCode sessions that persist to disk.
 	if !completeForce {
-		liveness := state.GetLiveness(beadsID, serverURL, beadsProjectDir)
-		if liveness.IsAlive() {
-			// Build warning message with details about what's still running
-			var runningDetails []string
-			if liveness.TmuxLive {
-				detail := "tmux window"
-				if liveness.WindowID != "" {
-					detail += " (" + liveness.WindowID + ")"
+		// Check if Phase: Complete was reported
+		phaseComplete, _ := verify.IsPhaseComplete(beadsID)
+
+		// Only check liveness if agent hasn't reported completion
+		if !phaseComplete {
+			liveness := state.GetLiveness(beadsID, serverURL, beadsProjectDir)
+			if liveness.IsAlive() {
+				// Build warning message with details about what's still running
+				var runningDetails []string
+				if liveness.TmuxLive {
+					detail := "tmux window"
+					if liveness.WindowID != "" {
+						detail += " (" + liveness.WindowID + ")"
+					}
+					runningDetails = append(runningDetails, detail)
 				}
-				runningDetails = append(runningDetails, detail)
-			}
-			if liveness.OpencodeLive {
-				detail := "OpenCode session"
-				if liveness.SessionID != "" {
-					detail += " (" + liveness.SessionID[:12] + ")"
+				if liveness.OpencodeLive {
+					detail := "OpenCode session"
+					if liveness.SessionID != "" {
+						detail += " (" + liveness.SessionID[:12] + ")"
+					}
+					runningDetails = append(runningDetails, detail)
 				}
-				runningDetails = append(runningDetails, detail)
+
+				fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
+
+				// Check if stdin is a terminal for interactive prompting
+				if !term.IsTerminal(int(os.Stdin.Fd())) {
+					return fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
+				}
+
+				// Prompt user for confirmation
+				fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
+				reader := bufio.NewReader(os.Stdin)
+				response, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("failed to read response: %w", err)
+				}
+
+				response = strings.TrimSpace(strings.ToLower(response))
+				if response != "y" && response != "yes" {
+					return fmt.Errorf("aborted: agent still running")
+				}
+
+				fmt.Println("Proceeding with completion despite liveness warning...")
 			}
-
-			fmt.Fprintf(os.Stderr, "⚠️  Agent appears still running: %s\n", strings.Join(runningDetails, ", "))
-
-			// Check if stdin is a terminal for interactive prompting
-			if !term.IsTerminal(int(os.Stdin.Fd())) {
-				return fmt.Errorf("agent still running and stdin is not a terminal; use --force to complete anyway")
-			}
-
-			// Prompt user for confirmation
-			fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
-			reader := bufio.NewReader(os.Stdin)
-			response, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read response: %w", err)
-			}
-
-			response = strings.TrimSpace(strings.ToLower(response))
-			if response != "y" && response != "yes" {
-				return fmt.Errorf("aborted: agent still running")
-			}
-
-			fmt.Println("Proceeding with completion despite liveness warning...")
 		}
 	}
 

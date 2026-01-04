@@ -1,4 +1,4 @@
-TASK: Fix short beads ID resolution in spawn. Root cause: when using --issue flag with short ID (e.g., '57dn'), determineBeadsID() passes it directly to SPAWN_CONTEXT without resolving to full ID ('orch-go-57dn'). This causes 'bd comment 57dn' to fail silently. Fix: 1) Add beads.ResolveID(shortID) function in pkg/beads/client.go that calls 'bd show <id> --json' and extracts full ID, 2) In determineBeadsID() in cmd/orch/spawn_cmd.go, call ResolveID when spawnIssue is set. See investigation: .kb/investigations/2026-01-03-inv-agents-report-phase-complete-via.md
+TASK: Fix short beads ID resolution in orch complete command
 
 SPAWN TIER: full
 
@@ -68,7 +68,7 @@ SPAWN TIER: full
 
 🚨 CRITICAL - FIRST 3 ACTIONS:
 You MUST do these within your first 3 tool calls:
-1. Report via `bd comment orch-go-oux7 "Phase: Planning - [brief description]"`
+1. Report via `bd comment orch-go-qdaa "Phase: Planning - [brief description]"`
 2. Read relevant codebase context for your task
 3. Begin planning
 
@@ -79,7 +79,7 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 After your final commit, BEFORE typing anything else:
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. Run: `bd comment orch-go-oux7 "Phase: Complete - [1-2 sentence summary of deliverables]"`
+2. Run: `bd comment orch-go-qdaa "Phase: Complete - [1-2 sentence summary of deliverables]"`
 3. Run: `/exit` to close the agent session
 
 ⚠️ Work is NOT complete until Phase: Complete is reported.
@@ -115,7 +115,7 @@ AUTHORITY:
 
 **Surface Before Circumvent:**
 Before working around ANY constraint (technical, architectural, or process):
-1. Surface it first: `bd comment orch-go-oux7 "CONSTRAINT: [what constraint] - [why considering workaround]"`
+1. Surface it first: `bd comment orch-go-qdaa "CONSTRAINT: [what constraint] - [why considering workaround]"`
 2. Wait for orchestrator acknowledgment before proceeding
 3. The accountability is a feature, not a cost
 
@@ -138,7 +138,7 @@ DELIVERABLES (REQUIRED):
    - If command fails, report to orchestrator immediately
 
    - **IMPORTANT:** After running `kb create`, report the actual path via:
-     `bd comment orch-go-oux7 "investigation_path: /path/to/file.md"`
+     `bd comment orch-go-qdaa "investigation_path: /path/to/file.md"`
      (This allows orch complete to verify the correct file)
 
 3. **UPDATE investigation file** as you work:
@@ -165,21 +165,21 @@ Signal orchestrator when blocked:
 
 ## BEADS PROGRESS TRACKING (PREFERRED)
 
-You were spawned from beads issue: **orch-go-oux7**
+You were spawned from beads issue: **orch-go-qdaa**
 
 **Use `bd comment` for progress updates instead of workspace-only tracking:**
 
 ```bash
 # Report progress at phase transitions
-bd comment orch-go-oux7 "Phase: Planning - Analyzing codebase structure"
-bd comment orch-go-oux7 "Phase: Implementing - Adding authentication middleware"
-bd comment orch-go-oux7 "Phase: Complete - All tests passing, ready for review"
+bd comment orch-go-qdaa "Phase: Planning - Analyzing codebase structure"
+bd comment orch-go-qdaa "Phase: Implementing - Adding authentication middleware"
+bd comment orch-go-qdaa "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
-bd comment orch-go-oux7 "BLOCKED: Need clarification on API contract"
+bd comment orch-go-qdaa "BLOCKED: Need clarification on API contract"
 
 # Report questions
-bd comment orch-go-oux7 "QUESTION: Should we use JWT or session-based auth?"
+bd comment orch-go-qdaa "QUESTION: Should we use JWT or session-based auth?"
 ```
 
 **When to comment:**
@@ -188,7 +188,7 @@ bd comment orch-go-oux7 "QUESTION: Should we use JWT or session-based auth?"
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
 
-**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-oux7`.
+**Why beads comments:** Creates permanent, searchable progress history linked to the issue. Orchestrator can track progress across sessions via `bd show orch-go-qdaa`.
 
 ⛔ **NEVER run `bd close`** - Only the orchestrator closes issues via `orch complete`.
    - Workers report `Phase: Complete`, orchestrator verifies and closes
@@ -610,8 +610,8 @@ CONTEXT AVAILABLE:
 **Status:** stopped
 
 **Ports:**
-- **web:** http://localhost:5188
 - **api:** http://localhost:3348
+- **web:** http://localhost:5188
 
 **Quick commands:**
 - Start servers: `orch servers start orch-go`
@@ -625,7 +625,7 @@ After your final commit, BEFORE doing anything else:
 
 
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
-2. `bd comment orch-go-oux7 "Phase: Complete - [1-2 sentence summary]"`
+2. `bd comment orch-go-qdaa "Phase: Complete - [1-2 sentence summary]"`
 3. `/exit`
 
 
