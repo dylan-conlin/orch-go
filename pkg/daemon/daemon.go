@@ -79,11 +79,27 @@ func (i *Issue) HasLabel(label string) bool {
 
 // PreviewResult contains the result of a preview operation.
 type PreviewResult struct {
-	Issue       *Issue
-	Skill       string
-	Message     string
-	RateLimited bool   // True if rate limit would prevent spawning
-	RateStatus  string // Rate limit status message (e.g., "5/20 spawns in last hour")
+	Issue           *Issue
+	Skill           string
+	Message         string
+	RateLimited     bool              // True if rate limit would prevent spawning
+	RateStatus      string            // Rate limit status message (e.g., "5/20 spawns in last hour")
+	HotspotWarnings []HotspotWarning  // Warnings about hotspot areas this issue may touch
+}
+
+// HasHotspotWarnings returns true if there are any hotspot warnings.
+func (r *PreviewResult) HasHotspotWarnings() bool {
+	return len(r.HotspotWarnings) > 0
+}
+
+// HasCriticalHotspots returns true if any hotspot warning is critical (score >= 10).
+func (r *PreviewResult) HasCriticalHotspots() bool {
+	for _, w := range r.HotspotWarnings {
+		if w.IsCritical() {
+			return true
+		}
+	}
+	return false
 }
 
 // OnceResult contains the result of processing one issue.
@@ -215,6 +231,10 @@ type Daemon struct {
 
 	// RateLimiter tracks spawn history for hourly rate limiting.
 	RateLimiter *RateLimiter
+
+	// HotspotChecker checks for hotspot areas before spawning.
+	// If set, Preview will include hotspot warnings.
+	HotspotChecker HotspotChecker
 
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
@@ -491,6 +511,12 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 	result.Issue = issue
 	result.Skill = skill
+
+	// Check for hotspot warnings if checker is configured
+	if d.HotspotChecker != nil {
+		result.HotspotWarnings = CheckHotspotsForIssue(issue, d.HotspotChecker)
+	}
+
 	return result, nil
 }
 

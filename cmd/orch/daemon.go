@@ -374,6 +374,9 @@ func runDaemonDryRun() error {
 	}
 	d := daemon.NewWithConfig(config)
 
+	// Configure hotspot checking for dry-run
+	d.HotspotChecker = daemon.NewGitHotspotChecker()
+
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
@@ -394,6 +397,12 @@ func runDaemonDryRun() error {
 	fmt.Printf("  Project:  %s\n", projectName)
 	fmt.Println(daemon.FormatPreview(result.Issue))
 	fmt.Printf("\nInferred skill: %s\n", result.Skill)
+
+	// Display hotspot warnings if any
+	if result.HasHotspotWarnings() {
+		fmt.Print(daemon.FormatHotspotWarnings(result.HotspotWarnings))
+	}
+
 	fmt.Println("\nNo agents were spawned (dry-run mode).")
 
 	return nil
@@ -444,6 +453,9 @@ func runDaemonPreview() error {
 	}
 	d := daemon.NewWithConfig(config)
 
+	// Configure hotspot checking for preview
+	d.HotspotChecker = daemon.NewGitHotspotChecker()
+
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
@@ -462,6 +474,12 @@ func runDaemonPreview() error {
 	fmt.Printf("  Project:  %s\n", projectName)
 	fmt.Println(daemon.FormatPreview(result.Issue))
 	fmt.Printf("\nInferred skill: %s\n", result.Skill)
+
+	// Display hotspot warnings if any
+	if result.HasHotspotWarnings() {
+		fmt.Print(daemon.FormatHotspotWarnings(result.HotspotWarnings))
+	}
+
 	fmt.Println("\nRun 'orch-go daemon once' to process this issue.")
 
 	return nil
