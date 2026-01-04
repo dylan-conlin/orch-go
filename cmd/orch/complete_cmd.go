@@ -134,30 +134,43 @@ func runComplete(beadsID, workdir string) error {
 		beads.DefaultDir = beadsProjectDir
 	}
 
-	// Get issue to verify it exists
-	issue, err := verify.GetIssue(beadsID)
-	if err != nil {
-		// Provide helpful error message for cross-project issues
-		projectName := filepath.Base(beadsProjectDir)
-		issuePrefix := strings.Split(beadsID, "-")[0]
-		if len(strings.Split(beadsID, "-")) > 1 {
-			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
-		}
-		if issuePrefix != projectName {
-			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch complete %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
-		}
-		return fmt.Errorf("failed to get beads issue: %w", err)
-	}
+	// Check if this is an untracked agent (no beads issue exists)
+	isUntracked := isUntrackedBeadsID(beadsID)
 
-	// Check if already closed
-	isClosed := issue.Status == "closed"
-	if isClosed {
-		fmt.Printf("Issue %s is already closed in beads\n", beadsID)
+	// For tracked agents, verify the beads issue exists
+	var issue *verify.Issue
+	var isClosed bool
+	if !isUntracked {
+		var err error
+		issue, err = verify.GetIssue(beadsID)
+		if err != nil {
+			// Provide helpful error message for cross-project issues
+			projectName := filepath.Base(beadsProjectDir)
+			issuePrefix := strings.Split(beadsID, "-")[0]
+			if len(strings.Split(beadsID, "-")) > 1 {
+				issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
+			}
+			if issuePrefix != projectName {
+				return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch complete %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
+			}
+			return fmt.Errorf("failed to get beads issue: %w", err)
+		}
+
+		// Check if already closed
+		isClosed = issue.Status == "closed"
+		if isClosed {
+			fmt.Printf("Issue %s is already closed in beads\n", beadsID)
+		}
+	} else {
+		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", beadsID)
+		// Untracked agents are treated as not closed (we'll clean them up)
+		isClosed = false
 	}
 
 	// If --approve flag is set, add approval comment BEFORE verification
 	// This ensures the visual verification gate sees the approval
-	if completeApprove {
+	// Skip for untracked agents (no beads issue to comment on)
+	if completeApprove && !isUntracked {
 		approvalComment := "✅ APPROVED - Visual changes reviewed and approved by orchestrator"
 		if err := addApprovalComment(beadsID, approvalComment); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to add approval comment: %v\n", err)
@@ -168,7 +181,8 @@ func runComplete(beadsID, workdir string) error {
 	}
 
 	// Verify phase status unless force flag is set
-	if !completeForce {
+	// Skip beads-dependent verification for untracked agents (they have no beads issue to check)
+	if !completeForce && !isUntracked {
 		// Workspace already found at top of function
 		if workspacePath != "" {
 			fmt.Printf("Workspace: %s\n", agentName)
@@ -202,6 +216,8 @@ func runComplete(beadsID, workdir string) error {
 				fmt.Printf("Summary: %s\n", result.Phase.Summary)
 			}
 		}
+	} else if isUntracked {
+		fmt.Println("Skipping phase verification (untracked agent)")
 	} else {
 		fmt.Println("Skipping phase verification (--force)")
 	}
@@ -210,7 +226,8 @@ func runComplete(beadsID, workdir string) error {
 	// BUT: Skip this check if Phase: Complete was reported - agent said it's done,
 	// so whether its session is still open is irrelevant.
 	// This prevents false positives from OpenCode sessions that persist to disk.
-	if !completeForce {
+	// Also skip for untracked agents (they have no beads issue to check phase status)
+	if !completeForce && !isUntracked {
 		// Check if Phase: Complete was reported
 		phaseComplete, _ := verify.IsPhaseComplete(beadsID)
 
@@ -356,17 +373,21 @@ func runComplete(beadsID, workdir string) error {
 	// Determine close reason
 	reason := completeReason
 	if reason == "" {
-		// Try to get summary from phase status
-		status, _ := verify.GetPhaseStatus(beadsID)
-		if status.Summary != "" {
-			reason = status.Summary
-		} else {
+		// For tracked agents, try to get summary from phase status
+		if !isUntracked {
+			status, _ := verify.GetPhaseStatus(beadsID)
+			if status.Summary != "" {
+				reason = status.Summary
+			}
+		}
+		if reason == "" {
 			reason = "Completed via orch complete"
 		}
 	}
 
 	// Close the beads issue if not already closed
-	if !isClosed {
+	// Skip for untracked agents (they have no beads issue to close)
+	if !isClosed && !isUntracked {
 		if err := verify.CloseIssue(beadsID, reason); err != nil {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
@@ -378,6 +399,8 @@ func runComplete(beadsID, workdir string) error {
 			// Non-critical - the issue may not have had this label
 			// or it was already removed
 		}
+	} else if isUntracked {
+		fmt.Printf("Cleaned up untracked agent: %s\n", beadsID)
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
@@ -459,9 +482,10 @@ func runComplete(beadsID, workdir string) error {
 		Type:      "agent.completed",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"beads_id": beadsID,
-			"reason":   reason,
-			"forced":   completeForce,
+			"beads_id":  beadsID,
+			"reason":    reason,
+			"forced":    completeForce,
+			"untracked": isUntracked,
 		},
 	}
 	if err := logger.Log(event); err != nil {

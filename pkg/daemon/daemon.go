@@ -48,6 +48,12 @@ func DefaultConfig() Config {
 	}
 }
 
+// RejectedIssue captures why an issue was rejected for spawning.
+type RejectedIssue struct {
+	Issue  Issue  // The rejected issue
+	Reason string // Human-readable rejection reason
+}
+
 // PreviewResult contains the result of a preview operation.
 type PreviewResult struct {
 	Issue           *Issue
@@ -56,6 +62,7 @@ type PreviewResult struct {
 	RateLimited     bool             // True if rate limit would prevent spawning
 	RateStatus      string           // Rate limit status message (e.g., "5/20 spawns in last hour")
 	HotspotWarnings []HotspotWarning // Warnings about hotspot areas this issue may touch
+	RejectedIssues  []RejectedIssue  // Issues that were rejected with reasons
 }
 
 // HasHotspotWarnings returns true if there are any hotspot warnings.
@@ -340,6 +347,7 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 }
 
 // Preview shows what would be processed next without actually processing.
+// It also collects all rejected issues with their rejection reasons.
 func (d *Daemon) Preview() (*PreviewResult, error) {
 	result := &PreviewResult{}
 
@@ -352,34 +360,105 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		}
 		if !canSpawn {
 			result.Message = msg
-			return result, nil
+			// Still collect rejected issues even if rate limited
 		}
 	}
 
-	issue, err := d.NextIssue()
+	// Get all issues and categorize them
+	issues, err := d.listIssuesFunc()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
-	if issue == nil {
+	// Sort by priority (lower number = higher priority)
+	sort.Slice(issues, func(i, j int) bool {
+		return issues[i].Priority < issues[j].Priority
+	})
+
+	var spawnable *Issue
+	for _, issue := range issues {
+		// Check each rejection reason in order and collect all rejected issues
+		reason := d.checkRejectionReason(issue)
+		if reason != "" {
+			result.RejectedIssues = append(result.RejectedIssues, RejectedIssue{
+				Issue:  issue,
+				Reason: reason,
+			})
+			continue
+		}
+
+		// Found a spawnable issue - take the first one (highest priority)
+		if spawnable == nil {
+			issueCopy := issue
+			spawnable = &issueCopy
+		}
+	}
+
+	// If rate limited, we still collected rejected issues but can't spawn
+	if result.RateLimited {
+		return result, nil
+	}
+
+	if spawnable == nil {
 		result.Message = "No spawnable issues in queue"
 		return result, nil
 	}
 
-	skill, err := InferSkillFromIssue(issue)
+	skill, err := InferSkillFromIssue(spawnable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
-	result.Issue = issue
+	result.Issue = spawnable
 	result.Skill = skill
 
 	// Check for hotspot warnings if checker is configured
 	if d.HotspotChecker != nil {
-		result.HotspotWarnings = CheckHotspotsForIssue(issue, d.HotspotChecker)
+		result.HotspotWarnings = CheckHotspotsForIssue(spawnable, d.HotspotChecker)
 	}
 
 	return result, nil
+}
+
+// checkRejectionReason checks if an issue should be rejected and returns the reason.
+// Returns empty string if the issue is spawnable.
+func (d *Daemon) checkRejectionReason(issue Issue) string {
+	// Check for empty/missing type first (the main problem case from the bug report)
+	if issue.IssueType == "" {
+		return "missing type (required for skill inference)"
+	}
+
+	// Check for non-spawnable type
+	if !IsSpawnableType(issue.IssueType) {
+		return fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)
+	}
+
+	// Check for blocked status
+	if issue.Status == "blocked" {
+		return "status is blocked"
+	}
+
+	// Check for in_progress status
+	if issue.Status == "in_progress" {
+		return "status is in_progress (already being worked on)"
+	}
+
+	// Check for missing required label
+	if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+		return fmt.Sprintf("missing label '%s'", d.Config.Label)
+	}
+
+	// Check for blocking dependencies
+	blockers, err := beads.CheckBlockingDependencies(issue.ID)
+	if err == nil && len(blockers) > 0 {
+		var blockerIDs []string
+		for _, b := range blockers {
+			blockerIDs = append(blockerIDs, fmt.Sprintf("%s (%s)", b.ID, b.Status))
+		}
+		return fmt.Sprintf("blocked by dependencies: %s", strings.Join(blockerIDs, ", "))
+	}
+
+	return "" // Spawnable
 }
 
 // FormatPreview formats an issue for preview display.
@@ -405,6 +484,20 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// FormatRejectedIssues formats rejected issues for display.
+func FormatRejectedIssues(rejected []RejectedIssue) string {
+	if len(rejected) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\nRejected issues:\n")
+	for _, r := range rejected {
+		sb.WriteString(fmt.Sprintf("  %s: %s\n", r.Issue.ID, r.Reason))
+	}
+	return sb.String()
 }
 
 

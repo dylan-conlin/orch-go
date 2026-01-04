@@ -385,22 +385,26 @@ func runDaemonDryRun() error {
 	fmt.Println("[DRY-RUN] Would process the following issue:")
 	fmt.Println()
 
-	if result.Issue == nil {
-		fmt.Println("No spawnable issues in queue")
-		return nil
-	}
-
 	// Get current directory for context
 	projectDir, _ := os.Getwd()
 	projectName := filepath.Base(projectDir)
 
-	fmt.Printf("  Project:  %s\n", projectName)
-	fmt.Println(daemon.FormatPreview(result.Issue))
-	fmt.Printf("\nInferred skill: %s\n", result.Skill)
+	if result.Issue != nil {
+		fmt.Printf("  Project:  %s\n", projectName)
+		fmt.Println(daemon.FormatPreview(result.Issue))
+		fmt.Printf("\nInferred skill: %s\n", result.Skill)
 
-	// Display hotspot warnings if any
-	if result.HasHotspotWarnings() {
-		fmt.Print(daemon.FormatHotspotWarnings(result.HotspotWarnings))
+		// Display hotspot warnings if any
+		if result.HasHotspotWarnings() {
+			fmt.Print(daemon.FormatHotspotWarnings(result.HotspotWarnings))
+		}
+	} else {
+		fmt.Println("No spawnable issues in queue")
+	}
+
+	// Display rejected issues with reasons
+	if len(result.RejectedIssues) > 0 {
+		fmt.Print(daemon.FormatRejectedIssues(result.RejectedIssues))
 	}
 
 	fmt.Println("\nNo agents were spawned (dry-run mode).")
@@ -461,26 +465,33 @@ func runDaemonPreview() error {
 		return fmt.Errorf("preview error: %w", err)
 	}
 
-	if result.Issue == nil {
-		fmt.Println(result.Message)
-		return nil
-	}
-
 	// Get current directory for context
 	projectDir, _ := os.Getwd()
 	projectName := filepath.Base(projectDir)
 
-	fmt.Println("Next issue to process:")
-	fmt.Printf("  Project:  %s\n", projectName)
-	fmt.Println(daemon.FormatPreview(result.Issue))
-	fmt.Printf("\nInferred skill: %s\n", result.Skill)
+	// Display spawnable issue if available
+	if result.Issue != nil {
+		fmt.Println("Spawnable issues:")
+		fmt.Printf("  Project:  %s\n", projectName)
+		fmt.Println(daemon.FormatPreview(result.Issue))
+		fmt.Printf("\nInferred skill: %s\n", result.Skill)
 
-	// Display hotspot warnings if any
-	if result.HasHotspotWarnings() {
-		fmt.Print(daemon.FormatHotspotWarnings(result.HotspotWarnings))
+		// Display hotspot warnings if any
+		if result.HasHotspotWarnings() {
+			fmt.Print(daemon.FormatHotspotWarnings(result.HotspotWarnings))
+		}
+	} else {
+		fmt.Println(result.Message)
 	}
 
-	fmt.Println("\nRun 'orch-go daemon once' to process this issue.")
+	// Display rejected issues with reasons
+	if len(result.RejectedIssues) > 0 {
+		fmt.Print(daemon.FormatRejectedIssues(result.RejectedIssues))
+	}
+
+	if result.Issue != nil {
+		fmt.Println("\nRun 'orch-go daemon once' to process this issue.")
+	}
 
 	return nil
 }

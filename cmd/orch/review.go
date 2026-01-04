@@ -363,12 +363,6 @@ func extractProject(projectDir string) string {
 	return filepath.Base(projectDir)
 }
 
-// isUntrackedBeadsID returns true if the beads ID indicates an untracked agent.
-// Untracked agents have IDs like "orch-go-untracked-1766695797".
-func isUntrackedBeadsID(beadsID string) bool {
-	return strings.Contains(beadsID, "-untracked-")
-}
-
 // isStaleAgent returns true if the agent is in a non-Complete phase and
 // the workspace hasn't been modified in over 24 hours.
 func isStaleAgent(phase string, modTime time.Time) bool {

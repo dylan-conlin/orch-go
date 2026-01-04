@@ -82,23 +82,32 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
-	// First, verify the beads issue exists
-	issue, err := verify.GetIssue(beadsID)
-	if err != nil {
-		// Provide helpful error message for cross-project issues
-		projectName := filepath.Base(projectDir)
-		issuePrefix := strings.Split(beadsID, "-")[0]
-		if len(strings.Split(beadsID, "-")) > 1 {
-			issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
-		}
-		if issuePrefix != projectName {
-			return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch abandon %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
-		}
-		return fmt.Errorf("failed to get beads issue: %w", err)
-	}
+	// Check if this is an untracked agent (no beads issue exists)
+	isUntracked := isUntrackedBeadsID(beadsID)
 
-	if issue.Status == "closed" {
-		return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
+	// For tracked agents, verify the beads issue exists
+	var issue *verify.Issue
+	if !isUntracked {
+		var err error
+		issue, err = verify.GetIssue(beadsID)
+		if err != nil {
+			// Provide helpful error message for cross-project issues
+			projectName := filepath.Base(projectDir)
+			issuePrefix := strings.Split(beadsID, "-")[0]
+			if len(strings.Split(beadsID, "-")) > 1 {
+				issuePrefix = strings.Join(strings.Split(beadsID, "-")[:len(strings.Split(beadsID, "-"))-1], "-")
+			}
+			if issuePrefix != projectName {
+				return fmt.Errorf("failed to get beads issue %s: %w\n\nHint: The issue ID suggests it belongs to project '%s', but you're in '%s'.\nTry: orch abandon %s --workdir ~/path/to/%s", beadsID, err, issuePrefix, projectName, beadsID, issuePrefix)
+			}
+			return fmt.Errorf("failed to get beads issue: %w", err)
+		}
+
+		if issue.Status == "closed" {
+			return fmt.Errorf("issue %s is already closed - nothing to abandon", beadsID)
+		}
+	} else {
+		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", beadsID)
 	}
 
 	client := opencode.NewClient(serverURL)
@@ -160,7 +169,12 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 
 		// Generate and write the failure report
-		reportPath, err := spawn.WriteFailureReport(workspacePath, agentName, beadsID, reason, issue.Title)
+		// For untracked agents, issue is nil so use empty title
+		issueTitle := ""
+		if issue != nil {
+			issueTitle = issue.Title
+		}
+		reportPath, err := spawn.WriteFailureReport(workspacePath, agentName, beadsID, reason, issueTitle)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write failure report: %v\n", err)
 		} else {
@@ -171,8 +185,9 @@ func runAbandon(beadsID, reason, workdir string) error {
 	// Log the abandonment
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
-		"beads_id": beadsID,
-		"agent_id": agentName,
+		"beads_id":   beadsID,
+		"agent_id":   agentName,
+		"untracked":  isUntracked,
 	}
 	if windowInfo != nil {
 		eventData["window_id"] = windowInfo.ID
@@ -197,10 +212,13 @@ func runAbandon(beadsID, reason, workdir string) error {
 	}
 
 	// Reset beads status to open so respawn works without manual bd update
-	if err := verify.UpdateIssueStatus(beadsID, "open"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to reset beads status: %v\n", err)
-	} else {
-		fmt.Printf("Reset beads status: in_progress → open\n")
+	// Skip for untracked agents (no beads issue to update)
+	if !isUntracked {
+		if err := verify.UpdateIssueStatus(beadsID, "open"); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to reset beads status: %v\n", err)
+		} else {
+			fmt.Printf("Reset beads status: in_progress → open\n")
+		}
 	}
 
 	fmt.Printf("Abandoned agent: %s\n", agentName)
@@ -208,7 +226,11 @@ func runAbandon(beadsID, reason, workdir string) error {
 	if reason != "" {
 		fmt.Printf("  Reason: %s\n", reason)
 	}
-	fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
+	if isUntracked {
+		fmt.Println("  (Untracked agent - no beads issue to respawn)")
+	} else {
+		fmt.Printf("  Use 'orch work %s' to restart work on this issue\n", beadsID)
+	}
 
 	return nil
 }

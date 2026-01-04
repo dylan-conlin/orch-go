@@ -86,6 +86,12 @@ func extractSkillFromWindowName(name string) string {
 	return extractSkillFromTitle(name)
 }
 
+// isUntrackedBeadsID returns true if the beads ID indicates an untracked agent.
+// Untracked agents have IDs like "orch-go-untracked-1766695797".
+func isUntrackedBeadsID(beadsID string) bool {
+	return strings.Contains(beadsID, "-untracked-")
+}
+
 // extractProjectFromBeadsID extracts the project name from a beads ID.
 // Beads IDs follow the format: project-xxxx (e.g., orch-go-3anf)
 func extractProjectFromBeadsID(beadsID string) string {
