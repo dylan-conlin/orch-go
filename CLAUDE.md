@@ -58,6 +58,12 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
+## Key References
+
+**Before debugging lifecycle issues, read:** `.kb/guides/agent-lifecycle.md`
+
+This covers: spawn → work → complete → dashboard flow, source of truth (beads), common problems, and debugging checklist. Created after repeatedly re-investigating documented problems.
+
 ## Server Management Architecture (Three Layers)
 
 The orchestration system uses three distinct layers for server management:

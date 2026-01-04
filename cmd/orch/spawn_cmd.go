@@ -570,20 +570,18 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		}
 	}
 
-	// Check for blocking dependencies (only when spawning with --issue and not --force)
-	if !spawnNoTrack && spawnIssue != "" && !spawnForce {
-		blockers, err := beads.CheckBlockingDependencies(beadsID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not check dependencies for %s: %v\n", beadsID, err)
-			// Continue - don't block spawn just because we can't check dependencies
-		} else if len(blockers) > 0 {
-			return &beads.BlockingDependencyError{
-				IssueID:      beadsID,
-				Blockers:     blockers,
-				ForceMessage: "Use --force to override",
-			}
+	// DISABLED: Dependency check gate (Jan 4, 2026)
+	// This was added to prevent spawning on issues with unresolved dependencies,
+	// but it added friction without clear benefit. Dependencies are informational,
+	// not blocking - agents can often make progress even if dependencies exist.
+	// See: .kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md
+	/*
+		if !spawnNoTrack && spawnIssue != "" && !spawnForce {
+			blockers, err := beads.CheckBlockingDependencies(beadsID)
+			// ... gate logic disabled ...
 		}
-	}
+	*/
+	_ = spawnForce // silence unused variable warning (flag still exists but doesn't gate)
 
 	// Check if issue is already being worked on (prevent duplicate spawns)
 	if !spawnNoTrack && spawnIssue != "" {

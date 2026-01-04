@@ -659,7 +659,6 @@ func runAbandon(beadsID, reason, workdir string) error {
 	return nil
 }
 
-
 func runSend(serverURL, identifier, message string) error {
 	// First, try to resolve identifier to OpenCode session ID
 	sessionID, resolveErr := resolveSessionID(serverURL, identifier)
@@ -933,79 +932,23 @@ func runComplete(beadsID, workdir string) error {
 		}
 	}
 
-	// Reproduction verification for bug issues
-	// This gates completion on verifying the original bug symptom is resolved
-	// NOTE: --force does NOT bypass repro verification. Use --skip-repro-check for that.
-	// This is intentional: repro verification is critical for bug fixes.
-	if !completeSkipReproCheck {
-		reproResult, err := verify.GetReproForCompletion(beadsID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to check reproduction: %v\n", err)
-		} else if reproResult != nil && reproResult.IsBug {
-			// This is a bug - prompt for reproduction verification
-			fmt.Println("\n--- Bug Reproduction Verification ---")
-			fmt.Printf("Original reproduction:\n%s\n", reproResult.Repro)
-			fmt.Println()
-
-			// Check if stdin is a terminal for interactive prompting
-			if !term.IsTerminal(int(os.Stdin.Fd())) {
-				return fmt.Errorf("bug issue requires reproduction verification; use --skip-repro-check --skip-repro-reason 'reason' to bypass")
-			}
-
-			// Prompt for verification
-			fmt.Print("Is this bug symptom resolved? [y/n/could-not-reproduce]: ")
-			reader := bufio.NewReader(os.Stdin)
-			response, err := reader.ReadString('\n')
+	// DISABLED: Reproduction verification gate (Jan 4, 2026)
+	// This was added to ensure bugs are actually fixed before closing, but it created
+	// too much friction - agents couldn't complete without manual intervention.
+	// Keeping the code commented for potential future re-enablement with better UX.
+	// See: .kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md
+	/*
+		if !completeSkipReproCheck {
+			reproResult, err := verify.GetReproForCompletion(beadsID)
 			if err != nil {
-				return fmt.Errorf("failed to read response: %w", err)
-			}
-
-			response = strings.TrimSpace(strings.ToLower(response))
-
-			switch {
-			case response == "y" || response == "yes":
-				// Bug confirmed fixed - proceed with completion
-				fmt.Println("✓ Bug symptom verified as resolved")
-				// Add verification comment
-				if err := beads.FallbackAddComment(beadsID, "Reproduction verification: ✅ Bug symptom confirmed resolved by orchestrator"); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to add verification comment: %v\n", err)
-				}
-			case response == "n" || response == "no":
-				// Bug not fixed - block completion
-				fmt.Println("\n⚠️  Bug symptom NOT resolved")
-				fmt.Println("Recommendations:")
-				fmt.Printf("  1. Re-spawn for additional investigation: orch spawn systematic-debugging \"[task]\" --issue %s\n", beadsID)
-				fmt.Printf("  2. Add more context to the issue: bd comments add %s \"Additional findings: ...\"\n", beadsID)
-				fmt.Println("  3. Force completion if this is expected: orch complete --skip-repro-check --skip-repro-reason 'reason'")
-				return fmt.Errorf("completion blocked: bug symptom not resolved")
-			case response == "c" || response == "cnr" || response == "could-not-reproduce":
-				// Could not reproduce - close with distinct status
-				fmt.Println("📋 Marked as 'could not reproduce'")
-				// Update the close reason to indicate could not reproduce
-				completeReason = "Could not reproduce: " + completeReason
-				if completeReason == "Could not reproduce: " {
-					completeReason = "Could not reproduce"
-				}
-				// Add comment documenting the outcome
-				if err := beads.FallbackAddComment(beadsID, "Reproduction verification: ⚠️ Could not reproduce. Closing with 'could not reproduce' status."); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to add verification comment: %v\n", err)
-				}
-			default:
-				return fmt.Errorf("invalid response: %q (expected y/n/could-not-reproduce)", response)
+				fmt.Fprintf(os.Stderr, "Warning: failed to check reproduction: %v\n", err)
+			} else if reproResult != nil && reproResult.IsBug {
+				// ... gate logic disabled ...
 			}
 		}
-	} else if completeSkipReproCheck {
-		// Log that repro check was skipped with reason
-		skipReason := completeSkipReproReason
-		if skipReason == "" {
-			skipReason = "(no reason provided)"
-		}
-		fmt.Printf("Skipping reproduction verification: %s\n", skipReason)
-		// Add comment documenting the skip
-		if err := beads.FallbackAddComment(beadsID, fmt.Sprintf("Reproduction verification: ⏭️ Skipped - %s", skipReason)); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to add skip comment: %v\n", err)
-		}
-	}
+	*/
+	_ = completeSkipReproCheck  // silence unused variable warning
+	_ = completeSkipReproReason // silence unused variable warning
 
 	// Check synthesis for follow-up recommendations (workspace already found at top)
 	if workspacePath != "" {
@@ -1162,7 +1105,7 @@ func runComplete(beadsID, workdir string) error {
 		if workspacePath != "" {
 			agentSkill, _ = verify.ExtractSkillNameFromSpawnContext(workspacePath)
 		}
-		
+
 		notableEntries := detectNotableChangelogEntries(beadsProjectDir, agentSkill)
 		if len(notableEntries) > 0 {
 			fmt.Println()
@@ -1353,8 +1296,8 @@ func detectNewCLICommands(projectDir string) []string {
 
 // NotableChangelogEntry represents a notable change from the changelog.
 type NotableChangelogEntry struct {
-	Commit   CommitInfo
-	Reason   string // Why this is notable (e.g., "BREAKING", "skill-relevant", "behavioral")
+	Commit CommitInfo
+	Reason string // Why this is notable (e.g., "BREAKING", "skill-relevant", "behavioral")
 }
 
 // detectNotableChangelogEntries checks recent commits across ecosystem repos for
@@ -1546,11 +1489,11 @@ func runMonitor(serverURL string) error {
 
 var (
 	// Clean command flags
-	cleanDryRun          bool
-	cleanVerifyOpenCode  bool
-	cleanWindows         bool
-	cleanPhantoms        bool
-	cleanInvestigations  bool
+	cleanDryRun         bool
+	cleanVerifyOpenCode bool
+	cleanWindows        bool
+	cleanPhantoms       bool
+	cleanInvestigations bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -1857,16 +1800,16 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			Type:      "agents.cleaned",
 			Timestamp: time.Now().Unix(),
 			Data: map[string]interface{}{
-				"completed_workspaces":     len(cleanableWorkspaces),
-				"windows_closed":           windowsClosed,
-				"phantoms_closed":          phantomsClosed,
-				"disk_sessions_deleted":    diskSessionsDeleted,
-				"investigations_archived":  investigationsArchived,
-				"project":                  projectName,
-				"verify_opencode":          verifyOpenCode,
-				"close_windows":            closeWindows,
-				"clean_phantoms":           cleanPhantoms,
-				"clean_investigations":     cleanInvestigations,
+				"completed_workspaces":    len(cleanableWorkspaces),
+				"windows_closed":          windowsClosed,
+				"phantoms_closed":         phantomsClosed,
+				"disk_sessions_deleted":   diskSessionsDeleted,
+				"investigations_archived": investigationsArchived,
+				"project":                 projectName,
+				"verify_opencode":         verifyOpenCode,
+				"close_windows":           closeWindows,
+				"clean_phantoms":          cleanPhantoms,
+				"clean_investigations":    cleanInvestigations,
 			},
 		}
 		if err := logger.Log(event); err != nil {
