@@ -72,7 +72,9 @@ When you've accomplished your session goal:
    - Active agents and their status
    - Pending work and recommendations
    - Context for the next session
-
+{{if .HasSessionHandoffTemplate}}
+   **Template available:** Use SESSION_HANDOFF.template.md in your workspace as the structure for your handoff.
+{{end}}
 2. **Run:** ` + "`orch session end`" + `
    - This triggers reflection prompts and cleanup
    - Ensures proper session state transitions
@@ -117,15 +119,16 @@ Your workspace is: {{.WorkspacePath}}
 
 // orchestratorContextData holds template data for ORCHESTRATOR_CONTEXT.md.
 type orchestratorContextData struct {
-	SessionGoal   string
-	SkillName     string
-	SkillContent  string
-	ProjectDir    string
-	WorkspacePath string
-	WorkspaceName string
-	StartTime     string
-	KBContext     string
-	ServerContext string
+	SessionGoal               string
+	SkillName                 string
+	SkillContent              string
+	ProjectDir                string
+	WorkspacePath             string
+	WorkspaceName             string
+	StartTime                 string
+	KBContext                 string
+	ServerContext             string
+	HasSessionHandoffTemplate bool
 }
 
 // GenerateOrchestratorContext generates the ORCHESTRATOR_CONTEXT.md content.
@@ -142,15 +145,16 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 	}
 
 	data := orchestratorContextData{
-		SessionGoal:   cfg.SessionGoal,
-		SkillName:     cfg.SkillName,
-		SkillContent:  cfg.SkillContent,
-		ProjectDir:    cfg.ProjectDir,
-		WorkspacePath: cfg.WorkspacePath(),
-		WorkspaceName: cfg.WorkspaceName,
-		StartTime:     time.Now().Format("2006-01-02 15:04"),
-		KBContext:     cfg.KBContext,
-		ServerContext: serverContext,
+		SessionGoal:               cfg.SessionGoal,
+		SkillName:                 cfg.SkillName,
+		SkillContent:              cfg.SkillContent,
+		ProjectDir:                cfg.ProjectDir,
+		WorkspacePath:             cfg.WorkspacePath(),
+		WorkspaceName:             cfg.WorkspaceName,
+		StartTime:                 time.Now().Format("2006-01-02 15:04"),
+		KBContext:                 cfg.KBContext,
+		ServerContext:             serverContext,
+		HasSessionHandoffTemplate: cfg.HasSessionHandoffTemplate,
 	}
 
 	// Use Task as SessionGoal if SessionGoal not explicitly set
@@ -168,15 +172,18 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 
 // WriteOrchestratorContext writes the ORCHESTRATOR_CONTEXT.md file to the workspace.
 func WriteOrchestratorContext(cfg *Config) error {
-	content, err := GenerateOrchestratorContext(cfg)
-	if err != nil {
-		return err
-	}
-
 	// Create workspace directory
 	workspacePath := cfg.WorkspacePath()
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
 		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Copy SESSION_HANDOFF.md template to workspace if it exists
+	cfg.HasSessionHandoffTemplate = copySessionHandoffTemplate(cfg.ProjectDir, workspacePath)
+
+	content, err := GenerateOrchestratorContext(cfg)
+	if err != nil {
+		return err
 	}
 
 	// Write context file (named ORCHESTRATOR_CONTEXT.md for orchestrator spawns)
@@ -205,6 +212,29 @@ func WriteOrchestratorContext(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// copySessionHandoffTemplate copies the SESSION_HANDOFF.md template from
+// .orch/templates/ to the workspace as SESSION_HANDOFF.template.md.
+// Returns true if the template was copied, false if it doesn't exist.
+func copySessionHandoffTemplate(projectDir, workspacePath string) bool {
+	templatePath := filepath.Join(projectDir, ".orch", "templates", "SESSION_HANDOFF.md")
+
+	// Check if template exists
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		// Template doesn't exist - that's fine, it's optional
+		return false
+	}
+
+	// Copy to workspace with .template.md suffix
+	destPath := filepath.Join(workspacePath, "SESSION_HANDOFF.template.md")
+	if err := os.WriteFile(destPath, content, 0644); err != nil {
+		// Log but don't fail - template is optional
+		return false
+	}
+
+	return true
 }
 
 // MinimalOrchestratorPrompt generates the minimal prompt for orchestrator spawns.

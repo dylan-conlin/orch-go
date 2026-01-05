@@ -149,6 +149,12 @@ type Config struct {
 	// Used in ORCHESTRATOR_CONTEXT.md to set session focus.
 	// Only applicable when IsOrchestrator is true.
 	SessionGoal string
+
+	// HasSessionHandoffTemplate indicates whether a SESSION_HANDOFF.template.md
+	// was copied to the workspace. When true, the ORCHESTRATOR_CONTEXT.md will
+	// instruct the agent to use it as the structure for their SESSION_HANDOFF.md.
+	// Set by WriteOrchestratorContext based on template availability.
+	HasSessionHandoffTemplate bool
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

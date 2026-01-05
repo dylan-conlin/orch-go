@@ -415,3 +415,180 @@ func TestGenerateOrchestratorContext_WithServerContext(t *testing.T) {
 		t.Error("expected content to contain web port")
 	}
 }
+
+func TestWriteOrchestratorContext_CopiesSessionHandoffTemplate(t *testing.T) {
+	t.Run("copies template when it exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create the template in .orch/templates/
+		templatesDir := filepath.Join(tempDir, ".orch", "templates")
+		if err := os.MkdirAll(templatesDir, 0755); err != nil {
+			t.Fatalf("failed to create templates dir: %v", err)
+		}
+
+		customTemplate := `# Custom Session Handoff
+
+**Focus:** {session-goal}
+**Outcome:** {success | partial | blocked}
+
+## TLDR
+[Summary here]
+
+## Custom Section
+This is a project-specific template.
+`
+		templatePath := filepath.Join(templatesDir, "SESSION_HANDOFF.md")
+		if err := os.WriteFile(templatePath, []byte(customTemplate), 0644); err != nil {
+			t.Fatalf("failed to write template: %v", err)
+		}
+
+		cfg := &Config{
+			Task:           "orchestrate work",
+			SessionGoal:    "Complete the feature epic",
+			SkillName:      "orchestrator",
+			ProjectDir:     tempDir,
+			WorkspaceName:  "og-orch-test-04jan",
+			IsOrchestrator: true,
+		}
+
+		if err := WriteOrchestratorContext(cfg); err != nil {
+			t.Fatalf("WriteOrchestratorContext failed: %v", err)
+		}
+
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-orch-test-04jan")
+
+		// Check SESSION_HANDOFF.template.md was copied to workspace
+		copiedTemplatePath := filepath.Join(workspacePath, "SESSION_HANDOFF.template.md")
+		if _, err := os.Stat(copiedTemplatePath); os.IsNotExist(err) {
+			t.Errorf("expected SESSION_HANDOFF.template.md to exist in workspace at %s", copiedTemplatePath)
+		}
+
+		// Check content matches the source template
+		copiedContent, err := os.ReadFile(copiedTemplatePath)
+		if err != nil {
+			t.Fatalf("failed to read copied template: %v", err)
+		}
+
+		if string(copiedContent) != customTemplate {
+			t.Error("copied template content does not match source template")
+		}
+	})
+
+	t.Run("spawn works when template does not exist", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// No template file exists
+		cfg := &Config{
+			Task:           "orchestrate work",
+			SessionGoal:    "Complete the feature epic",
+			SkillName:      "orchestrator",
+			ProjectDir:     tempDir,
+			WorkspaceName:  "og-orch-notemplate-04jan",
+			IsOrchestrator: true,
+		}
+
+		// Should NOT fail when template doesn't exist
+		if err := WriteOrchestratorContext(cfg); err != nil {
+			t.Fatalf("WriteOrchestratorContext should not fail when template is missing: %v", err)
+		}
+
+		workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-orch-notemplate-04jan")
+
+		// Check ORCHESTRATOR_CONTEXT.md was still created
+		contextPath := filepath.Join(workspacePath, "ORCHESTRATOR_CONTEXT.md")
+		if _, err := os.Stat(contextPath); os.IsNotExist(err) {
+			t.Error("expected ORCHESTRATOR_CONTEXT.md to exist even without template")
+		}
+
+		// SESSION_HANDOFF.template.md should NOT exist
+		copiedTemplatePath := filepath.Join(workspacePath, "SESSION_HANDOFF.template.md")
+		if _, err := os.Stat(copiedTemplatePath); !os.IsNotExist(err) {
+			t.Error("SESSION_HANDOFF.template.md should NOT exist when source template is missing")
+		}
+	})
+}
+
+func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
+	t.Run("context mentions template when it was copied", func(t *testing.T) {
+		cfg := &Config{
+			Task:                   "orchestrate work",
+			SessionGoal:            "Complete the feature epic",
+			SkillName:              "orchestrator",
+			ProjectDir:             "/tmp/test",
+			WorkspaceName:          "og-orch-test-04jan",
+			IsOrchestrator:         true,
+			HasSessionHandoffTemplate: true, // This flag should be set by WriteOrchestratorContext
+		}
+
+		content, err := GenerateOrchestratorContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateOrchestratorContext failed: %v", err)
+		}
+
+		// Should mention the template file
+		if !strings.Contains(content, "SESSION_HANDOFF.template.md") {
+			t.Error("expected context to mention SESSION_HANDOFF.template.md when HasSessionHandoffTemplate is true")
+		}
+	})
+
+	t.Run("context does not mention template when not copied", func(t *testing.T) {
+		cfg := &Config{
+			Task:                   "orchestrate work",
+			SessionGoal:            "Complete the feature epic",
+			SkillName:              "orchestrator",
+			ProjectDir:             "/tmp/test",
+			WorkspaceName:          "og-orch-test-04jan",
+			IsOrchestrator:         true,
+			HasSessionHandoffTemplate: false,
+		}
+
+		content, err := GenerateOrchestratorContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateOrchestratorContext failed: %v", err)
+		}
+
+		// Should NOT mention template.md file (the .template.md version)
+		if strings.Contains(content, "SESSION_HANDOFF.template.md") {
+			t.Error("context should NOT mention SESSION_HANDOFF.template.md when HasSessionHandoffTemplate is false")
+		}
+	})
+}
+
+func TestEnsureSessionHandoffTemplate_PrefersProjectTemplate(t *testing.T) {
+	t.Run("uses content from project template when it exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// Create project template with custom content
+		templatesDir := filepath.Join(tempDir, ".orch", "templates")
+		if err := os.MkdirAll(templatesDir, 0755); err != nil {
+			t.Fatalf("failed to create templates dir: %v", err)
+		}
+
+		customContent := `# Custom Project Handoff Template
+
+This is a project-specific template with custom sections.
+
+## Special Section
+Only this project has this section.
+`
+		templatePath := filepath.Join(templatesDir, "SESSION_HANDOFF.md")
+		if err := os.WriteFile(templatePath, []byte(customContent), 0644); err != nil {
+			t.Fatalf("failed to write template: %v", err)
+		}
+
+		// EnsureSessionHandoffTemplate should NOT overwrite
+		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
+			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
+		}
+
+		// Verify custom content is preserved
+		content, err := os.ReadFile(templatePath)
+		if err != nil {
+			t.Fatalf("failed to read template: %v", err)
+		}
+
+		if string(content) != customContent {
+			t.Error("EnsureSessionHandoffTemplate should preserve existing project template")
+		}
+	})
+}
