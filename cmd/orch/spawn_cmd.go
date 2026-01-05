@@ -791,6 +791,11 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
+	// Explicit --headless flag overrides all other mode decisions
+	if headless {
+		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
 	// Orchestrator-type skills default to tmux mode (visible interaction)
 	// Workers default to headless mode (automation-friendly)
 	useTmux := tmux || attach || cfg.IsOrchestrator
@@ -1140,10 +1145,18 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 }
 
 // runSpawnTmux spawns the agent in a tmux window (interactive, returns immediately).
-// Creates a tmux window in workers-{project} session, runs opencode there, and returns.
+// Creates a tmux window in workers-{project} session (or orchestrator session for orchestrator skills).
 func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, skillName, task string, attach bool) error {
-	// Ensure workers tmux session exists
-	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	var sessionName string
+	var err error
+
+	// Orchestrator skills go into the 'orchestrator' tmux session
+	// Workers go into 'workers-{project}' session
+	if cfg.IsOrchestrator || cfg.IsMetaOrchestrator {
+		sessionName, err = tmux.EnsureOrchestratorSession()
+	} else {
+		sessionName, err = tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to ensure tmux session: %w", err)
 	}

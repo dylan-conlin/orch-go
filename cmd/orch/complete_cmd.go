@@ -404,6 +404,13 @@ func runComplete(beadsID, workdir string) error {
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
+	// For orchestrator sessions, export transcript before cleanup
+	if workspacePath != "" {
+		if err := exportOrchestratorTranscript(workspacePath, beadsProjectDir, beadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to export orchestrator transcript: %v\n", err)
+		}
+	}
+
 	// Clean up tmux window if it exists (prevents phantom accumulation)
 	if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(beadsID); err == nil && window != nil {
 		if err := tmux.KillWindow(window.Target); err != nil {
@@ -810,4 +817,85 @@ func restartOrchServe(projectDir string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// exportOrchestratorTranscript exports the session transcript for orchestrator sessions.
+// It checks for .orchestrator marker, sends /export to the tmux window, waits for the
+// export file, and moves it to the workspace as TRANSCRIPT.md.
+func exportOrchestratorTranscript(workspacePath, projectDir, beadsID string) error {
+	// Check if this is an orchestrator session (has .orchestrator or .meta-orchestrator marker)
+	orchestratorMarker := filepath.Join(workspacePath, ".orchestrator")
+	metaOrchestratorMarker := filepath.Join(workspacePath, ".meta-orchestrator")
+
+	isOrchestrator := false
+	if _, err := os.Stat(orchestratorMarker); err == nil {
+		isOrchestrator = true
+	} else if _, err := os.Stat(metaOrchestratorMarker); err == nil {
+		isOrchestrator = true
+	}
+
+	if !isOrchestrator {
+		return nil // Not an orchestrator, nothing to do
+	}
+
+	// Find the tmux window for this agent
+	window, _, err := tmux.FindWindowByBeadsIDAllSessions(beadsID)
+	if err != nil || window == nil {
+		return fmt.Errorf("could not find tmux window for orchestrator")
+	}
+
+	// Record existing session export files before sending /export
+	existingExports := make(map[string]bool)
+	pattern := filepath.Join(projectDir, "session-ses_*.md")
+	matches, _ := filepath.Glob(pattern)
+	for _, m := range matches {
+		existingExports[m] = true
+	}
+
+	// Send /export command to the tmux window
+	if err := tmux.SendKeys(window.Target, "/export"); err != nil {
+		return fmt.Errorf("failed to send /export: %w", err)
+	}
+	if err := tmux.SendEnter(window.Target); err != nil {
+		return fmt.Errorf("failed to send enter: %w", err)
+	}
+
+	fmt.Println("Exporting orchestrator transcript...")
+
+	// Wait for new export file to appear (poll for up to 10 seconds)
+	var newExportPath string
+	for i := 0; i < 20; i++ {
+		time.Sleep(500 * time.Millisecond)
+		matches, _ := filepath.Glob(pattern)
+		for _, m := range matches {
+			if !existingExports[m] {
+				newExportPath = m
+				break
+			}
+		}
+		if newExportPath != "" {
+			break
+		}
+	}
+
+	if newExportPath == "" {
+		return fmt.Errorf("timeout waiting for export file")
+	}
+
+	// Move export to workspace as TRANSCRIPT.md
+	destPath := filepath.Join(workspacePath, "TRANSCRIPT.md")
+	if err := os.Rename(newExportPath, destPath); err != nil {
+		// If rename fails (cross-device), try copy+delete
+		input, err := os.ReadFile(newExportPath)
+		if err != nil {
+			return fmt.Errorf("failed to read export: %w", err)
+		}
+		if err := os.WriteFile(destPath, input, 0644); err != nil {
+			return fmt.Errorf("failed to write transcript: %w", err)
+		}
+		os.Remove(newExportPath)
+	}
+
+	fmt.Printf("Saved transcript: %s\n", destPath)
+	return nil
 }

@@ -499,6 +499,14 @@ func WriteContext(cfg *Config) error {
 		return fmt.Errorf("failed to write spawn time file: %w", err)
 	}
 
+	// Write beads ID file for workspace lookup during orch complete
+	if cfg.BeadsID != "" {
+		beadsIDPath := filepath.Join(workspacePath, ".beads_id")
+		if err := os.WriteFile(beadsIDPath, []byte(cfg.BeadsID), 0644); err != nil {
+			return fmt.Errorf("failed to write beads ID file: %w", err)
+		}
+	}
+
 	return nil
 }
 
