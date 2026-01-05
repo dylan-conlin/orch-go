@@ -163,6 +163,9 @@ Yes, the spawnable orchestrator infrastructure is correctly implemented and read
 - ⚠️ Tmux window creation (not tested: requires tmux environment)
 - ⚠️ Multi-session orchestrator workflows (not tested: requires multiple spawns and completions)
 
+**Note on this investigation's spawn:**
+This investigation was spawned with `meta-orchestrator` skill embedded in SPAWN_CONTEXT.md (worker-style), not via the orchestrator spawn path (which would create ORCHESTRATOR_CONTEXT.md). This is the expected "hybrid" architecture - skill content embedded in worker-style context. The `.orchestrator` marker and ORCHESTRATOR_CONTEXT.md in this workspace were created by a concurrent/subsequent spawn, not the one I'm running in.
+
 **What would change this:**
 
 - Finding would be wrong if orch spawn with orchestrator skill fails at runtime
