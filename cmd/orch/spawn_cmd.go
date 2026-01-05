@@ -559,7 +559,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	}
 
 	// Generate workspace name
-	workspaceName := spawn.GenerateWorkspaceName(skillName, task)
+	workspaceName := spawn.GenerateWorkspaceName(projectName, skillName, task)
 
 	// Load skill content with dependencies (e.g., worker-base patterns)
 	loader := skills.DefaultLoader()
@@ -589,16 +589,22 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	}
 
 	// Determine beads ID - either from flag, create new issue, or skip if --no-track
-	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnNoTrack, createBeadsIssue)
+	// Orchestrators skip beads tracking entirely - they're interactive sessions with Dylan,
+	// not autonomous tasks. SESSION_HANDOFF.md is richer than beads comments.
+	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
+	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnNoTrack || skipBeadsForOrchestrator, createBeadsIssue)
 	if err != nil {
 		return fmt.Errorf("failed to determine beads ID: %w", err)
 	}
-	if spawnNoTrack {
+	if skipBeadsForOrchestrator {
+		fmt.Println("Skipping beads tracking (orchestrator session)")
+	} else if spawnNoTrack {
 		fmt.Println("Skipping beads tracking (--no-track)")
 	}
 
 	// Check for retry patterns on existing issues - surface to prevent blind respawning
-	if !spawnNoTrack && spawnIssue != "" {
+	// Skip for orchestrators since they don't use beads tracking
+	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {
 		if stats, err := verify.GetFixAttemptStats(beadsID); err == nil && stats.IsRetryPattern() {
 			warning := verify.FormatRetryWarning(stats)
 			if warning != "" {
@@ -621,7 +627,8 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	_ = spawnForce // silence unused variable warning (flag still exists but doesn't gate)
 
 	// Check if issue is already being worked on (prevent duplicate spawns)
-	if !spawnNoTrack && spawnIssue != "" {
+	// Skip for orchestrators since they don't use beads tracking
+	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {
 		if issue, err := verify.GetIssue(beadsID); err == nil {
 			if issue.Status == "closed" {
 				return fmt.Errorf("issue %s is already closed", beadsID)
@@ -654,7 +661,8 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	}
 
 	// Update beads issue status to in_progress (only if tracking a real issue)
-	if !spawnNoTrack && spawnIssue != "" {
+	// Skip for orchestrators since they don't use beads tracking
+	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {
 		if err := verify.UpdateIssueStatus(beadsID, "in_progress"); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to update beads issue status: %v\n", err)
 			// Continue anyway
@@ -749,7 +757,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		Model:              resolvedModel.Format(),
 		MCP:                spawnMCP,
 		Tier:               tier,
-		NoTrack:            spawnNoTrack,
+		NoTrack:            spawnNoTrack || skipBeadsForOrchestrator,
 		SkipArtifactCheck:  spawnSkipArtifactCheck,
 		KBContext:          kbContext,
 		IncludeServers:     spawn.DefaultIncludeServersForSkill(skillName),

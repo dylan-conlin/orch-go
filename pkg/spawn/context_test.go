@@ -9,62 +9,149 @@ import (
 
 func TestGenerateWorkspaceName(t *testing.T) {
 	tests := []struct {
-		name      string
-		skillName string
-		task      string
-		wantParts []string // parts that should appear in the workspace name
+		name        string
+		projectName string
+		skillName   string
+		task        string
+		wantParts   []string // parts that should appear in the workspace name
 	}{
 		{
-			name:      "investigation skill",
-			skillName: "investigation",
-			task:      "explore the codebase",
-			wantParts: []string{"og-inv-", "explore", "codebase"},
+			name:        "investigation skill with orch-go project",
+			projectName: "orch-go",
+			skillName:   "investigation",
+			task:        "explore the codebase",
+			wantParts:   []string{"og-inv-", "explore", "codebase"},
 		},
 		{
-			name:      "feature-impl skill",
-			skillName: "feature-impl",
-			task:      "add new spawn command",
-			wantParts: []string{"og-feat-", "add", "spawn", "command"}, // 'new' filtered as vague adjective
+			name:        "feature-impl skill with orch-go project",
+			projectName: "orch-go",
+			skillName:   "feature-impl",
+			task:        "add new spawn command",
+			wantParts:   []string{"og-feat-", "add", "spawn", "command"}, // 'new' filtered as vague adjective
 		},
 		{
-			name:      "unknown skill",
-			skillName: "custom-skill",
-			task:      "do something",
-			wantParts: []string{"og-work-", "something"}, // 'do' filtered as auxiliary verb
+			name:        "unknown skill with orch-go project",
+			projectName: "orch-go",
+			skillName:   "custom-skill",
+			task:        "do something",
+			wantParts:   []string{"og-work-", "something"}, // 'do' filtered as auxiliary verb
 		},
 		{
-			name:      "task with stop words",
-			skillName: "investigation",
-			task:      "the quick brown fox in the forest",
-			wantParts: []string{"og-inv-", "quick", "brown", "fox"},
+			name:        "task with stop words and orch-go project",
+			projectName: "orch-go",
+			skillName:   "investigation",
+			task:        "the quick brown fox in the forest",
+			wantParts:   []string{"og-inv-", "quick", "brown", "fox"},
 		},
 		{
-			name:      "task with question words filtered",
-			skillName: "architect",
-			task:      "Design how to better surface ready queue items",
-			wantParts: []string{"og-arch-", "design", "surface", "ready"}, // 'how', 'better' filtered
+			name:        "task with question words filtered",
+			projectName: "orch-go",
+			skillName:   "architect",
+			task:        "Design how to better surface ready queue items",
+			wantParts:   []string{"og-arch-", "design", "surface", "ready"}, // 'how', 'better' filtered
 		},
 		{
-			name:      "task with modal verbs filtered",
-			skillName: "investigation",
-			task:      "what should we do when users can login",
-			wantParts: []string{"og-inv-", "users", "login"}, // 'what', 'should', 'we', 'do', 'when', 'can' filtered
+			name:        "task with modal verbs filtered",
+			projectName: "orch-go",
+			skillName:   "investigation",
+			task:        "what should we do when users can login",
+			wantParts:   []string{"og-inv-", "users", "login"}, // 'what', 'should', 'we', 'do', 'when', 'can' filtered
 		},
 		{
-			name:      "task with filler words filtered",
-			skillName: "feature-impl",
-			task:      "need to make some changes to get better logging",
-			wantParts: []string{"og-feat-", "changes", "logging"}, // 'need', 'make', 'some', 'get', 'better' filtered
+			name:        "task with filler words filtered",
+			projectName: "orch-go",
+			skillName:   "feature-impl",
+			task:        "need to make some changes to get better logging",
+			wantParts:   []string{"og-feat-", "changes", "logging"}, // 'need', 'make', 'some', 'get', 'better' filtered
+		},
+		{
+			name:        "price-watch project uses pw prefix",
+			projectName: "price-watch",
+			skillName:   "investigation",
+			task:        "explore pricing",
+			wantParts:   []string{"pw-inv-", "explore", "pricing"},
+		},
+		{
+			name:        "single-word project name",
+			projectName: "myproject",
+			skillName:   "feature-impl",
+			task:        "add feature",
+			wantParts:   []string{"my-feat-", "add", "feature"},
+		},
+		{
+			name:        "three-part project name",
+			projectName: "my-cool-project",
+			skillName:   "investigation",
+			task:        "explore code",
+			wantParts:   []string{"mycopr-inv-", "explore", "code"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GenerateWorkspaceName(tt.skillName, tt.task)
+			got := GenerateWorkspaceName(tt.projectName, tt.skillName, tt.task)
 			for _, part := range tt.wantParts {
 				if !strings.Contains(got, part) {
 					t.Errorf("expected workspace name to contain %q, got %q", part, got)
 				}
+			}
+		})
+	}
+}
+
+func TestGenerateProjectPrefix(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectName string
+		want        string
+	}{
+		{
+			name:        "two-part hyphenated name",
+			projectName: "orch-go",
+			want:        "og",
+		},
+		{
+			name:        "two-part hyphenated name (price-watch)",
+			projectName: "price-watch",
+			want:        "pw",
+		},
+		{
+			name:        "single word project",
+			projectName: "myproject",
+			want:        "my",
+		},
+		{
+			name:        "three-part project name",
+			projectName: "my-cool-project",
+			want:        "mycopr",
+		},
+		{
+			name:        "underscores instead of hyphens",
+			projectName: "my_project_name",
+			want:        "myprna",
+		},
+		{
+			name:        "empty project name falls back to og",
+			projectName: "",
+			want:        "og",
+		},
+		{
+			name:        "single character parts",
+			projectName: "a-b-c",
+			want:        "abc",
+		},
+		{
+			name:        "kb-cli project (2 parts = first letter of each)",
+			projectName: "kb-cli",
+			want:        "kc",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateProjectPrefix(tt.projectName)
+			if got != tt.want {
+				t.Errorf("generateProjectPrefix(%q) = %q, want %q", tt.projectName, got, tt.want)
 			}
 		})
 	}

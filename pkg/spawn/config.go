@@ -157,9 +157,13 @@ type Config struct {
 	HasSessionHandoffTemplate bool
 }
 
-// GenerateWorkspaceName creates a workspace name from skill and task.
-// Format: og-{skill-prefix}-{task-slug}-{date}
-func GenerateWorkspaceName(skillName, task string) string {
+// GenerateWorkspaceName creates a workspace name from project, skill, and task.
+// Format: {project-prefix}-{skill-prefix}-{task-slug}-{date}
+// The project prefix is derived from the project name (first 2 chars of each word,
+// or first 2 chars if single word). Examples: "orch-go" -> "og", "price-watch" -> "pw"
+func GenerateWorkspaceName(projectName, skillName, task string) string {
+	// Generate project prefix (e.g., "orch-go" -> "og", "price-watch" -> "pw")
+	projectPrefix := generateProjectPrefix(projectName)
 	// Skill prefix mapping (similar to Python's SKILL_PREFIXES)
 	prefixes := map[string]string{
 		"investigation":        "inv",
@@ -182,7 +186,7 @@ func GenerateWorkspaceName(skillName, task string) string {
 	// Generate task slug from first few meaningful words
 	slug := generateSlug(task, 3)
 
-	return fmt.Sprintf("og-%s-%s-%s", prefix, slug, date)
+	return fmt.Sprintf("%s-%s-%s-%s", projectPrefix, prefix, slug, date)
 }
 
 // generateSlug extracts meaningful words from text and creates a slug.
@@ -237,6 +241,57 @@ func generateSlug(text string, maxWords int) string {
 	}
 
 	return strings.Join(words, "-")
+}
+
+// generateProjectPrefix creates a short prefix from a project name.
+// For two-part names like "orch-go" or "price-watch", takes first letter of each part.
+// For single-word names like "myproject", takes first two characters.
+// For three or more parts, takes first two characters of each part.
+// Examples:
+//   - "orch-go" -> "og" (2 parts: first letter of each)
+//   - "price-watch" -> "pw" (2 parts: first letter of each)
+//   - "myproject" -> "my" (1 part: first two chars)
+//   - "my-cool-project" -> "mycopr" (3 parts: first two chars of each)
+func generateProjectPrefix(projectName string) string {
+	if projectName == "" {
+		return "og" // Fallback for empty project name
+	}
+
+	// Split on hyphens and underscores
+	parts := strings.FieldsFunc(projectName, func(r rune) bool {
+		return r == '-' || r == '_'
+	})
+
+	if len(parts) == 0 {
+		return "og" // Fallback
+	}
+
+	var prefix strings.Builder
+
+	// For exactly 2 parts, take first letter of each (creates 2-char prefix like "og", "pw")
+	// This is the common case for hyphenated project names
+	if len(parts) == 2 {
+		for _, part := range parts {
+			if len(part) >= 1 {
+				prefix.WriteString(strings.ToLower(string(part[0])))
+			}
+		}
+	} else {
+		// For 1 part or 3+ parts, take first 2 characters of each part
+		for _, part := range parts {
+			if len(part) >= 2 {
+				prefix.WriteString(strings.ToLower(part[:2]))
+			} else if len(part) == 1 {
+				prefix.WriteString(strings.ToLower(part))
+			}
+		}
+	}
+
+	result := prefix.String()
+	if result == "" {
+		return "og" // Fallback
+	}
+	return result
 }
 
 // WorkspacePath returns the full path to the workspace directory.
