@@ -563,21 +563,23 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 
 	// Load skill content with dependencies (e.g., worker-base patterns)
 	loader := skills.DefaultLoader()
+
+	// First load raw skill content (without dependencies) to detect skill type
+	// This is needed because LoadSkillWithDependencies puts dependency content first,
+	// which means the main skill's frontmatter isn't at the start of the combined content
+	isOrchestrator := false
+	rawSkillContent, err := loader.LoadSkillContent(skillName)
+	if err == nil {
+		if metadata, err := skills.ParseSkillMetadata(rawSkillContent); err == nil {
+			isOrchestrator = metadata.SkillType == "policy" || metadata.SkillType == "orchestrator"
+		}
+	}
+
+	// Now load full skill content with dependencies for the actual spawn
 	skillContent, err := loader.LoadSkillWithDependencies(skillName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not load skill '%s': %v\n", skillName, err)
 		skillContent = "" // Continue without skill content
-	}
-
-	// Detect orchestrator-type skills via skill-type frontmatter
-	// Orchestrator skills (skill-type: policy/orchestrator) get different defaults:
-	// - Default to tmux mode (visible interaction)
-	// - May use different context template and completion verification in the future
-	isOrchestrator := false
-	if skillContent != "" {
-		if metadata, err := skills.ParseSkillMetadata(skillContent); err == nil {
-			isOrchestrator = metadata.SkillType == "policy" || metadata.SkillType == "orchestrator"
-		}
 	}
 
 	// Determine beads ID - either from flag, create new issue, or skip if --no-track
