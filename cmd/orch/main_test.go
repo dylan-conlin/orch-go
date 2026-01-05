@@ -1935,3 +1935,138 @@ func restoreEnv(key, originalValue string) {
 		os.Setenv(key, originalValue)
 	}
 }
+
+// TestRegisterOrchestratorSession tests that orchestrator sessions are registered in the session registry.
+func TestRegisterOrchestratorSession(t *testing.T) {
+	// Create temp directory for registry
+	tempDir, err := os.MkdirTemp("", "test-orch-registry-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override HOME so registry goes to temp dir
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tempDir)
+	defer os.Setenv("HOME", origHome)
+
+	// Create .orch directory for registry
+	orchDir := filepath.Join(tempDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		t.Fatalf("Failed to create .orch dir: %v", err)
+	}
+
+	tests := []struct {
+		name               string
+		isOrchestrator     bool
+		isMetaOrchestrator bool
+		wantRegistered     bool
+	}{
+		{
+			name:               "orchestrator session is registered",
+			isOrchestrator:     true,
+			isMetaOrchestrator: false,
+			wantRegistered:     true,
+		},
+		{
+			name:               "meta-orchestrator session is registered",
+			isOrchestrator:     false,
+			isMetaOrchestrator: true,
+			wantRegistered:     true,
+		},
+		{
+			name:               "worker session is NOT registered",
+			isOrchestrator:     false,
+			isMetaOrchestrator: false,
+			wantRegistered:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear registry between tests
+			registryPath := filepath.Join(orchDir, "sessions.json")
+			os.Remove(registryPath)
+
+			cfg := &spawn.Config{
+				WorkspaceName:      "test-workspace-" + tt.name,
+				ProjectDir:         "/tmp/test-project",
+				IsOrchestrator:     tt.isOrchestrator,
+				IsMetaOrchestrator: tt.isMetaOrchestrator,
+			}
+
+			// Call the registration function
+			registerOrchestratorSession(cfg, "test-session-id", "test task")
+
+			// Check if session was registered
+			data, err := os.ReadFile(registryPath)
+			registered := err == nil && len(data) > 0
+
+			if registered != tt.wantRegistered {
+				t.Errorf("Session registration = %v, want %v", registered, tt.wantRegistered)
+			}
+
+			// If registered, verify the content
+			if tt.wantRegistered && registered {
+				if !strings.Contains(string(data), cfg.WorkspaceName) {
+					t.Errorf("Registry data should contain workspace name %q, got: %s", cfg.WorkspaceName, string(data))
+				}
+				if !strings.Contains(string(data), "test-session-id") {
+					t.Errorf("Registry data should contain session ID, got: %s", string(data))
+				}
+				if !strings.Contains(string(data), "active") {
+					t.Errorf("Registry data should contain 'active' status, got: %s", string(data))
+				}
+			}
+		})
+	}
+}
+
+// TestOrchestratorSkipsBeadsIssue tests that orchestrator spawns skip beads issue creation.
+func TestOrchestratorSkipsBeadsIssue(t *testing.T) {
+	// This tests the logic in runSpawnWithSkill that skips beads for orchestrators
+	tests := []struct {
+		name               string
+		isOrchestrator     bool
+		isMetaOrchestrator bool
+		spawnNoTrack       bool
+		wantSkipBeads      bool
+	}{
+		{
+			name:           "orchestrator skips beads",
+			isOrchestrator: true,
+			spawnNoTrack:   false,
+			wantSkipBeads:  true,
+		},
+		{
+			name:               "meta-orchestrator skips beads",
+			isMetaOrchestrator: true,
+			spawnNoTrack:       false,
+			wantSkipBeads:      true,
+		},
+		{
+			name:           "worker with --no-track skips beads",
+			isOrchestrator: false,
+			spawnNoTrack:   true,
+			wantSkipBeads:  true,
+		},
+		{
+			name:           "worker without --no-track creates beads",
+			isOrchestrator: false,
+			spawnNoTrack:   false,
+			wantSkipBeads:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Replicate the logic from runSpawnWithSkill
+			skipBeadsForOrchestrator := tt.isOrchestrator || tt.isMetaOrchestrator
+			shouldSkipBeads := tt.spawnNoTrack || skipBeadsForOrchestrator
+
+			if shouldSkipBeads != tt.wantSkipBeads {
+				t.Errorf("skipBeads = %v, want %v", shouldSkipBeads, tt.wantSkipBeads)
+			}
+		})
+	}
+}

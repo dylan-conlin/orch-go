@@ -832,6 +832,28 @@ func formatSessionTitle(workspaceName, beadsID string) string {
 	return fmt.Sprintf("%s [%s]", workspaceName, beadsID)
 }
 
+// registerOrchestratorSession registers an orchestrator session in the session registry.
+// This is called after successful spawn for orchestrator-type skills.
+// Workers do not use the session registry - they use beads for lifecycle tracking.
+func registerOrchestratorSession(cfg *spawn.Config, sessionID, task string) {
+	if !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator {
+		return // Only register orchestrator sessions
+	}
+
+	registry := session.NewRegistry("")
+	orchSession := session.OrchestratorSession{
+		WorkspaceName: cfg.WorkspaceName,
+		SessionID:     sessionID,
+		ProjectDir:    cfg.ProjectDir,
+		SpawnTime:     time.Now(),
+		Goal:          task,
+		Status:        "active",
+	}
+	if err := registry.Register(orchSession); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to register orchestrator session: %v\n", err)
+	}
+}
+
 // addGapAnalysisToEventData adds gap analysis information to an event data map.
 // This enables tracking of context gaps for pattern analysis and dashboard surfacing.
 func addGapAnalysisToEventData(eventData map[string]interface{}, gapAnalysis *spawn.GapAnalysis) {
@@ -963,6 +985,9 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		}
 	}
 
+	// Register orchestrator session in registry (workers use beads instead)
+	registerOrchestratorSession(cfg, result.SessionID, task)
+
 	// Log the session creation
 	inlineLogger := events.NewLogger(events.DefaultLogPath())
 	inlineEventData := map[string]interface{}{
@@ -1044,6 +1069,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	// Start background cleanup goroutine
 	result.StartBackgroundCleanup()
+
+	// Register orchestrator session in registry (workers use beads instead)
+	registerOrchestratorSession(cfg, sessionID, task)
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
@@ -1226,6 +1254,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 		}
 	}
+
+	// Register orchestrator session in registry (workers use beads instead)
+	registerOrchestratorSession(cfg, sessionID, task)
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
