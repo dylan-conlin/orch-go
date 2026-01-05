@@ -157,13 +157,32 @@ type Config struct {
 	HasSessionHandoffTemplate bool
 }
 
+// WorkspaceNameOptions provides optional configuration for workspace name generation.
+type WorkspaceNameOptions struct {
+	// IsMetaOrchestrator indicates this is a meta-orchestrator spawn.
+	// When true, the workspace name will use "meta-" prefix instead of project prefix.
+	IsMetaOrchestrator bool
+}
+
 // GenerateWorkspaceName creates a workspace name from project, skill, and task.
 // Format: {project-prefix}-{skill-prefix}-{task-slug}-{date}
 // The project prefix is derived from the project name (first 2 chars of each word,
 // or first 2 chars if single word). Examples: "orch-go" -> "og", "price-watch" -> "pw"
-func GenerateWorkspaceName(projectName, skillName, task string) string {
-	// Generate project prefix (e.g., "orch-go" -> "og", "price-watch" -> "pw")
-	projectPrefix := generateProjectPrefix(projectName)
+// For meta-orchestrator spawns (via opts), the prefix is "meta-" instead.
+func GenerateWorkspaceName(projectName, skillName, task string, opts ...WorkspaceNameOptions) string {
+	// Check for meta-orchestrator option
+	var isMetaOrchestrator bool
+	if len(opts) > 0 {
+		isMetaOrchestrator = opts[0].IsMetaOrchestrator
+	}
+
+	// Generate project prefix
+	var projectPrefix string
+	if isMetaOrchestrator {
+		projectPrefix = "meta"
+	} else {
+		projectPrefix = generateProjectPrefix(projectName)
+	}
 	// Skill prefix mapping (similar to Python's SKILL_PREFIXES)
 	prefixes := map[string]string{
 		"investigation":        "inv",

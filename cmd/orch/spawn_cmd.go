@@ -558,9 +558,6 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		return err
 	}
 
-	// Generate workspace name
-	workspaceName := spawn.GenerateWorkspaceName(projectName, skillName, task)
-
 	// Load skill content with dependencies (e.g., worker-base patterns)
 	loader := skills.DefaultLoader()
 
@@ -580,6 +577,12 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	if skillName == "meta-orchestrator" {
 		isMetaOrchestrator = true
 	}
+
+	// Generate workspace name
+	// Meta-orchestrators use "meta-" prefix instead of project prefix for visual distinction
+	workspaceName := spawn.GenerateWorkspaceName(projectName, skillName, task, spawn.WorkspaceNameOptions{
+		IsMetaOrchestrator: isMetaOrchestrator,
+	})
 
 	// Now load full skill content with dependencies for the actual spawn
 	skillContent, err := loader.LoadSkillWithDependencies(skillName)

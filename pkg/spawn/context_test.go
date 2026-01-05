@@ -99,6 +99,78 @@ func TestGenerateWorkspaceName(t *testing.T) {
 	}
 }
 
+func TestGenerateWorkspaceName_MetaOrchestrator(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectName string
+		skillName   string
+		task        string
+		opts        WorkspaceNameOptions
+		wantParts   []string
+		notWant     []string // parts that should NOT appear
+	}{
+		{
+			name:        "meta-orchestrator uses meta prefix instead of project prefix",
+			projectName: "orch-go",
+			skillName:   "orchestrator",
+			task:        "test meta orchestrator session",
+			opts:        WorkspaceNameOptions{IsMetaOrchestrator: true},
+			wantParts:   []string{"meta-work-", "test", "orchestrator"},
+			notWant:     []string{"og-"},
+		},
+		{
+			name:        "meta-orchestrator with custom skill",
+			projectName: "price-watch",
+			skillName:   "meta-orchestrator",
+			task:        "manage agents",
+			opts:        WorkspaceNameOptions{IsMetaOrchestrator: true},
+			wantParts:   []string{"meta-work-", "manage", "agents"},
+			notWant:     []string{"pw-"},
+		},
+		{
+			name:        "regular orchestrator still uses project prefix",
+			projectName: "orch-go",
+			skillName:   "orchestrator",
+			task:        "regular orchestrator session",
+			opts:        WorkspaceNameOptions{IsMetaOrchestrator: false},
+			wantParts:   []string{"og-work-", "regular", "orchestrator"},
+			notWant:     []string{"meta-"},
+		},
+		{
+			name:        "no opts defaults to non-meta behavior",
+			projectName: "orch-go",
+			skillName:   "investigation",
+			task:        "explore codebase",
+			// No opts provided
+			wantParts: []string{"og-inv-", "explore", "codebase"},
+			notWant:   []string{"meta-"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got string
+			if tt.opts.IsMetaOrchestrator || tt.opts != (WorkspaceNameOptions{}) {
+				got = GenerateWorkspaceName(tt.projectName, tt.skillName, tt.task, tt.opts)
+			} else {
+				// Test backward compatibility - calling without opts
+				got = GenerateWorkspaceName(tt.projectName, tt.skillName, tt.task)
+			}
+
+			for _, part := range tt.wantParts {
+				if !strings.Contains(got, part) {
+					t.Errorf("expected workspace name to contain %q, got %q", part, got)
+				}
+			}
+			for _, part := range tt.notWant {
+				if strings.Contains(got, part) {
+					t.Errorf("expected workspace name to NOT contain %q, got %q", part, got)
+				}
+			}
+		})
+	}
+}
+
 func TestGenerateProjectPrefix(t *testing.T) {
 	tests := []struct {
 		name        string
