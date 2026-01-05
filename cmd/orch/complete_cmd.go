@@ -34,12 +34,16 @@ var (
 )
 
 var completeCmd = &cobra.Command{
-	Use:   "complete [beads-id]",
+	Use:   "complete [beads-id-or-workspace]",
 	Short: "Complete an agent and close the beads issue",
 	Long: `Complete an agent's work by verifying Phase: Complete and closing the beads issue.
 
 Checks that the agent has reported "Phase: Complete" via beads comments before
 closing the issue. Use --force to skip phase and liveness verification.
+
+For orchestrator sessions (spawned with orchestrator or meta-orchestrator skill),
+the argument is the workspace name instead of beads ID. Orchestrators use
+SESSION_HANDOFF.md as completion signal instead of Phase: Complete.
 
 For agents that modified web/ files (UI tasks), --approve is required to explicitly
 confirm human review of the visual changes. This prevents agents from self-certifying
@@ -59,11 +63,14 @@ Examples:
   orch-go complete proj-123 --approve       # Approve UI changes after visual review
   orch-go complete proj-123 --force         # Skip phase/liveness verification (not repro)
   orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion
-  orch-go complete proj-123 --skip-repro-check --skip-repro-reason "Repro verified via automated test"`,
+  orch-go complete proj-123 --skip-repro-check --skip-repro-reason "Repro verified via automated test"
+  
+  # Orchestrator session completion (by workspace name)
+  orch-go complete og-orch-goal-04jan       # Complete orchestrator session`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		beadsID := args[0]
-		return runComplete(beadsID, completeWorkdir)
+		identifier := args[0]
+		return runComplete(identifier, completeWorkdir)
 	},
 }
 
@@ -77,19 +84,52 @@ func init() {
 	completeCmd.Flags().StringVar(&completeSkipReproReason, "skip-repro-reason", "", "Reason for skipping reproduction verification")
 }
 
-func runComplete(beadsID, workdir string) error {
-	// Resolve short beads ID to full ID (e.g., "qdaa" -> "orch-go-qdaa")
-	// This ensures all downstream operations use the full ID consistently
-	resolvedID, err := resolveShortBeadsID(beadsID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve beads ID: %w", err)
-	}
-	beadsID = resolvedID
-
+func runComplete(identifier, workdir string) error {
 	// Get current directory as base project dir
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Determine if identifier is a workspace name or beads ID.
+	// Workspace names: og-feat-description-21dec, og-orch-goal-04jan
+	// Beads IDs: orch-go-kypi, kb-cli-abc1
+	//
+	// Strategy:
+	// 1. Try to find workspace by name directly (for orchestrator completion by workspace name)
+	// 2. If not found, treat as beads ID and find workspace by beads ID
+	var workspacePath, agentName string
+	var beadsID string
+	var isOrchestratorSession bool
+
+	// First, try direct workspace name lookup
+	directWorkspacePath := findWorkspaceByName(currentDir, identifier)
+	if directWorkspacePath != "" {
+		workspacePath = directWorkspacePath
+		agentName = identifier
+		// Check if this is an orchestrator workspace (no beads tracking)
+		if isOrchestratorWorkspace(workspacePath) {
+			isOrchestratorSession = true
+			fmt.Printf("Orchestrator session: %s\n", agentName)
+		} else {
+			// Non-orchestrator workspace found by name - read beads ID from .beads_id file
+			beadsIDPath := filepath.Join(workspacePath, ".beads_id")
+			if content, err := os.ReadFile(beadsIDPath); err == nil {
+				beadsID = strings.TrimSpace(string(content))
+			}
+		}
+	}
+
+	// If no direct workspace match, treat identifier as beads ID
+	if workspacePath == "" {
+		// Resolve short beads ID to full ID (e.g., "qdaa" -> "orch-go-qdaa")
+		resolvedID, err := resolveShortBeadsID(identifier)
+		if err != nil {
+			return fmt.Errorf("failed to resolve beads ID: %w", err)
+		}
+		beadsID = resolvedID
+		// Find workspace by beads ID
+		workspacePath, agentName = findWorkspaceByBeadsID(currentDir, beadsID)
 	}
 
 	// Determine beads project directory:
@@ -97,10 +137,6 @@ func runComplete(beadsID, workdir string) error {
 	// 2. Otherwise, try to auto-detect from workspace SPAWN_CONTEXT.md
 	// 3. Fall back to current directory
 	var beadsProjectDir string
-	var workspacePath, agentName string
-
-	// First, find workspace in current project (even for cross-project agents, workspace is in orchestrator's project)
-	workspacePath, agentName = findWorkspaceByBeadsID(currentDir, beadsID)
 
 	if workdir != "" {
 		// Explicit --workdir flag provided
@@ -135,7 +171,8 @@ func runComplete(beadsID, workdir string) error {
 	}
 
 	// Check if this is an untracked agent (no beads issue exists)
-	isUntracked := isUntrackedBeadsID(beadsID)
+	// Orchestrator sessions are implicitly untracked (they skip beads entirely)
+	isUntracked := isOrchestratorSession || (beadsID != "" && isUntrackedBeadsID(beadsID)) || beadsID == ""
 
 	// For tracked agents, verify the beads issue exists
 	var issue *verify.Issue
@@ -161,8 +198,12 @@ func runComplete(beadsID, workdir string) error {
 		if isClosed {
 			fmt.Printf("Issue %s is already closed in beads\n", beadsID)
 		}
+	} else if isOrchestratorSession {
+		fmt.Printf("Note: %s is an orchestrator session (no beads tracking)\n", agentName)
+		// Orchestrator sessions are treated as not closed (we'll clean them up)
+		isClosed = false
 	} else {
-		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", beadsID)
+		fmt.Printf("Note: %s is an untracked agent (no beads issue)\n", identifier)
 		// Untracked agents are treated as not closed (we'll clean them up)
 		isClosed = false
 	}
@@ -180,44 +221,61 @@ func runComplete(beadsID, workdir string) error {
 		}
 	}
 
-	// Verify phase status unless force flag is set
-	// Skip beads-dependent verification for untracked agents (they have no beads issue to check)
-	if !completeForce && !isUntracked {
-		// Workspace already found at top of function
-		if workspacePath != "" {
-			fmt.Printf("Workspace: %s\n", agentName)
-		}
-
-		// Use beadsProjectDir for verification (where the beads issue lives)
-		result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "")
-		if err != nil {
-			return fmt.Errorf("verification failed: %w", err)
-		}
-
-		if !result.Passed {
-			fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n")
-			for _, e := range result.Errors {
-				fmt.Fprintf(os.Stderr, "  - %s\n", e)
+	// Verify completion status
+	// - For orchestrator sessions: check SESSION_HANDOFF.md exists
+	// - For regular agents: check Phase: Complete via beads comments
+	if !completeForce {
+		if isOrchestratorSession {
+			// Orchestrator sessions use SESSION_HANDOFF.md as completion signal
+			if workspacePath != "" {
+				fmt.Printf("Workspace: %s\n", agentName)
 			}
-			fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
-			fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
-			return fmt.Errorf("verification failed")
-		}
 
-		// Print constraint warnings
-		for _, w := range result.Warnings {
-			fmt.Fprintf(os.Stderr, "⚠️  %s\n", w)
-		}
-
-		// Print phase info
-		if result.Phase.Found {
-			fmt.Printf("Phase: %s\n", result.Phase.Phase)
-			if result.Phase.Summary != "" {
-				fmt.Printf("Summary: %s\n", result.Phase.Summary)
+			if !hasSessionHandoff(workspacePath) {
+				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - SESSION_HANDOFF.md not found\n")
+				fmt.Fprintf(os.Stderr, "\nOrchestrator must run: orch session end\n")
+				fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
+				return fmt.Errorf("verification failed: SESSION_HANDOFF.md not found")
 			}
+			fmt.Println("Completion signal: SESSION_HANDOFF.md found")
+		} else if !isUntracked {
+			// Regular agents use beads phase verification
+			// Workspace already found at top of function
+			if workspacePath != "" {
+				fmt.Printf("Workspace: %s\n", agentName)
+			}
+
+			// Use beadsProjectDir for verification (where the beads issue lives)
+			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "")
+			if err != nil {
+				return fmt.Errorf("verification failed: %w", err)
+			}
+
+			if !result.Passed {
+				fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n")
+				for _, e := range result.Errors {
+					fmt.Fprintf(os.Stderr, "  - %s\n", e)
+				}
+				fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
+				fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
+				return fmt.Errorf("verification failed")
+			}
+
+			// Print constraint warnings
+			for _, w := range result.Warnings {
+				fmt.Fprintf(os.Stderr, "⚠️  %s\n", w)
+			}
+
+			// Print phase info
+			if result.Phase.Found {
+				fmt.Printf("Phase: %s\n", result.Phase.Phase)
+				if result.Phase.Summary != "" {
+					fmt.Printf("Summary: %s\n", result.Phase.Summary)
+				}
+			}
+		} else {
+			fmt.Println("Skipping phase verification (untracked agent)")
 		}
-	} else if isUntracked {
-		fmt.Println("Skipping phase verification (untracked agent)")
 	} else {
 		fmt.Println("Skipping phase verification (--force)")
 	}
@@ -226,10 +284,13 @@ func runComplete(beadsID, workdir string) error {
 	// BUT: Skip this check if Phase: Complete was reported - agent said it's done,
 	// so whether its session is still open is irrelevant.
 	// This prevents false positives from OpenCode sessions that persist to disk.
-	// Also skip for untracked agents (they have no beads issue to check phase status)
+	// Also skip for untracked/orchestrator agents
 	if !completeForce && !isUntracked {
-		// Check if Phase: Complete was reported
-		phaseComplete, _ := verify.IsPhaseComplete(beadsID)
+		// Check if Phase: Complete was reported (only for regular agents with beads)
+		phaseComplete := false
+		if !isOrchestratorSession && beadsID != "" {
+			phaseComplete, _ = verify.IsPhaseComplete(beadsID)
+		}
 
 		// Only check liveness if agent hasn't reported completion
 		if !phaseComplete {
@@ -374,20 +435,24 @@ func runComplete(beadsID, workdir string) error {
 	reason := completeReason
 	if reason == "" {
 		// For tracked agents, try to get summary from phase status
-		if !isUntracked {
+		if !isUntracked && beadsID != "" {
 			status, _ := verify.GetPhaseStatus(beadsID)
 			if status.Summary != "" {
 				reason = status.Summary
 			}
 		}
 		if reason == "" {
-			reason = "Completed via orch complete"
+			if isOrchestratorSession {
+				reason = "Orchestrator session completed"
+			} else {
+				reason = "Completed via orch complete"
+			}
 		}
 	}
 
 	// Close the beads issue if not already closed
-	// Skip for untracked agents (they have no beads issue to close)
-	if !isClosed && !isUntracked {
+	// Skip for untracked agents and orchestrator sessions (they have no beads issue to close)
+	if !isClosed && !isUntracked && beadsID != "" {
 		if err := verify.CloseIssue(beadsID, reason); err != nil {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
@@ -399,20 +464,32 @@ func runComplete(beadsID, workdir string) error {
 			// Non-critical - the issue may not have had this label
 			// or it was already removed
 		}
+	} else if isOrchestratorSession {
+		fmt.Printf("Completed orchestrator session: %s\n", agentName)
 	} else if isUntracked {
-		fmt.Printf("Cleaned up untracked agent: %s\n", beadsID)
+		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
 	}
 	fmt.Printf("Reason: %s\n", reason)
 
 	// For orchestrator sessions, export transcript before cleanup
-	if workspacePath != "" {
-		if err := exportOrchestratorTranscript(workspacePath, beadsProjectDir, beadsID); err != nil {
+	if workspacePath != "" && isOrchestratorSession {
+		// Use agentName (workspace name) as identifier for orchestrator transcript export
+		if err := exportOrchestratorTranscript(workspacePath, beadsProjectDir, agentName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to export orchestrator transcript: %v\n", err)
 		}
 	}
 
 	// Clean up tmux window if it exists (prevents phantom accumulation)
-	if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(beadsID); err == nil && window != nil {
+	// For orchestrators, search by workspace name; for regular agents, search by beads ID
+	var windowSearchID string
+	if isOrchestratorSession {
+		windowSearchID = agentName
+	} else if beadsID != "" {
+		windowSearchID = beadsID
+	} else {
+		windowSearchID = identifier
+	}
+	if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(windowSearchID); err == nil && window != nil {
 		if err := tmux.KillWindow(window.Target); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
 		} else {
@@ -485,15 +562,22 @@ func runComplete(beadsID, workdir string) error {
 
 	// Log the completion
 	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"reason":       reason,
+		"forced":       completeForce,
+		"untracked":    isUntracked,
+		"orchestrator": isOrchestratorSession,
+	}
+	if beadsID != "" {
+		eventData["beads_id"] = beadsID
+	}
+	if isOrchestratorSession {
+		eventData["workspace"] = agentName
+	}
 	event := events.Event{
 		Type:      "agent.completed",
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"beads_id":  beadsID,
-			"reason":    reason,
-			"forced":    completeForce,
-			"untracked": isUntracked,
-		},
+		Data:      eventData,
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
