@@ -15,7 +15,7 @@ import (
 // - No beads tracking instructions (orchestrators manage sessions, not issues)
 // - SESSION_HANDOFF.md instead of SYNTHESIS.md requirement
 // - Session goal focus instead of task focus
-// - orch session end instead of /exit
+// - Waits for level above to complete (no /exit or orch session end)
 const OrchestratorContextTemplate = `# Orchestrator Session Context
 
 **Session Goal:** {{.SessionGoal}}
@@ -30,8 +30,8 @@ const OrchestratorContextTemplate = `# Orchestrator Session Context
 You are a **spawned orchestrator** - an orchestrator session that was spawned to accomplish a specific goal.
 This is different from interactive orchestrator sessions in that:
 - You have a defined goal to accomplish
-- You should produce a SESSION_HANDOFF.md before ending
-- You use ` + "`orch session end`" + ` when complete (not ` + "`/exit`" + `)
+- You produce a SESSION_HANDOFF.md when goal is reached
+- You WAIT after writing handoff - the level above (meta-orchestrator or Dylan) runs ` + "`orch complete`" + ` to close your session
 
 ---
 
@@ -75,11 +75,12 @@ When you've accomplished your session goal:
 {{if .HasSessionHandoffTemplate}}
    **Template available:** Use SESSION_HANDOFF.template.md in your workspace as the structure for your handoff.
 {{end}}
-2. **Run:** ` + "`orch session end`" + `
-   - This triggers reflection prompts and cleanup
-   - Ensures proper session state transitions
+2. **WAIT** - Do not exit or try to end your session
+   - The level above (meta-orchestrator or Dylan) will run ` + "`orch complete`" + ` to close your session
+   - Your SESSION_HANDOFF.md signals you are ready for completion
+   - If you need to signal completion, you can say "SESSION_HANDOFF.md written, ready for completion"
 
-**Do NOT use ` + "`/exit`" + `** - that's for worker agents. Orchestrators use ` + "`orch session end`" + `.
+**Do NOT use ` + "`/exit`" + ` or ` + "`orch session end`" + `** - spawned orchestrators wait for the level above to complete them.
 
 ---
 {{if .SkillContent}}
@@ -203,13 +204,14 @@ func WriteOrchestratorContext(cfg *Config) error {
 		return fmt.Errorf("failed to write orchestrator marker: %w", err)
 	}
 
-	// Write beads ID file for workspace lookup during orch complete
-	if cfg.BeadsID != "" {
-		beadsIDPath := filepath.Join(workspacePath, ".beads_id")
-		if err := os.WriteFile(beadsIDPath, []byte(cfg.BeadsID), 0644); err != nil {
-			return fmt.Errorf("failed to write beads ID file: %w", err)
-		}
+	// Write workspace name file for lookup during orch complete (orchestrators don't have beads IDs)
+	workspaceNamePath := filepath.Join(workspacePath, ".workspace_name")
+	if err := os.WriteFile(workspaceNamePath, []byte(cfg.WorkspaceName), 0644); err != nil {
+		return fmt.Errorf("failed to write workspace name file: %w", err)
 	}
+
+	// Note: Orchestrators do NOT write .beads_id - they don't use beads tracking
+	// SESSION_HANDOFF.md is the completion signal, not Phase: Complete
 
 	return nil
 }
