@@ -162,6 +162,11 @@ type WorkspaceNameOptions struct {
 	// IsMetaOrchestrator indicates this is a meta-orchestrator spawn.
 	// When true, the workspace name will use "meta-" prefix instead of project prefix.
 	IsMetaOrchestrator bool
+
+	// IsOrchestrator indicates this is an orchestrator-type skill spawn.
+	// When true, the workspace name will use "orch" as the skill prefix
+	// instead of "work" for visual distinction from worker workspaces.
+	IsOrchestrator bool
 }
 
 // GenerateWorkspaceName creates a workspace name from project, skill, and task.
@@ -169,11 +174,13 @@ type WorkspaceNameOptions struct {
 // The project prefix is derived from the project name (first 2 chars of each word,
 // or first 2 chars if single word). Examples: "orch-go" -> "og", "price-watch" -> "pw"
 // For meta-orchestrator spawns (via opts), the prefix is "meta-" instead.
+// For orchestrator spawns (via opts), the skill prefix is "orch" for visual distinction.
 func GenerateWorkspaceName(projectName, skillName, task string, opts ...WorkspaceNameOptions) string {
-	// Check for meta-orchestrator option
-	var isMetaOrchestrator bool
+	// Check for options
+	var isMetaOrchestrator, isOrchestrator bool
 	if len(opts) > 0 {
 		isMetaOrchestrator = opts[0].IsMetaOrchestrator
+		isOrchestrator = opts[0].IsOrchestrator
 	}
 
 	// Generate project prefix
@@ -193,7 +200,11 @@ func GenerateWorkspaceName(projectName, skillName, task string, opts ...Workspac
 		"research":             "research",
 	}
 
+	// Default prefix depends on whether this is an orchestrator spawn
 	prefix := "work"
+	if isOrchestrator || isMetaOrchestrator {
+		prefix = "orch" // Use "orch" for orchestrator-type skills for visual distinction
+	}
 	if p, ok := prefixes[skillName]; ok {
 		prefix = p
 	}

@@ -115,7 +115,7 @@ func TestGenerateWorkspaceName_MetaOrchestrator(t *testing.T) {
 			skillName:   "orchestrator",
 			task:        "test meta orchestrator session",
 			opts:        WorkspaceNameOptions{IsMetaOrchestrator: true},
-			wantParts:   []string{"meta-work-", "test", "orchestrator"},
+			wantParts:   []string{"meta-orch-", "test", "orchestrator"}, // meta-orchestrators use "orch" prefix
 			notWant:     []string{"og-"},
 		},
 		{
@@ -124,17 +124,26 @@ func TestGenerateWorkspaceName_MetaOrchestrator(t *testing.T) {
 			skillName:   "meta-orchestrator",
 			task:        "manage agents",
 			opts:        WorkspaceNameOptions{IsMetaOrchestrator: true},
-			wantParts:   []string{"meta-work-", "manage", "agents"},
+			wantParts:   []string{"meta-orch-", "manage", "agents"}, // meta-orchestrators use "orch" prefix
 			notWant:     []string{"pw-"},
 		},
 		{
-			name:        "regular orchestrator still uses project prefix",
+			name:        "regular orchestrator uses orch prefix for visual distinction",
 			projectName: "orch-go",
 			skillName:   "orchestrator",
 			task:        "regular orchestrator session",
-			opts:        WorkspaceNameOptions{IsMetaOrchestrator: false},
-			wantParts:   []string{"og-work-", "regular", "orchestrator"},
-			notWant:     []string{"meta-"},
+			opts:        WorkspaceNameOptions{IsOrchestrator: true},
+			wantParts:   []string{"og-orch-", "regular", "orchestrator"}, // orchestrators use "orch" not "work"
+			notWant:     []string{"meta-", "og-work-"},
+		},
+		{
+			name:        "worker spawn still uses work prefix",
+			projectName: "orch-go",
+			skillName:   "orchestrator",
+			task:        "worker session",
+			opts:        WorkspaceNameOptions{IsOrchestrator: false, IsMetaOrchestrator: false},
+			wantParts:   []string{"og-work-", "worker", "session"},
+			notWant:     []string{"meta-", "og-orch-"},
 		},
 		{
 			name:        "no opts defaults to non-meta behavior",

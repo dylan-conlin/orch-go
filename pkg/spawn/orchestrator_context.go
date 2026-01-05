@@ -198,7 +198,15 @@ func WriteOrchestratorContext(cfg *Config) error {
 		return fmt.Errorf("failed to write spawn time file: %w", err)
 	}
 
+	// Write tier file for programmatic detection (orch complete, orch status, etc.)
+	// Uses "orchestrator" tier which has special verification rules (SESSION_HANDOFF.md, no beads)
+	if err := WriteTier(workspacePath, "orchestrator"); err != nil {
+		return fmt.Errorf("failed to write tier file: %w", err)
+	}
+
 	// Write orchestrator marker file for orch complete to detect
+	// Note: .tier file with "orchestrator" value is now the primary detection mechanism
+	// Keep .orchestrator for backwards compatibility with existing workspaces
 	markerPath := filepath.Join(workspacePath, ".orchestrator")
 	if err := os.WriteFile(markerPath, []byte("orchestrator-spawn"), 0644); err != nil {
 		return fmt.Errorf("failed to write orchestrator marker: %w", err)

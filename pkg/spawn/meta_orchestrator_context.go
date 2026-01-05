@@ -232,11 +232,28 @@ func WriteMetaOrchestratorContext(cfg *Config) error {
 		return fmt.Errorf("failed to write spawn time file: %w", err)
 	}
 
+	// Write tier file for programmatic detection (orch complete, orch status, etc.)
+	// Meta-orchestrators use "orchestrator" tier (same verification rules as orchestrators)
+	if err := WriteTier(workspacePath, "orchestrator"); err != nil {
+		return fmt.Errorf("failed to write tier file: %w", err)
+	}
+
 	// Write meta-orchestrator marker file for orch complete to detect
+	// Note: .tier file with "orchestrator" value is now the primary detection mechanism
+	// Keep .meta-orchestrator for backwards compatibility and to distinguish from regular orchestrators
 	markerPath := filepath.Join(workspacePath, ".meta-orchestrator")
 	if err := os.WriteFile(markerPath, []byte("meta-orchestrator-spawn"), 0644); err != nil {
 		return fmt.Errorf("failed to write meta-orchestrator marker: %w", err)
 	}
+
+	// Write workspace name file for lookup during orch complete (meta-orchestrators don't have beads IDs)
+	workspaceNamePath := filepath.Join(workspacePath, ".workspace_name")
+	if err := os.WriteFile(workspaceNamePath, []byte(cfg.WorkspaceName), 0644); err != nil {
+		return fmt.Errorf("failed to write workspace name file: %w", err)
+	}
+
+	// Note: Meta-orchestrators do NOT write .beads_id - they don't use beads tracking
+	// They also don't require SESSION_HANDOFF.md (stay interactive)
 
 	return nil
 }

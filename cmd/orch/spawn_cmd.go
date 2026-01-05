@@ -580,8 +580,10 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 
 	// Generate workspace name
 	// Meta-orchestrators use "meta-" prefix instead of project prefix for visual distinction
+	// Orchestrators use "orch" skill prefix instead of "work" for visual distinction from workers
 	workspaceName := spawn.GenerateWorkspaceName(projectName, skillName, task, spawn.WorkspaceNameOptions{
 		IsMetaOrchestrator: isMetaOrchestrator,
+		IsOrchestrator:     isOrchestrator,
 	})
 
 	// Now load full skill content with dependencies for the actual spawn
