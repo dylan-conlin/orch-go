@@ -324,6 +324,68 @@ func TestRegistryCleanupOnCompletion(t *testing.T) {
 	}
 }
 
+// TestRegistryFirstLookupForOrchestratorCompletion tests that the complete command
+// checks the registry FIRST before falling back to beads ID lookup. This is critical
+// for orchestrator sessions which don't have beads tracking.
+func TestRegistryFirstLookupForOrchestratorCompletion(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "sessions.json")
+
+	// Create workspace in a "different project" directory
+	projectDir := filepath.Join(tmpDir, "other-project")
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", "og-orch-cross-project-05jan")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+
+	// Create orchestrator marker files
+	if err := os.WriteFile(filepath.Join(workspaceDir, ".orchestrator"), []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create .orchestrator marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceDir, ".tier"), []byte("orchestrator\n"), 0644); err != nil {
+		t.Fatalf("Failed to create .tier file: %v", err)
+	}
+
+	// Create a registry with the session pointing to the other project
+	registry := session.NewRegistry(registryPath)
+	testSession := session.OrchestratorSession{
+		WorkspaceName: "og-orch-cross-project-05jan",
+		SessionID:     "ses_test123",
+		ProjectDir:    projectDir, // Points to the "other project"
+		SpawnTime:     time.Now(),
+		Goal:          "Test cross-project orchestrator",
+		Status:        "active",
+	}
+
+	if err := registry.Register(testSession); err != nil {
+		t.Fatalf("Failed to register session: %v", err)
+	}
+
+	// Verify session is retrievable by workspace name
+	retrieved, err := registry.Get("og-orch-cross-project-05jan")
+	if err != nil {
+		t.Fatalf("Failed to get session from registry: %v", err)
+	}
+	if retrieved.ProjectDir != projectDir {
+		t.Errorf("Expected ProjectDir %s, got %s", projectDir, retrieved.ProjectDir)
+	}
+
+	// The key test: findWorkspaceByName using the registry's ProjectDir should find the workspace
+	// even though we're "not in that project directory"
+	foundPath := findWorkspaceByName(retrieved.ProjectDir, retrieved.WorkspaceName)
+	if foundPath == "" {
+		t.Error("Expected to find workspace using registry's ProjectDir")
+	}
+	if foundPath != workspaceDir {
+		t.Errorf("Expected %s, got %s", workspaceDir, foundPath)
+	}
+
+	// Verify it's detected as orchestrator workspace
+	if !isOrchestratorWorkspace(foundPath) {
+		t.Error("Workspace should be detected as orchestrator")
+	}
+}
+
 // TestRegistryCleanupSessionNotFound tests that unregistering a non-existent
 // session returns ErrSessionNotFound (graceful handling of legacy workspaces).
 func TestRegistryCleanupSessionNotFound(t *testing.T) {

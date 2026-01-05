@@ -96,33 +96,56 @@ func runComplete(identifier, workdir string) error {
 	// Workspace names: og-feat-description-21dec, og-orch-goal-04jan
 	// Beads IDs: orch-go-kypi, kb-cli-abc1
 	//
-	// Strategy:
-	// 1. Try to find workspace by name directly (for orchestrator completion by workspace name)
-	// 2. If not found, treat as beads ID and find workspace by beads ID
+	// Strategy (priority order):
+	// 1. Check orchestrator session registry FIRST (handles cross-project orchestrators)
+	// 2. Try to find workspace by name in current directory
+	// 3. Only fall back to beads ID lookup for worker sessions
+	//
+	// This prevents orchestrator workspace names from being misinterpreted as beads IDs.
 	var workspacePath, agentName string
 	var beadsID string
 	var isOrchestratorSession bool
 
-	// First, try direct workspace name lookup
-	directWorkspacePath := findWorkspaceByName(currentDir, identifier)
-	if directWorkspacePath != "" {
-		workspacePath = directWorkspacePath
-		agentName = identifier
-		// Check if this is an orchestrator workspace (no beads tracking)
-		if isOrchestratorWorkspace(workspacePath) {
-			isOrchestratorSession = true
-			fmt.Printf("Orchestrator session: %s\n", agentName)
-		} else {
-			// Non-orchestrator workspace found by name - read beads ID from .beads_id file
-			beadsIDPath := filepath.Join(workspacePath, ".beads_id")
-			if content, err := os.ReadFile(beadsIDPath); err == nil {
-				beadsID = strings.TrimSpace(string(content))
+	// Step 1: Check orchestrator session registry FIRST
+	// This is the authoritative source for orchestrator sessions and handles cross-project cases.
+	registry := session.NewRegistry("")
+	if orchSession, err := registry.Get(identifier); err == nil {
+		// Found in registry - this is an orchestrator session
+		isOrchestratorSession = true
+		agentName = orchSession.WorkspaceName
+		fmt.Printf("Orchestrator session (from registry): %s\n", agentName)
+
+		// Use the registry's ProjectDir to find the workspace
+		workspacePath = findWorkspaceByName(orchSession.ProjectDir, agentName)
+		if workspacePath == "" {
+			// Workspace not found in expected location - might have been moved or deleted
+			fmt.Fprintf(os.Stderr, "Warning: Workspace %s not found in %s\n", agentName, orchSession.ProjectDir)
+		}
+	}
+
+	// Step 2: Try direct workspace name lookup in current directory (if not found in registry)
+	if workspacePath == "" && !isOrchestratorSession {
+		directWorkspacePath := findWorkspaceByName(currentDir, identifier)
+		if directWorkspacePath != "" {
+			workspacePath = directWorkspacePath
+			agentName = identifier
+			// Check if this is an orchestrator workspace (no beads tracking)
+			if isOrchestratorWorkspace(workspacePath) {
+				isOrchestratorSession = true
+				fmt.Printf("Orchestrator session: %s\n", agentName)
+			} else {
+				// Non-orchestrator workspace found by name - read beads ID from .beads_id file
+				beadsIDPath := filepath.Join(workspacePath, ".beads_id")
+				if content, err := os.ReadFile(beadsIDPath); err == nil {
+					beadsID = strings.TrimSpace(string(content))
+				}
 			}
 		}
 	}
 
-	// If no direct workspace match, treat identifier as beads ID
-	if workspacePath == "" {
+	// Step 3: If no workspace match and not an orchestrator session, treat identifier as beads ID
+	// This is the fallback for worker sessions identified by beads ID.
+	if workspacePath == "" && !isOrchestratorSession {
 		// Resolve short beads ID to full ID (e.g., "qdaa" -> "orch-go-qdaa")
 		resolvedID, err := resolveShortBeadsID(identifier)
 		if err != nil {
