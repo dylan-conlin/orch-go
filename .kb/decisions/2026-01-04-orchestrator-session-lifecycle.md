@@ -10,7 +10,7 @@
 
 | Level | Spawned By | Interacts With | Completes |
 |-------|------------|----------------|-----------|
-| Meta-orchestrator | Dylan (direct) | Dylan | N/A |
+| Meta-orchestrator | Dylan (or prior meta-orch) | Dylan | Next meta-orchestrator (or Dylan) |
 | Orchestrator | Meta-orchestrator | Dylan (directly) | Meta-orchestrator |
 | Worker | Orchestrator | Orchestrator (or Dylan) | Orchestrator |
 
@@ -23,6 +23,7 @@
 2. **Orchestrators are interactive** - Dylan works WITH them directly, not through the meta-orchestrator. They're not autonomous workers.
 
 3. **Completion flows down** - The level above completes the level below:
+   - Next meta-orchestrator (or Dylan) runs `orch complete` on meta-orchestrators
    - Meta-orchestrator runs `orch complete` on orchestrators
    - Orchestrators run `orch complete` on workers
 
@@ -56,7 +57,8 @@ This parallels the evolution of the orchestration system:
 
 ## Consequences
 
-- Orchestrators don't try to end their own sessions (no `orch session end`)
-- Orchestrators write SESSION_HANDOFF.md when goal reached, then wait
-- Session end happens when Dylan tells meta-orchestrator "done with orchestrator X"
+- Orchestrators and meta-orchestrators don't try to end their own sessions (no `orch session end`)
+- They write SESSION_HANDOFF.md when goal reached, then wait
+- Session end happens when the level above runs `orch complete`
 - Transcripts preserved for later reflection
+- Meta-orchestrators are completed the same way as orchestrators (uniform lifecycle)
