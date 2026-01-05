@@ -16,6 +16,13 @@ type VerificationResult struct {
 	Phase    PhaseStatus
 }
 
+// Tier constants for orchestrator spawns.
+const (
+	// TierOrchestrator is for orchestrator-type skills that produce SESSION_HANDOFF.md
+	// instead of SYNTHESIS.md and skip beads-dependent checks.
+	TierOrchestrator = "orchestrator"
+)
+
 // VerifySynthesis checks if SYNTHESIS.md exists and is not empty.
 func VerifySynthesis(workspacePath string) (bool, error) {
 	if workspacePath == "" {
@@ -23,6 +30,23 @@ func VerifySynthesis(workspacePath string) (bool, error) {
 	}
 	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	info, err := os.Stat(synthesisPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return info.Size() > 0, nil
+}
+
+// VerifySessionHandoff checks if SESSION_HANDOFF.md exists and is not empty.
+// Used for orchestrator-type skills instead of SYNTHESIS.md.
+func VerifySessionHandoff(workspacePath string) (bool, error) {
+	if workspacePath == "" {
+		return false, nil
+	}
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	info, err := os.Stat(handoffPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -45,8 +69,16 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 // 2. Phase gate verification (required phases must be reported via beads comments)
 // 3. Skill output verification from skill.yaml outputs.required section
 //
+// For orchestrator tier, beads-dependent checks are skipped since orchestrators
+// manage sessions rather than issues.
+//
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
+	// Determine tier if not provided (needed for orchestrator check below)
+	if tier == "" && workspacePath != "" {
+		tier = ReadTierFromWorkspace(workspacePath)
+	}
+
 	// First run standard verification
 	result, err := VerifyCompletionWithTier(beadsID, workspacePath, tier)
 	if err != nil {
@@ -68,28 +100,37 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 		return result, nil
 	}
 
+	// Check if this is an orchestrator tier spawn
+	isOrchestrator := tier == TierOrchestrator
+
 	// Verify skill constraints from SPAWN_CONTEXT.md
-	constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
-	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
-		// Continue to phase gate verification even if constraints failed to parse
-	} else {
-		// Merge constraint results
-		if !constraintResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, constraintResult.Errors...)
+	// Skip for orchestrator tier since they use ORCHESTRATOR_CONTEXT.md
+	if !isOrchestrator {
+		constraintResult, err := VerifyConstraintsForCompletion(workspacePath, projectDir)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify constraints: %v", err))
+			// Continue to phase gate verification even if constraints failed to parse
+		} else {
+			// Merge constraint results
+			if !constraintResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, constraintResult.Errors...)
+			}
+			result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 		}
-		result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 	}
 
 	// Verify phase gates from SPAWN_CONTEXT.md
 	// This checks that required phases were reported in beads comments
-	phaseGateResult, err := VerifyPhaseGatesForCompletion(workspacePath, beadsID)
-	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
-	} else if !phaseGateResult.Passed {
-		result.Passed = false
-		result.Errors = append(result.Errors, phaseGateResult.Errors...)
+	// Skip for orchestrator tier (beads-dependent)
+	if !isOrchestrator {
+		phaseGateResult, err := VerifyPhaseGatesForCompletion(workspacePath, beadsID)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
+		} else if !phaseGateResult.Passed {
+			result.Passed = false
+			result.Errors = append(result.Errors, phaseGateResult.Errors...)
+		}
 	}
 
 	// Verify skill outputs from skill.yaml outputs.required section
@@ -108,39 +149,49 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 
 	// Verify visual verification for web/ changes
 	// This gates completion when web files are modified without visual verification evidence
-	visualResult := VerifyVisualVerificationForCompletion(beadsID, workspacePath, projectDir)
-	if visualResult != nil {
-		if !visualResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, visualResult.Errors...)
+	// Skip for orchestrator tier (beads-dependent)
+	if !isOrchestrator {
+		visualResult := VerifyVisualVerificationForCompletion(beadsID, workspacePath, projectDir)
+		if visualResult != nil {
+			if !visualResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, visualResult.Errors...)
+			}
+			result.Warnings = append(result.Warnings, visualResult.Warnings...)
 		}
-		result.Warnings = append(result.Warnings, visualResult.Warnings...)
 	}
 
 	// Verify test execution evidence for code changes
 	// This gates completion when code files are modified without test execution evidence
-	testEvidenceResult := VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir)
-	if testEvidenceResult != nil {
-		if !testEvidenceResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, testEvidenceResult.Errors...)
+	// Skip for orchestrator tier (beads-dependent)
+	if !isOrchestrator {
+		testEvidenceResult := VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir)
+		if testEvidenceResult != nil {
+			if !testEvidenceResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, testEvidenceResult.Errors...)
+			}
+			result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
 		}
-		result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
 	}
 
 	// Verify git diff against SYNTHESIS claims
 	// This detects false positives where agent claims to modify files but didn't
-	gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
-	if gitDiffResult != nil {
-		if !gitDiffResult.Passed {
-			result.Passed = false
-			result.Errors = append(result.Errors, gitDiffResult.Errors...)
+	// Skip for orchestrator tier (they produce SESSION_HANDOFF.md, not SYNTHESIS.md)
+	if !isOrchestrator {
+		gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
+		if gitDiffResult != nil {
+			if !gitDiffResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, gitDiffResult.Errors...)
+			}
+			result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
 		}
-		result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
 	}
 
 	// Verify build for Go projects
 	// This gates completion when Go files are modified but the project doesn't build
+	// Note: This check is still relevant for orchestrators if they make code changes
 	buildResult := VerifyBuildForCompletion(workspacePath, projectDir)
 	if buildResult != nil {
 		if !buildResult.Passed {
@@ -154,15 +205,30 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 }
 
 // VerifyCompletionWithTier checks if an agent is ready for completion.
-// The tier parameter specifies the spawn tier ("light" or "full").
+// The tier parameter specifies the spawn tier ("light", "full", or "orchestrator").
 // If tier is empty, it will be read from the workspace's .tier file.
 // Light tier spawns skip the SYNTHESIS.md requirement.
+// Orchestrator tier spawns:
+//   - Skip beads-dependent phase checks (orchestrators manage sessions, not issues)
+//   - Check SESSION_HANDOFF.md instead of SYNTHESIS.md
+//
 // Returns a VerificationResult with any errors or warnings.
 func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
 	}
 
+	// Determine tier if not provided
+	if tier == "" && workspacePath != "" {
+		tier = ReadTierFromWorkspace(workspacePath)
+	}
+
+	// Orchestrator tier: skip beads-dependent checks, verify SESSION_HANDOFF.md instead
+	if tier == TierOrchestrator {
+		return verifyOrchestratorCompletion(workspacePath)
+	}
+
+	// Standard worker verification: beads-based phase tracking
 	// Get phase status
 	status, err := GetPhaseStatus(beadsID)
 	if err != nil {
@@ -188,11 +254,6 @@ func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string)
 		return result, nil
 	}
 
-	// Determine tier if not provided
-	if tier == "" && workspacePath != "" {
-		tier = ReadTierFromWorkspace(workspacePath)
-	}
-
 	// Check for SYNTHESIS.md (only for full tier)
 	if workspacePath != "" && tier != "light" {
 		ok, err := VerifySynthesis(workspacePath)
@@ -206,6 +267,84 @@ func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string)
 	}
 
 	return result, nil
+}
+
+// verifyOrchestratorCompletion checks if an orchestrator session is ready for completion.
+// Orchestrators have different verification requirements than workers:
+//   - No beads-dependent phase checks (orchestrators manage sessions, not issues)
+//   - SESSION_HANDOFF.md instead of SYNTHESIS.md
+//   - Session end verification instead of Phase: Complete
+func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, error) {
+	result := VerificationResult{
+		Passed: true,
+	}
+
+	if workspacePath == "" {
+		result.Passed = false
+		result.Errors = append(result.Errors, "workspace path is required for orchestrator verification")
+		return result, nil
+	}
+
+	// Check for SESSION_HANDOFF.md
+	ok, err := VerifySessionHandoff(workspacePath)
+	if err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SESSION_HANDOFF.md: %v", err))
+	} else if !ok {
+		result.Passed = false
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("SESSION_HANDOFF.md is missing or empty in workspace: %s", workspacePath))
+	}
+
+	// Verify session ended properly by checking for "Session Ended" marker in SESSION_HANDOFF.md
+	if ok {
+		sessionEnded, err := verifySessionEndedProperly(workspacePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify session end: %v", err))
+		} else if !sessionEnded {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				"SESSION_HANDOFF.md exists but session end not properly recorded")
+		}
+	}
+
+	return result, nil
+}
+
+// verifySessionEndedProperly checks if SESSION_HANDOFF.md contains proper session end markers.
+// Returns true if the session appears to have ended properly.
+func verifySessionEndedProperly(workspacePath string) (bool, error) {
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		return false, err
+	}
+
+	contentStr := string(content)
+
+	// Check for common session end markers
+	// These are patterns that indicate the session was properly concluded
+	endMarkers := []string{
+		"## Session Summary",    // Summary section indicates wrap-up
+		"## Handoff",            // Handoff section indicates transition
+		"## Next Steps",         // Next steps indicates planned continuation
+		"**Session Ended:**",    // Explicit end marker
+		"**Status:** Complete",  // Status marker
+		"**Status:** Completed", // Alternative status marker
+	}
+
+	for _, marker := range endMarkers {
+		if strings.Contains(contentStr, marker) {
+			return true, nil
+		}
+	}
+
+	// If no explicit markers, check for minimum content length
+	// A proper handoff should have substantial content
+	if len(strings.TrimSpace(contentStr)) > 100 {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // ReadTierFromWorkspace reads the spawn tier from the workspace's .tier file.

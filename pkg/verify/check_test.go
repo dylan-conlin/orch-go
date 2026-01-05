@@ -768,3 +768,235 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestReadTierFromWorkspaceOrchestrator(t *testing.T) {
+	t.Run("reads orchestrator tier", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("orchestrator\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		got := ReadTierFromWorkspace(tmpDir)
+		if got != "orchestrator" {
+			t.Errorf("ReadTierFromWorkspace = %q, want %q", got, "orchestrator")
+		}
+	})
+}
+
+func TestVerifySessionHandoff(t *testing.T) {
+	t.Run("returns false for empty workspace path", func(t *testing.T) {
+		ok, err := VerifySessionHandoff("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Error("expected false for empty workspace path")
+		}
+	})
+
+	t.Run("returns false for missing SESSION_HANDOFF.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		ok, err := VerifySessionHandoff(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Error("expected false for missing SESSION_HANDOFF.md")
+		}
+	})
+
+	t.Run("returns false for empty SESSION_HANDOFF.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		if err := os.WriteFile(handoffPath, []byte(""), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		ok, err := VerifySessionHandoff(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Error("expected false for empty SESSION_HANDOFF.md")
+		}
+	})
+
+	t.Run("returns true for non-empty SESSION_HANDOFF.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
+
+## Session Summary
+Completed orchestrator session for feature X.
+
+## Next Steps
+- Continue with implementation
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		ok, err := VerifySessionHandoff(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Error("expected true for non-empty SESSION_HANDOFF.md")
+		}
+	})
+}
+
+func TestVerifyOrchestratorCompletion(t *testing.T) {
+	t.Run("fails without workspace path", func(t *testing.T) {
+		result, err := VerifyCompletionWithTier("", "", TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Passed {
+			t.Error("expected verification to fail without workspace path")
+		}
+		if len(result.Errors) == 0 {
+			t.Error("expected error message")
+		}
+	})
+
+	t.Run("fails without SESSION_HANDOFF.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		// Write .tier file to indicate orchestrator tier
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("orchestrator"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Passed {
+			t.Error("expected verification to fail without SESSION_HANDOFF.md")
+		}
+		if len(result.Errors) == 0 {
+			t.Error("expected error about missing SESSION_HANDOFF.md")
+		}
+	})
+
+	t.Run("fails with minimal SESSION_HANDOFF.md (no session end markers)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		// Very short content without end markers
+		if err := os.WriteFile(handoffPath, []byte("Short"), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Passed {
+			t.Error("expected verification to fail without session end markers")
+		}
+	})
+
+	t.Run("passes with proper SESSION_HANDOFF.md", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
+
+## Session Summary
+Completed orchestrator session for feature X.
+Made significant progress on the implementation.
+
+## Next Steps
+- Continue with implementation
+- Run integration tests
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Passed {
+			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
+		}
+	})
+
+	t.Run("passes with Status: Complete marker", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
+
+**Status:** Complete
+
+Brief session summary.
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Passed {
+			t.Errorf("expected verification to pass with Status marker, got errors: %v", result.Errors)
+		}
+	})
+
+	t.Run("passes with Handoff section", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session
+
+## Handoff
+
+Notes for next session.
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Passed {
+			t.Errorf("expected verification to pass with Handoff section, got errors: %v", result.Errors)
+		}
+	})
+}
+
+func TestOrchestratorTierSkipsBeadsChecks(t *testing.T) {
+	// This test verifies that orchestrator tier verification
+	// does not require beadsID (unlike worker verification)
+	t.Run("orchestrator tier does not require beadsID", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		content := `# Session Handoff
+
+## Session Summary
+Completed session.
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		// Call with empty beadsID - should still work for orchestrator tier
+		result, err := VerifyCompletionWithTier("", tmpDir, TierOrchestrator)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Passed {
+			t.Errorf("expected orchestrator verification to pass without beadsID, got errors: %v", result.Errors)
+		}
+	})
+}
+
+func TestTierOrchestratorConstant(t *testing.T) {
+	if TierOrchestrator != "orchestrator" {
+		t.Errorf("TierOrchestrator = %q, want %q", TierOrchestrator, "orchestrator")
+	}
+}
