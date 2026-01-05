@@ -128,6 +128,19 @@ type Config struct {
 	// ReproSteps contains reproduction steps extracted from a bug issue.
 	// Included in SPAWN_CONTEXT.md to help agents understand how to verify the fix.
 	ReproSteps string
+
+	// IsOrchestrator indicates whether the skill is an orchestrator-type skill.
+	// Orchestrator skills (skill-type: policy/orchestrator) have different defaults:
+	// - Default to tmux mode (visible interaction instead of headless)
+	// - Use ORCHESTRATOR_CONTEXT.md template instead of SPAWN_CONTEXT.md
+	// - Different completion verification (SESSION_HANDOFF.md instead of SYNTHESIS.md)
+	// - No beads tracking (orchestrators manage sessions, not issues)
+	IsOrchestrator bool
+
+	// SessionGoal is the high-level goal for orchestrator sessions.
+	// Used in ORCHESTRATOR_CONTEXT.md to set session focus.
+	// Only applicable when IsOrchestrator is true.
+	SessionGoal string
 }
 
 // GenerateWorkspaceName creates a workspace name from skill and task.

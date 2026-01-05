@@ -569,6 +569,17 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		skillContent = "" // Continue without skill content
 	}
 
+	// Detect orchestrator-type skills via skill-type frontmatter
+	// Orchestrator skills (skill-type: policy/orchestrator) get different defaults:
+	// - Default to tmux mode (visible interaction)
+	// - May use different context template and completion verification in the future
+	isOrchestrator := false
+	if skillContent != "" {
+		if metadata, err := skills.ParseSkillMetadata(skillContent); err == nil {
+			isOrchestrator = metadata.SkillType == "policy" || metadata.SkillType == "orchestrator"
+		}
+	}
+
 	// Determine beads ID - either from flag, create new issue, or skip if --no-track
 	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnNoTrack, createBeadsIssue)
 	if err != nil {
@@ -737,6 +748,7 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		GapAnalysis:       gapAnalysis,
 		IsBug:             isBug,
 		ReproSteps:        reproSteps,
+		IsOrchestrator:    isOrchestrator,
 	}
 
 	// Pre-spawn token estimation and validation
@@ -764,19 +776,22 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Spawn mode: inline (blocking TUI), tmux (opt-in), or headless (default)
+	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), or headless (default for workers)
 	if inline {
 		// Inline mode (blocking) - run in current terminal with TUI
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
-	if tmux || attach {
-		// Tmux mode (opt-in) - visible, interruptible, prevents runaway spawns
-		// attach implies tmux
+	// Orchestrator-type skills default to tmux mode (visible interaction)
+	// Workers default to headless mode (automation-friendly)
+	useTmux := tmux || attach || cfg.IsOrchestrator
+	if useTmux {
+		// Tmux mode - visible, interruptible
+		// Default for orchestrator skills, opt-in for workers
 		return runSpawnTmux(serverURL, cfg, minimalPrompt, beadsID, skillName, task, attach)
 	}
 
-	// Default: Headless mode - spawn via HTTP API (automation-friendly, no TUI overhead)
+	// Default for workers: Headless mode - spawn via HTTP API (automation-friendly, no TUI overhead)
 	return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 }
 
