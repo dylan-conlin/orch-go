@@ -2,14 +2,14 @@
 
 **Agent:** og-work-test-spawnable-orchestrator-04jan
 **Issue:** (no-track spawn)
-**Duration:** 2026-01-04 16:30 -> 2026-01-04 17:05
-**Outcome:** success
+**Duration:** 2026-01-04 16:30 -> 2026-01-04 17:30
+**Outcome:** success (with bug found)
 
 ---
 
 ## TLDR
 
-Verified the spawnable orchestrator infrastructure is fully implemented and production-ready. All 12 unit tests pass, and the system correctly handles the orchestrator lifecycle: skill detection via `skill-type: policy`, ORCHESTRATOR_CONTEXT.md generation, tmux default mode, and SESSION_HANDOFF.md-based completion verification.
+Verified the spawnable orchestrator infrastructure is fully implemented. All unit tests pass, orchestrators default to tmux mode, and ORCHESTRATOR_CONTEXT.md is generated correctly. **Bug found:** The `--headless` flag does not override the orchestrator tmux default - the flag is passed but never used in mode selection logic (spawn_cmd.go:789).
 
 ---
 
@@ -59,22 +59,33 @@ go test ./pkg/verify/... -run "Orchestrator" -v
 - Infrastructure is production-ready: No changes needed, ready to use via `orch spawn orchestrator "goal"`
 
 ### Constraints Discovered
-- None new - infrastructure works as designed
+- **`--headless` flag is ignored for orchestrator spawns** - Bug at spawn_cmd.go:789. The `headless` parameter is passed to `runSpawnWithSkill()` but never checked in the mode selection logic.
 
 ### Externalized via `kn`
-- None needed - existing infrastructure documentation is complete
+- None needed - orchestrator should create beads issue for the bug
 
 ---
 
 ## Next (What Should Happen)
 
-**Recommendation:** close
+**Recommendation:** close + spawn-follow-up for bug fix
 
 ### If Close
 - [x] All deliverables complete (investigation file created with full findings)
 - [x] Tests passing (12 unit tests verified passing)
-- [x] Investigation file has `**Phase:** Complete`
+- [x] Investigation file has `**Status:** Complete`
 - [x] Ready for orchestrator to review
+
+### If Spawn Follow-up
+**Issue:** `--headless flag does not override orchestrator tmux default`
+**Skill:** feature-impl
+**Context:**
+```
+Bug discovered during spawnable orchestrator testing. At spawn_cmd.go:789:
+  useTmux := tmux || attach || cfg.IsOrchestrator
+The headless parameter is passed but never used in this logic.
+Fix: useTmux := (tmux || attach || cfg.IsOrchestrator) && !headless
+```
 
 ---
 
@@ -85,6 +96,7 @@ go test ./pkg/verify/... -run "Orchestrator" -v
 - End-to-end spawn test - Would require running OpenCode server, could be valuable for integration testing
 - Multi-session orchestrator workflows - How do orchestrators hand off to other orchestrators?
 - SESSION_HANDOFF.md template usage - Does `orch session end` auto-populate the template?
+- How does `orch complete` behave for orchestrator-tier spawns?
 
 **Areas worth exploring further:**
 
