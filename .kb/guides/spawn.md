@@ -93,6 +93,8 @@ The agent's instruction file. Contains:
 - Workspace path for artifacts
 - Authority levels (what agent can decide vs escalate)
 
+**Authority levels:** See `.kb/guides/decision-authority.md` for detailed criteria on when agents should decide vs escalate. The SPAWN_CONTEXT.md includes a summary, but the full guide provides the decision tree and examples.
+
 **Key insight:** SPAWN_CONTEXT.md is 100% generated from beads + kb + skill + template. If you need to change what agents receive, change the sources, not the output.
 
 ### Workspace Files

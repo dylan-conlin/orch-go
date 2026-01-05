@@ -123,6 +123,8 @@ AUTHORITY:
 
 **When uncertain:** Err on side of escalation. Document question in workspace, set Status: QUESTION, and wait for orchestrator response. Better to ask than guess wrong.
 
+**Full criteria:** See ` + "`.kb/guides/decision-authority.md`" + ` for the complete decision tree and examples.
+
 **Surface Before Circumvent:**
 Before working around ANY constraint (technical, architectural, or process):
 {{if .NoTrack}}1. Document it in your investigation file: "CONSTRAINT: [what constraint] - [why considering workaround]"
