@@ -3,7 +3,7 @@
 	import { SynthesisCard } from '$lib/components/synthesis-card';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Agent } from '$lib/stores/agents';
-	import { selectedAgentId } from '$lib/stores/agents';
+	import { selectedAgentId, computeDisplayState, type DisplayState } from '$lib/stores/agents';
 	import { hotspots, getHotspotForAgent, type Hotspot } from '$lib/stores/hotspot';
 
 	export let agent: Agent;
@@ -13,49 +13,10 @@
 
 	$: isSelected = $selectedAgentId === agent.id;
 	$: contextIndicator = getContextQualityIndicator(agent);
-	$: displayState = getDisplayState(agent);
+	$: displayState = computeDisplayState(agent);
 
 	function handleClick() {
 		selectedAgentId.set(agent.id);
-	}
-
-	/**
-	 * Derive the display state from agent status + phase + activity
-	 * This provides clearer visual distinction between:
-	 * - running: actively processing (is_processing=true)
-	 * - ready-for-review: phase=Complete but status still active
-	 * - idle: no activity for a while
-	 * - waiting: active but no activity yet
-	 */
-	type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned';
-	
-	function getDisplayState(agent: Agent): DisplayState {
-		if (agent.status === 'completed') return 'completed';
-		if (agent.status === 'abandoned') return 'abandoned';
-		
-		if (agent.status === 'active') {
-			// Phase: Complete means agent reported done, waiting for orchestrator to close
-			if (agent.phase?.toLowerCase() === 'complete') {
-				return 'ready-for-review';
-			}
-			
-			// Actively processing
-			if (agent.is_processing) {
-				return 'running';
-			}
-			
-			// Check if idle for too long (no activity in 60+ seconds)
-			if (agent.current_activity?.timestamp) {
-				const idleMs = Date.now() - agent.current_activity.timestamp;
-				if (idleMs > 60000) {
-					return 'idle';
-				}
-			}
-			
-			return 'waiting';
-		}
-		
-		return 'waiting';
 	}
 
 	function getStatusVariant(status: Agent['status']) {
