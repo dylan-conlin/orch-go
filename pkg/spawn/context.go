@@ -451,7 +451,14 @@ func GenerateContext(cfg *Config) (string, error) {
 // WriteContext writes the SPAWN_CONTEXT.md file to the workspace.
 // For orchestrator-type skills (IsOrchestrator=true), it delegates to
 // WriteOrchestratorContext which generates ORCHESTRATOR_CONTEXT.md instead.
+// For meta-orchestrator skills (IsMetaOrchestrator=true), it delegates to
+// WriteMetaOrchestratorContext which generates META_ORCHESTRATOR_CONTEXT.md.
 func WriteContext(cfg *Config) error {
+	// Route meta-orchestrator spawns to dedicated template (check first, more specific)
+	if cfg.IsMetaOrchestrator {
+		return WriteMetaOrchestratorContext(cfg)
+	}
+
 	// Route orchestrator spawns to dedicated template
 	if cfg.IsOrchestrator {
 		return WriteOrchestratorContext(cfg)
@@ -646,8 +653,12 @@ go test ./...
 `
 
 // MinimalPrompt generates the minimal prompt for opencode run.
+// For meta-orchestrator skills, it points to META_ORCHESTRATOR_CONTEXT.md.
 // For orchestrator-type skills, it points to ORCHESTRATOR_CONTEXT.md instead.
 func MinimalPrompt(cfg *Config) string {
+	if cfg.IsMetaOrchestrator {
+		return MinimalMetaOrchestratorPrompt(cfg)
+	}
 	if cfg.IsOrchestrator {
 		return MinimalOrchestratorPrompt(cfg)
 	}

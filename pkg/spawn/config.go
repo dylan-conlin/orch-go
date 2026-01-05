@@ -137,6 +137,14 @@ type Config struct {
 	// - No beads tracking (orchestrators manage sessions, not issues)
 	IsOrchestrator bool
 
+	// IsMetaOrchestrator indicates whether the skill is the meta-orchestrator skill.
+	// Meta-orchestrators (skill-name: meta-orchestrator) have different framing:
+	// - Use META_ORCHESTRATOR_CONTEXT.md template instead of ORCHESTRATOR_CONTEXT.md
+	// - Interactive session framing ("managing orchestrator sessions" not "work toward goal")
+	// - No SESSION_HANDOFF.md requirement (stay interactive and available)
+	// - First action: check orch status for sessions to complete/review
+	IsMetaOrchestrator bool
+
 	// SessionGoal is the high-level goal for orchestrator sessions.
 	// Used in ORCHESTRATOR_CONTEXT.md to set session focus.
 	// Only applicable when IsOrchestrator is true.

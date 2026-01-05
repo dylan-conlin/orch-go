@@ -568,11 +568,17 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 	// This is needed because LoadSkillWithDependencies puts dependency content first,
 	// which means the main skill's frontmatter isn't at the start of the combined content
 	isOrchestrator := false
+	isMetaOrchestrator := false
 	rawSkillContent, err := loader.LoadSkillContent(skillName)
 	if err == nil {
 		if metadata, err := skills.ParseSkillMetadata(rawSkillContent); err == nil {
 			isOrchestrator = metadata.SkillType == "policy" || metadata.SkillType == "orchestrator"
 		}
+	}
+	// Detect meta-orchestrator by skill name (not skill-type)
+	// This enables tiered context templates for different orchestrator levels
+	if skillName == "meta-orchestrator" {
+		isMetaOrchestrator = true
 	}
 
 	// Now load full skill content with dependencies for the actual spawn
@@ -730,27 +736,28 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 
 	// Build spawn config
 	cfg := &spawn.Config{
-		Task:              task,
-		SkillName:         skillName,
-		Project:           projectName,
-		ProjectDir:        projectDir,
-		WorkspaceName:     workspaceName,
-		SkillContent:      skillContent,
-		BeadsID:           beadsID,
-		Phases:            spawnPhases,
-		Mode:              spawnMode,
-		Validation:        spawnValidation,
-		Model:             resolvedModel.Format(),
-		MCP:               spawnMCP,
-		Tier:              tier,
-		NoTrack:           spawnNoTrack,
-		SkipArtifactCheck: spawnSkipArtifactCheck,
-		KBContext:         kbContext,
-		IncludeServers:    spawn.DefaultIncludeServersForSkill(skillName),
-		GapAnalysis:       gapAnalysis,
-		IsBug:             isBug,
-		ReproSteps:        reproSteps,
-		IsOrchestrator:    isOrchestrator,
+		Task:               task,
+		SkillName:          skillName,
+		Project:            projectName,
+		ProjectDir:         projectDir,
+		WorkspaceName:      workspaceName,
+		SkillContent:       skillContent,
+		BeadsID:            beadsID,
+		Phases:             spawnPhases,
+		Mode:               spawnMode,
+		Validation:         spawnValidation,
+		Model:              resolvedModel.Format(),
+		MCP:                spawnMCP,
+		Tier:               tier,
+		NoTrack:            spawnNoTrack,
+		SkipArtifactCheck:  spawnSkipArtifactCheck,
+		KBContext:          kbContext,
+		IncludeServers:     spawn.DefaultIncludeServersForSkill(skillName),
+		GapAnalysis:        gapAnalysis,
+		IsBug:              isBug,
+		ReproSteps:         reproSteps,
+		IsOrchestrator:     isOrchestrator,
+		IsMetaOrchestrator: isMetaOrchestrator,
 	}
 
 	// Pre-spawn token estimation and validation
