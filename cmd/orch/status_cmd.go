@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -90,11 +92,21 @@ type AgentInfo struct {
 	ContextRisk  *verify.ContextExhaustionRisk `json:"context_risk,omitempty"` // Context exhaustion risk assessment
 }
 
+// OrchestratorSessionInfo represents an active orchestrator session for display.
+type OrchestratorSessionInfo struct {
+	WorkspaceName string `json:"workspace_name"`
+	Goal          string `json:"goal"`
+	Duration      string `json:"duration"`
+	Project       string `json:"project,omitempty"`
+	Status        string `json:"status"`
+}
+
 // StatusOutput represents the full status output for JSON serialization.
 type StatusOutput struct {
-	Swarm    SwarmStatus    `json:"swarm"`
-	Accounts []AccountUsage `json:"accounts"`
-	Agents   []AgentInfo    `json:"agents"`
+	Swarm                 SwarmStatus               `json:"swarm"`
+	Accounts              []AccountUsage            `json:"accounts"`
+	OrchestratorSessions  []OrchestratorSessionInfo `json:"orchestrator_sessions,omitempty"`
+	Agents                []AgentInfo               `json:"agents"`
 }
 
 func runStatus(serverURL string) error {
@@ -432,11 +444,15 @@ func runStatus(serverURL string) error {
 		}
 	}
 
+	// Fetch orchestrator sessions from registry
+	orchestratorSessions := getOrchestratorSessions(statusProject)
+
 	// Build output (use filtered agents for display)
 	output := StatusOutput{
-		Swarm:    swarm,
-		Accounts: accounts,
-		Agents:   filteredAgents,
+		Swarm:                swarm,
+		Accounts:             accounts,
+		OrchestratorSessions: orchestratorSessions,
+		Agents:               filteredAgents,
 	}
 
 	// Output as JSON if flag is set
@@ -579,6 +595,41 @@ func getAccountUsage() []AccountUsage {
 	return accounts
 }
 
+// getOrchestratorSessions fetches active orchestrator sessions from the registry.
+// If project is non-empty, filters to only sessions in that project.
+func getOrchestratorSessions(project string) []OrchestratorSessionInfo {
+	registry := session.NewRegistry("")
+	sessions, err := registry.ListActive()
+	if err != nil {
+		return nil // Silently fail - registry may not exist yet
+	}
+
+	now := time.Now()
+	var result []OrchestratorSessionInfo
+
+	for _, s := range sessions {
+		// Extract project name from directory path
+		projectName := filepath.Base(s.ProjectDir)
+
+		// Filter by project if specified
+		if project != "" && projectName != project {
+			continue
+		}
+
+		duration := formatDuration(now.Sub(s.SpawnTime))
+
+		result = append(result, OrchestratorSessionInfo{
+			WorkspaceName: s.WorkspaceName,
+			Goal:          s.Goal,
+			Duration:      duration,
+			Project:       projectName,
+			Status:        s.Status,
+		})
+	}
+
+	return result
+}
+
 // Terminal width thresholds for adaptive output
 const (
 	termWidthWide   = 120 // Full table with all columns
@@ -658,6 +709,12 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 		fmt.Println()
 	}
 
+	// Print orchestrator sessions
+	if len(output.OrchestratorSessions) > 0 {
+		printOrchestratorSessions(output.OrchestratorSessions, termWidth)
+		fmt.Println()
+	}
+
 	// Print agents in format appropriate for terminal width
 	if len(output.Agents) > 0 {
 		fmt.Println("AGENTS")
@@ -670,6 +727,52 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 		}
 	} else {
 		fmt.Println("No active agents")
+	}
+}
+
+// printOrchestratorSessions prints orchestrator sessions in a table format.
+func printOrchestratorSessions(sessions []OrchestratorSessionInfo, termWidth int) {
+	fmt.Println("ORCHESTRATOR SESSIONS")
+
+	if termWidth < termWidthMin {
+		// Card format for very narrow terminals
+		for i, s := range sessions {
+			if i > 0 {
+				fmt.Println()
+			}
+			fmt.Printf("  %s [%s]\n", s.WorkspaceName, s.Status)
+			fmt.Printf("    Goal: %s\n", truncate(s.Goal, 50))
+			fmt.Printf("    Duration: %s | Project: %s\n", s.Duration, s.Project)
+		}
+	} else if termWidth < termWidthNarrow {
+		// Narrow format - drop goal column
+		fmt.Printf("  %-40s %-10s %s\n", "WORKSPACE", "DURATION", "PROJECT")
+		fmt.Printf("  %s\n", strings.Repeat("-", 65))
+		for _, s := range sessions {
+			project := s.Project
+			if project == "" {
+				project = "-"
+			}
+			fmt.Printf("  %-40s %-10s %s\n",
+				truncate(s.WorkspaceName, 38),
+				s.Duration,
+				project)
+		}
+	} else {
+		// Wide format - full table
+		fmt.Printf("  %-40s %-30s %-10s %s\n", "WORKSPACE", "GOAL", "DURATION", "PROJECT")
+		fmt.Printf("  %s\n", strings.Repeat("-", 95))
+		for _, s := range sessions {
+			project := s.Project
+			if project == "" {
+				project = "-"
+			}
+			fmt.Printf("  %-40s %-30s %-10s %s\n",
+				truncate(s.WorkspaceName, 38),
+				truncate(s.Goal, 28),
+				s.Duration,
+				project)
+		}
 	}
 }
 
