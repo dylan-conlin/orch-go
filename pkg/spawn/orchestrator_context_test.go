@@ -592,3 +592,126 @@ Only this project has this section.
 		}
 	})
 }
+
+func TestWriteOrchestratorContext_PreCreatesSessionHandoff(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := &Config{
+		Task:           "orchestrate work",
+		SessionGoal:    "Complete the feature epic",
+		SkillName:      "orchestrator",
+		ProjectDir:     tempDir,
+		WorkspaceName:  "og-orch-test-05jan",
+		IsOrchestrator: true,
+	}
+
+	if err := WriteOrchestratorContext(cfg); err != nil {
+		t.Fatalf("WriteOrchestratorContext failed: %v", err)
+	}
+
+	workspacePath := filepath.Join(tempDir, ".orch", "workspace", "og-orch-test-05jan")
+
+	// Check SESSION_HANDOFF.md was pre-created
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	if _, err := os.Stat(handoffPath); os.IsNotExist(err) {
+		t.Error("expected SESSION_HANDOFF.md to be pre-created")
+	}
+
+	// Check content has metadata filled in
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("failed to read session handoff: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Check workspace name is filled in
+	if !strings.Contains(contentStr, "og-orch-test-05jan") {
+		t.Error("SESSION_HANDOFF.md should contain workspace name")
+	}
+
+	// Check session goal is filled in
+	if !strings.Contains(contentStr, "Complete the feature epic") {
+		t.Error("SESSION_HANDOFF.md should contain session goal")
+	}
+
+	// Check it has the progressive documentation comment
+	if !strings.Contains(contentStr, "Progressive Documentation") {
+		t.Error("SESSION_HANDOFF.md should contain progressive documentation guidance")
+	}
+
+	// Check it prompts for TLDR to be filled
+	if !strings.Contains(contentStr, "Fill within first 5 tool calls") {
+		t.Error("SESSION_HANDOFF.md should prompt for early section fills")
+	}
+}
+
+func TestGeneratePreFilledSessionHandoff(t *testing.T) {
+	content, err := GeneratePreFilledSessionHandoff("og-test-workspace", "Test session goal", "2026-01-05 15:00")
+	if err != nil {
+		t.Fatalf("GeneratePreFilledSessionHandoff failed: %v", err)
+	}
+
+	// Check all metadata is present
+	if !strings.Contains(content, "og-test-workspace") {
+		t.Error("content should contain workspace name")
+	}
+	if !strings.Contains(content, "Test session goal") {
+		t.Error("content should contain session goal")
+	}
+	if !strings.Contains(content, "2026-01-05 15:00") {
+		t.Error("content should contain start time")
+	}
+
+	// Check key sections exist
+	sections := []string{
+		"## TLDR",
+		"## Spawns (Agents Managed)",
+		"## Evidence (What Was Observed)",
+		"## Knowledge (What Was Learned)",
+		"## Friction (What Was Harder Than It Should Be)",
+		"## Focus Progress",
+		"### Where We Started",
+		"## Next (What Should Happen)",
+		"## Session Metadata",
+	}
+
+	for _, section := range sections {
+		if !strings.Contains(content, section) {
+			t.Errorf("content should contain section: %s", section)
+		}
+	}
+}
+
+func TestOrchestratorContext_HasProgressiveHandoffInstruction(t *testing.T) {
+	cfg := &Config{
+		Task:           "orchestrate work",
+		SessionGoal:    "Complete the feature epic",
+		SkillName:      "orchestrator",
+		ProjectDir:     "/tmp/test",
+		WorkspaceName:  "og-orch-test-05jan",
+		IsOrchestrator: true,
+	}
+
+	content, err := GenerateOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateOrchestratorContext failed: %v", err)
+	}
+
+	// Check the instruction mentions filling TLDR and Where We Started
+	if !strings.Contains(content, "Fill SESSION_HANDOFF.md sections") {
+		t.Error("context should mention filling SESSION_HANDOFF.md sections")
+	}
+
+	if !strings.Contains(content, "TLDR") {
+		t.Error("context should mention filling TLDR section")
+	}
+
+	if !strings.Contains(content, "Where We Started") {
+		t.Error("context should mention filling Where We Started section")
+	}
+
+	// Check it mentions progressive handoff
+	if !strings.Contains(content, "Progressive Handoff") {
+		t.Error("context should mention progressive handoff pattern")
+	}
+}

@@ -37,10 +37,15 @@ This is different from interactive orchestrator sessions in that:
 
 ## First Actions
 
-Within your first 3 tool calls:
+Within your first 5 tool calls:
 1. Read the orchestrator skill guidance (already embedded below)
 2. Check current project state: ` + "`orch status`" + ` and ` + "`bd ready`" + `
-3. Begin working toward your session goal
+3. **Fill SESSION_HANDOFF.md sections:** Open {{.WorkspacePath}}/SESSION_HANDOFF.md and fill in:
+   - TLDR (initial framing of session goal)
+   - "Where We Started" in Focus Progress section (current state at session start)
+4. Begin working toward your session goal
+
+**Progressive Handoff:** SESSION_HANDOFF.md has been pre-created with metadata. Fill sections AS YOU WORK, not at the end.
 
 ---
 
@@ -179,8 +184,19 @@ func WriteOrchestratorContext(cfg *Config) error {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
 
-	// Copy SESSION_HANDOFF.md template to workspace if it exists
+	// Copy SESSION_HANDOFF.md template to workspace if it exists (as reference)
 	cfg.HasSessionHandoffTemplate = copySessionHandoffTemplate(cfg.ProjectDir, workspacePath)
+
+	// Pre-create SESSION_HANDOFF.md with metadata filled
+	// This encourages progressive documentation - orchestrators fill as they work
+	startTime := time.Now().Format("2006-01-02 15:04")
+	sessionGoal := cfg.SessionGoal
+	if sessionGoal == "" {
+		sessionGoal = cfg.Task
+	}
+	if err := writePreFilledSessionHandoff(workspacePath, cfg.WorkspaceName, sessionGoal, startTime); err != nil {
+		return fmt.Errorf("failed to write pre-filled session handoff: %w", err)
+	}
 
 	content, err := GenerateOrchestratorContext(cfg)
 	if err != nil {
@@ -322,6 +338,215 @@ const DefaultSessionHandoffTemplate = `# Session Handoff
 **Skill:** {skill-name}
 **Workspace:** ` + "`" + `.orch/workspace/{workspace-name}/` + "`" + `
 `
+
+// PreFilledSessionHandoffTemplate is used to pre-create SESSION_HANDOFF.md with metadata.
+// This encourages progressive documentation - fill as you work, not at the end.
+const PreFilledSessionHandoffTemplate = `# Session Handoff
+
+**Orchestrator:** {{.WorkspaceName}}
+**Focus:** {{.SessionGoal}}
+**Duration:** {{.StartTime}} → {end-time}
+**Outcome:** {success | partial | blocked | failed}
+
+---
+
+<!--
+## Progressive Documentation (READ THIS FIRST)
+
+**This file has been pre-created with metadata. Fill sections AS YOU WORK.**
+
+**Within first 5 tool calls:**
+1. Fill TLDR (initial framing of what you're trying to accomplish)
+2. Fill "Where We Started" (current state at session start)
+
+**During work:**
+- Add to Spawns table as you spawn/complete agents
+- Add to Evidence as you observe patterns
+- Capture Friction immediately (you'll rationalize it away later)
+
+**Before handoff:**
+- Synthesize Knowledge section
+- Fill Next section with recommendations
+- Update TLDR to reflect what actually happened
+- Update Outcome field
+-->
+
+## TLDR
+
+[Fill within first 5 tool calls: What is this session trying to accomplish?]
+
+---
+
+## Spawns (Agents Managed)
+
+### Completed
+| Agent | Issue | Skill | Outcome | Key Finding |
+|-------|-------|-------|---------|-------------|
+| {workspace} | {beads-id} | {skill} | {success/partial/failed} | {1-line insight} |
+
+### Still Running
+| Agent | Issue | Skill | Phase | ETA |
+|-------|-------|-------|-------|-----|
+| {workspace} | {beads-id} | {skill} | {phase} | {estimate} |
+
+### Blocked/Failed
+| Agent | Issue | Blocker | Next Step |
+|-------|-------|---------|-----------|
+| {workspace} | {beads-id} | {what blocked} | {spawn-fresh/escalate/defer} |
+
+---
+
+## Evidence (What Was Observed)
+
+### Patterns Across Agents
+- [Pattern 1: e.g., "3 agents hit the same auth issue"]
+
+### Completions
+- **{beads-id}:** {what SYNTHESIS.md revealed}
+
+### System Behavior
+- [Observation about orch/beads/kb tooling]
+
+---
+
+## Knowledge (What Was Learned)
+
+### Decisions Made
+- **{topic}:** {decision} because {rationale}
+
+### Constraints Discovered
+- {constraint} - why it matters
+
+### Externalized
+- ` + "`kn decide \"X\" --reason \"Y\"`" + ` - [if applicable]
+- ` + "`.kb/decisions/YYYY-MM-DD-*.md`" + ` - [if created]
+
+### Artifacts Created
+- [list any investigations, decisions, or other artifacts]
+
+---
+
+## Friction (What Was Harder Than It Should Be)
+
+<!--
+Capture frustrations AS THEY HAPPEN. You'll rationalize them away later.
+-->
+
+### Tooling Friction
+- [Tool gap or UX issue]
+
+### Context Friction
+- [Information that should have been surfaced but wasn't]
+
+### Skill/Spawn Friction
+- [Skill guidance was unclear or wrong]
+
+*(If smooth session: "No significant friction observed")*
+
+---
+
+## Focus Progress
+
+### Where We Started
+[Fill within first 5 tool calls: What is the current state before you begin working?]
+
+### Where We Ended
+- {state of focus goal now}
+- {what shifted or became clearer}
+
+### Scope Changes
+- [If focus shifted mid-session, note why]
+
+---
+
+## Next (What Should Happen)
+
+**Recommendation:** {continue-focus | shift-focus | escalate | pause}
+
+### If Continue Focus
+**Immediate:** {first thing next orchestrator should do}
+**Then:** {subsequent priorities}
+**Context to reload:**
+- {key file or artifact to read}
+
+### If Shift Focus
+**New focus:** {recommended focus}
+**Why shift:** {rationale}
+
+### If Escalate
+**Question for meta-orchestrator:** {what needs decision}
+**Recommendation:** {which option and why}
+
+### If Pause
+**Why pausing:** {rationale}
+**Resume conditions:** {what needs to happen before resuming}
+
+---
+
+## Unexplored Questions
+
+**Questions that emerged during this session that weren't directly in scope:**
+- [Question 1 - why it's interesting]
+
+**System improvement ideas:**
+- [Tooling or process idea]
+
+*(If nothing emerged: "Focused session, no unexplored territory")*
+
+---
+
+## Session Metadata
+
+**Agents spawned:** {count}
+**Agents completed:** {count}
+**Issues closed:** {list}
+**Issues created:** {list}
+
+**Workspace:** ` + "`.orch/workspace/{{.WorkspaceName}}/`" + `
+`
+
+// preFilledSessionHandoffData holds template data for pre-filled SESSION_HANDOFF.md.
+type preFilledSessionHandoffData struct {
+	WorkspaceName string
+	SessionGoal   string
+	StartTime     string
+}
+
+// GeneratePreFilledSessionHandoff generates SESSION_HANDOFF.md with metadata pre-filled.
+func GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime string) (string, error) {
+	tmpl, err := template.New("session_handoff").Parse(PreFilledSessionHandoffTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse session handoff template: %w", err)
+	}
+
+	data := preFilledSessionHandoffData{
+		WorkspaceName: workspaceName,
+		SessionGoal:   sessionGoal,
+		StartTime:     startTime,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute session handoff template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// writePreFilledSessionHandoff writes SESSION_HANDOFF.md with metadata pre-filled.
+func writePreFilledSessionHandoff(workspacePath, workspaceName, sessionGoal, startTime string) error {
+	content, err := GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime)
+	if err != nil {
+		return err
+	}
+
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write pre-filled session handoff: %w", err)
+	}
+
+	return nil
+}
 
 // EnsureSessionHandoffTemplate ensures the SESSION_HANDOFF.md template exists.
 func EnsureSessionHandoffTemplate(projectDir string) error {
