@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/session"
 )
 
 // TestOrchestratorWorkspaceDetection verifies that orchestrator workspaces are detected
@@ -271,5 +274,82 @@ func TestOrchestratorCompletionWithoutHandoff(t *testing.T) {
 	// Verify SESSION_HANDOFF.md is NOT present (should fail completion)
 	if hasSessionHandoff(found) {
 		t.Error("Incomplete orchestrator should not have SESSION_HANDOFF.md")
+	}
+}
+
+// TestRegistryCleanupOnCompletion tests that orchestrator sessions are
+// removed from the session registry when completed.
+func TestRegistryCleanupOnCompletion(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "sessions.json")
+
+	// Create a registry with a test session
+	registry := session.NewRegistry(registryPath)
+
+	testSession := session.OrchestratorSession{
+		WorkspaceName: "og-orch-test-session-05jan",
+		SessionID:     "ses_test123",
+		ProjectDir:    "/test/project",
+		SpawnTime:     time.Now(),
+		Goal:          "Test goal",
+		Status:        "active",
+	}
+
+	// Register the session
+	if err := registry.Register(testSession); err != nil {
+		t.Fatalf("Failed to register session: %v", err)
+	}
+
+	// Verify session is in registry
+	sessions, err := registry.List()
+	if err != nil {
+		t.Fatalf("Failed to list sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("Expected 1 session, got %d", len(sessions))
+	}
+
+	// Unregister the session (simulating what complete command does)
+	if err := registry.Unregister("og-orch-test-session-05jan"); err != nil {
+		t.Fatalf("Failed to unregister session: %v", err)
+	}
+
+	// Verify session is removed
+	sessions, err = registry.List()
+	if err != nil {
+		t.Fatalf("Failed to list sessions after unregister: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("Expected 0 sessions after unregister, got %d", len(sessions))
+	}
+}
+
+// TestRegistryCleanupSessionNotFound tests that unregistering a non-existent
+// session returns ErrSessionNotFound (graceful handling of legacy workspaces).
+func TestRegistryCleanupSessionNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "sessions.json")
+
+	registry := session.NewRegistry(registryPath)
+
+	// Try to unregister a session that doesn't exist
+	err := registry.Unregister("og-orch-nonexistent-05jan")
+	if err != session.ErrSessionNotFound {
+		t.Errorf("Expected ErrSessionNotFound, got %v", err)
+	}
+}
+
+// TestRegistryCleanupEmptyRegistry tests that unregistering from an empty
+// registry (file doesn't exist) returns ErrSessionNotFound gracefully.
+func TestRegistryCleanupEmptyRegistry(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "nonexistent-sessions.json")
+
+	registry := session.NewRegistry(registryPath)
+
+	// Registry file doesn't exist yet - should return ErrSessionNotFound
+	err := registry.Unregister("og-orch-any-05jan")
+	if err != session.ErrSessionNotFound {
+		t.Errorf("Expected ErrSessionNotFound for empty registry, got %v", err)
 	}
 }

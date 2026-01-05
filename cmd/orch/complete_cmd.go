@@ -15,6 +15,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -466,6 +467,18 @@ func runComplete(identifier, workdir string) error {
 		}
 	} else if isOrchestratorSession {
 		fmt.Printf("Completed orchestrator session: %s\n", agentName)
+		// Unregister orchestrator session from the session registry
+		registry := session.NewRegistry("")
+		if err := registry.Unregister(agentName); err != nil {
+			if err == session.ErrSessionNotFound {
+				// Session wasn't in registry - likely a legacy workspace or spawned before registry existed
+				fmt.Printf("Note: Session %s was not in registry (legacy workspace)\n", agentName)
+			} else {
+				fmt.Fprintf(os.Stderr, "Warning: failed to unregister session from registry: %v\n", err)
+			}
+		} else {
+			fmt.Printf("Unregistered from session registry\n")
+		}
 	} else if isUntracked {
 		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
 	}
