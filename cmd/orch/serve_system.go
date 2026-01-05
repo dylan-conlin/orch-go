@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
@@ -11,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
+	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -288,6 +290,108 @@ func handleDaemon(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode daemon status: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// OrchestratorSessionsAPIResponse is the JSON structure returned by /api/orchestrator-sessions.
+type OrchestratorSessionsAPIResponse struct {
+	Sessions []OrchestratorSessionAPIItem `json:"sessions"`
+	Count    int                          `json:"count"`
+}
+
+// OrchestratorSessionAPIItem represents an orchestrator session in the API response.
+type OrchestratorSessionAPIItem struct {
+	WorkspaceName    string `json:"workspace_name"`
+	SessionID        string `json:"session_id,omitempty"`
+	Goal             string `json:"goal"`
+	Duration         string `json:"duration"`
+	DurationSeconds  int64  `json:"duration_seconds"` // For sorting/calculations
+	Project          string `json:"project"`
+	ProjectDir       string `json:"project_dir"`
+	Status           string `json:"status"`
+	SpawnTime        string `json:"spawn_time"` // ISO 8601
+	ChildAgentCount  int    `json:"child_agent_count"`  // Number of active agents in same project
+}
+
+// handleOrchestratorSessions returns active orchestrator sessions from the registry.
+// Query parameters:
+//   - project: Filter by project name (optional)
+func handleOrchestratorSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	project := r.URL.Query().Get("project")
+
+	registry := session.NewRegistry("")
+	sessions, err := registry.ListActive()
+	if err != nil {
+		// Return empty list if registry doesn't exist yet
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(OrchestratorSessionsAPIResponse{
+			Sessions: []OrchestratorSessionAPIItem{},
+			Count:    0,
+		})
+		return
+	}
+
+	// Get active agents to count children per project
+	client := opencode.NewClient(serverURL)
+	opencodeSessions, _ := client.ListSessions("")
+	
+	// Count active agents per project
+	projectAgentCounts := make(map[string]int)
+	maxIdleTime := 30 * time.Minute
+	now := time.Now()
+	for _, s := range opencodeSessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) <= maxIdleTime {
+			// Extract project from title (e.g., "og-feat-xxx" -> "orch-go")
+			if beadsID := extractBeadsIDFromTitle(s.Title); beadsID != "" {
+				proj := extractProjectFromBeadsID(beadsID)
+				if proj != "" {
+					projectAgentCounts[proj]++
+				}
+			}
+		}
+	}
+
+	var result []OrchestratorSessionAPIItem
+
+	for _, s := range sessions {
+		projectName := filepath.Base(s.ProjectDir)
+
+		// Filter by project if specified
+		if project != "" && projectName != project {
+			continue
+		}
+
+		duration := now.Sub(s.SpawnTime)
+
+		result = append(result, OrchestratorSessionAPIItem{
+			WorkspaceName:   s.WorkspaceName,
+			SessionID:       s.SessionID,
+			Goal:            s.Goal,
+			Duration:        formatDuration(duration),
+			DurationSeconds: int64(duration.Seconds()),
+			Project:         projectName,
+			ProjectDir:      s.ProjectDir,
+			Status:          s.Status,
+			SpawnTime:       s.SpawnTime.Format(time.RFC3339),
+			ChildAgentCount: projectAgentCounts[projectName],
+		})
+	}
+
+	resp := OrchestratorSessionsAPIResponse{
+		Sessions: result,
+		Count:    len(result),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode orchestrator sessions: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

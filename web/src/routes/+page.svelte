@@ -39,6 +39,8 @@
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { config } from '$lib/stores/config';
 	import { hotspots } from '$lib/stores/hotspot';
+	import { orchestratorSessions } from '$lib/stores/orchestrator-sessions';
+	import { OrchestratorSessionsSection } from '$lib/components/orchestrator-sessions-section';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -56,7 +58,8 @@
 		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
 		readyQueue: false, // Ready queue collapsed by default
 		pendingReviews: true, // Pending reviews expanded by default (actionable)
-		sseStream: false // SSE Stream collapsed by default (low signal-to-noise for most users)
+		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
+		orchestratorSessions: true // Orchestrator sessions expanded by default (important visibility)
 	};
 
 	// Load section state from localStorage on mount
@@ -122,6 +125,7 @@
 			readyIssues.fetch();
 			daemon.fetch();
 			hotspots.fetch();
+			orchestratorSessions.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -151,7 +155,8 @@
 				readyIssues.fetch(),
 				daemon.fetch(),
 				pendingReviews.fetch(),
-				hotspots.fetch()
+				hotspots.fetch(),
+				orchestratorSessions.fetch()
 			]).catch(console.error);
 		}, 60000);
 
@@ -314,6 +319,11 @@
 <div class="space-y-3">
 	<!-- Stats Bar Component -->
 	<StatsBar bind:readyQueueExpanded={sectionState.readyQueue} />
+
+	<!-- Orchestrator Sessions (always visible at top when active) -->
+	<OrchestratorSessionsSection
+		bind:expanded={sectionState.orchestratorSessions}
+	/>
 
 	{#if $dashboardMode === 'operational'}
 		<!-- OPERATIONAL MODE: Focused daily coordination view -->
