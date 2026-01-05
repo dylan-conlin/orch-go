@@ -380,13 +380,60 @@
       "repo": "kb-cli",
       "depends_on": ["feat-032"],
       "notes": "Phase 3 of meta-orchestrator architecture. Closes learning feedback loop."
+    },
+    {
+      "id": "feat-035",
+      "title": "Implement session registry for orchestrator tracking (pkg/session/registry.go)",
+      "description": "Create lightweight session registry at ~/.orch/sessions.json to track active orchestrator sessions without beads. Fields: workspace_name, session_id, project_dir, spawn_time, status (active/complete). Include lock file for concurrent access. CRUD operations: Register, Update, Unregister, List, Get. Stale entry detection (check session liveness on read). File targets: pkg/session/registry.go, pkg/session/registry_test.go. Out of scope: Beads migration. Acceptance: Registry tracks orchestrator sessions, concurrent access safe, stale entries detected.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-05",
+      "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
+      "notes": "Phase 1 of orchestrator lifecycle without beads. Foundation for other phases."
+    },
+    {
+      "id": "feat-036",
+      "title": "Skip beads issue creation for orchestrator skills in spawn",
+      "description": "Modify spawn_cmd.go to skip beads issue creation when IsOrchestrator=true. Instead, register in session registry. Update orchestrator context template to remove beads phase reporting instructions. Already skipped: phase comments, .beads_id file writing. This change: skip bd create. File targets: cmd/orch/spawn_cmd.go (createBeadsIssue conditional), pkg/spawn/orchestrator_context.go (template cleanup). Depends on feat-035. Acceptance: 'orch spawn orchestrator \"goal\"' creates no beads issue, registers in session registry.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-05",
+      "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
+      "depends_on": ["feat-035"],
+      "notes": "Phase 2 of orchestrator lifecycle without beads."
+    },
+    {
+      "id": "feat-037",
+      "title": "Add orchestrator sessions to orch status from registry",
+      "description": "Modify status_cmd.go to include orchestrator sessions from session registry. Add third agent source alongside tmux windows and OpenCode sessions. Show orchestrator sessions with different indicator (e.g., 'session' vs 'agent'). Include goal, duration, SESSION_HANDOFF.md status. File targets: cmd/orch/status_cmd.go (add registry source, OrchestratorSessionInfo type). Depends on feat-035. Acceptance: 'orch status' shows orchestrator sessions from registry alongside worker agents.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-05",
+      "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
+      "depends_on": ["feat-035"],
+      "notes": "Phase 3 of orchestrator lifecycle without beads."
+    },
+    {
+      "id": "feat-038",
+      "title": "Unregister orchestrator from registry on orch complete",
+      "description": "Modify complete_cmd.go to unregister orchestrator session from registry after successful completion. Keep transcript export (already workspace-based). Log completion event with session metadata. File targets: cmd/orch/complete_cmd.go (add registry.Unregister call). Depends on feat-035. Acceptance: 'orch complete <workspace>' removes session from registry, transcript export still works.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-05",
+      "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
+      "depends_on": ["feat-035"],
+      "notes": "Phase 4 of orchestrator lifecycle without beads."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-04",
-    "total_features": 34,
+    "last_updated": "2026-01-05",
+    "total_features": 38,
     "by_status": {
-      "todo": 32,
+      "todo": 36,
       "in_progress": 0,
       "done": 2
     }
