@@ -147,16 +147,26 @@ orch spawn orchestrator "goal"  # tmux by default
 **Problem:** Can't easily open TUI for existing session from workspace name
 **Impact:** When tmux window closes, no easy way to reconnect visually
 **Solution:** Read `.session_id`, run `opencode --attach --session <id>`
+**Issue:** orch-go-cnkbv
+
+### 1a. ✅ `opencode attach --session` FIXED
+**Problem:** `opencode attach http://localhost:4096 --session <id>` returned "Session not found" even when session exists via API
+**Root cause:** Sessions are project-scoped. TUI used client's cwd, server used different project context.
+**Fix:** Added `Session.getGlobal()` that searches across all projects (commit e3a23604b in Dylan's fork)
+**Issue:** orch-go-1qgwg (closed)
+**Status:** FIXED - requires Dylan's opencode fork (see ~/.claude/CLAUDE.md "OpenCode: Use Dylan's Fork")
 
 ### 2. `orch resume` Only Works for Workers
 **Problem:** Takes beads ID, but orchestrators don't have beads IDs
 **Impact:** Can't resume orchestrator sessions (the price-watch friction)
 **Solution:** Accept `--workspace <name>` or `--session <id>` flags
+**Issue:** orch-go-xdcpc
 
 ### 3. No Workspace ↔ Session Cross-Reference
 **Problem:** Can't detect orphaned workspaces vs orphaned sessions
 **Impact:** No systematic cleanup, can't detect zombies
 **Solution:** `orch doctor` could compare both sources
+**Issue:** orch-go-0l2f9
 
 ### 4. Registry Population Issues
 **Problem:** `~/.orch/registry.json` appears empty but `orch status` shows sessions
@@ -167,6 +177,7 @@ orch spawn orchestrator "goal"  # tmux by default
 **Problem:** OpenCode sessions accumulate forever
 **Impact:** Disk usage, confusion about what's active
 **Solution:** Policy decision needed - archive after X days?
+**Issue:** orch-go-1kk2u (updated from "orphaned workspaces" to cleanup strategy)
 
 ---
 
