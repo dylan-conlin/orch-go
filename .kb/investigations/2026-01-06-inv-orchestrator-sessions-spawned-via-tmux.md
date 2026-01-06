@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** OpenCode in standalone mode runs an embedded server - sessions aren't visible via shared API. The `--dir` flag in attach mode was fixed in commit 18b26856a to properly set session working directory.
 
-**Next:** Manual verification that tmux spawns now capture session IDs, then close issue.
+**Next:** Additional fix needed - either add --title flag to attach or change FindRecentSession to match by directory+time only.
 
 ---
 
@@ -22,9 +22,9 @@ Fill this at the END of your investigation, before marking Complete.
 **Started:** 2026-01-06
 **Updated:** 2026-01-06
 **Owner:** Worker agent
-**Phase:** Complete
-**Next Step:** None
-**Status:** Complete
+**Phase:** Blocked
+**Next Step:** Fix FindRecentSession to match by directory+time (not title) OR add --title to opencode attach
+**Status:** In Progress - manual verification failed
 
 ---
 
@@ -111,14 +111,33 @@ The fix is to switch to attach mode with `--dir`, which is now reliable after Op
 
 **What's untested:**
 
-- ⚠️ Manual verification that tmux spawns now capture session IDs (needs live test)
-- ⚠️ Verification that `--dir` properly sets working directory in real spawn (needs live test)
-- ⚠️ Impact on existing orchestrator workflow (should be transparent improvement)
+- ❌ Manual verification FAILED - tmux spawns still don't capture session IDs (see below)
 
 **What would change this:**
 
 - If OpenCode's `--dir` flag behavior regresses
 - If there are edge cases where attach mode behaves differently than standalone
+
+---
+
+## Manual Verification (2026-01-06 16:00)
+
+**Test performed:** `orch spawn hello "test session id capture" --tmux --bypass-triage --no-track`
+
+**Result:** FAILED - .session_id file NOT created in workspace
+
+**Root cause discovered:**
+1. Session IS being registered with API (confirmed: ses_46a434a9dffeCdHbGCE3WekKnB exists)
+2. BUT `FindRecentSession` can't find it because:
+   - It matches by session title
+   - Session title is first prompt text ("Reading SPAWN_CONTEXT for task setup"), NOT workspace name
+   - `opencode attach --dir` doesn't set session title - only the first message becomes the title
+
+**Fix is incomplete.** The change to use `opencode attach --dir` successfully registers sessions with the API, but `FindRecentSession` can't locate them because the title matching fails.
+
+**Required additional fix (one of):**
+a) Add `--title` flag to attach command (requires OpenCode support: `opencode attach <url> --dir <path> --title <workspace>`)
+b) Change `FindRecentSession` to match by directory + creation time only, ignoring title
 
 ---
 
