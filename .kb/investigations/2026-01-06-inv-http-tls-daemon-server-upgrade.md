@@ -1,83 +1,70 @@
-<!--
-D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
--->
-
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Upgraded orch serve from HTTP/1.1 to HTTP/2 with TLS to permanently fix browser connection pool exhaustion (6 connections per origin limit).
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Build succeeds (`make build`), go vet passes, all frontend stores updated to https://localhost:3348.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Go 1.24's http.ListenAndServeTLS auto-enables HTTP/2; browsers only support HTTP/2 over TLS; self-signed certs work for localhost.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Install binary, verify HTTP/2 in browser network panel, verify SSE streams connect simultaneously.
 
 ---
 
-# Investigation: Http Tls Daemon Server Upgrade
+# Investigation: HTTP/2 TLS Daemon Server Upgrade
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to upgrade orch serve from HTTP/1.1 to HTTP/2 with TLS to fix connection pool exhaustion?
 
 **Started:** 2026-01-06
 **Updated:** 2026-01-06
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** feature-impl agent
+**Phase:** Complete
+**Next Step:** Orchestrator verification of HTTP/2 in browser
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Self-signed TLS certificate generated with openssl
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- Created `pkg/certs/cert.pem` and `pkg/certs/key.pem`
+- Used 4096-bit RSA key with 10-year validity
+- Includes both localhost DNS and 127.0.0.1 IP in Subject Alt Names
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/CN=localhost" -addext "subjectAltName = DNS:localhost, IP:127.0.0.1"
+```
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Self-signed cert is acceptable for localhost development tooling. Browser will show a warning once, then work normally after exception is added.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Server code updated to use TLS
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- Changed `cmd/orch/serve.go:303` from `http.ListenAndServe` to `http.ListenAndServeTLS`
+- Added `crypto/tls` import and `tlsConfigSkipVerify()` helper
+- Updated CORS to accept https origins
+- Updated status check to use https with InsecureSkipVerify for self-signed cert
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `cmd/orch/serve.go:281-307`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Go's HTTP/2 is automatically enabled when using TLS. No application code changes needed for SSE handlers.
+
+---
+
+### Finding 3: All frontend stores updated to HTTPS
+
+**Evidence:** Updated API_BASE in 11 store files:
+- agents.ts, agentlog.ts, beads.ts, config.ts, daemon.ts
+- focus.ts, hotspot.ts, orchestrator-sessions.ts, pending-reviews.ts
+- servers.ts, usage.ts
+
+**Source:** `web/src/lib/stores/*.ts`
+
+**Significance:** Frontend will now connect over HTTPS, which browsers auto-negotiate to HTTP/2.
 
 ---
 
@@ -85,15 +72,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **HTTP/2 requires TLS for browsers** - All modern browsers only support HTTP/2 over TLS (h2), not cleartext (h2c).
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Go makes HTTP/2 transparent** - Simply switching from ListenAndServe to ListenAndServeTLS enables HTTP/2 automatically.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Self-signed certs are fine for localhost** - This is development tooling, not user-facing, so a one-time browser warning is acceptable.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Successfully upgraded by: (1) generating self-signed TLS cert with openssl, (2) changing server to use ListenAndServeTLS, (3) updating all frontend API_BASE to https. HTTP/2 is now automatic.
 
 ---
 
@@ -101,120 +88,102 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Build succeeds (`make build` completes without errors)
+- ✅ Go vet passes (`go vet ./cmd/orch/` has no issues)
+- ✅ Binary runs (`./build/orch version` works)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ HTTP/2 protocol verification in browser network panel (needs manual test)
+- ⚠️ Both SSE streams connecting simultaneously (needs runtime test)
+- ⚠️ Browser self-signed cert acceptance flow (needs manual verification)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If Go's HTTP/2 implementation has issues with SSE streaming
+- If TLS handshake adds unacceptable latency
+- If self-signed cert causes problems with Playwright tests
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**HTTP/2 with TLS** - Implemented as specified in architect investigation.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Eliminates connection limit constraint at protocol level
+- No SSE handler changes needed
+- Solves the problem class, not just current symptom
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
+- Browser shows self-signed cert warning (one-time)
+- Tests may need certificate handling
 
 ### Implementation Details
 
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+**What was implemented:**
+1. TLS certificate in `pkg/certs/` directory
+2. Server code change in `cmd/orch/serve.go`
+3. Frontend updates in `web/src/lib/stores/*.ts`
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- ⚠️ Browser must accept self-signed cert to see dashboard
+- ⚠️ Load tests (web/tests/load-test.spec.ts) updated to use https
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Dashboard loads at https://localhost:5188
+- ✅ Network panel shows "h2" protocol
+- ✅ Both SSE streams connect without pending requests
+- ✅ No more connection pool exhaustion
 
 ---
 
 ## References
 
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+**Files Modified:**
+- `cmd/orch/serve.go` - Server TLS configuration
+- `web/src/lib/stores/*.ts` - All frontend API stores
+- `web/src/lib/services/sse-connection.ts` - Example URL in docs
+- `web/tests/load-test.spec.ts` - Test API URL
+- `pkg/certs/cert.pem` - TLS certificate (new)
+- `pkg/certs/key.pem` - TLS private key (new)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Generate TLS cert
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/CN=localhost" -addext "subjectAltName = DNS:localhost, IP:127.0.0.1"
 
-# [Command description]
-[command]
+# Build binary
+make build
+
+# Verify build
+go vet ./cmd/orch/
+./build/orch version
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-05-design-permanent-fix-http-connection-pool.md` - Architect design
+- **Constraint:** Dashboard SSE connections can exhaust HTTP/1.1 browser connection pool
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-06 07:30:** Investigation started
+- Task: Upgrade orch serve to HTTP/2 with TLS per architect investigation
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-06 07:38:** TLS certificate generated
+- Created pkg/certs/ with cert.pem and key.pem
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-06 07:45:** Server code updated
+- Changed ListenAndServe to ListenAndServeTLS
+- Added TLS imports and config
+
+**2026-01-06 07:50:** Frontend stores updated
+- Changed all API_BASE from http to https
+
+**2026-01-06 07:55:** Investigation completed
+- Status: Complete
+- Key outcome: HTTP/2 with TLS implemented, ready for verification

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // Enable pprof for CPU profiling
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,14 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/spf13/cobra"
 )
+
+// tlsConfigSkipVerify returns a TLS config that skips certificate verification.
+// Used for connecting to the local server with self-signed certificates.
+func tlsConfigSkipVerify() *tls.Config {
+	return &tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // Self-signed localhost cert
+	}
+}
 
 // DefaultServePort is the port orch serve listens on.
 // This is infrastructure, not a project dev server.
@@ -87,10 +97,14 @@ func init() {
 
 // runServeStatus checks if the orch serve API is running on the given port.
 func runServeStatus(portNum int) error {
-	addr := fmt.Sprintf("http://localhost:%d/health", portNum)
+	addr := fmt.Sprintf("https://localhost:%d/health", portNum)
 
+	// Skip TLS verification for self-signed localhost cert
 	client := &http.Client{
 		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfigSkipVerify(),
+		},
 	}
 
 	resp, err := client.Get(addr)
@@ -116,9 +130,9 @@ func runServeStatus(portNum int) error {
 		return nil
 	}
 
-	fmt.Printf("✅ API server is running on port %d\n", portNum)
+	fmt.Printf("✅ API server is running on port %d (HTTP/2 with TLS)\n", portNum)
 	fmt.Printf("   Status: %s\n", health.Status)
-	fmt.Printf("   URL:    http://localhost:%d\n", portNum)
+	fmt.Printf("   URL:    https://localhost:%d\n", portNum)
 	fmt.Println()
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - Active agents")
@@ -168,16 +182,20 @@ func runServe(portNum int) error {
 	// CORS middleware wrapper
 	corsHandler := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			// Allow requests from SvelteKit dev server and any localhost
+			// Allow requests from SvelteKit dev server and any localhost (http or https)
 			origin := r.Header.Get("Origin")
-			if origin == "" || strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
+			if origin == "" ||
+				strings.HasPrefix(origin, "http://localhost") ||
+				strings.HasPrefix(origin, "https://localhost") ||
+				strings.HasPrefix(origin, "http://127.0.0.1") ||
+				strings.HasPrefix(origin, "https://127.0.0.1") {
 				if origin != "" {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 				} else {
 					w.Header().Set("Access-Control-Allow-Origin", "*")
 				}
 			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
 
 			// Handle preflight
@@ -259,11 +277,15 @@ func runServe(portNum int) error {
 	})
 
 	// pprof handlers for CPU profiling (useful for debugging CPU runaway)
-	// Access at: http://localhost:3348/debug/pprof/
+	// Access at: https://localhost:3348/debug/pprof/
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
 
+	// TLS certificate paths (relative to source directory)
+	certFile := filepath.Join(sourceDir, "pkg", "certs", "cert.pem")
+	keyFile := filepath.Join(sourceDir, "pkg", "certs", "key.pem")
+
 	addr := fmt.Sprintf(":%d", portNum)
-	fmt.Printf("Starting orch-go API server on http://localhost%s\n", addr)
+	fmt.Printf("Starting orch-go API server on https://localhost%s (HTTP/2 with TLS)\n", addr)
 	fmt.Println("Endpoints:")
 	fmt.Println("  GET /api/agents    - List of active agents from OpenCode/tmux")
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
@@ -286,7 +308,8 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
-	return http.ListenAndServe(addr, mux)
+	// HTTP/2 is automatically enabled when using TLS with Go's http package
+	return http.ListenAndServeTLS(addr, certFile, keyFile, mux)
 }
 
 // handleChangelog returns aggregated changelog data across ecosystem repos.
