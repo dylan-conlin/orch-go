@@ -74,13 +74,21 @@ func VerifyCompletion(beadsID string, workspacePath string) (VerificationResult,
 //
 // The projectDir is used to verify that constraint patterns match actual files.
 func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (VerificationResult, error) {
+	// Delegate to the cached version without pre-fetched comments
+	return VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, nil)
+}
+
+// VerifyCompletionFullWithComments is like VerifyCompletionFull but accepts pre-fetched comments.
+// This avoids O(n) beads API calls when verifying multiple completions in batch.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier string, comments []Comment) (VerificationResult, error) {
 	// Determine tier if not provided (needed for orchestrator check below)
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
 	}
 
-	// First run standard verification
-	result, err := VerifyCompletionWithTier(beadsID, workspacePath, tier)
+	// First run standard verification (uses comments for phase status)
+	result, err := VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, comments)
 	if err != nil {
 		return result, err
 	}
@@ -124,7 +132,7 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 	// This checks that required phases were reported in beads comments
 	// Skip for orchestrator tier (beads-dependent)
 	if !isOrchestrator {
-		phaseGateResult, err := VerifyPhaseGatesForCompletion(workspacePath, beadsID)
+		phaseGateResult, err := VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID, comments)
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify phase gates: %v", err))
 		} else if !phaseGateResult.Passed {
@@ -151,7 +159,7 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 	// This gates completion when web files are modified without visual verification evidence
 	// Skip for orchestrator tier (beads-dependent)
 	if !isOrchestrator {
-		visualResult := VerifyVisualVerificationForCompletion(beadsID, workspacePath, projectDir)
+		visualResult := VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
 		if visualResult != nil {
 			if !visualResult.Passed {
 				result.Passed = false
@@ -165,7 +173,7 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 	// This gates completion when code files are modified without test execution evidence
 	// Skip for orchestrator tier (beads-dependent)
 	if !isOrchestrator {
-		testEvidenceResult := VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir)
+		testEvidenceResult := VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir, comments)
 		if testEvidenceResult != nil {
 			if !testEvidenceResult.Passed {
 				result.Passed = false
@@ -214,6 +222,12 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 //
 // Returns a VerificationResult with any errors or warnings.
 func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string) (VerificationResult, error) {
+	return VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, nil)
+}
+
+// VerifyCompletionWithTierAndComments is like VerifyCompletionWithTier but accepts pre-fetched comments.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, tier string, comments []Comment) (VerificationResult, error) {
 	result := VerificationResult{
 		Passed: true,
 	}
@@ -229,12 +243,18 @@ func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string)
 	}
 
 	// Standard worker verification: beads-based phase tracking
-	// Get phase status
-	status, err := GetPhaseStatus(beadsID)
-	if err != nil {
-		result.Passed = false
-		result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
-		return result, nil
+	// Get phase status (using pre-fetched comments if available)
+	var status PhaseStatus
+	var err error
+	if comments != nil {
+		status = ParsePhaseFromComments(comments)
+	} else {
+		status, err = GetPhaseStatus(beadsID)
+		if err != nil {
+			result.Passed = false
+			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
+			return result, nil
+		}
 	}
 
 	result.Phase = status

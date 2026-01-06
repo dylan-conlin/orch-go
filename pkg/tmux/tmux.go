@@ -90,9 +90,12 @@ type OpencodeAttachConfig struct {
 	SessionID  string // optional: continue existing session
 }
 
-// BuildOpencodeAttachCommand creates the opencode attach mode command string.
-// Attach mode: opencode attach {server_url} --dir {project_dir}
-// Note: --model is NOT supported by opencode attach (model is set at server level)
+// BuildOpencodeAttachCommand creates the opencode command string for tmux spawning.
+// Uses "opencode {project_dir}" in standalone mode because:
+// - "opencode attach --dir" sets config lookup dir but not session working directory
+// - "opencode {project_dir}" starts TUI with working directory set to project
+// The tradeoff is sessions won't be visible via shared server API (orch status uses
+// beads/workspace tracking instead).
 // Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	opencodeBin := "opencode"
@@ -100,10 +103,16 @@ func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 		opencodeBin = bin
 	}
 
-	// Prefix with ORCH_WORKER=1 so the spawned agent knows it's an orch-managed worker
-	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %s --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
-	// Note: Model is intentionally NOT passed - opencode attach doesn't support --model
-	// The model is configured at server level, not per-attach
+	// Use standalone mode with project directory as argument
+	// This ensures the session's working directory matches the project
+	cmd := fmt.Sprintf("ORCH_WORKER=1 %s %q", opencodeBin, cfg.ProjectDir)
+	
+	// Add model if provided
+	if cfg.Model != "" {
+		cmd += fmt.Sprintf(" --model %q", cfg.Model)
+	}
+	
+	// Continue existing session if provided
 	if cfg.SessionID != "" {
 		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
 	}

@@ -275,6 +275,12 @@ func isCodeFile(filePath string) bool {
 // Evidence must show actual test output (pass counts, timing, framework output)
 // not just claims like "tests pass".
 func VerifyTestEvidence(beadsID, workspacePath, projectDir string) TestEvidenceResult {
+	return VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir, nil)
+}
+
+// VerifyTestEvidenceWithComments is like VerifyTestEvidence but accepts pre-fetched comments.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, comments []Comment) TestEvidenceResult {
 	result := TestEvidenceResult{Passed: true}
 
 	// Extract skill name for skill-based gating
@@ -303,12 +309,16 @@ func VerifyTestEvidence(beadsID, workspacePath, projectDir string) TestEvidenceR
 	}
 
 	// Code changes exist - check for test evidence in beads comments
-	comments, err := GetComments(beadsID)
-	if err != nil {
-		result.Warnings = append(result.Warnings,
-			"failed to get beads comments: "+err.Error())
-		// Don't fail verification if we can't fetch comments
-		return result
+	// Use pre-fetched comments if available
+	if comments == nil {
+		var err error
+		comments, err = GetComments(beadsID)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				"failed to get beads comments: "+err.Error())
+			// Don't fail verification if we can't fetch comments
+			return result
+		}
 	}
 
 	hasEvidence, evidence := HasTestExecutionEvidence(comments)
@@ -332,7 +342,13 @@ func VerifyTestEvidence(beadsID, workspacePath, projectDir string) TestEvidenceR
 // Returns nil if no verification is needed (no code changes or non-implementation skill).
 // Returns EscalationBlock level result if test evidence is missing.
 func VerifyTestEvidenceForCompletion(beadsID, workspacePath, projectDir string) *TestEvidenceResult {
-	result := VerifyTestEvidence(beadsID, workspacePath, projectDir)
+	return VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir, nil)
+}
+
+// VerifyTestEvidenceForCompletionWithComments is like VerifyTestEvidenceForCompletion but accepts pre-fetched comments.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyTestEvidenceForCompletionWithComments(beadsID, workspacePath, projectDir string, comments []Comment) *TestEvidenceResult {
+	result := VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir, comments)
 
 	// Return nil if no code changes - no action needed
 	if !result.HasCodeChanges {

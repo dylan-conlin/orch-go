@@ -164,6 +164,12 @@ func VerifyPhaseGates(requiredPhases []Phase, comments []Comment) PhaseGateResul
 // VerifyPhaseGatesForCompletion is a convenience function that extracts phases
 // from a workspace's SPAWN_CONTEXT.md and verifies them against beads comments.
 func VerifyPhaseGatesForCompletion(workspacePath, beadsID string) (PhaseGateResult, error) {
+	return VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID, nil)
+}
+
+// VerifyPhaseGatesForCompletionWithComments is like VerifyPhaseGatesForCompletion but accepts pre-fetched comments.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyPhaseGatesForCompletionWithComments(workspacePath, beadsID string, comments []Comment) (PhaseGateResult, error) {
 	// Extract phases from SPAWN_CONTEXT.md
 	phases, err := ExtractPhases(workspacePath)
 	if err != nil {
@@ -175,10 +181,12 @@ func VerifyPhaseGatesForCompletion(workspacePath, beadsID string) (PhaseGateResu
 		return PhaseGateResult{Passed: true}, nil
 	}
 
-	// Get beads comments
-	comments, err := GetComments(beadsID)
-	if err != nil {
-		return PhaseGateResult{}, fmt.Errorf("failed to get comments: %w", err)
+	// Get beads comments if not pre-fetched
+	if comments == nil {
+		comments, err = GetComments(beadsID)
+		if err != nil {
+			return PhaseGateResult{}, fmt.Errorf("failed to get comments: %w", err)
+		}
 	}
 
 	return VerifyPhaseGates(phases, comments), nil

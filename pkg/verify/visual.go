@@ -327,6 +327,12 @@ func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
 // - orchestrator_approved: true
 // - "I approve the UI/visual/changes"
 func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualVerificationResult {
+	return VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir, nil)
+}
+
+// VerifyVisualVerificationWithComments is like VerifyVisualVerification but accepts pre-fetched comments.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir string, comments []Comment) VisualVerificationResult {
 	result := VisualVerificationResult{Passed: true}
 
 	// Check if web/ files were modified by this agent (scoped by spawn time)
@@ -349,11 +355,17 @@ func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualV
 
 	// UI-focused skill (feature-impl) - need visual verification evidence AND human approval
 
-	// Check beads comments for evidence and approval
-	comments, err := GetComments(beadsID)
-	if err != nil {
-		result.Warnings = append(result.Warnings, "failed to get beads comments: "+err.Error())
-	} else {
+	// Check beads comments for evidence and approval (use pre-fetched if available)
+	if comments == nil {
+		var err error
+		comments, err = GetComments(beadsID)
+		if err != nil {
+			result.Warnings = append(result.Warnings, "failed to get beads comments: "+err.Error())
+			comments = nil // Reset to indicate we couldn't fetch
+		}
+	}
+
+	if comments != nil {
 		// Check for visual verification evidence
 		hasEvidence, evidence := HasVisualVerificationEvidence(comments)
 		if hasEvidence {
@@ -403,7 +415,13 @@ func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualV
 // VerifyVisualVerificationForCompletion is a convenience function for use in orch complete.
 // Returns nil if no verification is needed (no web changes) or if verification passes.
 func VerifyVisualVerificationForCompletion(beadsID, workspacePath, projectDir string) *VisualVerificationResult {
-	result := VerifyVisualVerification(beadsID, workspacePath, projectDir)
+	return VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir, nil)
+}
+
+// VerifyVisualVerificationForCompletionWithComments is like VerifyVisualVerificationForCompletion but accepts pre-fetched comments.
+// If comments is nil, comments will be fetched from beads API.
+func VerifyVisualVerificationForCompletionWithComments(beadsID, workspacePath, projectDir string, comments []Comment) *VisualVerificationResult {
+	result := VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir, comments)
 
 	// Return nil if no web changes - no action needed
 	if !result.HasWebChanges {

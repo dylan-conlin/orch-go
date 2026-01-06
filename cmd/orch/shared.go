@@ -282,6 +282,42 @@ func findTmuxWindowByIdentifier(identifier string) (*tmux.WindowInfo, error) {
 	return nil, nil // Not found (no error, just not found)
 }
 
+// findWorkspaceByName searches for a workspace directory by its name.
+// Returns the workspace path if found, or empty string if not found.
+func findWorkspaceByName(projectDir, workspaceName string) string {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	dirPath := filepath.Join(workspaceDir, workspaceName)
+
+	// Check if directory exists
+	if stat, err := os.Stat(dirPath); err == nil && stat.IsDir() {
+		return dirPath
+	}
+
+	return ""
+}
+
+// isOrchestratorWorkspace checks if a workspace is for an orchestrator session.
+// Returns true if .orchestrator or .meta-orchestrator marker file exists.
+func isOrchestratorWorkspace(workspacePath string) bool {
+	orchestratorMarker := filepath.Join(workspacePath, ".orchestrator")
+	metaOrchestratorMarker := filepath.Join(workspacePath, ".meta-orchestrator")
+
+	if _, err := os.Stat(orchestratorMarker); err == nil {
+		return true
+	}
+	if _, err := os.Stat(metaOrchestratorMarker); err == nil {
+		return true
+	}
+	return false
+}
+
+// hasSessionHandoff checks if SESSION_HANDOFF.md exists in the workspace.
+func hasSessionHandoff(workspacePath string) bool {
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	_, err := os.Stat(handoffPath)
+	return err == nil
+}
+
 // resolveShortBeadsID resolves a potentially short beads ID to a full ID.
 // Short IDs like "57dn" are resolved to full IDs like "orch-go-57dn".
 // This ensures commands receive full IDs that bd commands can use.

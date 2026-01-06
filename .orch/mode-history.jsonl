@@ -31,3 +31,8 @@
 {"time":"2026-01-04T13:43:19-08:00","action":"bypass","reason":"Extracting SSE logic is safe - domain logic preserved, only connection management moved to shared service"}
 {"time":"2026-01-04T15:05:38-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-04T15:41:53-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-04T15:43:20-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-04T18:35:15-08:00","action":"bypass","reason":"Phase 3 of agent status consolidation - orchestrator-approved"}
+{"time":"2026-01-05T15:18:04-08:00","action":"bypass","reason":"Adding dashboard visibility for orchestrator sessions"}
+{"time":"2026-01-05T21:06:25-08:00","action":"bypass","reason":"Fixing dashboard request storm bug - critical performance issue"}
+{"time":"2026-01-05T21:14:47-08:00","action":"bypass","reason":"Applying architect's approved fetch optimization to reduce redundant API calls"}

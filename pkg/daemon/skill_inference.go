@@ -17,10 +17,19 @@ func IsSpawnableType(issueType string) bool {
 }
 
 // InferSkill maps issue types to skills.
+//
+// Bug handling: Defaults to "architect" (understand before fixing) rather than
+// "systematic-debugging". This implements the "Premise Before Solution" principle -
+// most bugs reported as vague symptoms need understanding before patching.
+// Use explicit skill:systematic-debugging label for isolated bugs with clear cause.
+//
+// See: orch hotspot (58 areas with fix churn from tactical fixes without strategic thinking)
 func InferSkill(issueType string) (string, error) {
 	switch issueType {
 	case "bug":
-		return "systematic-debugging", nil
+		// Default to architect: understand before fixing
+		// Use skill:systematic-debugging label for clear, isolated bugs
+		return "architect", nil
 	case "feature":
 		return "feature-impl", nil
 	case "task":

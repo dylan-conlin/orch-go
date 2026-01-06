@@ -425,48 +425,14 @@ func ListOpenIssues() (map[string]*Issue, error) {
 	return result, nil
 }
 
-// GetCommentsBatch fetches comments for multiple issues sequentially.
+// GetCommentsBatch fetches comments for multiple issues in parallel.
 // Returns a map from beadsID to comments. Errors are silently skipped.
-// Uses the beads RPC client with auto-reconnect, so no concurrency control needed.
+// Uses goroutines with semaphore to parallelize fetching (much faster than sequential).
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func GetCommentsBatch(beadsIDs []string) map[string][]Comment {
-	if len(beadsIDs) == 0 {
-		return make(map[string][]Comment)
-	}
-
-	commentMap := make(map[string][]Comment, len(beadsIDs))
-
-	// Try RPC client first with auto-reconnect
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		opts := []beads.Option{beads.WithAutoReconnect(3)}
-		if beads.DefaultDir != "" {
-			opts = append(opts, beads.WithCwd(beads.DefaultDir))
-		}
-		client := beads.NewClient(socketPath, opts...)
-
-		// Fetch comments sequentially via RPC
-		for _, beadsID := range beadsIDs {
-			comments, err := client.Comments(beadsID)
-			if err == nil {
-				commentMap[beadsID] = comments
-			}
-		}
-		if len(commentMap) > 0 {
-			return commentMap
-		}
-		// Fall through to CLI if no results
-	}
-
-	// Fallback to CLI for each issue
-	for _, beadsID := range beadsIDs {
-		comments, err := beads.FallbackComments(beadsID)
-		if err == nil {
-			commentMap[beadsID] = comments
-		}
-	}
-
-	return commentMap
+	// Delegate to the parallel implementation with empty projectDirs
+	// All issues will use the default directory (current working directory or beads.DefaultDir)
+	return GetCommentsBatchWithProjectDirs(beadsIDs, nil)
 }
 
 // GetCommentsBatchWithProjectDirs fetches comments for multiple issues in parallel.

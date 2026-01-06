@@ -79,3 +79,105 @@
 
   ➜  Local:   http://localhost:5188/
   ➜  Network: use --host to expose
+6:32:13 PM [vite] (client) hmr update /src/routes/+layout.svelte, /src/app.css, /src/routes/+page.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/stats-bar/stats-bar.svelte, /src/lib/components/needs-attention/needs-attention.svelte
+6:32:13 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+6:32:27 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+6:32:27 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+6:32:31 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+6:32:31 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+6:32:44 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+6:32:44 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 625 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
+
+Google Chrome is requesting /.well-known/appspecific/com.chrome.devtools.json to automatically configure devtools project settings. To learn why, and how to prevent this message, see https://svelte.dev/docs/cli/devtools-json
+
+7:13:32 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+7:13:32 PM [vite] (ssr) page reload src/routes/+page.svelte
+7:13:39 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+7:13:39 PM [vite] (ssr) page reload src/routes/+page.svelte
+7:13:49 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+7:13:49 PM [vite] (ssr) page reload src/routes/+page.svelte
+7:14:03 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+7:14:03 PM [vite] (ssr) page reload src/routes/+page.svelte
+7:14:14 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+7:14:14 PM [vite] (ssr) page reload src/routes/+page.svelte
+7:14:18 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+7:14:18 PM [vite] (ssr) page reload src/routes/+page.svelte
+9:01:54 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:01:54 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:02:05 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:02:05 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:02:12 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:02:12 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:03:07 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+9:03:07 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+9:03:07 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+9:03:07 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+9:03:07 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+9:03:07 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+9:03:07 PM [vite] (client) page reload .svelte-kit/generated/root.js
+9:03:07 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+9:03:20 PM [vite] (client) page reload build/index.html
+9:03:20 PM [vite] (client) page reload build/index.html
+9:04:38 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:04:38 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:04:43 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:04:43 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:04:59 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:04:59 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:05:05 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:05:05 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:05:14 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+9:05:14 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+9:05:14 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+9:05:14 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+9:05:14 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+9:05:14 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+9:05:14 PM [vite] (client) page reload .svelte-kit/generated/root.js
+9:05:14 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+9:05:23 PM [vite] (client) page reload build/index.html
+9:05:23 PM [vite] (client) page reload build/index.html
+9:10:43 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/routes/+layout.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/pending-reviews-section/pending-reviews-section.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:10:43 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+9:10:50 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+9:10:50 PM [vite] (ssr) page reload src/lib/stores/agentlog.ts
+11:14:26 PM [vite] (client) hmr update /src/routes/+page.svelte, /src/app.css
+11:14:26 PM [vite] (ssr) page reload src/routes/+page.svelte
+11:15:02 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+11:15:02 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+11:15:02 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+11:15:02 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+11:15:02 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+11:15:02 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+11:15:02 PM [vite] (client) page reload .svelte-kit/generated/root.js
+11:15:02 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+11:15:10 PM [vite] (client) page reload build/index.html
+11:15:10 PM [vite] (client) page reload build/index.html
+11:17:35 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+11:17:35 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+11:17:35 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+11:17:35 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+11:17:35 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+11:17:35 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+11:17:35 PM [vite] (client) page reload .svelte-kit/generated/root.js
+11:17:35 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+11:17:43 PM [vite] (client) page reload build/index.html
+11:17:43 PM [vite] (client) page reload build/index.html
+11:18:47 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+11:18:47 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+11:18:47 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+11:18:47 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+11:18:47 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+11:18:47 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+11:18:47 PM [vite] (client) page reload .svelte-kit/generated/root.js
+11:18:47 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+11:18:55 PM [vite] (client) page reload build/index.html
+11:18:55 PM [vite] (client) page reload build/index.html
