@@ -2,8 +2,8 @@
 
 **Orchestrator:** og-orch-two-focuses-design-05jan-c62e
 **Focus:** Two focuses: (A) Design principles integration - create skillc source for claude-design-skill as shared policy skill, deploy via skillc, test on dashboard. (B) Bug fixes - orch-go-llbd (beads type null in JSON), orch-go-u5a5 (orch status project-dependent). Design skill investigation at .kb/investigations/2026-01-05-design-claude-design-skill-evaluation.md has implementation details.
-**Duration:** 2026-01-05 20:51 → {end-time}
-**Outcome:** {success | partial | blocked | failed}
+**Duration:** 2026-01-05 20:51 → 2026-01-06 00:23
+**Outcome:** partial
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## TLDR
 
-Two parallel focuses: (A) Integrate claude-design-skill into orch-ecosystem as a shared policy skill via skillc - the investigation at `.kb/investigations/2026-01-05-design-claude-design-skill-evaluation.md` recommends adoption and provides implementation path. (B) Fix two bugs: beads type null in JSON (orch-go-llbd) and orch status showing different results by project (orch-go-u5a5).
+Session pivoted from original two focuses to dashboard debugging. Original bug fixes completed (orch-go-llbd was could-not-reproduce, orch-go-u5a5 fixed). Design skill work abandoned (agent stuck). Dashboard work revealed deeper architectural issue: HTTP/1.1 connection pool exhaustion from SSE connections blocking API fetches. Applied two incremental fixes (in-flight tracking + event filtering) but core issue persists. Architect spawned to design permanent fix (HTTP/2, multiplexed SSE, or WebSocket).
 
 ---
 
@@ -60,30 +60,36 @@ Two parallel focuses: (A) Integrate claude-design-skill into orch-ecosystem as a
 ## Evidence (What Was Observed)
 
 ### Patterns Across Agents
-- [Pattern 1: e.g., "3 agents hit the same auth issue"]
+- Dashboard issues are recurring - this is 2nd or 3rd time HTTP/1.1 connection exhaustion has surfaced
+- Incremental fixes don't stick - need architectural solution
 
 ### Completions
-- **{beads-id}:** {what SYNTHESIS.md revealed}
+- **orch-go-llbd:** Could-not-reproduce - JSON field is `issue_type` not `type`
+- **orch-go-u5a5:** Fixed cross-project beads lookup
+- **orch-go-xeppr:** Added in-flight request tracking
+- **orch-go-cmzoo:** Applied architect's event filtering recommendations
 
 ### System Behavior
-- [Observation about orch/beads/kb tooling]
+- HTTP/1.1 browser limit (6 connections per origin) causes SSE to block fetch requests
+- Two SSE connections (/api/events, /api/agentlog) consume slots needed for API calls
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### Decisions Made
-- **{topic}:** {decision} because {rationale}
+- **Dashboard needs architectural fix:** Incremental patches (debouncing, in-flight tracking, event filtering) don't solve the root cause - HTTP/1.1 connection pool exhaustion from SSE
 
 ### Constraints Discovered
-- {constraint} - why it matters
+- HTTP/1.1 limits browsers to 6 connections per origin - SSE connections are long-lived and consume these slots
+- This constraint will keep causing issues until we move to HTTP/2 or consolidate SSE streams
 
 ### Externalized
-- `kn decide "X" --reason "Y"` - [if applicable]
-- `.kb/decisions/YYYY-MM-DD-*.md` - [if created]
+- Issue created: orch-go-qjcwx (blocked, waiting for architect)
 
 ### Artifacts Created
-- [list any investigations, decisions, or other artifacts]
+- `.kb/investigations/2026-01-05-inv-fix-dashboard-excessive-agents-fetch.md`
+- `.kb/investigations/2026-01-05-design-review-dashboard-architecture-request-handling.md`
 
 ---
 
@@ -94,15 +100,14 @@ Capture frustrations AS THEY HAPPEN. You'll rationalize them away later.
 -->
 
 ### Tooling Friction
-- [Tool gap or UX issue]
+- Dashboard keeps breaking in similar ways - no persistent fix for connection pool issue
+- Agent registry shows stale entries even after abandon/complete
 
 ### Context Friction
-- [Information that should have been surfaced but wasn't]
+- No kb knowledge about prior HTTP/1.1 connection issues - this has happened 2-3 times but wasn't captured
 
 ### Skill/Spawn Friction
-- [Skill guidance was unclear or wrong]
-
-*(If smooth session: "No significant friction observed")*
+- Feature-impl agent for design skill got stuck idle with no output - unclear why
 
 ---
 
@@ -115,55 +120,47 @@ Capture frustrations AS THEY HAPPEN. You'll rationalize them away later.
 - **Active Agents:** None currently active (swarm idle)
 
 ### Where We Ended
-- {state of focus goal now}
-- {what shifted or became clearer}
+- **Focus A (Design Skill):** Not completed - agent stuck, abandoned
+- **Focus B (Bugs):** Both completed - llbd was could-not-reproduce, u5a5 fixed
+- **Dashboard:** Two fixes applied but core HTTP/1.1 issue persists - architect designing permanent solution
 
 ### Scope Changes
-- [If focus shifted mid-session, note why]
+- Pivoted from design skill work to dashboard debugging after Dylan reported dashboard not loading
+- Dashboard work revealed recurring architectural issue requiring permanent fix
 
 ---
 
 ## Next (What Should Happen)
 
-**Recommendation:** {continue-focus | shift-focus | escalate | pause}
+**Recommendation:** continue-focus (dashboard permanent fix)
 
 ### If Continue Focus
-**Immediate:** {first thing next orchestrator should do}
-**Then:** {subsequent priorities}
+**Immediate:** Check if architect agent (og-arch-design-permanent-fix-05jan-25f8) completed and review recommendations
+**Then:** Implement the architect's recommended solution (likely HTTP/2 or multiplexed SSE)
 **Context to reload:**
-- {key file or artifact to read}
-
-### If Shift Focus
-**New focus:** {recommended focus}
-**Why shift:** {rationale}
-
-### If Escalate
-**Question for meta-orchestrator:** {what needs decision}
-**Recommendation:** {which option and why}
-
-### If Pause
-**Why pausing:** {rationale}
-**Resume conditions:** {what needs to happen before resuming}
+- `.kb/investigations/2026-01-05-design-review-dashboard-architecture-request-handling.md`
+- Issue orch-go-qjcwx (blocked, waiting for architect)
+- Architect workspace: og-arch-design-permanent-fix-05jan-25f8
 
 ---
 
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- [Question 1 - why it's interesting]
+- Why do feature-impl agents sometimes get stuck idle with no output?
+- Should recurring issues (like dashboard connection problems) trigger automatic kb capture?
 
 **System improvement ideas:**
-- [Tooling or process idea]
-
-*(If nothing emerged: "Focused session, no unexplored territory")*
+- Add kb constraint capturing HTTP/1.1 connection limit issue so future agents know about it
+- Consider HTTP/2 for all orch serve endpoints by default
 
 ---
 
 ## Session Metadata
 
-**Agents spawned:** {count}
-**Agents completed:** {count}
-**Issues closed:** {list}
-**Issues created:** {list}
+**Agents spawned:** 8
+**Agents completed:** 5
+**Issues closed:** orch-go-llbd, orch-go-u5a5, orch-go-xeppr, orch-go-cmzoo
+**Issues created:** orch-go-xeppr (dashboard fetch storm), orch-go-cmzoo (event filtering), orch-go-qjcwx (connection pool - blocked)
 
 **Workspace:** `.orch/workspace/og-orch-two-focuses-design-05jan-c62e/`
