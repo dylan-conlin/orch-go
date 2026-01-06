@@ -449,3 +449,277 @@ func TestGenerateMetaOrchestratorContext_InteractiveFraming(t *testing.T) {
 		}
 	}
 }
+
+func TestFindPriorMetaOrchestratorHandoff(t *testing.T) {
+	// Create a temp project directory with some meta-orchestrator workspaces
+	tempDir := t.TempDir()
+	workspaceDir := filepath.Join(tempDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+
+	// Create a meta-orchestrator workspace WITHOUT SESSION_HANDOFF.md (incomplete)
+	incompleteWs := filepath.Join(workspaceDir, "meta-orch-incomplete-05jan")
+	if err := os.MkdirAll(incompleteWs, 0755); err != nil {
+		t.Fatalf("failed to create incomplete workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(incompleteWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(incompleteWs, ".spawn_time"), []byte("1704470400000000000"), 0644); err != nil { // Earlier timestamp
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+
+	// Create a meta-orchestrator workspace WITH SESSION_HANDOFF.md (complete)
+	completeWs := filepath.Join(workspaceDir, "meta-orch-complete-05jan")
+	if err := os.MkdirAll(completeWs, 0755); err != nil {
+		t.Fatalf("failed to create complete workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(completeWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(completeWs, ".spawn_time"), []byte("1704556800000000000"), 0644); err != nil { // Later timestamp
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+	handoffContent := "# Session Handoff\n\nTest handoff content."
+	if err := os.WriteFile(filepath.Join(completeWs, "SESSION_HANDOFF.md"), []byte(handoffContent), 0644); err != nil {
+		t.Fatalf("failed to write handoff: %v", err)
+	}
+
+	// Create a regular orchestrator workspace with handoff (should be ignored)
+	regularOrchWs := filepath.Join(workspaceDir, "og-orch-regular-05jan")
+	if err := os.MkdirAll(regularOrchWs, 0755); err != nil {
+		t.Fatalf("failed to create regular orch workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(regularOrchWs, ".orchestrator"), []byte("orch"), 0644); err != nil {
+		t.Fatalf("failed to write orch marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(regularOrchWs, "SESSION_HANDOFF.md"), []byte("# Regular orch handoff"), 0644); err != nil {
+		t.Fatalf("failed to write orch handoff: %v", err)
+	}
+
+	// Test: Find should return the complete meta-orchestrator workspace
+	result := FindPriorMetaOrchestratorHandoff(tempDir)
+	expected := filepath.Join(completeWs, "SESSION_HANDOFF.md")
+	if result != expected {
+		t.Errorf("expected %s, got %s", expected, result)
+	}
+}
+
+func TestFindPriorMetaOrchestratorHandoff_Empty(t *testing.T) {
+	// Create a temp project directory with NO meta-orchestrator workspaces
+	tempDir := t.TempDir()
+	workspaceDir := filepath.Join(tempDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+
+	// Test: Find should return empty string when no meta-orchestrator handoffs exist
+	result := FindPriorMetaOrchestratorHandoff(tempDir)
+	if result != "" {
+		t.Errorf("expected empty string, got %s", result)
+	}
+}
+
+func TestFindPriorMetaOrchestratorHandoff_ExcludesCurrent(t *testing.T) {
+	// Test that the current workspace is excluded from search
+	tempDir := t.TempDir()
+	workspaceDir := filepath.Join(tempDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+
+	// Create a single meta-orchestrator workspace with handoff
+	currentWs := filepath.Join(workspaceDir, "meta-orch-current-06jan")
+	if err := os.MkdirAll(currentWs, 0755); err != nil {
+		t.Fatalf("failed to create current workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(currentWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(currentWs, "SESSION_HANDOFF.md"), []byte("# Current session handoff"), 0644); err != nil {
+		t.Fatalf("failed to write handoff: %v", err)
+	}
+
+	// Test: When excluding the current workspace, should find nothing
+	result := findPriorMetaOrchestratorHandoffExcluding(tempDir, "meta-orch-current-06jan")
+	if result != "" {
+		t.Errorf("expected empty string when excluding current workspace, got %s", result)
+	}
+
+	// Test: Without exclusion, should find it
+	resultWithoutExclusion := findPriorMetaOrchestratorHandoffExcluding(tempDir, "")
+	expected := filepath.Join(currentWs, "SESSION_HANDOFF.md")
+	if resultWithoutExclusion != expected {
+		t.Errorf("expected %s, got %s", expected, resultWithoutExclusion)
+	}
+}
+
+func TestFindPriorMetaOrchestratorHandoff_SearchesArchive(t *testing.T) {
+	// Test that archived workspaces are also searched
+	tempDir := t.TempDir()
+
+	// Create workspace-archive with a meta-orchestrator handoff
+	archiveDir := filepath.Join(tempDir, ".orch", "workspace-archive")
+	archivedWs := filepath.Join(archiveDir, "meta-orch-archived-04jan")
+	if err := os.MkdirAll(archivedWs, 0755); err != nil {
+		t.Fatalf("failed to create archived workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(archivedWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(archivedWs, ".spawn_time"), []byte("1704384000000000000"), 0644); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(archivedWs, "SESSION_HANDOFF.md"), []byte("# Archived handoff"), 0644); err != nil {
+		t.Fatalf("failed to write handoff: %v", err)
+	}
+
+	// Test: Should find the archived handoff
+	result := FindPriorMetaOrchestratorHandoff(tempDir)
+	expected := filepath.Join(archivedWs, "SESSION_HANDOFF.md")
+	if result != expected {
+		t.Errorf("expected %s, got %s", expected, result)
+	}
+}
+
+func TestFindPriorMetaOrchestratorHandoff_MostRecent(t *testing.T) {
+	// Test that the most recent handoff is returned when multiple exist
+	tempDir := t.TempDir()
+	workspaceDir := filepath.Join(tempDir, ".orch", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace dir: %v", err)
+	}
+
+	// Create older workspace
+	olderWs := filepath.Join(workspaceDir, "meta-orch-older-03jan")
+	if err := os.MkdirAll(olderWs, 0755); err != nil {
+		t.Fatalf("failed to create older workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(olderWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(olderWs, ".spawn_time"), []byte("1704297600000000000"), 0644); err != nil { // 2024-01-03
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(olderWs, "SESSION_HANDOFF.md"), []byte("# Older handoff"), 0644); err != nil {
+		t.Fatalf("failed to write handoff: %v", err)
+	}
+
+	// Create newer workspace
+	newerWs := filepath.Join(workspaceDir, "meta-orch-newer-05jan")
+	if err := os.MkdirAll(newerWs, 0755); err != nil {
+		t.Fatalf("failed to create newer workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(newerWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(newerWs, ".spawn_time"), []byte("1704470400000000000"), 0644); err != nil { // 2024-01-05
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(newerWs, "SESSION_HANDOFF.md"), []byte("# Newer handoff"), 0644); err != nil {
+		t.Fatalf("failed to write handoff: %v", err)
+	}
+
+	// Test: Should return the newer workspace
+	result := FindPriorMetaOrchestratorHandoff(tempDir)
+	expected := filepath.Join(newerWs, "SESSION_HANDOFF.md")
+	if result != expected {
+		t.Errorf("expected %s (newer), got %s", expected, result)
+	}
+}
+
+func TestGenerateMetaOrchestratorContext_WithPriorHandoff(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		SkillName:          "meta-orchestrator",
+		ProjectDir:         tempDir,
+		WorkspaceName:      "meta-orch-new-06jan",
+		IsOrchestrator:     true,
+		IsMetaOrchestrator: true,
+		PriorHandoffPath:   "/path/to/prior/SESSION_HANDOFF.md",
+	}
+
+	content, err := GenerateMetaOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateMetaOrchestratorContext failed: %v", err)
+	}
+
+	// Should contain prior handoff section
+	if !strings.Contains(content, "## Prior Session Context") {
+		t.Error("expected content to contain prior session context section")
+	}
+	if !strings.Contains(content, "/path/to/prior/SESSION_HANDOFF.md") {
+		t.Error("expected content to contain prior handoff path")
+	}
+	if !strings.Contains(content, "Read the prior SESSION_HANDOFF.md") {
+		t.Error("expected content to contain instruction to read prior handoff")
+	}
+}
+
+func TestGenerateMetaOrchestratorContext_NoPriorHandoff(t *testing.T) {
+	cfg := &Config{
+		SkillName:          "meta-orchestrator",
+		ProjectDir:         "/tmp/test",
+		WorkspaceName:      "meta-orch-new-06jan",
+		IsOrchestrator:     true,
+		IsMetaOrchestrator: true,
+		// No PriorHandoffPath set
+	}
+
+	content, err := GenerateMetaOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateMetaOrchestratorContext failed: %v", err)
+	}
+
+	// Should NOT contain prior handoff section
+	if strings.Contains(content, "## Prior Session Context") {
+		t.Error("expected content to NOT contain prior session context section when no prior handoff")
+	}
+}
+
+func TestGenerateMetaOrchestratorContext_AutoFindsPriorHandoff(t *testing.T) {
+	// Test that GenerateMetaOrchestratorContext automatically finds prior handoff
+	tempDir := t.TempDir()
+	workspaceDir := filepath.Join(tempDir, ".orch", "workspace")
+
+	// Create a prior meta-orchestrator workspace with handoff
+	priorWs := filepath.Join(workspaceDir, "meta-orch-prior-05jan")
+	if err := os.MkdirAll(priorWs, 0755); err != nil {
+		t.Fatalf("failed to create prior workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(priorWs, ".meta-orchestrator"), []byte("meta"), 0644); err != nil {
+		t.Fatalf("failed to write meta marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(priorWs, ".spawn_time"), []byte("1704470400000000000"), 0644); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+	handoffContent := "# Prior Session Handoff\n\nContext from prior session."
+	if err := os.WriteFile(filepath.Join(priorWs, "SESSION_HANDOFF.md"), []byte(handoffContent), 0644); err != nil {
+		t.Fatalf("failed to write handoff: %v", err)
+	}
+
+	cfg := &Config{
+		SkillName:          "meta-orchestrator",
+		ProjectDir:         tempDir,
+		WorkspaceName:      "meta-orch-new-06jan", // Different from prior
+		IsOrchestrator:     true,
+		IsMetaOrchestrator: true,
+		// PriorHandoffPath is NOT set - should be auto-discovered
+	}
+
+	content, err := GenerateMetaOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateMetaOrchestratorContext failed: %v", err)
+	}
+
+	// Should contain prior handoff section with auto-discovered path
+	if !strings.Contains(content, "## Prior Session Context") {
+		t.Error("expected content to contain prior session context section (auto-discovered)")
+	}
+	expectedPath := filepath.Join(priorWs, "SESSION_HANDOFF.md")
+	if !strings.Contains(content, expectedPath) {
+		t.Errorf("expected content to contain auto-discovered prior handoff path %s", expectedPath)
+	}
+}

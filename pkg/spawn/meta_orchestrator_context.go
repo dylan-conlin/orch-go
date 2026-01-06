@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -40,14 +42,31 @@ You are a **meta-orchestrator** - you manage orchestrator sessions, not worker t
 - Stay interactive and available - don't try to accomplish everything and exit
 
 ---
+{{if .PriorHandoffPath}}
+## Prior Session Context
 
+**A previous meta-orchestrator session completed with a handoff.**
+
+Read the prior session's context to understand what was accomplished and what's pending:
+
+` + "```" + `
+{{.PriorHandoffPath}}
+` + "```" + `
+
+**First action:** Read this file to pick up context from where the previous session left off.
+
+---
+{{end}}
 ## First Actions
 
 Within your first 3 tool calls:
-1. Run ` + "`orch status`" + ` to check for orchestrator sessions needing completion or review
+{{if .PriorHandoffPath}}1. **Read the prior SESSION_HANDOFF.md** at {{.PriorHandoffPath}}
+2. Run ` + "`orch status`" + ` to check for orchestrator sessions needing completion or review
+3. Review pending handoffs or ask Dylan what to do next
+{{else}}1. Run ` + "`orch status`" + ` to check for orchestrator sessions needing completion or review
 2. Run ` + "`orch review`" + ` if any sessions are pending review
 3. Ask Dylan what orchestrator sessions should be spawned (or review pending handoffs)
-
+{{end}}
 **Do NOT:**
 - Start reading code files (that's worker behavior)
 - Try to accomplish a task yourself (spawn an orchestrator for that)
@@ -178,6 +197,7 @@ type metaOrchestratorContextData struct {
 	KBContext          string
 	ServerContext      string
 	RegisteredProjects string
+	PriorHandoffPath   string // Path to prior meta-orchestrator's SESSION_HANDOFF.md
 }
 
 // GenerateMetaOrchestratorContext generates the META_ORCHESTRATOR_CONTEXT.md content.
@@ -199,6 +219,12 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		registeredProjects = GenerateRegisteredProjectsContext()
 	}
 
+	// Find prior meta-orchestrator SESSION_HANDOFF.md if not already set
+	priorHandoffPath := cfg.PriorHandoffPath
+	if priorHandoffPath == "" {
+		priorHandoffPath = findPriorMetaOrchestratorHandoffExcluding(cfg.ProjectDir, cfg.WorkspaceName)
+	}
+
 	data := metaOrchestratorContextData{
 		SkillName:          cfg.SkillName,
 		SkillContent:       cfg.SkillContent,
@@ -209,6 +235,7 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		KBContext:          cfg.KBContext,
 		ServerContext:      serverContext,
 		RegisteredProjects: registeredProjects,
+		PriorHandoffPath:   priorHandoffPath,
 	}
 
 	var buf bytes.Buffer
@@ -276,4 +303,108 @@ func MinimalMetaOrchestratorPrompt(cfg *Config) string {
 		cfg.ProjectDir,
 		cfg.WorkspaceName,
 	)
+}
+
+// FindPriorMetaOrchestratorHandoff finds the most recent completed meta-orchestrator
+// SESSION_HANDOFF.md in the target project. This allows new meta-orchestrator sessions
+// to pick up context from where the prior session left off.
+//
+// It searches both .orch/workspace/ and .orch/workspace-archive/ directories,
+// looking for workspaces with:
+// - .meta-orchestrator marker file (indicating meta-orchestrator workspace)
+// - SESSION_HANDOFF.md (indicating completed session)
+//
+// Returns the path to the most recent SESSION_HANDOFF.md, or empty string if none found.
+// The "most recent" is determined by the .spawn_time file in the workspace.
+func FindPriorMetaOrchestratorHandoff(projectDir string) string {
+	// Exclude the current workspace being created (will be passed in as part of cfg later)
+	return findPriorMetaOrchestratorHandoffExcluding(projectDir, "")
+}
+
+// findPriorMetaOrchestratorHandoffExcluding finds the most recent meta-orchestrator
+// SESSION_HANDOFF.md, excluding the specified workspace name.
+func findPriorMetaOrchestratorHandoffExcluding(projectDir, excludeWorkspace string) string {
+	type workspaceInfo struct {
+		handoffPath string
+		spawnTime   time.Time
+	}
+
+	var candidates []workspaceInfo
+
+	// Search both workspace and workspace-archive directories
+	searchDirs := []string{
+		filepath.Join(projectDir, ".orch", "workspace"),
+		filepath.Join(projectDir, ".orch", "workspace-archive"),
+	}
+
+	for _, searchDir := range searchDirs {
+		entries, err := os.ReadDir(searchDir)
+		if err != nil {
+			continue // Directory may not exist
+		}
+
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			workspaceName := entry.Name()
+
+			// Skip the workspace we're excluding (the one being created)
+			if excludeWorkspace != "" && workspaceName == excludeWorkspace {
+				continue
+			}
+
+			workspacePath := filepath.Join(searchDir, workspaceName)
+
+			// Check for meta-orchestrator marker
+			markerPath := filepath.Join(workspacePath, ".meta-orchestrator")
+			if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+				continue // Not a meta-orchestrator workspace
+			}
+
+			// Check for SESSION_HANDOFF.md
+			handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+			if info, err := os.Stat(handoffPath); err != nil || info.Size() == 0 {
+				continue // No handoff or empty file
+			}
+
+			// Get spawn time for sorting
+			spawnTime := getSpawnTime(workspacePath)
+
+			candidates = append(candidates, workspaceInfo{
+				handoffPath: handoffPath,
+				spawnTime:   spawnTime,
+			})
+		}
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	// Sort by spawn time (most recent first)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].spawnTime.After(candidates[j].spawnTime)
+	})
+
+	return candidates[0].handoffPath
+}
+
+// getSpawnTime reads the .spawn_time file and parses the timestamp.
+// Returns zero time if file doesn't exist or can't be parsed.
+func getSpawnTime(workspacePath string) time.Time {
+	spawnTimePath := filepath.Join(workspacePath, ".spawn_time")
+	content, err := os.ReadFile(spawnTimePath)
+	if err != nil {
+		return time.Time{}
+	}
+
+	// Parse the timestamp (stored as Unix nanoseconds)
+	var nanos int64
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(content)), "%d", &nanos); err != nil {
+		return time.Time{}
+	}
+
+	return time.Unix(0, nanos)
 }

@@ -162,6 +162,12 @@ type Config struct {
 	// in orchestrator context templates. Populated by GenerateRegisteredProjectsContext()
 	// for orchestrator and meta-orchestrator spawns to enable cross-project work.
 	RegisteredProjects string
+
+	// PriorHandoffPath is the path to the most recent prior meta-orchestrator's
+	// SESSION_HANDOFF.md. When set, the new meta-orchestrator session context will
+	// include a reference to this file so the agent can pick up context from the
+	// previous session. Only used for meta-orchestrator spawns.
+	PriorHandoffPath string
 }
 
 // WorkspaceNameOptions provides optional configuration for workspace name generation.
