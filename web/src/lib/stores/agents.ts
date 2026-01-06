@@ -151,6 +151,12 @@ const API_BASE = 'http://localhost:3348';
 // Fetch state management - prevents race conditions during rapid reloads
 let currentFetchController: AbortController | null = null;
 let fetchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// Tracks if a fetch is currently in-flight. When true, new fetchDebounced() calls
+// set needsRefetch flag instead of starting new requests (prevents request storm).
+let isFetching = false;
+// When true, a fetch was requested while one was in-flight. After the current
+// fetch completes, we'll trigger another debounced fetch to get the latest data.
+let needsRefetch = false;
 // Debounce interval for SSE-triggered refetches. 500ms strikes a balance between:
 // - Responsiveness: User sees updates within 500ms (imperceptible delay)
 // - Performance: Collapses rapid SSE events into single request
@@ -186,12 +192,18 @@ function createAgentStore() {
 		removeAgent: (id: string) => {
 			update((agents) => agents.filter((a) => a.id !== id));
 		},
-		// Fetch agents from orch-go API with abort support
+		// Fetch agents from orch-go API with in-flight tracking
+		// Only one fetch runs at a time. If called while fetching, queues a re-fetch
+		// after the current one completes (prevents request storm from SSE events).
 		async fetch(): Promise<void> {
-			// Cancel any in-flight request to prevent race conditions
-			if (currentFetchController) {
-				currentFetchController.abort();
+			// If already fetching, mark that we need another fetch after this one
+			if (isFetching) {
+				needsRefetch = true;
+				return;
 			}
+			
+			isFetching = true;
+			needsRefetch = false;
 			currentFetchController = new AbortController();
 			
 			try {
@@ -212,6 +224,14 @@ function createAgentStore() {
 				throw error;
 			} finally {
 				currentFetchController = null;
+				isFetching = false;
+				
+				// If events arrived while we were fetching, do another fetch
+				// This ensures we don't miss updates without creating request storms
+				if (needsRefetch) {
+					needsRefetch = false;
+					this.fetchDebounced();
+				}
 			}
 		},
 		// Debounced fetch - prevents multiple rapid fetches from SSE events
@@ -234,6 +254,9 @@ function createAgentStore() {
 				clearTimeout(fetchDebounceTimer);
 				fetchDebounceTimer = null;
 			}
+			// Reset in-flight tracking state
+			isFetching = false;
+			needsRefetch = false;
 		}
 	};
 }
