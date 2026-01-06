@@ -2,8 +2,10 @@ package spawn
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -940,4 +942,47 @@ func GenerateServerContext(projectDir string) string {
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+// RegisteredProject represents a project registered with kb.
+type RegisteredProject struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// GenerateRegisteredProjectsContext creates the registered projects section for orchestrator contexts.
+// Returns empty string if kb projects list fails or returns no projects.
+func GenerateRegisteredProjectsContext() string {
+	projects, err := GetRegisteredProjects()
+	if err != nil || len(projects) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Registered Projects\n\n")
+	sb.WriteString("These projects are registered with `kb` for cross-project orchestration:\n\n")
+	sb.WriteString("| Project | Path |\n")
+	sb.WriteString("|---------|------|\n")
+	for _, p := range projects {
+		sb.WriteString(fmt.Sprintf("| %s | `%s` |\n", p.Name, p.Path))
+	}
+	sb.WriteString("\n**Usage:** `orch spawn --workdir <path> SKILL \"task\"`\n\n")
+
+	return sb.String()
+}
+
+// GetRegisteredProjects fetches the list of registered projects from kb.
+func GetRegisteredProjects() ([]RegisteredProject, error) {
+	cmd := exec.Command("kb", "projects", "list", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("kb projects list failed: %w", err)
+	}
+
+	var projects []RegisteredProject
+	if err := json.Unmarshal(output, &projects); err != nil {
+		return nil, fmt.Errorf("failed to parse kb projects output: %w", err)
+	}
+
+	return projects, nil
 }

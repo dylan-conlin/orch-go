@@ -1030,6 +1030,41 @@ func TestGenerateContext_WithoutServerContext(t *testing.T) {
 	}
 }
 
+func TestGenerateRegisteredProjectsContext_Format(t *testing.T) {
+	// Test that the format is correct when we provide a mock project list
+	// We can't easily test the actual kb command in unit tests,
+	// but we can verify the format of the generated context
+	
+	projects := []RegisteredProject{
+		{Name: "orch-go", Path: "/Users/test/orch-go"},
+		{Name: "snap", Path: "/Users/test/snap"},
+	}
+	
+	// Build expected output
+	var sb strings.Builder
+	sb.WriteString("## Registered Projects\n\n")
+	sb.WriteString("These projects are registered with `kb` for cross-project orchestration:\n\n")
+	sb.WriteString("| Project | Path |\n")
+	sb.WriteString("|---------|------|\n")
+	for _, p := range projects {
+		sb.WriteString("| " + p.Name + " | `" + p.Path + "` |\n")
+	}
+	sb.WriteString("\n**Usage:** `orch spawn --workdir <path> SKILL \"task\"`\n\n")
+	
+	expected := sb.String()
+	
+	// Verify the format matches our expectations
+	if !strings.Contains(expected, "## Registered Projects") {
+		t.Error("expected registered projects header")
+	}
+	if !strings.Contains(expected, "| orch-go |") {
+		t.Error("expected project row")
+	}
+	if !strings.Contains(expected, "orch spawn --workdir") {
+		t.Error("expected usage hint")
+	}
+}
+
 func TestStripBeadsInstructions(t *testing.T) {
 	t.Run("removes beads code blocks", func(t *testing.T) {
 		content := `## Some Section

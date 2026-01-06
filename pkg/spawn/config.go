@@ -157,6 +157,11 @@ type Config struct {
 	// instruct the agent to use it as the structure for their SESSION_HANDOFF.md.
 	// Set by WriteOrchestratorContext based on template availability.
 	HasSessionHandoffTemplate bool
+
+	// RegisteredProjects is the formatted list of registered projects to include
+	// in orchestrator context templates. Populated by GenerateRegisteredProjectsContext()
+	// for orchestrator and meta-orchestrator spawns to enable cross-project work.
+	RegisteredProjects string
 }
 
 // WorkspaceNameOptions provides optional configuration for workspace name generation.

@@ -147,6 +147,9 @@ orch complete <session-id>
 {{if .ServerContext}}
 {{.ServerContext}}
 {{end}}
+{{if .RegisteredProjects}}
+{{.RegisteredProjects}}
+{{end}}
 ---
 
 ## Workspace
@@ -166,14 +169,15 @@ Your workspace is: {{.WorkspacePath}}
 
 // metaOrchestratorContextData holds template data for META_ORCHESTRATOR_CONTEXT.md.
 type metaOrchestratorContextData struct {
-	SkillName     string
-	SkillContent  string
-	ProjectDir    string
-	WorkspacePath string
-	WorkspaceName string
-	StartTime     string
-	KBContext     string
-	ServerContext string
+	SkillName          string
+	SkillContent       string
+	ProjectDir         string
+	WorkspacePath      string
+	WorkspaceName      string
+	StartTime          string
+	KBContext          string
+	ServerContext      string
+	RegisteredProjects string
 }
 
 // GenerateMetaOrchestratorContext generates the META_ORCHESTRATOR_CONTEXT.md content.
@@ -189,15 +193,22 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		serverContext = GenerateServerContext(cfg.ProjectDir)
 	}
 
+	// Generate registered projects context for meta-orchestrators
+	registeredProjects := cfg.RegisteredProjects
+	if registeredProjects == "" {
+		registeredProjects = GenerateRegisteredProjectsContext()
+	}
+
 	data := metaOrchestratorContextData{
-		SkillName:     cfg.SkillName,
-		SkillContent:  cfg.SkillContent,
-		ProjectDir:    cfg.ProjectDir,
-		WorkspacePath: cfg.WorkspacePath(),
-		WorkspaceName: cfg.WorkspaceName,
-		StartTime:     time.Now().Format("2006-01-02 15:04"),
-		KBContext:     cfg.KBContext,
-		ServerContext: serverContext,
+		SkillName:          cfg.SkillName,
+		SkillContent:       cfg.SkillContent,
+		ProjectDir:         cfg.ProjectDir,
+		WorkspacePath:      cfg.WorkspacePath(),
+		WorkspaceName:      cfg.WorkspaceName,
+		StartTime:          time.Now().Format("2006-01-02 15:04"),
+		KBContext:          cfg.KBContext,
+		ServerContext:      serverContext,
+		RegisteredProjects: registeredProjects,
 	}
 
 	var buf bytes.Buffer

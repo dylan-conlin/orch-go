@@ -105,6 +105,9 @@ When you've accomplished your session goal:
 {{if .ServerContext}}
 {{.ServerContext}}
 {{end}}
+{{if .RegisteredProjects}}
+{{.RegisteredProjects}}
+{{end}}
 ---
 
 ## Workspace
@@ -134,6 +137,7 @@ type orchestratorContextData struct {
 	StartTime                 string
 	KBContext                 string
 	ServerContext             string
+	RegisteredProjects        string
 	HasSessionHandoffTemplate bool
 }
 
@@ -150,6 +154,12 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 		serverContext = GenerateServerContext(cfg.ProjectDir)
 	}
 
+	// Generate registered projects context for orchestrators
+	registeredProjects := cfg.RegisteredProjects
+	if registeredProjects == "" {
+		registeredProjects = GenerateRegisteredProjectsContext()
+	}
+
 	data := orchestratorContextData{
 		SessionGoal:               cfg.SessionGoal,
 		SkillName:                 cfg.SkillName,
@@ -160,6 +170,7 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 		StartTime:                 time.Now().Format("2006-01-02 15:04"),
 		KBContext:                 cfg.KBContext,
 		ServerContext:             serverContext,
+		RegisteredProjects:        registeredProjects,
 		HasSessionHandoffTemplate: cfg.HasSessionHandoffTemplate,
 	}
 

@@ -298,6 +298,47 @@ func TestGenerateMetaOrchestratorContext_WithServerContext(t *testing.T) {
 	}
 }
 
+func TestGenerateMetaOrchestratorContext_WithRegisteredProjects(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		SkillName:          "meta-orchestrator",
+		ProjectDir:         tempDir,
+		WorkspaceName:      "meta-orch-test-06jan",
+		IsOrchestrator:     true,
+		IsMetaOrchestrator: true,
+		RegisteredProjects: `## Registered Projects
+
+These projects are registered with ` + "`kb`" + ` for cross-project orchestration:
+
+| Project | Path |
+|---------|------|
+| orch-go | ` + "`/Users/test/orch-go`" + ` |
+| snap | ` + "`/Users/test/snap`" + ` |
+| price-watch | ` + "`/Users/test/price-watch`" + ` |
+
+**Usage:** ` + "`orch spawn --workdir <path> SKILL \"task\"`" + `
+
+`,
+	}
+
+	content, err := GenerateMetaOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateMetaOrchestratorContext failed: %v", err)
+	}
+
+	// Should contain registered projects context
+	if !strings.Contains(content, "## Registered Projects") {
+		t.Error("expected content to contain registered projects section")
+	}
+	if !strings.Contains(content, "price-watch") {
+		t.Error("expected content to contain project name")
+	}
+	if !strings.Contains(content, "orch spawn --workdir") {
+		t.Error("expected content to contain usage hint")
+	}
+}
+
 func TestWriteContext_PriorityOrder(t *testing.T) {
 	// Test that IsMetaOrchestrator takes priority over IsOrchestrator
 	// Both can be true at the same time, and meta-orchestrator should win

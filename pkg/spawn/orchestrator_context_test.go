@@ -416,6 +416,47 @@ func TestGenerateOrchestratorContext_WithServerContext(t *testing.T) {
 	}
 }
 
+func TestGenerateOrchestratorContext_WithRegisteredProjects(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cfg := &Config{
+		Task:           "Ship cross-project feature",
+		SessionGoal:    "Coordinate work across projects",
+		SkillName:      "orchestrator",
+		ProjectDir:     tempDir,
+		WorkspaceName:  "og-orch-test-06jan",
+		IsOrchestrator: true,
+		RegisteredProjects: `## Registered Projects
+
+These projects are registered with ` + "`kb`" + ` for cross-project orchestration:
+
+| Project | Path |
+|---------|------|
+| orch-go | ` + "`/Users/test/orch-go`" + ` |
+| snap | ` + "`/Users/test/snap`" + ` |
+
+**Usage:** ` + "`orch spawn --workdir <path> SKILL \"task\"`" + `
+
+`,
+	}
+
+	content, err := GenerateOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateOrchestratorContext failed: %v", err)
+	}
+
+	// Should contain registered projects context
+	if !strings.Contains(content, "## Registered Projects") {
+		t.Error("expected content to contain registered projects section")
+	}
+	if !strings.Contains(content, "orch-go") {
+		t.Error("expected content to contain project name")
+	}
+	if !strings.Contains(content, "orch spawn --workdir") {
+		t.Error("expected content to contain usage hint")
+	}
+}
+
 func TestWriteOrchestratorContext_CopiesSessionHandoffTemplate(t *testing.T) {
 	t.Run("copies template when it exists", func(t *testing.T) {
 		tempDir := t.TempDir()
