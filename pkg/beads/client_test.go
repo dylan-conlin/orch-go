@@ -1035,9 +1035,9 @@ func TestUpdateArgs_JSON(t *testing.T) {
 	title := "New Title"
 	priority := 2
 	args := UpdateArgs{
-		ID:       "issue-123",
-		Title:    &title,
-		Priority: &priority,
+		ID:        "issue-123",
+		Title:     &title,
+		Priority:  &priority,
 		AddLabels: []string{"urgent"},
 	}
 
@@ -1333,6 +1333,35 @@ func TestGetBlockingDependencies(t *testing.T) {
 			name:      "all statuses - two blocking",
 			deps:      json.RawMessage(`[{"id":"dep-1","title":"Open","status":"open","dependency_type":"blocks"},{"id":"dep-2","title":"In Progress","status":"in_progress","dependency_type":"blocks"},{"id":"dep-3","title":"Closed","status":"closed","dependency_type":"blocks"}]`),
 			wantCount: 2,
+		},
+		// Parent-child dependency tests
+		{
+			name:          "parent-child: open parent blocks child",
+			deps:          json.RawMessage(`[{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
+			wantCount:     1,
+			wantBlockerID: "epic-1",
+		},
+		{
+			name:      "parent-child: in_progress parent does NOT block child",
+			deps:      json.RawMessage(`[{"id":"epic-1","title":"Parent Epic","status":"in_progress","dependency_type":"parent-child"}]`),
+			wantCount: 0,
+		},
+		{
+			name:      "parent-child: closed parent does NOT block child",
+			deps:      json.RawMessage(`[{"id":"epic-1","title":"Parent Epic","status":"closed","dependency_type":"parent-child"}]`),
+			wantCount: 0,
+		},
+		{
+			name:          "mixed: blocks in_progress + parent-child in_progress",
+			deps:          json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"in_progress","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"in_progress","dependency_type":"parent-child"}]`),
+			wantCount:     1, // Only the "blocks" dep blocks, not parent-child
+			wantBlockerID: "dep-1",
+		},
+		{
+			name:          "mixed: blocks closed + parent-child open",
+			deps:          json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
+			wantCount:     1, // Only parent-child blocks (because open)
+			wantBlockerID: "epic-1",
 		},
 	}
 

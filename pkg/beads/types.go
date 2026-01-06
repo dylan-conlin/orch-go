@@ -181,8 +181,13 @@ type BlockingDependency struct {
 	Status string
 }
 
-// GetBlockingDependencies returns a list of dependencies that are still open or in_progress.
-// These are issues that must be completed before this issue can be worked on.
+// GetBlockingDependencies returns a list of dependencies that are blocking this issue.
+// Blocking behavior depends on dependency type:
+//   - "blocks": blocks if not closed (open or in_progress)
+//   - "parent-child": blocks only if parent is "open" (not when in_progress)
+//
+// The parent-child distinction is important for epics: when a parent epic transitions
+// to in_progress, its children should become unblocked so work can proceed.
 func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 	deps := i.ParseDependencies()
 	if deps == nil {
@@ -191,8 +196,19 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 
 	var blocking []BlockingDependency
 	for _, dep := range deps {
-		// A dependency blocks if it's not closed
-		if dep.Status != "closed" {
+		isBlocking := false
+
+		switch dep.DependencyType {
+		case "parent-child":
+			// Parent-child: blocks only when parent is "open" (epic not started)
+			// Once parent is "in_progress", children are unblocked
+			isBlocking = dep.Status == "open"
+		default:
+			// "blocks" and other types: blocks unless closed
+			isBlocking = dep.Status != "closed"
+		}
+
+		if isBlocking {
 			blocking = append(blocking, BlockingDependency{
 				ID:     dep.ID,
 				Title:  dep.Title,
