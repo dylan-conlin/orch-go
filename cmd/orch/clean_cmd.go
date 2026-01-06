@@ -24,6 +24,8 @@ var (
 	cleanWindows        bool
 	cleanPhantoms       bool
 	cleanInvestigations bool
+	cleanStale          bool
+	cleanStaleDays      int
 )
 
 var cleanCmd = &cobra.Command{
@@ -43,6 +45,8 @@ Optional cleanup actions:
   --phantoms        Close phantom tmux windows (beads ID but no active session)
   --verify-opencode Delete orphaned OpenCode disk sessions (not tracked in workspaces)
   --investigations  Archive empty investigation files (agents died before filling template)
+  --stale           Archive old completed workspaces (default: 7 days)
+  --stale-days N    Set age threshold for --stale (default: 7)
 
 Note: This command never deletes workspace directories - they are kept for 
 investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
@@ -53,9 +57,11 @@ Examples:
   orch-go clean --windows          # Close tmux windows for completed agents
   orch-go clean --phantoms         # Close phantom tmux windows
   orch-go clean --verify-opencode  # Delete orphaned OpenCode disk sessions
-  orch-go clean --investigations   # Archive empty investigation templates`,
+  orch-go clean --investigations   # Archive empty investigation templates
+  orch-go clean --stale            # Archive workspaces older than 7 days
+  orch-go clean --stale --stale-days 14  # Archive workspaces older than 14 days`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays)
 	},
 }
 
@@ -65,6 +71,8 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
 	cleanCmd.Flags().BoolVar(&cleanInvestigations, "investigations", false, "Archive empty investigation files to .kb/investigations/archived/")
+	cleanCmd.Flags().BoolVar(&cleanStale, "stale", false, "Archive completed workspaces older than N days (default: 7)")
+	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -218,46 +226,53 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Find completed workspaces using derived lookups
-	fmt.Println("Scanning workspaces for completed agents...")
-	beadsChecker := NewDefaultBeadsStatusChecker()
-	cleanableWorkspaces := findCleanableWorkspaces(projectDir, beadsChecker)
-
-	fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
-
-	if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms && !cleanInvestigations {
-		fmt.Println("No completed agents found")
-		return nil
-	}
+	// Skip slow beads status check if only doing stale archival or investigations
+	// These operations do their own completion checks
+	needsCompletedWorkspaces := closeWindows || (!archiveStale && !cleanPhantoms && !verifyOpenCode && !cleanInvestigations)
 
 	// Track cleanup stats
 	windowsClosed := 0
+	var cleanableWorkspaces []CleanableWorkspace
 
-	// List completed workspaces
-	if len(cleanableWorkspaces) > 0 {
-		fmt.Printf("\nCompleted workspaces:\n")
-		for _, ws := range cleanableWorkspaces {
-			fmt.Printf("  %s (%s)\n", ws.Name, ws.Reason)
+	if needsCompletedWorkspaces {
+		// Find completed workspaces using derived lookups (slow due to beads API calls)
+		fmt.Println("Scanning workspaces for completed agents...")
+		beadsChecker := NewDefaultBeadsStatusChecker()
+		cleanableWorkspaces = findCleanableWorkspaces(projectDir, beadsChecker)
 
-			// Close tmux window if --windows flag is set
-			if closeWindows && !dryRun {
-				if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
-					if err := tmux.KillWindow(window.Target); err != nil {
-						fmt.Fprintf(os.Stderr, "    Warning: failed to close window %s: %v\n", window.Name, err)
-					} else {
-						fmt.Printf("    Closed window: %s in session %s\n", window.Name, sessionName)
-						windowsClosed++
+		fmt.Printf("\nFound %d completed workspaces\n", len(cleanableWorkspaces))
+
+		if len(cleanableWorkspaces) == 0 && !verifyOpenCode && !cleanPhantoms && !cleanInvestigations && !archiveStale {
+			fmt.Println("No completed agents found")
+			return nil
+		}
+
+		// List completed workspaces
+		if len(cleanableWorkspaces) > 0 {
+			fmt.Printf("\nCompleted workspaces:\n")
+			for _, ws := range cleanableWorkspaces {
+				fmt.Printf("  %s (%s)\n", ws.Name, ws.Reason)
+
+				// Close tmux window if --windows flag is set
+				if closeWindows && !dryRun {
+					if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
+						if err := tmux.KillWindow(window.Target); err != nil {
+							fmt.Fprintf(os.Stderr, "    Warning: failed to close window %s: %v\n", window.Name, err)
+						} else {
+							fmt.Printf("    Closed window: %s in session %s\n", window.Name, sessionName)
+							windowsClosed++
+						}
 					}
-				}
-			} else if closeWindows && dryRun {
-				if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
-					fmt.Printf("    [DRY-RUN] Would close window: %s in session %s\n", window.Name, sessionName)
+				} else if closeWindows && dryRun {
+					if window, sessionName, _ := tmux.FindWindowByWorkspaceNameAllSessions(ws.Name); window != nil {
+						fmt.Printf("    [DRY-RUN] Would close window: %s in session %s\n", window.Name, sessionName)
+					}
 				}
 			}
 		}
@@ -290,8 +305,17 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	// Archive stale workspaces (optional)
+	var workspacesArchived int
+	if archiveStale {
+		workspacesArchived, err = archiveStaleWorkspaces(projectDir, staleDays, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to archive stale workspaces: %v\n", err)
+		}
+	}
+
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale
 
 	if dryRun {
 		if hasCleanupActions {
@@ -317,13 +341,16 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if cleanInvestigations && investigationsArchived > 0 {
 				fmt.Printf(" Would archive %d empty investigations.", investigationsArchived)
 			}
+			if archiveStale && workspacesArchived > 0 {
+				fmt.Printf(" Would archive %d stale workspaces.", workspacesArchived)
+			}
 			fmt.Println()
 		}
 		return nil
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -335,11 +362,14 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"phantoms_closed":         phantomsClosed,
 				"disk_sessions_deleted":   diskSessionsDeleted,
 				"investigations_archived": investigationsArchived,
+				"workspaces_archived":     workspacesArchived,
 				"project":                 projectName,
 				"verify_opencode":         verifyOpenCode,
 				"close_windows":           closeWindows,
 				"clean_phantoms":          cleanPhantoms,
 				"clean_investigations":    cleanInvestigations,
+				"archive_stale":           archiveStale,
+				"stale_days":              staleDays,
 			},
 		}
 		if err := logger.Log(event); err != nil {
@@ -348,7 +378,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -362,9 +392,12 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		if investigationsArchived > 0 {
 			fmt.Printf("Archived %d empty investigation files\n", investigationsArchived)
 		}
+		if workspacesArchived > 0 {
+			fmt.Printf("Archived %d stale workspaces\n", workspacesArchived)
+		}
 	} else if !hasCleanupActions {
 		// Default: just listing completed workspaces
-		fmt.Printf("\nNote: Workspace directories are preserved. Use --windows, --phantoms, --verify-opencode, or --investigations to clean up resources.\n")
+		fmt.Printf("\nNote: Workspace directories are preserved. Use --windows, --phantoms, --verify-opencode, --investigations, or --stale to clean up resources.\n")
 	}
 
 	return nil
@@ -689,3 +722,159 @@ func archiveEmptyInvestigations(projectDir string, dryRun bool) (int, error) {
 
 	return archived, nil
 }
+
+// archiveStaleWorkspaces moves old completed workspaces to .orch/workspace/archived/.
+// A workspace is considered "stale" if:
+// 1. It has a .spawn_time older than staleDays
+// 2. It is completed (SYNTHESIS.md exists OR beads issue is closed)
+// Returns the number of workspaces archived and any error encountered.
+func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int, error) {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	archivedDir := filepath.Join(workspaceDir, "archived")
+
+	// Check if workspace directory exists
+	if _, err := os.Stat(workspaceDir); os.IsNotExist(err) {
+		fmt.Println("\nNo .orch/workspace directory found")
+		return 0, nil
+	}
+
+	fmt.Printf("\nScanning for stale workspaces (older than %d days)...\n", staleDays)
+
+	// Calculate the cutoff time
+	cutoff := time.Now().AddDate(0, 0, -staleDays)
+
+	// Find stale workspaces
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read workspace directory: %w", err)
+	}
+
+	// NOTE: We use file-based indicators only (no beads API calls) for performance.
+	// For stale workspaces (7+ days old), we accept:
+	// 1. SYNTHESIS.md exists → completed full-tier spawn
+	// 2. Light tier (.tier = "light") → no SYNTHESIS.md required by design
+	// 3. Has .beads_id file → tracked spawn (was a real agent, not a test)
+	// This avoids slow beads API calls while still being conservative.
+	var staleWorkspaces []struct {
+		name      string
+		path      string
+		spawnTime time.Time
+		reason    string
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Skip the archived directory itself
+		if entry.Name() == "archived" {
+			continue
+		}
+
+		dirPath := filepath.Join(workspaceDir, entry.Name())
+
+		// Read spawn time
+		spawnTimeFile := filepath.Join(dirPath, ".spawn_time")
+		spawnTimeData, err := os.ReadFile(spawnTimeFile)
+		if err != nil {
+			continue // Skip workspaces without spawn time
+		}
+
+		// Parse spawn time (nanoseconds)
+		var spawnTimeNs int64
+		if _, err := fmt.Sscanf(string(spawnTimeData), "%d", &spawnTimeNs); err != nil {
+			continue
+		}
+		spawnTime := time.Unix(0, spawnTimeNs)
+
+		// Check if workspace is old enough
+		if spawnTime.After(cutoff) {
+			continue // Not stale yet
+		}
+
+		// Check if workspace is completed (using file-based indicators only for speed)
+		reason := ""
+
+		// Check for SYNTHESIS.md (full-tier completion)
+		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
+		if info, err := os.Stat(synthesisPath); err == nil && info.Size() > 0 {
+			reason = "SYNTHESIS.md exists"
+		}
+
+		// Check for light tier (light tier doesn't require SYNTHESIS.md by design)
+		if reason == "" {
+			tierFile := filepath.Join(dirPath, ".tier")
+			if tierData, err := os.ReadFile(tierFile); err == nil {
+				tier := strings.TrimSpace(string(tierData))
+				if tier == "light" {
+					reason = "light tier (no SYNTHESIS.md required)"
+				}
+			}
+		}
+
+		// Check for .beads_id file (indicates tracked spawn)
+		if reason == "" {
+			beadsIDFile := filepath.Join(dirPath, ".beads_id")
+			if _, err := os.Stat(beadsIDFile); err == nil {
+				reason = "tracked spawn (has .beads_id)"
+			}
+		}
+
+		if reason == "" {
+			continue // Not completed, don't archive
+		}
+
+		staleWorkspaces = append(staleWorkspaces, struct {
+			name      string
+			path      string
+			spawnTime time.Time
+			reason    string
+		}{
+			name:      entry.Name(),
+			path:      dirPath,
+			spawnTime: spawnTime,
+			reason:    reason,
+		})
+	}
+
+	if len(staleWorkspaces) == 0 {
+		fmt.Println("  No stale completed workspaces found")
+		return 0, nil
+	}
+
+	fmt.Printf("  Found %d stale workspaces:\n", len(staleWorkspaces))
+
+	// Create archived directory if needed
+	if !dryRun {
+		if err := os.MkdirAll(archivedDir, 0755); err != nil {
+			return 0, fmt.Errorf("failed to create archived directory: %w", err)
+		}
+	}
+
+	// Archive stale workspaces
+	archived := 0
+	for _, ws := range staleWorkspaces {
+		destPath := filepath.Join(archivedDir, ws.name)
+		age := time.Since(ws.spawnTime).Hours() / 24
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would archive: %s (%.0f days old, %s)\n", ws.name, age, ws.reason)
+			archived++
+			continue
+		}
+
+		// Move workspace to archived
+		if err := os.Rename(ws.path, destPath); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to archive %s: %v\n", ws.name, err)
+			continue
+		}
+
+		fmt.Printf("    Archived: %s (%.0f days old, %s)\n", ws.name, age, ws.reason)
+		archived++
+	}
+
+	return archived, nil
+}
+
+// NOTE: extractBeadsIDFromWorkspace is defined in review.go

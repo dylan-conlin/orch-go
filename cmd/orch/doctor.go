@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ var (
 	doctorFix       bool // Attempt to fix issues by starting services
 	doctorVerbose   bool // Show verbose output
 	doctorStaleOnly bool // Check stale binary only, exit with code 1 if stale
+	doctorSessions  bool // Cross-reference workspaces and OpenCode sessions
 )
 
 var doctorCmd = &cobra.Command{
@@ -32,12 +34,14 @@ Services checked:
 
 Use --fix to automatically start services that are not running.
 Use --stale-only to check if the orch binary is stale (exit 1 if stale).
+Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
 
 Examples:
   orch doctor              # Check service health
   orch doctor --fix        # Check and start missing services
   orch doctor --verbose    # Show detailed output
-  orch doctor --stale-only # Check binary staleness only (for scripts/hooks)`,
+  orch doctor --stale-only # Check binary staleness only (for scripts/hooks)
+  orch doctor --sessions   # Cross-reference workspaces and sessions`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -47,6 +51,7 @@ func init() {
 	doctorCmd.Flags().BoolVarP(&doctorFix, "fix", "f", false, "Attempt to start services that are not running")
 	doctorCmd.Flags().BoolVarP(&doctorVerbose, "verbose", "v", false, "Show verbose output")
 	doctorCmd.Flags().BoolVar(&doctorStaleOnly, "stale-only", false, "Check binary staleness only (exit 1 if stale)")
+	doctorCmd.Flags().BoolVar(&doctorSessions, "sessions", false, "Cross-reference workspaces and OpenCode sessions")
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -82,6 +87,11 @@ func runDoctor() error {
 		}
 		fmt.Println("✓ UP TO DATE")
 		return nil
+	}
+
+	// Handle --sessions flag for workspace ↔ session cross-reference
+	if doctorSessions {
+		return runSessionsCrossReference()
 	}
 
 	fmt.Println("orch doctor - Service Health Check")
@@ -529,4 +539,132 @@ func checkStalledSessions() ServiceStatus {
 		status.Details = fmt.Sprintf("⚠️ %d stalled sessions (no Phase report after >1 min): %s", len(stalledSessions), strings.Join(stalledSessions, ", "))
 	}
 	return status
+}
+
+// runSessionsCrossReference performs a cross-reference between workspaces and OpenCode sessions
+// to detect orphaned workspaces (no session) and orphaned sessions (no workspace).
+func runSessionsCrossReference() error {
+	fmt.Println("orch doctor --sessions - Workspace ↔ Session Cross-Reference")
+	fmt.Println("=============================================================")
+	fmt.Println()
+
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	client := opencode.NewClient(serverURL)
+
+	// Step 1: Build map of workspace → session IDs
+	fmt.Println("Scanning workspaces...")
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	workspaceToSession := make(map[string]string) // workspace name → session ID
+	sessionToWorkspace := make(map[string]string) // session ID → workspace name
+
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		fmt.Printf("  No .orch/workspace directory found\n")
+		entries = nil
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "archived" {
+			continue
+		}
+		sessionIDFile := filepath.Join(workspaceDir, entry.Name(), ".session_id")
+		if data, err := os.ReadFile(sessionIDFile); err == nil {
+			sessionID := strings.TrimSpace(string(data))
+			workspaceToSession[entry.Name()] = sessionID
+			sessionToWorkspace[sessionID] = entry.Name()
+		}
+	}
+	fmt.Printf("  Found %d workspaces with session IDs\n", len(workspaceToSession))
+
+	// Step 2: Get all OpenCode sessions for this project
+	fmt.Println("\nFetching OpenCode sessions...")
+	sessions, err := client.ListDiskSessions(projectDir)
+	if err != nil {
+		return fmt.Errorf("failed to list sessions: %w", err)
+	}
+	fmt.Printf("  Found %d OpenCode sessions\n", len(sessions))
+
+	// Step 3: Cross-reference
+	fmt.Println("\nCross-referencing...")
+
+	// Sessions with no workspace
+	var orphanedSessions []struct {
+		id    string
+		title string
+		age   time.Duration
+	}
+	for _, s := range sessions {
+		if _, hasWorkspace := sessionToWorkspace[s.ID]; !hasWorkspace {
+			age := time.Since(time.Unix(s.Time.Created/1000, 0))
+			orphanedSessions = append(orphanedSessions, struct {
+				id    string
+				title string
+				age   time.Duration
+			}{s.ID, s.Title, age})
+		}
+	}
+
+	// Workspaces with session ID that doesn't exist
+	var orphanedWorkspaces []struct {
+		name      string
+		sessionID string
+	}
+	sessionIDSet := make(map[string]bool)
+	for _, s := range sessions {
+		sessionIDSet[s.ID] = true
+	}
+	for name, sessionID := range workspaceToSession {
+		if !sessionIDSet[sessionID] {
+			orphanedWorkspaces = append(orphanedWorkspaces, struct {
+				name      string
+				sessionID string
+			}{name, sessionID})
+		}
+	}
+
+	// Step 4: Report results
+	fmt.Println()
+
+	if len(orphanedSessions) == 0 && len(orphanedWorkspaces) == 0 {
+		fmt.Println("✓ All workspaces and sessions are properly linked")
+		return nil
+	}
+
+	if len(orphanedSessions) > 0 {
+		fmt.Printf("⚠️  Sessions without workspaces (%d):\n", len(orphanedSessions))
+		fmt.Println("   (These may be interactive/orchestrator sessions or test sessions)")
+		for _, s := range orphanedSessions {
+			title := s.title
+			if title == "" {
+				title = "(untitled)"
+			}
+			fmt.Printf("    %s - %s (%.0f days old)\n", s.id[:12], title, s.age.Hours()/24)
+		}
+		fmt.Println()
+	}
+
+	if len(orphanedWorkspaces) > 0 {
+		fmt.Printf("⚠️  Workspaces with missing sessions (%d):\n", len(orphanedWorkspaces))
+		fmt.Println("   (Session may have been deleted or OpenCode server restarted)")
+		for _, w := range orphanedWorkspaces {
+			fmt.Printf("    %s (session: %s)\n", w.name, w.sessionID[:12])
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("Recommendations:")
+	if len(orphanedSessions) > 0 {
+		fmt.Println("  - Sessions without workspaces are usually fine (interactive/orchestrator)")
+		fmt.Println("  - Use 'orch clean --verify-opencode' to delete truly orphaned disk sessions")
+	}
+	if len(orphanedWorkspaces) > 0 {
+		fmt.Println("  - Workspaces with missing sessions can be archived:")
+		fmt.Println("    'orch clean --stale' to archive old workspaces")
+	}
+
+	return nil
 }
