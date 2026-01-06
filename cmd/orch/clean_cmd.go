@@ -26,6 +26,8 @@ var (
 	cleanInvestigations bool
 	cleanStale          bool
 	cleanStaleDays      int
+	cleanSessions       bool
+	cleanSessionsDays   int
 )
 
 var cleanCmd = &cobra.Command{
@@ -41,12 +43,14 @@ What counts as "completed":
 - Workspaces whose beads issue is closed
 
 Optional cleanup actions:
-  --windows         Close tmux windows for completed agents
-  --phantoms        Close phantom tmux windows (beads ID but no active session)
-  --verify-opencode Delete orphaned OpenCode disk sessions (not tracked in workspaces)
-  --investigations  Archive empty investigation files (agents died before filling template)
-  --stale           Archive old completed workspaces (default: 7 days)
-  --stale-days N    Set age threshold for --stale (default: 7)
+  --windows           Close tmux windows for completed agents
+  --phantoms          Close phantom tmux windows (beads ID but no active session)
+  --verify-opencode   Delete orphaned OpenCode disk sessions (not tracked in workspaces)
+  --investigations    Archive empty investigation files (agents died before filling template)
+  --stale             Archive old completed workspaces (default: 7 days)
+  --stale-days N      Set age threshold for --stale (default: 7)
+  --sessions          Delete stale OpenCode sessions (default: older than 7 days)
+  --sessions-days N   Set age threshold for --sessions (default: 7)
 
 Note: This command never deletes workspace directories - they are kept for 
 investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
@@ -59,9 +63,11 @@ Examples:
   orch-go clean --verify-opencode  # Delete orphaned OpenCode disk sessions
   orch-go clean --investigations   # Archive empty investigation templates
   orch-go clean --stale            # Archive workspaces older than 7 days
-  orch-go clean --stale --stale-days 14  # Archive workspaces older than 14 days`,
+  orch-go clean --stale --stale-days 14  # Archive workspaces older than 14 days
+  orch-go clean --sessions         # Delete OpenCode sessions older than 7 days
+  orch-go clean --sessions --sessions-days 14  # Delete sessions older than 14 days`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanSessions, cleanSessionsDays)
 	},
 }
 
@@ -73,6 +79,8 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanInvestigations, "investigations", false, "Archive empty investigation files to .kb/investigations/archived/")
 	cleanCmd.Flags().BoolVar(&cleanStale, "stale", false, "Archive completed workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
+	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
+	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -226,7 +234,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, cleanSessions bool, sessionsDays int) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -314,8 +322,17 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	// Clean stale OpenCode sessions (optional)
+	var staleSessionsDeleted int
+	if cleanSessions {
+		staleSessionsDeleted, err = cleanStaleSessions(serverURL, sessionsDays, dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale sessions: %v\n", err)
+		}
+	}
+
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || cleanSessions
 
 	if dryRun {
 		if hasCleanupActions {
@@ -344,13 +361,16 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if archiveStale && workspacesArchived > 0 {
 				fmt.Printf(" Would archive %d stale workspaces.", workspacesArchived)
 			}
+			if cleanSessions && staleSessionsDeleted > 0 {
+				fmt.Printf(" Would delete %d stale OpenCode sessions.", staleSessionsDeleted)
+			}
 			fmt.Println()
 		}
 		return nil
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || staleSessionsDeleted > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -370,6 +390,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"clean_investigations":    cleanInvestigations,
 				"archive_stale":           archiveStale,
 				"stale_days":              staleDays,
+				"clean_sessions":          cleanSessions,
+				"sessions_days":           sessionsDays,
+				"stale_sessions_deleted":  staleSessionsDeleted,
 			},
 		}
 		if err := logger.Log(event); err != nil {
@@ -378,7 +401,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || staleSessionsDeleted > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -394,6 +417,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if workspacesArchived > 0 {
 			fmt.Printf("Archived %d stale workspaces\n", workspacesArchived)
+		}
+		if staleSessionsDeleted > 0 {
+			fmt.Printf("Deleted %d stale OpenCode sessions\n", staleSessionsDeleted)
 		}
 	} else if !hasCleanupActions {
 		// Default: just listing completed workspaces
@@ -878,3 +904,83 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int,
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go
+
+// cleanStaleSessions deletes OpenCode sessions older than the specified number of days.
+// It skips sessions that are currently active (processing or recently updated).
+// Returns the number of sessions deleted and any error encountered.
+func cleanStaleSessions(serverURL string, staleDays int, dryRun bool) (int, error) {
+	fmt.Printf("\nScanning for stale OpenCode sessions (older than %d days)...\n", staleDays)
+
+	client := opencode.NewClient(serverURL)
+
+	// Get all in-memory sessions (without x-opencode-directory header)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return 0, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	fmt.Printf("  Found %d total sessions\n", len(sessions))
+
+	// Calculate the cutoff time
+	cutoff := time.Now().AddDate(0, 0, -staleDays)
+	cutoffMs := cutoff.UnixMilli()
+
+	// Find stale sessions (not updated since cutoff)
+	// Skip sessions that are actively processing
+	var staleSessions []opencode.Session
+	var skippedActive int
+
+	for _, session := range sessions {
+		// Skip recently updated sessions (within cutoff period)
+		if session.Time.Updated > cutoffMs {
+			continue
+		}
+
+		// Skip sessions that are currently processing
+		if client.IsSessionProcessing(session.ID) {
+			skippedActive++
+			continue
+		}
+
+		staleSessions = append(staleSessions, session)
+	}
+
+	if skippedActive > 0 {
+		fmt.Printf("  Skipped %d active sessions (currently processing)\n", skippedActive)
+	}
+
+	if len(staleSessions) == 0 {
+		fmt.Println("  No stale sessions found")
+		return 0, nil
+	}
+
+	fmt.Printf("  Found %d stale sessions:\n", len(staleSessions))
+
+	// Delete stale sessions
+	deleted := 0
+	for _, session := range staleSessions {
+		title := session.Title
+		if title == "" {
+			title = "(untitled)"
+		}
+
+		updatedAt := time.Unix(session.Time.Updated/1000, 0)
+		age := time.Since(updatedAt).Hours() / 24
+
+		if dryRun {
+			fmt.Printf("    [DRY-RUN] Would delete: %s (%s) - %.0f days old\n", session.ID[:12], title, age)
+			deleted++
+			continue
+		}
+
+		if err := client.DeleteSession(session.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "    Warning: failed to delete %s: %v\n", session.ID[:12], err)
+			continue
+		}
+
+		fmt.Printf("    Deleted: %s (%s) - %.0f days old\n", session.ID[:12], title, age)
+		deleted++
+	}
+
+	return deleted, nil
+}
