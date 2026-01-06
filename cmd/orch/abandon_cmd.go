@@ -12,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -185,9 +186,9 @@ func runAbandon(beadsID, reason, workdir string) error {
 	// Log the abandonment
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
-		"beads_id":   beadsID,
-		"agent_id":   agentName,
-		"untracked":  isUntracked,
+		"beads_id":  beadsID,
+		"agent_id":  agentName,
+		"untracked": isUntracked,
 	}
 	if windowInfo != nil {
 		eventData["window_id"] = windowInfo.ID
@@ -209,6 +210,24 @@ func runAbandon(beadsID, reason, workdir string) error {
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Update orchestrator session registry if this is an orchestrator workspace
+	// This ensures `orch status` shows correct session status
+	if workspacePath != "" && isOrchestratorWorkspace(workspacePath) {
+		registry := session.NewRegistry("")
+		if err := registry.Update(agentName, func(s *session.OrchestratorSession) {
+			s.Status = "abandoned"
+		}); err != nil {
+			if err == session.ErrSessionNotFound {
+				// Session wasn't in registry - likely a legacy workspace
+				fmt.Printf("Note: Session %s was not in registry (legacy workspace)\n", agentName)
+			} else {
+				fmt.Fprintf(os.Stderr, "Warning: failed to update session status in registry: %v\n", err)
+			}
+		} else {
+			fmt.Printf("Updated session registry: status → abandoned\n")
+		}
 	}
 
 	// Reset beads status to open so respawn works without manual bd update

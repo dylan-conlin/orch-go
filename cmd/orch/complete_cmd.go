@@ -490,17 +490,20 @@ func runComplete(identifier, workdir string) error {
 		}
 	} else if isOrchestratorSession {
 		fmt.Printf("Completed orchestrator session: %s\n", agentName)
-		// Unregister orchestrator session from the session registry
+		// Update orchestrator session status to "completed" in the registry
+		// We update rather than unregister to preserve session history for tracking
 		registry := session.NewRegistry("")
-		if err := registry.Unregister(agentName); err != nil {
+		if err := registry.Update(agentName, func(s *session.OrchestratorSession) {
+			s.Status = "completed"
+		}); err != nil {
 			if err == session.ErrSessionNotFound {
 				// Session wasn't in registry - likely a legacy workspace or spawned before registry existed
 				fmt.Printf("Note: Session %s was not in registry (legacy workspace)\n", agentName)
 			} else {
-				fmt.Fprintf(os.Stderr, "Warning: failed to unregister session from registry: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Warning: failed to update session status in registry: %v\n", err)
 			}
 		} else {
-			fmt.Printf("Unregistered from session registry\n")
+			fmt.Printf("Updated session registry: status → completed\n")
 		}
 	} else if isUntracked {
 		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
