@@ -61,6 +61,10 @@
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
 		orchestratorSessions: true // Orchestrator sessions expanded by default (important visibility)
 	};
+	
+	// Track whether component has mounted and loaded initial state
+	// Prevents reactive save from overwriting stored preferences during initialization
+	let sectionStateLoaded = false;
 
 	// Load section state from localStorage on mount
 	function loadSectionState() {
@@ -74,11 +78,14 @@
 		} catch (e) {
 			console.warn('Failed to load section state:', e);
 		}
+		// Mark as loaded AFTER updating sectionState to avoid triggering save
+		sectionStateLoaded = true;
 	}
 
 	// Save section state to localStorage
 	function saveSectionState() {
 		if (typeof window === 'undefined') return;
+		if (!sectionStateLoaded) return; // Don't save until initial state is loaded
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(sectionState));
 		} catch (e) {
@@ -86,8 +93,8 @@
 		}
 	}
 
-	// Reactive saving when state changes
-	$: if (typeof window !== 'undefined') {
+	// Reactive saving when state changes (only after initial load)
+	$: if (sectionStateLoaded && sectionState) {
 		saveSectionState();
 	}
 
