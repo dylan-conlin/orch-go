@@ -33,18 +33,33 @@ type Config struct {
 
 	// Verbose enables detailed output.
 	Verbose bool
+
+	// ReflectEnabled controls whether periodic reflection analysis is enabled.
+	// When enabled, the daemon will run kb reflect periodically.
+	ReflectEnabled bool
+
+	// ReflectInterval is how often to run kb reflect (0 = disabled).
+	// Default is 1 hour.
+	ReflectInterval time.Duration
+
+	// ReflectCreateIssues controls whether reflection creates beads issues
+	// for synthesis opportunities (topics with 10+ investigations).
+	ReflectCreateIssues bool
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:     time.Minute,
-		MaxAgents:        3,
-		MaxSpawnsPerHour: 20, // Prevents runaway spawning
-		Label:            "triage:ready",
-		SpawnDelay:       10 * time.Second,
-		DryRun:           false,
-		Verbose:          false,
+		PollInterval:        time.Minute,
+		MaxAgents:           3,
+		MaxSpawnsPerHour:    20, // Prevents runaway spawning
+		Label:               "triage:ready",
+		SpawnDelay:          10 * time.Second,
+		DryRun:              false,
+		Verbose:             false,
+		ReflectEnabled:      true,
+		ReflectInterval:     time.Hour, // Hourly by default
+		ReflectCreateIssues: true,
 	}
 }
 
@@ -105,6 +120,9 @@ type Daemon struct {
 	// If set, Preview will include hotspot warnings.
 	HotspotChecker HotspotChecker
 
+	// lastReflect tracks when reflection was last run for periodic reflection.
+	lastReflect time.Time
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
@@ -114,6 +132,8 @@ type Daemon struct {
 	activeCountFunc func() int
 	// listCompletedAgentsFunc is used for testing - allows mocking completed agents list
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
+	// reflectFunc is used for testing - allows mocking kb reflect
+	reflectFunc func(createIssues bool) (*ReflectResult, error)
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -128,6 +148,7 @@ func NewWithConfig(config Config) *Daemon {
 		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
+		reflectFunc:     DefaultRunReflection,
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -149,6 +170,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
+		reflectFunc:     DefaultRunReflection,
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
@@ -675,6 +697,58 @@ func (d *Daemon) ReleaseSlot(slot *Slot) {
 	if d.Pool != nil && slot != nil {
 		d.Pool.Release(slot)
 	}
+}
+
+// ShouldRunReflection returns true if periodic reflection should run.
+// This checks if reflection is enabled and enough time has elapsed since the last run.
+func (d *Daemon) ShouldRunReflection() bool {
+	if !d.Config.ReflectEnabled || d.Config.ReflectInterval <= 0 {
+		return false
+	}
+	// Run immediately if we've never run before
+	if d.lastReflect.IsZero() {
+		return true
+	}
+	return time.Since(d.lastReflect) >= d.Config.ReflectInterval
+}
+
+// RunPeriodicReflection runs the periodic reflection analysis if due.
+// Returns the result if reflection was run, or nil if it wasn't due.
+func (d *Daemon) RunPeriodicReflection() *ReflectResult {
+	if !d.ShouldRunReflection() {
+		return nil
+	}
+
+	result, err := d.reflectFunc(d.Config.ReflectCreateIssues)
+	if err != nil {
+		return &ReflectResult{
+			Error:   err,
+			Message: fmt.Sprintf("Reflection failed: %v", err),
+		}
+	}
+
+	// Update last reflect time on success
+	d.lastReflect = time.Now()
+
+	return result
+}
+
+// LastReflectTime returns when reflection was last run.
+// Returns zero time if reflection has never run.
+func (d *Daemon) LastReflectTime() time.Time {
+	return d.lastReflect
+}
+
+// NextReflectTime returns when the next reflection is scheduled.
+// Returns zero time if reflection is disabled.
+func (d *Daemon) NextReflectTime() time.Time {
+	if !d.Config.ReflectEnabled || d.Config.ReflectInterval <= 0 {
+		return time.Time{}
+	}
+	if d.lastReflect.IsZero() {
+		return time.Now() // Due immediately
+	}
+	return d.lastReflect.Add(d.Config.ReflectInterval)
 }
 
 // Run processes issues in a loop until the queue is empty or maxIterations is reached.

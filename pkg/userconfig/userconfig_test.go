@@ -192,3 +192,205 @@ auto_export_transcript: true
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+func intPtr(i int) *int {
+	return &i
+}
+
+// =============================================================================
+// Tests for ReflectConfig
+// =============================================================================
+
+func TestReflectEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		enabled  *bool
+		expected bool
+	}{
+		{
+			name:     "nil defaults to true",
+			enabled:  nil,
+			expected: true,
+		},
+		{
+			name:     "explicit true",
+			enabled:  boolPtr(true),
+			expected: true,
+		},
+		{
+			name:     "explicit false",
+			enabled:  boolPtr(false),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Reflect: ReflectConfig{
+					Enabled: tt.enabled,
+				},
+			}
+			if got := cfg.ReflectEnabled(); got != tt.expected {
+				t.Errorf("ReflectEnabled() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestReflectIntervalMinutes(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval *int
+		expected int
+	}{
+		{
+			name:     "nil defaults to 60",
+			interval: nil,
+			expected: 60,
+		},
+		{
+			name:     "explicit value",
+			interval: intPtr(30),
+			expected: 30,
+		},
+		{
+			name:     "explicit zero",
+			interval: intPtr(0),
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Reflect: ReflectConfig{
+					IntervalMinutes: tt.interval,
+				},
+			}
+			if got := cfg.ReflectIntervalMinutes(); got != tt.expected {
+				t.Errorf("ReflectIntervalMinutes() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestReflectCreateIssues(t *testing.T) {
+	tests := []struct {
+		name         string
+		createIssues *bool
+		expected     bool
+	}{
+		{
+			name:         "nil defaults to true",
+			createIssues: nil,
+			expected:     true,
+		},
+		{
+			name:         "explicit true",
+			createIssues: boolPtr(true),
+			expected:     true,
+		},
+		{
+			name:         "explicit false",
+			createIssues: boolPtr(false),
+			expected:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Reflect: ReflectConfig{
+					CreateIssues: tt.createIssues,
+				},
+			}
+			if got := cfg.ReflectCreateIssues(); got != tt.expected {
+				t.Errorf("ReflectCreateIssues() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestLoadReflectConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file with reflect settings
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+reflect:
+  enabled: false
+  interval_minutes: 30
+  create_issues: false
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.ReflectEnabled() {
+		t.Error("Load() ReflectEnabled() = true, want false")
+	}
+
+	if cfg.ReflectIntervalMinutes() != 30 {
+		t.Errorf("Load() ReflectIntervalMinutes() = %d, want 30", cfg.ReflectIntervalMinutes())
+	}
+
+	if cfg.ReflectCreateIssues() {
+		t.Error("Load() ReflectCreateIssues() = true, want false")
+	}
+}
+
+func TestLoadMissingReflectSection(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config without reflect section
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Should default to enabled
+	if !cfg.ReflectEnabled() {
+		t.Error("Load() without reflect section should default to enabled")
+	}
+
+	// Should default to 60 minutes
+	if cfg.ReflectIntervalMinutes() != 60 {
+		t.Errorf("Load() without reflect section should default to 60 minutes, got %d", cfg.ReflectIntervalMinutes())
+	}
+
+	// Should default to creating issues
+	if !cfg.ReflectCreateIssues() {
+		t.Error("Load() without reflect section should default to creating issues")
+	}
+}

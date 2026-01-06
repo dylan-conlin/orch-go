@@ -106,13 +106,15 @@ Examples:
 
 var (
 	// Daemon flags
-	daemonDelay        int    // Delay between spawns in seconds
-	daemonDryRun       bool   // Preview mode - show what would be processed without spawning
-	daemonPollInterval int    // Poll interval in seconds (0 = run once)
-	daemonMaxAgents    int    // Maximum concurrent agents (0 = no limit)
-	daemonLabel        string // Filter issues by label
-	daemonVerbose      bool   // Enable verbose output
-	daemonReflect      bool   // Run reflection analysis after processing
+	daemonDelay           int    // Delay between spawns in seconds
+	daemonDryRun          bool   // Preview mode - show what would be processed without spawning
+	daemonPollInterval    int    // Poll interval in seconds (0 = run once)
+	daemonMaxAgents       int    // Maximum concurrent agents (0 = no limit)
+	daemonLabel           string // Filter issues by label
+	daemonVerbose         bool   // Enable verbose output
+	daemonReflect         bool   // Run reflection analysis after processing (on exit)
+	daemonReflectInterval int    // Periodic reflection interval in minutes (0 = disabled)
+	daemonReflectIssues   bool   // Create beads issues for synthesis opportunities
 )
 
 func init() {
@@ -131,7 +133,9 @@ func init() {
 	daemonRunCmd.Flags().IntVar(&daemonMaxAgents, "max-agents", 3, "Maximum concurrent agents (alias for --concurrency)")
 	daemonRunCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
 	daemonRunCmd.Flags().BoolVarP(&daemonVerbose, "verbose", "v", false, "Enable verbose output")
-	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis after processing (default: true)")
+	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
+	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
 	// Mark max-agents as hidden since --concurrency is the preferred name
 	daemonRunCmd.Flags().MarkHidden("max-agents")
 
@@ -148,12 +152,15 @@ func runDaemonLoop() error {
 
 	// Build configuration from flags
 	config := daemon.Config{
-		PollInterval: time.Duration(daemonPollInterval) * time.Second,
-		MaxAgents:    daemonMaxAgents,
-		Label:        daemonLabel,
-		SpawnDelay:   time.Duration(daemonDelay) * time.Second,
-		DryRun:       daemonDryRun,
-		Verbose:      daemonVerbose,
+		PollInterval:        time.Duration(daemonPollInterval) * time.Second,
+		MaxAgents:           daemonMaxAgents,
+		Label:               daemonLabel,
+		SpawnDelay:          time.Duration(daemonDelay) * time.Second,
+		DryRun:              daemonDryRun,
+		Verbose:             daemonVerbose,
+		ReflectEnabled:      daemonReflectInterval > 0,
+		ReflectInterval:     time.Duration(daemonReflectInterval) * time.Minute,
+		ReflectCreateIssues: daemonReflectIssues,
 	}
 
 	d := daemon.NewWithConfig(config)
@@ -189,6 +196,12 @@ func runDaemonLoop() error {
 	fmt.Printf("  Concurrency:     %d (worker pool)\n", config.MaxAgents)
 	fmt.Printf("  Required label:  %s\n", config.Label)
 	fmt.Printf("  Spawn delay:     %s\n", formatDaemonDuration(config.SpawnDelay))
+	if config.ReflectEnabled {
+		fmt.Printf("  Reflect interval: %s\n", formatDaemonDuration(config.ReflectInterval))
+		fmt.Printf("  Reflect issues:   %v\n", config.ReflectCreateIssues)
+	} else {
+		fmt.Println("  Reflect interval: disabled")
+	}
 	fmt.Println()
 
 	// Main polling loop
@@ -210,6 +223,17 @@ func runDaemonLoop() error {
 		// Must happen before status write so status shows accurate counts.
 		if freed := d.ReconcileWithOpenCode(); freed > 0 && daemonVerbose {
 			fmt.Printf("[%s] Reconciled: freed %d stale slots\n", timestamp, freed)
+		}
+
+		// Run periodic reflection if due
+		if result := d.RunPeriodicReflection(); result != nil {
+			if result.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Reflection error: %v\n", timestamp, result.Error)
+			} else if result.Suggestions != nil && result.Suggestions.HasSuggestions() {
+				fmt.Printf("[%s] Reflection: %s\n", timestamp, result.Suggestions.Summary())
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Reflection: no suggestions found\n", timestamp)
+			}
 		}
 
 		// Get ready issues count for status

@@ -24,6 +24,22 @@ type NotificationConfig struct {
 	Enabled *bool `yaml:"enabled,omitempty"`
 }
 
+// ReflectConfig holds settings for periodic kb reflect analysis.
+type ReflectConfig struct {
+	// Enabled controls whether periodic reflection is enabled in the daemon.
+	// Defaults to true if not specified.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// IntervalMinutes is how often to run reflection analysis (in minutes).
+	// Defaults to 60 (hourly) if not specified.
+	IntervalMinutes *int `yaml:"interval_minutes,omitempty"`
+
+	// CreateIssues controls whether to automatically create beads issues
+	// for synthesis opportunities (topics with 10+ investigations).
+	// Defaults to true if not specified.
+	CreateIssues *bool `yaml:"create_issues,omitempty"`
+}
+
 // Config represents the user-level orch configuration.
 type Config struct {
 	// Backend specifies the orchestration backend (e.g., "opencode").
@@ -32,6 +48,8 @@ type Config struct {
 	AutoExportTranscript bool `yaml:"auto_export_transcript,omitempty"`
 	// Notifications holds notification-related settings.
 	Notifications NotificationConfig `yaml:"notifications,omitempty"`
+	// Reflect holds settings for periodic kb reflect analysis.
+	Reflect ReflectConfig `yaml:"reflect,omitempty"`
 }
 
 // ConfigPath returns the path to the user config file.
@@ -94,4 +112,31 @@ func (c *Config) NotificationsEnabled() bool {
 		return true // Default to enabled
 	}
 	return *c.Notifications.Enabled
+}
+
+// ReflectEnabled returns whether periodic reflection is enabled in the daemon.
+// Defaults to true if not configured.
+func (c *Config) ReflectEnabled() bool {
+	if c.Reflect.Enabled == nil {
+		return true // Default to enabled
+	}
+	return *c.Reflect.Enabled
+}
+
+// ReflectIntervalMinutes returns how often to run reflection analysis.
+// Defaults to 60 minutes (hourly) if not configured.
+func (c *Config) ReflectIntervalMinutes() int {
+	if c.Reflect.IntervalMinutes == nil {
+		return 60 // Default to hourly
+	}
+	return *c.Reflect.IntervalMinutes
+}
+
+// ReflectCreateIssues returns whether to create beads issues for synthesis opportunities.
+// Defaults to true if not configured.
+func (c *Config) ReflectCreateIssues() bool {
+	if c.Reflect.CreateIssues == nil {
+		return true // Default to creating issues
+	}
+	return *c.Reflect.CreateIssues
 }

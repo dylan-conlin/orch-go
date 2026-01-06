@@ -101,7 +101,19 @@ func SuggestionsPath() string {
 // RunReflection executes kb reflect and returns the parsed suggestions.
 // This is the default implementation that shells out to kb.
 func RunReflection() (*ReflectSuggestions, error) {
-	cmd := exec.Command("kb", "reflect", "--format", "json")
+	return RunReflectionWithOptions(false)
+}
+
+// RunReflectionWithOptions executes kb reflect with configurable options.
+// If createIssues is true, it passes --type synthesis --create-issue to kb reflect
+// which will automatically create beads issues for topics with 10+ investigations.
+func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
+	args := []string{"reflect", "--format", "json"}
+	if createIssues {
+		args = append(args, "--type", "synthesis", "--create-issue")
+	}
+
+	cmd := exec.Command("kb", args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run kb reflect: %w", err)
@@ -247,7 +259,13 @@ type ReflectResult struct {
 
 // RunAndSaveReflection runs kb reflect and saves the results.
 func RunAndSaveReflection() *ReflectResult {
-	suggestions, err := RunReflection()
+	return RunAndSaveReflectionWithOptions(false)
+}
+
+// RunAndSaveReflectionWithOptions runs kb reflect with options and saves the results.
+// If createIssues is true, it will create beads issues for synthesis opportunities.
+func RunAndSaveReflectionWithOptions(createIssues bool) *ReflectResult {
+	suggestions, err := RunReflectionWithOptions(createIssues)
 	if err != nil {
 		return &ReflectResult{
 			Error:   err,
@@ -269,4 +287,14 @@ func RunAndSaveReflection() *ReflectResult {
 		Saved:       true,
 		Message:     fmt.Sprintf("Reflection complete: %s", suggestions.Summary()),
 	}
+}
+
+// DefaultRunReflection is the default implementation for running reflection.
+// This is used by the Daemon and can be mocked for testing.
+func DefaultRunReflection(createIssues bool) (*ReflectResult, error) {
+	result := RunAndSaveReflectionWithOptions(createIssues)
+	if result.Error != nil {
+		return result, result.Error
+	}
+	return result, nil
 }
