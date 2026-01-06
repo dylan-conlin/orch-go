@@ -13,15 +13,12 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** None (archived)
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
-
 <!--
 Example D.E.K.N.:
 Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
 Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
 Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
 Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Confidence: High (85%) - small sample size (5 sessions).
 
 Guidelines:
 - Keep each line to ONE sentence
@@ -34,17 +31,16 @@ Guidelines:
 
 ---
 
-# Investigation: Auto Switch Account Failing Silently
+# Investigation: Orch Review Timeout Beads Api
 
 **Question:** [Clear, specific question this investigation answers]
 
-**Started:** 2025-12-24
-**Updated:** 2025-12-24
+**Started:** 2026-01-04
+**Updated:** 2026-01-04
 **Owner:** [Owner name or team]
 **Phase:** [Investigating/Synthesizing/Complete]
 **Next Step:** [Very next action when Active, or "None" when Complete]
 **Status:** Archived
-**Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -101,38 +97,25 @@ Guidelines:
 
 ---
 
-## Confidence Assessment
+## Structured Uncertainty
 
-**Current Confidence:** [Level] ([Percentage])
+**What's tested:**
 
-**Why this level?**
+- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
+- ✅ [Claim with evidence of actual test performed]
+- ✅ [Claim with evidence of actual test performed]
 
-[Explanation of why you chose this confidence level - what evidence supports it, what's strong vs uncertain]
+**What's untested:**
 
-**What's certain:**
+- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
+- ⚠️ [Hypothesis without validation]
+- ⚠️ [Hypothesis without validation]
 
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
-- ✅ [Thing you're confident about with supporting evidence]
+**What would change this:**
 
-**What's uncertain:**
-
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-- ⚠️ [Area of uncertainty or limitation]
-
-**What would increase confidence to [next level]:**
-
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-- [Specific additional investigation or evidence needed]
-
-**Confidence levels guide:**
-- **Very High (95%+):** Strong evidence, minimal uncertainty, unlikely to change
-- **High (80-94%):** Solid evidence, minor uncertainties, confident to act
-- **Medium (60-79%):** Reasonable evidence, notable gaps, validate before major commitment
-- **Low (40-59%):** Limited evidence, high uncertainty, proceed with caution
-- **Very Low (<40%):** Highly speculative, more investigation needed
+- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
+- [Falsifiability criteria]
+- [Falsifiability criteria]
 
 ---
 
@@ -233,6 +216,5 @@ Guidelines:
 - [Description of what happened or was discovered]
 
 **[YYYY-MM-DD HH:MM]:** Investigation completed
-- Final confidence: [Level] ([Percentage])
 - Status: [Complete/Paused with reason]
 - Key outcome: [One sentence summary of result]

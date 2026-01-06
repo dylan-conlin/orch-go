@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** None (archived)
 
 **Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
 
@@ -43,7 +43,7 @@ Guidelines:
 **Owner:** [Owner name or team]
 **Phase:** [Investigating/Synthesizing/Complete]
 **Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Status:** Archived
 **Confidence:** [Very Low (<40%) / Low (40-59%) / Medium (60-79%) / High (80-94%) / Very High (95%+)]
 
 <!-- Lineage (fill only when applicable) -->

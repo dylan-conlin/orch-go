@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** None (archived)
 
 <!--
 Example D.E.K.N.:
@@ -40,7 +40,7 @@ Guidelines:
 **Owner:** [Owner name or team]
 **Phase:** [Investigating/Synthesizing/Complete]
 **Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Status:** Archived
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]

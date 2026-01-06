@@ -15,7 +15,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** None (archived)
 
 **Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
 

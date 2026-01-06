@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Dashboard lacks real-time agent activity indicators; users can't distinguish active from stuck agents. Rich data already exists (SSE events, agentlog) but isn't surfaced per-agent.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Agent cards show static status badge only. SessionState has LastUpdated but isn't exposed via API. SSE/agentlog streams are global, not agent-filterable.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** This is a frontend presentation problem, not a data availability problem. Backend needs to track and expose last activity timestamp per agent.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Paused - awaiting orchestrator decision on implementation approach (add activity timestamp to agent cards vs expandable detail panels).
 
-**Confidence:** [Level] ([Percentage]) - [Key limitation in one phrase]
+**Confidence:** High (85%) - findings complete, implementation approach needs decision
 
 <!--
 Example D.E.K.N.:
