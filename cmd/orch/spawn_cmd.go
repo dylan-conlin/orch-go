@@ -215,10 +215,17 @@ func init() {
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
 // Returns an error for types that cannot be spawned (e.g., epic) or unknown types.
+//
+// Bug handling: Defaults to "architect" (understand before fixing) rather than
+// "systematic-debugging". This implements the "Premise Before Solution" principle -
+// most bugs reported as vague symptoms need understanding before patching.
+// Use explicit skill:systematic-debugging label for isolated bugs with clear cause.
 func InferSkillFromIssueType(issueType string) (string, error) {
 	switch issueType {
 	case "bug":
-		return "systematic-debugging", nil
+		// Default to architect: understand before fixing
+		// Use skill:systematic-debugging label for clear, isolated bugs
+		return "architect", nil
 	case "feature":
 		return "feature-impl", nil
 	case "task":
@@ -256,6 +263,27 @@ func inferSkillFromBeadsIssue(issue *beads.Issue) string {
 	return skill
 }
 
+// inferMCPFromBeadsIssue extracts MCP server requirements from issue labels.
+// Returns the MCP server name if found (e.g., "playwright" from "needs:playwright"),
+// or empty string if no MCP-related label is present.
+//
+// This allows daemon-spawned agents to automatically get browser access when
+// working on UI/CSS fixes that require visual verification.
+func inferMCPFromBeadsIssue(issue *beads.Issue) string {
+	for _, label := range issue.Labels {
+		if strings.HasPrefix(label, "needs:") {
+			need := strings.TrimPrefix(label, "needs:")
+			// Map needs labels to MCP servers
+			switch need {
+			case "playwright":
+				return "playwright"
+				// Future: add more mappings as needed
+			}
+		}
+	}
+	return ""
+}
+
 func runWork(serverURL, beadsID string, inline bool) error {
 	// Get issue details from verify (for description)
 	issue, err := verify.GetIssue(beadsID)
@@ -263,9 +291,10 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
 
-	// Infer skill from issue (labels, title pattern, then type)
-	// Use beads.Issue which has Labels for full skill inference
+	// Infer skill and MCP from issue (labels, title pattern, then type)
+	// Use beads.Issue which has Labels for full skill/MCP inference
 	var skillName string
+	var mcpServer string
 	socketPath, connErr := beads.FindSocketPath("")
 	if connErr == nil {
 		beadsClient := beads.NewClient(socketPath)
@@ -274,6 +303,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 			beadsIssue, showErr := beadsClient.Show(beadsID)
 			if showErr == nil {
 				skillName = inferSkillFromBeadsIssue(beadsIssue)
+				mcpServer = inferMCPFromBeadsIssue(beadsIssue)
 			}
 		}
 	}
@@ -294,10 +324,19 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
 
+	// Set the spawnMCP flag if the issue has a needs:* label (e.g., needs:playwright)
+	// This allows daemon-spawned agents to automatically get browser access for UI work
+	if mcpServer != "" {
+		spawnMCP = mcpServer
+	}
+
 	fmt.Printf("Starting work on: %s\n", beadsID)
 	fmt.Printf("  Title:  %s\n", issue.Title)
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
+	if mcpServer != "" {
+		fmt.Printf("  MCP:    %s\n", mcpServer)
+	}
 
 	// Work command is daemon-driven (issue already created and triaged)
 	// Pass daemonDriven=true to skip triage bypass check

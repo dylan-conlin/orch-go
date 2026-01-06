@@ -576,6 +576,34 @@ func TestInferSkillFromIssue(t *testing.T) {
 	}
 }
 
+func TestInferMCPFromLabels(t *testing.T) {
+	tests := []struct {
+		labels  []string
+		wantMCP string
+	}{
+		{[]string{"needs:playwright"}, "playwright"},
+		{[]string{"priority:P0", "needs:playwright"}, "playwright"},
+		{[]string{"triage:ready", "needs:playwright", "skill:feature-impl"}, "playwright"},
+		{[]string{"priority:P0", "triage:ready"}, ""},
+		{[]string{"skill:research"}, ""},
+		{[]string{}, ""},
+		{nil, ""},
+		// needs: label with unknown value should not return MCP
+		{[]string{"needs:unknown"}, ""},
+		// Multiple needs labels - first matching one wins
+		{[]string{"needs:playwright", "needs:browser"}, "playwright"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v", tt.labels), func(t *testing.T) {
+			got := InferMCPFromLabels(tt.labels)
+			if got != tt.wantMCP {
+				t.Errorf("InferMCPFromLabels(%v) = %q, want %q", tt.labels, got, tt.wantMCP)
+			}
+		})
+	}
+}
+
 func TestDaemon_Once_NoIssues(t *testing.T) {
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {

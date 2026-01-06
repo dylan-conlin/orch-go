@@ -53,6 +53,32 @@ func InferSkillFromLabels(labels []string) string {
 	return ""
 }
 
+// InferMCPFromLabels extracts MCP server requirements from needs:* labels.
+// Returns the MCP server name if found (e.g., "playwright" from "needs:playwright"),
+// or empty string if no MCP-related label is present.
+//
+// Supported labels:
+//   - needs:playwright → returns "playwright" (browser automation for UI verification)
+//
+// This allows daemon-spawned agents to automatically get browser access when
+// working on UI/CSS fixes that require visual verification.
+func InferMCPFromLabels(labels []string) string {
+	for _, label := range labels {
+		if strings.HasPrefix(label, "needs:") {
+			need := strings.TrimPrefix(label, "needs:")
+			// Map needs labels to MCP servers
+			switch need {
+			case "playwright":
+				return "playwright"
+				// Future: add more mappings as needed
+				// case "browser-use":
+				//     return "browser-use"
+			}
+		}
+	}
+	return ""
+}
+
 // InferSkillFromTitle detects skills from issue title patterns.
 // Returns the skill name if a known pattern is matched, or empty string otherwise.
 func InferSkillFromTitle(title string) string {
