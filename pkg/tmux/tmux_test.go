@@ -39,6 +39,21 @@ func TestGetWorkersSessionName(t *testing.T) {
 	}
 }
 
+func TestSessionNameConstants(t *testing.T) {
+	// Verify session name constants are correct
+	if OrchestratorSessionName != "orchestrator" {
+		t.Errorf("OrchestratorSessionName = %q, want %q", OrchestratorSessionName, "orchestrator")
+	}
+	if MetaOrchestratorSessionName != "meta-orchestrator" {
+		t.Errorf("MetaOrchestratorSessionName = %q, want %q", MetaOrchestratorSessionName, "meta-orchestrator")
+	}
+
+	// Verify they are different (for clarity)
+	if OrchestratorSessionName == MetaOrchestratorSessionName {
+		t.Error("OrchestratorSessionName and MetaOrchestratorSessionName should be different")
+	}
+}
+
 func TestBuildWindowName(t *testing.T) {
 	tests := []struct {
 		workspace  string

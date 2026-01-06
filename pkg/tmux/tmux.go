@@ -106,12 +106,12 @@ func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	// Use standalone mode with project directory as argument
 	// This ensures the session's working directory matches the project
 	cmd := fmt.Sprintf("ORCH_WORKER=1 %s %q", opencodeBin, cfg.ProjectDir)
-	
+
 	// Add model if provided
 	if cfg.Model != "" {
 		cmd += fmt.Sprintf(" --model %q", cfg.Model)
 	}
-	
+
 	// Continue existing session if provided
 	if cfg.SessionID != "" {
 		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
@@ -253,6 +253,10 @@ func EnsureWorkersSession(projectName, projectDir string) (string, error) {
 // OrchestratorSessionName is the fixed name for the orchestrator tmux session.
 const OrchestratorSessionName = "orchestrator"
 
+// MetaOrchestratorSessionName is the fixed name for the meta-orchestrator tmux session.
+// Meta-orchestrators get their own session to distinguish them from regular orchestrators.
+const MetaOrchestratorSessionName = "meta-orchestrator"
+
 // EnsureOrchestratorSession ensures the orchestrator session exists.
 // Unlike workers sessions (per-project), there's a single orchestrator session.
 // Returns the session name ("orchestrator").
@@ -275,6 +279,31 @@ func EnsureOrchestratorSession() (string, error) {
 	}
 
 	return OrchestratorSessionName, nil
+}
+
+// EnsureMetaOrchestratorSession ensures the meta-orchestrator session exists.
+// Meta-orchestrators get their own session to distinguish them from regular orchestrators
+// when looking at tmux sessions.
+// Returns the session name ("meta-orchestrator").
+func EnsureMetaOrchestratorSession() (string, error) {
+	// Check if session already exists
+	if SessionExists(MetaOrchestratorSessionName) {
+		return MetaOrchestratorSessionName, nil
+	}
+
+	// Create new meta-orchestrator session
+	// Note: We don't specify a working directory - meta-orchestrators work across projects
+	cmd := exec.Command("tmux", "new-session", "-d", "-s", MetaOrchestratorSessionName, "-n", "main")
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to create meta-orchestrator session: %w", err)
+	}
+
+	// Verify session was created
+	if !SessionExists(MetaOrchestratorSessionName) {
+		return "", fmt.Errorf("meta-orchestrator session was not created")
+	}
+
+	return MetaOrchestratorSessionName, nil
 }
 
 // CreateWindow creates a new detached window in the session and returns window info.
@@ -586,13 +615,24 @@ func FindWindowByWorkspaceName(sessionName, workspaceName string) (*WindowInfo, 
 	return nil, nil
 }
 
-// FindWindowByWorkspaceNameAllSessions searches all workers sessions for a window with the given workspace name.
+// FindWindowByWorkspaceNameAllSessions searches all workers sessions, the orchestrator session,
+// and the meta-orchestrator session for a window with the given workspace name.
 // This is useful when we don't know which project session the window is in.
 // Returns the window info and session name, or nil if not found.
 func FindWindowByWorkspaceNameAllSessions(workspaceName string) (*WindowInfo, string, error) {
 	sessions, err := ListWorkersSessions()
 	if err != nil {
 		return nil, "", err
+	}
+
+	// Also search the orchestrator session (orchestrator spawns go there)
+	if SessionExists(OrchestratorSessionName) {
+		sessions = append(sessions, OrchestratorSessionName)
+	}
+
+	// Also search the meta-orchestrator session (meta-orchestrator spawns go there)
+	if SessionExists(MetaOrchestratorSessionName) {
+		sessions = append(sessions, MetaOrchestratorSessionName)
 	}
 
 	for _, sessionName := range sessions {
@@ -607,8 +647,8 @@ func FindWindowByWorkspaceNameAllSessions(workspaceName string) (*WindowInfo, st
 	return nil, "", nil
 }
 
-// FindWindowByBeadsIDAllSessions searches all workers sessions and the orchestrator session
-// for a window with the given beads ID.
+// FindWindowByBeadsIDAllSessions searches all workers sessions, the orchestrator session,
+// and the meta-orchestrator session for a window with the given beads ID.
 // This is useful when we don't know which project session the window is in.
 // Returns the window info and session name, or nil if not found.
 func FindWindowByBeadsIDAllSessions(beadsID string) (*WindowInfo, string, error) {
@@ -620,6 +660,11 @@ func FindWindowByBeadsIDAllSessions(beadsID string) (*WindowInfo, string, error)
 	// Also search the orchestrator session (orchestrator spawns go there)
 	if SessionExists(OrchestratorSessionName) {
 		sessions = append(sessions, OrchestratorSessionName)
+	}
+
+	// Also search the meta-orchestrator session (meta-orchestrator spawns go there)
+	if SessionExists(MetaOrchestratorSessionName) {
+		sessions = append(sessions, MetaOrchestratorSessionName)
 	}
 
 	for _, sessionName := range sessions {
