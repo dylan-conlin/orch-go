@@ -118,11 +118,10 @@ function buildAgentlogEventListeners(): Record<string, (event: MessageEvent) => 
 			try {
 				const data = JSON.parse(event.data);
 				agentlogEvents.addEvent(data);
-
-				// Trigger agent list refresh on relevant events (debounced to prevent race conditions)
-				import('./agents').then(({ agents }) => {
-					agents.fetchDebounced();
-				});
+				// Note: We intentionally do NOT trigger agents.fetchDebounced() here.
+				// Agentlog events are redundant with OpenCode SSE events (session.created,
+				// session.deleted, etc.) which already trigger debounced fetches in agents.ts.
+				// Removing this eliminates ~50% of redundant fetch calls.
 			} catch (e) {
 				console.error('Failed to parse agentlog event:', e);
 			}

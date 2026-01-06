@@ -561,9 +561,11 @@ function handleSSEEvent(data: any) {
 		}
 	}
 
-	// Handle session status changes - refresh agent list (debounced to prevent race conditions)
+	// Handle lifecycle events - refresh agent list (debounced to prevent race conditions)
+	// Note: session.status is NOT included because it's already handled via local state
+	// updates above (lines 510-562). Including it would cause redundant fetches since
+	// session.status fires on every busy/idle toggle (high frequency).
 	const refreshEvents = [
-		'session.status',
 		'session.created',
 		'session.deleted',
 		'agent.completed',
