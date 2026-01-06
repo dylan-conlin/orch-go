@@ -2,6 +2,8 @@
 package spawn
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -170,11 +172,13 @@ type WorkspaceNameOptions struct {
 }
 
 // GenerateWorkspaceName creates a workspace name from project, skill, and task.
-// Format: {project-prefix}-{skill-prefix}-{task-slug}-{date}
+// Format: {project-prefix}-{skill-prefix}-{task-slug}-{date}-{unique}
 // The project prefix is derived from the project name (first 2 chars of each word,
 // or first 2 chars if single word). Examples: "orch-go" -> "og", "price-watch" -> "pw"
 // For meta-orchestrator spawns (via opts), the prefix is "meta-" instead.
 // For orchestrator spawns (via opts), the skill prefix is "orch" for visual distinction.
+// The unique suffix is a 4-character hex string to prevent collisions between sessions
+// spawned on the same day with similar tasks.
 func GenerateWorkspaceName(projectName, skillName, task string, opts ...WorkspaceNameOptions) string {
 	// Check for options
 	var isMetaOrchestrator, isOrchestrator bool
@@ -216,7 +220,23 @@ func GenerateWorkspaceName(projectName, skillName, task string, opts ...Workspac
 	// Generate task slug from first few meaningful words
 	slug := generateSlug(task, 3)
 
-	return fmt.Sprintf("%s-%s-%s-%s", projectPrefix, prefix, slug, date)
+	// Generate unique suffix to prevent workspace name collisions
+	// Uses 2 random bytes (4 hex chars) for sufficient uniqueness within a day
+	unique := generateUniqueSuffix()
+
+	return fmt.Sprintf("%s-%s-%s-%s-%s", projectPrefix, prefix, slug, date, unique)
+}
+
+// generateUniqueSuffix creates a 4-character hex string for workspace name uniqueness.
+// This prevents collisions when spawning multiple sessions on the same day with similar tasks.
+func generateUniqueSuffix() string {
+	b := make([]byte, 2)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp-based suffix if crypto/rand fails
+		// This shouldn't happen in practice but ensures we never return empty
+		return fmt.Sprintf("%04x", time.Now().UnixNano()&0xFFFF)
+	}
+	return hex.EncodeToString(b)
 }
 
 // generateSlug extracts meaningful words from text and creates a slug.

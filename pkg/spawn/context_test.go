@@ -180,6 +180,104 @@ func TestGenerateWorkspaceName_MetaOrchestrator(t *testing.T) {
 	}
 }
 
+func TestGenerateWorkspaceName_Uniqueness(t *testing.T) {
+	t.Run("generates unique names for same inputs", func(t *testing.T) {
+		projectName := "orch-go"
+		skillName := "investigation"
+		task := "explore the codebase"
+
+		// Generate multiple workspace names with the same inputs
+		// Use smaller sample size to avoid birthday paradox collisions
+		// (65536 possibilities means ~10 samples has <0.1% collision chance)
+		names := make(map[string]bool)
+		for i := 0; i < 10; i++ {
+			name := GenerateWorkspaceName(projectName, skillName, task)
+			if names[name] {
+				t.Errorf("duplicate workspace name generated: %s", name)
+			}
+			names[name] = true
+		}
+
+		// Verify we got 10 unique names
+		if len(names) != 10 {
+			t.Errorf("expected 10 unique names, got %d", len(names))
+		}
+	})
+
+	t.Run("unique suffix is 4 hex chars", func(t *testing.T) {
+		name := GenerateWorkspaceName("orch-go", "investigation", "test task")
+
+		// Split by dash and get the last part (should be unique suffix)
+		parts := strings.Split(name, "-")
+		if len(parts) < 5 {
+			t.Fatalf("expected at least 5 parts in workspace name, got %d: %s", len(parts), name)
+		}
+
+		// Last part should be 4 hex characters
+		suffix := parts[len(parts)-1]
+		if len(suffix) != 4 {
+			t.Errorf("expected 4-char suffix, got %d chars: %s", len(suffix), suffix)
+		}
+
+		// Verify it's valid hex
+		for _, c := range suffix {
+			if !strings.ContainsRune("0123456789abcdef", c) {
+				t.Errorf("suffix contains non-hex character: %s", suffix)
+				break
+			}
+		}
+	})
+
+	t.Run("name format includes unique suffix", func(t *testing.T) {
+		name := GenerateWorkspaceName("orch-go", "feature-impl", "add new feature")
+
+		// Should match pattern: og-feat-{slug}-{date}-{unique}
+		// e.g., og-feat-add-feature-05jan-a1b2
+		if !strings.HasPrefix(name, "og-feat-") {
+			t.Errorf("expected name to start with 'og-feat-', got: %s", name)
+		}
+
+		// Should have 5 dash-separated parts minimum (proj-skill-slug-date-unique)
+		parts := strings.Split(name, "-")
+		if len(parts) < 5 {
+			t.Errorf("expected at least 5 parts, got %d: %s", len(parts), name)
+		}
+	})
+}
+
+func TestGenerateUniqueSuffix(t *testing.T) {
+	t.Run("generates 4 hex chars", func(t *testing.T) {
+		suffix := generateUniqueSuffix()
+
+		if len(suffix) != 4 {
+			t.Errorf("expected 4-char suffix, got %d chars: %s", len(suffix), suffix)
+		}
+
+		// Verify it's valid hex
+		for _, c := range suffix {
+			if !strings.ContainsRune("0123456789abcdef", c) {
+				t.Errorf("suffix contains non-hex character: %s", suffix)
+				break
+			}
+		}
+	})
+
+	t.Run("generates unique suffixes", func(t *testing.T) {
+		suffixes := make(map[string]bool)
+		for i := 0; i < 1000; i++ {
+			suffix := generateUniqueSuffix()
+			suffixes[suffix] = true
+		}
+
+		// With 2 bytes of entropy (65536 possibilities), we expect very high uniqueness
+		// Birthday paradox: expected collisions = n^2 / (2*m) = 1000^2 / (2*65536) ≈ 7.6
+		// So expecting ~992 unique is reasonable. Allow down to 980 for statistical variance.
+		if len(suffixes) < 980 {
+			t.Errorf("expected >980 unique suffixes from 1000 samples, got %d", len(suffixes))
+		}
+	})
+}
+
 func TestGenerateProjectPrefix(t *testing.T) {
 	tests := []struct {
 		name        string

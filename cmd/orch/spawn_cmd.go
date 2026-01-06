@@ -783,6 +783,14 @@ func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless 
 		fmt.Fprintf(os.Stderr, "%s", warning)
 	}
 
+	// Check for existing workspace before writing context
+	// This prevents accidentally overwriting SESSION_HANDOFF.md from completed sessions
+	// Note: With unique suffixes in workspace names (since Jan 2026), collisions are rare
+	// but this provides an extra safety net and meaningful error messages
+	if err := checkWorkspaceExists(cfg.WorkspacePath(), spawnForce); err != nil {
+		return err
+	}
+
 	// Write SPAWN_CONTEXT.md
 	if err := spawn.WriteContext(cfg); err != nil {
 		return fmt.Errorf("failed to write spawn context: %w", err)
@@ -1432,6 +1440,37 @@ func dirExists(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+// checkWorkspaceExists verifies if a workspace already exists and has content.
+// Returns an error if the workspace contains SPAWN_CONTEXT.md or SESSION_HANDOFF.md
+// (indicating an active or completed session), unless force is true.
+// This prevents accidental data loss from overwriting existing session artifacts.
+func checkWorkspaceExists(workspacePath string, force bool) error {
+	// Check if workspace directory exists
+	if !dirExists(workspacePath) {
+		return nil // Workspace doesn't exist, safe to create
+	}
+
+	// Check for critical files that indicate an active or completed session
+	criticalFiles := []string{
+		"SPAWN_CONTEXT.md",
+		"SESSION_HANDOFF.md",
+		"ORCHESTRATOR_CONTEXT.md",
+	}
+
+	for _, file := range criticalFiles {
+		filePath := filepath.Join(workspacePath, file)
+		if _, err := os.Stat(filePath); err == nil {
+			if force {
+				fmt.Fprintf(os.Stderr, "Warning: Overwriting existing workspace at %s (--force)\n", workspacePath)
+				return nil
+			}
+			return fmt.Errorf("workspace already exists with %s at %s\n\nThis indicates an existing session. Use --force to overwrite or spawn with a different task", file, workspacePath)
+		}
+	}
+
+	return nil // Directory exists but has no critical files, safe to reuse
 }
 
 // GapCheckResult contains the results of a pre-spawn gap check.
