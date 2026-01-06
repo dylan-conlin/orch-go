@@ -131,17 +131,40 @@ type CompletionInfo struct {
 // - Full-tier agents: those with SYNTHESIS.md
 // - Light-tier agents: those with .tier file containing "light" AND Phase: Complete in beads comments
 // Filters out completions whose beads issues are already closed (closed/deferred/tombstone).
+//
+// Performance optimization: Uses batch comment fetching to avoid O(n) beads API calls.
+// Previously, each workspace with SYNTHESIS.md would call VerifyCompletionFull which called
+// GetComments multiple times (for phase verification, test evidence, visual verification, etc.).
+// Now, all comments are fetched in a single batch call, then passed to verification functions.
 func getCompletionsForReview() ([]CompletionInfo, error) {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	var candidates []CompletionInfo
+	// Phase 1: Scan workspaces and collect candidates with beads IDs
+	type candidateWorkspace struct {
+		dirName       string
+		dirPath       string
+		hasSynthesis  bool
+		isLightTier   bool
+		lightBeadsID  string
+		beadsID       string
+		skill         string
+		modTime       time.Time
+		isUntracked   bool
+	}
 
-	// Scan workspaces for completions
+	var workspaceCandidates []candidateWorkspace
+	var beadsIDsToFetch []string
+	beadsIDSet := make(map[string]bool) // Deduplicate beads IDs
+
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	entries, _ := os.ReadDir(workspaceDir)
+
+	// Track light-tier beads IDs separately for batch fetching
+	var lightTierBeadsIDs []string
+	lightTierBeadsIDSet := make(map[string]bool)
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -158,11 +181,13 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			hasSynthesis = true
 		}
 
-		// Check for light-tier completion (no synthesis by design)
-		isLightComplete, lightBeadsID := isLightTierComplete(dirPath)
+		// Check if this is a light-tier workspace (has .tier file with "light")
+		// Note: We check isLightTierWorkspace here, NOT isLightTierComplete
+		// The Phase: Complete check is deferred until after batch fetching
+		isLightTier := isLightTierWorkspace(dirPath)
 
-		// Skip workspaces that are neither full-tier with synthesis nor light-tier complete
-		if !hasSynthesis && !isLightComplete {
+		// Skip workspaces that are neither full-tier with synthesis nor light-tier
+		if !hasSynthesis && !isLightTier {
 			continue
 		}
 
@@ -173,11 +198,8 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 			modTime = dirInfo.ModTime()
 		}
 
-		// Extract beads ID from SPAWN_CONTEXT.md (or use lightBeadsID for light tier)
+		// Extract beads ID from SPAWN_CONTEXT.md
 		beadsID := extractBeadsIDFromWorkspace(dirPath)
-		if beadsID == "" && lightBeadsID != "" {
-			beadsID = lightBeadsID
-		}
 
 		// Extract skill from workspace name
 		skill := extractSkillFromTitle(dirName)
@@ -185,22 +207,74 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		// Detect if agent is untracked
 		isUntracked := isUntrackedBeadsID(beadsID)
 
+		workspaceCandidates = append(workspaceCandidates, candidateWorkspace{
+			dirName:      dirName,
+			dirPath:      dirPath,
+			hasSynthesis: hasSynthesis,
+			isLightTier:  isLightTier, // Note: this is now the workspace tier, not completion status
+			lightBeadsID: beadsID,     // Store beads ID for light-tier workspaces
+			beadsID:      beadsID,
+			skill:        skill,
+			modTime:      modTime,
+			isUntracked:  isUntracked,
+		})
+
+		// Collect beads IDs for batch fetching (skip untracked and empty)
+		if beadsID != "" && !isUntracked && !beadsIDSet[beadsID] {
+			beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+			beadsIDSet[beadsID] = true
+		}
+
+		// Also collect light-tier beads IDs for Phase: Complete check
+		if isLightTier && beadsID != "" && !isUntracked && !lightTierBeadsIDSet[beadsID] {
+			lightTierBeadsIDs = append(lightTierBeadsIDs, beadsID)
+			lightTierBeadsIDSet[beadsID] = true
+		}
+	}
+
+	// Phase 2: Batch fetch all comments for tracked workspaces
+	// This single batch call replaces O(n * 4+) individual GetComments calls
+	// (each workspace potentially called GetComments for phase, test evidence,
+	// visual verification, phase gates, AND light-tier completion checks).
+	// Note: beadsIDsToFetch includes both full-tier and light-tier beads IDs
+	commentsMap := verify.GetCommentsBatch(beadsIDsToFetch)
+
+	// Phase 3: Verify each workspace using cached comments
+	var candidates []CompletionInfo
+
+	for _, ws := range workspaceCandidates {
+		// For light-tier workspaces, check Phase: Complete using pre-fetched comments
+		isLightComplete := false
+		if ws.isLightTier && ws.beadsID != "" {
+			if comments, ok := commentsMap[ws.beadsID]; ok {
+				phaseStatus := verify.ParsePhaseFromComments(comments)
+				isLightComplete = phaseStatus.Found && strings.EqualFold(phaseStatus.Phase, "Complete")
+			}
+		}
+
+		// Skip light-tier workspaces that don't have Phase: Complete
+		if ws.isLightTier && !ws.hasSynthesis && !isLightComplete {
+			continue
+		}
+
 		info := CompletionInfo{
-			WorkspaceID:   dirName,
-			WorkspacePath: dirPath,
-			BeadsID:       beadsID,
+			WorkspaceID:   ws.dirName,
+			WorkspacePath: ws.dirPath,
+			BeadsID:       ws.beadsID,
 			Project:       extractProject(projectDir),
-			Skill:         skill,
-			ModTime:       modTime,
-			IsUntracked:   isUntracked,
-			IsLightTier:   isLightComplete,
+			Skill:         ws.skill,
+			ModTime:       ws.modTime,
+			IsUntracked:   ws.isUntracked,
+			IsLightTier:   isLightComplete, // Now reflects actual completion status, not just tier
 		}
 
 		// Handle full-tier agents (with SYNTHESIS.md)
-		if hasSynthesis {
+		if ws.hasSynthesis {
 			// Check verification status if we have a beads ID
-			if beadsID != "" {
-				result, err := verify.VerifyCompletionFull(beadsID, dirPath, projectDir, "")
+			if ws.beadsID != "" {
+				// Use pre-fetched comments for verification (avoids O(n) API calls)
+				comments := commentsMap[ws.beadsID]
+				result, err := verify.VerifyCompletionFullWithComments(ws.beadsID, ws.dirPath, projectDir, "", comments)
 				if err != nil {
 					info.VerifyError = fmt.Sprintf("verification error: %v", err)
 					info.VerifyOK = false
@@ -210,7 +284,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 					info.Summary = result.Phase.Summary
 
 					// Try to parse synthesis
-					s, err := verify.ParseSynthesis(dirPath)
+					s, err := verify.ParseSynthesis(ws.dirPath)
 					if err == nil {
 						info.Synthesis = s
 					}
@@ -227,7 +301,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				info.Summary = "(no beads tracking)"
 
 				// Try to parse synthesis
-				s, err := verify.ParseSynthesis(dirPath)
+				s, err := verify.ParseSynthesis(ws.dirPath)
 				if err == nil {
 					info.Synthesis = s
 				}

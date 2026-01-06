@@ -45,6 +45,20 @@ type PendingReviewsAPIResponse struct {
 // handlePendingReviews returns pending synthesis reviews.
 // This includes both full-tier agents with SYNTHESIS.md and light-tier agents
 // that have completed (Phase: Complete) but have no synthesis by design.
+//
+// Performance optimization:
+// 1. Light-tier processing is disabled - the PendingReviewsSection was removed from the
+//    dashboard, and processing 200+ light-tier workspaces causes 15+ second API latency.
+// 2. Recency filter: Workspaces older than 7 days are skipped to avoid stale data.
+//
+// Previously, each light-tier workspace would call isLightTierComplete which called
+// GetComments individually. Even with batch fetching, 200+ beads API calls is too slow.
+const pendingReviewsMaxAge = 7 * 24 * time.Hour
+
+// skipLightTierProcessing disables light-tier completion detection in pending reviews.
+// Set to false to re-enable light-tier processing (not recommended due to performance).
+const skipLightTierProcessing = true
+
 func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -66,8 +80,21 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var agents []PendingReviewAgent
-	totalUnreviewed := 0
+	// Phase 1: Scan workspaces and collect light-tier beads IDs for batch fetching
+	type workspaceCandidate struct {
+		dirName      string
+		dirPath      string
+		hasSynthesis bool
+		isLightTier  bool
+		beadsID      string // For light-tier workspaces
+	}
+
+	var candidates []workspaceCandidate
+	var lightTierBeadsIDs []string
+	beadsIDSet := make(map[string]bool) // Deduplicate beads IDs
+
+	// Calculate cutoff time for recency filter
+	cutoffTime := time.Now().Add(-pendingReviewsMaxAge)
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -77,6 +104,15 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 		dirName := entry.Name()
 		dirPath := filepath.Join(workspaceDir, dirName)
 
+		// Recency filter: Skip workspaces older than 7 days
+		// Check the SPAWN_CONTEXT.md modification time as the workspace creation indicator
+		spawnContextPath := filepath.Join(dirPath, "SPAWN_CONTEXT.md")
+		if info, err := os.Stat(spawnContextPath); err == nil {
+			if info.ModTime().Before(cutoffTime) {
+				continue
+			}
+		}
+
 		// Check for SYNTHESIS.md (full-tier agents)
 		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
 		hasSynthesis := false
@@ -84,18 +120,65 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			hasSynthesis = true
 		}
 
-		// Check for light-tier completion (no synthesis by design)
-		isLightComplete, lightBeadsID := isLightTierComplete(dirPath)
+		// Check if this is a light-tier workspace (has .tier file with "light")
+		// Light-tier processing is disabled by default due to performance impact
+		isLightTier := false
+		if !skipLightTierProcessing {
+			isLightTier = isLightTierWorkspace(dirPath)
+		}
+
+		// Skip workspaces that are neither full-tier with synthesis nor light-tier
+		if !hasSynthesis && !isLightTier {
+			continue
+		}
+
+		// For light-tier workspaces, extract beads ID for batch fetching
+		var beadsID string
+		if isLightTier {
+			beadsID = extractBeadsIDFromWorkspace(dirPath)
+			if beadsID != "" && !beadsIDSet[beadsID] {
+				lightTierBeadsIDs = append(lightTierBeadsIDs, beadsID)
+				beadsIDSet[beadsID] = true
+			}
+		}
+
+		candidates = append(candidates, workspaceCandidate{
+			dirName:      dirName,
+			dirPath:      dirPath,
+			hasSynthesis: hasSynthesis,
+			isLightTier:  isLightTier,
+			beadsID:      beadsID,
+		})
+	}
+
+	// Phase 2: Batch fetch all comments for light-tier workspaces
+	// This single batch call replaces O(n) individual GetComments calls
+	lightTierCommentsMap := verify.GetCommentsBatch(lightTierBeadsIDs)
+
+	// Phase 3: Process each candidate using pre-fetched comments
+	var agents []PendingReviewAgent
+	totalUnreviewed := 0
+
+	for _, ws := range candidates {
+		// Check for light-tier completion using pre-fetched comments
+		isLightComplete := false
+		lightBeadsID := ws.beadsID
+		if ws.isLightTier && lightBeadsID != "" {
+			if comments, ok := lightTierCommentsMap[lightBeadsID]; ok {
+				phaseStatus := verify.ParsePhaseFromComments(comments)
+				isLightComplete = phaseStatus.Found && strings.EqualFold(phaseStatus.Phase, "Complete")
+			}
+		}
 
 		// Skip workspaces that are neither full-tier with synthesis nor light-tier complete
-		if !hasSynthesis && !isLightComplete {
+		if !ws.hasSynthesis && !isLightComplete {
 			continue
 		}
 
 		// Handle full-tier agents with synthesis
-		if hasSynthesis {
+		if ws.hasSynthesis {
 			// Parse synthesis
-			synthesis, err := verify.ParseSynthesis(dirPath)
+			synthesis, err := verify.ParseSynthesis(ws.dirPath)
 			if err != nil || synthesis == nil {
 				continue
 			}
@@ -106,13 +189,13 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Load review state
-			reviewState, err := verify.LoadReviewState(dirPath)
+			reviewState, err := verify.LoadReviewState(ws.dirPath)
 			if err != nil {
 				reviewState = &verify.ReviewState{}
 			}
 
 			// Extract beads ID from SPAWN_CONTEXT
-			beadsID := extractBeadsIDFromWorkspace(dirPath)
+			beadsID := extractBeadsIDFromWorkspace(ws.dirPath)
 
 			// Build item list
 			var items []PendingReviewItem
@@ -128,7 +211,7 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 				}
 
 				items = append(items, PendingReviewItem{
-					WorkspaceID: dirName,
+					WorkspaceID: ws.dirName,
 					BeadsID:     beadsID,
 					Index:       i,
 					Text:        action,
@@ -141,8 +224,8 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			// Only include agents with unreviewed recommendations
 			if unreviewedCount > 0 {
 				agents = append(agents, PendingReviewAgent{
-					WorkspaceID:          dirName,
-					WorkspacePath:        dirPath,
+					WorkspaceID:          ws.dirName,
+					WorkspacePath:        ws.dirPath,
 					BeadsID:              beadsID,
 					TLDR:                 synthesis.TLDR,
 					TotalRecommendations: len(synthesis.NextActions),
@@ -158,7 +241,7 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			// They still need orchestrator acknowledgment via beads close
 
 			// Load review state to check if already acknowledged
-			reviewState, err := verify.LoadReviewState(dirPath)
+			reviewState, err := verify.LoadReviewState(ws.dirPath)
 			if err != nil {
 				reviewState = &verify.ReviewState{}
 			}
@@ -171,7 +254,7 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			// Create a single "pseudo-item" indicating the light tier completion needs review
 			items := []PendingReviewItem{
 				{
-					WorkspaceID: dirName,
+					WorkspaceID: ws.dirName,
 					BeadsID:     lightBeadsID,
 					Index:       0,
 					Text:        "Light tier agent completed - no synthesis produced (by design). Review and close via orch complete.",
@@ -182,8 +265,8 @@ func handlePendingReviews(w http.ResponseWriter, r *http.Request) {
 			}
 
 			agents = append(agents, PendingReviewAgent{
-				WorkspaceID:          dirName,
-				WorkspacePath:        dirPath,
+				WorkspaceID:          ws.dirName,
+				WorkspacePath:        ws.dirPath,
 				BeadsID:              lightBeadsID,
 				TLDR:                 "Light tier completion - review agent output directly",
 				TotalRecommendations: 1,
