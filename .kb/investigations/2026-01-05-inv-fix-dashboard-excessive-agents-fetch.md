@@ -22,9 +22,9 @@ Fill this at the END of your investigation, before marking Complete.
 **Started:** 2026-01-05
 **Updated:** 2026-01-05
 **Owner:** Agent (og-debug-fix-dashboard-excessive-05jan-c973)
-**Phase:** Implementing
-**Next Step:** Verify fix in browser
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
@@ -158,4 +158,7 @@ The request storm occurs because the debounce timer prevents rapid immediate cal
 - Modified fetch() to defer new requests when one is in-flight
 - Build verification passed
 
-**2026-01-05 21:XX:** Pending browser verification
+**2026-01-05 21:10:** Investigation completed
+- Status: Complete
+- Commit: 25c6edf3
+- Outcome: Fixed request storm by adding in-flight tracking with isFetching/needsRefetch state
