@@ -58,12 +58,20 @@ var (
 	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
 	spawnForce             bool   // Force spawn even if issue has blocking dependencies
+	spawnBypassTriage      bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
 )
 
 var spawnCmd = &cobra.Command{
 	Use:   "spawn [skill] [task]",
 	Short: "Spawn a new agent with skill context (default: headless)",
 	Long: `Spawn a new OpenCode session with skill context.
+
+IMPORTANT: Manual spawn requires --bypass-triage flag.
+The default workflow is: create issues with triage:ready label → daemon auto-spawns.
+Manual spawning is for exceptions only (urgent single items, complex context needed).
+
+To proceed with manual spawn, you must acknowledge this with --bypass-triage.
+This creates friction to encourage the preferred daemon-driven workflow.
 
 Spawn Modes:
   Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
@@ -111,37 +119,30 @@ Model aliases: opus, sonnet, haiku (Anthropic), flash, pro (Google)
 Full format: provider/model (e.g., anthropic/claude-opus-4-5-20251101)
 
 Examples:
-  # Headless mode (default) - automation-friendly, returns immediately
-  orch-go spawn investigation "explore the codebase"
-  orch-go spawn feature-impl "add feature" --phases implementation,validation
-  orch-go spawn --issue proj-123 feature-impl "implement the feature"
+  # Preferred workflow: create issue and let daemon spawn
+  bd create "investigate auth" --type investigation -l triage:ready
+  orch daemon run  # Daemon picks up triage:ready issues
+  
+  # Manual spawn (requires --bypass-triage)
+  orch spawn --bypass-triage investigation "explore the codebase"
+  orch spawn --bypass-triage feature-impl "add feature" --phases implementation,validation
+  orch spawn --bypass-triage --issue proj-123 feature-impl "implement the feature"
   
   # Tmux mode (opt-in) - visible, interruptible
-  orch-go spawn --tmux investigation "explore codebase"
-  orch-go spawn --attach investigation "explore codebase"      # Tmux + attach immediately
+  orch spawn --bypass-triage --tmux investigation "explore codebase"
+  orch spawn --bypass-triage --attach investigation "explore codebase"
   
   # Inline mode - blocking with TUI, for debugging
-  orch-go spawn --inline investigation "explore codebase"
+  orch spawn --bypass-triage --inline investigation "explore codebase"
   
   # Gap gating - block spawn on poor context quality
-  orch-go spawn --gate-on-gap investigation "important task"   # Block if context < 20
-  orch-go spawn --gate-on-gap --gap-threshold 30 feature-impl "critical" # Block if < 30
-  orch-go spawn --skip-gap-gate investigation "proceed anyway" # Document bypass
+  orch spawn --bypass-triage --gate-on-gap investigation "important task"
   
   # Other options
-  orch-go spawn --model opus investigation "analyze code"      # Use Claude Opus
-  orch-go spawn --model flash investigation "quick check"      # Use Gemini Flash
-  orch-go spawn --no-track investigation "exploratory work"    # Skip beads tracking
-  orch-go spawn --mcp playwright feature-impl "add UI feature" # With Playwright MCP
-  orch-go spawn --skip-artifact-check investigation "fresh start"  # Skip kb context check
-  orch-go spawn --max-agents 10 investigation "task"           # Allow up to 10 concurrent agents
-  orch-go spawn --auto-init investigation "new project"        # Auto-init if needed
-  orch-go spawn --light feature-impl "quick fix"               # Light tier (no synthesis)
-  orch-go spawn --full investigation "deep analysis"           # Full tier (require synthesis)
-  orch-go spawn --workdir ~/other-project investigation "task" # Spawn for different project
-  
-  # Dependency checking (--issue spawns)
-  orch-go spawn --issue proj-123 --force feature-impl "task"   # Force spawn despite blocking deps`,
+  orch spawn --bypass-triage --model opus investigation "analyze code"
+  orch spawn --bypass-triage --no-track investigation "exploratory work"
+  orch spawn --bypass-triage --mcp playwright feature-impl "add UI feature"
+  orch spawn --bypass-triage --workdir ~/other-project investigation "task"`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		skillName := args[0]
@@ -173,6 +174,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force spawn even if issue has blocking dependencies (bypasses dependency check)")
+	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 }
 
 var (
@@ -288,7 +290,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 		task = issue.Title + "\n\n" + issue.Description
 	}
 
-	// Set the spawnIssue flag so runSpawnWithSkill uses the existing issue
+	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
 
 	fmt.Printf("Starting work on: %s\n", beadsID)
@@ -296,7 +298,9 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Type:   %s\n", issue.IssueType)
 	fmt.Printf("  Skill:  %s\n", skillName)
 
-	return runSpawnWithSkill(serverURL, skillName, task, inline, true, false, false) // headless=true for work command (daemon uses this)
+	// Work command is daemon-driven (issue already created and triaged)
+	// Pass daemonDriven=true to skip triage bypass check
+	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, true, false, false, true)
 }
 
 // getMaxAgents returns the effective maximum agents limit.
@@ -498,6 +502,23 @@ func checkAndAutoSwitchAccount() error {
 }
 
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
+	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, headless, tmux, attach, false)
+}
+
+// runSpawnWithSkillInternal is the internal implementation that supports daemon-driven spawns.
+// When daemonDriven is true, the triage bypass check is skipped (issue already triaged).
+func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool, daemonDriven bool) error {
+	// Check for --bypass-triage flag (required for manual spawns)
+	// Daemon-driven spawns skip this check (issue already triaged)
+	if !daemonDriven && !spawnBypassTriage {
+		return showTriageBypassRequired(skillName, task)
+	}
+
+	// Log the triage bypass for Phase 2 review (only for manual bypasses, not daemon-driven)
+	if !daemonDriven && spawnBypassTriage {
+		logTriageBypass(skillName, task)
+	}
+
 	// Check concurrency limit before spawning
 	if err := checkConcurrencyLimit(); err != nil {
 		return err
@@ -1615,5 +1636,48 @@ func recordGapForLearning(gapAnalysis *spawn.GapAnalysis, skill, task string) {
 	// Save tracker
 	if err := tracker.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save gap tracker: %v\n", err)
+	}
+}
+
+// showTriageBypassRequired displays a warning and returns an error when --bypass-triage is not provided.
+// This creates friction to encourage the daemon-driven workflow over manual spawning.
+func showTriageBypassRequired(skillName, task string) error {
+	fmt.Fprintf(os.Stderr, `
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ⚠️  TRIAGE BYPASS REQUIRED                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Manual spawn requires --bypass-triage flag.                                │
+│                                                                             │
+│  The preferred workflow is daemon-driven triage:                            │
+│    1. Create issue: bd create "task" --type task -l triage:ready            │
+│    2. Daemon auto-spawns: orch daemon run                                   │
+│                                                                             │
+│  Manual spawn is for exceptions only:                                       │
+│    - Single urgent item requiring immediate attention                       │
+│    - Complex/ambiguous task needing custom context                          │
+│    - Skill selection requires orchestrator judgment                         │
+│                                                                             │
+│  To proceed with manual spawn, add --bypass-triage:                         │
+│    orch spawn --bypass-triage %s "%s"                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+`, skillName, truncate(task, 30))
+	return fmt.Errorf("spawn blocked: --bypass-triage flag required for manual spawns")
+}
+
+// logTriageBypass logs a triage bypass event to events.jsonl for Phase 2 review.
+// This tracks how often manual spawns occur vs daemon-driven spawns.
+func logTriageBypass(skillName, task string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	event := events.Event{
+		Type:      "spawn.triage_bypassed",
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"skill": skillName,
+			"task":  task,
+		},
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log triage bypass: %v\n", err)
 	}
 }
