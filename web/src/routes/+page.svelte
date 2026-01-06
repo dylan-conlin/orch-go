@@ -6,7 +6,7 @@
 	import { AgentCard } from '$lib/components/agent-card';
 	import { AgentDetailPanel } from '$lib/components/agent-detail';
 	import { CollapsibleSection } from '$lib/components/collapsible-section';
-	import { PendingReviewsSection } from '$lib/components/pending-reviews-section';
+	// PendingReviewsSection removed - not actively used
 	import { ReadyQueueSection } from '$lib/components/ready-queue-section';
 	import { UpNextSection } from '$lib/components/up-next-section';
 	import { RecentWins } from '$lib/components/recent-wins';
@@ -35,7 +35,7 @@
 	import { servers } from '$lib/stores/servers';
 	import { beads, readyIssues } from '$lib/stores/beads';
 	import { daemon } from '$lib/stores/daemon';
-	import { pendingReviews } from '$lib/stores/pending-reviews';
+	// pendingReviews store removed - not actively used
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
 	import { config } from '$lib/stores/config';
 	import { hotspots } from '$lib/stores/hotspot';
@@ -57,7 +57,7 @@
 		archive: false, // Archive collapsed by default
 		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
 		readyQueue: false, // Ready queue collapsed by default
-		pendingReviews: true, // Pending reviews expanded by default (actionable)
+		// pendingReviews removed - not actively used
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
 		orchestratorSessions: true // Orchestrator sessions expanded by default (important visibility)
 	};
@@ -112,7 +112,6 @@
 		// These affect the primary dashboard view and should load ASAP
 		Promise.all([
 			beads.fetch(),
-			pendingReviews.fetch(),
 			config.fetch()
 		]).catch(console.error);
 
@@ -154,7 +153,6 @@
 				beads.fetch(),
 				readyIssues.fetch(),
 				daemon.fetch(),
-				pendingReviews.fetch(),
 				hotspots.fetch(),
 				orchestratorSessions.fetch()
 			]).catch(console.error);
@@ -384,10 +382,7 @@
 			bind:expanded={sectionState.readyQueue}
 		/>
 
-		<!-- Pending Reviews Section -->
-		<PendingReviewsSection
-			bind:expanded={sectionState.pendingReviews}
-		/>
+		<!-- Pending Reviews Section removed - not actively used -->
 
 		<!-- Swarm Map (Primary Focus) -->
 		<div class="rounded-lg border bg-card">
