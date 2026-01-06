@@ -394,3 +394,113 @@ func TestLoadMissingReflectSection(t *testing.T) {
 		t.Error("Load() without reflect section should default to creating issues")
 	}
 }
+
+// =============================================================================
+// Tests for DefaultTier
+// =============================================================================
+
+func TestGetDefaultTier(t *testing.T) {
+	tests := []struct {
+		name        string
+		defaultTier string
+		expected    string
+	}{
+		{
+			name:        "empty string returns empty (use skill defaults)",
+			defaultTier: "",
+			expected:    "",
+		},
+		{
+			name:        "light returns empty (use skill defaults)",
+			defaultTier: "light",
+			expected:    "",
+		},
+		{
+			name:        "full returns full",
+			defaultTier: "full",
+			expected:    "full",
+		},
+		{
+			name:        "invalid value returns empty (use skill defaults)",
+			defaultTier: "invalid",
+			expected:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				DefaultTier: tt.defaultTier,
+			}
+			if got := cfg.GetDefaultTier(); got != tt.expected {
+				t.Errorf("GetDefaultTier() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestLoadDefaultTierConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file with default_tier setting
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+default_tier: full
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.DefaultTier != "full" {
+		t.Errorf("Load() DefaultTier = %q, want %q", cfg.DefaultTier, "full")
+	}
+
+	if cfg.GetDefaultTier() != "full" {
+		t.Errorf("Load() GetDefaultTier() = %q, want %q", cfg.GetDefaultTier(), "full")
+	}
+}
+
+func TestLoadMissingDefaultTier(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config without default_tier
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Should default to empty (use skill defaults)
+	if cfg.GetDefaultTier() != "" {
+		t.Errorf("Load() without default_tier should return empty string, got %q", cfg.GetDefaultTier())
+	}
+}

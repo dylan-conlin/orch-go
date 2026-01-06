@@ -27,6 +27,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -418,8 +419,8 @@ func checkConcurrencyLimit() error {
 	return nil
 }
 
-// determineSpawnTier determines the spawn tier based on flags and skill defaults.
-// Priority: --light flag > --full flag > skill default > TierFull (conservative)
+// determineSpawnTier determines the spawn tier based on flags, config, and skill defaults.
+// Priority: --light flag > --full flag > userconfig.default_tier > skill default > TierFull (conservative)
 func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
 	// Explicit flags take precedence
 	if lightFlag {
@@ -427,6 +428,11 @@ func determineSpawnTier(skillName string, lightFlag, fullFlag bool) string {
 	}
 	if fullFlag {
 		return spawn.TierFull
+	}
+	// Check userconfig for default tier override
+	cfg, err := userconfig.Load()
+	if err == nil && cfg.GetDefaultTier() != "" {
+		return cfg.GetDefaultTier()
 	}
 	// Fall back to skill default
 	return spawn.DefaultTierForSkill(skillName)

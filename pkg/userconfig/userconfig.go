@@ -8,6 +8,7 @@
 //	auto_export_transcript: true
 //	notifications:
 //	  enabled: true
+//	default_tier: full  # Force all spawns to produce SYNTHESIS.md (or "light" for skill defaults)
 package userconfig
 
 import (
@@ -50,6 +51,11 @@ type Config struct {
 	Notifications NotificationConfig `yaml:"notifications,omitempty"`
 	// Reflect holds settings for periodic kb reflect analysis.
 	Reflect ReflectConfig `yaml:"reflect,omitempty"`
+	// DefaultTier specifies the default spawn tier: "light" or "full".
+	// When set to "full", all spawns (including light-tier skills) will require SYNTHESIS.md.
+	// When set to "light" or empty, skill defaults are used.
+	// Explicit --light or --full flags still override this setting.
+	DefaultTier string `yaml:"default_tier,omitempty"`
 }
 
 // ConfigPath returns the path to the user config file.
@@ -139,4 +145,16 @@ func (c *Config) ReflectCreateIssues() bool {
 		return true // Default to creating issues
 	}
 	return *c.Reflect.CreateIssues
+}
+
+// GetDefaultTier returns the default spawn tier from config.
+// Returns "full" if configured as "full", empty string otherwise (use skill defaults).
+// Valid values are "light", "full", or empty (skill defaults).
+func (c *Config) GetDefaultTier() string {
+	// Only return "full" if explicitly configured - this forces all spawns to full tier
+	// "light" or empty means use skill defaults
+	if c.DefaultTier == "full" {
+		return "full"
+	}
+	return "" // Use skill defaults
 }
