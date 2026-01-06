@@ -120,6 +120,12 @@ type Daemon struct {
 	// If set, Preview will include hotspot warnings.
 	HotspotChecker HotspotChecker
 
+	// SpawnedIssues tracks issue IDs that have been spawned but may not yet
+	// have their beads status updated to in_progress. This prevents the race
+	// condition where the daemon spawns duplicate agents for the same issue
+	// because the status update hasn't propagated yet.
+	SpawnedIssues *SpawnedIssueTracker
+
 	// lastReflect tracks when reflection was last run for periodic reflection.
 	lastReflect time.Time
 
@@ -145,6 +151,7 @@ func New() *Daemon {
 func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
 		Config:          config,
+		SpawnedIssues:   NewSpawnedIssueTracker(),
 		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
@@ -167,6 +174,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	d := &Daemon{
 		Config:          config,
 		Pool:            pool,
+		SpawnedIssues:   NewSpawnedIssueTracker(),
 		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
@@ -215,6 +223,15 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 		if skip != nil && skip[issue.ID] {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Skipping %s (failed to spawn this cycle)\n", issue.ID)
+			}
+			continue
+		}
+		// Skip issues that have been recently spawned but status not yet updated.
+		// This prevents the race condition where the daemon spawns duplicate agents
+		// because beads status update hasn't propagated yet.
+		if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (recently spawned, awaiting status update)\n", issue.ID)
 			}
 			continue
 		}
@@ -354,9 +371,16 @@ func (d *Daemon) RateLimitMessage() string {
 // This prevents the pool from becoming stuck at capacity when agents complete
 // without the daemon knowing (e.g., overnight runs, crashes, manual kills).
 //
+// Also cleans up stale entries from the spawned issue tracker.
+//
 // Should be called at the start of each poll cycle.
 // Returns the number of slots freed due to reconciliation, or 0 if no pool.
 func (d *Daemon) ReconcileWithOpenCode() int {
+	// Clean up stale spawned issue entries (older than TTL)
+	if d.SpawnedIssues != nil {
+		d.SpawnedIssues.CleanStale()
+	}
+
 	if d.Pool == nil {
 		return 0
 	}
@@ -522,7 +546,6 @@ func FormatRejectedIssues(rejected []RejectedIssue) string {
 	return sb.String()
 }
 
-
 // Once processes a single issue from the queue and returns.
 // If a worker pool is configured, it acquires a slot before spawning.
 // Note: The slot is NOT automatically released when the agent completes.
@@ -585,8 +608,18 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		slot.BeadsID = issue.ID
 	}
 
+	// Mark issue as spawned BEFORE calling spawnFunc to prevent race condition.
+	// This prevents duplicate spawns if daemon polls again before beads status updates.
+	if d.SpawnedIssues != nil {
+		d.SpawnedIssues.MarkSpawned(issue.ID)
+	}
+
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
+		// Unmark on spawn failure so issue can be retried
+		if d.SpawnedIssues != nil {
+			d.SpawnedIssues.Unmark(issue.ID)
+		}
 		// Release slot on spawn failure
 		if d.Pool != nil && slot != nil {
 			d.Pool.Release(slot)
@@ -663,8 +696,18 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		slot.BeadsID = issue.ID
 	}
 
+	// Mark issue as spawned BEFORE calling spawnFunc to prevent race condition.
+	// This prevents duplicate spawns if daemon polls again before beads status updates.
+	if d.SpawnedIssues != nil {
+		d.SpawnedIssues.MarkSpawned(issue.ID)
+	}
+
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
+		// Unmark on spawn failure so issue can be retried
+		if d.SpawnedIssues != nil {
+			d.SpawnedIssues.Unmark(issue.ID)
+		}
 		// Release slot on spawn failure
 		if d.Pool != nil && slot != nil {
 			d.Pool.Release(slot)
