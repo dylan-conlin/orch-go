@@ -646,7 +646,8 @@ func (c *Client) ResolveID(partialID string) (string, error) {
 // FallbackReady retrieves ready issues via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 func FallbackReady() ([]Issue, error) {
-	cmd := exec.Command("bd", "ready", "--json")
+	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
+	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
 	if DefaultDir != "" {
 		cmd.Dir = DefaultDir
 	}

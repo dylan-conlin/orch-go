@@ -79,6 +79,14 @@ func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 	// Note: The CLI 'bd ready' command has limited filtering compared to RPC.
 	// For full filtering support, use the RPC Client instead.
 
+	// Handle limit - default to 0 (no limit) to get ALL ready issues
+	// bd ready defaults to limit 10, which truncates results
+	limit := 0
+	if args != nil && args.Limit > 0 {
+		limit = args.Limit
+	}
+	cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", limit))
+
 	cmd := c.bdCommand(cmdArgs...)
 	output, err := cmd.Output()
 	if err != nil {
