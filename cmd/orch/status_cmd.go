@@ -231,13 +231,39 @@ func runStatus(serverURL string) error {
 		seenBeadsIDs[beadsID] = true
 	}
 
-	// Look up workspaces to get project directories for cross-project agents
+	// Build beadsProjectDirs map for cross-project agents.
+	// Strategy 1: Use session.Directory from OpenCode sessions (if valid, not "/").
+	// Strategy 2: Look up workspace from current project's .orch/workspace/.
+	// Strategy 3: Derive project directory from beads ID prefix by checking known project locations.
+	// This ensures we look up beads comments from the correct project's .beads/ directory.
+	for beadsID, session := range beadsToSession {
+		if session != nil && session.Directory != "" && session.Directory != "/" && session.Directory != projectDir {
+			beadsProjectDirs[beadsID] = session.Directory
+		}
+	}
+
+	// For beads IDs without a valid session directory, try additional strategies
 	for _, beadsID := range beadsIDsToFetch {
+		if _, hasProjectDir := beadsProjectDirs[beadsID]; hasProjectDir {
+			continue // Already have project dir
+		}
+
+		// Strategy 2: Look up workspace from current project
 		workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
 		if workspacePath != "" {
 			agentProjectDir := extractProjectDirFromWorkspace(workspacePath)
-			if agentProjectDir != "" && agentProjectDir != projectDir {
+			if agentProjectDir != "" {
 				beadsProjectDirs[beadsID] = agentProjectDir
+				continue
+			}
+		}
+
+		// Strategy 3: Derive from beads ID prefix
+		// Beads IDs have format: project-name-xxxx (e.g., orch-go-3anf, kb-cli-xrm)
+		projectName := extractProjectFromBeadsID(beadsID)
+		if projectName != "" && projectName != "untracked" {
+			if derivedDir := findProjectDirByName(projectName); derivedDir != "" {
+				beadsProjectDirs[beadsID] = derivedDir
 			}
 		}
 	}
@@ -1001,4 +1027,33 @@ func formatTokenStatsCompact(tokens *opencode.TokenStats) string {
 		formatTokenCount(total),
 		formatTokenCount(tokens.InputTokens),
 		formatTokenCount(tokens.OutputTokens))
+}
+
+// findProjectDirByName looks up a project directory by its name.
+// Searches common project locations and verifies the project has a .beads/ directory.
+// Returns empty string if not found.
+func findProjectDirByName(projectName string) string {
+	// Get home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	// Common project locations in order of priority
+	candidatePaths := []string{
+		filepath.Join(homeDir, "Documents", "personal", projectName),
+		filepath.Join(homeDir, projectName),
+		filepath.Join(homeDir, "projects", projectName),
+		filepath.Join(homeDir, "src", projectName),
+	}
+
+	for _, path := range candidatePaths {
+		// Check if directory exists and has .beads/ (confirms it's a beads-tracked project)
+		beadsPath := filepath.Join(path, ".beads")
+		if info, err := os.Stat(beadsPath); err == nil && info.IsDir() {
+			return path
+		}
+	}
+
+	return ""
 }
