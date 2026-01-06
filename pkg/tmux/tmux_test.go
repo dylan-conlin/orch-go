@@ -114,7 +114,7 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 	cfg := &OpencodeAttachConfig{
 		ServerURL:  "http://localhost:4096",
 		ProjectDir: "/home/user/project",
-		Model:      "anthropic/claude-opus", // Note: Model is ignored (not supported by opencode attach)
+		Model:      "anthropic/claude-opus",
 		SessionID:  "ses_123",
 	}
 
@@ -124,20 +124,15 @@ func TestBuildOpencodeAttachCommand(t *testing.T) {
 		"http://localhost:4096",
 		"--dir",
 		"/home/user/project",
+		"--model",
+		"anthropic/claude-opus",
 		"--session",
 		"ses_123",
 	}
-	// Model should NOT be in the command (opencode attach doesn't support --model)
-	dontWantParts := []string{"--model"}
 
 	for _, part := range wantParts {
 		if !strings.Contains(got, part) {
 			t.Errorf("BuildOpencodeAttachCommand() = %q, want to contain %q", got, part)
-		}
-	}
-	for _, part := range dontWantParts {
-		if strings.Contains(got, part) {
-			t.Errorf("BuildOpencodeAttachCommand() = %q, should NOT contain %q", got, part)
 		}
 	}
 }

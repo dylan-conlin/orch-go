@@ -91,11 +91,9 @@ type OpencodeAttachConfig struct {
 }
 
 // BuildOpencodeAttachCommand creates the opencode command string for tmux spawning.
-// Uses "opencode {project_dir}" in standalone mode because:
-// - "opencode attach --dir" sets config lookup dir but not session working directory
-// - "opencode {project_dir}" starts TUI with working directory set to project
-// The tradeoff is sessions won't be visible via shared server API (orch status uses
-// beads/workspace tracking instead).
+// Uses "opencode attach <url> --dir <project>" to connect to shared server, making
+// sessions visible via API (enabling session ID capture, orch status, resume).
+// OpenCode commit 18b26856a fixed Session.create to respect the directory parameter.
 // Sets ORCH_WORKER=1 so agents know they are orch-managed workers.
 func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 	opencodeBin := "opencode"
@@ -103,9 +101,9 @@ func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 		opencodeBin = bin
 	}
 
-	// Use standalone mode with project directory as argument
-	// This ensures the session's working directory matches the project
-	cmd := fmt.Sprintf("ORCH_WORKER=1 %s %q", opencodeBin, cfg.ProjectDir)
+	// Use attach mode with --dir to connect to shared server
+	// This makes sessions visible via API for session ID capture
+	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %q --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
 
 	// Add model if provided
 	if cfg.Model != "" {
