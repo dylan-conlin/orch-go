@@ -186,9 +186,13 @@ This applies to:
 
 **When uncertain: Escalate.**
 
+**Principle:** Escalation is Information Flow (see `~/.kb/principles.md`)
+
+Escalation isn't admitting failure - it's information reaching someone who can see patterns you can't. The cultural shame around escalation comes from authority-centric thinking. In a perspective-centric system, escalation is the mechanism working correctly.
+
 - Escalating unnecessarily wastes a few minutes
 - Deciding wrongly can cost hours or create tech debt
-- Better to ask than guess wrong
+- "When in doubt, escalate" isn't asking permission - it's seeking perspective
 
 **Format for escalation:**
 ```
@@ -209,7 +213,7 @@ Providing options + recommendation is faster for orchestrator than open-ended qu
 
 - **spawn.md** - How spawning works (references this for authority levels)
 - **Orchestrator skill** - Defines what orchestrators delegate vs retain
-- **Principles** - Gate Over Remind, Surface Before Circumvent
+- **Principles** - Gate Over Remind, Surface Before Circumvent, Escalation is Information Flow
 
 ---
 
