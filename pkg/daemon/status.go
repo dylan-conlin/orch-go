@@ -23,6 +23,10 @@ type DaemonStatus struct {
 	// Zero value if no spawns have occurred in this daemon run.
 	LastSpawn time.Time `json:"last_spawn"`
 
+	// LastCompletion is the timestamp of the last auto-completion.
+	// Zero value if no completions have occurred in this daemon run.
+	LastCompletion time.Time `json:"last_completion,omitempty"`
+
 	// ReadyCount is the number of issues ready to be processed.
 	ReadyCount int `json:"ready_count"`
 

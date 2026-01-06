@@ -150,6 +150,12 @@ func runDaemonLoop() error {
 		return runDaemonDryRun()
 	}
 
+	// Get current directory for completion processing
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
 	// Build configuration from flags
 	config := daemon.Config{
 		PollInterval:        time.Duration(daemonPollInterval) * time.Second,
@@ -180,8 +186,10 @@ func runDaemonLoop() error {
 
 	logger := events.NewLogger(events.DefaultLogPath())
 	processed := 0
+	completed := 0 // Track auto-completed agents
 	cycles := 0
-	var lastSpawn time.Time // Track last successful spawn
+	var lastSpawn time.Time      // Track last successful spawn
+	var lastCompletion time.Time // Track last auto-completion
 
 	// Ensure reflection runs on exit if enabled
 	if daemonReflect {
@@ -208,7 +216,7 @@ func runDaemonLoop() error {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+			fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 			return nil
 		default:
 		}
@@ -236,21 +244,67 @@ func runDaemonLoop() error {
 			}
 		}
 
+		// Process completions: auto-close agents that report Phase: Complete
+		// This frees capacity slots for new work. Uses the escalation model:
+		// - None/Info/Review: Auto-complete (closes issue)
+		// - Block/Failed: Requires human review (issue stays open)
+		completionConfig := daemon.CompletionConfig{
+			ProjectDir: projectDir,
+			DryRun:     false,
+			Verbose:    daemonVerbose,
+		}
+		completionResult, err := d.CompletionOnce(completionConfig)
+		if err != nil && daemonVerbose {
+			fmt.Fprintf(os.Stderr, "[%s] Completion processing error: %v\n", timestamp, err)
+		} else if completionResult != nil {
+			completedThisCycle := 0
+			for _, cr := range completionResult.Processed {
+				if cr.Processed {
+					completedThisCycle++
+					completed++
+					lastCompletion = time.Now()
+					fmt.Printf("[%s] Auto-completed: %s (escalation=%s)\n",
+						timestamp, cr.BeadsID, cr.Escalation)
+					// Log the completion
+					event := events.Event{
+						Type:      "daemon.complete",
+						Timestamp: time.Now().Unix(),
+						Data: map[string]interface{}{
+							"beads_id":   cr.BeadsID,
+							"reason":     cr.CloseReason,
+							"escalation": cr.Escalation.String(),
+							"source":     "daemon_auto_complete",
+						},
+					}
+					if err := logger.Log(event); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to log completion event: %v\n", err)
+					}
+				} else if cr.Error != nil && daemonVerbose {
+					fmt.Printf("[%s] Completion blocked: %s - %v (escalation=%s)\n",
+						timestamp, cr.BeadsID, cr.Error, cr.Escalation)
+				}
+			}
+			if completedThisCycle > 0 && daemonVerbose {
+				fmt.Printf("[%s] Auto-completed %d agent(s) this cycle\n", timestamp, completedThisCycle)
+			}
+		}
+
 		// Get ready issues count for status
 		readyIssues, _ := daemon.ListReadyIssues()
 		readyCount := len(readyIssues)
 
-		// Write daemon status file AFTER reconciliation so counts are accurate
+		// Write daemon status file AFTER reconciliation and completions so counts are accurate
 		status := daemon.DaemonStatus{
 			Capacity: daemon.CapacityStatus{
 				Max:       config.MaxAgents,
 				Active:    d.ActiveCount(),
 				Available: d.AvailableSlots(),
 			},
-			LastPoll:   pollTime,
-			LastSpawn:  lastSpawn,
-			ReadyCount: readyCount,
-			Status:     daemon.DetermineStatus(pollTime, config.PollInterval),
+			LastPoll:       pollTime,
+			LastSpawn:      lastSpawn,
+			LastCompletion: lastCompletion,
+			ReadyCount:     readyCount,
+			Status:         daemon.DetermineStatus(pollTime, config.PollInterval),
 		}
 		if err := daemon.WriteStatusFile(status); err != nil && daemonVerbose {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write status file: %v\n", err)
@@ -266,7 +320,7 @@ func runDaemonLoop() error {
 			// Wait for poll interval before checking again
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			case <-time.After(config.PollInterval):
 				continue
@@ -286,7 +340,7 @@ func runDaemonLoop() error {
 			// Check for interrupt
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			default:
 			}
@@ -352,7 +406,7 @@ func runDaemonLoop() error {
 			// Delay before next spawn to avoid rate limits
 			select {
 			case <-ctx.Done():
-				fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+				fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 				return nil
 			case <-time.After(config.SpawnDelay):
 			}
@@ -360,7 +414,7 @@ func runDaemonLoop() error {
 
 		// If poll interval is 0, run once and exit
 		if config.PollInterval == 0 {
-			fmt.Printf("Processed %d issues (run-once mode).\n", processed)
+			fmt.Printf("Run-once mode. Spawned %d, completed %d.\n", processed, completed)
 			return nil
 		}
 
@@ -371,7 +425,7 @@ func runDaemonLoop() error {
 		}
 		select {
 		case <-ctx.Done():
-			fmt.Printf("\nDaemon stopped. Processed %d issues in %d cycles.\n", processed, cycles)
+			fmt.Printf("\nDaemon stopped. Spawned %d, completed %d, cycles %d.\n", processed, completed, cycles)
 			return nil
 		case <-time.After(config.PollInterval):
 		}
