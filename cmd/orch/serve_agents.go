@@ -116,6 +116,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	activeThreshold := 10 * time.Minute
 	displayThreshold := 30 * time.Minute
 
+	// beadsFetchThreshold limits which sessions we fetch beads data for.
+	// Sessions older than this are excluded from beads lookups entirely.
+	// This is a MAJOR optimization: with 600+ sessions but only ~6 active,
+	// fetching beads for all would require 400+ RPC calls = 3+ seconds.
+	// By limiting to recent sessions, we reduce this to ~10-20 RPC calls.
+	// Sessions older than this are simply excluded from the API response.
+	beadsFetchThreshold := 2 * time.Hour
+
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
 	pendingFilterByBeadsID := make(map[string]bool)
@@ -166,16 +174,23 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// MAJOR OPTIMIZATION: Skip sessions older than beadsFetchThreshold entirely.
+		// With 600+ sessions but only ~6-10 active, fetching beads data for all
+		// would require 400+ RPC calls = 3+ seconds per request.
+		// By excluding old sessions, we reduce to ~20-50 RPC calls = <500ms.
+		// Old sessions are simply not shown in the dashboard - they're effectively archived.
+		if timeSinceUpdate > beadsFetchThreshold {
+			continue
+		}
+
 		// Track if this agent should be filtered after Phase check
 		// Don't filter yet - we need to check beads Phase: Complete first
 		if status == "idle" && timeSinceUpdate > displayThreshold {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
-		// Collect beads ID for batch fetch - include ALL agents with beads ID.
-		// Previously this had a `status == "active"` optimization that skipped idle agents,
-		// but this caused incorrect status for idle agents with Phase: Complete.
-		// The TTL cache prevents CPU spikes, so we can safely fetch for all agents.
+		// Collect beads ID for batch fetch - include ALL recent agents with beads ID.
+		// We already filtered old sessions above, so this only fetches for recent ones.
 		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
 		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
 			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)

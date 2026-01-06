@@ -76,10 +76,13 @@ func (c *globalWorkspaceCacheType) getCachedWorkspace(projectDirs []string) *wor
 }
 
 // Default TTLs for cached data
+// These TTLs balance freshness with performance. With 600+ sessions, even cached
+// data fetches are expensive when TTL expires. Longer TTLs reduce fetch frequency.
+// Use /api/cache/invalidate to force refresh when needed (e.g., after orch complete).
 const (
-	defaultOpenIssuesTTL = 10 * time.Second // Open issues change infrequently
-	defaultAllIssuesTTL  = 30 * time.Second // Closed issues change even less
-	defaultCommentsTTL   = 5 * time.Second  // Comments change more often (phase updates)
+	defaultOpenIssuesTTL = 30 * time.Second // Open issues change infrequently
+	defaultAllIssuesTTL  = 60 * time.Second // Closed issues change even less
+	defaultCommentsTTL   = 15 * time.Second // Comments change more often (phase updates)
 )
 
 // invalidate clears all cached data, forcing fresh fetches on next request.
