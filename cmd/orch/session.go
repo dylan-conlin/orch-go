@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/spf13/cobra"
 )
 
@@ -90,16 +92,27 @@ func runSessionStart(goal string) error {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
 
+	// Create session workspace with SESSION_HANDOFF.md
+	workspacePath, err := createSessionWorkspace(goal)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create session workspace: %v\n", err)
+		// Continue anyway - workspace is nice-to-have for interactive sessions
+	}
+
 	// Log the session start
 	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"goal":       goal,
+		"was_active": wasActive,
+		"started_at": time.Now().Format(session.TimeFormat),
+	}
+	if workspacePath != "" {
+		eventData["workspace_path"] = workspacePath
+	}
 	event := events.Event{
 		Type:      "session.started",
 		Timestamp: time.Now().Unix(),
-		Data: map[string]interface{}{
-			"goal":        goal,
-			"was_active":  wasActive,
-			"started_at":  time.Now().Format(session.TimeFormat),
-		},
+		Data:      eventData,
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
@@ -110,8 +123,56 @@ func runSessionStart(goal string) error {
 	}
 	fmt.Printf("Session started: %s\n", goal)
 	fmt.Printf("  Start time: %s\n", time.Now().Format("15:04"))
+	if workspacePath != "" {
+		fmt.Printf("  Workspace:  %s\n", workspacePath)
+	}
 
 	return nil
+}
+
+// createSessionWorkspace creates a workspace directory for interactive orchestrator sessions.
+// This provides parity with spawned orchestrators by pre-creating SESSION_HANDOFF.md.
+// Workspace is created in ~/.orch/session/{date}/ to match existing session directory structure.
+func createSessionWorkspace(goal string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// Use date-based directory for session workspace (matches existing structure)
+	dateStr := time.Now().Format("2006-01-02")
+	workspacePath := filepath.Join(home, ".orch", "session", dateStr)
+
+	// Create workspace directory
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create workspace directory: %w", err)
+	}
+
+	// Generate workspace name for SESSION_HANDOFF.md
+	// Interactive sessions use "interactive-" prefix + date + time suffix
+	timeStr := time.Now().Format("150405")
+	workspaceName := fmt.Sprintf("interactive-%s-%s", dateStr, timeStr)
+	startTime := time.Now().Format("2006-01-02 15:04")
+
+	// Use "Interactive session" as default goal if empty
+	sessionGoal := goal
+	if sessionGoal == "" {
+		sessionGoal = "Interactive session"
+	}
+
+	// Generate pre-filled SESSION_HANDOFF.md content
+	content, err := spawn.GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate session handoff: %w", err)
+	}
+
+	// Write SESSION_HANDOFF.md
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("failed to write session handoff: %w", err)
+	}
+
+	return workspacePath, nil
 }
 
 // ============================================================================
@@ -333,10 +394,10 @@ func runSessionEnd() error {
 		Type:      "session.ended",
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
-			"goal":        ended.Goal,
-			"started_at":  ended.StartedAt.Format(session.TimeFormat),
-			"duration":    duration.String(),
-			"spawn_count": spawnCount,
+			"goal":          ended.Goal,
+			"started_at":    ended.StartedAt.Format(session.TimeFormat),
+			"duration":      duration.String(),
+			"spawn_count":   spawnCount,
 			"active_at_end": activeCount,
 		},
 	}
