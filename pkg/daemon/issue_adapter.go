@@ -21,7 +21,8 @@ func ListReadyIssues() ([]Issue, error) {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
 		if err := client.Connect(); err == nil {
 			defer client.Close()
-			beadsIssues, err := client.Ready(nil)
+			// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
+			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
 			if err == nil {
 				return convertBeadsIssues(beadsIssues), nil
 			}
@@ -36,7 +37,8 @@ func ListReadyIssues() ([]Issue, error) {
 
 // listReadyIssuesCLI retrieves ready issues by shelling out to bd CLI.
 func listReadyIssuesCLI() ([]Issue, error) {
-	cmd := exec.Command("bd", "ready", "--json")
+	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
+	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
 	output, err := cmd.Output()
 	if err != nil {
