@@ -134,15 +134,11 @@
 			setTimeout(deferSecondaryFetches, 100);
 		}
 
-		// Defer agentlog SSE connection - it's for the event log panel, not critical
-		const connectSecondarySSE = () => {
-			connectAgentlogSSE();
-		};
-		if ('requestIdleCallback' in window) {
-			requestIdleCallback(connectSecondarySSE, { timeout: 3000 });
-		} else {
-			setTimeout(connectSecondarySSE, 500);
-		}
+		// NOTE: Agentlog SSE connection is NO LONGER auto-connected on page load.
+		// This fixes connection pool exhaustion where two SSE connections (primary events 
+		// + agentlog) consumed 2 of 6 HTTP/1.1 connections per origin, blocking API fetches.
+		// Users can manually connect via the "Follow" button in the Agent Lifecycle panel.
+		// See: .kb/investigations/2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md
 
 		// Refresh all data every 60 seconds (all fetches are already non-blocking)
 		const refreshInterval = setInterval(() => {
