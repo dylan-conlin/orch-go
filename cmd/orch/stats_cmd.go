@@ -20,6 +20,32 @@ var (
 	statsVerbose    bool
 )
 
+// SkillCategory represents the type of work a skill does
+type SkillCategory string
+
+const (
+	// TaskSkill represents skills that complete discrete tasks
+	TaskSkill SkillCategory = "task"
+	// CoordinationSkill represents skills that coordinate other agents (not meant to complete)
+	CoordinationSkill SkillCategory = "coordination"
+)
+
+// coordinationSkills lists skills that are coordination roles, not completable tasks.
+// These are excluded from the completion rate warning because they're interactive sessions
+// designed to run until context exhaustion, not complete discrete tasks.
+var coordinationSkills = map[string]bool{
+	"orchestrator":      true,
+	"meta-orchestrator": true,
+}
+
+// getSkillCategory returns the category of a skill
+func getSkillCategory(skill string) SkillCategory {
+	if coordinationSkills[skill] {
+		return CoordinationSkill
+	}
+	return TaskSkill
+}
+
 var statsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Show aggregated agent statistics from events.jsonl",
@@ -80,15 +106,24 @@ type StatsSummary struct {
 	CompletionRate     float64 `json:"completion_rate"`
 	AbandonmentRate    float64 `json:"abandonment_rate"`
 	AvgDurationMinutes float64 `json:"avg_duration_minutes,omitempty"`
+	// Task skill specific metrics (excludes coordination skills like orchestrator)
+	TaskSpawns         int     `json:"task_spawns"`
+	TaskCompletions    int     `json:"task_completions"`
+	TaskCompletionRate float64 `json:"task_completion_rate"`
+	// Coordination skill metrics (orchestrator, meta-orchestrator)
+	CoordinationSpawns         int     `json:"coordination_spawns"`
+	CoordinationCompletions    int     `json:"coordination_completions"`
+	CoordinationCompletionRate float64 `json:"coordination_completion_rate"`
 }
 
 // SkillStatsSummary contains per-skill metrics
 type SkillStatsSummary struct {
-	Skill          string  `json:"skill"`
-	Spawns         int     `json:"spawns"`
-	Completions    int     `json:"completions"`
-	Abandonments   int     `json:"abandonments"`
-	CompletionRate float64 `json:"completion_rate"`
+	Skill          string        `json:"skill"`
+	Category       SkillCategory `json:"category"`
+	Spawns         int           `json:"spawns"`
+	Completions    int           `json:"completions"`
+	Abandonments   int           `json:"abandonments"`
+	CompletionRate float64       `json:"completion_rate"`
 }
 
 // DaemonStatsSummary contains daemon-specific metrics
@@ -214,7 +249,10 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 				if skill, ok := data["skill"].(string); ok && skill != "" {
 					spawnSkills[event.SessionID] = skill
 					if _, exists := skillCounts[skill]; !exists {
-						skillCounts[skill] = &SkillStatsSummary{Skill: skill}
+						skillCounts[skill] = &SkillStatsSummary{
+							Skill:    skill,
+							Category: getSkillCategory(skill),
+						}
 					}
 					skillCounts[skill].Spawns++
 				}
@@ -337,12 +375,31 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	// Calculate active sessions
 	report.SessionStats.ActiveSessions = report.SessionStats.SessionsStarted - report.SessionStats.SessionsEnded
 
-	// Calculate per-skill completion rates and convert to slice
+	// Calculate per-skill completion rates and aggregate by category
 	for _, stats := range skillCounts {
 		if stats.Spawns > 0 {
 			stats.CompletionRate = float64(stats.Completions) / float64(stats.Spawns) * 100
 		}
 		report.SkillStats = append(report.SkillStats, *stats)
+
+		// Aggregate by category
+		if stats.Category == TaskSkill {
+			report.Summary.TaskSpawns += stats.Spawns
+			report.Summary.TaskCompletions += stats.Completions
+		} else if stats.Category == CoordinationSkill {
+			report.Summary.CoordinationSpawns += stats.Spawns
+			report.Summary.CoordinationCompletions += stats.Completions
+		}
+	}
+
+	// Calculate task skill completion rate
+	if report.Summary.TaskSpawns > 0 {
+		report.Summary.TaskCompletionRate = float64(report.Summary.TaskCompletions) / float64(report.Summary.TaskSpawns) * 100
+	}
+
+	// Calculate coordination skill completion rate
+	if report.Summary.CoordinationSpawns > 0 {
+		report.Summary.CoordinationCompletionRate = float64(report.Summary.CoordinationCompletions) / float64(report.Summary.CoordinationSpawns) * 100
 	}
 
 	// Sort skills by spawn count descending
@@ -380,6 +437,14 @@ func outputStatsText(report *StatsReport) error {
 		fmt.Printf("  Avg Duration:  %.0f minutes\n", report.Summary.AvgDurationMinutes)
 	}
 
+	// Task vs Coordination breakdown
+	fmt.Println()
+	fmt.Println("📋 COMPLETION BY CATEGORY")
+	fmt.Printf("  Task Skills:         %d/%d spawns (%.1f%%) ← main metric\n",
+		report.Summary.TaskCompletions, report.Summary.TaskSpawns, report.Summary.TaskCompletionRate)
+	fmt.Printf("  Coordination Skills: %d/%d spawns (%.1f%%) [interactive sessions]\n",
+		report.Summary.CoordinationCompletions, report.Summary.CoordinationSpawns, report.Summary.CoordinationCompletionRate)
+
 	// Daemon metrics
 	fmt.Println()
 	fmt.Println("🤖 DAEMON HEALTH")
@@ -408,6 +473,7 @@ func outputStatsText(report *StatsReport) error {
 	if len(report.SkillStats) > 0 {
 		fmt.Println()
 		fmt.Println("🎭 SKILL BREAKDOWN")
+		fmt.Println("  (C) = Coordination skill (excluded from completion rate warning)")
 		fmt.Printf("  %-25s %8s %8s %8s %10s\n", "Skill", "Spawns", "Complete", "Abandon", "Rate")
 		fmt.Println("  " + strings.Repeat("-", 62))
 
@@ -423,8 +489,13 @@ func outputStatsText(report *StatsReport) error {
 				fmt.Printf("  ... and %d more skills (use --verbose to show all)\n", remaining)
 				break
 			}
+			// Mark coordination skills with (C) indicator
+			skillName := truncateSkill(skill.Skill, 22)
+			if skill.Category == CoordinationSkill {
+				skillName = skillName + " (C)"
+			}
 			fmt.Printf("  %-25s %8d %8d %8d %9.1f%%\n",
-				truncateSkill(skill.Skill, 25),
+				skillName,
 				skill.Spawns,
 				skill.Completions,
 				skill.Abandonments,
@@ -436,11 +507,13 @@ func outputStatsText(report *StatsReport) error {
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 70))
 
-	// Quick health assessment
-	if report.Summary.CompletionRate < 80 {
-		fmt.Println("⚠️  WARNING: Completion rate below 80% - investigate failure patterns")
-	} else if report.Summary.CompletionRate >= 95 {
-		fmt.Println("✅ HEALTHY: Completion rate at 95%+")
+	// Quick health assessment (based on task skill rate, not overall)
+	// Coordination skills (orchestrator, meta-orchestrator) are interactive sessions,
+	// not completable tasks, so they're excluded from the health check.
+	if report.Summary.TaskSpawns > 0 && report.Summary.TaskCompletionRate < 80 {
+		fmt.Println("⚠️  WARNING: Task skill completion rate below 80% - investigate failure patterns")
+	} else if report.Summary.TaskSpawns > 0 && report.Summary.TaskCompletionRate >= 95 {
+		fmt.Println("✅ HEALTHY: Task skill completion rate at 95%+")
 	}
 
 	return nil
