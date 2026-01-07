@@ -162,6 +162,17 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
+	// Delete the OpenCode session if it exists
+	// This prevents abandoned agents from appearing in `orch status`
+	if sessionID != "" {
+		fmt.Printf("Deleting OpenCode session: %s\n", sessionID[:12])
+		if err := client.DeleteSession(sessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
+		} else {
+			fmt.Printf("Deleted OpenCode session\n")
+		}
+	}
+
 	// Generate FAILURE_REPORT.md if reason is provided
 	if reason != "" && workspacePath != "" {
 		// Ensure the failure report template exists in the project
