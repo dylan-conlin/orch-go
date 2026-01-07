@@ -10,10 +10,17 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	function getUsageColor(percent: number): 'green' | 'yellow' | 'red' {
+	function getUsageColor(percent: number | null): 'green' | 'yellow' | 'red' | 'unavailable' {
+		if (percent === null) return 'unavailable';
 		if (percent < 60) return 'green';
 		if (percent < 80) return 'yellow';
 		return 'red';
+	}
+
+	// Format percent for display - returns "N/A" when null
+	function formatPercent(percent: number | null): string {
+		if (percent === null) return 'N/A';
+		return `${percent.toFixed(0)}%`;
 	}
 
 	let statusColor = $derived.by(() => {
@@ -61,8 +68,9 @@
 											class:text-green-600={getUsageColor($usage.five_hour_percent) === 'green'}
 											class:text-yellow-600={getUsageColor($usage.five_hour_percent) === 'yellow'}
 											class:text-red-600={getUsageColor($usage.five_hour_percent) === 'red'}
+											class:text-muted-foreground={getUsageColor($usage.five_hour_percent) === 'unavailable'}
 										>
-											{$usage.five_hour_percent.toFixed(0)}%{#if $usage.five_hour_reset} <span class="text-muted-foreground font-normal">({$usage.five_hour_reset})</span>{/if}
+											{formatPercent($usage.five_hour_percent)}{#if $usage.five_hour_reset} <span class="text-muted-foreground font-normal">({$usage.five_hour_reset})</span>{/if}
 										</span>
 										<span class="text-muted-foreground">|</span>
 										<span
@@ -70,8 +78,9 @@
 											class:text-green-600={getUsageColor($usage.weekly_percent) === 'green'}
 											class:text-yellow-600={getUsageColor($usage.weekly_percent) === 'yellow'}
 											class:text-red-600={getUsageColor($usage.weekly_percent) === 'red'}
+											class:text-muted-foreground={getUsageColor($usage.weekly_percent) === 'unavailable'}
 										>
-											{$usage.weekly_percent.toFixed(0)}%{#if $usage.weekly_reset} <span class="text-muted-foreground font-normal">({$usage.weekly_reset})</span>{/if}
+											{formatPercent($usage.weekly_percent)}{#if $usage.weekly_reset} <span class="text-muted-foreground font-normal">({$usage.weekly_reset})</span>{/if}
 										</span>
 										{#if $usage.account_name || $usage.account}
 											<span class="text-muted-foreground">@{$usage.account_name || $usage.account.split('@')[0]}</span>
@@ -82,10 +91,10 @@
 							<Tooltip.Content>
 								<p class="font-medium">Claude Max Usage</p>
 								<p class="text-xs text-muted-foreground mt-1">
-									5-hour: {$usage.five_hour_percent.toFixed(0)}%{$usage.five_hour_reset ? ` • Resets in ${$usage.five_hour_reset}` : ''}
+									5-hour: {formatPercent($usage.five_hour_percent)}{$usage.five_hour_reset ? ` • Resets in ${$usage.five_hour_reset}` : ''}
 								</p>
 								<p class="text-xs text-muted-foreground">
-									Weekly: {$usage.weekly_percent.toFixed(0)}%{$usage.weekly_reset ? ` • Resets in ${$usage.weekly_reset}` : ''}
+									Weekly: {formatPercent($usage.weekly_percent)}{$usage.weekly_reset ? ` • Resets in ${$usage.weekly_reset}` : ''}
 								</p>
 							</Tooltip.Content>
 						</Tooltip.Root>
