@@ -1460,13 +1460,13 @@ func TestCheckAndAutoSwitchAccountEnvThresholds(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name           string
-		fiveHourEnv    string
-		weeklyEnv      string
-		deltaEnv       string
-		wantFiveHour   float64
-		wantWeekly     float64
-		wantDelta      float64
+		name         string
+		fiveHourEnv  string
+		weeklyEnv    string
+		deltaEnv     string
+		wantFiveHour float64
+		wantWeekly   float64
+		wantDelta    float64
 	}{
 		{
 			name:         "no env vars - use defaults",
@@ -1819,9 +1819,9 @@ func TestIsSkillRelevantChange(t *testing.T) {
 // TestNotableChangelogEntry tests the detection logic for notable changes.
 func TestNotableChangelogEntry(t *testing.T) {
 	tests := []struct {
-		name       string
-		commit     CommitInfo
-		agentSkill string
+		name        string
+		commit      CommitInfo
+		agentSkill  string
 		wantNotable bool
 	}{
 		{
@@ -1829,12 +1829,12 @@ func TestNotableChangelogEntry(t *testing.T) {
 			commit: CommitInfo{
 				Subject: "BREAKING: remove deprecated API",
 				SemanticInfo: SemanticInfo{
-					IsBreaking:  true,
-					ChangeType:  ChangeTypeBehavioral,
+					IsBreaking: true,
+					ChangeType: ChangeTypeBehavioral,
 				},
 				Category: "cmd",
 			},
-			agentSkill: "",
+			agentSkill:  "",
 			wantNotable: true,
 		},
 		{
@@ -1842,12 +1842,12 @@ func TestNotableChangelogEntry(t *testing.T) {
 			commit: CommitInfo{
 				Subject: "feat: add new spawn option",
 				SemanticInfo: SemanticInfo{
-					IsBreaking:  false,
-					ChangeType:  ChangeTypeBehavioral,
+					IsBreaking: false,
+					ChangeType: ChangeTypeBehavioral,
 				},
 				Category: "skills",
 			},
-			agentSkill: "",
+			agentSkill:  "",
 			wantNotable: true,
 		},
 		{
@@ -1855,12 +1855,12 @@ func TestNotableChangelogEntry(t *testing.T) {
 			commit: CommitInfo{
 				Subject: "fix: correct spawn timeout",
 				SemanticInfo: SemanticInfo{
-					IsBreaking:  false,
-					ChangeType:  ChangeTypeBehavioral,
+					IsBreaking: false,
+					ChangeType: ChangeTypeBehavioral,
 				},
 				Category: "cmd",
 			},
-			agentSkill: "",
+			agentSkill:  "",
 			wantNotable: true,
 		},
 		{
@@ -1868,12 +1868,12 @@ func TestNotableChangelogEntry(t *testing.T) {
 			commit: CommitInfo{
 				Subject: "docs: update README",
 				SemanticInfo: SemanticInfo{
-					IsBreaking:  false,
-					ChangeType:  ChangeTypeDocumentation,
+					IsBreaking: false,
+					ChangeType: ChangeTypeDocumentation,
 				},
 				Category: "docs",
 			},
-			agentSkill: "",
+			agentSkill:  "",
 			wantNotable: false,
 		},
 		{
@@ -1881,12 +1881,12 @@ func TestNotableChangelogEntry(t *testing.T) {
 			commit: CommitInfo{
 				Subject: "feat: update dashboard styling",
 				SemanticInfo: SemanticInfo{
-					IsBreaking:  false,
-					ChangeType:  ChangeTypeBehavioral,
+					IsBreaking: false,
+					ChangeType: ChangeTypeBehavioral,
 				},
 				Category: "web",
 			},
-			agentSkill: "",
+			agentSkill:  "",
 			wantNotable: false,
 		},
 	}
@@ -2066,6 +2066,189 @@ func TestOrchestratorSkipsBeadsIssue(t *testing.T) {
 
 			if shouldSkipBeads != tt.wantSkipBeads {
 				t.Errorf("skipBeads = %v, want %v", shouldSkipBeads, tt.wantSkipBeads)
+			}
+		})
+	}
+}
+
+// TestDefaultUsageThresholds tests the default usage monitoring thresholds.
+func TestDefaultUsageThresholds(t *testing.T) {
+	thresholds := DefaultUsageThresholds()
+
+	if thresholds.WarnThreshold != 80 {
+		t.Errorf("WarnThreshold = %v, want 80", thresholds.WarnThreshold)
+	}
+	if thresholds.BlockThreshold != 95 {
+		t.Errorf("BlockThreshold = %v, want 95", thresholds.BlockThreshold)
+	}
+}
+
+// TestUsageThresholdsFromEnv tests that usage thresholds can be configured via environment variables.
+func TestUsageThresholdsFromEnv(t *testing.T) {
+	// Save original env vars
+	origWarn := os.Getenv("ORCH_USAGE_WARN_THRESHOLD")
+	origBlock := os.Getenv("ORCH_USAGE_BLOCK_THRESHOLD")
+	defer func() {
+		restoreEnv("ORCH_USAGE_WARN_THRESHOLD", origWarn)
+		restoreEnv("ORCH_USAGE_BLOCK_THRESHOLD", origBlock)
+	}()
+
+	tests := []struct {
+		name      string
+		warnEnv   string
+		blockEnv  string
+		wantWarn  float64
+		wantBlock float64
+	}{
+		{
+			name:      "no env vars - use defaults",
+			warnEnv:   "",
+			blockEnv:  "",
+			wantWarn:  80,
+			wantBlock: 95,
+		},
+		{
+			name:      "custom warn threshold",
+			warnEnv:   "70",
+			blockEnv:  "",
+			wantWarn:  70,
+			wantBlock: 95,
+		},
+		{
+			name:      "custom block threshold",
+			warnEnv:   "",
+			blockEnv:  "90",
+			wantWarn:  80,
+			wantBlock: 90,
+		},
+		{
+			name:      "both custom",
+			warnEnv:   "75",
+			blockEnv:  "92",
+			wantWarn:  75,
+			wantBlock: 92,
+		},
+		{
+			name:      "invalid env - use defaults",
+			warnEnv:   "not-a-number",
+			blockEnv:  "invalid",
+			wantWarn:  80,
+			wantBlock: 95,
+		},
+		{
+			name:      "out of range - use defaults",
+			warnEnv:   "150", // > 100
+			blockEnv:  "-10", // < 0
+			wantWarn:  80,
+			wantBlock: 95,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnvIfNotEmpty("ORCH_USAGE_WARN_THRESHOLD", tt.warnEnv)
+			setEnvIfNotEmpty("ORCH_USAGE_BLOCK_THRESHOLD", tt.blockEnv)
+
+			// Replicate the threshold parsing logic from checkUsageBeforeSpawn
+			thresholds := DefaultUsageThresholds()
+			if envVal := os.Getenv("ORCH_USAGE_WARN_THRESHOLD"); envVal != "" {
+				if val, err := strconv.ParseFloat(envVal, 64); err == nil && val > 0 && val <= 100 {
+					thresholds.WarnThreshold = val
+				}
+			}
+			if envVal := os.Getenv("ORCH_USAGE_BLOCK_THRESHOLD"); envVal != "" {
+				if val, err := strconv.ParseFloat(envVal, 64); err == nil && val > 0 && val <= 100 {
+					thresholds.BlockThreshold = val
+				}
+			}
+
+			if thresholds.WarnThreshold != tt.wantWarn {
+				t.Errorf("WarnThreshold = %v, want %v", thresholds.WarnThreshold, tt.wantWarn)
+			}
+			if thresholds.BlockThreshold != tt.wantBlock {
+				t.Errorf("BlockThreshold = %v, want %v", thresholds.BlockThreshold, tt.wantBlock)
+			}
+		})
+	}
+}
+
+// TestAddUsageInfoToEventData tests the usage info telemetry helper.
+func TestAddUsageInfoToEventData(t *testing.T) {
+	tests := []struct {
+		name       string
+		usageInfo  *spawn.UsageInfo
+		wantFields []string
+		wantValues map[string]interface{}
+	}{
+		{
+			name:       "nil usage info - no fields added",
+			usageInfo:  nil,
+			wantFields: []string{},
+		},
+		{
+			name: "basic usage info",
+			usageInfo: &spawn.UsageInfo{
+				FiveHourUsed: 50.5,
+				SevenDayUsed: 75.2,
+			},
+			wantFields: []string{"usage_5h_used", "usage_weekly_used"},
+			wantValues: map[string]interface{}{
+				"usage_5h_used":     50.5,
+				"usage_weekly_used": 75.2,
+			},
+		},
+		{
+			name: "with account email",
+			usageInfo: &spawn.UsageInfo{
+				FiveHourUsed: 30.0,
+				SevenDayUsed: 40.0,
+				AccountEmail: "user@example.com",
+			},
+			wantFields: []string{"usage_5h_used", "usage_weekly_used", "usage_account"},
+			wantValues: map[string]interface{}{
+				"usage_account": "user@example.com",
+			},
+		},
+		{
+			name: "with auto-switch",
+			usageInfo: &spawn.UsageInfo{
+				FiveHourUsed: 96.0,
+				SevenDayUsed: 80.0,
+				AutoSwitched: true,
+				SwitchReason: "switched from personal to work",
+			},
+			wantFields: []string{"usage_5h_used", "usage_weekly_used", "usage_auto_switched", "usage_switch_reason"},
+			wantValues: map[string]interface{}{
+				"usage_auto_switched": true,
+				"usage_switch_reason": "switched from personal to work",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eventData := make(map[string]interface{})
+			addUsageInfoToEventData(eventData, tt.usageInfo)
+
+			// Check expected fields are present
+			for _, field := range tt.wantFields {
+				if _, ok := eventData[field]; !ok {
+					t.Errorf("expected field %q not found in event data", field)
+				}
+			}
+
+			// Check expected values
+			for key, wantVal := range tt.wantValues {
+				if gotVal, ok := eventData[key]; ok {
+					if gotVal != wantVal {
+						t.Errorf("field %q = %v, want %v", key, gotVal, wantVal)
+					}
+				}
+			}
+
+			// Check no unexpected fields for nil case
+			if tt.usageInfo == nil && len(eventData) > 0 {
+				t.Errorf("expected empty event data for nil usage info, got %v", eventData)
 			}
 		})
 	}

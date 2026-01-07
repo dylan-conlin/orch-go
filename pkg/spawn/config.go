@@ -168,6 +168,25 @@ type Config struct {
 	// include a reference to this file so the agent can pick up context from the
 	// previous session. Only used for meta-orchestrator spawns.
 	PriorHandoffPath string
+
+	// UsageInfo contains the current account usage at spawn time.
+	// Used for telemetry and monitoring. May be nil if usage check failed.
+	UsageInfo *UsageInfo
+}
+
+// UsageInfo contains account usage data at spawn time.
+// This is a simplified copy of account.CapacityInfo for spawn context.
+type UsageInfo struct {
+	// FiveHourUsed is the 5-hour session utilization (0-100).
+	FiveHourUsed float64
+	// SevenDayUsed is the weekly utilization (0-100).
+	SevenDayUsed float64
+	// AccountEmail is the account email (if available).
+	AccountEmail string
+	// AutoSwitched indicates if account was auto-switched before spawn.
+	AutoSwitched bool
+	// SwitchReason explains why account was switched.
+	SwitchReason string
 }
 
 // WorkspaceNameOptions provides optional configuration for workspace name generation.
