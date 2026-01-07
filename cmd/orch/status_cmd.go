@@ -131,9 +131,35 @@ type InfrastructureHealth struct {
 	Daemon     *DaemonStatus        `json:"daemon,omitempty"`
 }
 
+// SessionMetrics represents drift detection metrics for the current orchestrator session.
+// These metrics surface to Dylan so he can detect when the orchestrator is drifting
+// (e.g., spending too long reading files instead of spawning agents).
+type SessionMetrics struct {
+	// TimeInSession is how long the current session has been running
+	TimeInSession string `json:"time_in_session"`
+
+	// TimeSinceLastSpawn is how long since the last agent was spawned
+	// Empty string if no spawns in session or no active session
+	TimeSinceLastSpawn string `json:"time_since_last_spawn,omitempty"`
+
+	// SpawnCount is the number of agents spawned in the current session
+	SpawnCount int `json:"spawn_count"`
+
+	// HasActiveSession indicates if an orchestrator session is currently active
+	HasActiveSession bool `json:"has_active_session"`
+
+	// Goal is the current session's focus goal
+	Goal string `json:"goal,omitempty"`
+
+	// FileReadsSinceLastSpawn is the count of file reads since last spawn
+	// NOTE: Not yet implemented - requires event tracking infrastructure
+	FileReadsSinceLastSpawn int `json:"file_reads_since_last_spawn,omitempty"`
+}
+
 // StatusOutput represents the full status output for JSON serialization.
 type StatusOutput struct {
 	Infrastructure         *InfrastructureHealth          `json:"infrastructure,omitempty"`
+	SessionMetrics         *SessionMetrics                `json:"session_metrics,omitempty"`
 	Swarm                  SwarmStatus                    `json:"swarm"`
 	Accounts               []AccountUsage                 `json:"accounts"`
 	OrchestratorSessions   []OrchestratorSessionInfo      `json:"orchestrator_sessions,omitempty"`
@@ -511,9 +537,13 @@ func runStatus(serverURL string) error {
 	// Detect synthesis opportunities
 	synthesisOpps, _ := verify.DetectSynthesisOpportunities(projectDir)
 
+	// Get session metrics for drift detection (surfaces to Dylan)
+	sessionMetrics := getSessionMetrics()
+
 	// Build output (use filtered agents for display)
 	output := StatusOutput{
 		Infrastructure:         infraHealth,
+		SessionMetrics:         sessionMetrics,
 		Swarm:                  swarm,
 		Accounts:               accounts,
 		OrchestratorSessions:   orchestratorSessions,
@@ -696,6 +726,48 @@ func getOrchestratorSessions(project string) []OrchestratorSessionInfo {
 	return result
 }
 
+// getSessionMetrics computes drift detection metrics for the current orchestrator session.
+// Returns nil if no session is active (which is itself a signal for Dylan).
+func getSessionMetrics() *SessionMetrics {
+	store, err := session.New("")
+	if err != nil {
+		return nil // Can't access session state
+	}
+
+	if !store.IsActive() {
+		// No active session - return minimal metrics to surface this
+		return &SessionMetrics{
+			HasActiveSession: false,
+			TimeInSession:    "-",
+		}
+	}
+
+	sess := store.Get()
+	if sess == nil {
+		return nil
+	}
+
+	now := time.Now()
+	metrics := &SessionMetrics{
+		HasActiveSession: true,
+		Goal:             sess.Goal,
+		SpawnCount:       len(sess.Spawns),
+		TimeInSession:    formatDuration(now.Sub(sess.StartedAt)),
+	}
+
+	// Calculate time since last spawn
+	if len(sess.Spawns) > 0 {
+		lastSpawn := sess.Spawns[len(sess.Spawns)-1]
+		metrics.TimeSinceLastSpawn = formatDuration(now.Sub(lastSpawn.SpawnedAt))
+	}
+
+	// NOTE: FileReadsSinceLastSpawn is not yet implemented.
+	// Would require tracking orchestrator tool usage via OpenCode events or plugins.
+	// For now, this field remains 0 (omitted in JSON).
+
+	return metrics
+}
+
 // Terminal width thresholds for adaptive output
 const (
 	termWidthWide   = 120 // Full table with all columns
@@ -733,6 +805,10 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 
 	// Print infrastructure health section first
 	printInfrastructureHealth(output.Infrastructure)
+
+	// Print session metrics for drift detection (surfaces to Dylan)
+	// Position: After infrastructure, before swarm - visible at top
+	printSessionMetrics(output.SessionMetrics)
 
 	// Print swarm summary header with processing breakdown
 	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
@@ -1022,6 +1098,44 @@ func printSynthesisOpportunities(opps *verify.SynthesisOpportunities) {
 	for _, opp := range opps.Opportunities {
 		fmt.Printf("  %d investigations on '%s' without synthesis\n", opp.InvestigationCount, opp.Topic)
 	}
+}
+
+// printSessionMetrics prints the session metrics section for drift detection.
+// Purpose: Surface orchestrator behavior to Dylan so he can detect drift
+// (e.g., "2 hours, no spawns" → orchestrator doing task work instead of delegating).
+func printSessionMetrics(metrics *SessionMetrics) {
+	if metrics == nil {
+		return
+	}
+
+	fmt.Println("SESSION METRICS")
+
+	if !metrics.HasActiveSession {
+		fmt.Println("  No active session (run 'orch session start \"goal\"')")
+		fmt.Println()
+		return
+	}
+
+	// Print goal first (context for the numbers)
+	if metrics.Goal != "" {
+		fmt.Printf("  Goal: %s\n", truncate(metrics.Goal, 50))
+	}
+
+	// Core metrics for drift detection
+	fmt.Printf("  Time in session: %s\n", metrics.TimeInSession)
+
+	if metrics.SpawnCount > 0 {
+		fmt.Printf("  Last spawn: %s ago\n", metrics.TimeSinceLastSpawn)
+	} else {
+		fmt.Printf("  Last spawn: no spawns yet\n")
+	}
+
+	fmt.Printf("  Spawns: %d\n", metrics.SpawnCount)
+
+	// File reads metric (placeholder for future implementation)
+	// NOTE: Not surfacing FileReadsSinceLastSpawn until tracking is implemented
+
+	fmt.Println()
 }
 
 // abbreviateSkill returns a shortened version of skill names for narrow displays.
