@@ -70,14 +70,75 @@ type SynthesisResponse struct {
 	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
 }
 
+// investigationDirCache holds pre-loaded directory listings for investigation discovery.
+// This prevents O(n²) behavior when discovering investigation paths for many agents.
+// Without this cache, each agent would call os.ReadDir() 2-3 times on directories
+// with 500+ files, resulting in 300+ agents × 500+ files × 2 calls = massive slowdown.
+type investigationDirCache struct {
+	// entries maps directory path -> list of .md file names (not full DirEntry, just names for efficiency)
+	entries map[string][]string
+}
+
+// buildInvestigationDirCache pre-loads directory listings for investigation discovery.
+// Call this once before processing agents, then pass to discoverInvestigationPath.
+func buildInvestigationDirCache(projectDirs []string) *investigationDirCache {
+	cache := &investigationDirCache{
+		entries: make(map[string][]string),
+	}
+
+	for _, projectDir := range projectDirs {
+		if projectDir == "" {
+			continue
+		}
+
+		// Cache .kb/investigations/
+		investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
+		if entries, err := os.ReadDir(investigationsDir); err == nil {
+			var mdFiles []string
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+					mdFiles = append(mdFiles, entry.Name())
+				}
+			}
+			cache.entries[investigationsDir] = mdFiles
+		}
+
+		// Cache .kb/investigations/simple/
+		simpleDir := filepath.Join(investigationsDir, "simple")
+		if entries, err := os.ReadDir(simpleDir); err == nil {
+			var mdFiles []string
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+					mdFiles = append(mdFiles, entry.Name())
+				}
+			}
+			cache.entries[simpleDir] = mdFiles
+		}
+	}
+
+	return cache
+}
+
+// getEntries returns cached directory entries, or empty slice if not cached.
+func (c *investigationDirCache) getEntries(dirPath string) []string {
+	if c == nil || c.entries == nil {
+		return nil
+	}
+	return c.entries[dirPath]
+}
+
 // discoverInvestigationPath attempts to find an investigation file for an agent
 // using a fallback chain when the agent hasn't reported an investigation_path via beads comment.
+//
+// IMPORTANT: Pass a pre-built investigationDirCache to avoid O(n²) directory scanning.
+// Without the cache, this function would call os.ReadDir() for each agent, causing
+// massive slowdowns with 300+ agents and 500+ investigation files.
 //
 // Fallback chain:
 // 1. Search .kb/investigations/ for files matching workspace name pattern
 // 2. Search .kb/investigations/ for files matching beads ID
 // 3. Check workspace directory for investigation .md files (excluding SPAWN_CONTEXT.md and SYNTHESIS.md)
-func discoverInvestigationPath(workspaceName, beadsID, projectDir string) string {
+func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache *investigationDirCache) string {
 	if projectDir == "" {
 		return ""
 	}
@@ -86,63 +147,75 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string) string
 	// Workspace names follow pattern: {project}-{skill}-{topic}-{date}-{hash}
 	workspaceKeywords := extractWorkspaceKeywords(workspaceName)
 
-	// 1. Search .kb/investigations/ for files matching workspace name pattern
 	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
-	if entries, err := os.ReadDir(investigationsDir); err == nil {
-		// First pass: look for exact topic match (highest confidence)
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-				continue
-			}
-			// Check if filename contains workspace keywords
-			for _, keyword := range workspaceKeywords {
-				if keyword != "" && strings.Contains(strings.ToLower(entry.Name()), strings.ToLower(keyword)) {
-					return filepath.Join(investigationsDir, entry.Name())
+
+	// 1. Search .kb/investigations/ for files matching workspace name pattern
+	// Use cached entries if available (O(1) lookup vs O(n) ReadDir)
+	entries := cache.getEntries(investigationsDir)
+	if entries == nil {
+		// Fallback to direct read if not cached (shouldn't happen in normal use)
+		if dirEntries, err := os.ReadDir(investigationsDir); err == nil {
+			for _, entry := range dirEntries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+					entries = append(entries, entry.Name())
 				}
+			}
+		}
+	}
+
+	// First pass: look for exact topic match (highest confidence)
+	for _, name := range entries {
+		// Check if filename contains workspace keywords
+		for _, keyword := range workspaceKeywords {
+			if keyword != "" && strings.Contains(strings.ToLower(name), strings.ToLower(keyword)) {
+				return filepath.Join(investigationsDir, name)
 			}
 		}
 	}
 
 	// 2. Search for files matching beads ID (e.g., "orch-go-51jz" in filename)
 	if beadsID != "" {
-		if entries, err := os.ReadDir(investigationsDir); err == nil {
-			// Extract short ID from beads ID (last segment after -)
-			shortID := beadsID
-			if idx := strings.LastIndex(beadsID, "-"); idx != -1 && idx < len(beadsID)-1 {
-				shortID = beadsID[idx+1:]
-			}
+		// Extract short ID from beads ID (last segment after -)
+		shortID := beadsID
+		if idx := strings.LastIndex(beadsID, "-"); idx != -1 && idx < len(beadsID)-1 {
+			shortID = beadsID[idx+1:]
+		}
 
-			for _, entry := range entries {
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-					continue
-				}
-				// Check if filename contains beads ID or short ID
-				if strings.Contains(entry.Name(), beadsID) || strings.Contains(entry.Name(), shortID) {
-					return filepath.Join(investigationsDir, entry.Name())
-				}
+		for _, name := range entries {
+			// Check if filename contains beads ID or short ID
+			if strings.Contains(name, beadsID) || strings.Contains(name, shortID) {
+				return filepath.Join(investigationsDir, name)
 			}
 		}
 
 		// Also check .kb/investigations/simple/ (for simpler investigations)
 		simpleDir := filepath.Join(investigationsDir, "simple")
-		if entries, err := os.ReadDir(simpleDir); err == nil {
-			for _, entry := range entries {
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-					continue
-				}
-				for _, keyword := range workspaceKeywords {
-					if keyword != "" && strings.Contains(strings.ToLower(entry.Name()), strings.ToLower(keyword)) {
-						return filepath.Join(simpleDir, entry.Name())
+		simpleEntries := cache.getEntries(simpleDir)
+		if simpleEntries == nil {
+			// Fallback to direct read if not cached
+			if dirEntries, err := os.ReadDir(simpleDir); err == nil {
+				for _, entry := range dirEntries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+						simpleEntries = append(simpleEntries, entry.Name())
 					}
+				}
+			}
+		}
+
+		for _, name := range simpleEntries {
+			for _, keyword := range workspaceKeywords {
+				if keyword != "" && strings.Contains(strings.ToLower(name), strings.ToLower(keyword)) {
+					return filepath.Join(simpleDir, name)
 				}
 			}
 		}
 	}
 
 	// 3. Check workspace directory for investigation .md files
+	// This is per-workspace so not cached (each workspace is different)
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
-	if entries, err := os.ReadDir(workspaceDir); err == nil {
-		for _, entry := range entries {
+	if wsEntries, err := os.ReadDir(workspaceDir); err == nil {
+		for _, entry := range wsEntries {
 			if entry.IsDir() {
 				continue
 			}
@@ -276,7 +349,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// fetching beads for all would require 400+ RPC calls = 3+ seconds.
 	// By limiting to recent sessions, we reduce this to ~10-20 RPC calls.
 	// Sessions older than this are simply excluded from the API response.
-	beadsFetchThreshold := 24 * time.Hour
+	beadsFetchThreshold := 2 * time.Hour
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
@@ -546,6 +619,21 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// Use project-aware batch fetch for cross-project agent visibility
 		commentsMap := globalBeadsCache.getComments(beadsIDsToFetch, beadsProjectDirs)
 
+		// Build investigation directory cache ONCE before the agent loop.
+		// This prevents O(n²) behavior: without this, discoverInvestigationPath would call
+		// os.ReadDir() 2-3 times per agent, scanning 500+ files each time.
+		// With 300+ agents, that's 300 × 500 × 2 = 300,000+ file comparisons.
+		// The cache reduces this to a single ReadDir() call per directory.
+		uniqueProjectDirs := make([]string, 0, len(beadsProjectDirs))
+		seenDirs := make(map[string]bool)
+		for _, dir := range beadsProjectDirs {
+			if dir != "" && !seenDirs[dir] {
+				seenDirs[dir] = true
+				uniqueProjectDirs = append(uniqueProjectDirs, dir)
+			}
+		}
+		invDirCache := buildInvestigationDirCache(uniqueProjectDirs)
+
 		// Populate phase, task, close_reason, and status for each agent using Priority Cascade model.
 		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md for design.
 		for i := range agents {
@@ -602,12 +690,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 			// Auto-discover investigation path if not provided via beads comment
 			// This uses a fallback chain: .kb/investigations/ matching -> workspace .md files
+			// Uses invDirCache to avoid O(n²) directory scanning (built once before this loop)
 			if agents[i].InvestigationPath == "" {
 				workspaceName := agents[i].ID
 				if idx := strings.Index(workspaceName, " ["); idx != -1 {
 					workspaceName = workspaceName[:idx]
 				}
-				discoveredPath := discoverInvestigationPath(workspaceName, agents[i].BeadsID, agents[i].ProjectDir)
+				discoveredPath := discoverInvestigationPath(workspaceName, agents[i].BeadsID, agents[i].ProjectDir, invDirCache)
 				if discoveredPath != "" {
 					agents[i].InvestigationPath = discoveredPath
 				}

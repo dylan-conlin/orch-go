@@ -1083,9 +1083,12 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 		},
 	}
 
+	// Build cache for the test project directory
+	cache := buildInvestigationDirCache([]string{tmpDir})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := discoverInvestigationPath(tt.workspaceName, tt.beadsID, tt.projectDir)
+			got := discoverInvestigationPath(tt.workspaceName, tt.beadsID, tt.projectDir, cache)
 			if tt.wantFound && got == "" {
 				t.Errorf("discoverInvestigationPath() = empty, want path containing %q", tt.wantContains)
 			}
