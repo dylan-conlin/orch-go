@@ -67,6 +67,155 @@ type SynthesisResponse struct {
 	NextActions  []string `json:"next_actions,omitempty"`  // Follow-up items
 }
 
+// discoverInvestigationPath attempts to find an investigation file for an agent
+// using a fallback chain when the agent hasn't reported an investigation_path via beads comment.
+//
+// Fallback chain:
+// 1. Search .kb/investigations/ for files matching workspace name pattern
+// 2. Search .kb/investigations/ for files matching beads ID
+// 3. Check workspace directory for investigation .md files (excluding SPAWN_CONTEXT.md and SYNTHESIS.md)
+func discoverInvestigationPath(workspaceName, beadsID, projectDir string) string {
+	if projectDir == "" {
+		return ""
+	}
+
+	// Extract keywords from workspace name for matching (e.g., "og-inv-skillc-deploy-06jan-ed96" -> "skillc-deploy")
+	// Workspace names follow pattern: {project}-{skill}-{topic}-{date}-{hash}
+	workspaceKeywords := extractWorkspaceKeywords(workspaceName)
+
+	// 1. Search .kb/investigations/ for files matching workspace name pattern
+	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
+	if entries, err := os.ReadDir(investigationsDir); err == nil {
+		// First pass: look for exact topic match (highest confidence)
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			// Check if filename contains workspace keywords
+			for _, keyword := range workspaceKeywords {
+				if keyword != "" && strings.Contains(strings.ToLower(entry.Name()), strings.ToLower(keyword)) {
+					return filepath.Join(investigationsDir, entry.Name())
+				}
+			}
+		}
+	}
+
+	// 2. Search for files matching beads ID (e.g., "orch-go-51jz" in filename)
+	if beadsID != "" {
+		if entries, err := os.ReadDir(investigationsDir); err == nil {
+			// Extract short ID from beads ID (last segment after -)
+			shortID := beadsID
+			if idx := strings.LastIndex(beadsID, "-"); idx != -1 && idx < len(beadsID)-1 {
+				shortID = beadsID[idx+1:]
+			}
+
+			for _, entry := range entries {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+					continue
+				}
+				// Check if filename contains beads ID or short ID
+				if strings.Contains(entry.Name(), beadsID) || strings.Contains(entry.Name(), shortID) {
+					return filepath.Join(investigationsDir, entry.Name())
+				}
+			}
+		}
+
+		// Also check .kb/investigations/simple/ (for simpler investigations)
+		simpleDir := filepath.Join(investigationsDir, "simple")
+		if entries, err := os.ReadDir(simpleDir); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+					continue
+				}
+				for _, keyword := range workspaceKeywords {
+					if keyword != "" && strings.Contains(strings.ToLower(entry.Name()), strings.ToLower(keyword)) {
+						return filepath.Join(simpleDir, entry.Name())
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Check workspace directory for investigation .md files
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
+	if entries, err := os.ReadDir(workspaceDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			// Skip standard workspace files
+			if name == "SPAWN_CONTEXT.md" || name == "SYNTHESIS.md" || name == "ORCHESTRATOR_CONTEXT.md" ||
+				name == "SESSION_HANDOFF.md" || name == ".session_id" || name == ".spawn_time" ||
+				name == ".tier" || name == ".beads_id" {
+				continue
+			}
+			// Check for .md files that might be investigation files
+			if strings.HasSuffix(name, ".md") && strings.Contains(strings.ToLower(name), "inv") {
+				return filepath.Join(workspaceDir, name)
+			}
+		}
+	}
+
+	return ""
+}
+
+// extractWorkspaceKeywords extracts meaningful keywords from a workspace name for investigation matching.
+// Workspace names follow pattern: {project}-{skill}-{topic}-{date}-{hash}
+// Example: "og-inv-skillc-deploy-06jan-ed96" -> ["skillc", "deploy"]
+func extractWorkspaceKeywords(workspaceName string) []string {
+	parts := strings.Split(workspaceName, "-")
+	if len(parts) < 3 {
+		return nil
+	}
+
+	var keywords []string
+
+	// Skip prefix parts that are likely project or skill markers
+	skipPrefixes := []string{"og", "inv", "feat", "fix", "debug", "audit", "impl", "arch", "research"}
+	prefixSet := make(map[string]bool)
+	for _, p := range skipPrefixes {
+		prefixSet[p] = true
+	}
+
+	for _, part := range parts {
+		// Skip short parts (likely hash or date)
+		if len(part) <= 2 {
+			continue
+		}
+		// Skip parts that look like dates (e.g., "06jan", "2026")
+		if len(part) == 5 && strings.Contains(part, "jan") || strings.Contains(part, "feb") ||
+			strings.Contains(part, "mar") || strings.Contains(part, "apr") ||
+			strings.Contains(part, "may") || strings.Contains(part, "jun") ||
+			strings.Contains(part, "jul") || strings.Contains(part, "aug") ||
+			strings.Contains(part, "sep") || strings.Contains(part, "oct") ||
+			strings.Contains(part, "nov") || strings.Contains(part, "dec") {
+			continue
+		}
+		// Skip common prefixes
+		if prefixSet[strings.ToLower(part)] {
+			continue
+		}
+		// Skip parts that look like short hashes (4 hex chars at end)
+		if len(part) == 4 && isHexLike(part) {
+			continue
+		}
+		keywords = append(keywords, part)
+	}
+
+	return keywords
+}
+
+// isHexLike returns true if the string looks like a short hex hash (all lowercase letters/digits).
+func isHexLike(s string) bool {
+	for _, c := range s {
+		if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
 // handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
 func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -435,8 +584,21 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Populate project_dir from beadsProjectDirs lookup (for workspace path construction)
-			if projectDir, ok := beadsProjectDirs[agents[i].BeadsID]; ok {
-				agents[i].ProjectDir = projectDir
+			if agentProjectDir, ok := beadsProjectDirs[agents[i].BeadsID]; ok {
+				agents[i].ProjectDir = agentProjectDir
+			}
+
+			// Auto-discover investigation path if not provided via beads comment
+			// This uses a fallback chain: .kb/investigations/ matching -> workspace .md files
+			if agents[i].InvestigationPath == "" {
+				workspaceName := agents[i].ID
+				if idx := strings.Index(workspaceName, " ["); idx != -1 {
+					workspaceName = workspaceName[:idx]
+				}
+				discoveredPath := discoverInvestigationPath(workspaceName, agents[i].BeadsID, agents[i].ProjectDir)
+				if discoveredPath != "" {
+					agents[i].InvestigationPath = discoveredPath
+				}
 			}
 
 			// Get workspace path for SYNTHESIS.md check (Priority 3)

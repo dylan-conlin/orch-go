@@ -907,3 +907,194 @@ func TestDetermineAgentStatusNonExistentWorkspace(t *testing.T) {
 		t.Errorf("Expected 'active' for non-existent workspace, got %q", result)
 	}
 }
+
+// TestExtractWorkspaceKeywords tests keyword extraction from workspace names.
+func TestExtractWorkspaceKeywords(t *testing.T) {
+	tests := []struct {
+		name          string
+		workspaceName string
+		wantKeywords  []string
+	}{
+		{
+			name:          "standard_investigation_workspace",
+			workspaceName: "og-inv-skillc-deploy-06jan-ed96",
+			wantKeywords:  []string{"skillc", "deploy"},
+		},
+		{
+			name:          "feature_workspace",
+			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
+			wantKeywords:  []string{"dashboard", "auto", "discover"},
+		},
+		{
+			name:          "debug_workspace",
+			workspaceName: "og-debug-status-polling-05dec-ab12",
+			wantKeywords:  []string{"status", "polling"},
+		},
+		{
+			name:          "short_workspace_name",
+			workspaceName: "og-inv",
+			wantKeywords:  nil,
+		},
+		{
+			name:          "empty_workspace_name",
+			workspaceName: "",
+			wantKeywords:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractWorkspaceKeywords(tt.workspaceName)
+			if len(got) != len(tt.wantKeywords) {
+				t.Errorf("extractWorkspaceKeywords(%q) = %v, want %v", tt.workspaceName, got, tt.wantKeywords)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.wantKeywords[i] {
+					t.Errorf("extractWorkspaceKeywords(%q)[%d] = %q, want %q", tt.workspaceName, i, got[i], tt.wantKeywords[i])
+				}
+			}
+		})
+	}
+}
+
+// TestIsHexLike tests the hex-like string detection.
+func TestIsHexLike(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"abcd", true},
+		{"1234", true},
+		{"a1b2", true},
+		{"ed96", true},
+		{"dfc6", true},
+		{"ABCD", false}, // uppercase not allowed
+		{"ghij", false}, // g-z not allowed
+		{"test", false}, // contains non-hex chars
+		{"", true},      // empty is trivially hex-like
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := isHexLike(tt.input); got != tt.expected {
+				t.Errorf("isHexLike(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestDiscoverInvestigationPath tests auto-discovery of investigation files.
+func TestDiscoverInvestigationPath(t *testing.T) {
+	// Create a temporary project directory structure
+	tmpDir := t.TempDir()
+
+	// Create .kb/investigations/ directory with some investigation files
+	invDir := filepath.Join(tmpDir, ".kb", "investigations")
+	if err := os.MkdirAll(invDir, 0755); err != nil {
+		t.Fatalf("Failed to create investigations dir: %v", err)
+	}
+
+	// Create some investigation files
+	invFiles := []string{
+		"2026-01-06-inv-dashboard-auto-discover.md",
+		"2026-01-05-inv-status-polling.md",
+		"2026-01-04-inv-skillc-deploy-structure.md",
+	}
+	for _, name := range invFiles {
+		if err := os.WriteFile(filepath.Join(invDir, name), []byte("# Investigation"), 0644); err != nil {
+			t.Fatalf("Failed to create investigation file: %v", err)
+		}
+	}
+
+	// Create .kb/investigations/simple/ directory
+	simpleDir := filepath.Join(invDir, "simple")
+	if err := os.MkdirAll(simpleDir, 0755); err != nil {
+		t.Fatalf("Failed to create simple dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(simpleDir, "2026-01-06-simple-test.md"), []byte("# Simple"), 0644); err != nil {
+		t.Fatalf("Failed to create simple investigation: %v", err)
+	}
+
+	// Create workspace directory with .md files
+	wsDir := filepath.Join(tmpDir, ".orch", "workspace", "og-inv-my-workspace-06jan-1234")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+	// Create standard workspace files that should be skipped
+	if err := os.WriteFile(filepath.Join(wsDir, "SPAWN_CONTEXT.md"), []byte("# Context"), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, "SYNTHESIS.md"), []byte("# Synthesis"), 0644); err != nil {
+		t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
+	}
+	// Create an investigation file in workspace
+	if err := os.WriteFile(filepath.Join(wsDir, "inv-local-findings.md"), []byte("# Findings"), 0644); err != nil {
+		t.Fatalf("Failed to create local investigation: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		workspaceName string
+		beadsID       string
+		projectDir    string
+		wantFound     bool
+		wantContains  string // substring that should be in the result
+	}{
+		{
+			name:          "match_by_workspace_keywords",
+			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
+			beadsID:       "orch-go-wrrks",
+			projectDir:    tmpDir,
+			wantFound:     true,
+			wantContains:  "dashboard-auto-discover",
+		},
+		{
+			name:          "match_by_workspace_keywords_skillc",
+			workspaceName: "og-inv-skillc-deploy-structure-06jan-ed96",
+			beadsID:       "orch-go-xyz",
+			projectDir:    tmpDir,
+			wantFound:     true,
+			wantContains:  "skillc-deploy-structure",
+		},
+		{
+			name:          "no_project_dir",
+			workspaceName: "og-inv-test",
+			beadsID:       "test-123",
+			projectDir:    "",
+			wantFound:     false,
+			wantContains:  "",
+		},
+		{
+			name:          "no_matching_investigation",
+			workspaceName: "og-inv-nonexistent-topic-06jan-1234",
+			beadsID:       "orch-go-nomatch",
+			projectDir:    tmpDir,
+			wantFound:     false,
+			wantContains:  "",
+		},
+		{
+			name:          "workspace_with_local_inv_file",
+			workspaceName: "og-inv-my-workspace-06jan-1234",
+			beadsID:       "orch-go-local",
+			projectDir:    tmpDir,
+			wantFound:     true,
+			wantContains:  "inv-local-findings.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := discoverInvestigationPath(tt.workspaceName, tt.beadsID, tt.projectDir)
+			if tt.wantFound && got == "" {
+				t.Errorf("discoverInvestigationPath() = empty, want path containing %q", tt.wantContains)
+			}
+			if !tt.wantFound && got != "" {
+				t.Errorf("discoverInvestigationPath() = %q, want empty", got)
+			}
+			if tt.wantFound && tt.wantContains != "" && !filepath.IsAbs(got) {
+				t.Errorf("discoverInvestigationPath() = %q, want absolute path", got)
+			}
+		})
+	}
+}
