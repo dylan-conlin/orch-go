@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
 	import type { Agent, SSEEvent } from '$lib/stores/agents';
 	import { sseEvents } from '$lib/stores/agents';
 	import { onMount, tick } from 'svelte';
@@ -12,8 +11,8 @@
 
 	let { agent }: Props = $props();
 
-	// Event limit - increased from 50 to 100
-	const EVENT_LIMIT = 100;
+	// Event limit per agent
+	const EVENT_LIMIT = 500;
 
 	// Auto-scroll state - persisted in localStorage
 	let autoScroll = $state(true);
@@ -49,23 +48,6 @@
 		}
 	}
 
-	// Activity styling - different emphasis levels based on activity type
-	function getActivityStyle(type?: string): string {
-		switch (type) {
-			case 'tool':
-			case 'tool-invocation':
-			case 'reasoning':
-				return 'border-blue-500/20 bg-blue-500/5';
-			case 'text':
-				return 'border-muted-foreground/20 bg-muted/30';
-			case 'step-start':
-			case 'step-finish':
-				return 'border-muted/50 bg-muted/10';
-			default:
-				return 'border-muted-foreground/20 bg-muted/20';
-		}
-	}
-
 	// Map event type to filter category
 	function getFilterCategory(type?: string): MessageType | null {
 		switch (type) {
@@ -91,15 +73,11 @@
 	}
 
 	// Filter SSE events for this agent's session
-	// Note: For message.part events, sessionID is nested at properties.part.sessionID
 	let agentEvents = $derived(agent?.session_id 
 		? $sseEvents.filter(e => {
-			// Only include message.part events
 			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
-			// Check session ID match
 			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
 			if (eventSessionId !== agent?.session_id) return false;
-			// Apply type filter
 			const partType = e.properties?.part?.type;
 			const category = getFilterCategory(partType);
 			if (category && !enabledTypes.has(category)) return false;
@@ -110,7 +88,6 @@
 	// Auto-scroll to bottom when new events arrive
 	$effect(() => {
 		if (autoScroll && scrollContainer && agentEvents.length > 0) {
-			// Use tick to ensure DOM is updated before scrolling
 			tick().then(() => {
 				if (scrollContainer) {
 					scrollContainer.scrollTop = scrollContainer.scrollHeight;
@@ -123,8 +100,6 @@
 	function handleScroll(event: Event) {
 		const target = event.target as HTMLDivElement;
 		const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 50;
-		// If user scrolled away from bottom, disable auto-scroll
-		// If they scroll back to bottom, re-enable it
 		if (!isAtBottom && autoScroll) {
 			autoScroll = false;
 		} else if (isAtBottom && !autoScroll) {
@@ -133,13 +108,13 @@
 	}
 </script>
 
-<div class="p-4">
+<div class="flex flex-col h-full">
 	<!-- Header with controls -->
-	<div class="mb-3 flex items-center justify-between gap-2 flex-wrap">
+	<div class="p-3 border-b flex items-center justify-between gap-2 flex-wrap shrink-0">
 		<div class="flex items-center gap-2">
-			<h3 class="text-sm font-medium text-muted-foreground">Live Activity</h3>
+			<span class="text-xs text-muted-foreground">{agentEvents.length} events</span>
 			{#if agent.is_processing}
-				<Badge variant="secondary" class="animate-pulse">
+				<Badge variant="secondary" class="animate-pulse text-xs">
 					Processing
 				</Badge>
 			{/if}
@@ -148,91 +123,61 @@
 		<!-- Controls -->
 		<div class="flex items-center gap-2">
 			<!-- Message type filters -->
-			<div class="flex items-center gap-1 border rounded-md p-0.5">
+			<div class="flex items-center gap-0.5 border rounded p-0.5">
 				<button
 					type="button"
-					class="px-2 py-0.5 text-xs rounded transition-colors {enabledTypes.has('text') ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-1.5 py-0.5 text-xs rounded transition-colors {enabledTypes.has('text') ? 'bg-muted' : 'opacity-40 hover:opacity-100'}"
 					onclick={() => toggleType('text')}
-					title="Show text messages"
-				>
-					💬
-				</button>
+					title="Text"
+				>💬</button>
 				<button
 					type="button"
-					class="px-2 py-0.5 text-xs rounded transition-colors {enabledTypes.has('tool') ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-1.5 py-0.5 text-xs rounded transition-colors {enabledTypes.has('tool') ? 'bg-muted' : 'opacity-40 hover:opacity-100'}"
 					onclick={() => toggleType('tool')}
-					title="Show tool invocations"
-				>
-					🔧
-				</button>
+					title="Tools"
+				>🔧</button>
 				<button
 					type="button"
-					class="px-2 py-0.5 text-xs rounded transition-colors {enabledTypes.has('reasoning') ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-1.5 py-0.5 text-xs rounded transition-colors {enabledTypes.has('reasoning') ? 'bg-muted' : 'opacity-40 hover:opacity-100'}"
 					onclick={() => toggleType('reasoning')}
-					title="Show reasoning"
-				>
-					🤔
-				</button>
+					title="Reasoning"
+				>🤔</button>
 				<button
 					type="button"
-					class="px-2 py-0.5 text-xs rounded transition-colors {enabledTypes.has('step') ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					class="px-1.5 py-0.5 text-xs rounded transition-colors {enabledTypes.has('step') ? 'bg-muted' : 'opacity-40 hover:opacity-100'}"
 					onclick={() => toggleType('step')}
-					title="Show step transitions"
-				>
-					▶️
-				</button>
+					title="Steps"
+				>▶️</button>
 			</div>
 			
 			<!-- Auto-scroll toggle -->
 			<button
 				type="button"
-				class="px-2 py-0.5 text-xs rounded border transition-colors {autoScroll ? 'bg-primary/10 text-primary border-primary/50' : 'text-muted-foreground hover:text-foreground'}"
+				class="px-1.5 py-0.5 text-xs rounded border transition-colors {autoScroll ? 'bg-primary/10 text-primary border-primary/50' : 'opacity-40 hover:opacity-100'}"
 				onclick={() => autoScroll = !autoScroll}
-				title="Toggle auto-scroll"
-			>
-				{autoScroll ? '⬇️ Auto' : '⬇️'}
-			</button>
+				title="Auto-scroll"
+			>⬇️</button>
 		</div>
 	</div>
 	
-	<!-- Current Activity - styling varies by activity type -->
-	{#if agent.current_activity}
-		<div class="mb-3 rounded-lg border {getActivityStyle(agent.current_activity.type)} p-3">
-			<div class="flex items-start gap-2">
-				<span class="text-lg">{getActivityIcon(agent.current_activity.type)}</span>
-				<div class="flex-1 min-w-0">
-					<p class="text-sm font-medium">{agent.current_activity.text || 'Working...'}</p>
-					<span class="text-xs text-muted-foreground">
-						{agent.current_activity.type}
-					</span>
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Activity Log - scrollable with more height -->
+	<!-- Activity Log - terminal style, new messages at bottom -->
 	<div 
 		bind:this={scrollContainer}
 		onscroll={handleScroll}
-		class="max-h-96 space-y-1 overflow-y-auto rounded border bg-muted/20 p-2 font-mono text-xs"
+		class="flex-1 overflow-y-auto bg-black/20 p-2 font-mono text-xs"
 	>
-		{#each agentEvents.slice().reverse() as event (event.id)}
+		{#each agentEvents as event (event.id)}
 			{@const part = event.properties?.part}
 			{#if part}
-				<div class="flex items-start gap-2 py-1 text-muted-foreground hover:bg-muted/50 rounded px-1 transition-colors">
-					<span class="shrink-0">{getActivityIcon(part.type)}</span>
+				<div class="flex items-start gap-2 py-0.5 text-muted-foreground hover:text-foreground transition-colors">
+					<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
 					<span class="flex-1 break-words leading-relaxed">
 						{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
 					</span>
 				</div>
 			{/if}
 		{:else}
-			<p class="py-4 text-center text-muted-foreground">Waiting for activity...</p>
+			<p class="py-4 text-center text-muted-foreground/50">Waiting for activity...</p>
 		{/each}
-	</div>
-	
-	<!-- Event count indicator -->
-	<div class="mt-2 text-xs text-muted-foreground text-right">
-		{agentEvents.length} / {EVENT_LIMIT} events
 	</div>
 </div>

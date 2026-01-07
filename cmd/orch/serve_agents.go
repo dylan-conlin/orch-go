@@ -21,27 +21,29 @@ import (
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID                string               `json:"id"`
-	SessionID         string               `json:"session_id,omitempty"`
-	BeadsID           string               `json:"beads_id,omitempty"`
-	BeadsTitle        string               `json:"beads_title,omitempty"`
-	Skill             string               `json:"skill,omitempty"`
-	Status            string               `json:"status"`            // "active", "idle", "completed", etc.
-	Phase             string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task              string               `json:"task,omitempty"`    // Task description from beads issue
-	Project           string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
-	Runtime           string               `json:"runtime,omitempty"`
-	Window            string               `json:"window,omitempty"`
-	IsProcessing      bool                 `json:"is_processing,omitempty"` // True if actively generating response
-	IsStale           bool                 `json:"is_stale,omitempty"`      // True if agent is older than beadsFetchThreshold (beads data not fetched)
-	SpawnedAt         string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
-	UpdatedAt         string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
-	Synthesis         *SynthesisResponse   `json:"synthesis,omitempty"`
-	CloseReason       string               `json:"close_reason,omitempty"`       // Beads close reason, fallback when synthesis is null
-	GapAnalysis       *GapAPIResponse      `json:"gap_analysis,omitempty"`       // Context gap analysis from spawn time
-	Tokens            *opencode.TokenStats `json:"tokens,omitempty"`             // Token usage for the session
-	InvestigationPath string               `json:"investigation_path,omitempty"` // Path to investigation file from beads comments
-	ProjectDir        string               `json:"project_dir,omitempty"`        // Project directory for the agent
+	ID                   string               `json:"id"`
+	SessionID            string               `json:"session_id,omitempty"`
+	BeadsID              string               `json:"beads_id,omitempty"`
+	BeadsTitle           string               `json:"beads_title,omitempty"`
+	Skill                string               `json:"skill,omitempty"`
+	Status               string               `json:"status"`            // "active", "idle", "completed", etc.
+	Phase                string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task                 string               `json:"task,omitempty"`    // Task description from beads issue
+	Project              string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime              string               `json:"runtime,omitempty"`
+	Window               string               `json:"window,omitempty"`
+	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response
+	IsStale              bool                 `json:"is_stale,omitempty"`      // True if agent is older than beadsFetchThreshold (beads data not fetched)
+	SpawnedAt            string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt            string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis            *SynthesisResponse   `json:"synthesis,omitempty"`
+	CloseReason          string               `json:"close_reason,omitempty"`          // Beads close reason, fallback when synthesis is null
+	GapAnalysis          *GapAPIResponse      `json:"gap_analysis,omitempty"`          // Context gap analysis from spawn time
+	Tokens               *opencode.TokenStats `json:"tokens,omitempty"`                // Token usage for the session
+	InvestigationPath    string               `json:"investigation_path,omitempty"`    // Path to investigation file from beads comments
+	ProjectDir           string               `json:"project_dir,omitempty"`           // Project directory for the agent
+	SynthesisContent     string               `json:"synthesis_content,omitempty"`     // Raw SYNTHESIS.md content for inline rendering
+	InvestigationContent string               `json:"investigation_content,omitempty"` // Raw investigation file content for inline rendering
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -274,7 +276,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// fetching beads for all would require 400+ RPC calls = 3+ seconds.
 	// By limiting to recent sessions, we reduce this to ~10-20 RPC calls.
 	// Sessions older than this are simply excluded from the API response.
-	beadsFetchThreshold := 2 * time.Hour
+	beadsFetchThreshold := 24 * time.Hour
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
@@ -505,6 +507,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 						NextActions:    synthesis.NextActions,
 					}
 				}
+				// Read raw SYNTHESIS.md content for inline rendering in dashboard
+				synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+				if content, err := os.ReadFile(synthesisPath); err == nil {
+					agent.SynthesisContent = string(content)
+				}
 			}
 
 			// Extract beadsID from workspace SPAWN_CONTEXT.md (more reliable than parsing name)
@@ -606,6 +613,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// Read investigation file content for inline rendering in dashboard
+			if agents[i].InvestigationPath != "" {
+				if content, err := os.ReadFile(agents[i].InvestigationPath); err == nil {
+					agents[i].InvestigationContent = string(content)
+				}
+			}
+
 			// Get workspace path for SYNTHESIS.md check (Priority 3)
 			workspacePath := wsCache.lookupWorkspace(agents[i].BeadsID)
 			// Fallback: For untracked agents, try looking up by workspace name from session title
@@ -625,6 +639,27 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			if agents[i].Status == "completed" && agents[i].Synthesis == nil && agents[i].CloseReason == "" {
 				if issue, ok := allIssues[agents[i].BeadsID]; ok && issue.CloseReason != "" {
 					agents[i].CloseReason = issue.CloseReason
+				}
+			}
+
+			// Read synthesis content for active agents that have a workspace with SYNTHESIS.md
+			// (Completed workspaces already have this populated above in the workspace scan)
+			if workspacePath != "" && agents[i].SynthesisContent == "" {
+				synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+				if content, err := os.ReadFile(synthesisPath); err == nil {
+					agents[i].SynthesisContent = string(content)
+					// Also parse synthesis if not already parsed
+					if agents[i].Synthesis == nil {
+						if synthesis, err := verify.ParseSynthesis(workspacePath); err == nil {
+							agents[i].Synthesis = &SynthesisResponse{
+								TLDR:           synthesis.TLDR,
+								Outcome:        synthesis.Outcome,
+								Recommendation: synthesis.Recommendation,
+								DeltaSummary:   summarizeDelta(synthesis.Delta),
+								NextActions:    synthesis.NextActions,
+							}
+						}
+					}
 				}
 			}
 		}

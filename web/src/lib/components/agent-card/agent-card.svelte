@@ -8,6 +8,21 @@
 
 	export let agent: Agent;
 
+	// Track beads ID copy state
+	let copiedBeadsId = false;
+
+	async function copyBeadsId(e: MouseEvent) {
+		e.stopPropagation(); // Prevent card click
+		if (!agent.beads_id) return;
+		try {
+			await navigator.clipboard.writeText(agent.beads_id);
+			copiedBeadsId = true;
+			setTimeout(() => copiedBeadsId = false, 2000);
+		} catch (err) {
+			console.error('Failed to copy:', err);
+		}
+	}
+
 	// Check if agent is working in a hotspot area
 	$: agentHotspot = getHotspotForAgent(agent.beads_id, agent.task, agent.skill, $hotspots);
 
@@ -380,13 +395,16 @@
 		{#if agent.beads_id}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="text-[10px] text-muted-foreground cursor-default">
-						{agent.beads_id}
-					</span>
+					<button
+						type="button"
+						onclick={copyBeadsId}
+						class="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+					>
+						{copiedBeadsId ? '✓ copied' : agent.beads_id}
+					</button>
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p>Beads Issue: {agent.beads_id}</p>
-					<p class="text-xs text-muted-foreground">Run <code>bd show {agent.beads_id}</code> for details</p>
+					<p>Click to copy</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
 		{/if}

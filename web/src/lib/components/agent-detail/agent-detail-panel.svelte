@@ -219,180 +219,26 @@
 			</div>
 		</div>
 
-		<!-- Tab Content - scrollable -->
-		<div class="flex-1 overflow-y-auto">
-		<!-- Activity Tab (for active agents) -->
-		{#if activeTab === 'activity'}
-			<ActivityTab agent={$selectedAgent} />
-		{/if}
+		<!-- Tab Content -->
+		<div class="flex-1 overflow-hidden flex flex-col">
+			<!-- Activity Tab (for active agents) - handles its own scrolling -->
+			{#if activeTab === 'activity'}
+				<ActivityTab agent={$selectedAgent} />
+			{/if}
 
-		<!-- Synthesis Tab (for completed agents) -->
-		{#if activeTab === 'synthesis'}
-			<SynthesisTab agent={$selectedAgent} />
-		{/if}
-
-		<!-- Investigation Tab (for completed/abandoned agents) -->
-		{#if activeTab === 'investigation'}
-			<InvestigationTab agent={$selectedAgent} />
-		{/if}
-
-		<!-- Quick Copy Section - Full-width clickable items -->
-		<div class="border-b p-4">
-			<h3 class="mb-3 text-sm font-medium text-muted-foreground">Quick Copy</h3>
-			<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-				<!-- Workspace ID - clickable card -->
-				<button
-					type="button"
-					class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
-					onclick={() => copyToClipboard($selectedAgent?.id || '', 'workspace')}
-				>
-					<div class="flex-1 min-w-0">
-						<span class="text-[10px] uppercase tracking-wide text-muted-foreground">Workspace</span>
-						<p class="truncate font-mono text-xs">{$selectedAgent.id}</p>
-					</div>
-					<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-						{copiedItem === 'workspace' ? '✓' : '📋'}
-					</span>
-				</button>
-
-				<!-- Session ID - clickable card -->
-				{#if $selectedAgent.session_id}
-					<button
-						type="button"
-						class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
-						onclick={() => copyToClipboard($selectedAgent?.session_id || '', 'session')}
-					>
-						<div class="flex-1 min-w-0">
-							<span class="text-[10px] uppercase tracking-wide text-muted-foreground">Session</span>
-							<p class="truncate font-mono text-xs">{$selectedAgent.session_id.slice(0, 12)}...</p>
-						</div>
-						<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-							{copiedItem === 'session' ? '✓' : '📋'}
-						</span>
-					</button>
-				{/if}
-
-				<!-- Beads ID - clickable card -->
-				{#if $selectedAgent.beads_id}
-					<button
-						type="button"
-						class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
-						onclick={() => copyToClipboard($selectedAgent?.beads_id || '', 'beads')}
-					>
-						<div class="flex-1 min-w-0">
-							<span class="text-[10px] uppercase tracking-wide text-muted-foreground">Beads Issue</span>
-							<p class="truncate font-mono text-xs">{$selectedAgent.beads_id}</p>
-						</div>
-						<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-							{copiedItem === 'beads' ? '✓' : '📋'}
-						</span>
-					</button>
-				{/if}
-			</div>
-		</div>
-
-			<!-- Context Section -->
-			<div class="border-b p-4">
-				<h3 class="mb-3 text-sm font-medium text-muted-foreground">Context</h3>
-				<div class="space-y-3">
-					{#if $selectedAgent.task}
-						<div>
-							<span class="text-xs text-muted-foreground">Task</span>
-							<p class="text-sm">{$selectedAgent.task}</p>
-						</div>
-					{/if}
-					<div class="flex flex-wrap gap-2">
-						{#if $selectedAgent.project}
-							<Badge variant="secondary">{$selectedAgent.project}</Badge>
-						{/if}
-						{#if $selectedAgent.skill}
-							<Badge variant="outline">{$selectedAgent.skill}</Badge>
-						{/if}
-					</div>
-					<div class="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-						<div>
-							<span class="block">Spawned</span>
-							<span class="text-foreground">{formatTime($selectedAgent.spawned_at)}</span>
-						</div>
-						<div>
-							<span class="block">Last Updated</span>
-							<span class="text-foreground">{formatTime($selectedAgent.updated_at)}</span>
-						</div>
-					</div>
+			<!-- Synthesis Tab (for completed agents) -->
+			{#if activeTab === 'synthesis'}
+				<div class="flex-1 overflow-y-auto p-4">
+					<SynthesisTab agent={$selectedAgent} />
 				</div>
-			</div>
-		</div>
+			{/if}
 
-		<!-- Quick Commands Footer - clickable command cards -->
-		<div class="border-t p-4">
-			<h3 class="mb-3 text-sm font-medium text-muted-foreground">Quick Commands</h3>
-			<div class="grid gap-2 sm:grid-cols-2">
-				{#if $selectedAgent.status === 'active'}
-					<!-- Active agent commands -->
-					<button
-						type="button"
-						class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
-						onclick={() => copyToClipboard(`orch send ${$selectedAgent?.session_id} ""`, 'send')}
-					>
-						<span class="text-lg">💬</span>
-						<div class="flex-1 min-w-0">
-							<p class="text-xs font-medium">Send Message</p>
-							<code class="text-[10px] text-muted-foreground">orch send ...</code>
-						</div>
-						<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-							{copiedItem === 'send' ? '✓' : '📋'}
-						</span>
-					</button>
-					<button
-						type="button"
-						class="group flex items-center gap-2 rounded-lg border bg-red-500/10 px-3 py-2 text-left transition-all hover:bg-red-500/20 hover:border-red-500/50 active:scale-[0.98]"
-						onclick={() => copyToClipboard(`orch abandon ${$selectedAgent?.id}`, 'abandon')}
-					>
-						<span class="text-lg">🛑</span>
-						<div class="flex-1 min-w-0">
-							<p class="text-xs font-medium">Abandon Agent</p>
-							<code class="text-[10px] text-muted-foreground">orch abandon ...</code>
-						</div>
-						<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-							{copiedItem === 'abandon' ? '✓' : '📋'}
-						</span>
-					</button>
-				{:else if $selectedAgent.status === 'completed'}
-					<!-- Completed agent commands -->
-					<button
-						type="button"
-						class="group flex items-center gap-2 rounded-lg border bg-green-500/10 px-3 py-2 text-left transition-all hover:bg-green-500/20 hover:border-green-500/50 active:scale-[0.98]"
-						onclick={() => copyToClipboard(`orch complete ${$selectedAgent?.id}`, 'complete')}
-					>
-						<span class="text-lg">✅</span>
-						<div class="flex-1 min-w-0">
-							<p class="text-xs font-medium">Complete Agent</p>
-							<code class="text-[10px] text-muted-foreground">orch complete ...</code>
-						</div>
-						<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-							{copiedItem === 'complete' ? '✓' : '📋'}
-						</span>
-					</button>
-				{/if}
-				
-				<!-- Common commands -->
-				{#if $selectedAgent.beads_id}
-					<button
-						type="button"
-						class="group flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-left transition-all hover:bg-muted hover:border-primary/50 active:scale-[0.98]"
-						onclick={() => copyToClipboard(`bd show ${$selectedAgent?.beads_id}`, 'show')}
-					>
-						<span class="text-lg">📋</span>
-						<div class="flex-1 min-w-0">
-							<p class="text-xs font-medium">Show Issue</p>
-							<code class="text-[10px] text-muted-foreground">bd show ...</code>
-						</div>
-						<span class="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-							{copiedItem === 'show' ? '✓' : '📋'}
-						</span>
-					</button>
-				{/if}
-			</div>
+			<!-- Investigation Tab (for completed/abandoned agents) -->
+			{#if activeTab === 'investigation'}
+				<div class="flex-1 overflow-y-auto p-4">
+					<InvestigationTab agent={$selectedAgent} />
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

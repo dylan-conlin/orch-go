@@ -52,6 +52,8 @@ export interface Agent {
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
 	investigation_path?: string; // Path to investigation file from beads comments
+	synthesis_content?: string; // Raw SYNTHESIS.md content for inline rendering
+	investigation_content?: string; // Raw investigation file content for inline rendering
 	// Real-time activity tracking
 	current_activity?: {
 		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';
@@ -358,16 +360,16 @@ function createSSEStore() {
 				
 				// New event - add to list
 				const newEvents = [...events, eventWithId];
-				// Keep last 100 events
-				return newEvents.slice(-100);
+				// Keep last 1000 events (global across all agents)
+				return newEvents.slice(-1000);
 			});
 		},
 		// Legacy addEvent for backwards compatibility
 		addEvent: (event: Omit<SSEEvent, 'id'>) => {
 			update((events) => {
 				const newEvents = [...events, { ...event, id: generateSSEEventId() }];
-				// Keep last 100 events
-				return newEvents.slice(-100);
+				// Keep last 1000 events (global across all agents)
+				return newEvents.slice(-1000);
 			});
 		},
 		clear: () => {
