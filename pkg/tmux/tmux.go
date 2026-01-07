@@ -6,8 +6,59 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
+
+// tmuxPath caches the resolved path to the tmux binary.
+// This is set once by findTmux() and reused for all subsequent calls.
+var (
+	tmuxPath     string
+	tmuxPathOnce sync.Once
+	tmuxPathErr  error
+)
+
+// findTmux locates the tmux binary, checking common locations first.
+// This handles cases where PATH doesn't include tmux (e.g., launchd-spawned processes).
+// The result is cached for subsequent calls.
+func findTmux() (string, error) {
+	tmuxPathOnce.Do(func() {
+		// Common tmux locations in order of preference
+		commonPaths := []string{
+			"/opt/homebrew/bin/tmux", // macOS ARM (Homebrew)
+			"/usr/local/bin/tmux",    // macOS Intel, Linux (Homebrew/manual)
+			"/usr/bin/tmux",          // Linux system package
+		}
+
+		// Check common locations first
+		for _, path := range commonPaths {
+			if _, err := os.Stat(path); err == nil {
+				tmuxPath = path
+				return
+			}
+		}
+
+		// Fall back to PATH lookup
+		path, err := exec.LookPath("tmux")
+		if err != nil {
+			tmuxPathErr = fmt.Errorf("tmux not found in common locations or PATH: %w", err)
+			return
+		}
+		tmuxPath = path
+	})
+
+	return tmuxPath, tmuxPathErr
+}
+
+// tmuxCommand creates an exec.Cmd for tmux with the given arguments.
+// Uses the cached tmux path from findTmux().
+func tmuxCommand(args ...string) (*exec.Cmd, error) {
+	path, err := findTmux()
+	if err != nil {
+		return nil, err
+	}
+	return exec.Command(path, args...), nil
+}
 
 // SKILL_EMOJIS maps skill names to their display emojis.
 var SKILL_EMOJIS = map[string]string{
@@ -162,9 +213,11 @@ func IsAvailable() bool {
 
 // SessionExists checks if a tmux session exists.
 func SessionExists(sessionName string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", sessionName)
-	err := cmd.Run()
-	return err == nil
+	cmd, err := tmuxCommand("has-session", "-t", sessionName)
+	if err != nil {
+		return false // tmux not found
+	}
+	return cmd.Run() == nil
 }
 
 // GetWorkersSessionName derives the per-project workers session name.

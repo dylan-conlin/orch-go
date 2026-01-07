@@ -7,7 +7,6 @@ package tmux
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -234,7 +233,10 @@ func (f *FollowerState) emitChange(cwd, projectDir string) {
 
 // GetTmuxCwd gets the current working directory of the orchestrator tmux pane.
 func GetTmuxCwd(sessionName string) (string, error) {
-	cmd := exec.Command("tmux", "display-message", "-t", sessionName, "-p", "#{pane_current_path}")
+	cmd, err := tmuxCommand("display-message", "-t", sessionName, "-p", "#{pane_current_path}")
+	if err != nil {
+		return "", fmt.Errorf("failed to get tmux cwd: %w", err)
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get tmux cwd: %w", err)
