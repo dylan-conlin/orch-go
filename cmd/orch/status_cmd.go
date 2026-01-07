@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -74,22 +75,22 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID    string               `json:"session_id"`
-	BeadsID      string               `json:"beads_id,omitempty"`
-	Skill        string               `json:"skill,omitempty"`
-	Account      string               `json:"account,omitempty"`
-	Runtime      string               `json:"runtime"`
-	Title        string               `json:"title,omitempty"`
-	Window       string               `json:"window,omitempty"`
-	Phase        string               `json:"phase,omitempty"`         // Current phase from beads comments
-	Task         string               `json:"task,omitempty"`          // Task description (truncated)
-	Project      string               `json:"project,omitempty"`       // Project name derived from beads ID or workspace
-	ProjectDir   string               `json:"project_dir,omitempty"`   // Full path to project directory (for cross-project agents)
-	IsPhantom    bool                 `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
-	IsProcessing bool                 `json:"is_processing,omitempty"` // True if session is actively generating a response
-	IsCompleted  bool                 `json:"is_completed,omitempty"`  // True if beads issue is closed
-	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`        // Token usage for the session
-	ContextRisk  *verify.ContextExhaustionRisk `json:"context_risk,omitempty"` // Context exhaustion risk assessment
+	SessionID    string                        `json:"session_id"`
+	BeadsID      string                        `json:"beads_id,omitempty"`
+	Skill        string                        `json:"skill,omitempty"`
+	Account      string                        `json:"account,omitempty"`
+	Runtime      string                        `json:"runtime"`
+	Title        string                        `json:"title,omitempty"`
+	Window       string                        `json:"window,omitempty"`
+	Phase        string                        `json:"phase,omitempty"`         // Current phase from beads comments
+	Task         string                        `json:"task,omitempty"`          // Task description (truncated)
+	Project      string                        `json:"project,omitempty"`       // Project name derived from beads ID or workspace
+	ProjectDir   string                        `json:"project_dir,omitempty"`   // Full path to project directory (for cross-project agents)
+	IsPhantom    bool                          `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
+	IsProcessing bool                          `json:"is_processing,omitempty"` // True if session is actively generating a response
+	IsCompleted  bool                          `json:"is_completed,omitempty"`  // True if beads issue is closed
+	Tokens       *opencode.TokenStats          `json:"tokens,omitempty"`        // Token usage for the session
+	ContextRisk  *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`  // Context exhaustion risk assessment
 }
 
 // OrchestratorSessionInfo represents an active orchestrator session for display.
@@ -101,12 +102,42 @@ type OrchestratorSessionInfo struct {
 	Status        string `json:"status"`
 }
 
+// InfraServiceStatus represents the health status of an infrastructure service.
+type InfraServiceStatus struct {
+	Name    string `json:"name"`
+	Running bool   `json:"running"`
+	Port    int    `json:"port,omitempty"`
+	Details string `json:"details,omitempty"`
+}
+
+// DaemonStatus represents the status from daemon-status.json.
+type DaemonStatus struct {
+	Status         string `json:"status"`
+	LastPoll       string `json:"last_poll,omitempty"`
+	LastSpawn      string `json:"last_spawn,omitempty"`
+	LastCompletion string `json:"last_completion,omitempty"`
+	ReadyCount     int    `json:"ready_count,omitempty"`
+	Capacity       struct {
+		Max       int `json:"max"`
+		Active    int `json:"active"`
+		Available int `json:"available"`
+	} `json:"capacity,omitempty"`
+}
+
+// InfrastructureHealth represents the overall infrastructure health status.
+type InfrastructureHealth struct {
+	AllHealthy bool                 `json:"all_healthy"`
+	Services   []InfraServiceStatus `json:"services"`
+	Daemon     *DaemonStatus        `json:"daemon,omitempty"`
+}
+
 // StatusOutput represents the full status output for JSON serialization.
 type StatusOutput struct {
-	Swarm                 SwarmStatus               `json:"swarm"`
-	Accounts              []AccountUsage            `json:"accounts"`
-	OrchestratorSessions  []OrchestratorSessionInfo `json:"orchestrator_sessions,omitempty"`
-	Agents                []AgentInfo               `json:"agents"`
+	Infrastructure       *InfrastructureHealth     `json:"infrastructure,omitempty"`
+	Swarm                SwarmStatus               `json:"swarm"`
+	Accounts             []AccountUsage            `json:"accounts"`
+	OrchestratorSessions []OrchestratorSessionInfo `json:"orchestrator_sessions,omitempty"`
+	Agents               []AgentInfo               `json:"agents"`
 }
 
 func runStatus(serverURL string) error {
@@ -473,8 +504,12 @@ func runStatus(serverURL string) error {
 	// Fetch orchestrator sessions from registry
 	orchestratorSessions := getOrchestratorSessions(statusProject)
 
+	// Check infrastructure health
+	infraHealth := checkInfrastructureHealth()
+
 	// Build output (use filtered agents for display)
 	output := StatusOutput{
+		Infrastructure:       infraHealth,
 		Swarm:                swarm,
 		Accounts:             accounts,
 		OrchestratorSessions: orchestratorSessions,
@@ -690,6 +725,9 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 		fmt.Println("   Infrastructure is unprotected. Run 'orch mode ops' when done.")
 		fmt.Println()
 	}
+
+	// Print infrastructure health section first
+	printInfrastructureHealth(output.Infrastructure)
 
 	// Print swarm summary header with processing breakdown
 	fmt.Printf("SWARM STATUS: Active: %d", output.Swarm.Active)
@@ -1056,4 +1094,120 @@ func findProjectDirByName(projectName string) string {
 	}
 
 	return ""
+}
+
+// checkInfrastructureHealth checks the health of infrastructure services.
+// Performs TCP connect tests for dashboard (port 3348) and OpenCode (port 4096),
+// and reads daemon status from ~/.orch/daemon-status.json.
+func checkInfrastructureHealth() *InfrastructureHealth {
+	health := &InfrastructureHealth{
+		AllHealthy: true,
+		Services:   make([]InfraServiceStatus, 0, 2),
+	}
+
+	// Check Dashboard server (orch serve) on port 3348
+	dashboardStatus := checkTCPPort("Dashboard", DefaultServePort)
+	health.Services = append(health.Services, dashboardStatus)
+	if !dashboardStatus.Running {
+		health.AllHealthy = false
+	}
+
+	// Check OpenCode server on port 4096
+	opencodeStatus := checkTCPPort("OpenCode", 4096)
+	health.Services = append(health.Services, opencodeStatus)
+	if !opencodeStatus.Running {
+		health.AllHealthy = false
+	}
+
+	// Check daemon status from file
+	daemonStatus := readDaemonStatus()
+	health.Daemon = daemonStatus
+	if daemonStatus == nil || daemonStatus.Status != "running" {
+		health.AllHealthy = false
+	}
+
+	return health
+}
+
+// checkTCPPort performs a TCP connect test to verify a service is listening.
+func checkTCPPort(name string, port int) InfraServiceStatus {
+	status := InfraServiceStatus{
+		Name: name,
+		Port: port,
+	}
+
+	addr := fmt.Sprintf("localhost:%d", port)
+	conn, err := tcpDialTimeout(addr, 1*time.Second)
+	if err != nil {
+		status.Running = false
+		status.Details = "not responding"
+		return status
+	}
+	conn.Close()
+
+	status.Running = true
+	status.Details = "listening"
+	return status
+}
+
+// tcpDialTimeout dials a TCP address with a timeout.
+// This is a wrapper to allow for testing.
+var tcpDialTimeout = tcpDialTimeoutImpl
+
+// tcpDialTimeoutImpl is the actual implementation of TCP dial using net.DialTimeout.
+func tcpDialTimeoutImpl(addr string, timeout time.Duration) (interface{ Close() error }, error) {
+	return net.DialTimeout("tcp", addr, timeout)
+}
+
+// readDaemonStatus reads the daemon status from ~/.orch/daemon-status.json.
+func readDaemonStatus() *DaemonStatus {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	statusPath := filepath.Join(homeDir, ".orch", "daemon-status.json")
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
+		return nil
+	}
+
+	var status DaemonStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return nil
+	}
+
+	return &status
+}
+
+// printInfrastructureHealth prints the infrastructure health section.
+func printInfrastructureHealth(health *InfrastructureHealth) {
+	if health == nil {
+		return
+	}
+
+	fmt.Println("SYSTEM HEALTH")
+	for _, svc := range health.Services {
+		emoji := "✅"
+		if !svc.Running {
+			emoji = "❌"
+		}
+		fmt.Printf("  %s %s (port %d) - %s\n", emoji, svc.Name, svc.Port, svc.Details)
+	}
+
+	// Print daemon status
+	if health.Daemon != nil {
+		emoji := "✅"
+		if health.Daemon.Status != "running" {
+			emoji = "❌"
+		}
+		daemonDetails := health.Daemon.Status
+		if health.Daemon.Status == "running" && health.Daemon.ReadyCount > 0 {
+			daemonDetails = fmt.Sprintf("%s (%d ready)", health.Daemon.Status, health.Daemon.ReadyCount)
+		}
+		fmt.Printf("  %s Daemon - %s\n", emoji, daemonDetails)
+	} else {
+		fmt.Println("  ❌ Daemon - not running")
+	}
+	fmt.Println()
 }
