@@ -450,13 +450,24 @@
       "created": "2026-01-07",
       "source": ".kb/investigations/2026-01-07-design-dashboard-activity-feed-persistence.md",
       "notes": "Implements hybrid SSE + API architecture. OpenCode is source of truth for session history."
+    },
+    {
+      "id": "feat-041",
+      "title": "Use kb projects as source for multi-project workspace scanning",
+      "description": "Fix cross-project agent visibility by using kb projects registry as primary source of project directories instead of relying on OpenCode session.Directory (which is always orch-go when using --attach mode). Create getKBProjects() function to parse kb projects list output. Merge kb projects with session directories in extractUniqueProjectDirs(). Include graceful fallback if kb CLI fails. This ensures all registered project workspaces are scanned regardless of OpenCode session state. File targets: cmd/orch/serve_agents_cache.go (getKBProjects, extractUniqueProjectDirs). Out of scope: Project filtering API. Acceptance: Agents spawned with --workdir to registered kb projects show correct project_dir in dashboard, graceful degradation when kb unavailable.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-07",
+      "source": ".kb/investigations/2026-01-07-inv-cross-project-agents-show-wrong.md",
+      "notes": "Supersedes incomplete feat-017. Root cause: OpenCode --attach mode uses server's cwd, not CLI's cwd. kb projects provides reliable alternative source of project directories."
     }
   ],
   "meta": {
     "last_updated": "2026-01-07",
-    "total_features": 40,
+    "total_features": 41,
     "by_status": {
-      "todo": 38,
+      "todo": 39,
       "in_progress": 0,
       "done": 2
     }
