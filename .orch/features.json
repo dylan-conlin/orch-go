@@ -439,13 +439,24 @@
       "source": ".kb/investigations/2026-01-07-design-recurring-problem-duplicate-synthesis-issues.md",
       "repo": "kb-cli",
       "notes": "Quick fix (~15 min). Change return false,nil to return true,nil on error. Also establishes 'fail-closed for idempotency' pattern."
+    },
+    {
+      "id": "feat-040",
+      "title": "Implement dashboard activity feed historical event loading",
+      "description": "Fix activity tab event loss by fetching historical events from OpenCode API on-demand. Add /api/agents/:id/messages endpoint to orch serve that proxies to OpenCode GET /session/:sessionID/message. Transform MessageV2.Part[] to SSEEvent[] format in frontend. Store fetched events per-session in agents.ts (not global). Add loading state in activity-tab.svelte. Merge API results with SSE events using part.id deduplication. File targets: cmd/orch/serve_agents.go (/api/agents/:id/messages endpoint), web/src/lib/stores/agents.ts (per-agent event history, fetchHistory function), web/src/lib/components/agent-detail/activity-tab.svelte (fetch on mount, loading state, merge logic). Out of scope: IndexedDB persistence, pagination for very long sessions. Acceptance: Activity tab shows full session history, page refresh can refetch history, real-time SSE updates continue to work.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-07",
+      "source": ".kb/investigations/2026-01-07-design-dashboard-activity-feed-persistence.md",
+      "notes": "Implements hybrid SSE + API architecture. OpenCode is source of truth for session history."
     }
   ],
   "meta": {
     "last_updated": "2026-01-07",
-    "total_features": 39,
+    "total_features": 40,
     "by_status": {
-      "todo": 37,
+      "todo": 38,
       "in_progress": 0,
       "done": 2
     }
