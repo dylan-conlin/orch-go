@@ -1,83 +1,56 @@
-<!--
-D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
--->
-
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** `orch attach` command already existed but lacked partial name matching - enhancement added.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Implemented and tested - all tests pass including new partial match tests.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** `FindWorkspaceByPartialName` was already implemented but not integrated into `runAttach`.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close issue - feature enhancement complete.
 
 ---
 
 # Investigation: Add Orch Attach Workspace Command
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to implement `orch attach <workspace>` command to open TUI for existing OpenCode session?
 
 **Started:** 2026-01-06
 **Updated:** 2026-01-06
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** feature-impl agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Command Already Existed
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** `cmd/orch/attach.go` already contained a working implementation that:
+- Reads `.session_id` from workspace directory
+- Runs `opencode attach <server> --session <id>`
+- Has tests in `attach_test.go`
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `cmd/orch/attach.go:15-94`, `cmd/orch/attach_test.go:1-194`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** No need to implement from scratch - just needed enhancement for UX improvement.
 
----
+### Finding 2: Partial Matching Function Existed But Unused
 
-### Finding 2: [Brief, descriptive title]
+**Evidence:** `FindWorkspaceByPartialName` function existed at line 96 of `attach.go` but `runAttach` only checked for exact workspace name matches.
 
-**Evidence:** [Concrete observations, data, examples]
+**Source:** `cmd/orch/attach.go:96-122` (FindWorkspaceByPartialName), `cmd/orch/attach.go:38-52` (original runAttach)
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Significance:** The enhancement was already half-built - just needed wiring together.
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+### Finding 3: Prior Investigation Documented the Gap
 
----
+**Evidence:** `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md` already identified this as "Gap 1: No `orch attach <workspace>` Command" with issue orch-go-cnkbv.
 
-### Finding 3: [Brief, descriptive title]
+**Source:** `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md:146-151`
 
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Good documentation existed to guide the work.
 
 ---
 
@@ -85,15 +58,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Enhancement, not creation** - The feature existed but UX needed improvement via partial matching.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Pattern reuse** - Same partial matching pattern could be applied to other workspace lookup commands.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Testing coverage** - Existing tests covered error cases; new tests added for partial match behavior.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The command already existed at `cmd/orch/attach.go`. Enhancement added partial workspace name matching by integrating `FindWorkspaceByPartialName` into `runAttach`. Users can now type `orch attach auth` instead of the full `orch attach og-feat-auth-06jan-abc1`.
 
 ---
 
@@ -101,120 +74,64 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Exact workspace name match (verified: existing tests pass)
+- ✅ Partial name resolves to unique workspace (verified: TestAttachCommand_PartialNameMatch passes)
+- ✅ Ambiguous partial name returns error (verified: TestAttachCommand_AmbiguousPartialName passes)
+- ✅ No match returns error (verified: TestAttachCommand_WorkspaceNotFound passes)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ End-to-end with real OpenCode session (would require running OpenCode)
+- ⚠️ Case sensitivity (implementation uses strings.Contains which is case-sensitive)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If users want case-insensitive matching, would need to update `containsPartialMatch`
+- If OpenCode API changes, attach execution might fail
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Partial match fallback** - Try exact match first, fall back to partial only if not found.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Preserves backwards compatibility (exact match still works)
+- Only does extra work when needed
+- Follows existing `FindWorkspaceByPartialName` behavior
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- Case-sensitive matching (consistent with other CLI tools)
+- Requires unique partial match (prevents ambiguous errors)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/attach.go` - Main attach command implementation
+- `cmd/orch/attach_test.go` - Test file
+- `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md` - Prior investigation documenting the gap
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Verify tests pass
+go test -v ./cmd/orch/... -run TestAttach
 
-# [Command description]
-[command]
+# Full test suite
+go test ./...
 ```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-06:** Investigation started
+- Initial question: How to implement orch attach command
+- Found command already existed, just needed partial matching enhancement
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-06:** Investigation completed
+- Status: Complete
+- Key outcome: Enhanced existing command with partial workspace name matching
