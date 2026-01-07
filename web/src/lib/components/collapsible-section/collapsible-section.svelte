@@ -6,7 +6,7 @@
 	export let icon: string;
 	export let agents: Agent[];
 	export let expanded: boolean = false;
-	export let variant: 'active' | 'recent' | 'archive' = 'recent';
+	export let variant: 'active' | 'needs-review' | 'recent' | 'archive' = 'recent';
 
 	function toggle() {
 		expanded = !expanded;
@@ -16,6 +16,8 @@
 		switch (v) {
 			case 'active':
 				return 'border-green-500/30 bg-green-500/5';
+			case 'needs-review':
+				return 'border-amber-500/30 bg-amber-500/5';
 			case 'recent':
 				return 'border-blue-500/30 bg-blue-500/5';
 			case 'archive':
@@ -27,6 +29,8 @@
 		switch (v) {
 			case 'active':
 				return 'default';
+			case 'needs-review':
+				return 'secondary';
 			case 'recent':
 				return 'secondary';
 			case 'archive':

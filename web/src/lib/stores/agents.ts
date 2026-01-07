@@ -280,6 +280,24 @@ export const abandonedAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'abandoned')
 );
 
+// Needs Review: agents at Phase: Complete that haven't been closed yet
+// These are waiting for orchestrator to run `orch complete`
+export const needsReviewAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => 
+		a.status === 'active' && 
+		a.phase?.toLowerCase() === 'complete'
+	)
+);
+
+// Truly active: running agents that are NOT in needs-review state
+// These are the agents consuming capacity
+export const trulyActiveAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => 
+		a.status === 'active' && 
+		a.phase?.toLowerCase() !== 'complete'
+	)
+);
+
 // Time-based thresholds for progressive disclosure
 const RECENT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 

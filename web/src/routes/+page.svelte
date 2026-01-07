@@ -15,6 +15,8 @@
 	import {
 		agents,
 		activeAgents,
+		needsReviewAgents,
+		trulyActiveAgents,
 		recentAgents,
 		archivedAgents,
 		sseEvents,
@@ -53,6 +55,7 @@
 	const STORAGE_KEY = 'orch-dashboard-sections';
 	let sectionState = {
 		active: true,   // Active always expanded by default
+		needsReview: true, // Needs Review expanded by default (high importance)
 		recent: false,  // Recent collapsed by default
 		archive: false, // Archive collapsed by default
 		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
@@ -307,14 +310,15 @@
 	}
 
 	// Progressive disclosure: sorted and filtered agents per section
-	// Active and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
+	// Active (truly running, excludes needs-review) and Recent use stable sort (spawned_at) to prevent jostling from SSE updates
 	// Archive uses volatile sort (updated_at) since historical recency matters more there
-	$: sortedActiveAgents = sortAgents(applyFilters($activeAgents), true);
+	$: sortedActiveAgents = sortAgents(applyFilters($trulyActiveAgents), true);
+	$: sortedNeedsReviewAgents = sortAgents(applyFilters($needsReviewAgents), true);
 	$: sortedRecentAgents = sortAgents(applyFilters($recentAgents), true);
 	$: sortedArchivedAgents = sortAgents(applyFilters($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
-	$: totalVisibleAgents = sortedActiveAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
+	$: totalVisibleAgents = sortedActiveAgents.length + sortedNeedsReviewAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
 <div class="space-y-3">
@@ -334,7 +338,7 @@
 			bind:expanded={sectionState.upNext}
 		/>
 		
-		<!-- Active Agents (always visible, main focus) -->
+		<!-- Active Agents (truly running, excludes needs-review) -->
 		<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
 			<div class="flex items-center gap-2 px-3 py-2 border-b">
 				<span class="text-sm">🟢</span>
@@ -360,6 +364,42 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- Needs Review (Phase: Complete, awaiting orch complete) -->
+		{#if sortedNeedsReviewAgents.length > 0}
+			<div class="rounded-lg border bg-card border-amber-500/30" data-testid="needs-review-section">
+				<button
+					class="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-accent/50 transition-colors border-b"
+					onclick={() => { sectionState.needsReview = !sectionState.needsReview; }}
+					aria-expanded={sectionState.needsReview}
+				>
+					<div class="flex items-center gap-2">
+						<span class="text-sm">✅</span>
+						<span class="text-sm font-medium">Needs Review</span>
+						<Badge variant="secondary" class="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-600">
+							{sortedNeedsReviewAgents.length}
+						</Badge>
+					</div>
+					<span class="text-muted-foreground transition-transform {sectionState.needsReview ? 'rotate-180' : ''}">
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="6 9 12 15 18 9"></polyline>
+						</svg>
+					</span>
+				</button>
+				{#if sectionState.needsReview}
+					<div class="p-2">
+						<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+							{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+								<AgentCard {agent} />
+							{/each}
+						</div>
+						<p class="mt-2 text-xs text-muted-foreground text-center">
+							Run <code class="rounded bg-muted px-1">orch complete</code> to review
+						</p>
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- Needs Attention (consolidated errors, pending reviews, blocked) -->
 		<NeedsAttention />
@@ -495,8 +535,8 @@
 						</div>
 					{:else}
 						<!-- Progressive disclosure mode: collapsible sections -->
-						<!-- Active Section (always visible when agents exist) -->
-						{#if sortedActiveAgents.length > 0 || (sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0)}
+						<!-- Active Section (truly running, excludes needs-review) -->
+						{#if sortedActiveAgents.length > 0 || (sortedNeedsReviewAgents.length === 0 && sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0)}
 							<CollapsibleSection
 								title="Active"
 								icon="🟢"
@@ -509,6 +549,26 @@
 										<AgentCard {agent} />
 									{/each}
 								</div>
+							</CollapsibleSection>
+						{/if}
+
+						<!-- Needs Review Section (Phase: Complete, awaiting orch complete) -->
+						{#if sortedNeedsReviewAgents.length > 0}
+							<CollapsibleSection
+								title="Needs Review"
+								icon="✅"
+								agents={sortedNeedsReviewAgents}
+								bind:expanded={sectionState.needsReview}
+								variant="needs-review"
+							>
+								<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+									{#each sortedNeedsReviewAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+										<AgentCard {agent} />
+									{/each}
+								</div>
+								<p class="mt-2 text-xs text-muted-foreground text-center">
+									Run <code class="rounded bg-muted px-1">orch complete</code> to review
+								</p>
 							</CollapsibleSection>
 						{/if}
 
@@ -547,7 +607,7 @@
 						{/if}
 
 						<!-- Empty state when no agents at all -->
-						{#if sortedActiveAgents.length === 0 && sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0}
+						{#if sortedActiveAgents.length === 0 && sortedNeedsReviewAgents.length === 0 && sortedRecentAgents.length === 0 && sortedArchivedAgents.length === 0}
 							<div class="rounded border border-dashed p-6 text-center">
 								{#if hasActiveFilters}
 									<p class="text-sm text-muted-foreground">No agents match filters</p>
