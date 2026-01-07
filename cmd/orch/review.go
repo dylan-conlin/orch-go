@@ -144,15 +144,15 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 
 	// Phase 1: Scan workspaces and collect candidates with beads IDs
 	type candidateWorkspace struct {
-		dirName       string
-		dirPath       string
-		hasSynthesis  bool
-		isLightTier   bool
-		lightBeadsID  string
-		beadsID       string
-		skill         string
-		modTime       time.Time
-		isUntracked   bool
+		dirName      string
+		dirPath      string
+		hasSynthesis bool
+		isLightTier  bool
+		lightBeadsID string
+		beadsID      string
+		skill        string
+		modTime      time.Time
+		isUntracked  bool
 	}
 
 	var workspaceCandidates []candidateWorkspace
@@ -196,6 +196,17 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		modTime := time.Now()
 		if err == nil {
 			modTime = dirInfo.ModTime()
+		}
+
+		// Early filter: Skip workspaces that are definitely stale (older than StaleThreshold)
+		// This avoids fetching comments for old workspaces that will be filtered out anyway.
+		// The stale check later refines this based on Phase status.
+		// Note: We can't determine Phase yet (need comments), but we can skip very old workspaces.
+		isDefinitelyStale := time.Since(modTime) > StaleThreshold
+		if isDefinitelyStale && !hasSynthesis {
+			// Skip light-tier workspaces that are definitely stale
+			// Full-tier workspaces (with SYNTHESIS.md) are always processed for synthesis review
+			continue
 		}
 
 		// Extract beads ID from SPAWN_CONTEXT.md
@@ -272,9 +283,10 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 		if ws.hasSynthesis {
 			// Check verification status if we have a beads ID
 			if ws.beadsID != "" {
-				// Use pre-fetched comments for verification (avoids O(n) API calls)
+				// Use lightweight verification for review (avoids O(n) git/build commands)
+				// Full verification with git diff, build checks, etc. is done in orch complete
 				comments := commentsMap[ws.beadsID]
-				result, err := verify.VerifyCompletionFullWithComments(ws.beadsID, ws.dirPath, projectDir, "", comments)
+				result, err := verify.VerifyCompletionForReview(ws.beadsID, ws.dirPath, "", comments)
 				if err != nil {
 					info.VerifyError = fmt.Sprintf("verification error: %v", err)
 					info.VerifyOK = false
@@ -326,30 +338,22 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 }
 
 // filterClosedIssues removes completions whose beads issues are closed/deferred/tombstone.
-// Uses batch fetching for efficiency. If beads is unavailable, returns all candidates
-// (better to show potential false positives than hide real issues).
+// Uses ListOpenIssues for efficiency - a single call to get all open issues.
+// If beads is unavailable, returns all candidates (better to show potential false positives than hide real issues).
 func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
 	if len(candidates) == 0 {
 		return candidates
 	}
 
-	// Collect all beads IDs for batch fetch
-	beadsIDs := make([]string, 0, len(candidates))
-	for _, c := range candidates {
-		if c.BeadsID != "" && !c.IsUntracked {
-			beadsIDs = append(beadsIDs, c.BeadsID)
-		}
-	}
-
-	if len(beadsIDs) == 0 {
+	// Use ListOpenIssues to get all open issues in a single call
+	// This is much faster than individual Show() calls for each beads ID
+	openIssueMap, err := verify.ListOpenIssues()
+	if err != nil {
+		// If beads is unavailable, return all candidates
 		return candidates
 	}
 
-	// Batch fetch issue statuses
-	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
-	// Ignore error - if beads is unavailable, return all candidates
-
-	// Filter out closed issues
+	// Filter out closed issues (keep only those that exist in openIssueMap)
 	var results []CompletionInfo
 	for _, c := range candidates {
 		// Keep untracked agents (no beads issue to check)
@@ -358,16 +362,11 @@ func filterClosedIssues(candidates []CompletionInfo) []CompletionInfo {
 			continue
 		}
 
-		// Check if issue is closed
-		if issue, ok := issueMap[c.BeadsID]; ok {
-			status := strings.ToLower(issue.Status)
-			if status == "closed" || status == "deferred" || status == "tombstone" {
-				// Skip closed issues - they're resolved and shouldn't appear in review
-				continue
-			}
+		// Check if issue is open (exists in openIssueMap)
+		if _, isOpen := openIssueMap[c.BeadsID]; isOpen {
+			results = append(results, c)
 		}
-
-		results = append(results, c)
+		// If not in openIssueMap, it's closed - skip it
 	}
 
 	return results

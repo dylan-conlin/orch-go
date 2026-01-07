@@ -78,6 +78,20 @@ func VerifyCompletionFull(beadsID, workspacePath, projectDir, tier string) (Veri
 	return VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, nil)
 }
 
+// VerifyCompletionForReview is a lightweight verification for orch review command.
+// It checks only the essential requirements (Phase: Complete, SYNTHESIS.md) and skips
+// expensive checks (git diff, go build) that are deferred to orch complete.
+// This enables O(1) verification per workspace instead of O(n) git/build commands.
+func VerifyCompletionForReview(beadsID, workspacePath, tier string, comments []Comment) (VerificationResult, error) {
+	// Determine tier if not provided
+	if tier == "" && workspacePath != "" {
+		tier = ReadTierFromWorkspace(workspacePath)
+	}
+
+	// Run standard verification (phase + synthesis check)
+	return VerifyCompletionWithTierAndComments(beadsID, workspacePath, tier, comments)
+}
+
 // VerifyCompletionFullWithComments is like VerifyCompletionFull but accepts pre-fetched comments.
 // This avoids O(n) beads API calls when verifying multiple completions in batch.
 // If comments is nil, comments will be fetched from beads API.
