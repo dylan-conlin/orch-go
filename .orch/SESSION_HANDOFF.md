@@ -1,100 +1,156 @@
-# Session Handoff - 2026-01-07 (Strategic Orchestrator Session)
+# Session Handoff - 2026-01-07 (Markdown Issues Spike)
 
-**Session:** Interactive strategic discussion
-**Focus:** Rethinking orchestrator role after meta-orchestrator experiment
+**Session:** Strategic discussion on tracking layer
+**Focus:** Should we replace beads with markdown-based issues?
 
 ---
 
 ## What Happened
 
-Dylan opened with a question: "Maybe I don't need a meta-orchestrator and orchestrators. Maybe I need just one strategic orchestrator."
+Resumed from prior session about the Strategic Orchestrator Model. Dylan raised friction with beads:
+- "Issues aren't artifacts"
+- "Opacity" 
+- "Shoehorned"
+- "Not our project"
 
-This led to exploring a concrete symptom: **duplicate synthesis issues** being auto-created by the daemon. Through probing this issue, we:
+Through discussion, we refined the problem:
 
-1. **Traced the mechanism:** Daemon runs `kb reflect --type synthesis --create-issue` hourly
-2. **Found the bug:** Fail-open error handling in deduplication (if bd query fails, assume no duplicate)
-3. **Asked the deeper question:** Even without the bug, is auto-creating synthesis issues the right approach?
-4. **Reached the insight:** Synthesis is strategic orchestrator work, not spawnable work
+**The tracking layer needs to be as legible and moldable as the knowledge layer.**
 
-This concrete example validated Dylan's intuition about the strategic orchestrator model.
+Currently:
+- Knowledge layer (kb): legible, moldable, direct access, Dylan owns it
+- Tracking layer (beads): opaque, indirect access, someone else's decisions
 
-**Key contrast:** Dylan showed a parallel conversation that identified the same bug but proposed a patch. This session went deeper and questioned the design. Good example of tactical vs strategic approach.
+This matters because Dylan needs visibility into system state without going through the AI. He built 2 UIs (beads-ui-svelte, orch-go dashboard) to recover observability that markdown would provide natively.
+
+---
+
+## Key Insight
+
+The real issue isn't "beads vs markdown" for agents. It's about **who has direct access to system state**.
+
+| Audience | Beads | Markdown |
+|----------|-------|----------|
+| Agents (via CLI) | ✅ Works | ✅ Would work |
+| Orchestrator (via CLI) | ✅ Works | ✅ Would work |
+| Dylan (directly) | ❌ Needs UI | ✅ Native access |
+
+---
+
+## Evidence Gathered
+
+### What beads provides (and whether it matters):
+
+| Feature | Importance | Can replicate? |
+|---------|-----------|----------------|
+| Atomic operations | Low (agents work serially) | Yes |
+| Dependency queries | Low (<1% usage) | Yes (JSONL scan) |
+| Performance | Low at current scale | Yes (kb-cli is fine) |
+| Schema enforcement | Medium | Yes (templates + validation) |
+| Built CLI | Known cost | Yes (~1000 lines) |
+| Sync mechanism | Low | Yes (same git workflow) |
+
+### kb-cli patterns already solve the hard problems:
+- JSONL for structured metadata (`.kb/quick/entries.jsonl`)
+- Markdown for rich content (investigations, decisions)
+- Templates with structure (D.E.K.N.)
+- Cross-project search
+- Proven at scale
+
+### Beads DB corruption revealed tracking/knowledge disconnect:
+- Dashboard epic showed "open" but was complete
+- 3 synthesis issues showed "ready" but work was done Jan 6
+- Issues were created *after* work completed (daemon auto-creation)
+- No reconciliation between artifacts and tracking
 
 ---
 
 ## Decisions Made
 
-Two decision records created and committed:
+None formally. This is still exploratory.
 
-1. **Synthesis is Strategic Orchestrator Work** (`.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md`)
-   - Auto-creation of synthesis issues disabled (`--reflect-issues=false` in launchd plist)
-   - 95+ duplicate synthesis issues closed
-   - Reflection should surface opportunities, not create work
-
-2. **Strategic Orchestrator Model** (`.kb/decisions/2026-01-07-strategic-orchestrator-model.md`)
-   - Collapse meta-orchestrator and orchestrator into single role
-   - Orchestrator's job is **comprehension**, not coordination
-   - Daemon handles coordination (triage:ready → spawn)
-   - Epic readiness = model completeness, not task list
+**Direction emerging:** Markdown-based issues using kb-cli patterns. The losses are acceptable, the cost is known (~2-3 days), the patterns are proven.
 
 ---
 
-## The Strategic Orchestrator Model (Summary)
+## Spike Created
 
-| Aspect | Old Model | Strategic Model |
-|--------|-----------|-----------------|
-| Orchestrator's job | "What should we spawn next?" | "What do we need to understand?" |
-| Coordination | Orchestrator decides | Daemon handles |
-| Synthesis | Spawned work | Orchestrator work |
-| Epic readiness | Task list complete | Model complete |
-| Hierarchy | Worker → Orchestrator → Meta-Orchestrator → Dylan | Worker → Strategic Orchestrator → Dylan |
+Created `.issues/orch-go-akhff.md` as a test of markdown-based epic format.
 
-**Key insight:** The system was optimized for throughput when what's needed is understanding.
+**Irony:** The epic is about making agent state visible in the dashboard (tabs). We're testing whether markdown makes issue state visible to Dylan. Same problem, two levels.
+
+**Outcome:** The epic was already complete but beads showed it as open. We verified code, closed it. The markdown file now shows full history directly.
 
 ---
 
-## Open Questions (Deferred)
+## Issues Closed This Session
 
-These were noted but explicitly deferred:
+| Issue | Reason |
+|-------|--------|
+| orch-go-akhff | Epic complete - all tabs implemented, panel refactored |
+| orch-go-8qg67 | Synthesis already done Jan 6 |
+| orch-go-1lrzg | Synthesis already done Jan 6 |
+| orch-go-5kjlw | Synthesis already done Jan 6 |
 
-1. How should reflection surface opportunities?
-2. What triggers orchestrator synthesis?
-3. Does Dylan need a mechanism to catch strategic orchestrator dropping into tactical mode?
+---
+
+## Beads DB Rebuilt
+
+The DB was corrupted (FK violations, `no such column: repro`). Rebuilt via:
+```bash
+rm .beads/beads.db && bd init
+```
+
+Imported 1528 issues. Some cleanup needed (`bd doctor --fix`).
+
+---
+
+## Open Questions
+
+1. **Should we run a proper spike?** We created `.issues/orch-go-akhff.md` but the epic was already done. Need an actually-in-progress issue to test whether direct access changes how Dylan works.
+
+2. **What format for markdown issues?** Draft exists in `.issues/orch-go-akhff.md`:
+   - Understanding section (problem, constraints, risks, done criteria)
+   - Children table (linked issues)
+   - Execution log (key events with dates)
+   - Evidence chain (linked artifacts)
+
+3. **Build vs continue spiking?** Evidence is strong. Could proceed to build `issue` CLI using kb-cli patterns. Or continue spiking with real in-progress work.
+
+---
+
+## Files Changed
+
+- `.issues/orch-go-akhff.md` - Created (spike markdown epic)
+- `.beads/beads.db` - Rebuilt from JSONL
+- `.beads/issues.jsonl` - Updated (closed 4 issues)
 
 ---
 
 ## Next Session
 
-**Continue discussing:** `/Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-01-07-strategic-orchestrator-model.md`
+Options:
 
-The decision has:
-- "Implementation" section with proposed skill file updates
-- "Open Questions" section for future exploration
+1. **Continue spike** - Pick an actually in-progress issue, maintain it as markdown for a week, observe whether Dylan uses it
 
----
+2. **Build the thing** - Start `issue` CLI using kb-cli patterns. The evidence is probably sufficient.
 
-## Artifacts
+3. **Different direction** - Dylan may have other priorities
 
-- `.kb/decisions/2026-01-07-strategic-orchestrator-model.md` - **Continue here**
-- `.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md` - Supporting decision
-- `~/Library/LaunchAgents/com.orch.daemon.plist` - Updated with `--reflect-issues=false`
-- Commits pushed: `f2943b24`, `f7df7131`
-
----
-
-## Friction Noted
-
-- **Beads DB corruption:** Multiple FK violation errors during session. Workaround: `rm .beads/beads.db && bd init`. Low disk space (97% capacity) may be contributing.
+**Recommended:** Ask Dylan. The analysis is done; this is now a prioritization decision.
 
 ---
 
 ## Resume Commands
 
 ```bash
-# Read the decision to continue discussing
-cat .kb/decisions/2026-01-07-strategic-orchestrator-model.md
-
 # Check current state
 orch status
 bd ready
+
+# See the spike file
+cat .issues/orch-go-akhff.md
+
+# See what needs cleanup
+bd doctor
 ```
