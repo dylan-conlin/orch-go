@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-cc3g1
+---
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 -->
