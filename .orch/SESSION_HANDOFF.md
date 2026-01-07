@@ -1,85 +1,100 @@
-# Session Handoff - 2026-01-07
+# Session Handoff - 2026-01-07 (Strategic Orchestrator Session)
 
-**Session:** Interactive orchestrator (og-orch-continue-orch-go-07jan-5ace)
-**Duration:** ~3 hours
+**Session:** Interactive strategic discussion
+**Focus:** Rethinking orchestrator role after meta-orchestrator experiment
 
 ---
 
-## What Was Done
+## What Happened
 
-### Ralph Wiggum Analysis
-- Explored `/Users/dylanconlin/Documents/personal/claude-code/plugins/ralph-wiggum` 
-- Analyzed against principles (Session Amnesia, Gate Over Remind, Provenance)
-- Key insight: Ralph solves "iteration is cheap, verification is automatic" - complementary to, not competing with, orchestration system
+Dylan opened with a question: "Maybe I don't need a meta-orchestrator and orchestrators. Maybe I need just one strategic orchestrator."
 
-### Dashboard/Infrastructure Health (Main Focus)
-Friction: Dashboard showed 0% usage and took forever to load. Root cause analysis led to two fixes:
+This led to exploring a concrete symptom: **duplicate synthesis issues** being auto-created by the daemon. Through probing this issue, we:
 
-| Issue | Feature | Verified |
-|-------|---------|----------|
-| `orch-go-4pv4w` | System Health section in `orch status` (Dashboard/OpenCode/Daemon) | ✅ |
-| `orch-go-2srug` | Dashboard check in `orch doctor` with `--fix` flag | ✅ |
-| `orch-go-bdgvi` | Usage 0% → N/A when Anthropic API returns null | ✅ |
-| `orch-go-pzmgc` | Session transcript export on `orch abandon` (SESSION_LOG.md) | ✅ |
+1. **Traced the mechanism:** Daemon runs `kb reflect --type synthesis --create-issue` hourly
+2. **Found the bug:** Fail-open error handling in deduplication (if bd query fails, assume no duplicate)
+3. **Asked the deeper question:** Even without the bug, is auto-creating synthesis issues the right approach?
+4. **Reached the insight:** Synthesis is strategic orchestrator work, not spawnable work
 
-### Principle Application
-- **Surfacing Over Browsing**: `orch status` now shows System Health at top
-- **Gate Over Remind (passable)**: `orch doctor --fix` lets agents self-heal
-- **Friction is Signal**: Dashboard slowness traced to orch serve not running - now surfaced automatically
+This concrete example validated Dylan's intuition about the strategic orchestrator model.
 
-### Verified Features
+**Key contrast:** Dylan showed a parallel conversation that identified the same bug but proposed a patch. This session went deeper and questioned the design. Good example of tactical vs strategic approach.
+
+---
+
+## Decisions Made
+
+Two decision records created and committed:
+
+1. **Synthesis is Strategic Orchestrator Work** (`.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md`)
+   - Auto-creation of synthesis issues disabled (`--reflect-issues=false` in launchd plist)
+   - 95+ duplicate synthesis issues closed
+   - Reflection should surface opportunities, not create work
+
+2. **Strategic Orchestrator Model** (`.kb/decisions/2026-01-07-strategic-orchestrator-model.md`)
+   - Collapse meta-orchestrator and orchestrator into single role
+   - Orchestrator's job is **comprehension**, not coordination
+   - Daemon handles coordination (triage:ready → spawn)
+   - Epic readiness = model completeness, not task list
+
+---
+
+## The Strategic Orchestrator Model (Summary)
+
+| Aspect | Old Model | Strategic Model |
+|--------|-----------|-----------------|
+| Orchestrator's job | "What should we spawn next?" | "What do we need to understand?" |
+| Coordination | Orchestrator decides | Daemon handles |
+| Synthesis | Spawned work | Orchestrator work |
+| Epic readiness | Task list complete | Model complete |
+| Hierarchy | Worker → Orchestrator → Meta-Orchestrator → Dylan | Worker → Strategic Orchestrator → Dylan |
+
+**Key insight:** The system was optimized for throughput when what's needed is understanding.
+
+---
+
+## Open Questions (Deferred)
+
+These were noted but explicitly deferred:
+
+1. How should reflection surface opportunities?
+2. What triggers orchestrator synthesis?
+3. Does Dylan need a mechanism to catch strategic orchestrator dropping into tactical mode?
+
+---
+
+## Next Session
+
+**Continue discussing:** `/Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-01-07-strategic-orchestrator-model.md`
+
+The decision has:
+- "Implementation" section with proposed skill file updates
+- "Open Questions" section for future exploration
+
+---
+
+## Artifacts
+
+- `.kb/decisions/2026-01-07-strategic-orchestrator-model.md` - **Continue here**
+- `.kb/decisions/2026-01-07-synthesis-is-strategic-orchestrator-work.md` - Supporting decision
+- `~/Library/LaunchAgents/com.orch.daemon.plist` - Updated with `--reflect-issues=false`
+- Commits pushed: `f2943b24`, `f7df7131`
+
+---
+
+## Friction Noted
+
+- **Beads DB corruption:** Multiple FK violation errors during session. Workaround: `rm .beads/beads.db && bd init`. Low disk space (97% capacity) may be contributing.
+
+---
+
+## Resume Commands
+
 ```bash
-# System Health now shows at top of status
+# Read the decision to continue discussing
+cat .kb/decisions/2026-01-07-strategic-orchestrator-model.md
+
+# Check current state
 orch status
-# SYSTEM HEALTH
-#   ✅ Dashboard (port 3348) - listening
-#   ✅ OpenCode (port 4096) - listening
-#   ✅ Daemon - running (63 ready)
-
-# Doctor checks and can fix dashboard
-orch doctor --fix
-
-# Abandon exports transcript before deleting session
-orch abandon <id>  # Creates SESSION_LOG.md
-```
-
----
-
-## For Next Session
-
-### Pending Skill Update
-- Orchestrator skill needs "Dashboard Troubleshooting Protocol" section
-- Source: `~/orch-knowledge/skills/src/meta/orchestrator/.skillc`
-- Protocol: Check `orch status` health → `orch doctor --fix` → Network tab if still slow
-- Issue closed as duplicate (orch-go-rtoa8) - do after verifying features work in practice
-
-### Usage API Investigation
-- Anthropic `/api/oauth/usage` returns all nulls even with fresh token
-- Dashboard now shows "N/A" instead of "0%" (correct behavior)
-- May need future investigation if usage tracking is actually needed
-
-### Idle Agents (other projects)
-- `pw-x53p` - price-watch project, idle 27m
-- `orch-knowledge-untracked-1767807743` - abandoned
-
----
-
-## Key Artifacts
-- `.kb/investigations/2025-12-27-inv-api-agents-endpoint-takes-19s.md` - Prior fix for slow dashboard (parallelization)
-- `.kb/investigations/2026-01-07-inv-dashboard-shows-usage-anthropic-api.md` - Usage null handling investigation
-- `~/.kb/principles.md` - Referenced for Surfacing Over Browsing, Gate Over Remind, Friction is Signal
-
----
-
-## Commands for Resume
-
-```bash
-# Check system health
-orch status
-
-# See ready work
 bd ready
-
-# If dashboard down
-orch doctor --fix
 ```
