@@ -1,79 +1,85 @@
-# Session Handoff - 2026-01-06
+# Session Handoff - 2026-01-07
 
-**Session:** Interactive orchestrator (no workspace - see orch-go-38zik)
-**Duration:** ~4 hours
+**Session:** Interactive orchestrator (og-orch-continue-orch-go-07jan-5ace)
+**Duration:** ~3 hours
 
 ---
 
 ## What Was Done
 
-### Investigation Follow-up
-- Resumed from `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md`
-- Created issues for all 5 identified gaps + 1 new (registry population)
-- Updated orchestrator skill with tier system documentation (new section: "Workspace, Session, and Tier Architecture")
+### Ralph Wiggum Analysis
+- Explored `/Users/dylanconlin/Documents/personal/claude-code/plugins/ralph-wiggum` 
+- Analyzed against principles (Session Amnesia, Gate Over Remind, Provenance)
+- Key insight: Ralph solves "iteration is cheap, verification is automatic" - complementary to, not competing with, orchestration system
 
-### Issues Completed (6)
-| Issue | Summary |
-|-------|---------|
-| `orch-go-7rgz` | kb reflect in daemon (periodic synthesis, --reflect-interval) |
-| `orch-go-03oxi` | meta-orch resume finds prior SESSION_HANDOFF.md automatically |
-| `orch-go-2rwlf` | daemon sees all labeled issues (--limit 0 fix) |
-| `orch-go-td2k2` | default_tier config option in ~/.orch/config.yaml |
-| `orch-go-1qgwg` | opencode attach --session cross-project fix |
-| `orch-go-gyedb` | skillc deploy (was misconfiguration, not bug - symlink fixed) |
+### Dashboard/Infrastructure Health (Main Focus)
+Friction: Dashboard showed 0% usage and took forever to load. Root cause analysis led to two fixes:
 
-### Critical Fix: OpenCode Fork
-- **Problem:** npm-installed opencode was running, not Dylan's fork
-- **Impact:** Custom fixes (cross-project attach) weren't active
-- **Resolution:**
-  - Uninstalled npm package: `npm uninstall -g opencode-ai`
-  - Symlinked fork binary: `~/.bun/bin/opencode` → Dylan's fork
-  - Documented in `~/.claude/CLAUDE.md` ("OpenCode: Use Dylan's Fork")
-  - Rebuilt fork, verified attach to headless sessions works
+| Issue | Feature | Verified |
+|-------|---------|----------|
+| `orch-go-4pv4w` | System Health section in `orch status` (Dashboard/OpenCode/Daemon) | ✅ |
+| `orch-go-2srug` | Dashboard check in `orch doctor` with `--fix` flag | ✅ |
+| `orch-go-bdgvi` | Usage 0% → N/A when Anthropic API returns null | ✅ |
+| `orch-go-pzmgc` | Session transcript export on `orch abandon` (SESSION_LOG.md) | ✅ |
 
-### Config Changes
-- `~/.orch/config.yaml`: Added `default_tier: full` (all spawns require SYNTHESIS.md)
-- `~/.bun/bin/opencode`: Symlinked to Dylan's fork binary
+### Principle Application
+- **Surfacing Over Browsing**: `orch status` now shows System Health at top
+- **Gate Over Remind (passable)**: `orch doctor --fix` lets agents self-heal
+- **Friction is Signal**: Dashboard slowness traced to orch serve not running - now surfaced automatically
 
-### Design Session Spawned
-- `orch-go-lxux2` - Automated reflection scope (what kb reflect types should daemon run?)
+### Verified Features
+```bash
+# System Health now shows at top of status
+orch status
+# SYSTEM HEALTH
+#   ✅ Dashboard (port 3348) - listening
+#   ✅ OpenCode (port 4096) - listening
+#   ✅ Daemon - running (63 ready)
+
+# Doctor checks and can fix dashboard
+orch doctor --fix
+
+# Abandon exports transcript before deleting session
+orch abandon <id>  # Creates SESSION_LOG.md
+```
 
 ---
 
 ## For Next Session
 
-### Immediate
-1. Check `orch-go-lxux2` (design-session) - review output when complete
-2. `orch status` / `bd ready` - daemon may have more completed work
+### Pending Skill Update
+- Orchestrator skill needs "Dashboard Troubleshooting Protocol" section
+- Source: `~/orch-knowledge/skills/src/meta/orchestrator/.skillc`
+- Protocol: Check `orch status` health → `orch doctor --fix` → Network tab if still slow
+- Issue closed as duplicate (orch-go-rtoa8) - do after verifying features work in practice
 
-### Open Issues (from investigation)
-| Issue | Description | Status |
-|-------|-------------|--------|
-| `orch-go-cnkbv` | orch attach command | triage:ready (unblocked) |
-| `orch-go-xdcpc` | orch resume for orchestrators | triage:ready |
-| `orch-go-0l2f9` | orch doctor --sessions | triage:ready |
-| `orch-go-1kk2u` | workspace cleanup strategy | in_progress |
-| `orch-go-akrcw` | registry population issues | triage:ready |
-| `orch-go-38zik` | Interactive orchestrators don't create workspaces | triage:review |
+### Usage API Investigation
+- Anthropic `/api/oauth/usage` returns all nulls even with fresh token
+- Dashboard now shows "N/A" instead of "0%" (correct behavior)
+- May need future investigation if usage tracking is actually needed
+
+### Idle Agents (other projects)
+- `pw-x53p` - price-watch project, idle 27m
+- `orch-knowledge-untracked-1767807743` - abandoned
 
 ---
 
 ## Key Artifacts
-- `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md` - Tier system, session resumption, all gaps with issue links
-- `~/.claude/CLAUDE.md` - Updated with opencode fork requirement
-- `~/.claude/skills/meta/orchestrator/SKILL.md` - Updated with tier system section
+- `.kb/investigations/2025-12-27-inv-api-agents-endpoint-takes-19s.md` - Prior fix for slow dashboard (parallelization)
+- `.kb/investigations/2026-01-07-inv-dashboard-shows-usage-anthropic-api.md` - Usage null handling investigation
+- `~/.kb/principles.md` - Referenced for Surfacing Over Browsing, Gate Over Remind, Friction is Signal
 
 ---
 
 ## Commands for Resume
 
 ```bash
-# Check what's running/completed
-orch status --all
+# Check system health
+orch status
 
-# See ready work  
+# See ready work
 bd ready
 
-# Review design session output (when complete)
-orch complete orch-go-lxux2
+# If dashboard down
+orch doctor --fix
 ```
