@@ -1681,3 +1681,262 @@ func TestIsSessionActiveNotFound(t *testing.T) {
 		t.Error("Expected false when session not found")
 	}
 }
+
+// TestExportSessionTranscript tests the ExportSessionTranscript method.
+func TestExportSessionTranscript(t *testing.T) {
+	sessionID := "ses_transcript_test"
+	nowMs := time.Now().UnixMilli()
+
+	mockSession := fmt.Sprintf(`{
+		"id": "%s",
+		"title": "Test Transcript Session",
+		"directory": "/Users/test/project",
+		"time": {"created": %d, "updated": %d},
+		"summary": {"additions": 10, "deletions": 5, "files": 3}
+	}`, sessionID, nowMs-60000, nowMs-1000)
+
+	mockMessages := fmt.Sprintf(`[
+		{
+			"info": {"id": "msg_1", "sessionID": "%s", "role": "user", "time": {"created": %d}},
+			"parts": [{"id": "prt_1", "sessionID": "%s", "messageID": "msg_1", "type": "text", "text": "Hello, can you help me?"}]
+		},
+		{
+			"info": {"id": "msg_2", "sessionID": "%s", "role": "assistant", "time": {"created": %d, "completed": %d}, "finish": "stop", "tokens": {"input": 100, "output": 50}, "cost": 0.0015},
+			"parts": [
+				{"id": "prt_2a", "sessionID": "%s", "messageID": "msg_2", "type": "text", "text": "Of course! I'd be happy to help you."},
+				{"id": "prt_2b", "sessionID": "%s", "messageID": "msg_2", "type": "tool", "text": ""}
+			]
+		}
+	]`, sessionID, nowMs-30000, sessionID, sessionID, nowMs-25000, nowMs-20000, sessionID, sessionID)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/session/" + sessionID:
+			w.Write([]byte(mockSession))
+		case "/session/" + sessionID + "/message":
+			w.Write([]byte(mockMessages))
+		default:
+			t.Errorf("Unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	transcript, err := client.ExportSessionTranscript(sessionID)
+	if err != nil {
+		t.Fatalf("ExportSessionTranscript() error = %v", err)
+	}
+
+	// Verify transcript contains expected content
+	if !strings.Contains(transcript, "# Session Transcript") {
+		t.Error("Transcript missing header")
+	}
+	if !strings.Contains(transcript, "**Title:** Test Transcript Session") {
+		t.Error("Transcript missing title")
+	}
+	if !strings.Contains(transcript, fmt.Sprintf("**Session ID:** `%s`", sessionID)) {
+		t.Error("Transcript missing session ID")
+	}
+	if !strings.Contains(transcript, "**Directory:** `/Users/test/project`") {
+		t.Error("Transcript missing directory")
+	}
+	if !strings.Contains(transcript, "**Changes:** +10/-5 in 3 files") {
+		t.Error("Transcript missing changes summary")
+	}
+	if !strings.Contains(transcript, "## User") {
+		t.Error("Transcript missing user message")
+	}
+	if !strings.Contains(transcript, "Hello, can you help me?") {
+		t.Error("Transcript missing user message content")
+	}
+	if !strings.Contains(transcript, "## Assistant") {
+		t.Error("Transcript missing assistant message")
+	}
+	if !strings.Contains(transcript, "Of course! I'd be happy to help you.") {
+		t.Error("Transcript missing assistant message content")
+	}
+	if !strings.Contains(transcript, "*Tokens:") {
+		t.Error("Transcript missing token info")
+	}
+}
+
+// TestExportSessionTranscriptEmpty tests ExportSessionTranscript with no messages.
+func TestExportSessionTranscriptEmpty(t *testing.T) {
+	sessionID := "ses_empty_transcript"
+	nowMs := time.Now().UnixMilli()
+
+	mockSession := fmt.Sprintf(`{
+		"id": "%s",
+		"title": "Empty Session",
+		"directory": "/Users/test/project",
+		"time": {"created": %d, "updated": %d}
+	}`, sessionID, nowMs-60000, nowMs-1000)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/session/" + sessionID:
+			w.Write([]byte(mockSession))
+		case "/session/" + sessionID + "/message":
+			w.Write([]byte("[]")) // Empty messages
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	transcript, err := client.ExportSessionTranscript(sessionID)
+	if err != nil {
+		t.Fatalf("ExportSessionTranscript() error = %v", err)
+	}
+
+	// Empty messages should return empty string
+	if transcript != "" {
+		t.Errorf("Expected empty transcript for session with no messages, got: %s", transcript)
+	}
+}
+
+// TestExportSessionTranscriptSessionError tests ExportSessionTranscript with session fetch error.
+func TestExportSessionTranscriptSessionError(t *testing.T) {
+	sessionID := "ses_error"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ExportSessionTranscript(sessionID)
+	if err == nil {
+		t.Error("Expected error when session fetch fails")
+	}
+	if !strings.Contains(err.Error(), "failed to get session") {
+		t.Errorf("Expected 'failed to get session' error, got: %v", err)
+	}
+}
+
+// TestExportSessionTranscriptMessagesError tests ExportSessionTranscript with messages fetch error.
+func TestExportSessionTranscriptMessagesError(t *testing.T) {
+	sessionID := "ses_messages_error"
+	nowMs := time.Now().UnixMilli()
+
+	mockSession := fmt.Sprintf(`{
+		"id": "%s",
+		"title": "Test Session",
+		"directory": "/Users/test/project",
+		"time": {"created": %d, "updated": %d}
+	}`, sessionID, nowMs-60000, nowMs-1000)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session/" + sessionID:
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(mockSession))
+		case "/session/" + sessionID + "/message":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ExportSessionTranscript(sessionID)
+	if err == nil {
+		t.Error("Expected error when messages fetch fails")
+	}
+	if !strings.Contains(err.Error(), "failed to get messages") {
+		t.Errorf("Expected 'failed to get messages' error, got: %v", err)
+	}
+}
+
+// TestFormatMessagesAsTranscript tests the FormatMessagesAsTranscript function.
+func TestFormatMessagesAsTranscript(t *testing.T) {
+	nowMs := time.Now().UnixMilli()
+	session := &Session{
+		ID:        "ses_format_test",
+		Title:     "Format Test Session",
+		Directory: "/test/dir",
+		Time: SessionTime{
+			Created: nowMs - 60000,
+			Updated: nowMs - 1000,
+		},
+		Summary: SessionSummary{
+			Additions: 5,
+			Deletions: 2,
+			Files:     1,
+		},
+	}
+
+	messages := []Message{
+		{
+			Info: MessageInfo{
+				ID:        "msg_1",
+				SessionID: "ses_format_test",
+				Role:      "user",
+				Time:      MessageTime{Created: nowMs - 30000},
+			},
+			Parts: []MessagePart{
+				{Type: "text", Text: "Test user message"},
+			},
+		},
+		{
+			Info: MessageInfo{
+				ID:        "msg_2",
+				SessionID: "ses_format_test",
+				Role:      "assistant",
+				Time:      MessageTime{Created: nowMs - 25000, Completed: nowMs - 20000},
+				Tokens:    &MessageToken{Input: 50, Output: 30},
+				Cost:      0.001,
+			},
+			Parts: []MessagePart{
+				{Type: "text", Text: "Test assistant response"},
+				{Type: "tool-invocation", Text: ""},
+			},
+		},
+	}
+
+	transcript := FormatMessagesAsTranscript(session, messages)
+
+	// Verify header
+	if !strings.Contains(transcript, "# Session Transcript") {
+		t.Error("Missing header")
+	}
+
+	// Verify session metadata
+	if !strings.Contains(transcript, "**Title:** Format Test Session") {
+		t.Error("Missing title")
+	}
+	if !strings.Contains(transcript, "**Session ID:** `ses_format_test`") {
+		t.Error("Missing session ID")
+	}
+	if !strings.Contains(transcript, "**Directory:** `/test/dir`") {
+		t.Error("Missing directory")
+	}
+	if !strings.Contains(transcript, "**Changes:** +5/-2 in 1 files") {
+		t.Error("Missing changes summary")
+	}
+
+	// Verify messages
+	if !strings.Contains(transcript, "## User") {
+		t.Error("Missing user header")
+	}
+	if !strings.Contains(transcript, "Test user message") {
+		t.Error("Missing user message content")
+	}
+	if !strings.Contains(transcript, "## Assistant") {
+		t.Error("Missing assistant header")
+	}
+	if !strings.Contains(transcript, "Test assistant response") {
+		t.Error("Missing assistant message content")
+	}
+	if !strings.Contains(transcript, "*Tokens:") {
+		t.Error("Missing token info")
+	}
+	if !strings.Contains(transcript, "**Tools:**") {
+		t.Error("Missing tools section")
+	}
+}

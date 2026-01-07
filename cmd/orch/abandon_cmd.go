@@ -33,7 +33,11 @@ var abandonCmd = &cobra.Command{
 Use this command for stuck or frozen agents that are not responding.
 The agent's beads issue is NOT closed - you can restart work with 'orch work'.
 
-When --reason is provided, a FAILURE_REPORT.md is generated in the agent's workspace
+The session transcript is automatically exported to SESSION_LOG.md in the agent's
+workspace before deletion. This preserves conversation history for post-mortem analysis
+to help debug why agents get stuck.
+
+When --reason is provided, a FAILURE_REPORT.md is also generated in the workspace
 documenting what went wrong and recommendations for retry.
 
 For cross-project abandonment, use --workdir to specify the target project directory
@@ -159,6 +163,21 @@ func runAbandon(beadsID, reason, workdir string) error {
 		fmt.Printf("Killing tmux window: %s\n", windowInfo.Target)
 		if err := tmux.KillWindow(windowInfo.Target); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux window: %v\n", err)
+		}
+	}
+
+	// Export session transcript before deletion (for post-mortem analysis)
+	if sessionID != "" && workspacePath != "" {
+		transcript, err := client.ExportSessionTranscript(sessionID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to export session transcript: %v\n", err)
+		} else if transcript != "" {
+			transcriptPath := filepath.Join(workspacePath, "SESSION_LOG.md")
+			if err := os.WriteFile(transcriptPath, []byte(transcript), 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to write session transcript: %v\n", err)
+			} else {
+				fmt.Printf("Exported session transcript: %s\n", transcriptPath)
+			}
 		}
 	}
 
