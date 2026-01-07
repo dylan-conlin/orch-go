@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-ij1pl
+---
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 Fill this at the END of your investigation, before marking Complete.
@@ -5,15 +9,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** `orch complete` does not delete the OpenCode session, causing completed agents to appear in `orch status --all` until the 30-minute idle window expires.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Searched `complete_cmd.go` for `DeleteSession` - no matches. Found 136 persisted OpenCode sessions with orch-go beads IDs. `orch abandon` correctly deletes sessions (line 169).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Agent state exists in 4 layers (OpenCode memory, OpenCode disk, registry, tmux). `orch complete` cleans tmux but not OpenCode. Fix should copy deletion pattern from `orch abandon`.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Implement fix: Add `client.DeleteSession(sessionID)` to `complete_cmd.go` after tmux cleanup (around line 537).
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (tactical fix, pattern already established in abandon_cmd.go)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +46,9 @@ Guidelines:
 **Started:** 2026-01-06
 **Updated:** 2026-01-06
 **Owner:** Investigation agent
-**Phase:** Investigating
-**Next Step:** Test OpenCode session deletion behavior after `orch complete`
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** N/A
@@ -96,19 +100,77 @@ if agent.IsCompleted && !statusAll {
 
 ---
 
+### Finding 4: `orch complete` does NOT delete the OpenCode session
+
+**Evidence:** Searched `complete_cmd.go` for `DeleteSession` - no matches. The command only:
+1. Closes beads issue (line 480)
+2. Closes tmux window (lines 531-537)
+3. Invalidates serve cache (line 627)
+
+**Source:** 
+- `cmd/orch/complete_cmd.go` (full file search)
+- `cmd/orch/abandon_cmd.go:165-174` (shows how session deletion SHOULD be done)
+
+**Significance:** This is the root cause. After completion, the OpenCode session persists and is matched to the closed beads issue within the 30-minute window, causing stale "completed" agents to appear in `orch status --all`.
+
+---
+
+### Finding 5: `orch abandon` correctly deletes OpenCode sessions
+
+**Evidence:** In `abandon_cmd.go:165-174`:
+```go
+// Delete the OpenCode session if it exists
+// This prevents abandoned agents from appearing in `orch status`
+if sessionID != "" {
+    fmt.Printf("Deleting OpenCode session: %s\n", sessionID[:12])
+    if err := client.DeleteSession(sessionID); err != nil {
+        fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
+    } else {
+        fmt.Printf("Deleted OpenCode session\n")
+    }
+}
+```
+
+**Source:** `cmd/orch/abandon_cmd.go:165-174`
+
+**Significance:** The fix is clear - `orch complete` should replicate this session deletion logic.
+
+---
+
+### Finding 6: Test confirmed 136 persisted OpenCode sessions with orch-go beads IDs
+
+**Evidence:** 
+```bash
+$ curl -s localhost:4096/session | jq '[.[] | select(.title | test("orch-go-"))] | length'
+136
+```
+
+**Source:** Local testing against OpenCode API
+
+**Significance:** This demonstrates the scope of session accumulation. Without cleanup, sessions persist indefinitely until `orch clean` is run manually.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Root cause: Missing OpenCode session cleanup in `orch complete`** - When `orch complete` runs, it closes the beads issue and tmux window, but does NOT delete the OpenCode session. The session persists and can be matched to the closed beads ID.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Detection mechanism: 30-minute idle window in `orch status`** - Sessions updated within 30 minutes are matched to beads IDs. Combined with the persistence bug, this causes recently completed agents to appear as "Completed" in status output.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Precedent exists: `orch abandon` correctly cleans up sessions** - The fix is straightforward: copy the session deletion logic from `abandon_cmd.go:165-174` to `complete_cmd.go`.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The bug is caused by **missing OpenCode session deletion in `orch complete`**, not registry state issues. When `orch complete` runs:
+1. It closes the beads issue ✓
+2. It closes the tmux window ✓  
+3. It does NOT delete the OpenCode session ✗
+
+The persisted session is then matched by `orch status` (within 30-minute window), and since the beads issue is closed, marked as `IsCompleted = true`. This causes the agent to appear in `--all` output and be counted as "Completed" in the header.
+
+The fix is to add OpenCode session deletion to `complete_cmd.go`, similar to how `abandon_cmd.go` does it.
 
 ---
 
@@ -116,21 +178,21 @@ if agent.IsCompleted && !statusAll {
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ `orch complete` does not call `client.DeleteSession()` (verified: searched `complete_cmd.go` for `DeleteSession`, no matches)
+- ✅ `orch abandon` does call `client.DeleteSession()` (verified: read `abandon_cmd.go:165-174`, found session deletion code)
+- ✅ 136 OpenCode sessions exist with orch-go beads IDs (verified: `curl localhost:4096/session | jq '[.[] | select(.title | test("orch-go-"))] | length'`)
+- ✅ Filtering logic correctly filters completed agents with default flag (verified: code review of `status_cmd.go:389-404`)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Live reproduction of the exact bug scenario (agent was already completed before investigation started)
+- ⚠️ Whether session deletion in complete would break any existing workflows
+- ⚠️ Whether there's a reason sessions were intentionally NOT deleted in complete (no comments explaining the omission)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if there's intentional design reason for keeping sessions after completion
+- Finding would be incomplete if there are other sources of stale state beyond OpenCode sessions (e.g., another registry file)
 
 ---
 
@@ -140,96 +202,126 @@ if agent.IsCompleted && !statusAll {
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Add OpenCode session deletion to `orch complete`** - Copy the session deletion logic from `abandon_cmd.go:165-174` to `complete_cmd.go` after tmux window cleanup.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Direct fix for root cause (session persistence)
+- Proven pattern already exists in `orch abandon`
+- Minimal code change, low risk
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Sessions are permanently deleted (no "undo" after completion)
+- This is acceptable because `orch complete` is intentional - user has verified work is done
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Find the OpenCode session ID for the completed agent (from `.session_id` file in workspace or from beads-to-session mapping)
+2. Add `client.DeleteSession(sessionID)` call after tmux window cleanup (lines 531-537)
+3. Add warning message on failure (non-fatal, like tmux cleanup)
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Reduce 30-minute idle window in status**
+- **Pros:** Faster stale state eviction without code changes to complete
+- **Cons:** Doesn't address root cause, sessions still accumulate, could hide legitimately idle agents
+- **When to use instead:** If there's a reason to preserve sessions for debugging/history
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Mark sessions as "completed" instead of deleting**
+- **Pros:** Preserves session history for debugging
+- **Cons:** Requires new session state tracking, more complex, doesn't solve accumulation
+- **When to use instead:** If session preservation is valuable for post-mortem analysis
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Option A directly fixes the root cause with minimal risk. The pattern is proven (`orch abandon` uses it). Sessions are only deleted after explicit `orch complete`, so there's no risk of accidental data loss.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Get session ID: Check workspace `.session_id` file first, fall back to finding session by beads ID title match
+- Add session deletion after tmux cleanup (around line 537 in complete_cmd.go)
+- Print status message: `"Deleted OpenCode session: %s\n", sessionID[:12]`
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Session ID might not be available for older workspaces without `.session_id` file
+- ⚠️ Session might already be deleted (handle 404 gracefully)
+- ⚠️ For untracked agents, there may be no matching session
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Whether there are workflows that rely on session persistence after completion
+- How to handle cross-project agents (session in different project's directory)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ After `orch complete`, running `orch status --all` should NOT show the completed agent
+- ✅ OpenCode API should return 404 for the deleted session ID
+- ✅ Verify with test: spawn agent, complete it, check `curl localhost:4096/session/{id}` returns 404
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/complete_cmd.go` - Main completion logic, searched for session deletion (not found)
+- `cmd/orch/status_cmd.go` - Agent collection and filtering logic
+- `cmd/orch/abandon_cmd.go:165-174` - Reference implementation for session deletion
+- `pkg/opencode/client.go` - OpenCode API client, including DeleteSession method
+- `pkg/session/registry.go` - Orchestrator session registry (separate from OpenCode sessions)
+- `pkg/verify/beads_api.go` - Beads API for issue status checking
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check current agents in status
+orch status --all --json | jq '.agents'
 
-# [Command description]
-[command]
+# Count OpenCode sessions with orch-go beads IDs
+curl -s localhost:4096/session | jq '[.[] | select(.title | test("orch-go-"))] | length'
+# Result: 136
+
+# Show recent orch-go sessions
+curl -s localhost:4096/session | jq '[.[] | select(.title | test("orch-go-"))] | sort_by(.time.updated) | reverse | .[0:5]'
+
+# Check beads issue status
+bd show orch-go-wrrks
+# Result: Status: closed
+
+# Search for session deletion in complete command
+rg -n "DeleteSession|delete.*session" cmd/orch/ --type go
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- None
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Prior knowledge:** "orch-go agent state exists in four layers (OpenCode memory, OpenCode disk, registry, tmux)" - From spawn context, confirms multi-layer state tracking
+- **Prior knowledge:** "orch status can show phantom agents (tmux windows where OpenCode exited)" - Related but distinct issue (phantom = no session, this bug = session persists)
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-06 21:30:** Investigation started
+- Initial question: Why does `orch status --all` show completed agents after `orch complete`?
+- Context: Example of orch-go-wrrks still showing as completed after successful `orch complete --force`
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-06 21:45:** Found root cause
+- `orch complete` does not call `DeleteSession()` on the OpenCode session
+- `orch abandon` does correctly delete sessions (reference implementation found)
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-06 22:00:** Confirmed with testing
+- 136 OpenCode sessions persist with orch-go beads IDs
+- Status correctly filters completed agents but they accumulate in session list
+
+**2026-01-06 22:10:** Investigation completed
+- Status: Complete
+- Key outcome: Fix is to add session deletion to `complete_cmd.go`, copying pattern from `abandon_cmd.go`
+
+---
+
+## Self-Review
+
+- [x] Real test performed (not code review) - Ran curl commands to check session counts, searched code for DeleteSession
+- [x] Conclusion from evidence (not speculation) - Based on actual code search results and API responses
+- [x] Question answered - Explained why completed agents appear (session persistence) and how to fix
+- [x] File complete - All sections filled with concrete information
+- [x] D.E.K.N. filled - Summary section has Delta, Evidence, Knowledge, Next, Promote to Decision
+
+**Self-Review Status:** PASSED
