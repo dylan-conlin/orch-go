@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -141,14 +142,14 @@ func TestContainsPartialMatch(t *testing.T) {
 func TestAttachCommand_WorkspaceNotFound(t *testing.T) {
 	// Create temp directory without workspace
 	tmpDir := t.TempDir()
-	
+
 	// Change to temp directory
 	oldDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
 	defer os.Chdir(oldDir)
-	
+
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("Failed to change to temp directory: %v", err)
 	}
@@ -168,14 +169,14 @@ func TestAttachCommand_WorkspaceNotFound(t *testing.T) {
 func TestAttachCommand_NoSessionID(t *testing.T) {
 	// Create temp directory with workspace but no session ID
 	tmpDir := t.TempDir()
-	
+
 	// Change to temp directory
 	oldDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get working directory: %v", err)
 	}
 	defer os.Chdir(oldDir)
-	
+
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("Failed to change to temp directory: %v", err)
 	}
@@ -189,5 +190,75 @@ func TestAttachCommand_NoSessionID(t *testing.T) {
 	err = runAttach("test-workspace")
 	if err == nil {
 		t.Error("Expected error for workspace without session ID, got nil")
+	}
+}
+
+func TestAttachCommand_PartialNameMatch(t *testing.T) {
+	// Create temp directory with workspace
+	tmpDir := t.TempDir()
+
+	// Change to temp directory
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+
+	// Create workspace directory with a unique name
+	workspacePath := filepath.Join(tmpDir, ".orch", "workspace", "og-feat-unique-auth-06jan-abc1")
+	if err := os.MkdirAll(workspacePath, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+
+	// Test partial match - should fail due to no session ID, but workspace should be found
+	err = runAttach("unique-auth")
+	if err == nil {
+		t.Error("Expected error (no session ID), got nil")
+	}
+	// Error should mention session ID, not workspace not found
+	if !strings.Contains(err.Error(), "session ID") {
+		t.Errorf("Expected error about session ID, got: %v", err)
+	}
+}
+
+func TestAttachCommand_AmbiguousPartialName(t *testing.T) {
+	// Create temp directory with multiple matching workspaces
+	tmpDir := t.TempDir()
+
+	// Change to temp directory
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+
+	// Create multiple workspace directories that would match "feat"
+	workspaces := []string{
+		"og-feat-auth-06jan-abc1",
+		"og-feat-login-06jan-def2",
+	}
+	for _, ws := range workspaces {
+		workspacePath := filepath.Join(tmpDir, ".orch", "workspace", ws)
+		if err := os.MkdirAll(workspacePath, 0755); err != nil {
+			t.Fatalf("Failed to create workspace %s: %v", ws, err)
+		}
+	}
+
+	// Test ambiguous partial match - should fail with multiple matches error
+	err = runAttach("feat")
+	if err == nil {
+		t.Error("Expected error for ambiguous workspace name, got nil")
+	}
+	// Error should mention multiple matches
+	if !strings.Contains(err.Error(), "multiple") {
+		t.Errorf("Expected error about multiple matches, got: %v", err)
 	}
 }

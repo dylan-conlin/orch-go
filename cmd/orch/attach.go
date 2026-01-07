@@ -42,18 +42,24 @@ func runAttach(workspaceName string) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Find the workspace directory
+	// Try exact match first, then fall back to partial match
 	workspacePath := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
-	
-	// Check if workspace exists
+
+	// Check if workspace exists with exact name
 	if _, err := os.Stat(workspacePath); os.IsNotExist(err) {
-		return fmt.Errorf("workspace not found: %s\n  Expected at: %s", workspaceName, workspacePath)
+		// Try partial match
+		fullName, matchErr := FindWorkspaceByPartialName(projectDir, workspaceName)
+		if matchErr != nil {
+			return fmt.Errorf("workspace not found: %s\n  %v", workspaceName, matchErr)
+		}
+		workspaceName = fullName
+		workspacePath = filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	}
 
 	// Read session ID from workspace
 	sessionID := spawn.ReadSessionID(workspacePath)
 	if sessionID == "" {
-		return fmt.Errorf("no session ID found in workspace %s\n  File: %s", 
+		return fmt.Errorf("no session ID found in workspace %s\n  File: %s",
 			workspaceName, filepath.Join(workspacePath, ".session_id"))
 	}
 
@@ -98,7 +104,7 @@ func runAttach(workspaceName string) error {
 // Returns error if zero or multiple matches found.
 func FindWorkspaceByPartialName(projectDir, partialName string) (string, error) {
 	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
-	
+
 	entries, err := os.ReadDir(workspaceBase)
 	if err != nil {
 		return "", fmt.Errorf("failed to read workspace directory: %w", err)
