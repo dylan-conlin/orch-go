@@ -19,15 +19,16 @@ import (
 
 var (
 	// Clean command flags
-	cleanDryRun         bool
-	cleanVerifyOpenCode bool
-	cleanWindows        bool
-	cleanPhantoms       bool
-	cleanInvestigations bool
-	cleanStale          bool
-	cleanStaleDays      int
-	cleanSessions       bool
-	cleanSessionsDays   int
+	cleanDryRun               bool
+	cleanVerifyOpenCode       bool
+	cleanWindows              bool
+	cleanPhantoms             bool
+	cleanInvestigations       bool
+	cleanStale                bool
+	cleanStaleDays            int
+	cleanSessions             bool
+	cleanSessionsDays         int
+	cleanPreserveOrchestrator bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -41,6 +42,9 @@ anything. Workspace directories are always preserved for investigation reference
 What counts as "completed":
 - Workspaces with SYNTHESIS.md file
 - Workspaces whose beads issue is closed
+
+Protection options:
+  --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Optional cleanup actions:
   --windows           Close tmux windows for completed agents
@@ -65,9 +69,10 @@ Examples:
   orch-go clean --stale            # Archive workspaces older than 7 days
   orch-go clean --stale --stale-days 14  # Archive workspaces older than 14 days
   orch-go clean --sessions         # Delete OpenCode sessions older than 7 days
-  orch-go clean --sessions --sessions-days 14  # Delete sessions older than 14 days`,
+  orch-go clean --sessions --sessions-days 14  # Delete sessions older than 14 days
+  orch-go clean --sessions --preserve-orchestrator  # Clean sessions but protect orchestrators`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanSessions, cleanSessionsDays)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
 	},
 }
 
@@ -81,6 +86,21 @@ func init() {
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
+	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
+}
+
+// isOrchestratorSessionTitle checks if a session title indicates an orchestrator session.
+// This is used when we don't have workspace files (e.g., orphaned sessions).
+func isOrchestratorSessionTitle(title string) bool {
+	titleLower := strings.ToLower(title)
+	// Check for orchestrator patterns in title
+	if strings.Contains(titleLower, "orchestrator") ||
+		strings.Contains(titleLower, "meta-orch") ||
+		strings.HasPrefix(titleLower, "meta-") ||
+		strings.Contains(titleLower, "-orch-") {
+		return true
+	}
+	return false
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -234,7 +254,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, cleanSessions bool, sessionsDays int) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -289,7 +309,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	// Verify and clean OpenCode disk sessions (optional)
 	var diskSessionsDeleted int
 	if verifyOpenCode {
-		diskSessionsDeleted, err = cleanOrphanedDiskSessions(serverURL, dryRun)
+		diskSessionsDeleted, err = cleanOrphanedDiskSessions(serverURL, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean disk sessions: %v\n", err)
 		}
@@ -298,7 +318,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	// Clean phantom tmux windows (optional)
 	var phantomsClosed int
 	if cleanPhantoms {
-		phantomsClosed, err = cleanPhantomWindows(serverURL, dryRun)
+		phantomsClosed, err = cleanPhantomWindows(serverURL, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean phantom windows: %v\n", err)
 		}
@@ -316,7 +336,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	// Archive stale workspaces (optional)
 	var workspacesArchived int
 	if archiveStale {
-		workspacesArchived, err = archiveStaleWorkspaces(projectDir, staleDays, dryRun)
+		workspacesArchived, err = archiveStaleWorkspaces(projectDir, staleDays, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to archive stale workspaces: %v\n", err)
 		}
@@ -325,7 +345,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	// Clean stale OpenCode sessions (optional)
 	var staleSessionsDeleted int
 	if cleanSessions {
-		staleSessionsDeleted, err = cleanStaleSessions(serverURL, sessionsDays, dryRun)
+		staleSessionsDeleted, err = cleanStaleSessions(serverURL, sessionsDays, dryRun, preserveOrchestrator)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale sessions: %v\n", err)
 		}
@@ -430,8 +450,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 }
 
 // cleanOrphanedDiskSessions finds and deletes OpenCode disk sessions that aren't tracked via workspace files.
+// If preserveOrchestrator is true, sessions associated with orchestrator workspaces are skipped.
 // Returns the number of sessions deleted and any error encountered.
-func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
+func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
 	// Get current project directory
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -451,20 +472,30 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 	fmt.Printf("  Found %d disk sessions\n", len(diskSessions))
 
 	// Build a set of session IDs that are tracked via workspace files
+	// Also track which ones are orchestrator sessions (for --preserve-orchestrator)
 	trackedSessionIDs := make(map[string]bool)
+	orchestratorSessionIDs := make(map[string]bool)
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	if entries, err := os.ReadDir(workspaceDir); err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() {
-				sessionID := spawn.ReadSessionID(filepath.Join(workspaceDir, entry.Name()))
+				wsPath := filepath.Join(workspaceDir, entry.Name())
+				sessionID := spawn.ReadSessionID(wsPath)
 				if sessionID != "" {
 					trackedSessionIDs[sessionID] = true
+					// Check if this is an orchestrator workspace
+					if isOrchestratorWorkspace(wsPath) {
+						orchestratorSessionIDs[sessionID] = true
+					}
 				}
 			}
 		}
 	}
 
 	fmt.Printf("  Workspaces track %d session IDs\n", len(trackedSessionIDs))
+	if preserveOrchestrator && len(orchestratorSessionIDs) > 0 {
+		fmt.Printf("  Found %d orchestrator session IDs to preserve\n", len(orchestratorSessionIDs))
+	}
 
 	// Find orphaned sessions (disk sessions not tracked in workspaces)
 	// IMPORTANT: Exclude sessions that are actively processing (e.g., the current orchestrator session)
@@ -510,10 +541,23 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 
 	// Delete orphaned sessions
 	deleted := 0
+	skippedOrch := 0
 	for _, session := range orphanedSessions {
 		title := session.Title
 		if title == "" {
 			title = "(untitled)"
+		}
+
+		// Check if this session should be preserved (orchestrator session)
+		if preserveOrchestrator && orchestratorSessionIDs[session.ID] {
+			skippedOrch++
+			continue
+		}
+
+		// Also check title for orchestrator indicators (sessions without workspace files)
+		if preserveOrchestrator && isOrchestratorSessionTitle(title) {
+			skippedOrch++
+			continue
 		}
 
 		if dryRun {
@@ -531,13 +575,18 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool) (int, error) {
 		deleted++
 	}
 
+	if skippedOrch > 0 {
+		fmt.Printf("  Skipped %d orchestrator sessions (--preserve-orchestrator)\n", skippedOrch)
+	}
+
 	return deleted, nil
 }
 
 // cleanPhantomWindows finds and closes tmux windows that are phantoms
 // (have a beads ID in the window name but no active OpenCode session).
+// If preserveOrchestrator is true, windows in orchestrator/meta-orchestrator sessions are skipped.
 // Returns the number of windows closed and any error encountered.
-func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
+func cleanPhantomWindows(serverURL string, dryRun bool, preserveOrchestrator bool) (int, error) {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 	const maxIdleTime = 30 * time.Minute
@@ -570,8 +619,15 @@ func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 		beadsID     string
 	}
 
+	skippedOrch := 0
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
+		// Skip orchestrator and meta-orchestrator sessions entirely
+		if preserveOrchestrator && (sessionName == tmux.OrchestratorSessionName || sessionName == tmux.MetaOrchestratorSessionName) {
+			skippedOrch++
+			continue
+		}
+
 		windows, err := tmux.ListWindows(sessionName)
 		if err != nil {
 			continue
@@ -598,6 +654,10 @@ func cleanPhantomWindows(serverURL string, dryRun bool) (int, error) {
 				}{&windowCopy, sessionName, beadsID})
 			}
 		}
+	}
+
+	if skippedOrch > 0 {
+		fmt.Printf("  Skipped %d orchestrator sessions (--preserve-orchestrator)\n", skippedOrch)
 	}
 
 	if len(phantomWindows) == 0 {
@@ -753,8 +813,9 @@ func archiveEmptyInvestigations(projectDir string, dryRun bool) (int, error) {
 // A workspace is considered "stale" if:
 // 1. It has a .spawn_time older than staleDays
 // 2. It is completed (SYNTHESIS.md exists OR beads issue is closed)
+// If preserveOrchestrator is true, orchestrator/meta-orchestrator workspaces are skipped.
 // Returns the number of workspaces archived and any error encountered.
-func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int, error) {
+func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, preserveOrchestrator bool) (int, error) {
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	archivedDir := filepath.Join(workspaceDir, "archived")
 
@@ -788,6 +849,7 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int,
 		reason    string
 	}
 
+	skippedOrch := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -799,6 +861,12 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int,
 		}
 
 		dirPath := filepath.Join(workspaceDir, entry.Name())
+
+		// Skip orchestrator workspaces if --preserve-orchestrator is set
+		if preserveOrchestrator && isOrchestratorWorkspace(dirPath) {
+			skippedOrch++
+			continue
+		}
 
 		// Read spawn time
 		spawnTimeFile := filepath.Join(dirPath, ".spawn_time")
@@ -864,6 +932,10 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int,
 		})
 	}
 
+	if skippedOrch > 0 {
+		fmt.Printf("  Skipped %d orchestrator workspaces (--preserve-orchestrator)\n", skippedOrch)
+	}
+
 	if len(staleWorkspaces) == 0 {
 		fmt.Println("  No stale completed workspaces found")
 		return 0, nil
@@ -907,8 +979,9 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool) (int,
 
 // cleanStaleSessions deletes OpenCode sessions older than the specified number of days.
 // It skips sessions that are currently active (processing or recently updated).
+// If preserveOrchestrator is true, sessions associated with orchestrator workspaces are skipped.
 // Returns the number of sessions deleted and any error encountered.
-func cleanStaleSessions(serverURL string, staleDays int, dryRun bool) (int, error) {
+func cleanStaleSessions(serverURL string, staleDays int, dryRun bool, preserveOrchestrator bool) (int, error) {
 	fmt.Printf("\nScanning for stale OpenCode sessions (older than %d days)...\n", staleDays)
 
 	client := opencode.NewClient(serverURL)
@@ -958,10 +1031,17 @@ func cleanStaleSessions(serverURL string, staleDays int, dryRun bool) (int, erro
 
 	// Delete stale sessions
 	deleted := 0
+	skippedOrch := 0
 	for _, session := range staleSessions {
 		title := session.Title
 		if title == "" {
 			title = "(untitled)"
+		}
+
+		// Skip orchestrator sessions if --preserve-orchestrator is set
+		if preserveOrchestrator && isOrchestratorSessionTitle(title) {
+			skippedOrch++
+			continue
 		}
 
 		updatedAt := time.Unix(session.Time.Updated/1000, 0)
@@ -980,6 +1060,10 @@ func cleanStaleSessions(serverURL string, staleDays int, dryRun bool) (int, erro
 
 		fmt.Printf("    Deleted: %s (%s) - %.0f days old\n", session.ID[:12], title, age)
 		deleted++
+	}
+
+	if skippedOrch > 0 {
+		fmt.Printf("  Skipped %d orchestrator sessions (--preserve-orchestrator)\n", skippedOrch)
 	}
 
 	return deleted, nil

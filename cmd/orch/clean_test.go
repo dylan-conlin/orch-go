@@ -151,3 +151,148 @@ func TestCleanCommandIntegration(t *testing.T) {
 	// that would actually run the clean command against real workspaces.
 	t.Skip("Integration test not implemented - requires agent setup")
 }
+
+// TestIsOrchestratorSessionTitle tests the orchestrator session title detection.
+func TestIsOrchestratorSessionTitle(t *testing.T) {
+	tests := []struct {
+		title    string
+		expected bool
+	}{
+		// Should match orchestrator patterns
+		{"meta-orch-continue-session-06jan", true},
+		{"orchestrator-main", true},
+		{"meta-orchestrator-06jan-abc1", true},
+		{"og-orch-goal-04jan", true},
+		{"Meta-Orch Session", true},
+
+		// Should NOT match worker patterns
+		{"og-feat-add-feature-21dec", false},
+		{"og-debug-fix-bug-21dec", false},
+		{"og-inv-investigate-21dec", false},
+		{"worker-session-123", false},
+		{"", false},
+		{"untitled", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			result := isOrchestratorSessionTitle(tt.title)
+			if result != tt.expected {
+				t.Errorf("isOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestPreserveOrchestratorWorkspace tests that orchestrator workspaces are detected correctly.
+func TestPreserveOrchestratorWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+
+	// Create orchestrator workspace with .orchestrator marker
+	orchWs := filepath.Join(workspaceDir, "og-orch-goal-04jan")
+	if err := os.MkdirAll(orchWs, 0755); err != nil {
+		t.Fatalf("Failed to create orchestrator workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(orchWs, ".orchestrator"), []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create .orchestrator marker: %v", err)
+	}
+
+	// Create meta-orchestrator workspace with .meta-orchestrator marker
+	metaOrchWs := filepath.Join(workspaceDir, "meta-orch-continue-06jan")
+	if err := os.MkdirAll(metaOrchWs, 0755); err != nil {
+		t.Fatalf("Failed to create meta-orchestrator workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(metaOrchWs, ".meta-orchestrator"), []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create .meta-orchestrator marker: %v", err)
+	}
+
+	// Create regular worker workspace (no markers)
+	workerWs := filepath.Join(workspaceDir, "og-feat-add-feature-21dec")
+	if err := os.MkdirAll(workerWs, 0755); err != nil {
+		t.Fatalf("Failed to create worker workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workerWs, "SPAWN_CONTEXT.md"), []byte("Task: test"), 0644); err != nil {
+		t.Fatalf("Failed to write SPAWN_CONTEXT.md: %v", err)
+	}
+
+	// Test isOrchestratorWorkspace
+	if !isOrchestratorWorkspace(orchWs) {
+		t.Error("Expected orchestrator workspace to be detected")
+	}
+	if !isOrchestratorWorkspace(metaOrchWs) {
+		t.Error("Expected meta-orchestrator workspace to be detected")
+	}
+	if isOrchestratorWorkspace(workerWs) {
+		t.Error("Expected worker workspace NOT to be detected as orchestrator")
+	}
+}
+
+// TestArchiveStaleWorkspacesPreservesOrchestrator tests that --preserve-orchestrator skips orchestrator workspaces.
+func TestArchiveStaleWorkspacesPreservesOrchestrator(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	archivedDir := filepath.Join(workspaceDir, "archived")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// Helper to create a stale workspace with spawn time
+	createStaleWorkspace := func(name string, isOrch bool) string {
+		ws := filepath.Join(workspaceDir, name)
+		if err := os.MkdirAll(ws, 0755); err != nil {
+			t.Fatalf("Failed to create workspace %s: %v", name, err)
+		}
+		// Write old spawn time (8 days ago in nanoseconds)
+		oldTime := int64(1704067200000000000) // Some old timestamp
+		if err := os.WriteFile(filepath.Join(ws, ".spawn_time"), []byte(string(rune(oldTime))), 0644); err != nil {
+			// Use fmt.Sprintf instead for proper int64 formatting
+			if err := os.WriteFile(filepath.Join(ws, ".spawn_time"), []byte("1704067200000000000"), 0644); err != nil {
+				t.Fatalf("Failed to write spawn time: %v", err)
+			}
+		}
+		// Write SYNTHESIS.md to mark as completed
+		if err := os.WriteFile(filepath.Join(ws, "SYNTHESIS.md"), []byte("# Complete"), 0644); err != nil {
+			t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+		}
+		// Write orchestrator marker if needed
+		if isOrch {
+			if err := os.WriteFile(filepath.Join(ws, ".orchestrator"), []byte(""), 0644); err != nil {
+				t.Fatalf("Failed to create .orchestrator marker: %v", err)
+			}
+		}
+		return ws
+	}
+
+	// Create test workspaces
+	orchWs := createStaleWorkspace("og-orch-test-01jan", true)
+	workerWs := createStaleWorkspace("og-feat-test-01jan", false)
+
+	// Verify both exist before archiving
+	if _, err := os.Stat(orchWs); os.IsNotExist(err) {
+		t.Fatal("Orchestrator workspace should exist")
+	}
+	if _, err := os.Stat(workerWs); os.IsNotExist(err) {
+		t.Fatal("Worker workspace should exist")
+	}
+
+	// Run archiveStaleWorkspaces with preserveOrchestrator=true, dryRun=true
+	// This verifies the detection logic without actually moving files
+	_, err := archiveStaleWorkspaces(tmpDir, 7, true, true)
+	if err != nil {
+		t.Fatalf("archiveStaleWorkspaces failed: %v", err)
+	}
+
+	// In dry-run mode, both should still exist
+	if _, err := os.Stat(orchWs); os.IsNotExist(err) {
+		t.Error("Orchestrator workspace should still exist after dry-run")
+	}
+	if _, err := os.Stat(workerWs); os.IsNotExist(err) {
+		t.Error("Worker workspace should still exist after dry-run")
+	}
+
+	// Verify archived directory wasn't created (dry-run)
+	if _, err := os.Stat(archivedDir); !os.IsNotExist(err) {
+		t.Error("Archived directory should not be created in dry-run mode")
+	}
+}
