@@ -130,3 +130,18 @@ concerning the "copy identifiers" features, copying is useful because it help me
 ** human review step?
 
 
+* web dashboard issues
+when i open a completed investigation i see this: /Users/dylanconlin/Screenshots/screenshot_2026-01-06_13-36-38.png
+
+- slide out pane should be wider
+- only useful quick copy button is the beads issue
+- no need for quick commands at bottom
+- the vertical space should be a tabbed display where we can click to different sections for the entire lifecycle, so inputs, message feed, outputs etc
+
+i'd like to have a design discussion about this to help me refine what this should look like
+* answers
+1) 80-85% of viewport
+2) if actively processing, then the live messages should fill the vertical space. new messages should appear at the bottom of the feed like how claude code does it. i also don't want to see a bunch of messy tool calls etc. i'd like to see clear signal
+   - completed agents i want to see output, so investigation and synthesis tabs
+- just a summary
+- no
