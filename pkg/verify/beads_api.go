@@ -6,6 +6,7 @@ package verify
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -77,8 +78,12 @@ func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 }
 
 // FallbackCommentsWithDir retrieves comments via bd CLI in a specific directory.
+// Sets BEADS_NO_DAEMON=1 to skip daemon connection attempts, avoiding 5s timeout
+// in launchd/minimal environments.
 func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs (launchd)
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 	if projectDir != "" {
 		cmd.Dir = projectDir
 	}
