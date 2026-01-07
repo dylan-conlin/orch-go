@@ -338,6 +338,7 @@ func TestListSessions(t *testing.T) {
 }
 
 // TestFindRecentSession tests the FindRecentSession method.
+// It matches by directory and creation time only (within 30 seconds).
 func TestFindRecentSession(t *testing.T) {
 	projectDir := "/home/user/project1"
 	nowMs := time.Now().UnixMilli()
@@ -367,7 +368,7 @@ func TestFindRecentSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	sessionID, err := client.FindRecentSession(projectDir, "")
+	sessionID, err := client.FindRecentSession(projectDir)
 	if err != nil {
 		t.Fatalf("FindRecentSession() error = %v", err)
 	}
@@ -393,7 +394,7 @@ func TestFindRecentSessionWithRetry(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient(server.URL)
-		sessionID, err := client.FindRecentSessionWithRetry(projectDir, "", 3, 10*time.Millisecond)
+		sessionID, err := client.FindRecentSessionWithRetry(projectDir, 3, 10*time.Millisecond)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -422,7 +423,7 @@ func TestFindRecentSessionWithRetry(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient(server.URL)
-		sessionID, err := client.FindRecentSessionWithRetry(projectDir, "", 3, 10*time.Millisecond)
+		sessionID, err := client.FindRecentSessionWithRetry(projectDir, 3, 10*time.Millisecond)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -445,7 +446,7 @@ func TestFindRecentSessionWithRetry(t *testing.T) {
 		defer server.Close()
 
 		client := NewClient(server.URL)
-		sessionID, err := client.FindRecentSessionWithRetry(projectDir, "", 3, 10*time.Millisecond)
+		sessionID, err := client.FindRecentSessionWithRetry(projectDir, 3, 10*time.Millisecond)
 		if err == nil {
 			t.Error("Expected error after max attempts")
 		}

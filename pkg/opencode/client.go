@@ -506,8 +506,11 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	return messages, nil
 }
 
-// FindRecentSession finds the most recent session for a given project directory and title.
-func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
+// FindRecentSession finds the most recent session for a given project directory.
+// It matches by directory and creation time only (within 30 seconds).
+// Title matching is not used because OpenCode session titles are set to the first
+// prompt text, not the workspace name, making title matching unreliable.
+func (c *Client) FindRecentSession(projectDir string) (string, error) {
 	req, err := http.NewRequest("GET", c.ServerURL+"/session", nil)
 	if err != nil {
 		return "", err
@@ -529,16 +532,12 @@ func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
 		return "", err
 	}
 
-	// Find the most recent session for this directory and title
+	// Find the most recent session for this directory (within 30 seconds)
 	var mostRecent *Session
 	now := time.Now().UnixMilli()
 	for i := range sessions {
 		s := &sessions[i]
 		if s.Directory != projectDir {
-			continue
-		}
-		// If title is provided, match it
-		if title != "" && s.Title != title {
 			continue
 		}
 		// Only match sessions created in the last 30 seconds
@@ -551,7 +550,7 @@ func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
 	}
 
 	if mostRecent == nil {
-		return "", fmt.Errorf("no sessions found for directory: %s (title: %s)", projectDir, title)
+		return "", fmt.Errorf("no sessions found for directory: %s (within last 30s)", projectDir)
 	}
 
 	return mostRecent.ID, nil
@@ -559,13 +558,13 @@ func (c *Client) FindRecentSession(projectDir, title string) (string, error) {
 
 // FindRecentSessionWithRetry retries finding a recent session with exponential backoff.
 // This handles the race condition where OpenCode TUI starts before registering with the API.
-// Returns the session ID if found, or empty string with no error if not found after retries.
-func (c *Client) FindRecentSessionWithRetry(projectDir, title string, maxAttempts int, initialDelay time.Duration) (string, error) {
+// Returns the session ID if found, or empty string with error if not found after retries.
+func (c *Client) FindRecentSessionWithRetry(projectDir string, maxAttempts int, initialDelay time.Duration) (string, error) {
 	delay := initialDelay
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		sessionID, err := c.FindRecentSession(projectDir, title)
+		sessionID, err := c.FindRecentSession(projectDir)
 		if err == nil {
 			return sessionID, nil
 		}

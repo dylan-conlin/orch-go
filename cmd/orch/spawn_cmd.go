@@ -1311,8 +1311,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 
 	// Capture session ID from API with retry (OpenCode may not have registered yet)
 	// Uses 3 attempts with 500ms initial delay, doubling each time (500ms, 1s, 2s)
+	// Matches by directory + creation time (within 30s), not by title
 	client := opencode.NewClient(serverURL)
-	sessionID, _ := client.FindRecentSessionWithRetry(cfg.ProjectDir, "", 3, 500*time.Millisecond)
+	sessionID, _ := client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
 	// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
 
 	// Send prompt
