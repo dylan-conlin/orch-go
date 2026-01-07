@@ -427,13 +427,25 @@
       "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
       "depends_on": ["feat-035"],
       "notes": "Phase 4 of orchestrator lifecycle without beads."
+    },
+    {
+      "id": "feat-039",
+      "title": "Fix kb reflect dedup to fail-closed on error",
+      "description": "Change synthesisIssueExists() and openIssueExists() in kb-cli to return true on any error (assume duplicate exists) instead of false (allow creation). Add warning logging for diagnosis. Root cause of duplicate synthesis issues being created hourly. File targets: kb-cli/cmd/kb/reflect.go (lines 498-508, 1273-1283). Acceptance: No new duplicates created when bd list fails or JSON parsing fails, warnings appear in stderr for diagnosis.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-07",
+      "source": ".kb/investigations/2026-01-07-design-recurring-problem-duplicate-synthesis-issues.md",
+      "repo": "kb-cli",
+      "notes": "Quick fix (~15 min). Change return false,nil to return true,nil on error. Also establishes 'fail-closed for idempotency' pattern."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-05",
-    "total_features": 38,
+    "last_updated": "2026-01-07",
+    "total_features": 39,
     "by_status": {
-      "todo": 36,
+      "todo": 37,
       "in_progress": 0,
       "done": 2
     }
