@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { TabButton } from '$lib/components/agent-detail';
+	import { TabButton, InvestigationTab } from '$lib/components/agent-detail';
 	import { selectedAgent, selectedAgentId, sseEvents, createIssue } from '$lib/stores/agents';
 	import type { Agent, SSEEvent } from '$lib/stores/agents';
 	import { onMount } from 'svelte';
@@ -354,6 +354,11 @@
 					{/each}
 				</div>
 			</div>
+		{/if}
+
+		<!-- Investigation Tab (for completed/abandoned agents) -->
+		{#if activeTab === 'investigation'}
+			<InvestigationTab agent={$selectedAgent} />
 		{/if}
 
 		<!-- Quick Copy Section - Full-width clickable items -->
