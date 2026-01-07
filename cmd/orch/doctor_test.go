@@ -120,6 +120,36 @@ func TestCheckOrchServeWithMockServer(t *testing.T) {
 	}
 }
 
+func TestCheckOrchServeServiceStatus(t *testing.T) {
+	// Test that checkOrchServe returns a properly structured ServiceStatus
+	// This tests the function behavior when the server is not running
+	// (which is the common case in tests)
+	status := checkOrchServe()
+
+	// Basic structure checks
+	if status.Name != "orch serve" {
+		t.Errorf("Expected name 'orch serve', got %s", status.Name)
+	}
+	if status.Port != DefaultServePort {
+		t.Errorf("Expected port %d, got %d", DefaultServePort, status.Port)
+	}
+	if status.URL != "https://localhost:3348" {
+		t.Errorf("Expected URL 'https://localhost:3348', got %s", status.URL)
+	}
+	if !status.CanFix {
+		t.Error("Expected CanFix to be true")
+	}
+	if status.FixAction != "Run: orch serve &" {
+		t.Errorf("Expected FixAction 'Run: orch serve &', got %s", status.FixAction)
+	}
+
+	// When server is not running, Running should be false and Details should indicate not listening
+	// (unless the server happens to be running during tests)
+	if !status.Running && status.Details == "" {
+		t.Error("Expected Details to be set when server is not running")
+	}
+}
+
 func TestDoctorReportHealthyLogic(t *testing.T) {
 	tests := []struct {
 		name     string
