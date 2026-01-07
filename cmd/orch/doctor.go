@@ -157,13 +157,13 @@ func runDoctor() error {
 		fmt.Println()
 		fmt.Println("Attempting to fix issues...")
 		fmt.Println()
-		
+
 		fixed := false
-		
+
 		for _, svc := range report.Services {
 			if !svc.Running && svc.CanFix {
 				fmt.Printf("Starting %s...\n", svc.Name)
-				
+
 				var err error
 				switch svc.Name {
 				case "OpenCode":
@@ -171,7 +171,7 @@ func runDoctor() error {
 				case "orch serve":
 					err = startOrchServe()
 				}
-				
+
 				if err != nil {
 					fmt.Printf("  ❌ Failed to start %s: %v\n", svc.Name, err)
 				} else {
@@ -180,7 +180,7 @@ func runDoctor() error {
 				}
 			}
 		}
-		
+
 		if fixed {
 			fmt.Println()
 			fmt.Println("Services started. Run 'orch doctor' again to verify.")
@@ -231,7 +231,7 @@ func checkOrchServe() ServiceStatus {
 
 	healthURL := fmt.Sprintf("http://localhost:%d/health", DefaultServePort)
 	httpClient := &http.Client{Timeout: 2 * time.Second}
-	
+
 	resp, err := httpClient.Get(healthURL)
 	if err != nil {
 		status.Running = false
@@ -245,7 +245,7 @@ func checkOrchServe() ServiceStatus {
 
 	if resp.StatusCode == http.StatusOK {
 		status.Running = true
-		
+
 		// Try to parse health response
 		var health struct {
 			Status string `json:"status"`
@@ -335,7 +335,7 @@ func startOrchServe() error {
 	// Wait for it to be ready (poll for up to 5 seconds)
 	healthURL := fmt.Sprintf("http://localhost:%d/health", DefaultServePort)
 	httpClient := &http.Client{Timeout: 2 * time.Second}
-	
+
 	for i := 0; i < 10; i++ {
 		time.Sleep(500 * time.Millisecond)
 		resp, err := httpClient.Get(healthURL)
@@ -419,11 +419,11 @@ func printDoctorReport(report *DoctorReport) {
 			fmt.Printf(" (port %d)", svc.Port)
 		}
 		fmt.Println()
-		
+
 		if svc.Details != "" {
 			fmt.Printf("  %s\n", svc.Details)
 		}
-		
+
 		if !svc.Running && svc.FixAction != "" && doctorVerbose {
 			fmt.Printf("  Fix: %s\n", svc.FixAction)
 		}
@@ -541,130 +541,288 @@ func checkStalledSessions() ServiceStatus {
 	return status
 }
 
-// runSessionsCrossReference performs a cross-reference between workspaces and OpenCode sessions
-// to detect orphaned workspaces (no session) and orphaned sessions (no workspace).
-func runSessionsCrossReference() error {
-	fmt.Println("orch doctor --sessions - Workspace ↔ Session Cross-Reference")
-	fmt.Println("=============================================================")
-	fmt.Println()
+// SessionsCrossReferenceReport contains the results of workspace/session/registry cross-reference.
+type SessionsCrossReferenceReport struct {
+	WorkspaceCount       int `json:"workspace_count"`
+	SessionCount         int `json:"session_count"`
+	RegistryCount        int `json:"registry_count"`
+	OrphanedWorkspaces   int `json:"orphaned_workspaces"` // Workspaces with deleted sessions
+	OrphanedSessions     int `json:"orphaned_sessions"`   // Sessions without workspaces
+	ZombieSessions       int `json:"zombie_sessions"`     // Sessions active but stuck
+	RegistryMismatches   int `json:"registry_mismatches"` // Registry entries without sessions
+	OrphanedWorkspaceIDs []string
+	OrphanedSessionIDs   []string
+	ZombieSessionIDs     []string
+	RegistryMismatchIDs  []string
+}
 
+// runSessionsCrossReference performs a cross-reference between workspaces, OpenCode sessions,
+// and the orchestrator registry to detect orphaned workspaces, orphaned sessions, and zombies.
+func runSessionsCrossReference() error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
 	client := opencode.NewClient(serverURL)
+	report := &SessionsCrossReferenceReport{}
 
 	// Step 1: Build map of workspace → session IDs
-	fmt.Println("Scanning workspaces...")
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	workspaceToSession := make(map[string]string) // workspace name → session ID
 	sessionToWorkspace := make(map[string]string) // session ID → workspace name
+	workspaceBeadsID := make(map[string]string)   // workspace name → beads ID
 
 	entries, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		fmt.Printf("  No .orch/workspace directory found\n")
-		entries = nil
-	}
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Name() == "archived" {
+				continue
+			}
+			wsPath := filepath.Join(workspaceDir, entry.Name())
 
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == "archived" {
-			continue
-		}
-		sessionIDFile := filepath.Join(workspaceDir, entry.Name(), ".session_id")
-		if data, err := os.ReadFile(sessionIDFile); err == nil {
-			sessionID := strings.TrimSpace(string(data))
-			workspaceToSession[entry.Name()] = sessionID
-			sessionToWorkspace[sessionID] = entry.Name()
+			// Read session ID
+			if data, err := os.ReadFile(filepath.Join(wsPath, ".session_id")); err == nil {
+				sessionID := strings.TrimSpace(string(data))
+				if sessionID != "" {
+					workspaceToSession[entry.Name()] = sessionID
+					sessionToWorkspace[sessionID] = entry.Name()
+				}
+			}
+
+			// Read beads ID
+			if data, err := os.ReadFile(filepath.Join(wsPath, ".beads_id")); err == nil {
+				beadsID := strings.TrimSpace(string(data))
+				if beadsID != "" {
+					workspaceBeadsID[entry.Name()] = beadsID
+				}
+			}
 		}
 	}
-	fmt.Printf("  Found %d workspaces with session IDs\n", len(workspaceToSession))
+	report.WorkspaceCount = len(workspaceToSession)
 
 	// Step 2: Get all OpenCode sessions for this project
-	fmt.Println("\nFetching OpenCode sessions...")
 	sessions, err := client.ListDiskSessions(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
-	fmt.Printf("  Found %d OpenCode sessions\n", len(sessions))
+	report.SessionCount = len(sessions)
 
-	// Step 3: Cross-reference
-	fmt.Println("\nCross-referencing...")
-
-	// Sessions with no workspace
-	var orphanedSessions []struct {
-		id    string
-		title string
-		age   time.Duration
-	}
-	for _, s := range sessions {
-		if _, hasWorkspace := sessionToWorkspace[s.ID]; !hasWorkspace {
-			age := time.Since(time.Unix(s.Time.Created/1000, 0))
-			orphanedSessions = append(orphanedSessions, struct {
-				id    string
-				title string
-				age   time.Duration
-			}{s.ID, s.Title, age})
-		}
-	}
-
-	// Workspaces with session ID that doesn't exist
-	var orphanedWorkspaces []struct {
-		name      string
-		sessionID string
-	}
+	// Build session ID set and map for quick lookup
 	sessionIDSet := make(map[string]bool)
+	sessionByID := make(map[string]opencode.Session)
 	for _, s := range sessions {
 		sessionIDSet[s.ID] = true
+		sessionByID[s.ID] = s
 	}
+
+	// Step 3: Load registry (orchestrator sessions)
+	registry := loadSessionRegistry()
+	report.RegistryCount = len(registry)
+
+	// Step 4: Find orphaned workspaces (workspace has session ID that doesn't exist in OpenCode)
 	for name, sessionID := range workspaceToSession {
 		if !sessionIDSet[sessionID] {
-			orphanedWorkspaces = append(orphanedWorkspaces, struct {
-				name      string
-				sessionID string
-			}{name, sessionID})
+			report.OrphanedWorkspaces++
+			report.OrphanedWorkspaceIDs = append(report.OrphanedWorkspaceIDs, name)
 		}
 	}
 
-	// Step 4: Report results
-	fmt.Println()
+	// Step 5: Find orphaned sessions (session exists but has no workspace)
+	for _, s := range sessions {
+		if _, hasWorkspace := sessionToWorkspace[s.ID]; !hasWorkspace {
+			// Check if this is an orchestrator session (expected to not have workspace tracking)
+			isOrchestratorSession := isSessionInRegistry(s.ID, registry)
+			if !isOrchestratorSession {
+				report.OrphanedSessions++
+				report.OrphanedSessionIDs = append(report.OrphanedSessionIDs, s.ID)
+			}
+		}
+	}
 
-	if len(orphanedSessions) == 0 && len(orphanedWorkspaces) == 0 {
-		fmt.Println("✓ All workspaces and sessions are properly linked")
+	// Step 6: Find zombie sessions (sessions that claim to be active but haven't been updated in >30 min)
+	const zombieThreshold = 30 * time.Minute
+	now := time.Now()
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		idleTime := now.Sub(updatedAt)
+
+		// Session is potentially a zombie if:
+		// 1. Has a workspace (was spawned by orch)
+		// 2. Hasn't been updated in >30 min
+		// 3. Is still registered in registry as "active"
+		workspaceName := sessionToWorkspace[s.ID]
+		if workspaceName != "" && idleTime > zombieThreshold {
+			// Check if this session is still marked as active in registry
+			for _, reg := range registry {
+				if reg.SessionID == s.ID && reg.Status == "active" {
+					report.ZombieSessions++
+					report.ZombieSessionIDs = append(report.ZombieSessionIDs, s.ID)
+					break
+				}
+			}
+		}
+	}
+
+	// Step 7: Find registry mismatches (registry entries with session IDs that don't exist)
+	for _, reg := range registry {
+		if reg.SessionID != "" && !sessionIDSet[reg.SessionID] {
+			report.RegistryMismatches++
+			report.RegistryMismatchIDs = append(report.RegistryMismatchIDs, reg.WorkspaceName)
+		}
+	}
+
+	// Print summary report
+	printSessionsCrossReferenceReport(report, projectDir, sessionByID, workspaceBeadsID)
+
+	return nil
+}
+
+// loadSessionRegistry loads the orchestrator session registry from ~/.orch/sessions.json
+func loadSessionRegistry() []struct {
+	WorkspaceName string
+	SessionID     string
+	Status        string
+} {
+	home, err := os.UserHomeDir()
+	if err != nil {
 		return nil
 	}
 
-	if len(orphanedSessions) > 0 {
-		fmt.Printf("⚠️  Sessions without workspaces (%d):\n", len(orphanedSessions))
-		fmt.Println("   (These may be interactive/orchestrator sessions or test sessions)")
-		for _, s := range orphanedSessions {
-			title := s.title
+	registryPath := filepath.Join(home, ".orch", "sessions.json")
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		return nil
+	}
+
+	var registry struct {
+		Sessions []struct {
+			WorkspaceName string `json:"workspace_name"`
+			SessionID     string `json:"session_id"`
+			Status        string `json:"status"`
+		} `json:"sessions"`
+	}
+
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return nil
+	}
+
+	var result []struct {
+		WorkspaceName string
+		SessionID     string
+		Status        string
+	}
+	for _, s := range registry.Sessions {
+		result = append(result, struct {
+			WorkspaceName string
+			SessionID     string
+			Status        string
+		}{s.WorkspaceName, s.SessionID, s.Status})
+	}
+	return result
+}
+
+// isSessionInRegistry checks if a session ID is tracked in the orchestrator registry
+func isSessionInRegistry(sessionID string, registry []struct {
+	WorkspaceName string
+	SessionID     string
+	Status        string
+}) bool {
+	if sessionID == "" {
+		return false
+	}
+	for _, reg := range registry {
+		if reg.SessionID == sessionID {
+			return true
+		}
+	}
+	return false
+}
+
+// printSessionsCrossReferenceReport prints the cross-reference report in a clean format
+func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, projectDir string, sessionByID map[string]opencode.Session, workspaceBeadsID map[string]string) {
+	fmt.Println("orch doctor --sessions")
+	fmt.Printf("Workspaces: %d\n", report.WorkspaceCount)
+	fmt.Printf("Sessions: %d active\n", report.SessionCount)
+	fmt.Printf("Orphaned workspaces: %d (session deleted)\n", report.OrphanedWorkspaces)
+	fmt.Printf("Orphaned sessions: %d (no workspace)\n", report.OrphanedSessions)
+	fmt.Printf("Zombie sessions: %d\n", report.ZombieSessions)
+	if report.RegistryMismatches > 0 {
+		fmt.Printf("Registry mismatches: %d\n", report.RegistryMismatches)
+	}
+
+	// If everything is clean, show success
+	totalIssues := report.OrphanedWorkspaces + report.OrphanedSessions + report.ZombieSessions + report.RegistryMismatches
+	if totalIssues == 0 {
+		fmt.Println()
+		fmt.Println("✓ All workspaces, sessions, and registry entries are properly linked")
+		return
+	}
+
+	// Show details for issues
+	fmt.Println()
+
+	if report.OrphanedWorkspaces > 0 && doctorVerbose {
+		fmt.Println("Orphaned workspaces (session was garbage-collected):")
+		for _, name := range report.OrphanedWorkspaceIDs {
+			beadsID := workspaceBeadsID[name]
+			if beadsID != "" {
+				fmt.Printf("  - %s [%s]\n", name, beadsID)
+			} else {
+				fmt.Printf("  - %s\n", name)
+			}
+		}
+		fmt.Println()
+	}
+
+	if report.OrphanedSessions > 0 && doctorVerbose {
+		fmt.Println("Orphaned sessions (no corresponding workspace):")
+		for _, sessionID := range report.OrphanedSessionIDs {
+			s := sessionByID[sessionID]
+			title := s.Title
 			if title == "" {
 				title = "(untitled)"
 			}
-			fmt.Printf("    %s - %s (%.0f days old)\n", s.id[:12], title, s.age.Hours()/24)
+			age := time.Since(time.Unix(s.Time.Created/1000, 0))
+			fmt.Printf("  - %s: %s (%.0f days old)\n", sessionID[:12], title, age.Hours()/24)
 		}
 		fmt.Println()
 	}
 
-	if len(orphanedWorkspaces) > 0 {
-		fmt.Printf("⚠️  Workspaces with missing sessions (%d):\n", len(orphanedWorkspaces))
-		fmt.Println("   (Session may have been deleted or OpenCode server restarted)")
-		for _, w := range orphanedWorkspaces {
-			fmt.Printf("    %s (session: %s)\n", w.name, w.sessionID[:12])
+	if report.ZombieSessions > 0 {
+		fmt.Println("⚠️  Zombie sessions (marked active but idle >30min):")
+		for _, sessionID := range report.ZombieSessionIDs {
+			s := sessionByID[sessionID]
+			title := s.Title
+			if title == "" {
+				title = "(untitled)"
+			}
+			idleTime := time.Since(time.Unix(s.Time.Updated/1000, 0))
+			fmt.Printf("  - %s: %s (idle %.0f min)\n", sessionID[:12], title, idleTime.Minutes())
 		}
 		fmt.Println()
 	}
 
+	if report.RegistryMismatches > 0 && doctorVerbose {
+		fmt.Println("Registry mismatches (session ID no longer exists):")
+		for _, name := range report.RegistryMismatchIDs {
+			fmt.Printf("  - %s\n", name)
+		}
+		fmt.Println()
+	}
+
+	// Recommendations
 	fmt.Println("Recommendations:")
-	if len(orphanedSessions) > 0 {
-		fmt.Println("  - Sessions without workspaces are usually fine (interactive/orchestrator)")
-		fmt.Println("  - Use 'orch clean --verify-opencode' to delete truly orphaned disk sessions")
+	if report.OrphanedWorkspaces > 0 {
+		fmt.Println("  - Use 'orch clean --stale' to archive old workspaces")
 	}
-	if len(orphanedWorkspaces) > 0 {
-		fmt.Println("  - Workspaces with missing sessions can be archived:")
-		fmt.Println("    'orch clean --stale' to archive old workspaces")
+	if report.OrphanedSessions > 0 {
+		fmt.Println("  - Orphaned sessions are usually interactive/test sessions (safe to ignore)")
 	}
-
-	return nil
+	if report.ZombieSessions > 0 {
+		fmt.Println("  - Use 'orch abandon <id>' to clean up zombie sessions")
+	}
+	if report.RegistryMismatches > 0 {
+		fmt.Println("  - Registry entries with missing sessions can be cleaned with 'orch clean'")
+	}
 }

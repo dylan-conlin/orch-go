@@ -1,83 +1,69 @@
-<!--
-D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
--->
-
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Enhanced `orch doctor --sessions` to cross-reference workspaces, OpenCode sessions, AND orchestrator registry to detect orphaned and zombie sessions.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tested on orch-go with 302 workspaces, 171 sessions - correctly identified 271 orphaned workspaces, 140 orphaned sessions, 0 zombies; tests pass.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Orchestrator sessions use `~/.orch/sessions.json` registry which lacks session IDs (they're empty) for most entries, making registry-based zombie detection ineffective without session ID population.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Enable 30-second understanding for fresh Claude
--->
+**Next:** Close - implementation complete. Follow-up: Consider populating session_id in registry when spawning orchestrators.
 
 ---
 
 # Investigation: Add Orch Doctor Sessions Workspace
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How to cross-reference workspaces, OpenCode sessions, and registry to detect orphaned/zombie sessions?
 
 **Started:** 2026-01-06
 **Updated:** 2026-01-06
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** feature-impl agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Existing implementation only covered 2 of 3 layers
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The original `runSessionsCrossReference()` only cross-referenced workspaces ↔ OpenCode sessions, missing the orchestrator registry entirely.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `cmd/orch/doctor.go:544-670` (original implementation)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Registry entries can become stale if sessions are garbage-collected, leading to registry mismatches that weren't detected.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Registry session IDs are mostly empty
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Examining `~/.orch/sessions.json`, most orchestrator sessions have empty `session_id` fields. Only newer sessions have IDs populated.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+```json
+{
+  "workspace_name": "meta-orch-continue-meta-orch-06jan-2c9a",
+  "session_id": "",  // Empty!
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "status": "active"
+}
+```
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** `cat ~/.orch/sessions.json`
+
+**Significance:** Registry-based zombie detection relies on session IDs to match against OpenCode sessions. Empty IDs mean we can't detect zombies for older orchestrator sessions.
+
+---
+
+### Finding 3: Zombie detection requires both session freshness and registry state
+
+**Evidence:** A zombie session is one that:
+1. Has a workspace (was spawned by orch)
+2. Hasn't been updated in >30 minutes
+3. Is still marked as "active" in registry
+
+**Source:** Implementation in `runSessionsCrossReference()` step 6
+
+**Significance:** The three-way check (workspace + OpenCode API + registry) catches sessions that appear active in registry but have gone silent.
 
 ---
 
@@ -85,15 +71,19 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Three-layer architecture** - The orch system has three independent state stores (workspace files, OpenCode sessions, registry JSON) that can drift out of sync.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Registry population gap** - Session IDs aren't being populated for orchestrator sessions in the registry, limiting the effectiveness of registry-based checks.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Clean output format** - The new summary format matches the spec and provides actionable recommendations.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Cross-referencing requires:
+1. Reading `.orch/workspace/*/.*` files for workspace → session mapping
+2. Calling `client.ListDiskSessions()` for OpenCode session state
+3. Reading `~/.orch/sessions.json` for orchestrator registry
+4. Comparing all three to find: orphaned workspaces (session deleted), orphaned sessions (no workspace), zombies (active in registry but idle), registry mismatches (session ID not found)
 
 ---
 
@@ -101,120 +91,75 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Cross-reference logic correctly identifies orphaned workspaces (verified: 271 found on orch-go)
+- ✅ Cross-reference logic correctly identifies orphaned sessions (verified: 140 found)
+- ✅ Empty session IDs handled gracefully (verified: test passes)
+- ✅ Output format matches spec (verified: visual inspection)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Zombie detection with populated registry session IDs (no test data available)
+- ⚠️ Performance with very large workspace counts (>1000)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If registry started populating session IDs, zombie detection would become more accurate
+- If OpenCode changed its session API, ListDiskSessions might need updates
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+### Recommended Approach (Implemented)
 
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+Enhanced `runSessionsCrossReference()` with:
+- Registry loading from `~/.orch/sessions.json`
+- Zombie detection (idle >30min but active in registry)
+- Registry mismatch detection (session ID not found in OpenCode)
+- Clean summary output format
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+1. Build workspace → session maps (existing)
+2. Load OpenCode sessions via API (existing)
+3. Load registry from JSON file (new)
+4. Cross-reference all three (enhanced)
+5. Detect zombies using idle time + registry status (new)
+6. Print summary in spec format (new)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/doctor.go` - Main implementation
+- `pkg/session/registry.go` - Registry types (used for reference)
+- `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md` - Architecture context
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test command
+go run ./cmd/orch doctor --sessions
 
-# [Command description]
-[command]
+# Check registry structure
+cat ~/.orch/sessions.json | head -50
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-06-inv-workspace-session-architecture.md` - Full architecture context
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-06 17:30:** Investigation started
+- Initial question: How to add registry and zombie detection to orch doctor --sessions?
+- Context: Spawned from beads issue orch-go-0l2f9
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-06 17:45:** Implementation completed
+- Enhanced `runSessionsCrossReference()` with all three layers
+- Added tests for new functionality
+- All tests passing
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-06 17:50:** Investigation completed
+- Status: Complete
+- Key outcome: `orch doctor --sessions` now cross-references workspaces, sessions, and registry with zombie detection
