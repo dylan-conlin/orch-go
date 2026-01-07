@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -45,6 +47,97 @@ func TestGenerateResumePrompt(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGenerateOrchestratorResumePrompt(t *testing.T) {
+	// Create a temp directory for test workspaces
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name          string
+		workspaceName string
+		contextFile   string // which context file to create
+		wantContains  []string
+	}{
+		{
+			name:          "detects META_ORCHESTRATOR_CONTEXT.md",
+			workspaceName: "meta-orch-test",
+			contextFile:   "META_ORCHESTRATOR_CONTEXT.md",
+			wantContains: []string{
+				"META_ORCHESTRATOR_CONTEXT.md",
+				"meta-orch-test",
+				"paused",
+				"continue",
+			},
+		},
+		{
+			name:          "detects ORCHESTRATOR_CONTEXT.md",
+			workspaceName: "orch-session-test",
+			contextFile:   "ORCHESTRATOR_CONTEXT.md",
+			wantContains: []string{
+				"ORCHESTRATOR_CONTEXT.md",
+				"orch-session-test",
+			},
+		},
+		{
+			name:          "falls back to SPAWN_CONTEXT.md",
+			workspaceName: "worker-test",
+			contextFile:   "SPAWN_CONTEXT.md",
+			wantContains: []string{
+				"SPAWN_CONTEXT.md",
+				"worker-test",
+			},
+		},
+		{
+			name:          "defaults to SPAWN_CONTEXT.md if no context file exists",
+			workspaceName: "empty-workspace",
+			contextFile:   "", // no file created
+			wantContains: []string{
+				"SPAWN_CONTEXT.md",
+				"empty-workspace",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create workspace directory
+			workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", tt.workspaceName)
+			if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+				t.Fatal(err)
+			}
+
+			// Create context file if specified
+			if tt.contextFile != "" {
+				contextPath := filepath.Join(workspaceDir, tt.contextFile)
+				if err := os.WriteFile(contextPath, []byte("test content"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got := GenerateOrchestratorResumePrompt(tt.workspaceName, tmpDir)
+			for _, want := range tt.wantContains {
+				if !stringContains(got, want) {
+					t.Errorf("GenerateOrchestratorResumePrompt() = %q, want to contain %q", got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateSessionResumePrompt(t *testing.T) {
+	got := GenerateSessionResumePrompt()
+
+	wantContains := []string{
+		"paused",
+		"Continue",
+	}
+
+	for _, want := range wantContains {
+		if !stringContains(got, want) {
+			t.Errorf("GenerateSessionResumePrompt() = %q, want to contain %q", got, want)
+		}
 	}
 }
 
