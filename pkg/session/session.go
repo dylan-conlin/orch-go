@@ -22,6 +22,19 @@ import (
 // TimeFormat is the timestamp format used in session storage.
 const TimeFormat = time.RFC3339Nano
 
+// Checkpoint thresholds for orchestrator session duration discipline.
+// Sessions exceeding these durations should checkpoint or hand off.
+const (
+	// CheckpointWarningDuration is when to start suggesting checkpoints (2 hours).
+	CheckpointWarningDuration = 2 * time.Hour
+
+	// CheckpointStrongDuration is when to strongly recommend handoff (3 hours).
+	CheckpointStrongDuration = 3 * time.Hour
+
+	// CheckpointMaxDuration is the maximum recommended session duration (4 hours).
+	CheckpointMaxDuration = 4 * time.Hour
+)
+
 // DefaultPath returns the default session file path.
 func DefaultPath() string {
 	home, _ := os.UserHomeDir()
@@ -283,4 +296,60 @@ func (s *Store) SpawnCount() int {
 		return 0
 	}
 	return len(s.session.Spawns)
+}
+
+// CheckpointStatus describes the current checkpoint state for a session.
+type CheckpointStatus struct {
+	// Level is the checkpoint urgency level: "ok", "warning", "strong", "exceeded"
+	Level string
+
+	// Message is a human-readable checkpoint recommendation
+	Message string
+
+	// SinceLastCheckpoint is the duration since session start (checkpoint tracking not yet implemented)
+	Duration time.Duration
+
+	// NextThreshold is the duration until the next checkpoint threshold
+	NextThreshold time.Duration
+}
+
+// GetCheckpointStatus returns checkpoint status for the current session.
+// Returns nil if no session is active.
+func (s *Store) GetCheckpointStatus() *CheckpointStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.session == nil {
+		return nil
+	}
+
+	duration := time.Since(s.session.StartedAt)
+
+	status := &CheckpointStatus{
+		Duration: duration,
+	}
+
+	switch {
+	case duration >= CheckpointMaxDuration:
+		status.Level = "exceeded"
+		status.Message = "Session has exceeded 4h max - handoff immediately"
+		status.NextThreshold = 0
+
+	case duration >= CheckpointStrongDuration:
+		status.Level = "strong"
+		status.Message = "Session at 3h+ - strongly recommend handoff"
+		status.NextThreshold = CheckpointMaxDuration - duration
+
+	case duration >= CheckpointWarningDuration:
+		status.Level = "warning"
+		status.Message = "Session at 2h+ - consider checkpoint or handoff"
+		status.NextThreshold = CheckpointStrongDuration - duration
+
+	default:
+		status.Level = "ok"
+		status.Message = "Session within normal duration"
+		status.NextThreshold = CheckpointWarningDuration - duration
+	}
+
+	return status
 }

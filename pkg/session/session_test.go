@@ -282,3 +282,99 @@ func TestMissingFile(t *testing.T) {
 		t.Error("Session file was not created after Start()")
 	}
 }
+
+func TestGetCheckpointStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "session.json")
+
+	store, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Test with no active session
+	status := store.GetCheckpointStatus()
+	if status != nil {
+		t.Error("GetCheckpointStatus() should return nil when no session is active")
+	}
+
+	// Start session
+	if err := store.Start("Test checkpoint"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Test immediate checkpoint status (should be "ok")
+	status = store.GetCheckpointStatus()
+	if status == nil {
+		t.Fatal("GetCheckpointStatus() returned nil for active session")
+	}
+	if status.Level != "ok" {
+		t.Errorf("status.Level = %q, want 'ok' for new session", status.Level)
+	}
+	if status.Duration < 0 {
+		t.Errorf("status.Duration = %v, should be >= 0", status.Duration)
+	}
+	if status.NextThreshold <= 0 {
+		t.Errorf("status.NextThreshold = %v, should be > 0 for new session", status.NextThreshold)
+	}
+}
+
+func TestCheckpointStatusLevels(t *testing.T) {
+	// Test the threshold logic directly by examining the constants
+	tests := []struct {
+		duration  time.Duration
+		wantLevel string
+	}{
+		{30 * time.Minute, "ok"},
+		{90 * time.Minute, "ok"},
+		{2*time.Hour + 1*time.Minute, "warning"},
+		{2*time.Hour + 30*time.Minute, "warning"},
+		{3*time.Hour + 1*time.Minute, "strong"},
+		{3*time.Hour + 30*time.Minute, "strong"},
+		{4*time.Hour + 1*time.Minute, "exceeded"},
+		{5 * time.Hour, "exceeded"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.duration.String(), func(t *testing.T) {
+			var level string
+			switch {
+			case tt.duration >= CheckpointMaxDuration:
+				level = "exceeded"
+			case tt.duration >= CheckpointStrongDuration:
+				level = "strong"
+			case tt.duration >= CheckpointWarningDuration:
+				level = "warning"
+			default:
+				level = "ok"
+			}
+
+			if level != tt.wantLevel {
+				t.Errorf("level for %v = %q, want %q", tt.duration, level, tt.wantLevel)
+			}
+		})
+	}
+}
+
+func TestCheckpointConstants(t *testing.T) {
+	// Verify checkpoint constants are in expected order
+	if CheckpointWarningDuration >= CheckpointStrongDuration {
+		t.Errorf("CheckpointWarningDuration (%v) should be < CheckpointStrongDuration (%v)",
+			CheckpointWarningDuration, CheckpointStrongDuration)
+	}
+	if CheckpointStrongDuration >= CheckpointMaxDuration {
+		t.Errorf("CheckpointStrongDuration (%v) should be < CheckpointMaxDuration (%v)",
+			CheckpointStrongDuration, CheckpointMaxDuration)
+	}
+
+	// Verify expected values
+	if CheckpointWarningDuration != 2*time.Hour {
+		t.Errorf("CheckpointWarningDuration = %v, want 2h", CheckpointWarningDuration)
+	}
+	if CheckpointStrongDuration != 3*time.Hour {
+		t.Errorf("CheckpointStrongDuration = %v, want 3h", CheckpointStrongDuration)
+	}
+	if CheckpointMaxDuration != 4*time.Hour {
+		t.Errorf("CheckpointMaxDuration = %v, want 4h", CheckpointMaxDuration)
+	}
+}

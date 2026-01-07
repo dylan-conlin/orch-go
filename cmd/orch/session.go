@@ -206,12 +206,13 @@ Examples:
 
 // SessionStatusOutput is the JSON output format for session status.
 type SessionStatusOutput struct {
-	Active    bool                  `json:"active"`
-	Goal      string                `json:"goal,omitempty"`
-	StartedAt string                `json:"started_at,omitempty"`
-	Duration  string                `json:"duration,omitempty"`
-	Spawns    []session.SpawnStatus `json:"spawns,omitempty"`
-	Counts    *SpawnCounts          `json:"counts,omitempty"`
+	Active     bool                      `json:"active"`
+	Goal       string                    `json:"goal,omitempty"`
+	StartedAt  string                    `json:"started_at,omitempty"`
+	Duration   string                    `json:"duration,omitempty"`
+	Spawns     []session.SpawnStatus     `json:"spawns,omitempty"`
+	Counts     *SpawnCounts              `json:"counts,omitempty"`
+	Checkpoint *session.CheckpointStatus `json:"checkpoint,omitempty"`
 }
 
 // SpawnCounts summarizes spawn states.
@@ -257,6 +258,9 @@ func runSessionStatus() error {
 			}
 		}
 		output.Counts = counts
+
+		// Get checkpoint status
+		output.Checkpoint = store.GetCheckpointStatus()
 	}
 
 	// JSON output
@@ -278,7 +282,21 @@ func runSessionStatus() error {
 
 	fmt.Printf("Session active:\n")
 	fmt.Printf("  Goal:     %s\n", output.Goal)
-	fmt.Printf("  Duration: %s\n", output.Duration)
+	fmt.Printf("  Duration: %s", output.Duration)
+
+	// Show checkpoint status inline with duration
+	if output.Checkpoint != nil {
+		switch output.Checkpoint.Level {
+		case "exceeded":
+			fmt.Printf(" ⛔")
+		case "strong":
+			fmt.Printf(" 🔴")
+		case "warning":
+			fmt.Printf(" 🟡")
+		}
+	}
+	fmt.Println()
+
 	fmt.Printf("  Spawns:   %d total", output.Counts.Total)
 	if output.Counts.Active > 0 {
 		fmt.Printf(" (%d active", output.Counts.Active)
@@ -299,6 +317,25 @@ func runSessionStatus() error {
 			stateIcon := stateToIcon(spawn.State)
 			age := formatSessionDuration(time.Since(spawn.SpawnedAt))
 			fmt.Printf("  %s %s (%s) - %s ago\n", stateIcon, spawn.BeadsID, spawn.Skill, age)
+		}
+	}
+
+	// Show checkpoint warning if applicable
+	if output.Checkpoint != nil && output.Checkpoint.Level != "ok" {
+		fmt.Println()
+		switch output.Checkpoint.Level {
+		case "exceeded":
+			fmt.Printf("⛔ CHECKPOINT EXCEEDED: %s\n", output.Checkpoint.Message)
+			fmt.Println("   Session has run too long. Quality may be degraded.")
+			fmt.Println("   Action: Run 'orch session end' and start fresh.")
+		case "strong":
+			fmt.Printf("🔴 CHECKPOINT STRONGLY RECOMMENDED: %s\n", output.Checkpoint.Message)
+			fmt.Printf("   Time until max: %s\n", formatSessionDuration(output.Checkpoint.NextThreshold))
+			fmt.Println("   Action: Write SESSION_HANDOFF.md, consider ending session.")
+		case "warning":
+			fmt.Printf("🟡 CHECKPOINT SUGGESTED: %s\n", output.Checkpoint.Message)
+			fmt.Printf("   Time until strong warning: %s\n", formatSessionDuration(output.Checkpoint.NextThreshold))
+			fmt.Println("   Action: Assess progress, write interim handoff if needed.")
 		}
 	}
 
@@ -411,6 +448,14 @@ func runSessionEnd() error {
 
 	if activeCount > 0 {
 		fmt.Printf("\n⚠️  %d agent(s) still active. Use 'orch status' to monitor.\n", activeCount)
+	}
+
+	// Show checkpoint advice based on session duration
+	if duration >= session.CheckpointMaxDuration {
+		fmt.Println("\n⛔ Session exceeded 4h checkpoint max.")
+		fmt.Println("   Consider shorter sessions to maintain quality.")
+	} else if duration >= session.CheckpointStrongDuration {
+		fmt.Println("\n🟡 Session was 3h+. Good to hand off, but review quality of late work.")
 	}
 
 	return nil
