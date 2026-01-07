@@ -133,11 +133,12 @@ type InfrastructureHealth struct {
 
 // StatusOutput represents the full status output for JSON serialization.
 type StatusOutput struct {
-	Infrastructure       *InfrastructureHealth     `json:"infrastructure,omitempty"`
-	Swarm                SwarmStatus               `json:"swarm"`
-	Accounts             []AccountUsage            `json:"accounts"`
-	OrchestratorSessions []OrchestratorSessionInfo `json:"orchestrator_sessions,omitempty"`
-	Agents               []AgentInfo               `json:"agents"`
+	Infrastructure         *InfrastructureHealth          `json:"infrastructure,omitempty"`
+	Swarm                  SwarmStatus                    `json:"swarm"`
+	Accounts               []AccountUsage                 `json:"accounts"`
+	OrchestratorSessions   []OrchestratorSessionInfo      `json:"orchestrator_sessions,omitempty"`
+	Agents                 []AgentInfo                    `json:"agents"`
+	SynthesisOpportunities *verify.SynthesisOpportunities `json:"synthesis_opportunities,omitempty"`
 }
 
 func runStatus(serverURL string) error {
@@ -507,13 +508,17 @@ func runStatus(serverURL string) error {
 	// Check infrastructure health
 	infraHealth := checkInfrastructureHealth()
 
+	// Detect synthesis opportunities
+	synthesisOpps, _ := verify.DetectSynthesisOpportunities(projectDir)
+
 	// Build output (use filtered agents for display)
 	output := StatusOutput{
-		Infrastructure:       infraHealth,
-		Swarm:                swarm,
-		Accounts:             accounts,
-		OrchestratorSessions: orchestratorSessions,
-		Agents:               filteredAgents,
+		Infrastructure:         infraHealth,
+		Swarm:                  swarm,
+		Accounts:               accounts,
+		OrchestratorSessions:   orchestratorSessions,
+		Agents:                 filteredAgents,
+		SynthesisOpportunities: synthesisOpps,
 	}
 
 	// Output as JSON if flag is set
@@ -792,6 +797,12 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	} else {
 		fmt.Println("No active agents")
 	}
+
+	// Print synthesis opportunities (if any)
+	if output.SynthesisOpportunities != nil && output.SynthesisOpportunities.HasOpportunities() {
+		fmt.Println()
+		printSynthesisOpportunities(output.SynthesisOpportunities)
+	}
 }
 
 // printOrchestratorSessions prints orchestrator sessions in a table format.
@@ -1002,6 +1013,15 @@ func getAgentStatus(agent AgentInfo) string {
 		return "running"
 	}
 	return "idle"
+}
+
+// printSynthesisOpportunities prints the synthesis opportunities section.
+// Only shown when there are opportunities (3+ investigations on a topic without synthesis).
+func printSynthesisOpportunities(opps *verify.SynthesisOpportunities) {
+	fmt.Println("SYNTHESIS OPPORTUNITIES")
+	for _, opp := range opps.Opportunities {
+		fmt.Printf("  %d investigations on '%s' without synthesis\n", opp.InvestigationCount, opp.Topic)
+	}
 }
 
 // abbreviateSkill returns a shortened version of skill names for narrow displays.
