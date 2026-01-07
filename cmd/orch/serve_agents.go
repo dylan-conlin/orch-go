@@ -1030,6 +1030,11 @@ func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 		globalBeadsCache.invalidate()
 	}
 
+	// Invalidate beads stats cache (stats, ready issues)
+	if globalBeadsStatsCache != nil {
+		globalBeadsStatsCache.invalidate()
+	}
+
 	// Invalidate workspace cache (workspace metadata)
 	globalWorkspaceCacheInstance.invalidate()
 

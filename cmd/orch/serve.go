@@ -172,9 +172,13 @@ func runServe(portNum int) error {
 
 	// Initialize persistent beads client with auto-reconnect.
 	// This avoids per-request connection overhead and handles daemon restarts.
+	// Use 5s timeout (not 30s default) to fail fast when daemon dies.
 	socketPath, err := beads.FindSocketPath(sourceDir)
 	if err == nil {
-		beadsClient = beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		beadsClient = beads.NewClient(socketPath,
+			beads.WithAutoReconnect(3),
+			beads.WithTimeout(5*time.Second),
+		)
 		if connErr := beadsClient.Connect(); connErr != nil {
 			// Non-fatal: handlers will fallback to CLI if client is nil
 			fmt.Printf("Warning: beads daemon not available, using CLI fallback: %v\n", connErr)
@@ -185,6 +189,10 @@ func runServe(portNum int) error {
 	// Initialize beads cache to prevent CPU spikes from excessive bd spawning.
 	// Without caching, each /api/agents request spawns 20+ bd processes for 600+ workspaces.
 	globalBeadsCache = newBeadsCache()
+
+	// Initialize beads stats cache to prevent slow API responses.
+	// Without caching, /api/beads spawns bd stats (~1.5s) on every request.
+	globalBeadsStatsCache = newBeadsStatsCache()
 
 	mux := http.NewServeMux()
 

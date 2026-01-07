@@ -4,9 +4,141 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"sync"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
+
+// beadsStatsCache provides TTL-based caching for /api/beads and /api/beads/ready.
+// Without caching, each request spawns a bd process which takes ~1.5s for stats.
+// With 30s TTL, most dashboard polls hit cache (instant) while data stays fresh.
+type beadsStatsCache struct {
+	mu sync.RWMutex
+
+	// Cached stats data
+	stats          *beads.Stats
+	statsFetchedAt time.Time
+	statsTTL       time.Duration
+
+	// Cached ready issues
+	readyIssues    []beads.Issue
+	readyFetchedAt time.Time
+	readyTTL       time.Duration
+}
+
+// Global beads stats cache, initialized in runServe
+var globalBeadsStatsCache *beadsStatsCache
+
+func newBeadsStatsCache() *beadsStatsCache {
+	return &beadsStatsCache{
+		statsTTL: 30 * time.Second, // Stats change infrequently
+		readyTTL: 15 * time.Second, // Ready queue changes more often
+	}
+}
+
+// getStats returns cached stats or fetches fresh if stale.
+func (c *beadsStatsCache) getStats() (*beads.Stats, error) {
+	c.mu.RLock()
+	if c.stats != nil && time.Since(c.statsFetchedAt) < c.statsTTL {
+		result := c.stats
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Fetch fresh stats
+	var stats *beads.Stats
+	var err error
+
+	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
+	// This happens when daemon crashes but server keeps stale connection reference.
+	socketPath, findErr := beads.FindSocketPath(beads.DefaultDir)
+	socketExists := findErr == nil && socketPath != ""
+	if socketExists {
+		if _, statErr := os.Stat(socketPath); statErr != nil {
+			socketExists = false
+		}
+	}
+
+	if beadsClient != nil && socketExists {
+		stats, err = beadsClient.Stats()
+		if err != nil {
+			// Fallback to CLI on RPC error
+			stats, err = beads.FallbackStats()
+		}
+	} else {
+		stats, err = beads.FallbackStats()
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.stats = stats
+	c.statsFetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return stats, nil
+}
+
+// getReadyIssues returns cached ready issues or fetches fresh if stale.
+func (c *beadsStatsCache) getReadyIssues() ([]beads.Issue, error) {
+	c.mu.RLock()
+	if c.readyIssues != nil && time.Since(c.readyFetchedAt) < c.readyTTL {
+		result := c.readyIssues
+		c.mu.RUnlock()
+		return result, nil
+	}
+	c.mu.RUnlock()
+
+	// Fetch fresh ready issues
+	var issues []beads.Issue
+	var err error
+
+	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
+	// This happens when daemon crashes but server keeps stale connection reference.
+	socketPath, findErr := beads.FindSocketPath(beads.DefaultDir)
+	socketExists := findErr == nil && socketPath != ""
+	if socketExists {
+		if _, statErr := os.Stat(socketPath); statErr != nil {
+			socketExists = false
+		}
+	}
+
+	if beadsClient != nil && socketExists {
+		issues, err = beadsClient.Ready(nil)
+		if err != nil {
+			// Fallback to CLI on RPC error
+			issues, err = beads.FallbackReady()
+		}
+	} else {
+		issues, err = beads.FallbackReady()
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.readyIssues = issues
+	c.readyFetchedAt = time.Now()
+	c.mu.Unlock()
+
+	return issues, nil
+}
+
+// invalidate clears cached data, forcing fresh fetches on next request.
+func (c *beadsStatsCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stats = nil
+	c.readyIssues = nil
+	c.statsFetchedAt = time.Time{}
+	c.readyFetchedAt = time.Time{}
+}
 
 // BeadsAPIResponse is the JSON structure returned by /api/beads.
 type BeadsAPIResponse struct {
@@ -20,27 +152,17 @@ type BeadsAPIResponse struct {
 	Error          string  `json:"error,omitempty"`
 }
 
-// handleBeads returns beads stats by shelling out to `bd stats --json`.
+// handleBeads returns beads stats using cached data when available.
+// The cache has a 30s TTL to balance freshness with performance.
+// Without caching, each request spawns a bd process (~1.5s overhead).
 func handleBeads(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
-	var stats *beads.Stats
-	var err error
-
-	if beadsClient != nil {
-		stats, err = beadsClient.Stats()
-		if err != nil {
-			// Fall through to CLI fallback on RPC error
-			stats, err = beads.FallbackStats()
-		}
-	} else {
-		stats, err = beads.FallbackStats()
-	}
-
+	// Use cached stats when available
+	stats, err := globalBeadsStatsCache.getStats()
 	if err != nil {
 		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err)}
 		w.Header().Set("Content-Type", "application/json")
@@ -83,26 +205,16 @@ type BeadsReadyAPIResponse struct {
 }
 
 // handleBeadsReady returns list of ready issues for dashboard queue visibility.
+// The cache has a 15s TTL to balance freshness with performance.
+// Without caching, each request spawns a bd process (~80ms overhead).
 func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
-	var issues []beads.Issue
-	var err error
-
-	if beadsClient != nil {
-		issues, err = beadsClient.Ready(nil)
-		if err != nil {
-			// Fall through to CLI fallback on RPC error
-			issues, err = beads.FallbackReady()
-		}
-	} else {
-		issues, err = beads.FallbackReady()
-	}
-
+	// Use cached ready issues when available
+	issues, err := globalBeadsStatsCache.getReadyIssues()
 	if err != nil {
 		resp := BeadsReadyAPIResponse{
 			Issues: []ReadyIssueResponse{},
