@@ -311,52 +311,53 @@ func TestCheckWorkspaceSynthesis(t *testing.T) {
 }
 
 func TestExtractUniqueProjectDirs(t *testing.T) {
-	// Import the opencode package types inline
-	type testSession struct {
-		Directory string
-	}
+	// Note: extractUniqueProjectDirs now includes kb projects, so tests verify
+	// relative behavior rather than exact counts (kb project count varies by env)
+
+	// Get kb project count to adjust expectations
+	kbProjectCount := len(getKBProjects())
 
 	tests := []struct {
 		name              string
 		currentProjectDir string
 		sessionDirs       []string
-		expectedCount     int
+		minExpectedCount  int // minimum expected from non-kb sources
 	}{
 		{
 			name:              "empty sessions with current dir",
 			currentProjectDir: "/home/user/project1",
 			sessionDirs:       []string{},
-			expectedCount:     1, // just current dir
+			minExpectedCount:  1, // just current dir
 		},
 		{
 			name:              "single session same as current",
 			currentProjectDir: "/home/user/project1",
 			sessionDirs:       []string{"/home/user/project1"},
-			expectedCount:     1, // deduplicated
+			minExpectedCount:  1, // deduplicated
 		},
 		{
 			name:              "multiple sessions different dirs",
 			currentProjectDir: "/home/user/project1",
 			sessionDirs:       []string{"/home/user/project2", "/home/user/project3"},
-			expectedCount:     3, // current + 2 others
+			minExpectedCount:  3, // current + 2 others
 		},
 		{
 			name:              "duplicate session directories",
 			currentProjectDir: "/home/user/project1",
 			sessionDirs:       []string{"/home/user/project2", "/home/user/project2", "/home/user/project3"},
-			expectedCount:     3, // deduped
+			minExpectedCount:  3, // deduped
 		},
 		{
 			name:              "empty current dir",
 			currentProjectDir: "",
 			sessionDirs:       []string{"/home/user/project2", "/home/user/project3"},
-			expectedCount:     2,
+			minExpectedCount:  2,
 		},
 		{
 			name:              "empty session dir skipped",
 			currentProjectDir: "/home/user/project1",
 			sessionDirs:       []string{"", "/home/user/project2"},
-			expectedCount:     2, // empty is skipped
+			minExpectedCount:  2, // empty is skipped
 		},
 	}
 
@@ -369,14 +370,39 @@ func TestExtractUniqueProjectDirs(t *testing.T) {
 			}
 
 			result := extractUniqueProjectDirs(sessions, tt.currentProjectDir)
-			if len(result) != tt.expectedCount {
-				t.Errorf("Expected %d project dirs, got %d: %v", tt.expectedCount, len(result), result)
+
+			// Verify at least the expected non-kb sources are present
+			// (kb projects are deduplicated so count may be less than min + kbProjectCount)
+			if len(result) < tt.minExpectedCount {
+				t.Errorf("Expected at least %d project dirs, got %d: %v", tt.minExpectedCount, len(result), result)
 			}
 
 			// Verify current project dir is always first if provided
 			if tt.currentProjectDir != "" && len(result) > 0 {
 				if result[0] != filepath.Clean(tt.currentProjectDir) {
 					t.Errorf("Expected current project dir %q to be first, got %q", tt.currentProjectDir, result[0])
+				}
+			}
+
+			// Verify kb projects are included (if available)
+			if kbProjectCount > 0 {
+				// At least some kb projects should be in the result
+				// (exact count depends on deduplication with session dirs)
+				foundKBProject := false
+				kbProjects := getKBProjects()
+				for _, proj := range kbProjects {
+					for _, dir := range result {
+						if dir == proj {
+							foundKBProject = true
+							break
+						}
+					}
+					if foundKBProject {
+						break
+					}
+				}
+				if !foundKBProject && len(kbProjects) > 0 {
+					t.Error("Expected at least one kb project to be included in result")
 				}
 			}
 		})

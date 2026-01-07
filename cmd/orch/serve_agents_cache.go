@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -236,8 +239,45 @@ type workspaceCache struct {
 	workspaceEntryToPath map[string]string
 }
 
-// extractUniqueProjectDirs collects unique project directories from OpenCode sessions.
-// Returns a deduplicated slice of directory paths that have active agents.
+// kbProject represents a project entry from kb projects list --json
+type kbProject struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// getKBProjects fetches registered project directories from kb CLI.
+// Returns empty slice if kb is unavailable or fails (graceful degradation).
+// This enables cross-project workspace scanning by providing project paths
+// independent of OpenCode session state.
+func getKBProjects() []string {
+	cmd := exec.Command("kb", "projects", "list", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		// Log warning but don't fail - graceful degradation
+		log.Printf("Warning: kb projects list failed: %v (cross-project visibility may be limited)", err)
+		return []string{}
+	}
+
+	var projects []kbProject
+	if err := json.Unmarshal(output, &projects); err != nil {
+		log.Printf("Warning: failed to parse kb projects output: %v", err)
+		return []string{}
+	}
+
+	paths := make([]string, 0, len(projects))
+	for _, p := range projects {
+		if p.Path != "" {
+			// Normalize path
+			paths = append(paths, filepath.Clean(p.Path))
+		}
+	}
+
+	return paths
+}
+
+// extractUniqueProjectDirs collects unique project directories from OpenCode sessions
+// and registered kb projects.
+// Returns a deduplicated slice of directory paths that have active agents or are registered projects.
 // This enables multi-project workspace aggregation for cross-project agent visibility.
 func extractUniqueProjectDirs(sessions []opencode.Session, currentProjectDir string) []string {
 	seen := make(map[string]bool)
@@ -262,6 +302,16 @@ func extractUniqueProjectDirs(sessions []opencode.Session, currentProjectDir str
 		if !seen[dir] {
 			seen[dir] = true
 			dirs = append(dirs, dir)
+		}
+	}
+
+	// Add registered kb projects for cross-project visibility
+	// This solves the problem where OpenCode --attach uses server cwd,
+	// causing cross-project workspaces to never be scanned
+	for _, proj := range getKBProjects() {
+		if !seen[proj] {
+			seen[proj] = true
+			dirs = append(dirs, proj)
 		}
 	}
 
