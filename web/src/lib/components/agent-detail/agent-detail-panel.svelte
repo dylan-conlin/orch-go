@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { TabButton, InvestigationTab } from '$lib/components/agent-detail';
-	import { selectedAgent, selectedAgentId, sseEvents, createIssue } from '$lib/stores/agents';
-	import type { Agent, SSEEvent } from '$lib/stores/agents';
+	import { TabButton, InvestigationTab, ActivityTab, SynthesisTab } from '$lib/components/agent-detail';
+	import { selectedAgent, selectedAgentId } from '$lib/stores/agents';
+	import type { Agent } from '$lib/stores/agents';
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { browser } from '$app/environment';
@@ -55,13 +55,8 @@
 		}
 	});
 	
-	// Issue creation state
-	let creatingIssue = false;
-	let issueCreationError: string | null = null;
-	let createdIssueId: string | null = null;
-
 	// Track which items were recently copied
-	let copiedItem: string | null = null;
+	let copiedItem: string | null = $state(null);
 	let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Close panel handler
@@ -95,41 +90,6 @@
 			}, 2000);
 		} catch (err) {
 			console.error('Failed to copy:', err);
-		}
-	}
-
-	// Create follow-up issue from synthesis recommendation
-	async function handleCreateIssue(action: string) {
-		creatingIssue = true;
-		issueCreationError = null;
-		createdIssueId = null;
-		
-		try {
-			// Clean up action text (remove bullet prefixes)
-			const cleanAction = action.replace(/^[-*]\s*/, '').replace(/^\d+\.\s*/, '');
-			
-			// Create issue with context about the parent agent
-			const parentContext = $selectedAgent?.beads_id 
-				? `\n\nFollow-up from: ${$selectedAgent.beads_id}`
-				: '';
-			const description = `${cleanAction}${parentContext}`;
-			
-			const result = await createIssue(cleanAction.substring(0, 100), description, ['triage:ready']);
-			if (result) {
-				createdIssueId = result.id;
-				// Auto-clear after 3 seconds
-				setTimeout(() => {
-					createdIssueId = null;
-				}, 3000);
-			}
-		} catch (error) {
-			issueCreationError = error instanceof Error ? error.message : 'Failed to create issue';
-			// Auto-clear error after 5 seconds
-			setTimeout(() => {
-				issueCreationError = null;
-			}, 5000);
-		} finally {
-			creatingIssue = false;
 		}
 	}
 
@@ -173,55 +133,6 @@
 		if (isNaN(date.getTime())) return '-';
 		return date.toLocaleTimeString();
 	}
-
-	// Activity icon
-	function getActivityIcon(type?: string): string {
-		switch (type) {
-			case 'text': return '💬';
-			case 'tool':
-			case 'tool-invocation': return '🔧';
-			case 'reasoning': return '🤔';
-			case 'step-start': return '▶️';
-			case 'step-finish': return '✓';
-			default: return '📝';
-		}
-	}
-
-	// Activity styling - different emphasis levels based on activity type
-	// High: tool usage, reasoning (active work worth highlighting)
-	// Medium: text output (communication)
-	// Low: step transitions (transient markers, not worth highlighting)
-	function getActivityStyle(type?: string): string {
-		switch (type) {
-			case 'tool':
-			case 'tool-invocation':
-			case 'reasoning':
-				// Active work - subtle blue tint (less attention-grabbing than gold)
-				return 'border-blue-500/20 bg-blue-500/5';
-			case 'text':
-				// Communication - very subtle styling
-				return 'border-muted-foreground/20 bg-muted/30';
-			case 'step-start':
-			case 'step-finish':
-				// Transient states - minimal styling, nearly invisible
-				return 'border-muted/50 bg-muted/10';
-			default:
-				// Default - neutral styling
-				return 'border-muted-foreground/20 bg-muted/20';
-		}
-	}
-
-	// Filter SSE events for this agent's session (derived state)
-	// Note: For message.part events, sessionID is nested at properties.part.sessionID
-	// For session.* events, sessionID is at properties.sessionID
-	let agentEvents = $derived($selectedAgent?.session_id 
-		? $sseEvents.filter(e => {
-			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
-			// sessionID is inside the part object for message.part events
-			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
-			return eventSessionId === $selectedAgent?.session_id;
-		}).slice(-50)  // Keep more events for the full activity log
-		: []);
 
 	onMount(() => {
 		if (browser) {
@@ -312,48 +223,12 @@
 		<div class="flex-1 overflow-y-auto">
 		<!-- Activity Tab (for active agents) -->
 		{#if activeTab === 'activity'}
-			<div class="p-4">
-				<div class="mb-3 flex items-center justify-between">
-					<h3 class="text-sm font-medium text-muted-foreground">Live Activity</h3>
-					{#if $selectedAgent.is_processing}
-						<Badge variant="secondary" class="animate-pulse">
-							Processing
-						</Badge>
-					{/if}
-				</div>
-				
-				<!-- Current Activity - styling varies by activity type -->
-				{#if $selectedAgent.current_activity}
-					<div class="mb-3 rounded-lg border {getActivityStyle($selectedAgent.current_activity.type)} p-3">
-						<div class="flex items-start gap-2">
-							<span class="text-lg">{getActivityIcon($selectedAgent.current_activity.type)}</span>
-							<div class="flex-1 min-w-0">
-								<p class="text-sm font-medium">{$selectedAgent.current_activity.text || 'Working...'}</p>
-								<span class="text-xs text-muted-foreground">
-									{$selectedAgent.current_activity.type}
-								</span>
-							</div>
-						</div>
-					</div>
-				{/if}
+			<ActivityTab agent={$selectedAgent} />
+		{/if}
 
-				<!-- Activity Log - scrollable with more height -->
-				<div class="max-h-64 space-y-1 overflow-y-auto rounded border bg-muted/20 p-2 font-mono text-xs">
-					{#each agentEvents.slice().reverse() as event (event.id)}
-						{@const part = event.properties?.part}
-						{#if part}
-							<div class="flex items-start gap-2 py-1 text-muted-foreground hover:bg-muted/50 rounded px-1 transition-colors">
-								<span class="shrink-0">{getActivityIcon(part.type)}</span>
-								<span class="flex-1 break-words leading-relaxed">
-									{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
-								</span>
-							</div>
-						{/if}
-					{:else}
-						<p class="py-4 text-center text-muted-foreground">Waiting for activity...</p>
-					{/each}
-				</div>
-			</div>
+		<!-- Synthesis Tab (for completed agents) -->
+		{#if activeTab === 'synthesis'}
+			<SynthesisTab agent={$selectedAgent} />
 		{/if}
 
 		<!-- Investigation Tab (for completed/abandoned agents) -->
@@ -446,79 +321,6 @@
 					</div>
 				</div>
 			</div>
-
-			<!-- Synthesis (for completed agents, with close_reason fallback) -->
-			{#if $selectedAgent.status === 'completed' && ($selectedAgent.synthesis || $selectedAgent.close_reason)}
-				<div class="border-b p-4">
-					<h3 class="mb-3 text-sm font-medium text-muted-foreground">
-						{$selectedAgent.synthesis ? 'Synthesis' : 'Completion Summary'}
-					</h3>
-					<div class="space-y-3">
-						{#if $selectedAgent.synthesis?.tldr}
-							<div>
-								<span class="text-xs text-muted-foreground">TLDR</span>
-								<p class="text-sm">{$selectedAgent.synthesis.tldr}</p>
-							</div>
-						{:else if $selectedAgent.close_reason}
-							<div>
-								<span class="text-xs text-muted-foreground">Close Reason</span>
-								<p class="text-sm">{$selectedAgent.close_reason}</p>
-							</div>
-						{/if}
-
-						{#if $selectedAgent.synthesis?.outcome}
-							<div>
-								<span class="text-xs text-muted-foreground">Outcome</span>
-								<Badge variant={$selectedAgent.synthesis.outcome === 'success' ? 'default' : 'secondary'}>
-									{$selectedAgent.synthesis.outcome}
-								</Badge>
-							</div>
-						{/if}
-
-						{#if $selectedAgent.synthesis?.recommendation}
-							<div>
-								<span class="text-xs text-muted-foreground">Recommendation</span>
-								<p class="text-sm">{$selectedAgent.synthesis.recommendation}</p>
-							</div>
-						{/if}
-
-						{#if $selectedAgent.synthesis?.delta_summary}
-							<div>
-								<span class="text-xs text-muted-foreground">Changes</span>
-								<p class="text-sm">{$selectedAgent.synthesis.delta_summary}</p>
-							</div>
-						{/if}
-
-					{#if $selectedAgent.synthesis?.next_actions && $selectedAgent.synthesis.next_actions.length > 0}
-						<div>
-							<div class="flex items-center justify-between">
-								<span class="text-xs text-muted-foreground">Next Actions</span>
-								{#if issueCreationError}
-									<span class="text-xs text-red-500">{issueCreationError}</span>
-								{:else if createdIssueId}
-									<span class="text-xs text-green-500">Created {createdIssueId}</span>
-								{/if}
-							</div>
-							<ul class="mt-1 space-y-1">
-								{#each $selectedAgent.synthesis.next_actions as action}
-									<li class="flex items-start gap-2 rounded p-1 hover:bg-muted/50 group">
-										<span class="flex-1 text-sm">{action}</span>
-										<button
-											type="button"
-											class="shrink-0 rounded border border-transparent px-2 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-foreground group-hover:opacity-100 disabled:opacity-50"
-											onclick={() => handleCreateIssue(action)}
-											disabled={creatingIssue}
-										>
-											{creatingIssue ? '...' : 'Create Issue'}
-										</button>
-									</li>
-								{/each}
-							</ul>
-						</div>
-					{/if}
-					</div>
-				</div>
-			{/if}
 		</div>
 
 		<!-- Quick Commands Footer - clickable command cards -->
