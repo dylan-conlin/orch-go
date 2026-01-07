@@ -201,6 +201,23 @@
 		}
 		return false;
 	}
+
+	/**
+	 * Get short outcome for badge display
+	 * Extracts the core outcome (success, partial, blocked, failed) without parenthetical details
+	 */
+	function getShortOutcome(outcome: string): string {
+		// Extract just the first word before any parenthetical details
+		// e.g., "success (fix already implemented by prior agents)" -> "success"
+		return outcome.split(/\s*\(/)[0].trim();
+	}
+
+	/**
+	 * Check if outcome has additional details beyond the short version
+	 */
+	function hasOutcomeDetails(outcome: string): boolean {
+		return outcome.includes('(') || outcome.length > 20;
+	}
 </script>
 
 <button
@@ -427,9 +444,22 @@
 	<!-- Note: TLDR/close_reason already shown in title - no need to duplicate -->
 	{#if agent.status === 'completed' && agent.synthesis?.outcome}
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
-			<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
-				{agent.synthesis.outcome}
-			</Badge>
+			{#if hasOutcomeDetails(agent.synthesis.outcome)}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<Badge variant={getShortOutcome(agent.synthesis.outcome) === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+							{getShortOutcome(agent.synthesis.outcome)}
+						</Badge>
+					</Tooltip.Trigger>
+					<Tooltip.Content class="max-w-xs">
+						<p>{agent.synthesis.outcome}</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else}
+				<Badge variant={agent.synthesis.outcome === 'success' ? 'default' : 'secondary'} class="h-4 px-1 text-[10px]">
+					{agent.synthesis.outcome}
+				</Badge>
+			{/if}
 		</div>
 	{/if}
 
