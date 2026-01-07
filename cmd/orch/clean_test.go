@@ -296,3 +296,177 @@ func TestArchiveStaleWorkspacesPreservesOrchestrator(t *testing.T) {
 		t.Error("Archived directory should not be created in dry-run mode")
 	}
 }
+
+// TestArchiveStaleWorkspacesHandlesDuplicateDestination tests that archiving handles
+// the case when the archive destination already exists (bug fix: orch-go-wgdse).
+func TestArchiveStaleWorkspacesHandlesDuplicateDestination(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	archivedDir := filepath.Join(workspaceDir, "archived")
+
+	// Create workspace and archived directories
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		t.Fatalf("Failed to create archived dir: %v", err)
+	}
+
+	// Create a stale workspace
+	wsName := "og-feat-duplicate-test-01jan"
+	ws := filepath.Join(workspaceDir, wsName)
+	if err := os.MkdirAll(ws, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+
+	// Write old spawn time (8 days ago in nanoseconds)
+	if err := os.WriteFile(filepath.Join(ws, ".spawn_time"), []byte("1704067200000000000"), 0644); err != nil {
+		t.Fatalf("Failed to write spawn time: %v", err)
+	}
+
+	// Write SYNTHESIS.md to mark as completed
+	if err := os.WriteFile(filepath.Join(ws, "SYNTHESIS.md"), []byte("# New Complete"), 0644); err != nil {
+		t.Fatalf("Failed to write SYNTHESIS.md: %v", err)
+	}
+
+	// Create a pre-existing archive destination with the same name
+	existingArchive := filepath.Join(archivedDir, wsName)
+	if err := os.MkdirAll(existingArchive, 0755); err != nil {
+		t.Fatalf("Failed to create existing archive: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(existingArchive, "SYNTHESIS.md"), []byte("# Old Complete"), 0644); err != nil {
+		t.Fatalf("Failed to write old SYNTHESIS.md: %v", err)
+	}
+
+	// Run archiveStaleWorkspaces (non-dry-run)
+	archived, err := archiveStaleWorkspaces(tmpDir, 7, false, false)
+	if err != nil {
+		t.Fatalf("archiveStaleWorkspaces failed: %v", err)
+	}
+
+	// Verify the workspace was archived
+	if archived != 1 {
+		t.Errorf("Expected 1 workspace archived, got %d", archived)
+	}
+
+	// Verify the original workspace was removed
+	if _, err := os.Stat(ws); !os.IsNotExist(err) {
+		t.Error("Original workspace should have been moved")
+	}
+
+	// Verify the old archive still exists with old content
+	oldContent, err := os.ReadFile(filepath.Join(existingArchive, "SYNTHESIS.md"))
+	if err != nil {
+		t.Fatalf("Failed to read old archive: %v", err)
+	}
+	if string(oldContent) != "# Old Complete" {
+		t.Errorf("Old archive content was modified: %s", string(oldContent))
+	}
+
+	// Verify a new archive was created with timestamp suffix
+	entries, err := os.ReadDir(archivedDir)
+	if err != nil {
+		t.Fatalf("Failed to read archived dir: %v", err)
+	}
+
+	foundNewArchive := false
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != wsName && len(entry.Name()) > len(wsName) {
+			// This should be the timestamped version (wsName-HHMMSS)
+			if newContent, err := os.ReadFile(filepath.Join(archivedDir, entry.Name(), "SYNTHESIS.md")); err == nil {
+				if string(newContent) == "# New Complete" {
+					foundNewArchive = true
+					break
+				}
+			}
+		}
+	}
+
+	if !foundNewArchive {
+		t.Error("Expected a new archive with timestamp suffix to be created")
+		t.Logf("Archives found: %v", entries)
+	}
+}
+
+// TestArchiveEmptyInvestigationsHandlesDuplicateDestination tests that archiving investigations
+// handles the case when the archive destination already exists.
+func TestArchiveEmptyInvestigationsHandlesDuplicateDestination(t *testing.T) {
+	tmpDir := t.TempDir()
+	investigationsDir := filepath.Join(tmpDir, ".kb", "investigations")
+	archivedDir := filepath.Join(investigationsDir, "archived")
+
+	// Create directories
+	if err := os.MkdirAll(investigationsDir, 0755); err != nil {
+		t.Fatalf("Failed to create investigations dir: %v", err)
+	}
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		t.Fatalf("Failed to create archived dir: %v", err)
+	}
+
+	// Create an empty investigation file (with template placeholders)
+	invName := "2026-01-01-inv-test.md"
+	invPath := filepath.Join(investigationsDir, invName)
+	emptyContent := `# Investigation
+**Question:** [Clear, specific question this investigation answers]
+**Evidence:** [Concrete observations, data, examples]
+**Source:** [File paths with line numbers, commands run]
+`
+	if err := os.WriteFile(invPath, []byte(emptyContent), 0644); err != nil {
+		t.Fatalf("Failed to write investigation file: %v", err)
+	}
+
+	// Create a pre-existing archive destination with the same name
+	existingArchive := filepath.Join(archivedDir, invName)
+	oldContent := "# Old Investigation"
+	if err := os.WriteFile(existingArchive, []byte(oldContent), 0644); err != nil {
+		t.Fatalf("Failed to write existing archive: %v", err)
+	}
+
+	// Run archiveEmptyInvestigations (non-dry-run)
+	archived, err := archiveEmptyInvestigations(tmpDir, false)
+	if err != nil {
+		t.Fatalf("archiveEmptyInvestigations failed: %v", err)
+	}
+
+	// Verify the investigation was archived
+	if archived != 1 {
+		t.Errorf("Expected 1 investigation archived, got %d", archived)
+	}
+
+	// Verify the original investigation was removed
+	if _, err := os.Stat(invPath); !os.IsNotExist(err) {
+		t.Error("Original investigation should have been moved")
+	}
+
+	// Verify the old archive still exists with old content
+	oldArchiveContent, err := os.ReadFile(existingArchive)
+	if err != nil {
+		t.Fatalf("Failed to read old archive: %v", err)
+	}
+	if string(oldArchiveContent) != oldContent {
+		t.Errorf("Old archive content was modified: %s", string(oldArchiveContent))
+	}
+
+	// Verify a new archive was created with timestamp suffix
+	entries, err := os.ReadDir(archivedDir)
+	if err != nil {
+		t.Fatalf("Failed to read archived dir: %v", err)
+	}
+
+	foundNewArchive := false
+	baseName := "2026-01-01-inv-test"
+	for _, entry := range entries {
+		if !entry.IsDir() && entry.Name() != invName && len(entry.Name()) > len(invName) {
+			// This should be the timestamped version (baseName-HHMMSS.md)
+			if len(entry.Name()) > len(baseName) && entry.Name()[:len(baseName)] == baseName {
+				foundNewArchive = true
+				break
+			}
+		}
+	}
+
+	if !foundNewArchive {
+		t.Error("Expected a new archive with timestamp suffix to be created")
+		t.Logf("Archives found: %v", entries)
+	}
+}

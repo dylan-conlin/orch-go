@@ -796,8 +796,19 @@ func archiveEmptyInvestigations(projectDir string, dryRun bool) (int, error) {
 			continue
 		}
 
+		// Check if destination already exists
+		finalDestPath := destPath
+		if _, err := os.Stat(destPath); err == nil {
+			// Destination exists - add timestamp suffix to make it unique
+			suffix := time.Now().Format("150405") // HHMMSS format
+			// Insert suffix before .md extension
+			baseName := strings.TrimSuffix(filename, ".md")
+			finalDestPath = filepath.Join(destDir, baseName+"-"+suffix+".md")
+			fmt.Printf("    Note: Archive destination exists, using: %s-%s.md\n", baseName, suffix)
+		}
+
 		// Move file to archived
-		if err := os.Rename(path, destPath); err != nil {
+		if err := os.Rename(path, finalDestPath); err != nil {
 			fmt.Fprintf(os.Stderr, "    Warning: failed to archive %s: %v\n", relPath, err)
 			continue
 		}
@@ -962,8 +973,17 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 			continue
 		}
 
+		// Check if destination already exists
+		finalDestPath := destPath
+		if _, err := os.Stat(destPath); err == nil {
+			// Destination exists - add timestamp suffix to make it unique
+			suffix := time.Now().Format("150405") // HHMMSS format
+			finalDestPath = destPath + "-" + suffix
+			fmt.Printf("    Note: Archive destination exists, using: %s-%s\n", ws.name, suffix)
+		}
+
 		// Move workspace to archived
-		if err := os.Rename(ws.path, destPath); err != nil {
+		if err := os.Rename(ws.path, finalDestPath); err != nil {
 			fmt.Fprintf(os.Stderr, "    Warning: failed to archive %s: %v\n", ws.name, err)
 			continue
 		}
