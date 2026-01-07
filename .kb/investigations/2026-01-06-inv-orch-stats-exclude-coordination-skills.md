@@ -5,83 +5,63 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Added skill category classification (task vs coordination) to `orch stats` - coordination skills now excluded from completion rate warning.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Implementation verified with all tests passing; `orch stats` now shows Task Skills 68.2% vs Coordination Skills 10.3% separately.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Coordination skills (orchestrator, meta-orchestrator) are interactive sessions designed to run until context exhaustion - including them in completion rate was a category error.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - implementation complete and committed.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Promote to Decision: recommend-no (tactical fix, not architectural)
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Promote to Decision: flag for orchestrator/human - recommend-yes if this establishes a pattern, constraint, or architectural choice worth preserving
-- Enable 30-second understanding for fresh Claude
--->
+**Promote to Decision:** recommend-no (tactical fix implementing prior investigation's recommendation)
 
 ---
 
 # Investigation: Orch Stats Exclude Coordination Skills
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How should `orch stats` handle coordination skills in the completion rate calculation and warning?
 
 **Started:** 2026-01-06
 **Updated:** 2026-01-06
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
-
-<!-- Lineage (fill only when applicable) -->
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Owner:** og-feat-orch-stats-exclude-06jan-5e4d
+**Phase:** Complete
+**Next Step:** None - implementation complete
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Prior investigation identified coordination skills as category error
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Investigation 2026-01-06-inv-diagnose-overall-66-completion-rate.md found meta-orchestrator (0%) and orchestrator (17.4%) drag down completion rate, but they're interactive sessions not completable tasks.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `.kb/investigations/2026-01-06-inv-diagnose-overall-66-completion-rate.md`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Including coordination skills in completion rate is fundamentally incorrect - their low rate is a feature (interactive until context exhaustion), not a failure.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Simple categorization is sufficient
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Only two skills need coordination classification: `orchestrator` and `meta-orchestrator`. All other skills are task-oriented and should be tracked normally.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Analysis of skills in events.jsonl and skill definitions
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** A simple map-based categorization is appropriate - no need for complex interface patterns or extensive configuration.
+
+---
+
+### Finding 3: Implementation verified with real data
+
+**Evidence:** After implementation, `orch stats` shows:
+- Task Skills: 236/346 spawns (68.2%)
+- Coordination Skills: 4/39 spawns (10.3%)
+- Warning correctly triggers on task skill rate
+
+**Source:** Running `go run ./cmd/orch stats` with production events.jsonl
+
+**Significance:** The fix correctly separates the metrics and the warning threshold now applies only to task work.
 
 ---
 
@@ -89,15 +69,19 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Category separation fixes the metric** - By tracking task skills separately, the 80% threshold becomes meaningful again (task skills are at 68%, which correctly triggers the warning).
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Simple solution works** - A map of coordination skills with Category field on SkillStatsSummary provides clean separation without over-engineering.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Backwards compatible** - Overall CompletionRate is preserved in output for any consumers, while new fields provide the refined metrics.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Coordination skills should be:
+1. Classified with a Category field (task vs coordination)
+2. Tracked separately from task skills in the summary
+3. Excluded from the completion rate warning threshold check
+4. Visually marked in the skill breakdown table with (C) indicator
 
 ---
 
@@ -105,120 +89,60 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Skill category classification works (verified: TestGetSkillCategory passes)
+- ✅ Separate rate calculations work (verified: TestAggregateStatsCategoryBreakdown passes)
+- ✅ Warning uses TaskCompletionRate (verified: TestAggregateStatsCoordinationExcludedFromOverallRate passes)
+- ✅ Real data produces expected output (verified: ran orch stats with production events)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether 68% task rate is "normal" or indicates real issues (needs historical comparison)
+- ⚠️ Whether other skills should be categorized differently (only looked at orchestrator/meta-orchestrator)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If new skills are added that are coordination-oriented (would need to update coordinationSkills map)
+- If orchestrator sessions become completable (would reclassify them as task skills)
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
-
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+Implementation is complete. See SYNTHESIS.md for full details.
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/stats_cmd.go` - Implementation target
+- `cmd/orch/stats_test.go` - Test file
+- `.kb/investigations/2026-01-06-inv-diagnose-overall-66-completion-rate.md` - Prior investigation
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Run tests
+go test -v ./cmd/orch/... -run "TestAggregateStats|TestGetSkillCategory"
 
-# [Command description]
-[command]
+# Build verification
+go build -o /dev/null ./cmd/orch
+
+# Test with real data
+go run ./cmd/orch stats
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-06-inv-diagnose-overall-66-completion-rate.md` - Original investigation that identified the issue
+- **Workspace:** `.orch/workspace/og-feat-orch-stats-exclude-06jan-5e4d/` - Implementation workspace
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-06 18:52:** Investigation started
+- Initial question: How to exclude coordination skills from completion rate warning
+- Context: Follow-up from diagnose-overall-66-completion-rate investigation
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-06 18:56:** Investigation completed
+- Status: Complete
+- Key outcome: Added skill categories, separate rate calculations, and fixed warning threshold
