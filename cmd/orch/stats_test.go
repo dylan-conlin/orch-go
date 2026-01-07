@@ -437,3 +437,102 @@ func TestAggregateStatsUntrackedSkillBreakdown(t *testing.T) {
 		t.Errorf("expected 100%% completion rate for feature-impl, got %.1f%%", report.SkillStats[0].CompletionRate)
 	}
 }
+
+func TestAggregateStatsOrchestratorWorkspaceCorrelation(t *testing.T) {
+	now := time.Now().Unix()
+
+	// This test verifies that orchestrator completions are correlated via workspace
+	// (not beads_id, since orchestrators are untracked by design)
+	events := []StatsEvent{
+		// Orchestrator spawns (with workspace but untracked beads_id)
+		{Type: "session.spawned", SessionID: "orch_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill":     "orchestrator",
+			"beads_id":  "orch-go-untracked-123",
+			"workspace": "og-orch-test-workspace-1",
+		}},
+		{Type: "session.spawned", SessionID: "orch_2", Timestamp: now - 3600, Data: map[string]interface{}{
+			"skill":     "meta-orchestrator",
+			"beads_id":  "orch-go-untracked-456",
+			"workspace": "meta-orch-test-workspace-2",
+		}},
+		// Task skill spawn for comparison
+		{Type: "session.spawned", SessionID: "task_1", Timestamp: now - 1800, Data: map[string]interface{}{
+			"skill":    "feature-impl",
+			"beads_id": "orch-go-abc123",
+		}},
+		// Orchestrator completions (have workspace and orchestrator flag, no beads_id)
+		{Type: "agent.completed", Timestamp: now - 6000, Data: map[string]interface{}{
+			"orchestrator": true,
+			"workspace":    "og-orch-test-workspace-1",
+			"reason":       "Orchestrator session completed",
+		}},
+		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{
+			"orchestrator": true,
+			"workspace":    "meta-orch-test-workspace-2",
+			"reason":       "Orchestrator session completed",
+		}},
+		// Task completion (has beads_id)
+		{Type: "agent.completed", Timestamp: now - 4000, Data: map[string]interface{}{
+			"beads_id": "orch-go-abc123",
+		}},
+	}
+
+	// Test with includeUntracked=true (to include orchestrators)
+	report := aggregateStats(events, 7, true)
+
+	// Should have all 3 spawns
+	if report.Summary.TotalSpawns != 3 {
+		t.Errorf("expected 3 spawns, got %d", report.Summary.TotalSpawns)
+	}
+
+	// Should have all 3 completions (2 orchestrator via workspace, 1 task via beads_id)
+	if report.Summary.TotalCompletions != 3 {
+		t.Errorf("expected 3 completions, got %d", report.Summary.TotalCompletions)
+	}
+
+	// Task skills should have 1 completion
+	if report.Summary.TaskCompletions != 1 {
+		t.Errorf("expected 1 task completion, got %d", report.Summary.TaskCompletions)
+	}
+
+	// Coordination skills should have 2 completions (via workspace correlation)
+	if report.Summary.CoordinationCompletions != 2 {
+		t.Errorf("expected 2 coordination completions, got %d", report.Summary.CoordinationCompletions)
+	}
+
+	// Check coordination completion rate is now 100% (2/2)
+	if report.Summary.CoordinationCompletionRate < 99.9 {
+		t.Errorf("expected 100%% coordination completion rate, got %.1f%%", report.Summary.CoordinationCompletionRate)
+	}
+
+	// Check individual skill stats
+	var orchStats, metaOrchStats *SkillStatsSummary
+	for i := range report.SkillStats {
+		if report.SkillStats[i].Skill == "orchestrator" {
+			orchStats = &report.SkillStats[i]
+		}
+		if report.SkillStats[i].Skill == "meta-orchestrator" {
+			metaOrchStats = &report.SkillStats[i]
+		}
+	}
+
+	if orchStats == nil {
+		t.Fatal("orchestrator skill not found in stats")
+	}
+	if orchStats.Completions != 1 {
+		t.Errorf("expected 1 orchestrator completion, got %d", orchStats.Completions)
+	}
+	if orchStats.CompletionRate < 99.9 {
+		t.Errorf("expected 100%% orchestrator completion rate, got %.1f%%", orchStats.CompletionRate)
+	}
+
+	if metaOrchStats == nil {
+		t.Fatal("meta-orchestrator skill not found in stats")
+	}
+	if metaOrchStats.Completions != 1 {
+		t.Errorf("expected 1 meta-orchestrator completion, got %d", metaOrchStats.Completions)
+	}
+	if metaOrchStats.CompletionRate < 99.9 {
+		t.Errorf("expected 100%% meta-orchestrator completion rate, got %.1f%%", metaOrchStats.CompletionRate)
+	}
+}

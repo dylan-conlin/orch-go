@@ -258,29 +258,51 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	// Track beads completions to correlate with spawns
 	beadsCompletions := make(map[string]int64) // beads_id -> completion timestamp
 
+	// Track workspace -> session mapping for orchestrator completions
+	// (orchestrators don't have beads_id, they use workspace for correlation)
+	workspaceToSession := make(map[string]string) // workspace -> session_id (pseudo)
+
 	for _, event := range events {
 		switch event.Type {
 		case "session.spawned":
-			spawnTimes[event.SessionID] = event.Timestamp
-
-			// Extract skill and beads_id from data
+			// Extract skill, beads_id, and workspace from data
 			var beadsID string
 			var skill string
+			var workspace string
 			if data := event.Data; data != nil {
 				if s, ok := data["skill"].(string); ok && s != "" {
 					skill = s
-					spawnSkills[event.SessionID] = skill
 				}
 				if b, ok := data["beads_id"].(string); ok && b != "" {
 					beadsID = b
-					spawnBeadsIDs[event.SessionID] = beadsID
 				}
+				if w, ok := data["workspace"].(string); ok && w != "" {
+					workspace = w
+				}
+			}
+
+			// Determine the effective session ID
+			// For orchestrators (empty SessionID), use workspace as the key
+			effectiveSessionID := event.SessionID
+			if effectiveSessionID == "" && workspace != "" {
+				effectiveSessionID = "ws:" + workspace // prefix to avoid collision
+			}
+
+			spawnTimes[effectiveSessionID] = event.Timestamp
+			if skill != "" {
+				spawnSkills[effectiveSessionID] = skill
+			}
+			if beadsID != "" {
+				spawnBeadsIDs[effectiveSessionID] = beadsID
+			}
+			if workspace != "" {
+				workspaceToSession[workspace] = effectiveSessionID
 			}
 
 			// Check if this is an untracked spawn
 			isUntracked := isUntrackedSpawn(beadsID)
 			if isUntracked {
-				untrackedSessions[event.SessionID] = true
+				untrackedSessions[effectiveSessionID] = true
 				report.Summary.UntrackedSpawns++
 			}
 
@@ -323,9 +345,12 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 
 		case "agent.completed":
-			// Extract beads_id for correlation and untracked check
+			// Extract beads_id, workspace, and flags for correlation
 			var beadsID string
+			var workspace string
 			var sessionID string
+			var isOrchestrator bool
+			var eventMarkedUntracked bool
 			if data := event.Data; data != nil {
 				if b, ok := data["beads_id"].(string); ok && b != "" {
 					beadsID = b
@@ -338,18 +363,47 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 						}
 					}
 				}
+				// Check for orchestrator flag and workspace
+				if orch, ok := data["orchestrator"].(bool); ok && orch {
+					isOrchestrator = true
+				}
+				// Check if event itself is marked untracked
+				if unt, ok := data["untracked"].(bool); ok && unt {
+					eventMarkedUntracked = true
+				}
+				if w, ok := data["workspace"].(string); ok && w != "" {
+					workspace = w
+					// For orchestrators, correlate via workspace if beads_id didn't work
+					if sessionID == "" && workspace != "" {
+						if sid, ok := workspaceToSession[workspace]; ok {
+							sessionID = sid
+						}
+					}
+				}
 			}
 
-			// Check if untracked (either by beads_id pattern or session tracking)
-			isUntracked := isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
-			if isUntracked {
+			// Check if untracked:
+			// 1. Event explicitly marked untracked
+			// 2. beads_id pattern contains "untracked"
+			// 3. Session was marked untracked at spawn time
+			// 4. Orchestrator completion that couldn't be correlated
+			isUntracked := eventMarkedUntracked || isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
+			if isOrchestrator && sessionID == "" && !isUntracked {
+				// Orchestrator completion that couldn't be correlated and isn't already marked
+				// Treat as untracked (most orchestrators are untracked by design)
+				isUntracked = true
+			}
+			if isUntracked && !isOrchestrator {
+				// Don't double-count orchestrator completions as untracked
+				// (they're counted in their own category)
 				report.Summary.UntrackedCompletions++
 			}
 
 			// Only count if tracked OR includeUntracked is set
-			if !isUntracked || includeUntracked {
+			shouldCount := !isUntracked || includeUntracked
+			if shouldCount {
 				report.Summary.TotalCompletions++
-				// Calculate duration by matching beads_id
+				// Calculate duration by matching session
 				if sessionID != "" {
 					if spawnTime, ok := spawnTimes[sessionID]; ok {
 						duration := float64(event.Timestamp-spawnTime) / 60.0
