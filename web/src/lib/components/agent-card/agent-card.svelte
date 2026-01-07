@@ -234,7 +234,22 @@
 			<Badge variant={getStatusVariant(agent.status)} class="h-4 px-1.5 text-[10px]">
 				{agent.status}
 			</Badge>
-			{#if agent.phase}
+			{#if agent.is_stale}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<Badge variant="outline" class="h-4 px-1 text-[10px] text-muted-foreground">
+							📦
+						</Badge>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class="font-medium">Stale Agent</p>
+						<p class="text-xs text-muted-foreground">
+							Last updated > 2h ago.<br />
+							Phase and task data may be outdated.
+						</p>
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{:else if agent.phase}
 				<Badge variant={getPhaseVariant(agent.phase)} class="h-4 px-1 text-[10px]">
 					{agent.phase}
 				</Badge>

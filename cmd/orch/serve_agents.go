@@ -33,6 +33,7 @@ type AgentAPIResponse struct {
 	Runtime           string               `json:"runtime,omitempty"`
 	Window            string               `json:"window,omitempty"`
 	IsProcessing      bool                 `json:"is_processing,omitempty"` // True if actively generating response
+	IsStale           bool                 `json:"is_stale,omitempty"`      // True if agent is older than beadsFetchThreshold (beads data not fetched)
 	SpawnedAt         string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
 	UpdatedAt         string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis         *SynthesisResponse   `json:"synthesis,omitempty"`
@@ -325,25 +326,29 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// MAJOR OPTIMIZATION: Skip sessions older than beadsFetchThreshold entirely.
-		// With 600+ sessions but only ~6-10 active, fetching beads data for all
-		// would require 400+ RPC calls = 3+ seconds per request.
-		// By excluding old sessions, we reduce to ~20-50 RPC calls = <500ms.
-		// Old sessions are simply not shown in the dashboard - they're effectively archived.
-		if timeSinceUpdate > beadsFetchThreshold {
-			continue
+		// OPTIMIZATION: Mark sessions older than beadsFetchThreshold as stale.
+		// We still include them in the response (for dashboard visibility) but skip
+		// beads data fetch for performance. With 600+ sessions but only ~6-10 active,
+		// fetching beads for all would require 400+ RPC calls = 3+ seconds per request.
+		// By marking old sessions as stale and skipping beads fetch, we reduce to ~20-50 RPC calls.
+		isStale := timeSinceUpdate > beadsFetchThreshold
+		if isStale {
+			agent.IsStale = true
+			agent.Status = "idle" // Stale agents are not actively running
 		}
 
 		// Track if this agent should be filtered after Phase check
 		// Don't filter yet - we need to check beads Phase: Complete first
-		if status == "idle" && timeSinceUpdate > displayThreshold {
+		// Don't filter stale agents - they're already marked with is_stale=true
+		if status == "idle" && timeSinceUpdate > displayThreshold && !isStale {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
-		// Collect beads ID for batch fetch - include ALL recent agents with beads ID.
-		// We already filtered old sessions above, so this only fetches for recent ones.
+		// Collect beads ID for batch fetch - only for NON-STALE agents with beads ID.
+		// Stale agents (older than beadsFetchThreshold) are included in response but
+		// skip beads fetch for performance optimization.
 		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
-		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] {
+		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] && !isStale {
 			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 			seenBeadsIDs[agent.BeadsID] = true
 

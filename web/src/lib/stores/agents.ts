@@ -47,6 +47,7 @@ export interface Agent {
 	project?: string; // Project name (orch-go, skillc, etc.)
 	runtime?: string; // Formatted duration
 	is_processing?: boolean; // True if actively generating response
+	is_stale?: boolean; // True if agent is older than beadsFetchThreshold (beads data not fetched)
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
