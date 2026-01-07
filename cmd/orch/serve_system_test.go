@@ -48,18 +48,21 @@ func TestHandleUsageJSONResponse(t *testing.T) {
 
 	// Response should either have data or an error
 	// If no auth is configured, we expect an error message
-	if usageResp.Error == "" && usageResp.Account == "" && usageResp.FiveHour == 0 && usageResp.Weekly == 0 {
+	if usageResp.Error == "" && usageResp.Account == "" && usageResp.FiveHour == nil && usageResp.Weekly == nil {
 		t.Log("Usage response has no data and no error - auth may be working")
 	}
 }
 
 func TestUsageAPIResponseJSONFormat(t *testing.T) {
 	// Test that UsageAPIResponse serializes correctly to JSON
+	fiveHour := 45.5
+	weekly := 72.3
+	weeklyOpus := 15.0
 	usage := &UsageAPIResponse{
 		Account:    "test@example.com",
-		FiveHour:   45.5,
-		Weekly:     72.3,
-		WeeklyOpus: 15.0,
+		FiveHour:   &fiveHour,
+		Weekly:     &weekly,
+		WeeklyOpus: &weeklyOpus,
 	}
 
 	data, err := json.Marshal(usage)
