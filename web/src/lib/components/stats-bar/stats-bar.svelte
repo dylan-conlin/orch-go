@@ -14,9 +14,28 @@
 	import { beads } from '$lib/stores/beads';
 	import { daemon, getDaemonEmoji, getDaemonCapacity } from '$lib/stores/daemon';
 	import { dashboardMode } from '$lib/stores/dashboard-mode';
+	import { filters, orchestratorContext, type TimeFilter } from '$lib/stores/context';
 
 	// Props for section state management (bind:readyQueueExpanded from parent)
 	let { readyQueueExpanded = $bindable(false) }: { readyQueueExpanded?: boolean } = $props();
+
+	// Time filter options
+	const timeFilterOptions: { value: TimeFilter; label: string }[] = [
+		{ value: '12h', label: '12h' },
+		{ value: '24h', label: '24h' },
+		{ value: '48h', label: '48h' },
+		{ value: '7d', label: '7d' },
+		{ value: 'all', label: 'All' },
+	];
+
+	function handleTimeFilterChange(event: Event) {
+		const value = (event.target as HTMLSelectElement).value as TimeFilter;
+		filters.setTimeFilter(value);
+	}
+
+	function toggleFollowOrchestrator() {
+		filters.setFollowOrchestrator(!$filters.followOrchestrator);
+	}
 
 	function handleConnectClick() {
 		if ($connectionStatus === 'disconnected') {
@@ -44,6 +63,60 @@
 			📦 History
 		</button>
 	</div>
+
+	<!-- Time Filter Dropdown -->
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			{#snippet child({ props })}
+				<div {...props} class="flex items-center gap-1">
+					<span class="text-xs text-muted-foreground">Since:</span>
+					<select
+						value={$filters.since}
+						onchange={handleTimeFilterChange}
+						class="h-6 rounded border border-input bg-background px-1.5 text-xs cursor-pointer"
+						data-testid="time-filter"
+					>
+						{#each timeFilterOptions as option}
+							<option value={option.value}>{option.label}</option>
+						{/each}
+					</select>
+				</div>
+			{/snippet}
+		</Tooltip.Trigger>
+		<Tooltip.Content>
+			<p>Filter agents by time window</p>
+			<p class="text-xs text-muted-foreground">Reduces dashboard load time</p>
+		</Tooltip.Content>
+	</Tooltip.Root>
+
+	<!-- Follow Orchestrator Toggle -->
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			{#snippet child({ props })}
+				<button
+					{...props}
+					class="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors {$filters.followOrchestrator ? 'bg-blue-500/20 text-blue-400' : 'bg-muted text-muted-foreground hover:text-foreground'}"
+					onclick={toggleFollowOrchestrator}
+					data-testid="follow-orchestrator-toggle"
+				>
+					<span>{$filters.followOrchestrator ? '👁️' : '👁️‍🗨️'}</span>
+					<span class="hidden sm:inline">{$filters.followOrchestrator ? 'Following' : 'Follow'}</span>
+				</button>
+			{/snippet}
+		</Tooltip.Trigger>
+		<Tooltip.Content>
+			{#if $filters.followOrchestrator}
+				<p>Following orchestrator context</p>
+				{#if $orchestratorContext.project}
+					<p class="text-xs text-muted-foreground">Project: {$orchestratorContext.project}</p>
+				{/if}
+				<p class="text-xs text-muted-foreground mt-1">Click to show all projects</p>
+			{:else}
+				<p>Follow orchestrator</p>
+				<p class="text-xs text-muted-foreground">Auto-filter by orchestrator's working directory</p>
+			{/if}
+		</Tooltip.Content>
+	</Tooltip.Root>
 
 	<!-- Secondary indicators group -->
 	<div class="flex items-center gap-4">

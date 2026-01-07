@@ -199,7 +199,8 @@ function createAgentStore() {
 		// Fetch agents from orch-go API with in-flight tracking
 		// Only one fetch runs at a time. If called while fetching, queues a re-fetch
 		// after the current one completes (prevents request storm from SSE events).
-		async fetch(): Promise<void> {
+		// Optional queryString parameter for time/project filtering (e.g., "?since=12h&project=orch-go")
+		async fetch(queryString: string = ''): Promise<void> {
 			// If already fetching, mark that we need another fetch after this one
 			if (isFetching) {
 				needsRefetch = true;
@@ -211,7 +212,7 @@ function createAgentStore() {
 			currentFetchController = new AbortController();
 			
 			try {
-				const response = await fetch(`${API_BASE}/api/agents`, {
+				const response = await fetch(`${API_BASE}/api/agents${queryString}`, {
 					signal: currentFetchController.signal
 				});
 				if (!response.ok) {
@@ -245,7 +246,9 @@ function createAgentStore() {
 			}
 			fetchDebounceTimer = setTimeout(() => {
 				fetchDebounceTimer = null;
-				this.fetch().catch(console.error);
+				// Use filter query string if available
+				const queryString = getFilterQueryString ? getFilterQueryString() : '';
+				this.fetch(queryString).catch(console.error);
 			}, FETCH_DEBOUNCE_MS);
 		},
 		// Cancel pending operations - call on disconnect
@@ -450,14 +453,23 @@ function buildSSEEventListeners(): Record<string, (event: MessageEvent) => void>
 	return listeners;
 }
 
+// Callback to get current filter query string for fetches
+// Set by the page component to provide dynamic filter state
+let getFilterQueryString: (() => string) | null = null;
+
+export function setFilterQueryStringCallback(callback: () => string): void {
+	getFilterQueryString = callback;
+}
+
 export function connectSSE(): void {
 	// Create connection if not exists
 	if (!sseConnection) {
 		sseConnection = createSSEConnection(`${API_BASE}/api/events`, {
 			onOpen: () => {
 				connectionStatus.set('connected');
-				// Fetch agents on connection to get current state
-				agents.fetch().catch(console.error);
+				// Fetch agents on connection to get current state (with filters if available)
+				const queryString = getFilterQueryString ? getFilterQueryString() : '';
+				agents.fetch(queryString).catch(console.error);
 			},
 			onMessage: (event: MessageEvent) => {
 				try {

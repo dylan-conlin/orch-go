@@ -289,6 +289,9 @@ func runServe(portNum int) error {
 	// GET /api/file - returns file contents for investigation/workspace files
 	mux.HandleFunc("/api/file", corsHandler(handleFile))
 
+	// GET /api/context - returns current tmux cwd and resolved projects for "follow orchestrator" filtering
+	mux.HandleFunc("/api/context", corsHandler(handleContext))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

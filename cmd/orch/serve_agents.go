@@ -293,11 +293,18 @@ func isHexLike(s string) bool {
 }
 
 // handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
+// Query parameters:
+//   - since: Time filter (12h, 24h, 48h, 7d, all). Default: 12h
+//   - project: Project filter (full path or project name). Default: none (all projects)
 func handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Parse query parameters for filtering
+	sinceDuration := parseSinceParam(r)
+	projectFilterParam := parseProjectFilter(r)
 
 	// Use sourceDir (set at build time) since serve may run from any working directory
 	projectDir := sourceDir
@@ -827,6 +834,34 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// Collect results
 	for result := range tokenChan {
 		agents[result.index].Tokens = result.tokens
+	}
+
+	// Apply time and project filters
+	// This happens after all data enrichment to ensure filters work on complete data
+	if sinceDuration > 0 || projectFilterParam != "" {
+		filtered := make([]AgentAPIResponse, 0, len(agents))
+		for _, agent := range agents {
+			// Time filter: check updated_at or spawned_at
+			if sinceDuration > 0 {
+				var agentTime time.Time
+				if agent.UpdatedAt != "" {
+					agentTime, _ = time.Parse(time.RFC3339, agent.UpdatedAt)
+				} else if agent.SpawnedAt != "" {
+					agentTime, _ = time.Parse(time.RFC3339, agent.SpawnedAt)
+				}
+				if !agentTime.IsZero() && !filterByTime(agentTime, sinceDuration) {
+					continue
+				}
+			}
+
+			// Project filter: check project_dir
+			if projectFilterParam != "" && !filterByProject(agent.ProjectDir, projectFilterParam) {
+				continue
+			}
+
+			filtered = append(filtered, agent)
+		}
+		agents = filtered
 	}
 
 	w.Header().Set("Content-Type", "application/json")

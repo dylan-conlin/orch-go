@@ -23,6 +23,7 @@
 		connectionStatus,
 		connectSSE,
 		disconnectSSE,
+		setFilterQueryStringCallback,
 		type Agent,
 		type AgentState
 	} from '$lib/stores/agents';
@@ -43,6 +44,7 @@
 	import { hotspots } from '$lib/stores/hotspot';
 	import { orchestratorSessions } from '$lib/stores/orchestrator-sessions';
 	import { OrchestratorSessionsSection } from '$lib/components/orchestrator-sessions-section';
+	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -114,6 +116,14 @@
 		// Load section state from localStorage (sync, instant)
 		loadSectionState();
 
+		// Start context polling if followOrchestrator is enabled
+		if ($filters.followOrchestrator) {
+			orchestratorContext.startPolling(2000); // Poll every 2 seconds
+		}
+
+		// Set up filter query string callback for SSE-triggered fetches
+		setFilterQueryStringCallback(() => buildFilterQueryString($filters));
+
 		// Connect to primary SSE immediately - this triggers agents.fetch() on connection
 		// which is the most critical data for initial render
 		connectSSE();
@@ -180,7 +190,39 @@
 	onDestroy(() => {
 		disconnectSSE();
 		disconnectAgentlogSSE();
+		orchestratorContext.stopPolling();
 	});
+
+	// React to followOrchestrator changes - start/stop context polling
+	$: {
+		if (typeof window !== 'undefined') {
+			if ($filters.followOrchestrator) {
+				orchestratorContext.startPolling(2000);
+			} else {
+				orchestratorContext.stopPolling();
+			}
+		}
+	}
+
+	// Build query string from current filter state
+	// Updates project filter when orchestrator context changes (if following)
+	$: {
+		if ($filters.followOrchestrator && $orchestratorContext.project) {
+			// Auto-update project filter from orchestrator context
+			filters.setProjectFilter($orchestratorContext.project, $orchestratorContext.included_projects);
+		}
+	}
+
+	// Reactive query string based on filter state
+	$: filterQueryString = buildFilterQueryString($filters);
+
+	// Refetch agents when filters change (debounced via the store)
+	$: if (filterQueryString !== undefined && typeof window !== 'undefined') {
+		// Only refetch if we're connected (SSE connection triggers initial fetch)
+		if ($connectionStatus === 'connected') {
+			agents.fetch(filterQueryString).catch(console.error);
+		}
+	}
 
 	function formatTime(timestamp?: number): string {
 		if (!timestamp) return '';
