@@ -323,6 +323,35 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// EARLY FILTERING: Apply time and project filters immediately after fetching sessions.
+	// This is critical for performance - filtering BEFORE expensive operations (workspace cache,
+	// beads batch fetches) reduces the number of sessions we need to process.
+	// Previously: filters were applied at the END, causing 20s+ cold cache times.
+	// Now: filters applied early, reducing expensive operations proportionally.
+	now := time.Now()
+	if sinceDuration > 0 || projectFilterParam != "" {
+		filtered := make([]opencode.Session, 0, len(sessions))
+		for _, s := range sessions {
+			// Time filter: check session updated_at or created_at
+			if sinceDuration > 0 {
+				updatedAt := time.Unix(s.Time.Updated/1000, 0)
+				if now.Sub(updatedAt) > sinceDuration {
+					// Session is too old, skip it
+					continue
+				}
+			}
+
+			// Project filter: check session directory
+			if projectFilterParam != "" && !filterByProject(s.Directory, projectFilterParam) {
+				// Session is from a different project, skip it
+				continue
+			}
+
+			filtered = append(filtered, s)
+		}
+		sessions = filtered
+	}
+
 	// Build multi-project workspace cache for cross-project agent visibility.
 	// This aggregates workspace metadata from all projects with active sessions,
 	// enabling the dashboard to show correct status for agents spawned with --workdir.
@@ -332,7 +361,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
 	wsCache := globalWorkspaceCacheInstance.getCachedWorkspace(projectDirs)
 
-	now := time.Now()
 	agents := []AgentAPIResponse{} // Initialize as empty slice, not nil, to return [] instead of null
 
 	// Collect beads IDs for batch fetching
@@ -836,8 +864,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		agents[result.index].Tokens = result.tokens
 	}
 
-	// Apply time and project filters
-	// This happens after all data enrichment to ensure filters work on complete data
+	// Apply time and project filters for non-session agents.
+	// NOTE: OpenCode sessions are filtered EARLY (after ListSessions call) for performance.
+	// This late filter catches:
+	// 1. Tmux-only agents (not in OpenCode sessions)
+	// 2. Completed workspaces (timestamps from workspace metadata, not session)
 	if sinceDuration > 0 || projectFilterParam != "" {
 		filtered := make([]AgentAPIResponse, 0, len(agents))
 		for _, agent := range agents {
