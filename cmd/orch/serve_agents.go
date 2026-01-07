@@ -419,7 +419,8 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			Runtime:      formatDuration(runtime),
 			SpawnedAt:    createdAt.Format(time.RFC3339),
 			UpdatedAt:    updatedAt.Format(time.RFC3339),
-			IsProcessing: false, // Populated client-side via SSE
+			IsProcessing: false,       // Populated client-side via SSE
+			ProjectDir:   s.Directory, // Set from session directory for project filtering
 		}
 
 		// Derive beadsID and skill from session title
