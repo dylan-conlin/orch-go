@@ -15,9 +15,10 @@ import (
 )
 
 var (
-	statsDays       int
-	statsJSONOutput bool
-	statsVerbose    bool
+	statsDays             int
+	statsJSONOutput       bool
+	statsVerbose          bool
+	statsIncludeUntracked bool
 )
 
 // SkillCategory represents the type of work a skill does
@@ -46,6 +47,13 @@ func getSkillCategory(skill string) SkillCategory {
 	return TaskSkill
 }
 
+// isUntrackedSpawn returns true if the beads_id indicates an untracked spawn.
+// Untracked spawns have beads_ids containing "untracked" (e.g., "orch-go-untracked-abc123").
+// These are test/ad-hoc spawns that should be excluded from production metrics by default.
+func isUntrackedSpawn(beadsID string) bool {
+	return strings.Contains(beadsID, "untracked")
+}
+
 var statsCmd = &cobra.Command{
 	Use:   "stats",
 	Short: "Show aggregated agent statistics from events.jsonl",
@@ -58,12 +66,17 @@ Shows:
   - Skill effectiveness breakdown
   - Daemon health metrics
 
+By default, untracked spawns (test/ad-hoc work via --no-track) are excluded
+from completion rate calculations to show production metrics only.
+Use --include-untracked to include them.
+
 Examples:
-  orch stats                  # Show last 7 days
-  orch stats --days 1         # Show last 24 hours
-  orch stats --days 30        # Show last 30 days
-  orch stats --json           # Output as JSON for scripting
-  orch stats --verbose        # Show additional metrics`,
+  orch stats                    # Show last 7 days (tracked spawns only)
+  orch stats --include-untracked  # Include test/ad-hoc spawns
+  orch stats --days 1           # Show last 24 hours
+  orch stats --days 30          # Show last 30 days
+  orch stats --json             # Output as JSON for scripting
+  orch stats --verbose          # Show additional metrics`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStats()
 	},
@@ -73,6 +86,7 @@ func init() {
 	statsCmd.Flags().IntVar(&statsDays, "days", 7, "Number of days to analyze")
 	statsCmd.Flags().BoolVar(&statsJSONOutput, "json", false, "Output as JSON")
 	statsCmd.Flags().BoolVar(&statsVerbose, "verbose", false, "Show additional metrics")
+	statsCmd.Flags().BoolVar(&statsIncludeUntracked, "include-untracked", false, "Include untracked spawns in completion rate calculation")
 
 	rootCmd.AddCommand(statsCmd)
 }
@@ -114,6 +128,10 @@ type StatsSummary struct {
 	CoordinationSpawns         int     `json:"coordination_spawns"`
 	CoordinationCompletions    int     `json:"coordination_completions"`
 	CoordinationCompletionRate float64 `json:"coordination_completion_rate"`
+	// Untracked spawn metrics (test/ad-hoc work excluded from production metrics)
+	UntrackedSpawns      int  `json:"untracked_spawns"`
+	UntrackedCompletions int  `json:"untracked_completions"`
+	IncludesUntracked    bool `json:"includes_untracked"`
 }
 
 // SkillStatsSummary contains per-skill metrics
@@ -159,7 +177,7 @@ func runStats() error {
 	}
 
 	// Aggregate statistics
-	report := aggregateStats(events, statsDays)
+	report := aggregateStats(events, statsDays, statsIncludeUntracked)
 
 	// Output
 	if statsJSONOutput {
@@ -219,7 +237,7 @@ func parseEvents(path string, days int) ([]StatsEvent, error) {
 	return events, nil
 }
 
-func aggregateStats(events []StatsEvent, days int) *StatsReport {
+func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *StatsReport {
 	report := &StatsReport{
 		GeneratedAt:    time.Now().Format(time.RFC3339),
 		AnalysisPeriod: fmt.Sprintf("Last %d days", days),
@@ -227,11 +245,13 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 		EventsAnalyzed: len(events),
 		SkillStats:     []SkillStatsSummary{},
 	}
+	report.Summary.IncludesUntracked = includeUntracked
 
 	// Track spawn times for duration calculation
-	spawnTimes := make(map[string]int64)     // session_id -> timestamp
-	spawnSkills := make(map[string]string)   // session_id -> skill
-	spawnBeadsIDs := make(map[string]string) // session_id -> beads_id
+	spawnTimes := make(map[string]int64)       // session_id -> timestamp
+	spawnSkills := make(map[string]string)     // session_id -> skill
+	spawnBeadsIDs := make(map[string]string)   // session_id -> beads_id
+	untrackedSessions := make(map[string]bool) // session_id -> true if untracked
 	skillCounts := make(map[string]*SkillStatsSummary)
 	var durations []float64
 
@@ -241,13 +261,33 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 	for _, event := range events {
 		switch event.Type {
 		case "session.spawned":
-			report.Summary.TotalSpawns++
 			spawnTimes[event.SessionID] = event.Timestamp
 
-			// Extract skill from data
+			// Extract skill and beads_id from data
+			var beadsID string
+			var skill string
 			if data := event.Data; data != nil {
-				if skill, ok := data["skill"].(string); ok && skill != "" {
+				if s, ok := data["skill"].(string); ok && s != "" {
+					skill = s
 					spawnSkills[event.SessionID] = skill
+				}
+				if b, ok := data["beads_id"].(string); ok && b != "" {
+					beadsID = b
+					spawnBeadsIDs[event.SessionID] = beadsID
+				}
+			}
+
+			// Check if this is an untracked spawn
+			isUntracked := isUntrackedSpawn(beadsID)
+			if isUntracked {
+				untrackedSessions[event.SessionID] = true
+				report.Summary.UntrackedSpawns++
+			}
+
+			// Only count toward metrics if tracked OR if includeUntracked is set
+			if !isUntracked || includeUntracked {
+				report.Summary.TotalSpawns++
+				if skill != "" {
 					if _, exists := skillCounts[skill]; !exists {
 						skillCounts[skill] = &SkillStatsSummary{
 							Skill:    skill,
@@ -256,72 +296,102 @@ func aggregateStats(events []StatsEvent, days int) *StatsReport {
 					}
 					skillCounts[skill].Spawns++
 				}
-				if beadsID, ok := data["beads_id"].(string); ok && beadsID != "" {
-					spawnBeadsIDs[event.SessionID] = beadsID
-				}
 			}
 
 		case "session.completed":
-			report.Summary.TotalCompletions++
-			// Calculate duration if we have spawn time
-			if spawnTime, ok := spawnTimes[event.SessionID]; ok {
-				duration := float64(event.Timestamp-spawnTime) / 60.0 // minutes
-				if duration > 0 && duration < 480 {                   // Sanity check: < 8 hours
-					durations = append(durations, duration)
-				}
+			// Check if this is an untracked session
+			isUntracked := untrackedSessions[event.SessionID]
+			if isUntracked {
+				report.Summary.UntrackedCompletions++
 			}
-			// Update skill completions
-			if skill, ok := spawnSkills[event.SessionID]; ok {
-				if stats, exists := skillCounts[skill]; exists {
-					stats.Completions++
+			// Only count if tracked OR includeUntracked is set
+			if !isUntracked || includeUntracked {
+				report.Summary.TotalCompletions++
+				// Calculate duration if we have spawn time
+				if spawnTime, ok := spawnTimes[event.SessionID]; ok {
+					duration := float64(event.Timestamp-spawnTime) / 60.0 // minutes
+					if duration > 0 && duration < 480 {                   // Sanity check: < 8 hours
+						durations = append(durations, duration)
+					}
+				}
+				// Update skill completions
+				if skill, ok := spawnSkills[event.SessionID]; ok {
+					if stats, exists := skillCounts[skill]; exists {
+						stats.Completions++
+					}
 				}
 			}
 
 		case "agent.completed":
-			report.Summary.TotalCompletions++
-			// Extract beads_id for correlation
+			// Extract beads_id for correlation and untracked check
+			var beadsID string
+			var sessionID string
 			if data := event.Data; data != nil {
-				if beadsID, ok := data["beads_id"].(string); ok && beadsID != "" {
+				if b, ok := data["beads_id"].(string); ok && b != "" {
+					beadsID = b
 					beadsCompletions[beadsID] = event.Timestamp
-				}
-			}
-			// Calculate duration by matching beads_id
-			if data := event.Data; data != nil {
-				if beadsID, ok := data["beads_id"].(string); ok && beadsID != "" {
-					// Find spawn with matching beads_id
-					for sessionID, spawnBeadsID := range spawnBeadsIDs {
+					// Find session with matching beads_id
+					for sid, spawnBeadsID := range spawnBeadsIDs {
 						if spawnBeadsID == beadsID {
-							if spawnTime, ok := spawnTimes[sessionID]; ok {
-								duration := float64(event.Timestamp-spawnTime) / 60.0
-								if duration > 0 && duration < 480 {
-									durations = append(durations, duration)
-								}
-							}
-							// Update skill completions
-							if skill, ok := spawnSkills[sessionID]; ok {
-								if stats, exists := skillCounts[skill]; exists {
-									stats.Completions++
-								}
-							}
+							sessionID = sid
 							break
 						}
 					}
 				}
 			}
 
+			// Check if untracked (either by beads_id pattern or session tracking)
+			isUntracked := isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
+			if isUntracked {
+				report.Summary.UntrackedCompletions++
+			}
+
+			// Only count if tracked OR includeUntracked is set
+			if !isUntracked || includeUntracked {
+				report.Summary.TotalCompletions++
+				// Calculate duration by matching beads_id
+				if sessionID != "" {
+					if spawnTime, ok := spawnTimes[sessionID]; ok {
+						duration := float64(event.Timestamp-spawnTime) / 60.0
+						if duration > 0 && duration < 480 {
+							durations = append(durations, duration)
+						}
+					}
+					// Update skill completions
+					if skill, ok := spawnSkills[sessionID]; ok {
+						if stats, exists := skillCounts[skill]; exists {
+							stats.Completions++
+						}
+					}
+				}
+			}
+
 		case "agent.abandoned":
-			report.Summary.TotalAbandonments++
-			// Update skill abandonments
+			// Extract beads_id and check if untracked
+			var beadsID string
+			var sessionID string
 			if data := event.Data; data != nil {
-				if beadsID, ok := data["beads_id"].(string); ok && beadsID != "" {
-					for sessionID, spawnBeadsID := range spawnBeadsIDs {
+				if b, ok := data["beads_id"].(string); ok && b != "" {
+					beadsID = b
+					for sid, spawnBeadsID := range spawnBeadsIDs {
 						if spawnBeadsID == beadsID {
-							if skill, ok := spawnSkills[sessionID]; ok {
-								if stats, exists := skillCounts[skill]; exists {
-									stats.Abandonments++
-								}
-							}
+							sessionID = sid
 							break
+						}
+					}
+				}
+			}
+
+			isUntracked := isUntrackedSpawn(beadsID) || untrackedSessions[sessionID]
+
+			// Only count if tracked OR includeUntracked is set
+			if !isUntracked || includeUntracked {
+				report.Summary.TotalAbandonments++
+				// Update skill abandonments
+				if sessionID != "" {
+					if skill, ok := spawnSkills[sessionID]; ok {
+						if stats, exists := skillCounts[skill]; exists {
+							stats.Abandonments++
 						}
 					}
 				}
@@ -430,7 +500,11 @@ func outputStatsText(report *StatsReport) error {
 	// Core metrics
 	fmt.Println()
 	fmt.Println("🎯 CORE METRICS")
-	fmt.Printf("  Spawns:        %d\n", report.Summary.TotalSpawns)
+	fmt.Printf("  Spawns:        %d", report.Summary.TotalSpawns)
+	if !report.Summary.IncludesUntracked && report.Summary.UntrackedSpawns > 0 {
+		fmt.Printf(" (excluding %d untracked)", report.Summary.UntrackedSpawns)
+	}
+	fmt.Println()
 	fmt.Printf("  Completions:   %d (%.1f%%)\n", report.Summary.TotalCompletions, report.Summary.CompletionRate)
 	fmt.Printf("  Abandonments:  %d (%.1f%%)\n", report.Summary.TotalAbandonments, report.Summary.AbandonmentRate)
 	if report.Summary.AvgDurationMinutes > 0 {
