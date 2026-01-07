@@ -132,6 +132,68 @@ func TestParsePhaseFromComments(t *testing.T) {
 	}
 }
 
+func TestParseInvestigationPathFromComments(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments []Comment
+		want     string
+	}{
+		{
+			name:     "empty comments",
+			comments: []Comment{},
+			want:     "",
+		},
+		{
+			name: "no investigation_path",
+			comments: []Comment{
+				{Text: "Phase: Planning - Starting work"},
+				{Text: "Phase: Complete - Done"},
+			},
+			want: "",
+		},
+		{
+			name: "single investigation_path",
+			comments: []Comment{
+				{Text: "investigation_path: /path/to/.kb/investigations/2025-12-20-inv-test.md"},
+			},
+			want: "/path/to/.kb/investigations/2025-12-20-inv-test.md",
+		},
+		{
+			name: "investigation_path with other comments",
+			comments: []Comment{
+				{Text: "Phase: Planning - Starting work"},
+				{Text: "investigation_path: /path/to/.kb/investigations/2025-12-20-inv-test.md"},
+				{Text: "Phase: Complete - Done"},
+			},
+			want: "/path/to/.kb/investigations/2025-12-20-inv-test.md",
+		},
+		{
+			name: "multiple investigation_path - uses latest",
+			comments: []Comment{
+				{Text: "investigation_path: /path/to/first.md"},
+				{Text: "investigation_path: /path/to/second.md"},
+			},
+			want: "/path/to/second.md",
+		},
+		{
+			name: "investigation_path with whitespace",
+			comments: []Comment{
+				{Text: "investigation_path:    /path/to/file.md   "},
+			},
+			want: "/path/to/file.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseInvestigationPathFromComments(tt.comments)
+			if got != tt.want {
+				t.Errorf("ParseInvestigationPathFromComments() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestVerificationResult(t *testing.T) {
 	t.Run("empty result defaults to passed", func(t *testing.T) {
 		result := VerificationResult{Passed: true}

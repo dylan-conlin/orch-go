@@ -21,24 +21,26 @@ import (
 
 // AgentAPIResponse is the JSON structure returned by /api/agents.
 type AgentAPIResponse struct {
-	ID           string               `json:"id"`
-	SessionID    string               `json:"session_id,omitempty"`
-	BeadsID      string               `json:"beads_id,omitempty"`
-	BeadsTitle   string               `json:"beads_title,omitempty"`
-	Skill        string               `json:"skill,omitempty"`
-	Status       string               `json:"status"`            // "active", "idle", "completed", etc.
-	Phase        string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task         string               `json:"task,omitempty"`    // Task description from beads issue
-	Project      string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
-	Runtime      string               `json:"runtime,omitempty"`
-	Window       string               `json:"window,omitempty"`
-	IsProcessing bool                 `json:"is_processing,omitempty"` // True if actively generating response
-	SpawnedAt    string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
-	UpdatedAt    string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
-	Synthesis    *SynthesisResponse   `json:"synthesis,omitempty"`
-	CloseReason  string               `json:"close_reason,omitempty"` // Beads close reason, fallback when synthesis is null
-	GapAnalysis  *GapAPIResponse      `json:"gap_analysis,omitempty"` // Context gap analysis from spawn time
-	Tokens       *opencode.TokenStats `json:"tokens,omitempty"`       // Token usage for the session
+	ID                string               `json:"id"`
+	SessionID         string               `json:"session_id,omitempty"`
+	BeadsID           string               `json:"beads_id,omitempty"`
+	BeadsTitle        string               `json:"beads_title,omitempty"`
+	Skill             string               `json:"skill,omitempty"`
+	Status            string               `json:"status"`            // "active", "idle", "completed", etc.
+	Phase             string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
+	Task              string               `json:"task,omitempty"`    // Task description from beads issue
+	Project           string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Runtime           string               `json:"runtime,omitempty"`
+	Window            string               `json:"window,omitempty"`
+	IsProcessing      bool                 `json:"is_processing,omitempty"` // True if actively generating response
+	SpawnedAt         string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
+	UpdatedAt         string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
+	Synthesis         *SynthesisResponse   `json:"synthesis,omitempty"`
+	CloseReason       string               `json:"close_reason,omitempty"`       // Beads close reason, fallback when synthesis is null
+	GapAnalysis       *GapAPIResponse      `json:"gap_analysis,omitempty"`       // Context gap analysis from spawn time
+	Tokens            *opencode.TokenStats `json:"tokens,omitempty"`             // Token usage for the session
+	InvestigationPath string               `json:"investigation_path,omitempty"` // Path to investigation file from beads comments
+	ProjectDir        string               `json:"project_dir,omitempty"`        // Project directory for the agent
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -426,6 +428,15 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 					agents[i].Phase = phaseStatus.Phase
 					phaseComplete = strings.EqualFold(phaseStatus.Phase, "Complete")
 				}
+				// Extract investigation_path from comments for investigation tab rendering
+				if investigationPath := verify.ParseInvestigationPathFromComments(comments); investigationPath != "" {
+					agents[i].InvestigationPath = investigationPath
+				}
+			}
+
+			// Populate project_dir from beadsProjectDirs lookup (for workspace path construction)
+			if projectDir, ok := beadsProjectDirs[agents[i].BeadsID]; ok {
+				agents[i].ProjectDir = projectDir
 			}
 
 			// Get workspace path for SYNTHESIS.md check (Priority 3)

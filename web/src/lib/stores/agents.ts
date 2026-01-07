@@ -50,6 +50,7 @@ export interface Agent {
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
+	investigation_path?: string; // Path to investigation file from beads comments
 	// Real-time activity tracking
 	current_activity?: {
 		type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish';

@@ -16,7 +16,8 @@ import (
 
 // Pre-compiled regex patterns for beads API operations
 var (
-	regexPhaseComment = regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
+	regexPhaseComment             = regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
+	regexInvestigationPathComment = regexp.MustCompile(`investigation_path:\s*(.+)`)
 )
 
 // Comment is an alias for beads.Comment for compatibility.
@@ -124,6 +125,22 @@ func ParsePhaseFromComments(comments []Comment) PhaseStatus {
 	}
 
 	return latestPhase
+}
+
+// ParseInvestigationPathFromComments extracts the investigation file path from comments.
+// Looks for comments matching "investigation_path: <path>" pattern.
+// Returns empty string if no investigation_path comment is found.
+func ParseInvestigationPathFromComments(comments []Comment) string {
+	var latestPath string
+
+	for _, comment := range comments {
+		matches := regexInvestigationPathComment.FindStringSubmatch(comment.Text)
+		if len(matches) >= 2 {
+			latestPath = strings.TrimSpace(matches[1])
+		}
+	}
+
+	return latestPath
 }
 
 // GetPhaseStatus retrieves the current phase status for a beads issue.

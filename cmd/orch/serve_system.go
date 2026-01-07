@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
@@ -302,16 +304,16 @@ type OrchestratorSessionsAPIResponse struct {
 
 // OrchestratorSessionAPIItem represents an orchestrator session in the API response.
 type OrchestratorSessionAPIItem struct {
-	WorkspaceName    string `json:"workspace_name"`
-	SessionID        string `json:"session_id,omitempty"`
-	Goal             string `json:"goal"`
-	Duration         string `json:"duration"`
-	DurationSeconds  int64  `json:"duration_seconds"` // For sorting/calculations
-	Project          string `json:"project"`
-	ProjectDir       string `json:"project_dir"`
-	Status           string `json:"status"`
-	SpawnTime        string `json:"spawn_time"` // ISO 8601
-	ChildAgentCount  int    `json:"child_agent_count"`  // Number of active agents in same project
+	WorkspaceName   string `json:"workspace_name"`
+	SessionID       string `json:"session_id,omitempty"`
+	Goal            string `json:"goal"`
+	Duration        string `json:"duration"`
+	DurationSeconds int64  `json:"duration_seconds"` // For sorting/calculations
+	Project         string `json:"project"`
+	ProjectDir      string `json:"project_dir"`
+	Status          string `json:"status"`
+	SpawnTime       string `json:"spawn_time"`        // ISO 8601
+	ChildAgentCount int    `json:"child_agent_count"` // Number of active agents in same project
 }
 
 // handleOrchestratorSessions returns active orchestrator sessions from the registry.
@@ -340,7 +342,7 @@ func handleOrchestratorSessions(w http.ResponseWriter, r *http.Request) {
 	// Get active agents to count children per project
 	client := opencode.NewClient(serverURL)
 	opencodeSessions, _ := client.ListSessions("")
-	
+
 	// Count active agents per project
 	projectAgentCounts := make(map[string]int)
 	maxIdleTime := 30 * time.Minute
@@ -518,4 +520,110 @@ func handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode config: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// FileAPIResponse is the JSON structure returned by /api/file.
+type FileAPIResponse struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Size    int64  `json:"size"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleFile returns the contents of a file at the specified path.
+// Query parameters:
+//   - path: Absolute path to the file (required)
+//
+// Security: Only allows reading files in allowed directories (.kb/, .orch/workspace/).
+// This prevents arbitrary file reads while enabling investigation and workspace file viewing.
+func handleFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(FileAPIResponse{
+			Error: "path query parameter is required",
+		})
+		return
+	}
+
+	// Security check: only allow files in allowed directories
+	// This prevents arbitrary file reads while enabling investigation file viewing
+	allowedPatterns := []string{
+		"/.kb/",             // Knowledge base (investigations, decisions)
+		"/.orch/workspace/", // Agent workspaces (SYNTHESIS.md, SPAWN_CONTEXT.md)
+		"/.orch/templates/", // Templates
+	}
+
+	allowed := false
+	for _, pattern := range allowedPatterns {
+		if strings.Contains(filePath, pattern) {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(FileAPIResponse{
+			Path:  filePath,
+			Error: "access denied: path must be in .kb/ or .orch/workspace/",
+		})
+		return
+	}
+
+	// Clean the path to prevent traversal attacks
+	cleanPath := filepath.Clean(filePath)
+	if cleanPath != filePath {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(FileAPIResponse{
+			Path:  filePath,
+			Error: "invalid path",
+		})
+		return
+	}
+
+	// Check if file exists
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(FileAPIResponse{
+			Path:  cleanPath,
+			Error: fmt.Sprintf("file not found: %v", err),
+		})
+		return
+	}
+
+	// Don't allow reading directories
+	if info.IsDir() {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(FileAPIResponse{
+			Path:  cleanPath,
+			Error: "cannot read directory",
+		})
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(cleanPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(FileAPIResponse{
+			Path:  cleanPath,
+			Error: fmt.Sprintf("failed to read file: %v", err),
+		})
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(FileAPIResponse{
+		Path:    cleanPath,
+		Content: string(content),
+		Size:    info.Size(),
+	})
 }

@@ -269,6 +269,9 @@ func runServe(portNum int) error {
 	// GET /api/orchestrator-sessions - returns active orchestrator sessions from registry
 	mux.HandleFunc("/api/orchestrator-sessions", corsHandler(handleOrchestratorSessions))
 
+	// GET /api/file - returns file contents for investigation/workspace files
+	mux.HandleFunc("/api/file", corsHandler(handleFile))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -305,6 +308,7 @@ func runServe(portNum int) error {
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")
 	fmt.Println("  GET /api/changelog - Aggregated changelog (?days=7&project=all)")
+	fmt.Println("  GET /api/file      - Read file contents (?path=/path/to/file)")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
