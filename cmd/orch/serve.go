@@ -161,6 +161,15 @@ func runServe(portNum int) error {
 		beads.DefaultDir = sourceDir
 	}
 
+	// Resolve bd executable path at startup.
+	// This is critical for launchd environments where PATH is minimal.
+	// The resolved path is stored in beads.BdPath for use by Fallback* functions.
+	if bdPath, err := beads.ResolveBdPath(); err != nil {
+		fmt.Printf("Warning: could not resolve bd path (CLI fallback may fail): %v\n", err)
+	} else {
+		fmt.Printf("Resolved bd path: %s\n", bdPath)
+	}
+
 	// Initialize persistent beads client with auto-reconnect.
 	// This avoids per-request connection overhead and handles daemon restarts.
 	socketPath, err := beads.FindSocketPath(sourceDir)

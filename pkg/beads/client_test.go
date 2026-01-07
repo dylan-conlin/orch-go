@@ -1423,3 +1423,52 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestResolveBdPath(t *testing.T) {
+	// Save original BdPath
+	originalBdPath := BdPath
+	defer func() { BdPath = originalBdPath }()
+
+	// Reset BdPath before test
+	BdPath = ""
+
+	// Test that ResolveBdPath finds bd (assuming bd is installed in the test environment)
+	path, err := ResolveBdPath()
+	if err != nil {
+		// If bd is not installed, the test should skip rather than fail
+		t.Skipf("bd executable not found, skipping test: %v", err)
+	}
+
+	// Verify path was set
+	if BdPath == "" {
+		t.Error("BdPath should be set after ResolveBdPath succeeds")
+	}
+	if BdPath != path {
+		t.Errorf("BdPath = %q, want %q", BdPath, path)
+	}
+
+	// Verify getBdPath returns the resolved path
+	if got := getBdPath(); got != path {
+		t.Errorf("getBdPath() = %q, want %q", got, path)
+	}
+}
+
+func TestGetBdPath_Default(t *testing.T) {
+	// Save original BdPath
+	originalBdPath := BdPath
+	defer func() { BdPath = originalBdPath }()
+
+	// Reset BdPath
+	BdPath = ""
+
+	// When BdPath is empty, getBdPath should return "bd"
+	if got := getBdPath(); got != "bd" {
+		t.Errorf("getBdPath() with empty BdPath = %q, want %q", got, "bd")
+	}
+
+	// When BdPath is set, getBdPath should return it
+	BdPath = "/custom/path/to/bd"
+	if got := getBdPath(); got != "/custom/path/to/bd" {
+		t.Errorf("getBdPath() with custom BdPath = %q, want %q", got, "/custom/path/to/bd")
+	}
+}

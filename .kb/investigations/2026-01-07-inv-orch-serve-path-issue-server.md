@@ -1,19 +1,18 @@
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
-Fill this at the END of your investigation, before marking Complete.
 -->
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [Investigating - to be filled at completion]
+**Delta:** The `orch serve` PATH issue was caused by launchd providing minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) to the server process, and the CLI fallback functions hardcoding `exec.Command("bd", ...)` which relies on PATH lookup.
 
-**Evidence:** [Investigating - to be filled at completion]
+**Evidence:** Before fix: `curl -sk https://localhost:3348/api/beads` returned `"error":"Failed to get bd stats: bd stats failed: exec: \"bd\": executable file not found in $PATH"`. After fix: Same endpoint returns valid JSON with issue counts.
 
-**Knowledge:** [Investigating - to be filled at completion]
+**Knowledge:** The cleanest solution is resolving absolute paths at startup (Option 2) because it's self-contained in Go code and works regardless of how the server is started (launchd, manual, etc.).
 
-**Next:** [Investigating - to be filled at completion]
+**Next:** Merge this fix. Consider adding similar resolution for other external executables if issues arise.
 
-**Promote to Decision:** [unclear] - Will determine based on findings
+**Promote to Decision:** recommend-yes - This establishes a pattern for handling executables in launchd environments.
 
 ---
 
@@ -24,102 +23,148 @@ Fill this at the END of your investigation, before marking Complete.
 **Started:** 2026-01-07
 **Updated:** 2026-01-07
 **Owner:** Agent
-**Phase:** Investigating
-**Next Step:** Evaluate three proposed options
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
 ## Findings
 
-### Finding 1: Current Problem - CLI Fallback Uses exec.Command("bd", ...)
+### Finding 1: Root Cause - CLI Fallback Uses exec.Command("bd", ...)
 
 **Evidence:** In `pkg/beads/client.go`, the fallback functions (FallbackStats, FallbackReady, etc.) use:
 ```go
 cmd := exec.Command("bd", "stats", "--json")
 ```
 
-This requires `bd` to be in PATH. When `orch serve` runs under launchd, it inherits minimal PATH that may not include `bd`.
+This requires `bd` to be in PATH. When `orch serve` runs under launchd, it inherits minimal PATH that does not include common binary locations.
 
 **Source:** `pkg/beads/client.go:762` (FallbackStats), similar pattern at lines 648, 674, 702, etc.
 
-**Significance:** This is the root cause. When the beads RPC daemon isn't running and CLI fallback is attempted, the `bd` command fails to execute because it's not in PATH.
+**Significance:** This is the root cause. When the beads RPC daemon isn't running and CLI fallback is attempted, the `bd` command fails to execute.
 
 ---
 
-### Finding 2: Launchd Plist Already Has Extended PATH
+### Finding 2: Launchd Provides Minimal PATH to orch serve
 
-**Evidence:** The launchd plist at `~/Library/LaunchAgents/com.orch.daemon.plist` already includes:
+**Evidence:** Running process inspection showed:
 ```
-PATH=/Users/dylanconlin/.bun/bin:/Users/dylanconlin/bin:/Users/dylanconlin/claude-npm-global/bin:/usr/local/bin:/usr/bin:/bin:/Users/dylanconlin/.local/bin:/Users/dylanconlin/go/bin:/opt/homebrew/bin
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
 ```
 
-And `bd` exists at `/Users/dylanconlin/bin/bd` which IS in the plist PATH.
+This is the default launchd PATH, not the extended PATH from user shell configuration.
 
-**Source:** `~/Library/LaunchAgents/com.orch.daemon.plist`, `which bd` output
+**Source:** `ps eww 85413 | grep PATH`
 
-**Significance:** The plist PATH configuration appears correct. The issue may be that `orch serve` is NOT run by launchd - it's run manually or by a different mechanism.
-
----
-
-### Finding 3: ~/.bun/bin Symlink Solution Is In Place
-
-**Evidence:** 
-- `~/.bun/bin/bd -> /Users/dylanconlin/go/bin/bd` (symlink exists)
-- This is documented in global CLAUDE.md as a workaround for OpenCode server PATH issues
-
-**Source:** `ls -la ~/.bun/bin/bd`, `~/.claude/CLAUDE.md`
-
-**Significance:** The symlink workaround was designed for OpenCode server scenarios, but `orch serve` may have different PATH inheritance.
+**Significance:** The `com.orch-go.serve.plist` does NOT include an EnvironmentVariables section with PATH, unlike `com.orch.daemon.plist` which does.
 
 ---
 
-### Finding 4: Three Proposed Solutions
+### Finding 3: Three Options Considered
 
 **Option 1: Configure PATH in launchd plist**
-- Already done for `orch daemon run`
-- Would need separate plist for `orch serve` if run via launchd
+- Already done for `orch daemon run` but not for `orch serve`
+- External to code, requires modifying system files
 - Doesn't help when `orch serve` is run manually
 
-**Option 2: Resolve absolute paths at startup**
-- Detect bd path at serve startup using exec.LookPath or known locations
-- Store resolved path and pass to all fallback functions
+**Option 2: Resolve absolute paths at startup** (CHOSEN)
+- Detect bd path at serve startup using exec.LookPath and common locations
+- Store resolved path and use for all fallback functions
 - Self-contained, works regardless of how serve is started
+- Most maintainable
 
 **Option 3: Use beads RPC client instead of CLI**
-- Already implemented! The code prioritizes RPC client, only falls back to CLI
-- Issue: RPC client requires beads daemon to be running
-- The problem only manifests when daemon is NOT running
+- Already implemented! Code prioritizes RPC client
+- Issue: Only works when beads daemon is running
+- CLI fallback is needed when daemon is unavailable
 
-**Source:** Task spawn context, code analysis
+**Source:** Code analysis, design consideration
 
-**Significance:** Option 2 appears most robust because:
-- Works regardless of how `orch serve` is started
-- Self-contained fix in Go code
-- Doesn't require daemon to be running
-- Handles both launchd and manual invocation
+**Significance:** Option 2 was chosen as the most robust solution.
 
 ---
 
-## Next Steps
+### Finding 4: Solution Implementation
 
-1. Test if `orch serve` actually experiences the PATH issue (verify the problem)
-2. Implement Option 2: resolve bd path at startup
-3. Test with RPC daemon down to confirm CLI fallback works
+**Evidence:** Added to `pkg/beads/client.go`:
+1. `BdPath` variable to store resolved path
+2. `bdSearchPaths` - common locations: `$HOME/bin/bd`, `$HOME/go/bin/bd`, `$HOME/.bun/bin/bd`, etc.
+3. `ResolveBdPath()` function - tries exec.LookPath first, then searches common locations
+4. `getBdPath()` helper - returns BdPath if set, otherwise "bd"
+5. Updated all 11 Fallback* functions to use `getBdPath()` instead of hardcoded "bd"
+
+Added to `cmd/orch/serve.go`:
+- Call `beads.ResolveBdPath()` at startup with warning if not found
+
+**Source:** Implementation in pkg/beads/client.go and cmd/orch/serve.go
+
+**Significance:** Self-contained fix that works in any execution context.
+
+---
+
+## Test Performed
+
+**Test:** Restarted `orch serve` via launchd and called the beads endpoint.
+
+**Result:** 
+- Before fix: `{"error":"Failed to get bd stats: bd stats failed: exec: \"bd\": executable file not found in $PATH"}`
+- After fix: `{"total_issues":1439,"open_issues":32,"in_progress_issues":1,...}`
+
+**Verification:** Also tested `/api/beads/ready` endpoint - returns list of 33 ready issues successfully.
+
+---
+
+## Conclusion
+
+The fix resolves the PATH issue by having `orch serve` resolve the `bd` executable path at startup and store it for use by all CLI fallback functions. This approach is:
+
+1. **Self-contained** - All logic is in Go code, no external configuration needed
+2. **Robust** - Works regardless of how the server is started
+3. **Maintainable** - Single point of change for adding new search paths
+4. **Backward compatible** - Falls back to "bd" if resolution fails (for environments where PATH is correct)
+
+---
+
+## Self-Review
+
+- [x] Real test performed (restarted server, called endpoint)
+- [x] Conclusion from evidence (curl output before/after)
+- [x] Question answered (Option 2 is cleanest and most maintainable)
+- [x] File complete
+
+**Self-Review Status:** PASSED
+
+---
+
+## Leave it Better
+
+```bash
+kn constrain "launchd provides minimal PATH to services" --reason "PATH=/usr/bin:/bin:/usr/sbin:/sbin - user shell paths not inherited"
+```
 
 ---
 
 ## References
 
 **Files Examined:**
-- `pkg/beads/client.go` - Fallback functions using exec.Command("bd", ...)
+- `pkg/beads/client.go` - Fallback functions using exec.Command
 - `cmd/orch/serve.go` - Server initialization
 - `cmd/orch/serve_beads.go` - Beads endpoint handlers
-- `~/Library/LaunchAgents/com.orch.daemon.plist` - launchd configuration
+- `~/Library/LaunchAgents/com.orch-go.serve.plist` - Missing PATH config
+- `~/Library/LaunchAgents/com.orch.daemon.plist` - Has PATH config (for comparison)
 
 **Commands Run:**
 ```bash
-which bd  # /Users/dylanconlin/bin/bd
-ls -la ~/.bun/bin/bd  # symlink to /Users/dylanconlin/go/bin/bd
-cat ~/Library/LaunchAgents/com.orch.daemon.plist
+# Confirmed problem
+ps eww 85413 | grep PATH  # Shows minimal PATH
+curl -sk https://localhost:3348/api/beads  # Shows error
+
+# Verified fix
+make build
+launchctl stop/start com.orch-go.serve
+curl -sk https://localhost:3348/api/beads  # Shows valid data
 ```
+
+**Related Artifacts:**
+- **Decision:** This investigation recommends promoting to decision: "Use startup path resolution for executables in launchd services"
