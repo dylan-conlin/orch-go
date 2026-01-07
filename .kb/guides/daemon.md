@@ -1,43 +1,90 @@
-# Daemon
+# Daemon Guide
 
-**Purpose:** Single authoritative reference for how the orch daemon works for autonomous agent spawning. Read this before debugging daemon issues.
+**Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 31 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Jan 4, 2026
+**Last verified:** Jan 6, 2026
 
 ---
 
-## What the Daemon Does
+## Executive Summary
 
-The daemon automatically spawns agents for issues labeled `triage:ready`:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  orch daemon run                                                │
-│                                                                 │
-│  Loop:                                                          │
-│    1. Poll beads: bd list --labels triage:ready                │
-│    2. For each ready issue:                                     │
-│       - Infer skill from issue type                            │
-│       - Spawn agent: orch spawn {skill} --issue {id}           │
-│    3. Sleep (default 30s)                                       │
-│    4. Repeat                                                    │
-└─────────────────────────────────────────────────────────────────┘
-```
+The daemon is an autonomous agent spawner that:
+1. Polls beads for issues labeled `triage:ready`
+2. Infers skill from issue type
+3. Spawns agents within capacity limits
+4. Monitors for completion via Phase: Complete comments
+5. Supports cross-project operation (Jan 2026)
 
 **Key insight:** Daemon is for batch/overnight work. Orchestrator labels issues, daemon spawns them. Orchestrator stays available for triage and synthesis.
 
 ---
 
+## Architecture Overview
+
+### Core Package Structure (pkg/daemon/)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `daemon.go` | ~700 | Main daemon struct, poll loop, Next/Once methods |
+| `pool.go` | ~250 | WorkerPool for capacity management |
+| `completion.go` | ~310 | SSE-based completion tracking (legacy) |
+| `completion_processing.go` | ~325 | Beads-polling completion detection |
+| `reflect.go` | ~270 | kb reflect integration for synthesis surfacing |
+| `status.go` | ~130 | Status file management |
+| `hotspot.go` | ~100 | Hotspot detection interface |
+| `skill_inference.go` | ~120 | Issue type → skill mapping |
+| `rate_limiter.go` | ~110 | Spawn rate limiting |
+| `issue_adapter.go` | ~90 | Beads integration |
+| `issue_queue.go` | ~60 | Issue filtering logic |
+| `active_count.go` | ~160 | OpenCode session counting |
+| `spawn_tracker.go` | ~150 | Spawn tracking for dedup |
+
+### Poll Loop Flow
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  orch daemon run                                                         │
+│                                                                          │
+│  Startup:                                                                │
+│    - Load config from ~/.orch/config.yaml                                │
+│    - Initialize WorkerPool with MaxAgents                                │
+│    - Start completion polling (separate interval)                        │
+│                                                                          │
+│  Poll Loop (every 60s default):                                          │
+│    1. Reconcile with OpenCode (free stale slots)                        │
+│    2. If periodic reflect due → run kb reflect                          │
+│    3. Poll beads: bd ready --limit 0                                    │
+│    4. Filter for triage:ready label                                     │
+│    5. For each ready issue (within capacity):                           │
+│       - Check rejection reasons (type, status, deps)                     │
+│       - Infer skill from issue type                                      │
+│       - Acquire slot from WorkerPool                                     │
+│       - Spawn agent: orch work <id>                                      │
+│    6. Sleep for poll interval                                            │
+│    7. Repeat                                                             │
+│                                                                          │
+│  Completion Loop (every 60s):                                            │
+│    - Poll for Phase: Complete comments                                   │
+│    - Verify completion (check artifacts)                                 │
+│    - Close beads issues                                                  │
+│    - Release pool slots                                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Skill Inference
 
-Daemon infers skill from issue type (NOT from labels):
+Daemon infers skill from issue type (NOT labels):
 
-| Issue Type | Skill |
-|------------|-------|
-| `bug` | `systematic-debugging` |
-| `investigation` | `investigation` |
-| `feature` | `feature-impl` |
-| `task` | `feature-impl` |
+| Issue Type | Skill | Use Case |
+|------------|-------|----------|
+| `bug` | `systematic-debugging` | Fix broken behavior |
+| `investigation` | `investigation` | Understand how something works |
+| `feature` | `feature-impl` | Build new capability |
+| `task` | `feature-impl` | Generic implementation work |
+| `epic` | (not spawnable) | Container for child issues |
+| `chore` | (not spawnable) | Non-agent maintenance work |
 
 **To control skill selection:** Set the correct issue type when creating:
 ```bash
@@ -46,14 +93,17 @@ bd create "add dark mode" --type feature      # → feature-impl
 bd create "how does auth work" --type investigation  # → investigation
 ```
 
+**Common mistake:** Missing or null type causes spawn failure. Always specify `--type`.
+
 ---
 
-## Triage Labels
+## Triage Labels and Workflow
 
-| Label | Meaning |
-|-------|---------|
-| `triage:ready` | High confidence, daemon can auto-spawn |
-| `triage:review` | Needs orchestrator review before spawning |
+| Label | Meaning | Daemon Action |
+|-------|---------|---------------|
+| `triage:ready` | High confidence, daemon can spawn | Auto-spawn |
+| `triage:review` | Needs orchestrator review | Skip |
+| (no triage label) | Not triaged yet | Skip |
 
 **Workflow:**
 1. Create issue with correct type
@@ -61,135 +111,328 @@ bd create "how does auth work" --type investigation  # → investigation
 3. If unsure: Leave as `triage:review`, review later
 4. Daemon picks up `triage:ready` issues
 
----
-
-## Running the Daemon
-
-**Foreground (interactive):**
+**Batch labeling:**
 ```bash
-orch daemon run
-```
-
-**Preview (dry run):**
-```bash
-orch daemon preview    # Show what would spawn
-orch daemon run --dry-run  # Same as preview
-```
-
-**Background (launchd):**
-
-The daemon can run via launchd for persistent operation:
-- Plist: `~/Library/LaunchAgents/com.orch.daemon.plist`
-- Logs: `~/.orch/daemon.log`
-
-```bash
-# Check status
-launchctl list | grep orch
-
-# Restart
-launchctl kickstart -k gui/$(id -u)/com.orch.daemon
-
-# View logs
-tail -f ~/.orch/daemon.log
+# Release multiple issues to daemon
+bd label <id1> triage:ready
+bd label <id2> triage:ready
+bd label <id3> triage:ready
 ```
 
 ---
 
 ## Capacity Management
 
-Daemon respects agent capacity:
+### WorkerPool
+
+The daemon uses a semaphore-based worker pool:
+- Tracks active slots with beads IDs
+- Prevents over-spawning
+- Reconciles with actual OpenCode sessions
+
+**Key insight (from 2025-12-26 investigation):** Pool tracks spawns internally but must reconcile with OpenCode to avoid stale capacity. The daemon calls `ReconcileWithOpenCode()` at the start of each poll cycle.
+
+### Configuration
+
+```yaml
+# ~/.orch/config.yaml
+max_agents: 5  # Default concurrent agents
+```
+
+```bash
+# CLI override
+orch daemon run --max-agents 3
+```
+
+### Checking Capacity
 
 ```bash
 orch status  # Shows "Active: X/Y" where Y is max capacity
 ```
 
-**Behavior:**
-- If at capacity, daemon waits for agents to complete
-- Default max agents: 5 (configurable)
-- Check `~/.orch/config.yaml` for settings
+---
+
+## Running the Daemon
+
+### Foreground (Interactive)
+
+```bash
+orch daemon run
+orch daemon run --verbose  # Show debug output
+orch daemon run --poll-interval 30  # Override poll interval (seconds)
+```
+
+### Preview Mode
+
+```bash
+orch daemon preview    # Show what would spawn with rejection reasons
+orch daemon run --dry-run  # Same as preview
+```
+
+**Preview output (from 2026-01-04 fix):**
+```
+Rejected issues:
+  orch-go-78jw: status is in_progress (already being worked on)
+  orch-go-eysk: type 'epic' not spawnable (must be bug/feature/task/investigation)
+  orch-go-eysk.4: missing label 'triage:ready'
+
+Would spawn:
+  orch-go-abc1: bug → systematic-debugging
+```
+
+### Background (launchd)
+
+For persistent overnight operation:
+
+**Plist location:** `~/Library/LaunchAgents/com.orch.daemon.plist`
+
+**Configuration options:**
+```xml
+<key>ProgramArguments</key>
+<array>
+    <string>/Users/dylanconlin/bin/orch</string>
+    <string>daemon</string>
+    <string>run</string>
+    <string>--poll-interval</string>
+    <string>60</string>
+    <string>--max-agents</string>
+    <string>3</string>
+    <string>--label</string>
+    <string>triage:ready</string>
+    <string>--verbose</string>
+</array>
+<key>WorkingDirectory</key>
+<string>/Users/dylanconlin/Documents/personal/orch-go</string>
+<key>EnvironmentVariables</key>
+<dict>
+    <key>BEADS_NO_DAEMON</key>
+    <string>1</string>
+</dict>
+```
+
+**Control commands:**
+```bash
+# Check status
+launchctl list | grep orch
+
+# Restart (after make install)
+launchctl kickstart -k gui/$(id -u)/com.orch.daemon
+
+# View logs
+tail -f ~/.orch/daemon.log
+```
+
+**After rebuilding:**
+```bash
+make install-restart  # Builds, installs, restarts daemon
+# OR
+make install && launchctl kickstart -k gui/$(id -u)/com.orch.daemon
+```
 
 ---
 
-## Common Problems
+## Completion Detection
+
+### Why Beads Polling (Not SSE)
+
+**From 2025-12-25 investigation:** SSE-based idle detection has false positives:
+- Agents go idle during tool loading
+- Agents go idle during thinking/planning
+- Only `Phase: Complete` comment is reliable
+
+The daemon polls beads for `Phase: Complete` comments instead of relying on session state.
+
+### Completion Flow
+
+1. Daemon polls beads for open issues with `Phase: Complete` comment
+2. Finds workspace for issue (scans `.orch/workspace/`)
+3. Verifies completion (checks for SYNTHESIS.md if full tier)
+4. Closes beads issue with reason
+5. Releases pool slot
+6. Logs auto-completion event
+
+---
+
+## Dependency Handling
+
+### Parent-Child Dependencies
+
+**From 2026-01-06 investigation:** Parent-child dependencies have different semantics than "blocks":
+
+| Parent Status | Child Blocked? |
+|---------------|----------------|
+| `open` | Yes (epic not started) |
+| `in_progress` | No (epic active, children should run) |
+| `closed` | No |
+
+**Fix:** `GetBlockingDependencies()` now checks `dependency_type` and applies appropriate logic.
+
+### Blocked Issue Behavior
+
+The daemon skips issues with:
+- Status `blocked`
+- Status `in_progress` (already being worked)
+- Unresolved blocking dependencies
+
+---
+
+## Issue Fetching
+
+### bd ready vs bd list
+
+**From 2025-12-24 investigation:** The daemon must use `bd ready --limit 0` because:
+- `bd ready` returns both `open` and `in_progress` issues without blockers
+- `bd list --status open` misses `in_progress` issues
+- Default limit is 10, must pass `--limit 0` for all issues
+
+### Beads Integration
+
+The daemon tries RPC client first, falls back to CLI:
+1. Try `beads.Client.Ready()` (faster, more reliable)
+2. If fails, fall back to `bd ready --json --limit 0`
+
+---
+
+## Reflection Integration
+
+### Periodic kb reflect
+
+**From 2026-01-06 investigation:** The daemon can run `kb reflect` periodically to surface synthesis opportunities:
+
+```yaml
+# ~/.orch/config.yaml
+reflect:
+  enabled: true
+  interval_minutes: 60  # Run every hour
+  create_issues: true   # Auto-create beads issues for topics with 10+ investigations
+```
+
+**CLI flags:**
+```bash
+orch daemon run --reflect-interval 120 --reflect-issues
+```
+
+### On-Exit Reflection
+
+```bash
+orch daemon run --reflect  # Run kb reflect when daemon exits (default: true)
+```
+
+---
+
+## Cross-Project Daemon
+
+**From 2026-01-06 investigation:** A single daemon can poll all registered projects:
+
+### How It Works
+
+1. Daemon calls `kb projects list` to get registered projects
+2. Iterates over each project's beads issues
+3. Spawns with `--workdir` to target correct project
+4. Maintains single capacity pool across all projects
+
+### Enabling Cross-Project
+
+```bash
+orch daemon run --cross-project  # Poll all kb-registered projects
+```
+
+**Constraints:**
+- Projects must be registered with `kb projects add`
+- Issues in unregistered projects won't be seen
+- Capacity is shared across all projects
+
+---
+
+## Common Problems and Solutions
 
 ### "Daemon not spawning my issue"
 
 **Checklist:**
 1. Issue has `triage:ready` label? `bd show <id>`
-2. Issue type is set? (bug/feature/investigation/task)
-3. Daemon is running? `launchctl list | grep orch`
-4. At capacity? `orch status`
+2. Issue type is set? (not null/empty)
+3. Issue type is spawnable? (bug/feature/investigation/task)
+4. Daemon is running? `launchctl list | grep orch`
+5. At capacity? `orch status`
+6. Issue has blocking dependencies? `bd show <id> --deps`
 
-### "Daemon spawning wrong skill"
-
-**Cause:** Issue type doesn't match intended skill.
-
-**Fix:** Update issue type:
+**Use preview to diagnose:**
 ```bash
-bd update <id> --type bug  # For debugging work
+orch daemon preview  # Shows rejection reasons per-issue
 ```
 
-### "Daemon not picking up issues"
+### "Daemon sees only 10 issues"
+
+**Cause:** Missing `--limit 0` flag.
+
+**Fix:** Already fixed in daemon code (Jan 2026). If on old binary:
+```bash
+make install-restart
+```
+
+### "Daemon capacity stuck at max"
+
+**Cause:** Pool not reconciling with actual OpenCode sessions.
+
+**Fix (from 2025-12-26):** 
+- Daemon now calls `ReconcileWithOpenCode()` each poll cycle
+- If still stuck: `launchctl kickstart -k gui/$(id -u)/com.orch.daemon`
+
+### "Child issues blocked when parent is in_progress"
+
+**Cause:** Old code treated all dependency types the same.
+
+**Fix (from 2026-01-06):** Parent-child dependencies now only block when parent is `open`, not `in_progress`.
+
+### "Daemon not picking up newly labeled issues"
 
 **Possible causes:**
+1. **Wrong directory** - Daemon runs from fixed WorkingDirectory in plist
+2. **Beads daemon not running** - RPC client fails silently
+3. **Label added after daemon cache** - Wait for next poll cycle
 
-1. **Wrong directory** - Daemon runs in one repo, issues in another
-   - Check daemon's working directory in plist
+### "Multiple daemons spawning"
 
-2. **Beads daemon not running** - `bd` commands fail
-   - Check: `orch doctor`
+**Cause (from 2025-12-24):** Race condition between startlock release and flock acquisition.
 
-3. **No `triage:ready` label** - Only labeled issues spawn
-   - Fix: `bd label <id> triage:ready`
-
-### "Too many agents spawning"
-
-**Cause:** Capacity limit too high or not set.
-
-**Fix:** Configure in `~/.orch/config.yaml`:
-```yaml
-max_agents: 3
+**Fix:** Use single launchd-managed daemon. If manual spawns needed:
+```bash
+orch daemon run --once  # Process single issue and exit
 ```
 
 ---
 
 ## Daemon vs Manual Spawn
 
-| Use | Approach |
-|-----|----------|
-| Batch of 3+ issues | Daemon (label `triage:ready`) |
-| Overnight processing | Daemon |
-| Single urgent item | Manual `orch spawn` |
-| Complex/ambiguous | Manual `orch spawn` |
-| Needs custom context | Manual `orch spawn` |
+| Scenario | Approach | Why |
+|----------|----------|-----|
+| Batch of 3+ issues | Daemon (label `triage:ready`) | Autonomous processing |
+| Overnight processing | Daemon | No human presence needed |
+| Single urgent item | Manual `orch spawn` | Immediate attention |
+| Complex/ambiguous | Manual `orch spawn` | Orchestrator judgment needed |
+| Needs custom context | Manual `orch spawn` | Daemon uses issue description only |
 
 **Daemon is preferred for batch work** because:
-- Orchestrator stays available for other work
+- Orchestrator stays available for triage and synthesis
 - Automatic capacity management
 - Overnight processing without human presence
+- Issues have full context vs ephemeral spawn prompts
 
 ---
 
-## Completion Detection
+## Key Decisions (Historical)
 
-Daemon uses **beads polling**, not SSE:
+From investigations, these design decisions were made:
 
-**Why not SSE (busy→idle)?**
-- Agents go idle during loading, thinking, tool execution
-- SSE idle triggers false positives
-- Only `Phase: Complete` in beads comments is reliable
-
-**Daemon checks:** Polls beads for Phase: Complete comments to know when agents finish.
-
----
-
-## Key Decisions (from kn)
-
-- **Daemon-first for batch work** - manual spawn for urgent/complex only
-- **Skill inference from issue type** - not from labels
-- **Beads polling over SSE** - false positive avoidance
-- **launchd for persistence** - auto-restart, background operation
-- **RPC-first for beads** - with CLI fallback
+| Decision | Reason | Date |
+|----------|--------|------|
+| Skill from issue type, not labels | Type is required; labels can be added/removed | Dec 2025 |
+| Beads polling over SSE | SSE idle has false positives | Dec 2025 |
+| WorkerPool with reconciliation | Prevents stale capacity | Dec 2025 |
+| RPC-first with CLI fallback | Performance + reliability | Dec 2025 |
+| --limit 0 for bd ready | Default 10 misses issues | Jan 2026 |
+| Parent-child unblocked when in_progress | Epics should start children | Jan 2026 |
+| Periodic kb reflect | Auto-surface synthesis opportunities | Jan 2026 |
 
 ---
 
@@ -198,10 +441,35 @@ Daemon uses **beads polling**, not SSE:
 Before spawning an investigation about daemon issues:
 
 1. **Check kb:** `kb context "daemon"`
-2. **Check this doc:** You're reading it
+2. **Read this guide:** You're reading it
 3. **Check daemon running:** `launchctl list | grep orch`
 4. **Check services:** `orch doctor`
-5. **Check issues:** `bd list --labels triage:ready`
+5. **Check preview:** `orch daemon preview`
 6. **Check capacity:** `orch status`
+7. **Check logs:** `tail -50 ~/.orch/daemon.log`
 
-If those don't answer your question, then investigate. But update this doc with what you learn.
+If those don't answer your question, then investigate. But update this guide with what you learn.
+
+---
+
+## Related Resources
+
+- **Orchestrator skill:** Reference for when to use daemon vs manual spawn
+- **pkg/daemon/ source:** Implementation details
+- **~/.orch/config.yaml:** User configuration
+- **launchd plist:** `~/Library/LaunchAgents/com.orch.daemon.plist`
+
+---
+
+## Synthesized From
+
+This guide consolidates learnings from 31 investigations:
+- 2025-12-20: Initial daemon command implementation
+- 2025-12-21: Hook integration for kb reflect
+- 2025-12-22: Concurrency control (WorkerPool)
+- 2025-12-24: Race condition analysis, bd ready vs bd list
+- 2025-12-25: Completion polling, beads RPC migration
+- 2025-12-26: Capacity reconciliation, launchd documentation
+- 2026-01-03: Skip functionality verification
+- 2026-01-04: Structure analysis, rejection reason visibility
+- 2026-01-06: Parent-child deps, periodic reflect, cross-project design
