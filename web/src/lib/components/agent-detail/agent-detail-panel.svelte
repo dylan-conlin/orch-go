@@ -1,11 +1,59 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { TabButton } from '$lib/components/agent-detail';
 	import { selectedAgent, selectedAgentId, sseEvents, createIssue } from '$lib/stores/agents';
 	import type { Agent, SSEEvent } from '$lib/stores/agents';
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { browser } from '$app/environment';
+	
+	// Tab types based on agent state
+	type TabType = 'activity' | 'investigation' | 'synthesis';
+	
+	// Active tab state - will be determined by agent status
+	let activeTab: TabType = $state('activity');
+	
+	// Determine which tabs are visible based on agent status
+	function getVisibleTabs(agent: Agent | null): TabType[] {
+		if (!agent) return [];
+		switch (agent.status) {
+			case 'active':
+				return ['activity'];
+			case 'completed':
+				return ['synthesis', 'investigation'];
+			case 'abandoned':
+				return ['investigation'];
+			default:
+				return ['activity'];
+		}
+	}
+	
+	// Get default tab for agent status
+	function getDefaultTab(agent: Agent | null): TabType {
+		if (!agent) return 'activity';
+		switch (agent.status) {
+			case 'active':
+				return 'activity';
+			case 'completed':
+				return 'synthesis';
+			case 'abandoned':
+				return 'investigation';
+			default:
+				return 'activity';
+		}
+	}
+	
+	// Visible tabs derived from agent
+	$effect(() => {
+		if ($selectedAgent) {
+			const visibleTabs = getVisibleTabs($selectedAgent);
+			// Reset to default tab if current tab isn't visible for this agent state
+			if (!visibleTabs.includes(activeTab)) {
+				activeTab = getDefaultTab($selectedAgent);
+			}
+		}
+	});
 	
 	// Issue creation state
 	let creatingIssue = false;
@@ -163,17 +211,17 @@
 		}
 	}
 
-	// Filter SSE events for this agent's session
+	// Filter SSE events for this agent's session (derived state)
 	// Note: For message.part events, sessionID is nested at properties.part.sessionID
 	// For session.* events, sessionID is at properties.sessionID
-	$: agentEvents = $selectedAgent?.session_id 
+	let agentEvents = $derived($selectedAgent?.session_id 
 		? $sseEvents.filter(e => {
 			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
 			// sessionID is inside the part object for message.part events
 			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
 			return eventSessionId === $selectedAgent?.session_id;
 		}).slice(-50)  // Keep more events for the full activity log
-		: [];
+		: []);
 
 	onMount(() => {
 		if (browser) {
@@ -196,9 +244,9 @@
 		aria-label="Close panel"
 	></button>
 
-	<!-- Slide-out Panel - 2/3 width for better content visibility -->
+	<!-- Slide-out Panel - 80-85% width for better content visibility -->
 	<div 
-		class="fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l bg-card shadow-xl sm:w-[66vw] lg:w-[60vw] xl:w-[55vw]"
+		class="fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l bg-card shadow-xl sm:w-[85vw] lg:w-[80vw] max-w-[1200px]"
 		transition:fly={{ x: 500, duration: 200 }}
 		role="dialog"
 		aria-modal="true"
@@ -217,33 +265,54 @@
 			</Button>
 		</div>
 
-		<!-- Content - scrollable -->
-		<div class="flex-1 overflow-y-auto">
-			<!-- Status Bar -->
-			<div class="border-b p-4">
-				<div class="flex flex-wrap items-center gap-2">
-					<Badge variant={getStatusVariant($selectedAgent.status)}>
-						{$selectedAgent.status}
+		<!-- Status Bar -->
+		<div class="border-b p-4">
+			<div class="flex flex-wrap items-center gap-2">
+				<Badge variant={getStatusVariant($selectedAgent.status)}>
+					{$selectedAgent.status}
+				</Badge>
+				{#if $selectedAgent.phase}
+					<Badge variant="outline">
+						{$selectedAgent.phase}
 					</Badge>
-					{#if $selectedAgent.phase}
-						<Badge variant="outline">
-							{$selectedAgent.phase}
-						</Badge>
-					{/if}
-					{#if $selectedAgent.status === 'active' && $selectedAgent.is_processing}
-						<Badge variant="secondary" class="animate-pulse">
-							Processing
-						</Badge>
-					{/if}
-					<span class="ml-auto text-sm text-muted-foreground">
-						{$selectedAgent.runtime || formatDuration($selectedAgent.spawned_at)}
-					</span>
-				</div>
+				{/if}
+				{#if $selectedAgent.status === 'active' && $selectedAgent.is_processing}
+					<Badge variant="secondary" class="animate-pulse">
+						Processing
+					</Badge>
+				{/if}
+				<span class="ml-auto text-sm text-muted-foreground">
+					{$selectedAgent.runtime || formatDuration($selectedAgent.spawned_at)}
+				</span>
 			</div>
+		</div>
 
-		<!-- Live Activity Stream (for active agents) - Primary location for activity -->
-		{#if $selectedAgent.status === 'active'}
-			<div class="border-b p-4">
+		<!-- Tab Navigation -->
+		<div class="border-b px-4">
+			<div class="flex gap-1" role="tablist" aria-label="Agent detail tabs">
+				{#if getVisibleTabs($selectedAgent).includes('activity')}
+					<TabButton active={activeTab === 'activity'} onclick={() => activeTab = 'activity'}>
+						Activity
+					</TabButton>
+				{/if}
+				{#if getVisibleTabs($selectedAgent).includes('synthesis')}
+					<TabButton active={activeTab === 'synthesis'} onclick={() => activeTab = 'synthesis'}>
+						Synthesis
+					</TabButton>
+				{/if}
+				{#if getVisibleTabs($selectedAgent).includes('investigation')}
+					<TabButton active={activeTab === 'investigation'} onclick={() => activeTab = 'investigation'}>
+						Investigation
+					</TabButton>
+				{/if}
+			</div>
+		</div>
+
+		<!-- Tab Content - scrollable -->
+		<div class="flex-1 overflow-y-auto">
+		<!-- Activity Tab (for active agents) -->
+		{#if activeTab === 'activity'}
+			<div class="p-4">
 				<div class="mb-3 flex items-center justify-between">
 					<h3 class="text-sm font-medium text-muted-foreground">Live Activity</h3>
 					{#if $selectedAgent.is_processing}
