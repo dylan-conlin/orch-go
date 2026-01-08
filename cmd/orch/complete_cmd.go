@@ -245,6 +245,11 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Track verification state for event emission
+	var verificationPassed bool = true
+	var gatesFailed []string
+	var skillName string
+
 	// Verify completion status
 	// - For orchestrator sessions: check SESSION_HANDOFF.md exists
 	// - For regular agents: check Phase: Complete via beads comments
@@ -256,6 +261,20 @@ func runComplete(identifier, workdir string) error {
 			}
 
 			if !hasSessionHandoff(workspacePath) {
+				verificationPassed = false
+				gatesFailed = append(gatesFailed, verify.GateSessionHandoff)
+
+				// Emit verification.failed event
+				logger := events.NewLogger(events.DefaultLogPath())
+				if err := logger.LogVerificationFailed(events.VerificationFailedData{
+					Workspace:   agentName,
+					GatesFailed: gatesFailed,
+					Errors:      []string{"SESSION_HANDOFF.md not found"},
+					Skill:       "orchestrator",
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
+				}
+
 				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - SESSION_HANDOFF.md not found\n")
 				fmt.Fprintf(os.Stderr, "\nOrchestrator must run: orch session end\n")
 				fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
@@ -275,7 +294,25 @@ func runComplete(identifier, workdir string) error {
 				return fmt.Errorf("verification failed: %w", err)
 			}
 
+			// Track skill name for event
+			skillName = result.Skill
+
 			if !result.Passed {
+				verificationPassed = false
+				gatesFailed = result.GatesFailed
+
+				// Emit verification.failed event
+				logger := events.NewLogger(events.DefaultLogPath())
+				if err := logger.LogVerificationFailed(events.VerificationFailedData{
+					BeadsID:     beadsID,
+					Workspace:   agentName,
+					GatesFailed: gatesFailed,
+					Errors:      result.Errors,
+					Skill:       skillName,
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
+				}
+
 				fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n")
 				for _, e := range result.Errors {
 					fmt.Fprintf(os.Stderr, "  - %s\n", e)
@@ -301,6 +338,20 @@ func runComplete(identifier, workdir string) error {
 			fmt.Println("Skipping phase verification (untracked agent)")
 		}
 	} else {
+		// --force was used, run verification anyway to capture which gates would have failed
+		if !isOrchestratorSession && !isUntracked {
+			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "")
+			if err == nil {
+				skillName = result.Skill
+				if !result.Passed {
+					verificationPassed = false
+					gatesFailed = result.GatesFailed
+				}
+			}
+		} else if isOrchestratorSession && !hasSessionHandoff(workspacePath) {
+			verificationPassed = false
+			gatesFailed = append(gatesFailed, verify.GateSessionHandoff)
+		}
 		fmt.Println("Skipping phase verification (--force)")
 	}
 
@@ -599,26 +650,27 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
-	// Log the completion
+	// Log the completion with verification metadata
 	logger := events.NewLogger(events.DefaultLogPath())
-	eventData := map[string]interface{}{
-		"reason":       reason,
-		"forced":       completeForce,
-		"untracked":    isUntracked,
-		"orchestrator": isOrchestratorSession,
+	completedData := events.AgentCompletedData{
+		Reason:             reason,
+		Forced:             completeForce,
+		Untracked:          isUntracked,
+		Orchestrator:       isOrchestratorSession,
+		VerificationPassed: verificationPassed,
+		Skill:              skillName,
 	}
 	if beadsID != "" {
-		eventData["beads_id"] = beadsID
+		completedData.BeadsID = beadsID
 	}
-	if isOrchestratorSession {
-		eventData["workspace"] = agentName
+	if agentName != "" {
+		completedData.Workspace = agentName
 	}
-	event := events.Event{
-		Type:      "agent.completed",
-		Timestamp: time.Now().Unix(),
-		Data:      eventData,
+	// If completion was forced, record which gates were bypassed
+	if completeForce && len(gatesFailed) > 0 {
+		completedData.GatesBypassed = gatesFailed
 	}
-	if err := logger.Log(event); err != nil {
+	if err := logger.LogAgentCompleted(completedData); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 

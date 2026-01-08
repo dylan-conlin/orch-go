@@ -22,6 +22,10 @@ const (
 	EventTypeSessionStatus = "session.status"
 	// EventTypeAutoCompleted indicates a session was auto-completed by the daemon.
 	EventTypeAutoCompleted = "session.auto_completed"
+	// EventTypeAgentCompleted indicates an agent was completed via orch complete.
+	EventTypeAgentCompleted = "agent.completed"
+	// EventTypeVerificationFailed indicates verification failed before user decides to --force or fix.
+	EventTypeVerificationFailed = "verification.failed"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -149,5 +153,82 @@ func (l *Logger) LogAutoCompletedWithEscalation(beadsID, closeReason, escalation
 		SessionID: beadsID, // Using beads ID as session identifier
 		Timestamp: time.Now().Unix(),
 		Data:      data,
+	})
+}
+
+// VerificationFailedData contains the data for a verification.failed event.
+type VerificationFailedData struct {
+	BeadsID     string   `json:"beads_id,omitempty"`
+	Workspace   string   `json:"workspace,omitempty"`
+	GatesFailed []string `json:"gates_failed"` // Which gates failed (e.g., "test_evidence", "git_diff")
+	Errors      []string `json:"errors"`       // Human-readable error messages
+	Skill       string   `json:"skill,omitempty"`
+}
+
+// LogVerificationFailed logs a verification failure event.
+// This is emitted when verification fails before the user decides to --force or fix.
+func (l *Logger) LogVerificationFailed(data VerificationFailedData) error {
+	eventData := map[string]interface{}{
+		"gates_failed": data.GatesFailed,
+		"errors":       data.Errors,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeVerificationFailed,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// AgentCompletedData contains the data for an agent.completed event.
+type AgentCompletedData struct {
+	BeadsID            string   `json:"beads_id,omitempty"`
+	Workspace          string   `json:"workspace,omitempty"`
+	Reason             string   `json:"reason,omitempty"`
+	Forced             bool     `json:"forced"`
+	Untracked          bool     `json:"untracked"`
+	Orchestrator       bool     `json:"orchestrator"`
+	VerificationPassed bool     `json:"verification_passed"`      // Did verification pass on first try?
+	GatesBypassed      []string `json:"gates_bypassed,omitempty"` // Which gates were skipped (if forced)
+	Skill              string   `json:"skill,omitempty"`
+}
+
+// LogAgentCompleted logs an agent completion event with verification metadata.
+func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
+	eventData := map[string]interface{}{
+		"reason":              data.Reason,
+		"forced":              data.Forced,
+		"untracked":           data.Untracked,
+		"orchestrator":        data.Orchestrator,
+		"verification_passed": data.VerificationPassed,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if len(data.GatesBypassed) > 0 {
+		eventData["gates_bypassed"] = data.GatesBypassed
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeAgentCompleted,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
 	})
 }

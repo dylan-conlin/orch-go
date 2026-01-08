@@ -8,12 +8,29 @@ import (
 	"strings"
 )
 
+// Gate names for verification tracking.
+// These constants are used in events to identify which verification gates failed.
+const (
+	GatePhaseComplete  = "phase_complete"      // Phase: Complete not reported
+	GateSynthesis      = "synthesis"           // SYNTHESIS.md missing
+	GateSessionHandoff = "session_handoff"     // SESSION_HANDOFF.md missing (orchestrator)
+	GateConstraint     = "constraint"          // Constraint verification failed
+	GatePhaseGate      = "phase_gate"          // Required phase gate not passed
+	GateSkillOutput    = "skill_output"        // Required skill outputs missing
+	GateVisualVerify   = "visual_verification" // Visual verification required
+	GateTestEvidence   = "test_evidence"       // Test execution evidence required
+	GateGitDiff        = "git_diff"            // Git diff doesn't match claims
+	GateBuild          = "build"               // Project build failed
+)
+
 // VerificationResult represents the result of a completion verification.
 type VerificationResult struct {
-	Passed   bool     // Whether all checks passed
-	Errors   []string // Errors that prevent completion
-	Warnings []string // Warnings that don't block completion
-	Phase    PhaseStatus
+	Passed      bool     // Whether all checks passed
+	Errors      []string // Errors that prevent completion
+	Warnings    []string // Warnings that don't block completion
+	Phase       PhaseStatus
+	GatesFailed []string // Names of gates that failed (for event tracking)
+	Skill       string   // Skill name extracted from workspace
 }
 
 // Tier constants for orchestrator spawns.
@@ -137,6 +154,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 			if !constraintResult.Passed {
 				result.Passed = false
 				result.Errors = append(result.Errors, constraintResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateConstraint)
 			}
 			result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 		}
@@ -152,6 +170,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 		} else if !phaseGateResult.Passed {
 			result.Passed = false
 			result.Errors = append(result.Errors, phaseGateResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GatePhaseGate)
 		}
 	}
 
@@ -165,6 +184,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 		if !skillOutputResult.Passed {
 			result.Passed = false
 			result.Errors = append(result.Errors, skillOutputResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateSkillOutput)
 		}
 		result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
 	}
@@ -178,6 +198,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 			if !visualResult.Passed {
 				result.Passed = false
 				result.Errors = append(result.Errors, visualResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateVisualVerify)
 			}
 			result.Warnings = append(result.Warnings, visualResult.Warnings...)
 		}
@@ -192,6 +213,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 			if !testEvidenceResult.Passed {
 				result.Passed = false
 				result.Errors = append(result.Errors, testEvidenceResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateTestEvidence)
 			}
 			result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
 		}
@@ -206,6 +228,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 			if !gitDiffResult.Passed {
 				result.Passed = false
 				result.Errors = append(result.Errors, gitDiffResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateGitDiff)
 			}
 			result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
 		}
@@ -219,6 +242,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier s
 		if !buildResult.Passed {
 			result.Passed = false
 			result.Errors = append(result.Errors, buildResult.Errors...)
+			result.GatesFailed = append(result.GatesFailed, GateBuild)
 		}
 		result.Warnings = append(result.Warnings, buildResult.Warnings...)
 	}
@@ -246,6 +270,11 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		Passed: true,
 	}
 
+	// Extract skill name for tracking
+	if workspacePath != "" {
+		result.Skill, _ = ExtractSkillNameFromSpawnContext(workspacePath)
+	}
+
 	// Determine tier if not provided
 	if tier == "" && workspacePath != "" {
 		tier = ReadTierFromWorkspace(workspacePath)
@@ -267,6 +296,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		if err != nil {
 			result.Passed = false
 			result.Errors = append(result.Errors, fmt.Sprintf("failed to get phase status: %v", err))
+			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
 			return result, nil
 		}
 	}
@@ -278,6 +308,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
+		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
 		return result, nil
 	}
 
@@ -285,6 +316,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
+		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
 		return result, nil
 	}
 
@@ -297,6 +329,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 			result.Passed = false
 			result.Errors = append(result.Errors,
 				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 		}
 	}
 
@@ -313,9 +346,15 @@ func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, err
 		Passed: true,
 	}
 
+	// Extract skill name for tracking
+	if workspacePath != "" {
+		result.Skill, _ = ExtractSkillNameFromSpawnContext(workspacePath)
+	}
+
 	if workspacePath == "" {
 		result.Passed = false
 		result.Errors = append(result.Errors, "workspace path is required for orchestrator verification")
+		result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
 		return result, nil
 	}
 
@@ -327,6 +366,7 @@ func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, err
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("SESSION_HANDOFF.md is missing or empty in workspace: %s", workspacePath))
+		result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
 	}
 
 	// Verify session ended properly by checking for "Session Ended" marker in SESSION_HANDOFF.md
@@ -338,6 +378,7 @@ func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, err
 			result.Passed = false
 			result.Errors = append(result.Errors,
 				"SESSION_HANDOFF.md exists but session end not properly recorded")
+			result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
 		}
 	}
 
