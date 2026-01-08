@@ -383,6 +383,97 @@ function createSSEStore() {
 
 export const sseEvents = createSSEStore();
 
+// Per-session event history store for hybrid SSE + API architecture.
+// Stores historical events fetched from API separately from real-time SSE events.
+// This enables:
+// 1. Complete session history on-demand (survives page refresh)
+// 2. Per-agent history without global buffer dilution
+// 3. Seamless merge with real-time SSE events
+interface SessionHistory {
+	events: SSEEvent[];
+	loading: boolean;
+	loaded: boolean;
+	error: string | null;
+}
+
+function createSessionHistoryStore() {
+	const { subscribe, update } = writable<Map<string, SessionHistory>>(new Map());
+	
+	return {
+		subscribe,
+		// Fetch historical events for a session from the orch-go API
+		async fetchHistory(sessionId: string): Promise<SSEEvent[]> {
+			// Check if already loaded or loading
+			let currentState: Map<string, SessionHistory> = new Map();
+			update(state => {
+				currentState = state;
+				return state;
+			});
+			
+			const existing = currentState.get(sessionId);
+			if (existing?.loaded || existing?.loading) {
+				return existing.events;
+			}
+			
+			// Mark as loading
+			update(state => {
+				const newState = new Map(state);
+				newState.set(sessionId, { events: [], loading: true, loaded: false, error: null });
+				return newState;
+			});
+			
+			try {
+				const response = await fetch(`${API_BASE}/api/session/${sessionId}/messages`);
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+				}
+				const events: SSEEvent[] = await response.json();
+				
+				// Store the fetched events
+				update(state => {
+					const newState = new Map(state);
+					newState.set(sessionId, { events, loading: false, loaded: true, error: null });
+					return newState;
+				});
+				
+				return events;
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+				update(state => {
+					const newState = new Map(state);
+					newState.set(sessionId, { events: [], loading: false, loaded: false, error: errorMsg });
+					return newState;
+				});
+				console.error('Failed to fetch session history:', error);
+				return [];
+			}
+		},
+		// Get current state for a session
+		getState(sessionId: string): SessionHistory | undefined {
+			let state: SessionHistory | undefined;
+			update(current => {
+				state = current.get(sessionId);
+				return current;
+			});
+			return state;
+		},
+		// Clear history for a session (useful when session is deleted)
+		clearSession(sessionId: string): void {
+			update(state => {
+				const newState = new Map(state);
+				newState.delete(sessionId);
+				return newState;
+			});
+		},
+		// Clear all history
+		clear(): void {
+			update(() => new Map());
+		}
+	};
+}
+
+export const sessionHistory = createSessionHistoryStore();
+
 // Connection status
 export const connectionStatus = writable<'connected' | 'disconnected' | 'connecting'>('disconnected');
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import type { Agent, SSEEvent } from '$lib/stores/agents';
-	import { sseEvents } from '$lib/stores/agents';
+	import { sseEvents, sessionHistory } from '$lib/stores/agents';
 	import { onMount, tick } from 'svelte';
 
 	// Props
@@ -22,6 +22,14 @@
 	type MessageType = 'text' | 'tool' | 'reasoning' | 'step';
 	let enabledTypes = $state<Set<MessageType>>(new Set(['text', 'tool', 'reasoning', 'step']));
 
+	// Loading state for historical events
+	let historyLoading = $state(false);
+	let historyError = $state<string | null>(null);
+	let historicalEvents = $state<SSEEvent[]>([]);
+
+	// Track current session to detect agent changes
+	let currentSessionId = $state<string | null>(null);
+
 	// Load auto-scroll preference from localStorage on mount
 	onMount(() => {
 		const stored = localStorage.getItem('activityTab.autoScroll');
@@ -29,6 +37,42 @@
 			autoScroll = stored === 'true';
 		}
 	});
+
+	// Fetch historical events when session changes
+	$effect(() => {
+		const sessionId = agent?.session_id;
+		if (sessionId && sessionId !== currentSessionId) {
+			currentSessionId = sessionId;
+			fetchHistoricalEvents(sessionId);
+		}
+	});
+
+	async function fetchHistoricalEvents(sessionId: string) {
+		if (!sessionId) return;
+		
+		// Check cache first
+		const cached = sessionHistory.getState(sessionId);
+		if (cached?.loaded) {
+			historicalEvents = cached.events;
+			historyLoading = false;
+			historyError = null;
+			return;
+		}
+		
+		historyLoading = true;
+		historyError = null;
+		
+		try {
+			const events = await sessionHistory.fetchHistory(sessionId);
+			historicalEvents = events;
+			historyError = null;
+		} catch (error) {
+			historyError = error instanceof Error ? error.message : 'Failed to load history';
+			historicalEvents = [];
+		} finally {
+			historyLoading = false;
+		}
+	}
 
 	// Save auto-scroll preference when it changes
 	$effect(() => {
@@ -72,18 +116,56 @@
 		enabledTypes = newSet;
 	}
 
-	// Filter SSE events for this agent's session
-	let agentEvents = $derived(agent?.session_id 
-		? $sseEvents.filter(e => {
+	// Filter events by type and session
+	function filterEvents(events: SSEEvent[], sessionId: string | undefined): SSEEvent[] {
+		if (!sessionId) return [];
+		return events.filter(e => {
 			if (e.type !== 'message.part' && e.type !== 'message.part.updated') return false;
 			const eventSessionId = e.properties?.part?.sessionID || e.properties?.sessionID;
-			if (eventSessionId !== agent?.session_id) return false;
+			if (eventSessionId !== sessionId) return false;
 			const partType = e.properties?.part?.type;
 			const category = getFilterCategory(partType);
 			if (category && !enabledTypes.has(category)) return false;
 			return true;
-		}).slice(-EVENT_LIMIT)
-		: []);
+		});
+	}
+
+	// Filter SSE events for this agent's session (real-time events)
+	let sseFilteredEvents = $derived(filterEvents($sseEvents, agent?.session_id));
+
+	// Filter historical events
+	let historyFilteredEvents = $derived(filterEvents(historicalEvents, agent?.session_id));
+
+	// Merge historical and SSE events, deduplicating by ID
+	// Historical events come first, SSE events appended (real-time updates)
+	let mergedEvents = $derived(() => {
+		const seenIds = new Set<string>();
+		const merged: SSEEvent[] = [];
+		
+		// Add historical events first
+		for (const event of historyFilteredEvents) {
+			if (event.id && !seenIds.has(event.id)) {
+				seenIds.add(event.id);
+				merged.push(event);
+			}
+		}
+		
+		// Add SSE events (real-time), deduplicating against historical
+		for (const event of sseFilteredEvents) {
+			if (event.id && !seenIds.has(event.id)) {
+				seenIds.add(event.id);
+				merged.push(event);
+			}
+		}
+		
+		// Sort by timestamp if available, then limit
+		merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+		
+		return merged.slice(-EVENT_LIMIT);
+	});
+
+	// Use the merged events for display
+	let agentEvents = $derived(mergedEvents());
 
 	// Auto-scroll to bottom when new events arrive
 	$effect(() => {
@@ -113,6 +195,16 @@
 	<div class="p-3 border-b flex items-center justify-between gap-2 flex-wrap shrink-0">
 		<div class="flex items-center gap-2">
 			<span class="text-xs text-muted-foreground">{agentEvents.length} events</span>
+			{#if historyLoading}
+				<Badge variant="outline" class="text-xs">
+					Loading history...
+				</Badge>
+			{/if}
+			{#if historyError}
+				<Badge variant="destructive" class="text-xs">
+					{historyError}
+				</Badge>
+			{/if}
 			{#if agent.is_processing}
 				<Badge variant="secondary" class="animate-pulse text-xs">
 					Processing
@@ -166,18 +258,22 @@
 		onscroll={handleScroll}
 		class="flex-1 overflow-y-auto bg-black/20 p-2 font-mono text-xs"
 	>
-		{#each agentEvents as event (event.id)}
-			{@const part = event.properties?.part}
-			{#if part}
-				<div class="flex items-start gap-2 py-0.5 text-muted-foreground hover:text-foreground transition-colors">
-					<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
-					<span class="flex-1 break-words leading-relaxed">
-						{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
-					</span>
-				</div>
-			{/if}
+		{#if historyLoading && agentEvents.length === 0}
+			<p class="py-4 text-center text-muted-foreground/50">Loading activity history...</p>
 		{:else}
-			<p class="py-4 text-center text-muted-foreground/50">Waiting for activity...</p>
-		{/each}
+			{#each agentEvents as event (event.id)}
+				{@const part = event.properties?.part}
+				{#if part}
+					<div class="flex items-start gap-2 py-0.5 text-muted-foreground hover:text-foreground transition-colors">
+						<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
+						<span class="flex-1 break-words leading-relaxed">
+							{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
+						</span>
+					</div>
+				{/if}
+			{:else}
+				<p class="py-4 text-center text-muted-foreground/50">Waiting for activity...</p>
+			{/each}
+		{/if}
 	</div>
 </div>

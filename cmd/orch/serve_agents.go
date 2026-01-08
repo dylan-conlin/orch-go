@@ -1116,3 +1116,115 @@ func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 		"message": "Cache invalidated",
 	})
 }
+
+// MessagePartResponse is the JSON structure for message parts in the activity feed.
+// This mirrors the SSEEvent structure used by the frontend for real-time events,
+// enabling seamless merging of historical API data with live SSE data.
+type MessagePartResponse struct {
+	ID         string                `json:"id"`
+	Type       string                `json:"type"` // Always "message.part" to match SSE event type
+	Properties MessagePartProperties `json:"properties"`
+	Timestamp  int64                 `json:"timestamp,omitempty"`
+}
+
+// MessagePartProperties contains the part data in SSE-compatible format.
+type MessagePartProperties struct {
+	SessionID string      `json:"sessionID"`
+	MessageID string      `json:"messageID"`
+	Part      PartDetails `json:"part"`
+}
+
+// PartDetails contains the actual part content.
+type PartDetails struct {
+	ID        string     `json:"id"`
+	Type      string     `json:"type"` // "text", "tool", "reasoning", "step-start", "step-finish"
+	Text      string     `json:"text,omitempty"`
+	SessionID string     `json:"sessionID"`
+	Tool      string     `json:"tool,omitempty"`
+	State     *ToolState `json:"state,omitempty"`
+}
+
+// ToolState contains tool invocation state for tool parts.
+type ToolState struct {
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
+// handleSessionMessages proxies OpenCode's /session/:sessionID/message API.
+// This endpoint enables the dashboard to fetch historical session messages
+// for the activity feed, complementing real-time SSE updates.
+//
+// GET /api/session/:sessionID/messages
+// Response: Array of MessagePartResponse in SSE-compatible format
+func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract sessionID from URL path: /api/session/{sessionID}/messages
+	path := r.URL.Path
+	prefix := "/api/session/"
+	suffix := "/messages"
+
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		http.Error(w, "Invalid path format. Expected: /api/session/{sessionID}/messages", http.StatusBadRequest)
+		return
+	}
+
+	sessionID := path[len(prefix) : len(path)-len(suffix)]
+	if sessionID == "" {
+		http.Error(w, "Session ID is required", http.StatusBadRequest)
+		return
+	}
+
+	client := opencode.NewClient(serverURL)
+	messages, err := client.GetMessages(sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch messages: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Transform OpenCode messages to SSE-compatible format for the activity feed.
+	// This enables seamless merging with real-time SSE events in the frontend.
+	var parts []MessagePartResponse
+	for _, msg := range messages {
+		for _, part := range msg.Parts {
+			// Map OpenCode part types to activity feed types
+			partType := part.Type
+			switch part.Type {
+			case "tool-invocation":
+				partType = "tool"
+			}
+
+			// Only include types that the activity feed displays
+			if partType != "text" && partType != "tool" && partType != "reasoning" &&
+				partType != "step-start" && partType != "step-finish" {
+				continue
+			}
+
+			response := MessagePartResponse{
+				ID:   part.ID,
+				Type: "message.part", // Match SSE event type
+				Properties: MessagePartProperties{
+					SessionID: sessionID,
+					MessageID: msg.Info.ID,
+					Part: PartDetails{
+						ID:        part.ID,
+						Type:      partType,
+						Text:      part.Text,
+						SessionID: sessionID,
+					},
+				},
+				Timestamp: msg.Info.Time.Created,
+			}
+			parts = append(parts, response)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(parts); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode messages: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
