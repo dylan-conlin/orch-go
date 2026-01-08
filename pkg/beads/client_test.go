@@ -1335,11 +1335,12 @@ func TestGetBlockingDependencies(t *testing.T) {
 			wantCount: 2,
 		},
 		// Parent-child dependency tests
+		// Parent-child NEVER blocks - children are independently spawnable
+		// Epic closes when children complete, so children can't wait for parent (circular)
 		{
-			name:          "parent-child: open parent blocks child",
-			deps:          json.RawMessage(`[{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
-			wantCount:     1,
-			wantBlockerID: "epic-1",
+			name:      "parent-child: open parent does NOT block child",
+			deps:      json.RawMessage(`[{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
+			wantCount: 0, // Changed: parent-child never blocks
 		},
 		{
 			name:      "parent-child: in_progress parent does NOT block child",
@@ -1358,10 +1359,9 @@ func TestGetBlockingDependencies(t *testing.T) {
 			wantBlockerID: "dep-1",
 		},
 		{
-			name:          "mixed: blocks closed + parent-child open",
-			deps:          json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
-			wantCount:     1, // Only parent-child blocks (because open)
-			wantBlockerID: "epic-1",
+			name:      "mixed: blocks closed + parent-child open",
+			deps:      json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
+			wantCount: 0, // Changed: parent-child never blocks, blocks dep is closed
 		},
 	}
 

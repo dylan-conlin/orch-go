@@ -140,6 +140,8 @@ type Daemon struct {
 	listCompletedAgentsFunc func(CompletionConfig) ([]CompletedAgent, error)
 	// reflectFunc is used for testing - allows mocking kb reflect
 	reflectFunc func(createIssues bool) (*ReflectResult, error)
+	// listEpicChildrenFunc is used for testing - allows mocking ListEpicChildren
+	listEpicChildrenFunc func(epicID string) ([]Issue, error)
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -150,12 +152,13 @@ func New() *Daemon {
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
-		Config:          config,
-		SpawnedIssues:   NewSpawnedIssueTracker(),
-		listIssuesFunc:  ListReadyIssues,
-		spawnFunc:       SpawnWork,
-		activeCountFunc: DefaultActiveCount,
-		reflectFunc:     DefaultRunReflection,
+		Config:               config,
+		SpawnedIssues:        NewSpawnedIssueTracker(),
+		listIssuesFunc:       ListReadyIssues,
+		spawnFunc:            SpawnWork,
+		activeCountFunc:      DefaultActiveCount,
+		reflectFunc:          DefaultRunReflection,
+		listEpicChildrenFunc: ListEpicChildren,
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -337,8 +340,12 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 	}
 
 	// Expand each epic by fetching its children
+	listChildren := d.listEpicChildrenFunc
+	if listChildren == nil {
+		listChildren = ListEpicChildren
+	}
 	for _, epicID := range epicsToExpand {
-		children, err := ListEpicChildren(epicID)
+		children, err := listChildren(epicID)
 		if err != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Warning: could not list children of epic %s: %v\n", epicID, err)

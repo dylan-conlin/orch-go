@@ -2295,6 +2295,10 @@ func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
 				{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
 			}, nil
 		},
+		// Mock to return no children, isolating the test from real data
+		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+			return []Issue{}, nil
+		},
 	}
 
 	result, err := d.Preview()
