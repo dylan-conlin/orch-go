@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** 12 status investigations should be consolidated: prior synthesis (Jan 6) created `.kb/guides/status.md` covering 10 investigations; 2 new investigations (Jan 6-7) need to be integrated.
+**Delta:** 12 status investigations consolidated: guide updated with 2 new findings (session cleanup on complete, drift metrics). 10 investigations ready for archival.
 
-**Evidence:** Read all 12 investigations. Jan 6 synthesis produced comprehensive guide. Two new findings: (1) orch complete missing session deletion, (2) SESSION METRICS added to status. Neither is yet in guide.
+**Evidence:** Guide `.kb/guides/status.md` now includes sections 6-7 covering Jan 6-7 findings. Source Investigations table updated with 12 entries.
 
-**Knowledge:** Status guide is authoritative but 2 days stale. Incremental update is cheaper than re-synthesis. Archive candidates: older stale investigations superseded by guide.
+**Knowledge:** Incremental synthesis (update existing guide) is more efficient than full re-synthesis. Archive candidates confirmed: 10 investigations fully superseded.
 
-**Next:** Update `.kb/guides/status.md` with two new findings; archive 8 older investigations fully superseded by guide.
+**Next:** Archive 10 superseded investigations (A1-A10 proposals below). Orchestrator approval required.
 
 **Promote to Decision:** recommend-no (maintenance consolidation, not architectural)
 
@@ -23,7 +23,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Started:** 2026-01-08
 **Updated:** 2026-01-08
-**Owner:** Agent og-work-synthesize-status-investigations-08jan-ea49
+**Owner:** Agent og-work-synthesize-status-investigations-08jan-7353
 **Phase:** Complete
 **Next Step:** None (proposals ready for orchestrator review)
 **Status:** Complete
@@ -129,13 +129,13 @@ The 12 investigations do NOT require full re-synthesis. The existing `.kb/guides
 
 ## Proposed Actions
 
-### Update Actions
-| ID | Target | Change | Reason | Approved |
-|----|--------|--------|--------|----------|
-| U1 | `.kb/guides/status.md` | Add Section 6: "Session Cleanup on Complete" | Document that orch complete doesn't delete sessions, fix pattern | [ ] |
-| U2 | `.kb/guides/status.md` | Add Section 7: "Session Drift Metrics" | Document new SESSION METRICS section in status output | [ ] |
-| U3 | `.kb/guides/status.md` | Update "Last verified" date | Guide being updated | [ ] |
-| U4 | `.kb/guides/status.md` | Add two new investigations to Source Investigations table | Complete the reference | [ ] |
+### Update Actions (COMPLETED)
+| ID | Target | Change | Reason | Status |
+|----|--------|--------|--------|--------|
+| U1 | `.kb/guides/status.md` | Add Section 6: "Session Cleanup on Complete" | Document orch complete session cleanup gap | ✅ Done |
+| U2 | `.kb/guides/status.md` | Add Section 7: "Session Drift Metrics" | Document SESSION METRICS section | ✅ Done |
+| U3 | `.kb/guides/status.md` | Update "Last verified" date to 2026-01-08 | Guide updated | ✅ Done |
+| U4 | `.kb/guides/status.md` | Add two new investigations to Source Investigations table | Complete reference | ✅ Done |
 
 ### Archive Actions
 | ID | Target | Reason | Approved |
@@ -158,8 +158,8 @@ The 12 investigations do NOT require full re-synthesis. The existing `.kb/guides
 | K2 | `2026-01-06-inv-orch-status-shows-completed-agents.md` | New finding to integrate, then archive | [ ] |
 | K3 | `2026-01-07-inv-orch-status-surface-drift-metrics.md` | New finding to integrate, then archive | [ ] |
 
-**Summary:** 13 proposals (4 update, 10 archive, 3 keep)
-**High priority:** U1-U4 (guide updates before archiving)
+**Summary:** 17 proposals (4 update ✅ DONE, 10 archive PENDING, 3 keep)
+**High priority:** Archive actions A1-A10 (guide updates already complete)
 
 ---
 
@@ -217,9 +217,14 @@ ls -la .kb/investigations/ | grep status
 - Jan 6 synthesis already created comprehensive guide
 - Only 2 new investigations since synthesis
 
-**2026-01-08:** Investigation completed
+**2026-01-08:** Investigation completed (first pass)
 - Status: Complete
-- Key outcome: Incremental update to guide + archive 10 superseded investigations
+- Key outcome: Identified incremental update needed + archive 10 superseded investigations
+
+**2026-01-08:** Guide updates completed (second pass - this agent)
+- Updated `.kb/guides/status.md` with sections 6-7
+- Updated Source Investigations table
+- Archive proposals ready for orchestrator approval
 
 ---
 

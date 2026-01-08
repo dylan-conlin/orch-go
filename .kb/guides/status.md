@@ -2,9 +2,9 @@
 
 **Purpose:** Single authoritative reference for the `orch status` CLI command. Read this before debugging status issues, understanding agent detection, or interpreting output.
 
-**Last verified:** 2026-01-06
+**Last verified:** 2026-01-08
 
-**Synthesized from:** 10 investigations (Dec 20, 2025 - Jan 5, 2026) addressing stale sessions, performance, liveness detection, cross-project visibility, and output formatting.
+**Synthesized from:** 12 investigations (Dec 20, 2025 - Jan 7, 2026) addressing stale sessions, performance, liveness detection, cross-project visibility, session cleanup, and drift metrics.
 
 ---
 
@@ -136,6 +136,31 @@ Without coordinated cleanup, these can become out of sync.
 1. Use session.Directory (if valid, not "/")
 2. Look up workspace from current project's `.orch/workspace/`
 3. Derive from beads ID prefix (e.g., `orch-go-xxxx` → `~/Documents/personal/orch-go`)
+
+### 6. Session Cleanup on Complete (Jan 6)
+
+**Problem:** Completed agents appeared in `orch status --all` until 30-minute idle window expired.
+
+**Root cause:** `orch complete` closes beads issue and tmux window but does NOT delete the OpenCode session. Session persists and is matched to closed beads ID.
+
+**Evidence:** 136+ persisted OpenCode sessions found with orch-go beads IDs. `orch abandon` correctly deletes sessions (line 169), but `orch complete` did not.
+
+**Fix:** Add `client.DeleteSession(sessionID)` to `complete_cmd.go` after tmux window cleanup, following the pattern from `abandon_cmd.go:165-174`.
+
+**Key insight:** Agent state exists in 4 layers (OpenCode memory, OpenCode disk, registry, tmux). All layers must be cleaned on completion.
+
+### 7. Session Drift Metrics (Jan 7)
+
+**Problem:** Orchestrators needed visibility into session behavior for drift detection.
+
+**Root cause:** No way to see how long the current session had been running or how many spawns occurred.
+
+**Fix:** Added SESSION METRICS section to `orch status` output showing:
+- Time in session (duration since session start)
+- Last spawn time (time since most recent spawn)
+- Spawn count (number of agents spawned in current session)
+
+**Key insight:** Core drift signals (time, spawns) are derivable from existing `SpawnRecord` infrastructure. File reads tracking deferred - requires OpenCode plugin event infrastructure.
 
 ---
 
@@ -294,6 +319,8 @@ These are settled. Don't re-investigate:
 | 2025-12-23 | `inv-orch-status-takes-11-seconds.md` | Batch/parallel beads fetching |
 | 2025-12-24 | `inv-fix-status-filter-test-expects.md` | Test synchronization (already fixed) |
 | 2026-01-05 | `debug-fix-orch-status-showing-different.md` | Cross-project directory resolution |
+| 2026-01-06 | `inv-orch-status-shows-completed-agents.md` | Session cleanup in orch complete |
+| 2026-01-07 | `inv-orch-status-surface-drift-metrics.md` | Session drift metrics display |
 
 ---
 
