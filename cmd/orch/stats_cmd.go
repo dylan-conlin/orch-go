@@ -306,8 +306,13 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				report.Summary.UntrackedSpawns++
 			}
 
-			// Only count toward metrics if tracked OR if includeUntracked is set
-			if !isUntracked || includeUntracked {
+			// Coordination skills (orchestrator, meta-orchestrator) are always counted
+			// even when untracked, since they're interactive sessions not task work.
+			// The --include-untracked flag affects overall metrics, not coordination skill tracking.
+			isCoordinationSkill := coordinationSkills[skill]
+
+			// Only count toward overall metrics if tracked OR includeUntracked OR coordination skill
+			if !isUntracked || includeUntracked || isCoordinationSkill {
 				report.Summary.TotalSpawns++
 				if skill != "" {
 					if _, exists := skillCounts[skill]; !exists {
@@ -399,8 +404,17 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				report.Summary.UntrackedCompletions++
 			}
 
-			// Only count if tracked OR includeUntracked is set
-			shouldCount := !isUntracked || includeUntracked
+			// Check if this is a coordination skill (via correlated session)
+			var isCoordinationSkill bool
+			if sessionID != "" {
+				if skill, ok := spawnSkills[sessionID]; ok {
+					isCoordinationSkill = coordinationSkills[skill]
+				}
+			}
+
+			// Only count if tracked OR includeUntracked OR coordination skill
+			// Coordination skills are always counted for visibility, even when untracked
+			shouldCount := !isUntracked || includeUntracked || isCoordinationSkill
 			if shouldCount {
 				report.Summary.TotalCompletions++
 				// Calculate duration by matching session
