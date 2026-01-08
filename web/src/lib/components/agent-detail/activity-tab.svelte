@@ -92,6 +92,85 @@
 		}
 	}
 
+	// Format tool name with capitalized first letter (e.g., "bash" -> "Bash")
+	function formatToolName(tool: string): string {
+		if (!tool) return 'Tool';
+		return tool.charAt(0).toUpperCase() + tool.slice(1);
+	}
+
+	// Extract the most relevant argument from tool input for display
+	// Returns a short string suitable for inline display
+	function extractToolArg(input: unknown): string {
+		if (!input || typeof input !== 'object') return '';
+		const inp = input as Record<string, unknown>;
+		
+		// Bash: show command
+		if (inp.command && typeof inp.command === 'string') {
+			return inp.command;
+		}
+		// Read/Write/Edit: show file path
+		if (inp.filePath && typeof inp.filePath === 'string') {
+			return inp.filePath;
+		}
+		// Glob: show pattern
+		if (inp.pattern && typeof inp.pattern === 'string') {
+			return inp.pattern;
+		}
+		// Grep: show pattern (search term)
+		if (inp.pattern && typeof inp.pattern === 'string') {
+			return inp.pattern;
+		}
+		// WebFetch: show URL
+		if (inp.url && typeof inp.url === 'string') {
+			return inp.url;
+		}
+		// Task: show description
+		if (inp.description && typeof inp.description === 'string') {
+			return inp.description;
+		}
+		// Generic: try common field names
+		const commonFields = ['name', 'path', 'query', 'text', 'content', 'selector'];
+		for (const field of commonFields) {
+			if (inp[field] && typeof inp[field] === 'string') {
+				return inp[field] as string;
+			}
+		}
+		return '';
+	}
+
+	// Truncate text with ellipsis, respecting max length
+	function truncate(text: string, maxLen: number): string {
+		if (!text || text.length <= maxLen) return text;
+		return text.slice(0, maxLen - 1) + '…';
+	}
+
+	// Part type extracted from SSEEvent for type safety
+	type Part = NonNullable<NonNullable<SSEEvent['properties']>['part']>;
+	
+	// Format a tool call for display: "ToolName(arg)" or "ToolName" if no args
+	// Full arg is available via title attribute for tooltip
+	function formatToolCall(part: Part | undefined): { display: string; full: string } {
+		if (!part) return { display: 'Tool', full: '' };
+		
+		const toolName = formatToolName(part.tool || 'tool');
+		const arg = extractToolArg(part.state?.input);
+		const title = part.state?.title;
+		
+		// If we have a title, use it as the full description
+		const fullDescription = title || arg || '';
+		
+		if (!arg) {
+			return { display: toolName, full: fullDescription };
+		}
+		
+		// Truncate arg for display (keep it readable at 666px width)
+		// Use shorter truncation - most screen space is limited
+		const truncatedArg = truncate(arg, 60);
+		const display = `${toolName}(${truncatedArg})`;
+		
+		return { display, full: arg };
+	}
+
 	// Map event type to filter category
 	function getFilterCategory(type?: string): MessageType | null {
 		switch (type) {
@@ -266,9 +345,19 @@
 				{#if part}
 					<div class="flex items-start gap-2 py-0.5 text-muted-foreground hover:text-foreground transition-colors">
 						<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
-						<span class="flex-1 break-words leading-relaxed">
-							{part.text || part.state?.title || (part.tool ? `Using ${part.tool}` : part.type)}
-						</span>
+						{#if part.type === 'tool' || part.type === 'tool-invocation'}
+							{@const toolDisplay = formatToolCall(part)}
+							<span 
+								class="flex-1 break-words leading-relaxed font-mono"
+								title={toolDisplay.full || undefined}
+							>
+								<span class="text-blue-400">{formatToolName(part.tool || 'tool')}</span>{#if toolDisplay.full}<span class="text-muted-foreground/70">({truncate(extractToolArg(part.state?.input), 60)})</span>{/if}
+							</span>
+						{:else}
+							<span class="flex-1 break-words leading-relaxed">
+								{part.text || part.state?.title || part.type}
+							</span>
+						{/if}
 					</div>
 				{/if}
 			{:else}
