@@ -3,6 +3,7 @@ package verify
 
 import (
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -12,13 +13,13 @@ import (
 
 // TestEvidenceResult represents the result of checking for test execution evidence.
 type TestEvidenceResult struct {
-	Passed           bool     // Whether verification passed
-	HasCodeChanges   bool     // Whether code files were changed (requires test evidence)
-	HasTestEvidence  bool     // Whether test execution evidence was found
-	Errors           []string // Error messages (blocking)
-	Warnings         []string // Warning messages (non-blocking)
-	Evidence         []string // Evidence found (for debugging)
-	SkillName        string   // Skill that was used
+	Passed          bool     // Whether verification passed
+	HasCodeChanges  bool     // Whether code files were changed (requires test evidence)
+	HasTestEvidence bool     // Whether test execution evidence was found
+	Errors          []string // Error messages (blocking)
+	Warnings        []string // Warning messages (non-blocking)
+	Evidence        []string // Evidence found (for debugging)
+	SkillName       string   // Skill that was used
 }
 
 // Skills that require test execution evidence before completion.
@@ -33,13 +34,13 @@ var skillsRequiringTestEvidence = map[string]bool{
 // Skills explicitly excluded from test evidence requirements.
 // These skills may modify code incidentally but don't require test evidence.
 var skillsExcludedFromTestEvidence = map[string]bool{
-	"investigation":   true, // Research skill, produces investigations
-	"architect":       true, // Design skill, produces decisions
-	"research":        true, // External research, no code changes
-	"design-session":  true, // Scoping skill, produces epics
-	"codebase-audit":  true, // Audit skill, produces reports
-	"issue-creation":  true, // Triage skill, creates issues
-	"writing-skills":  true, // Meta skill, modifies skills
+	"investigation":  true, // Research skill, produces investigations
+	"architect":      true, // Design skill, produces decisions
+	"research":       true, // External research, no code changes
+	"design-session": true, // Scoping skill, produces epics
+	"codebase-audit": true, // Audit skill, produces reports
+	"issue-creation": true, // Triage skill, creates issues
+	"writing-skills": true, // Meta skill, modifies skills
 }
 
 // IsSkillRequiringTestEvidence determines if a skill requires test execution evidence.
@@ -73,42 +74,42 @@ func IsSkillRequiringTestEvidence(skillName string) bool {
 // These patterns match actual test output, not just claims like "tests pass".
 var testEvidencePatterns = []*regexp.Regexp{
 	// Go test output patterns
-	regexp.MustCompile(`(?i)go\s+test\s+.*\s*[-–—]?\s*PASS`),            // "go test ./... - PASS"
-	regexp.MustCompile(`(?i)ok\s+\S+\s+\d+\.\d+s`),                      // "ok  package/name  0.123s"
-	regexp.MustCompile(`(?i)PASS:\s*\d+`),                               // "PASS: 15" (test count)
-	regexp.MustCompile(`(?i)---\s*PASS:\s*\w+`),                         // "--- PASS: TestName"
-	regexp.MustCompile(`(?i)FAIL:\s*\d+`),                               // "FAIL: 2" (captures failures too)
-	regexp.MustCompile(`(?i)\(\d+\s+tests?\s+in\s+\d+\.\d+s\)`),         // "(12 tests in 0.8s)"
-	regexp.MustCompile(`(?i)\d+\s+tests?\s+passed`),                     // "15 tests passed" (requires count)
-	regexp.MustCompile(`(?i)all\s+\d+\s+tests?\s+pass`),                 // "all 15 tests pass" (requires count)
+	regexp.MustCompile(`(?i)go\s+test\s+.*\s*[-–—]?\s*PASS`),    // "go test ./... - PASS"
+	regexp.MustCompile(`(?i)ok\s+\S+\s+\d+\.\d+s`),              // "ok  package/name  0.123s"
+	regexp.MustCompile(`(?i)PASS:\s*\d+`),                       // "PASS: 15" (test count)
+	regexp.MustCompile(`(?i)---\s*PASS:\s*\w+`),                 // "--- PASS: TestName"
+	regexp.MustCompile(`(?i)FAIL:\s*\d+`),                       // "FAIL: 2" (captures failures too)
+	regexp.MustCompile(`(?i)\(\d+\s+tests?\s+in\s+\d+\.\d+s\)`), // "(12 tests in 0.8s)"
+	regexp.MustCompile(`(?i)\d+\s+tests?\s+passed`),             // "15 tests passed" (requires count)
+	regexp.MustCompile(`(?i)all\s+\d+\s+tests?\s+pass`),         // "all 15 tests pass" (requires count)
 
 	// npm/yarn/bun test output patterns
-	regexp.MustCompile(`(?i)npm\s+test\s*[-–—]?\s*(passed|success)`),    // "npm test - passed"
-	regexp.MustCompile(`(?i)yarn\s+test\s*[-–—]?\s*(passed|success)`),   // "yarn test - passed"
-	regexp.MustCompile(`(?i)bun\s+test\s*[-–—]?\s*(passed|success)`),    // "bun test - passed"
-	regexp.MustCompile(`(?i)\d+\s+pass(ed|ing)?[,\s]+\d+\s+fail`),       // "15 passing, 0 failing"
-	regexp.MustCompile(`(?i)Tests:\s+\d+\s+passed`),                     // "Tests: 15 passed"
-	regexp.MustCompile(`(?i)Test\s+Suites?:\s+\d+\s+passed`),            // "Test Suites: 5 passed"
+	regexp.MustCompile(`(?i)npm\s+test\s*[-–—]?\s*(passed|success)`),  // "npm test - passed"
+	regexp.MustCompile(`(?i)yarn\s+test\s*[-–—]?\s*(passed|success)`), // "yarn test - passed"
+	regexp.MustCompile(`(?i)bun\s+test\s*[-–—]?\s*(passed|success)`),  // "bun test - passed"
+	regexp.MustCompile(`(?i)\d+\s+pass(ed|ing)?[,\s]+\d+\s+fail`),     // "15 passing, 0 failing"
+	regexp.MustCompile(`(?i)Tests:\s+\d+\s+passed`),                   // "Tests: 15 passed"
+	regexp.MustCompile(`(?i)Test\s+Suites?:\s+\d+\s+passed`),          // "Test Suites: 5 passed"
 
 	// pytest output patterns
-	regexp.MustCompile(`(?i)pytest\s*[-–—]?\s*\d+\s+passed`),            // "pytest - 15 passed"
-	regexp.MustCompile(`(?i)==+\s+\d+\s+passed`),                        // "======= 15 passed"
+	regexp.MustCompile(`(?i)pytest\s*[-–—]?\s*\d+\s+passed`),                       // "pytest - 15 passed"
+	regexp.MustCompile(`(?i)==+\s+\d+\s+passed`),                                   // "======= 15 passed"
 	regexp.MustCompile(`(?i)\d+\s+passed,?\s*\d*\s*(?:warnings?|errors?|failed)?`), // "15 passed, 0 failed"
 
 	// cargo test output patterns
-	regexp.MustCompile(`(?i)cargo\s+test\s*[-–—]?\s*(ok|passed)`),       // "cargo test - ok"
-	regexp.MustCompile(`(?i)test\s+result:\s+ok`),                       // "test result: ok"
-	regexp.MustCompile(`(?i)\d+\s+passed;\s+\d+\s+failed`),              // "15 passed; 0 failed"
+	regexp.MustCompile(`(?i)cargo\s+test\s*[-–—]?\s*(ok|passed)`), // "cargo test - ok"
+	regexp.MustCompile(`(?i)test\s+result:\s+ok`),                 // "test result: ok"
+	regexp.MustCompile(`(?i)\d+\s+passed;\s+\d+\s+failed`),        // "15 passed; 0 failed"
 
 	// Generic test execution evidence
 	regexp.MustCompile(`(?i)Tests?:\s*(?:go\s+test|npm\s+test|pytest|cargo\s+test|yarn\s+test|bun\s+test)`), // "Tests: go test ..."
-	regexp.MustCompile(`(?i)ran\s+\d+\s+tests?\s+in\s+\d+`),             // "ran 15 tests in 2.3s"
-	regexp.MustCompile(`(?i)test\s+suite\s+(?:passed|completed)`),       // "test suite passed"
-	regexp.MustCompile(`(?i)all\s+\d+\s+tests?\s+(?:passed|succeeded)`), // "all 15 tests passed"
-	
+	regexp.MustCompile(`(?i)ran\s+\d+\s+tests?\s+in\s+\d+`),                                                 // "ran 15 tests in 2.3s"
+	regexp.MustCompile(`(?i)test\s+suite\s+(?:passed|completed)`),                                           // "test suite passed"
+	regexp.MustCompile(`(?i)all\s+\d+\s+tests?\s+(?:passed|succeeded)`),                                     // "all 15 tests passed"
+
 	// Playwright/e2e test patterns
-	regexp.MustCompile(`(?i)playwright\s+test.*\d+\s+passed`),           // "playwright test - 5 passed"
-	regexp.MustCompile(`(?i)\d+\s+passed\s+\(\d+[smh]\)`),               // "5 passed (2s)"
+	regexp.MustCompile(`(?i)playwright\s+test.*\d+\s+passed`), // "playwright test - 5 passed"
+	regexp.MustCompile(`(?i)\d+\s+passed\s+\(\d+[smh]\)`),     // "5 passed (2s)"
 }
 
 // falsePositivePatterns defines patterns that indicate a claim without evidence.
@@ -116,18 +117,18 @@ var testEvidencePatterns = []*regexp.Regexp{
 // The key insight: vague claims lack quantifiable output (counts, timing, specific output).
 var falsePositivePatterns = []*regexp.Regexp{
 	// Simple vague claims without counts or details
-	regexp.MustCompile(`(?i)^tests?\s+pass(ed)?\s*$`),           // Just "tests pass" or "tests passed"
-	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed)?\s*$`),     // "all tests pass" without count
-	regexp.MustCompile(`(?i)verified\s+tests?\s+pass`),          // "verified tests pass" (claim)
-	regexp.MustCompile(`(?i)tests?\s+should\s+pass`),            // "tests should pass" (expectation)
-	regexp.MustCompile(`(?i)assuming\s+tests?\s+pass`),          // "assuming tests pass" (assumption)
-	regexp.MustCompile(`(?i)tests?\s+will\s+pass`),              // "tests will pass" (prediction)
-	regexp.MustCompile(`(?i)tests?\s+(?:are\s+)?passing`),       // "tests passing" or "tests are passing" (state claim)
-	regexp.MustCompile(`(?i)^the\s+tests?\s+pass(ed)?\s*$`),     // "the tests pass"
-	regexp.MustCompile(`(?i)confirmed?\s+tests?\s+pass`),        // "confirmed tests pass" (claim)
-	regexp.MustCompile(`(?i)tests?\s+(?:have\s+)?succeeded`),    // "tests succeeded" without details
+	regexp.MustCompile(`(?i)^tests?\s+pass(ed)?\s*$`),            // Just "tests pass" or "tests passed"
+	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed)?\s*$`),      // "all tests pass" without count
+	regexp.MustCompile(`(?i)verified\s+tests?\s+pass`),           // "verified tests pass" (claim)
+	regexp.MustCompile(`(?i)tests?\s+should\s+pass`),             // "tests should pass" (expectation)
+	regexp.MustCompile(`(?i)assuming\s+tests?\s+pass`),           // "assuming tests pass" (assumption)
+	regexp.MustCompile(`(?i)tests?\s+will\s+pass`),               // "tests will pass" (prediction)
+	regexp.MustCompile(`(?i)tests?\s+(?:are\s+)?passing`),        // "tests passing" or "tests are passing" (state claim)
+	regexp.MustCompile(`(?i)^the\s+tests?\s+pass(ed)?\s*$`),      // "the tests pass"
+	regexp.MustCompile(`(?i)confirmed?\s+tests?\s+pass`),         // "confirmed tests pass" (claim)
+	regexp.MustCompile(`(?i)tests?\s+(?:have\s+)?succeeded`),     // "tests succeeded" without details
 	regexp.MustCompile(`(?i)tests?\s+completed?\s+successfully`), // "tests completed successfully"
-	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed|ing)?\b`),   // "all tests pass" at start of string (without count)
+	regexp.MustCompile(`(?i)^all\s+tests?\s+pass(ed|ing)?\b`),    // "all tests pass" at start of string (without count)
 }
 
 // HasTestExecutionEvidence checks beads comments for evidence of test execution.
@@ -198,11 +199,22 @@ func HasCodeChangesInRecentCommits(projectDir string) bool {
 // HasCodeChangesSinceSpawn checks if any code files were modified
 // in commits since the given spawn time.
 //
-// This is more accurate than HasCodeChangesInRecentCommits because it only
-// considers commits made by THIS agent, not prior agents. This prevents
-// false positives where markdown-only changes trigger the test evidence gate
-// because earlier commits (from other agents) included code changes.
+// DEPRECATED: Use HasCodeChangesSinceSpawnForWorkspace for accurate per-agent change detection.
+// This function considers ALL commits since spawn time, including concurrent agents' commits.
 func HasCodeChangesSinceSpawn(projectDir string, spawnTime time.Time) bool {
+	return HasCodeChangesSinceSpawnForWorkspace(projectDir, spawnTime, "")
+}
+
+// HasCodeChangesSinceSpawnForWorkspace checks if any code files were modified
+// in commits since the given spawn time that are associated with the given workspace.
+//
+// This is more accurate than HasCodeChangesSinceSpawn because it only considers
+// commits that modified files in the workspace directory. This prevents false positives
+// where markdown-only changes trigger the test evidence gate because concurrent agents
+// (spawned around the same time) made commits with code changes.
+//
+// If workspacePath is empty, it falls back to checking all commits since spawn time.
+func HasCodeChangesSinceSpawnForWorkspace(projectDir string, spawnTime time.Time, workspacePath string) bool {
 	if spawnTime.IsZero() {
 		// Fall back to recent commits if spawn time is unavailable
 		return HasCodeChangesInRecentCommits(projectDir)
@@ -210,8 +222,13 @@ func HasCodeChangesSinceSpawn(projectDir string, spawnTime time.Time) bool {
 
 	// Use git log with --since to get commits since spawn time
 	sinceStr := spawnTime.Format(time.RFC3339)
-	
-	// Get changed files from commits since spawn time
+
+	// If workspacePath is provided, filter to commits that touch the workspace
+	if workspacePath != "" {
+		return hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath)
+	}
+
+	// Get changed files from ALL commits since spawn time
 	cmd := exec.Command("git", "log", "--name-only", "--since="+sinceStr, "--format=")
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
@@ -221,6 +238,50 @@ func HasCodeChangesSinceSpawn(projectDir string, spawnTime time.Time) bool {
 	}
 
 	return hasCodeChangesInFiles(string(output))
+}
+
+// hasCodeChangesInWorkspaceCommits checks for code changes in commits that modified
+// files within the given workspace directory. This filters out commits from concurrent
+// agents that happened to occur after the spawn time but weren't made by this agent.
+func hasCodeChangesInWorkspaceCommits(projectDir, sinceStr, workspacePath string) bool {
+	// Convert workspace path to relative path from project dir for git matching
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
+	// Get commit hashes since spawn time that touch the workspace
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+		// No commits touching workspace, or error - no code changes
+		return false
+	}
+
+	// Get the commit hashes
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	// For each commit that touched the workspace, get all changed files
+	var allChangedFiles []string
+	for _, hash := range commitHashes {
+		if hash == "" {
+			continue
+		}
+		cmd := exec.Command("git", "show", "--name-only", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		files := strings.Split(string(output), "\n")
+		allChangedFiles = append(allChangedFiles, files...)
+	}
+
+	return hasCodeChangesInFiles(strings.Join(allChangedFiles, "\n"))
 }
 
 // hasCodeChangesInFiles checks if any files in the output are code files.
@@ -295,11 +356,11 @@ func VerifyTestEvidenceWithComments(beadsID, workspacePath, projectDir string, c
 	}
 
 	// Check if code files were modified since this agent was spawned
-	// Using spawn time ensures we only look at THIS agent's commits,
-	// not prior agents. This prevents false positives where markdown-only
-	// changes trigger the gate because earlier commits had code changes.
+	// Using workspace-filtered commits ensures we only look at THIS agent's commits,
+	// not concurrent agents. This prevents false positives where markdown-only
+	// changes trigger the gate because concurrent agents' commits had code changes.
 	spawnTime := spawn.ReadSpawnTime(workspacePath)
-	result.HasCodeChanges = HasCodeChangesSinceSpawn(projectDir, spawnTime)
+	result.HasCodeChanges = HasCodeChangesSinceSpawnForWorkspace(projectDir, spawnTime, workspacePath)
 
 	// No code changes = no test evidence needed
 	if !result.HasCodeChanges {

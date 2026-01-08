@@ -313,8 +313,8 @@ func TestHasTestExecutionEvidence(t *testing.T) {
 		{
 			name: "mixed valid and invalid",
 			comments: []Comment{
-				{Text: "tests pass"},                        // Invalid (vague)
-				{Text: "go test ./... - PASS (5 tests)"},    // Valid
+				{Text: "tests pass"},                     // Invalid (vague)
+				{Text: "go test ./... - PASS (5 tests)"}, // Valid
 			},
 			want:    true,
 			wantLen: 1,
@@ -491,7 +491,7 @@ func TestHasCodeChangesSinceSpawn(t *testing.T) {
 	// Note: This test uses the actual git repo, so results depend on repo state.
 	// The key behavior we're testing is the fallback logic and that it handles
 	// zero time correctly.
-	
+
 	tests := []struct {
 		name      string
 		spawnTime time.Time
@@ -514,7 +514,7 @@ func TestHasCodeChangesSinceSpawn(t *testing.T) {
 			// Use current directory as project dir (this test file's repo)
 			projectDir := "."
 			result := HasCodeChangesSinceSpawn(projectDir, tt.spawnTime)
-			
+
 			// For future spawn time, we expect false (no commits since future)
 			if tt.spawnTime.After(time.Now()) && result {
 				t.Errorf("HasCodeChangesSinceSpawn with future time = true, want false")
@@ -580,4 +580,43 @@ func TestMarkdownOnlyChangesScenario(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHasCodeChangesSinceSpawnForWorkspace(t *testing.T) {
+	// This tests the workspace-filtered version that prevents concurrent agent
+	// commits from triggering false positives
+
+	t.Run("empty workspace path falls back to all commits", func(t *testing.T) {
+		// With empty workspace, should behave like original HasCodeChangesSinceSpawn
+		projectDir := "."
+		spawnTime := time.Now().Add(24 * time.Hour) // Future time = no commits
+
+		result := HasCodeChangesSinceSpawnForWorkspace(projectDir, spawnTime, "")
+		if result {
+			t.Error("Expected false for future spawn time with empty workspace")
+		}
+	})
+
+	t.Run("non-existent workspace returns false", func(t *testing.T) {
+		// If workspace doesn't exist in any commits, no code changes should be detected
+		projectDir := "."
+		spawnTime := time.Now().Add(-time.Hour) // Recent time
+		nonExistentWorkspace := "/nonexistent/workspace/path"
+
+		result := HasCodeChangesSinceSpawnForWorkspace(projectDir, spawnTime, nonExistentWorkspace)
+		if result {
+			t.Error("Expected false for non-existent workspace - no commits touch it")
+		}
+	})
+
+	t.Run("zero spawn time falls back to recent commits", func(t *testing.T) {
+		projectDir := "."
+		zeroTime := time.Time{}
+
+		// Should fall back to HasCodeChangesInRecentCommits, which may or may not
+		// find code changes depending on repo state
+		result := HasCodeChangesSinceSpawnForWorkspace(projectDir, zeroTime, "")
+		t.Logf("Zero spawn time fallback result: %v", result)
+		// Just verify it doesn't panic
+	})
 }
