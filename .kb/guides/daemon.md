@@ -1,8 +1,8 @@
 # Daemon Guide
 
-**Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 31 investigations conducted between Dec 2025 - Jan 2026.
+**Purpose:** Single authoritative reference for the orch daemon's autonomous agent spawning system. This guide synthesizes learnings from 33 investigations conducted between Dec 2025 - Jan 2026.
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Jan 7, 2026
 
 ---
 
@@ -132,6 +132,29 @@ The daemon uses a semaphore-based worker pool:
 
 **Key insight (from 2025-12-26 investigation):** Pool tracks spawns internally but must reconcile with OpenCode to avoid stale capacity. The daemon calls `ReconcileWithOpenCode()` at the start of each poll cycle.
 
+### SpawnedIssueTracker (Duplicate Prevention)
+
+**From 2026-01-06 investigation:** The daemon can spawn duplicate agents for the same issue due to a race condition:
+1. Daemon polls beads, finds issue with `triage:ready`
+2. Spawns agent via `orch work <id>`
+3. Status update to `in_progress` happens AFTER spawn initialization
+4. Before status updates, next poll sees issue still as "open" → spawns again
+
+**Fix:** `SpawnedIssueTracker` in `pkg/daemon/spawn_tracker.go` tracks issue IDs immediately before calling `spawnFunc`:
+- 5-minute TTL allows entries to expire naturally
+- `CleanStale()` called during `ReconcileWithOpenCode()`
+- On spawn failure, issue is unmarked to allow retry
+
+**Behavior:**
+```go
+// Before spawn
+daemon.SpawnedIssues.Mark(issueID)
+err := daemon.spawnFunc(issueID)
+if err != nil {
+    daemon.SpawnedIssues.Unmark(issueID)  // Allow retry
+}
+```
+
 ### Configuration
 
 ```yaml
@@ -242,14 +265,38 @@ make install && launchctl kickstart -k gui/$(id -u)/com.orch.daemon
 
 The daemon polls beads for `Phase: Complete` comments instead of relying on session state.
 
+### Auto-Completion Integration
+
+**From 2026-01-06 investigation:** The daemon calls `CompletionOnce()` during each poll cycle to auto-complete agents that report `Phase: Complete`.
+
+**Poll loop flow:**
+```
+1. ReconcileWithOpenCode (free stale slots)
+2. CompletionOnce (auto-complete finished agents)  ← NEW
+3. Run periodic reflection
+4. Write daemon status
+5. Check capacity
+6. Spawn new agents
+```
+
+**Escalation model:** Auto-completion respects the 5-tier escalation model:
+- `None`/`Info`/`Review` → Auto-complete (routine work)
+- `Block` → Requires human visual approval
+- `Failed` → Requires human review of verification errors
+
+**Status tracking:**
+- `LastCompletion` field in daemon status shows last auto-completion timestamp
+- Completion events logged as `daemon.complete` for monitoring
+
 ### Completion Flow
 
-1. Daemon polls beads for open issues with `Phase: Complete` comment
-2. Finds workspace for issue (scans `.orch/workspace/`)
-3. Verifies completion (checks for SYNTHESIS.md if full tier)
-4. Closes beads issue with reason
-5. Releases pool slot
-6. Logs auto-completion event
+1. Daemon calls `CompletionOnce()` each poll cycle
+2. `ListCompletedAgents()` finds issues with `Phase: Complete` comment
+3. `VerifyCompletionFull()` checks workspace artifacts
+4. `DetermineEscalationFromCompletion()` decides if auto-close is safe
+5. If `ShouldAutoComplete()` → closes beads issue with reason
+6. Releases pool slot
+7. Logs auto-completion event
 
 ---
 
@@ -265,7 +312,13 @@ The daemon polls beads for `Phase: Complete` comments instead of relying on sess
 | `in_progress` | No (epic active, children should run) |
 | `closed` | No |
 
-**Fix:** `GetBlockingDependencies()` now checks `dependency_type` and applies appropriate logic.
+**Root cause:** `GetBlockingDependencies()` in `pkg/beads/types.go` treated all dependency types the same, blocking when `status != "closed"`. For parent-child, children should only be blocked when parent is `open`, not when `in_progress`.
+
+**Fix:** Switch on `DependencyType` field:
+- `"parent-child"` → Only blocks when parent status is `"open"`
+- `"blocks"` (default) → Blocks when status is not `"closed"`
+
+**Example:** Epic `pw-u8th` has children. When epic moves to `in_progress`, children should become spawnable. Before fix, they were blocked until epic was `closed`.
 
 ### Blocked Issue Behavior
 
@@ -312,6 +365,29 @@ reflect:
 orch daemon run --reflect-interval 120 --reflect-issues
 ```
 
+### Two-Tier Reflection Automation
+
+**From 2026-01-06 investigation:** Not all kb reflect types should auto-create issues. Signal quality determines automation suitability:
+
+**High signal (auto-create issues):**
+
+| Type | Threshold | Triage Label | Reason |
+|------|-----------|--------------|--------|
+| `synthesis` | 10+ investigations | `triage:review` | Clear consolidation need |
+| `open` | Any item >3 days | `triage:review` | Explicit Next: actions (self-declared) |
+
+**Surface-only (no auto-issues):**
+
+| Type | Why No Auto-Create |
+|------|--------------------|
+| `promote` | Requires human judgment on kb vs principles |
+| `stale` | Weak signal - decisions may be valid but rarely cited |
+| `drift` | High false positive rate (~30-50%) from heuristic detection |
+| `skill-candidate` | Noisy clustering (72 entries for "spawn" alone) |
+| `refine` | Requires human evaluation of principle refinement |
+
+**Current implementation:** Only `synthesis` type auto-creates issues. `open` type issue creation not yet implemented in kb-cli.
+
 ### On-Exit Reflection
 
 ```bash
@@ -355,6 +431,7 @@ orch daemon run --cross-project  # Poll all kb-registered projects
 4. Daemon is running? `launchctl list | grep orch`
 5. At capacity? `orch status`
 6. Issue has blocking dependencies? `bd show <id> --deps`
+7. Issue already recently spawned? (SpawnedIssueTracker TTL)
 
 **Use preview to diagnose:**
 ```bash
@@ -363,12 +440,27 @@ orch daemon preview  # Shows rejection reasons per-issue
 
 ### "Daemon sees only 10 issues"
 
-**Cause:** Missing `--limit 0` flag.
+**Cause:** Missing `--limit 0` flag. `bd ready` defaults to limit 10.
+
+**From 2026-01-06 investigation:** Both RPC path and CLI fallback need `--limit 0`:
+- RPC: `client.Ready(&beads.ReadyArgs{Limit: 0})`
+- CLI: `bd ready --json --limit 0`
 
 **Fix:** Already fixed in daemon code (Jan 2026). If on old binary:
 ```bash
 make install-restart
 ```
+
+### "Daemon spawned duplicate agents for same issue"
+
+**Cause (from 2026-01-06):** Race condition between spawn initiation and beads status update. Daemon polls, spawns, but status isn't `in_progress` until after spawn initialization completes.
+
+**Fix:** `SpawnedIssueTracker` with 5-minute TTL tracks issues immediately before spawn. See "Capacity Management" section.
+
+**If still happening:**
+1. Check daemon binary is recent: `make install-restart`
+2. Verify SpawnedIssueTracker in logs: look for "already recently spawned"
+3. TTL may need adjustment if spawns take >5 minutes
 
 ### "Daemon capacity stuck at max"
 
@@ -399,6 +491,20 @@ make install-restart
 ```bash
 orch daemon run --once  # Process single issue and exit
 ```
+
+### "Beads daemon not running, slow API"
+
+**From 2026-01-07 investigation:** Dashboard API can be slow (6.5s) on first request if beads daemon not running.
+
+**Why NOT to auto-start:**
+- Beads daemons are per-project (one per `.beads/` directory)
+- 5+ bd daemons already run across projects
+- `BEADS_NO_DAEMON=1` in orch daemon plist is intentional
+
+**Actual fix:** TTL-based caching in `orch serve`:
+- 30s TTL for stats
+- 15s TTL for ready issues
+- First request may be slow, subsequent requests hit cache (~15ms)
 
 ---
 
@@ -433,6 +539,10 @@ From investigations, these design decisions were made:
 | --limit 0 for bd ready | Default 10 misses issues | Jan 2026 |
 | Parent-child unblocked when in_progress | Epics should start children | Jan 2026 |
 | Periodic kb reflect | Auto-surface synthesis opportunities | Jan 2026 |
+| SpawnedIssueTracker (5-min TTL) | Prevent duplicate spawns from race condition | Jan 2026 |
+| Auto-completion via CompletionOnce | Free capacity slots without orchestrator | Jan 2026 |
+| Two-tier reflection (synthesis+open) | Only high-signal types auto-create issues | Jan 2026 |
+| No beads daemon auto-start | Caching solves API latency; daemons are per-project | Jan 2026 |
 
 ---
 
@@ -463,7 +573,7 @@ If those don't answer your question, then investigate. But update this guide wit
 
 ## Synthesized From
 
-This guide consolidates learnings from 31 investigations:
+This guide consolidates learnings from 33 investigations:
 - 2025-12-20: Initial daemon command implementation
 - 2025-12-21: Hook integration for kb reflect
 - 2025-12-22: Concurrency control (WorkerPool)
@@ -472,4 +582,5 @@ This guide consolidates learnings from 31 investigations:
 - 2025-12-26: Capacity reconciliation, launchd documentation
 - 2026-01-03: Skip functionality verification
 - 2026-01-04: Structure analysis, rejection reason visibility
-- 2026-01-06: Parent-child deps, periodic reflect, cross-project design
+- 2026-01-06: Parent-child deps, periodic reflect, cross-project design, auto-completion integration, duplicate spawn prevention, --limit 0 fix, two-tier reflection
+- 2026-01-07: Beads daemon auto-start analysis, synthesis update
