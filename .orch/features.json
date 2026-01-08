@@ -484,13 +484,24 @@
       "created": "2026-01-07",
       "source": ".kb/investigations/2026-01-07-design-post-synthesis-investigation-archival.md",
       "notes": "Quick fix (~30 min). Part of feat-042 but can be done independently."
+    },
+    {
+      "id": "feat-044",
+      "title": "Implement stalled agent detection via phase-unchanged threshold",
+      "description": "Detect agents that are active (have heartbeat) but not making progress by tracking phase stagnation. Add PhaseReportedAt timestamp to beads phase status response. Calculate isStalled flag in serve_agents.go when agent is active AND same phase for 15+ minutes. Surface in dashboard Needs Attention component with orange indicator. Single configurable threshold (StalledThreshold constant). Advisory only - no auto-abandon. File targets: pkg/verify/beads_api.go (PhaseReportedAt), cmd/orch/serve_agents.go (isStalled calculation, StalledThreshold), web/src/lib/stores/agents.ts (stalledAgents), web/src/lib/components/needs-attention/needs-attention.svelte (stalled section). Out of scope: Multiple thresholds, auto-abandon, token usage tracking, file modification tracking. Acceptance: Agents with same phase for 15+ minutes show isStalled: true in API, dashboard Needs Attention shows stalled agents with orange indicator, no new agent states added.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-08",
+      "source": ".kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md",
+      "notes": "Design decision: ONE threshold (15 min), ONE signal (phase unchanged), advisory only. Lesson from Dec 27-Jan 2 spiral: complexity kills."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-07",
-    "total_features": 43,
+    "last_updated": "2026-01-08",
+    "total_features": 44,
     "by_status": {
-      "todo": 41,
+      "todo": 42,
       "in_progress": 0,
       "done": 2
     }
