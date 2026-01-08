@@ -1,6 +1,8 @@
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 Fill this at the END of your investigation, before marking Complete.
+
+**See guide:** `.kb/guides/completion.md` - Consolidated completion workflow reference
 -->
 
 ## Summary (D.E.K.N.)

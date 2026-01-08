@@ -1,5 +1,7 @@
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
+
+**See guide:** `.kb/guides/completion.md` - Consolidated completion workflow reference
 -->
 
 ## Summary (D.E.K.N.)
