@@ -58,3 +58,6 @@
 {"time":"2026-01-08T05:39:29-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-08T06:05:29-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-08T06:05:50-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-08T06:06:01-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-08T06:31:17-08:00","action":"bypass","reason":"adding activity fields to API response - safe read-only addition"}
+{"time":"2026-01-08T06:36:58-08:00","action":"bypass","reason":"Implementing stalled agent detection feature from design spec"}
