@@ -2,13 +2,13 @@
 
 **Purpose:** Single authoritative reference for the Swarm Dashboard web UI. Read this before debugging dashboard issues or implementing new features.
 
-**Last verified:** 2026-01-06
+**Last verified:** 2026-01-07
 
 ---
 
 ## Overview
 
-The Swarm Dashboard is a web-based monitoring UI for the orchestration system, served via `orch serve`. It provides real-time visibility into agent status, daemon health, and operational metrics. The dashboard evolved significantly from Dec 21, 2025 to Jan 6, 2026, addressing performance, UX, and architectural issues through 44+ investigations.
+The Swarm Dashboard is a web-based monitoring UI for the orchestration system, served via `orch serve`. It provides real-time visibility into agent status, daemon health, and operational metrics. The dashboard evolved significantly from Dec 21, 2025 to Jan 7, 2026, addressing performance, UX, and architectural issues through 58+ investigations.
 
 **Access:** http://localhost:5188 (default) or http://localhost:3348/api/... for API endpoints
 
@@ -109,6 +109,9 @@ The Swarm Dashboard is a web-based monitoring UI for the orchestration system, s
 | Stable Sort | Sort by spawned_at, not activity | Prevents grid jostling when multiple agents are processing |
 | beadsFetchThreshold | Only fetch beads data for sessions < 2 hours old | Prevents O(n) performance degradation with 600+ sessions |
 | session_id vs id | session_id = unique OpenCode session, id = workspace name | Use session_id as key to avoid duplicate key errors |
+| is_stale | Agents older than beadsFetchThreshold (displayed with 📦) | Shows old agents without expensive beads fetch |
+| project_dir | Target project from workspace cache, not session directory | Correct for --workdir spawns; session directory is orchestrator's cwd |
+| Early Filtering | Apply filters before expensive operations | "Filter Early, Process Late" prevents 20s cold cache |
 
 ---
 
@@ -166,6 +169,42 @@ Using any rune triggers "runes mode" which silently breaks `$:` reactive stateme
 
 **Fix:** The Priority Cascade Model was implemented. Ensure all agents with beadsID are added to `beadsIDsToFetch` regardless of session activity status.
 
+### "Dashboard API still slow despite filters" (Jan 7)
+
+**Cause:** Filters were applied at the END of the handler after all expensive operations
+
+**Fix:** Apply filters immediately after `client.ListSessions("")`, before workspace cache building and beads operations. The pattern is **Filter Early, Process Late**.
+
+**Reference:** 2026-01-07-inv-dashboard-api-agents-filters-applied-late.md
+
+### "Cross-project agents not showing with project filter" (Jan 7)
+
+**Cause:** Early project filter used `s.Directory` (session directory) which for `--workdir` spawns is the orchestrator's cwd, not the target project
+
+**Fix:** Remove early project filter. Use late filter with `agent.ProjectDir` from workspace cache, which correctly extracts PROJECT_DIR from SPAWN_CONTEXT.md.
+
+**Key insight:** Cross-project filtering must happen AFTER workspace cache lookup populates `project_dir`.
+
+**Reference:** 2026-01-07-inv-dashboard-agents-filter-session-directory.md
+
+### "Usage shows 0% when data unavailable" (Jan 7)
+
+**Cause:** Anthropic API returns null for inactive billing periods; Go's `float64` defaults to 0, losing the null distinction
+
+**Fix:** Use `*float64` pointers in Go struct (`UsageAPIResponse`), `number | null` in TypeScript, and display "N/A" when null.
+
+**Key insight:** Null preservation requires explicit handling at each layer: API → Go → JSON → TypeScript → UI.
+
+**Reference:** 2026-01-07-inv-dashboard-shows-usage-anthropic-api.md
+
+### "Old agents completely hidden" (Jan 7)
+
+**Cause:** Agents older than 2h `beadsFetchThreshold` were excluded via `continue`
+
+**Fix:** Added `is_stale` boolean field. Stale agents are included in response (skip beads fetch for performance) and displayed with 📦 indicator in Archive section.
+
+**Reference:** 2026-01-07-inv-fix-dashboard-show-older-agents.md
+
 ---
 
 ## Key Decisions (from kn)
@@ -222,6 +261,35 @@ If those don't answer your question, then investigate. But update this doc with 
 | Cache hit rate | >80% | Check TTL values in serve_agents_cache.go |
 | Active SSE connections | ≤2 | Agentlog should be opt-in only |
 
+### Performance Patterns (Lessons from 4+ Slowness Incidents)
+
+The dashboard has had recurring performance issues. They follow predictable patterns:
+
+| Date | Sessions | Root Cause | Fix |
+|------|----------|------------|-----|
+| Dec 22 | 209 | Svelte 5 runes broke reactivity | Remove runes |
+| Dec 27 | 564 | O(N) sequential RPC calls | Parallelization |
+| Jan 6 | 623 | Session accumulation, cache TTLs | 2h threshold |
+| Jan 7 | 226 | O(n²) investigation discovery + filter timing | Cache + early filter |
+
+**Key principles:**
+1. **Always profile before fixing** - Timing logs revealed actual bottlenecks
+2. **Check previous fixes** - Threshold regressions (24h → 2h) are common
+3. **O(n²) hides in function calls** - Investigation discovery looked innocent but scaled terribly
+4. **Thresholds need justification** - "2 hours" matches operational reality, "24 hours" was arbitrary
+
+### Filter Timing (Jan 7 Discovery)
+
+**The pattern:** "Process everything, filter late" defeats the purpose of filtering.
+
+**The fix:** Apply filters immediately after `client.ListSessions("")`, before:
+- Workspace cache building
+- Beads batch operations  
+- Investigation directory scanning
+- Token fetching
+
+This reduces workload proportionally to filter selectivity.
+
 ### Caching Architecture
 
 ```
@@ -232,8 +300,14 @@ If those don't answer your question, then investigate. But update this doc with 
 │ allIssuesCache       │ bd list --all     │ TTL: 60s        │
 │ commentsCache        │ bd comments <id>  │ TTL: 15s        │
 │ workspacesByBeadsID  │ Workspace lookup  │ Populated once  │
+│ investigationDirCache│ .kb/investigations│ Per-request     │
+│ beadsStatsCache      │ bd stats per proj │ Per-project     │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Investigation directory cache (Jan 7):** Build once before agent loop. Changes O(n×m) to O(n+m) for investigation discovery.
+
+**Per-project beads cache (Jan 7):** Keyed by project directory to support cross-project views and "Follow Orchestrator" mode.
 
 ---
 
@@ -253,10 +327,26 @@ If those don't answer your question, then investigate. But update this doc with 
 | Daemon | /api/daemon | Capacity + running status |
 | Servers | /api/servers | Running server count |
 
+### Activity Feed Persistence (Jan 7 Design)
+
+**Problem:** Activity events stored in global 1000-event buffer, diluted across agents, lost on refresh.
+
+**Solution (Designed, not yet implemented):** Hybrid SSE + API architecture
+
+| Source | Purpose | When Used |
+|--------|---------|-----------|
+| SSE | Real-time updates | Always connected |
+| OpenCode API | Historical data | On activity tab open |
+
+OpenCode persists all session data to `~/.local/share/opencode/storage/` and exposes it via `GET /session/:sessionID/message`. Dashboard should treat SSE as real-time updates and API as source of truth for history.
+
+**Reference:** 2026-01-07-design-dashboard-activity-feed-persistence.md
+
 ### Future Integrations (Deferred)
 
 - **KB/KN panels** - Not recommended; CLI tools serve this better
 - **Orchestrator sessions** - Partial implementation exists but paused
+- **Activity feed persistence** - Designed, awaiting implementation
 
 ---
 
@@ -268,8 +358,18 @@ If those don't answer your question, then investigate. But update this doc with 
 **Key investigations (by theme):**
 
 *Performance:*
+- `2026-01-07-inv-dashboard-api-agents-performance-synthesis.md` - O(n²) investigation discovery fix (51x improvement)
+- `2026-01-07-inv-dashboard-api-agents-filters-applied-late.md` - Filter timing fix
 - `2026-01-06-inv-dashboard-api-slow-again-623.md` - Session accumulation fix
 - `2026-01-05-inv-dashboard-connection-pool-exhaustion-sse.md` - HTTP/1.1 limits
+
+*Cross-Project Visibility:*
+- `2026-01-07-inv-dashboard-agents-filter-session-directory.md` - project_dir vs session directory
+- `2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - Per-project beads cache
+
+*Data Pipeline Integrity:*
+- `2026-01-07-inv-dashboard-shows-usage-anthropic-api.md` - Null handling with pointer types
+- `2026-01-07-inv-fix-dashboard-show-older-agents.md` - is_stale field for old agents
 
 *UX/Stability:*
 - `2025-12-26-inv-dashboard-agent-cards-rapidly-jostling.md` - Stable sort fix
@@ -277,6 +377,7 @@ If those don't answer your question, then investigate. But update this doc with 
 - `2025-12-24-inv-implement-progressive-disclosure-swarm-dashboard.md` - Collapsible sections
 
 *Architecture:*
+- `2026-01-07-design-dashboard-activity-feed-persistence.md` - Hybrid SSE + API architecture
 - `2025-12-27-inv-dashboard-two-modes-operational-default.md` - Two-mode design
 - `2026-01-04-design-dashboard-agent-status-model.md` - Priority cascade model
 - `2025-12-26-design-web-dashboard-daemon-visibility.md` - Daemon integration
@@ -302,3 +403,4 @@ If those don't answer your question, then investigate. But update this doc with 
 - **2026-01-04:** Agent status model redesign (priority cascade)
 - **2026-01-05:** Connection pool exhaustion fix
 - **2026-01-06:** Guide created synthesizing 44 investigations
+- **2026-01-07:** Major performance work - O(n²) investigation discovery fix (51x improvement), early filter application, cross-project visibility fixes, null/stale handling, activity feed persistence design. Guide updated with 14 new investigations (58 total)

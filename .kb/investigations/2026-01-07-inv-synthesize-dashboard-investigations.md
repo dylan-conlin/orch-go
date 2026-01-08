@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-t8f11
+---
 ## Summary (D.E.K.N.)
 
 **Delta:** Synthesized 14 new dashboard investigations (Jan 7) into the existing guide, updating with new patterns: cross-project filtering, null/stale handling, filter timing optimization, and activity feed persistence architecture.
@@ -6,7 +10,7 @@
 
 **Knowledge:** The dashboard performance issues continue to follow predictable patterns (O(n) scaling, filter timing, threshold regressions). The Jan 7 work introduced new concepts: `is_stale` for old agents, project-aware caching, and early filter application.
 
-**Next:** Update `.kb/guides/dashboard.md` with new patterns from Jan 7 investigations.
+**Next:** Close - guide updated with Jan 7 patterns. Consult guide before spawning new dashboard investigations.
 
 **Promote to Decision:** recommend-no (consolidation/documentation, not architectural)
 
@@ -19,9 +23,9 @@
 **Started:** 2026-01-07
 **Updated:** 2026-01-07
 **Owner:** og-inv-synthesize-dashboard-investigations-07jan-96a0
-**Phase:** Investigating
-**Next Step:** Update dashboard guide with new patterns
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 ---
 
@@ -205,6 +209,24 @@ kb create investigation synthesize-dashboard-investigations
 
 ---
 
+## Self-Review
+
+- [x] Real test performed (not code review) - Verified guide edits by reading changes
+- [x] Evidence concrete - Specific file counts (58 investigations), specific patterns identified
+- [x] Conclusion factual - Based on actual investigation file contents, not inference
+- [x] No speculation - Conclusions based on what was found in files
+- [x] Question answered - Investigation question fully addressed
+- [x] File complete - All sections filled
+- [x] D.E.K.N. filled - Summary section complete
+
+**Self-Review Status:** PASSED
+
+**Leave it Better:** Investigation is synthesis work - the externalized knowledge is the guide update itself.
+
+**Discovered Work:** No new bugs discovered. Some Jan 7 investigations are incomplete (template only) but those are separate issues.
+
+---
+
 ## Investigation History
 
 **2026-01-07 [start]:** Investigation started
@@ -214,3 +236,12 @@ kb create investigation synthesize-dashboard-investigations
 **2026-01-07 [checkpoint]:** Analysis complete
 - Identified 4 new theme areas from Jan 7 work
 - Ready to update dashboard guide
+
+**2026-01-07 [complete]:** Guide updated
+- Updated `.kb/guides/dashboard.md` with all new patterns
+- Added 5 new Common Problems entries
+- Added 3 new Key Concepts entries
+- Added Performance Patterns section with lessons from 4 slowness incidents
+- Added Activity Feed Persistence architecture to Integration Points
+- Updated References with new investigation categories
+- Status: Complete

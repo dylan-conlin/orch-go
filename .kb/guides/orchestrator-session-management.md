@@ -2,9 +2,9 @@
 
 **Purpose:** Single authoritative reference for orchestrator sessions, spawnable orchestrators, and the meta-orchestrator architecture. Read this before debugging orchestrator lifecycle issues.
 
-**Last verified:** 2026-01-06
+**Last verified:** 2026-01-07
 
-**Synthesized from:** 28 investigations on orchestrator topics (Dec 21, 2025 - Jan 6, 2026)
+**Synthesized from:** 40 investigations on orchestrator topics (Dec 21, 2025 - Jan 7, 2026)
 
 ---
 
@@ -91,7 +91,42 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 | session_id | OpenCode session ID |
 | spawn_time | When session started |
 | project_dir | Project the session is managing |
-| status | active/complete |
+| status | active/completed/abandoned |
+
+### Session Registry Status Updates (Jan 2026 fix)
+
+**What:** Registry status now updates on completion and abandonment.
+
+**Key insight:** `orch complete` updates status to "completed", `orch abandon` updates to "abandoned" - sessions are preserved for history, not removed.
+
+### Interactive vs Spawned Workspaces
+
+**What:** Two workspace models exist for orchestrators.
+
+| Type | Workspace Location | Artifact | Created By |
+|------|-------------------|----------|------------|
+| Spawned | `.orch/workspace/{name}/` | SESSION_HANDOFF.md | `orch spawn orchestrator` |
+| Interactive | `~/.orch/session/{date}/` | SESSION_CONTEXT.md | `orch session start` |
+
+**Key insight:** Interactive sessions have lighter workspace structure. Spawned orchestrators get full workspaces with pre-filled templates.
+
+---
+
+## Checkpoint Discipline (Jan 2026)
+
+**Purpose:** Prevent quality degradation from context exhaustion via session duration warnings.
+
+**Thresholds:**
+| Duration | Level | Action |
+|----------|-------|--------|
+| < 2h | ok | Continue |
+| 2-3h | warning | Consider checkpoint |
+| 3-4h | strong | Strongly recommend checkpoint |
+| > 4h | exceeded | Session should have checkpointed |
+
+**Usage:** `orch session status` shows checkpoint level with visual indicators and actionable guidance.
+
+**Why these thresholds:** Prior evidence showed 5h sessions with partial outcomes. Duration is a practical proxy for context usage (maps roughly to token consumption).
 
 ---
 
@@ -128,6 +163,14 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 
 **NOT the fix:** Adding more ABSOLUTE DELEGATION RULE warnings - the agent already knows, but framing is stronger.
 
+**Detection (Jan 2026):** Frame collapse requires EXTERNAL detection - orchestrators can't see their own frame collapse. Multi-layer approach:
+1. **Skill guidance** with explicit time check: "If editing code for >15 minutes, you've frame collapsed"
+2. **SESSION_HANDOFF.md** "Frame Collapse Check" section prompting reflection
+3. **OpenCode plugin** potential: Track Edit tool usage on code files vs orchestration artifacts
+4. **Meta-orchestrator review** of handoffs looking for "Manual fixes" sections
+
+**Key trigger:** Failure-to-implementation pattern - after agents fail, orchestrator tries to "just fix it" instead of trying different spawn strategy.
+
 ### "orch complete fails for orchestrator sessions with bd show errors"
 
 **Cause:** Complete command was checking workspace directory before registry, causing orchestrator workspace names to be treated as beads IDs.
@@ -146,6 +189,36 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 
 **Fix:** Moved ORCH_WORKER check from plugin init to config hook for per-session filtering.
 
+### "Tmux-spawned orchestrators don't capture .session_id"
+
+**Cause:** Tmux spawns used standalone OpenCode mode (embedded server), sessions not visible via shared API.
+
+**Fix:** Switch to attach mode with `--dir` flag. Sessions now registered with shared server at localhost:4096.
+
+**Note:** Additional issue discovered - `FindRecentSession` matches by title, not workspace. May need `--title` flag or directory+time matching.
+
+### "orch stats shows 0%/16.7% completion for orchestrators"
+
+**This is BY DESIGN, not a bug.** Orchestrators are classified as `CoordinationSkill`:
+```go
+var coordinationSkills = map[string]bool{
+    "orchestrator":      true,
+    "meta-orchestrator": true,
+}
+```
+
+**Key insight:** Orchestrators run until context exhaustion or session interruption, not until "Phase: Complete". The stats correlation also had a bug (used beads_id instead of workspace for matching), but even with fix, completion rate would be low by design.
+
+**Recommendation:** Separate coordination skills from task skills in stats display to avoid misleading metrics.
+
+### "Interactive sessions don't create workspaces"
+
+**Cause:** `orch session start` only writes to `~/.orch/session.json`, doesn't create workspace directories.
+
+**Fix:** Enhanced `orch session start` to create `~/.orch/session/{date}/` with SESSION_HANDOFF.md template.
+
+**Key insight:** Two parallel session models exist - "tracked spawns" (full workspaces) and "lightweight sessions" (minimal). The gap was interactive sessions losing context on exit.
+
 ---
 
 ## Key Decisions (from investigations)
@@ -159,6 +232,8 @@ These are settled. Don't re-investigate:
 - **Tmux default for orchestrator spawns** - Orchestrators need visibility for interactive work; workers default to headless.
 - **CLI for orchestrator/scripts, MCP for agent-internal use** - Orchestrators use CLI commands, not MCP tools.
 - **Signal ratio matters in skill documents** - 4:1 ask-vs-act ratio overwhelms specific "act silently" guidance. Rebalancing needed.
+- **Interactive orchestrators serve legitimate functions** (Jan 2026) - NOT compensation for daemon gaps. Serve: (1) goal refinement through conversation, (2) real-time frame correction, (3) synthesis of worker results. Daemon automates dispatch, orchestrators provide direction and synthesis.
+- **Checkpoint discipline via visibility** (Jan 2026) - 2h/3h/4h thresholds enforced via `orch session status` warnings, not hard blocks. Respects orchestrator judgment while surfacing risk.
 
 ---
 
@@ -240,6 +315,26 @@ Meta-orchestrator's core workflow:
 
 ---
 
+## Dashboard Context Following (Jan 2026)
+
+**What:** Dashboard beads display follows orchestrator's current project context.
+
+**How it works:**
+1. API endpoints accept `project_dir` query parameter: `/api/beads?project_dir=/path/to/project`
+2. Cache is per-project (keyed by directory) to support concurrent views
+3. Frontend passes project_dir from orchestrator context to beads fetch calls
+4. Reactive refetch on context change
+
+**Troubleshooting:**
+```
+Dashboard slow/stale → orch doctor --fix → starts missing servers
+Dashboard shows wrong project → check orchestrator context → tmux window may have stale pwd
+```
+
+**Quick reference:** `orch doctor --fix` resolves most dashboard issues by starting missing servers.
+
+---
+
 ## References
 
 - **Decision:** `.kb/decisions/2026-01-04-meta-orchestrator-frame-shift.md` - Frame shift concept
@@ -255,4 +350,5 @@ Meta-orchestrator's core workflow:
 
 ## History
 
+- **2026-01-07:** Updated with 12 additional investigations covering: checkpoint discipline, frame collapse detection, stats correlation, dashboard context-following, session registry status updates, interactive vs spawned workspace differences
 - **2026-01-06:** Created from synthesis of 28 orchestrator investigations
