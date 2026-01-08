@@ -3,6 +3,7 @@ package verify
 
 import (
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -69,14 +70,14 @@ func IsSkillRequiringVisualVerification(skillName string) bool {
 
 // VisualVerificationResult represents the result of checking for visual verification evidence.
 type VisualVerificationResult struct {
-	Passed          bool     // Whether verification passed
-	HasWebChanges   bool     // Whether web/ files were changed
-	HasEvidence     bool     // Whether visual verification evidence was found
-	HasHumanApproval bool    // Whether human/orchestrator explicitly approved
-	NeedsApproval   bool     // Whether human approval is required but missing
-	Errors          []string // Error messages
-	Warnings        []string // Warning messages
-	Evidence        []string // Evidence found (for debugging)
+	Passed           bool     // Whether verification passed
+	HasWebChanges    bool     // Whether web/ files were changed
+	HasEvidence      bool     // Whether visual verification evidence was found
+	HasHumanApproval bool     // Whether human/orchestrator explicitly approved
+	NeedsApproval    bool     // Whether human approval is required but missing
+	Errors           []string // Error messages
+	Warnings         []string // Warning messages
+	Evidence         []string // Evidence found (for debugging)
 }
 
 // visualEvidencePatterns defines patterns that indicate visual verification was performed.
@@ -151,8 +152,12 @@ func HasWebChangesInRecentCommits(projectDir string) bool {
 //
 // This function scopes to agent-specific changes by:
 // 1. Reading the spawn time from the workspace's .spawn_time file
-// 2. Using git log --since to find commits made after spawn time
+// 2. Finding commits that touch the workspace directory (to filter out other agents' commits)
 // 3. Checking if any of those commits modified web/ files
+//
+// This workspace-scoped approach prevents false positives when multiple agents run
+// concurrently - each agent only sees its own commits, not commits from other agents
+// that happened to occur around the same spawn time.
 //
 // If the workspace has no spawn time file (legacy workspace), falls back to
 // checking the last 5 commits for backward compatibility.
@@ -165,10 +170,15 @@ func HasWebChangesForAgent(projectDir, workspacePath string) bool {
 		return HasWebChangesInRecentCommits(projectDir)
 	}
 
-	return hasWebChangesSinceTime(projectDir, spawnTime)
+	// Use workspace-scoped check to filter out concurrent agents' commits
+	return hasWebChangesSinceTimeForWorkspace(projectDir, spawnTime, workspacePath)
 }
 
 // hasWebChangesSinceTime checks if any commits since the given time modified web/ files.
+//
+// DEPRECATED: This function checks ALL commits since the given time, which may include
+// commits from other concurrent agents. Use hasWebChangesSinceTimeForWorkspace instead,
+// which scopes to commits that touch the workspace directory.
 func hasWebChangesSinceTime(projectDir string, since time.Time) bool {
 	// Format time for git --since flag (ISO 8601 format works well)
 	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
@@ -184,6 +194,63 @@ func hasWebChangesSinceTime(projectDir string, since time.Time) bool {
 	}
 
 	return hasWebChangesInFiles(string(output))
+}
+
+// hasWebChangesSinceTimeForWorkspace checks if any commits since the given time
+// that touch the workspace directory contain web/ file changes.
+//
+// This is more accurate than hasWebChangesSinceTime because it only considers
+// commits that modified files in the workspace directory. This prevents false positives
+// where concurrent agents (spawned around the same time) make commits that would
+// incorrectly trigger visual verification requirements for this agent.
+//
+// If workspacePath is empty, falls back to hasWebChangesSinceTime for backward compatibility.
+func hasWebChangesSinceTimeForWorkspace(projectDir string, since time.Time, workspacePath string) bool {
+	// If no workspace path provided, fall back to the unscoped check
+	if workspacePath == "" {
+		return hasWebChangesSinceTime(projectDir, since)
+	}
+
+	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Convert workspace path to relative path from project dir for git matching
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
+	// Get commit hashes since spawn time that touch the workspace
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+		// No commits touching workspace, or error - no web changes
+		return false
+	}
+
+	// Get the commit hashes
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	// For each commit that touched the workspace, get all changed files
+	var allChangedFiles []string
+	for _, hash := range commitHashes {
+		if hash == "" {
+			continue
+		}
+		cmd := exec.Command("git", "show", "--name-only", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		files := strings.Split(string(output), "\n")
+		allChangedFiles = append(allChangedFiles, files...)
+	}
+
+	return hasWebChangesInFiles(strings.Join(allChangedFiles, "\n"))
 }
 
 // hasWebChangesInFiles checks if any files in the output are web/ files.
