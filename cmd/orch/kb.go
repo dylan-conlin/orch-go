@@ -147,9 +147,17 @@ type KBArtifact struct {
 func runKBAsk(question string) error {
 	startTime := time.Now()
 
-	// Step 1: Run kb context to get matching artifacts
+	// Step 1: Extract keywords from question for better kb context search
+	keywords := extractKeywords(question)
+	searchQuery := keywords
+	if searchQuery == "" {
+		// Fallback to original question if no keywords extracted
+		searchQuery = question
+	}
+
+	// Step 1: Run kb context with keywords (progressive fallback)
 	fmt.Printf("🔍 Searching knowledge base for: %s\n", question)
-	contextResult, err := runKBContext(question)
+	contextResult, err := runKBContextWithFallback(question, keywords)
 	if err != nil {
 		return fmt.Errorf("failed to get kb context: %w", err)
 	}
@@ -197,6 +205,108 @@ func runKBAsk(question string) error {
 	}
 
 	return nil
+}
+
+// stopwords are common words to filter out from questions for better keyword extraction.
+var stopwords = map[string]bool{
+	// Question words
+	"what": true, "how": true, "why": true, "when": true, "where": true, "which": true, "who": true,
+	// Common verbs
+	"is": true, "are": true, "was": true, "were": true, "be": true, "been": true, "being": true,
+	"do": true, "does": true, "did": true, "doing": true, "done": true,
+	"have": true, "has": true, "had": true, "having": true,
+	"can": true, "could": true, "should": true, "would": true, "will": true, "shall": true,
+	"may": true, "might": true, "must": true,
+	// Articles and prepositions
+	"a": true, "an": true, "the": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true, "with": true, "by": true,
+	"from": true, "about": true, "into": true, "through": true, "during": true, "before": true, "after": true,
+	// Pronouns
+	"i": true, "me": true, "my": true, "we": true, "our": true, "you": true, "your": true,
+	"it": true, "its": true, "they": true, "them": true, "their": true, "this": true, "that": true,
+	// Common adverbs
+	"not": true, "no": true, "yes": true, "also": true, "just": true, "only": true, "very": true,
+	// Conjunctions
+	"and": true, "or": true, "but": true, "if": true, "then": true, "because": true, "so": true,
+}
+
+// extractKeywords extracts domain-relevant keywords from a natural language question.
+// This improves kb context search which works better with keywords than full questions.
+func extractKeywords(question string) string {
+	// Lowercase and split
+	words := strings.Fields(strings.ToLower(question))
+
+	// Filter stopwords and short words
+	var keywords []string
+	for _, word := range words {
+		// Remove punctuation
+		word = strings.Trim(word, ".,?!'\"():;")
+		// Skip stopwords and very short words
+		if len(word) < 2 || stopwords[word] {
+			continue
+		}
+		keywords = append(keywords, word)
+	}
+
+	return strings.Join(keywords, " ")
+}
+
+// runKBContextWithFallback tries multiple query strategies to find relevant context.
+// It starts with extracted keywords, then falls back to individual terms if needed.
+func runKBContextWithFallback(question, keywords string) (*KBContextResult, error) {
+	// Strategy 1: Try keywords first (best for multi-word searches)
+	if keywords != "" {
+		result, err := runKBContext(keywords)
+		if err != nil {
+			return nil, err
+		}
+		if hasResults(result) {
+			return result, nil
+		}
+	}
+
+	// Strategy 2: Try individual keywords if combined search failed
+	if keywords != "" && strings.Contains(keywords, " ") {
+		words := strings.Fields(keywords)
+		// Try each keyword individually, longest first (more specific)
+		for i := range words {
+			for j := i + 1; j < len(words); j++ {
+				if len(words[i]) < len(words[j]) {
+					words[i], words[j] = words[j], words[i]
+				}
+			}
+		}
+		for _, word := range words {
+			if len(word) < 3 {
+				continue
+			}
+			result, err := runKBContext(word)
+			if err != nil {
+				continue
+			}
+			if hasResults(result) {
+				return result, nil
+			}
+		}
+	}
+
+	// Strategy 3: Fall back to original question (might work for exact matches)
+	result, err := runKBContext(question)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// hasResults checks if a KBContextResult has any meaningful content.
+func hasResults(result *KBContextResult) bool {
+	return len(result.Constraints) > 0 ||
+		len(result.Decisions) > 0 ||
+		len(result.Investigations) > 0 ||
+		len(result.Attempts) > 0 ||
+		len(result.Questions) > 0 ||
+		len(result.KBDecisions) > 0
 }
 
 // runKBContext executes kb context and returns parsed results.

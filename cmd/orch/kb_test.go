@@ -426,3 +426,126 @@ func TestResolveArtifactPath(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractKeywords(t *testing.T) {
+	tests := []struct {
+		name     string
+		question string
+		expected string
+	}{
+		{
+			name:     "simple question",
+			question: "what is kb ask for?",
+			expected: "kb ask",
+		},
+		{
+			name:     "how question",
+			question: "how should I handle spawning?",
+			expected: "handle spawning",
+		},
+		{
+			name:     "complex question with stopwords",
+			question: "what are the best practices for orchestrator sessions?",
+			expected: "best practices orchestrator sessions",
+		},
+		{
+			name:     "question with punctuation",
+			question: "How do we handle rate limiting?",
+			expected: "handle rate limiting",
+		},
+		{
+			name:     "single keyword",
+			question: "spawning",
+			expected: "spawning",
+		},
+		{
+			name:     "only stopwords",
+			question: "what is the",
+			expected: "",
+		},
+		{
+			name:     "mixed case",
+			question: "What Is The Purpose Of Beads?",
+			expected: "purpose beads",
+		},
+		{
+			name:     "with hyphens",
+			question: "how does kb-ask work?",
+			expected: "kb-ask work",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractKeywords(tt.question)
+			if result != tt.expected {
+				t.Errorf("extractKeywords(%q) = %q, want %q", tt.question, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHasResults(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   *KBContextResult
+		expected bool
+	}{
+		{
+			name:     "empty result",
+			result:   &KBContextResult{},
+			expected: false,
+		},
+		{
+			name: "has constraints",
+			result: &KBContextResult{
+				Constraints: []KNEntry{{Content: "test"}},
+			},
+			expected: true,
+		},
+		{
+			name: "has decisions",
+			result: &KBContextResult{
+				Decisions: []KNEntry{{Content: "test"}},
+			},
+			expected: true,
+		},
+		{
+			name: "has investigations",
+			result: &KBContextResult{
+				Investigations: []KBArtifact{{Title: "test"}},
+			},
+			expected: true,
+		},
+		{
+			name: "has attempts",
+			result: &KBContextResult{
+				Attempts: []KNEntry{{Content: "test"}},
+			},
+			expected: true,
+		},
+		{
+			name: "has questions",
+			result: &KBContextResult{
+				Questions: []KNEntry{{Content: "test"}},
+			},
+			expected: true,
+		},
+		{
+			name: "has kb_decisions",
+			result: &KBContextResult{
+				KBDecisions: []KBArtifact{{Title: "test"}},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasResults(tt.result)
+			if result != tt.expected {
+				t.Errorf("hasResults() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
