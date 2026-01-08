@@ -421,10 +421,49 @@ func TestNormalizeQuery(t *testing.T) {
 		input    string
 		expected string
 	}{
+		// Basic normalization (no pattern match)
 		{"Test Query", "test query"},
 		{"  multiple   spaces  ", "multiple spaces"},
 		{"UPPERCASE", "uppercase"},
 		{"normal", "normal"},
+
+		// Semantic pattern matching - synthesize
+		{"synthesize orchestrator investigations", "synthesize investigations"},
+		{"synthesize spawn investigations", "synthesize investigations"},
+		{"synthesize dashboard investigations", "synthesize investigations"},
+		{"Synthesize AGENT Investigations", "synthesize investigations"},
+		{"synthesize api endpoint findings", "synthesize findings"},
+
+		// Semantic pattern matching - audit
+		{"audit recurring patterns", "audit patterns"},
+		{"audit gap patterns", "audit patterns"},
+		{"audit context gaps", "audit gaps"},
+
+		// Semantic pattern matching - implementation
+		{"implement auth feature", "implement feature"},
+		{"implement dashboard ui feature", "implement feature"},
+		{"add login feature", "add feature"},
+		{"create user component", "create component"},
+
+		// Semantic pattern matching - debug/investigation
+		{"debug auth issue", "debug issue"},
+		{"investigate api behavior", "investigate behavior"},
+		{"analyze data flow", "analyze flow"},
+
+		// Semantic pattern matching - config
+		{"configure auth settings", "configure settings"},
+		{"update database config", "update config"},
+
+		// Pattern with 3 wildcard words (max)
+		{"synthesize a b c investigations", "synthesize investigations"},
+
+		// Too many wildcard words - falls back to basic normalization
+		{"synthesize a b c d investigations", "synthesize a b c d investigations"},
+
+		// Non-matching queries - basic normalization
+		{"random query text", "random query text"},
+		{"synthesize", "synthesize"},         // Missing suffix
+		{"investigations", "investigations"}, // Missing prefix
 	}
 
 	for _, tc := range tests {
@@ -432,6 +471,101 @@ func TestNormalizeQuery(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("normalizeQuery(%q) = %q, expected %q", tc.input, result, tc.expected)
 		}
+	}
+}
+
+func TestMatchPattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		pattern  queryPattern
+		expected string
+	}{
+		{
+			name:     "exact_prefix_suffix_1_word",
+			query:    "synthesize auth investigations",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "synthesize investigations",
+		},
+		{
+			name:     "exact_prefix_suffix_2_words",
+			query:    "synthesize auth api investigations",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "synthesize investigations",
+		},
+		{
+			name:     "exact_prefix_suffix_3_words",
+			query:    "synthesize auth api endpoint investigations",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "synthesize investigations",
+		},
+		{
+			name:     "too_many_wildcard_words",
+			query:    "synthesize a b c d investigations",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "",
+		},
+		{
+			name:     "prefix_mismatch",
+			query:    "analyze auth investigations",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "",
+		},
+		{
+			name:     "suffix_mismatch",
+			query:    "synthesize auth findings",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "",
+		},
+		{
+			name:     "too_short",
+			query:    "synthesize investigations",
+			pattern:  queryPattern{"synthesize * investigations", "synthesize investigations"},
+			expected: "",
+		},
+		{
+			name:     "pattern_no_wildcard_match",
+			query:    "exact match",
+			pattern:  queryPattern{"exact match", "exact"},
+			expected: "exact",
+		},
+		{
+			name:     "pattern_no_wildcard_no_match",
+			query:    "not exact match",
+			pattern:  queryPattern{"exact match", "exact"},
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := matchPattern(tc.query, tc.pattern)
+			if result != tc.expected {
+				t.Errorf("matchPattern(%q, %v) = %q, expected %q", tc.query, tc.pattern, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestSemanticPatternGrouping(t *testing.T) {
+	// Test that related queries get grouped together
+	queries := []string{
+		"synthesize orchestrator investigations",
+		"synthesize spawn investigations",
+		"synthesize dashboard investigations",
+		"synthesize api investigations",
+	}
+
+	canonical := normalizeQuery(queries[0])
+	for _, q := range queries[1:] {
+		if normalizeQuery(q) != canonical {
+			t.Errorf("Query %q should normalize to %q but got %q", q, canonical, normalizeQuery(q))
+		}
+	}
+
+	// Verify they would be grouped as one pattern
+	if canonical != "synthesize investigations" {
+		t.Errorf("Expected canonical form 'synthesize investigations', got %q", canonical)
 	}
 }
 

@@ -361,12 +361,112 @@ func (t *GapTracker) FindRecurringGaps() []LearningSuggestion {
 	return suggestions
 }
 
+// queryPattern defines a semantic pattern for grouping related queries.
+// Patterns use glob-style wildcards where "*" matches 1-3 words.
+type queryPattern struct {
+	// Pattern is the glob-style pattern to match (e.g., "synthesize * investigations").
+	Pattern string
+	// Canonical is the normalized form for grouping (e.g., "synthesize investigations").
+	Canonical string
+}
+
+// semanticPatterns are common query patterns for grouping related gaps.
+// Order matters - more specific patterns should come first.
+var semanticPatterns = []queryPattern{
+	// Synthesis patterns - common orchestrator tasks
+	{"synthesize * investigations", "synthesize investigations"},
+	{"synthesize * findings", "synthesize findings"},
+
+	// Audit patterns
+	{"audit * patterns", "audit patterns"},
+	{"audit * gaps", "audit gaps"},
+
+	// Implementation patterns
+	{"implement * feature", "implement feature"},
+	{"add * feature", "add feature"},
+	{"create * component", "create component"},
+
+	// Debug/investigation patterns
+	{"debug * issue", "debug issue"},
+	{"investigate * behavior", "investigate behavior"},
+	{"analyze * flow", "analyze flow"},
+
+	// Configuration patterns
+	{"configure * settings", "configure settings"},
+	{"update * config", "update config"},
+}
+
+// matchPattern checks if a query matches a glob-style pattern.
+// The wildcard "*" matches 1-3 words (not entire queries).
+// Returns the canonical form if matched, empty string otherwise.
+func matchPattern(query string, pattern queryPattern) string {
+	queryWords := strings.Fields(query)
+	patternWords := strings.Fields(pattern.Pattern)
+
+	// Find wildcard position in pattern
+	wildcardIdx := -1
+	for i, w := range patternWords {
+		if w == "*" {
+			wildcardIdx = i
+			break
+		}
+	}
+
+	if wildcardIdx == -1 {
+		// No wildcard - exact match
+		if query == pattern.Pattern {
+			return pattern.Canonical
+		}
+		return ""
+	}
+
+	// Split pattern into prefix and suffix
+	prefix := patternWords[:wildcardIdx]
+	suffix := patternWords[wildcardIdx+1:]
+
+	// Query must have at least len(prefix) + 1 (wildcard) + len(suffix) words
+	minWords := len(prefix) + 1 + len(suffix)
+	maxWords := len(prefix) + 3 + len(suffix) // Wildcard matches 1-3 words
+
+	if len(queryWords) < minWords || len(queryWords) > maxWords {
+		return ""
+	}
+
+	// Check prefix matches
+	for i, w := range prefix {
+		if i >= len(queryWords) || queryWords[i] != w {
+			return ""
+		}
+	}
+
+	// Check suffix matches (from end)
+	suffixStart := len(queryWords) - len(suffix)
+	for i, w := range suffix {
+		if queryWords[suffixStart+i] != w {
+			return ""
+		}
+	}
+
+	// Prefix and suffix match - wildcard covers the middle
+	return pattern.Canonical
+}
+
 // normalizeQuery normalizes a query for grouping similar queries.
+// Uses semantic pattern matching to group related queries, falling back
+// to basic string normalization for unmatched queries.
 func normalizeQuery(query string) string {
-	// Convert to lowercase
+	// Convert to lowercase and normalize whitespace
 	normalized := strings.ToLower(query)
-	// Remove extra whitespace
 	normalized = strings.Join(strings.Fields(normalized), " ")
+
+	// Try semantic pattern matching
+	for _, pattern := range semanticPatterns {
+		if canonical := matchPattern(normalized, pattern); canonical != "" {
+			return canonical
+		}
+	}
+
+	// No pattern matched - return basic normalization
 	return normalized
 }
 
