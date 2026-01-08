@@ -149,7 +149,6 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 
 	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
 
-	// 1. Search .kb/investigations/ for files matching workspace name pattern
 	// Use cached entries if available (O(1) lookup vs O(n) ReadDir)
 	entries := cache.getEntries(investigationsDir)
 	if entries == nil {
@@ -163,17 +162,8 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 		}
 	}
 
-	// First pass: look for exact topic match (highest confidence)
-	for _, name := range entries {
-		// Check if filename contains workspace keywords
-		for _, keyword := range workspaceKeywords {
-			if keyword != "" && strings.Contains(strings.ToLower(name), strings.ToLower(keyword)) {
-				return filepath.Join(investigationsDir, name)
-			}
-		}
-	}
-
-	// 2. Search for files matching beads ID (e.g., "orch-go-51jz" in filename)
+	// 1. Search for files matching beads ID (e.g., "orch-go-51jz" in filename)
+	// This is the most specific match and should be checked first.
 	if beadsID != "" {
 		// Extract short ID from beads ID (last segment after -)
 		shortID := beadsID
@@ -187,7 +177,45 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 				return filepath.Join(investigationsDir, name)
 			}
 		}
+	}
 
+	// 2. Search .kb/investigations/ for files matching workspace name pattern
+	// Workspace names are specific to the agent's task.
+	// We reverse the entries list to find the most recent files first (since they are date-prefixed).
+	reversedEntries := make([]string, len(entries))
+	for i, name := range entries {
+		reversedEntries[len(entries)-1-i] = name
+	}
+
+	// First pass: look for exact topic match (highest confidence)
+	// We now require at least one keyword match, but we prefer files that match MORE keywords.
+	var bestMatch string
+	maxMatches := 0
+
+	for _, name := range reversedEntries {
+		matches := 0
+		for _, keyword := range workspaceKeywords {
+			if keyword != "" && strings.Contains(strings.ToLower(name), strings.ToLower(keyword)) {
+				matches++
+			}
+		}
+
+		if matches > maxMatches {
+			maxMatches = matches
+			bestMatch = filepath.Join(investigationsDir, name)
+			// If we match all keywords, return immediately (highest confidence)
+			if matches == len(workspaceKeywords) && len(workspaceKeywords) > 0 {
+				return bestMatch
+			}
+		}
+	}
+
+	if bestMatch != "" {
+		return bestMatch
+	}
+
+	// 3. Search for simpler investigations or workspace-specific ones
+	if beadsID != "" {
 		// Also check .kb/investigations/simple/ (for simpler investigations)
 		simpleDir := filepath.Join(investigationsDir, "simple")
 		simpleEntries := cache.getEntries(simpleDir)
@@ -211,7 +239,7 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 		}
 	}
 
-	// 3. Check workspace directory for investigation .md files
+	// 4. Check workspace directory for investigation .md files
 	// This is per-workspace so not cached (each workspace is different)
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	if wsEntries, err := os.ReadDir(workspaceDir); err == nil {

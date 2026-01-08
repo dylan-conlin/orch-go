@@ -18,7 +18,7 @@ import (
 // Pre-compiled regex patterns for beads API operations
 var (
 	regexPhaseComment             = regexp.MustCompile(`(?i)Phase:\s*(\w+)(?:\s*[-–—]\s*(.*))?`)
-	regexInvestigationPathComment = regexp.MustCompile(`investigation_path:\s*(.+)`)
+	regexInvestigationPathComment = regexp.MustCompile(`(?i)investigation_path:\s*(.+)`)
 )
 
 // Comment is an alias for beads.Comment for compatibility.
