@@ -49,6 +49,7 @@ export interface Agent {
 	runtime?: string; // Formatted duration
 	is_processing?: boolean; // True if actively generating response
 	is_stale?: boolean; // True if agent is older than beadsFetchThreshold (beads data not fetched)
+	is_stalled?: boolean; // True if active agent has same phase for 15+ minutes (advisory)
 	synthesis?: Synthesis; // Parsed SYNTHESIS.md for completed agents
 	close_reason?: string; // Beads close reason, fallback for completed agents without synthesis
 	gap_analysis?: GapAnalysis; // Context gap analysis from spawn time
@@ -293,6 +294,13 @@ export const abandonedAgents = derived(agents, ($agents) =>
 // These need immediate attention - surfaced in "Needs Attention" section
 export const deadAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'dead')
+);
+
+// Stalled agents: active with same phase for 15+ minutes (may be stuck)
+// Advisory only - surfaced in "Needs Attention" section with orange indicator
+// See .kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md
+export const stalledAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => a.status === 'active' && a.is_stalled === true)
 );
 
 // Needs Review: agents at Phase: Complete that haven't been closed yet

@@ -34,6 +34,7 @@ type AgentAPIResponse struct {
 	Window               string               `json:"window,omitempty"`
 	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response
 	IsStale              bool                 `json:"is_stale,omitempty"`      // True if agent is older than beadsFetchThreshold (beads data not fetched)
+	IsStalled            bool                 `json:"is_stalled,omitempty"`    // True if active agent has same phase for 15+ minutes (advisory)
 	SpawnedAt            string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
 	UpdatedAt            string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis            *SynthesisResponse   `json:"synthesis,omitempty"`
@@ -410,6 +411,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// This is critical for visibility: dead agents need attention (crashed/stuck/killed).
 	deadThreshold := 3 * time.Minute
 
+	// Stalled threshold: if same phase for 15+ minutes, agent may be stuck.
+	// This is advisory only - surfaces in Needs Attention but doesn't auto-abandon.
+	// Designed to catch agents that have heartbeat but aren't making progress.
+	// See .kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md
+	stalledThreshold := 15 * time.Minute
+
 	// beadsFetchThreshold limits which sessions we fetch beads data for.
 	// Sessions older than this are excluded from beads lookups entirely.
 	// This is a MAJOR optimization: with 600+ sessions but only ~6 active,
@@ -752,6 +759,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				if phaseStatus.Found {
 					agents[i].Phase = phaseStatus.Phase
 					phaseComplete = strings.EqualFold(phaseStatus.Phase, "Complete")
+
+					// Stalled detection: if active agent has same phase for 15+ minutes
+					// Advisory only - surfaces in Needs Attention but doesn't auto-abandon.
+					// See .kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md
+					if agents[i].Status == "active" && phaseStatus.PhaseReportedAt != nil {
+						timeSincePhase := now.Sub(*phaseStatus.PhaseReportedAt)
+						if timeSincePhase > stalledThreshold {
+							agents[i].IsStalled = true
+						}
+					}
 				}
 				// Extract investigation_path from comments for investigation tab rendering
 				if investigationPath := verify.ParseInvestigationPathFromComments(comments); investigationPath != "" {

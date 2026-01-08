@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
@@ -37,9 +38,10 @@ type Issue struct {
 
 // PhaseStatus represents the current phase of an agent.
 type PhaseStatus struct {
-	Phase   string // Current phase (e.g., "Complete", "Implementing", "Planning")
-	Summary string // Optional summary from the phase comment
-	Found   bool   // Whether a Phase: comment was found
+	Phase           string     // Current phase (e.g., "Complete", "Implementing", "Planning")
+	Summary         string     // Optional summary from the phase comment
+	Found           bool       // Whether a Phase: comment was found
+	PhaseReportedAt *time.Time // When the latest phase comment was posted (nil if not parseable)
 }
 
 // GetComments retrieves comments for a beads issue.
@@ -113,6 +115,7 @@ func HasBeadsComment(beadsID string) (bool, error) {
 
 // ParsePhaseFromComments extracts the latest Phase status from comments.
 // Looks for comments matching "Phase: <phase> - <summary>" pattern.
+// Also captures the timestamp of when the phase was reported for stall detection.
 func ParsePhaseFromComments(comments []Comment) PhaseStatus {
 	var latestPhase PhaseStatus
 
@@ -125,6 +128,13 @@ func ParsePhaseFromComments(comments []Comment) PhaseStatus {
 			}
 			if len(matches) >= 3 && matches[2] != "" {
 				latestPhase.Summary = strings.TrimSpace(matches[2])
+			}
+			// Parse the comment timestamp for stall detection
+			// Beads comments use RFC3339 format: "2026-01-08T10:30:00Z"
+			if comment.CreatedAt != "" {
+				if t, err := time.Parse(time.RFC3339, comment.CreatedAt); err == nil {
+					latestPhase.PhaseReportedAt = &t
+				}
 			}
 		}
 	}
