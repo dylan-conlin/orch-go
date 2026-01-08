@@ -24,6 +24,10 @@ var (
 )
 
 func main() {
+	// Check if binary is stale and auto-rebuild if needed
+	// This may replace the current process via syscall.Exec
+	maybeAutoRebuild()
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -165,8 +169,6 @@ func runMonitor(serverURL string) error {
 	// Block forever - the user will Ctrl+C to stop
 	select {}
 }
-
-
 
 // ============================================================================
 // Usage Tracking (Placeholder - defers to Python for now)
