@@ -1,5 +1,7 @@
 ## Summary (D.E.K.N.)
 
+**Superseded-By:** .kb/investigations/2026-01-08-inv-synthesize-api-investigations-13-synthesis.md
+
 **Delta:** Synthesized 11 API investigations into a comprehensive guide (api-development.md) covering patterns, performance, and best practices.
 
 **Evidence:** Read all 11 investigations, identified 5 major patterns (handler structure, CORS, N+1 elimination, HTTP timeouts, SSE streaming), created `.kb/guides/api-development.md` with consolidated guidance.

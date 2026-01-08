@@ -1,8 +1,8 @@
 # API Development Guide
 
-**Purpose:** Single authoritative reference for orch-go API endpoint development. Covers patterns, performance, and best practices learned from 11+ investigations (Dec 2025 - Jan 2026).
+**Purpose:** Single authoritative reference for orch-go API endpoint development. Covers patterns, performance, and best practices learned from 13 investigations (Dec 2025 - Jan 2026).
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Jan 8, 2026
 
 ---
 
@@ -159,6 +159,60 @@ wg.Wait()
 ```
 
 **Why 20:** Prevents overwhelming backend services while maintaining good throughput.
+
+### TTL-Based Caching
+
+For frequently-polled endpoints (dashboard polling every 5-10s), use TTL caching:
+
+```go
+type endpointCache struct {
+    mu       sync.RWMutex
+    data     *CachedData
+    fetchedAt time.Time
+    ttl      time.Duration
+}
+
+func (c *endpointCache) get(ctx context.Context) (*CachedData, error) {
+    c.mu.RLock()
+    if c.data != nil && time.Since(c.fetchedAt) < c.ttl {
+        defer c.mu.RUnlock()
+        return c.data, nil
+    }
+    c.mu.RUnlock()
+    
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    
+    // Double-check after acquiring write lock
+    if c.data != nil && time.Since(c.fetchedAt) < c.ttl {
+        return c.data, nil
+    }
+    
+    // Fetch fresh data
+    data, err := fetchData(ctx)
+    if err != nil {
+        return nil, err
+    }
+    
+    c.data = data
+    c.fetchedAt = time.Now()
+    return c.data, nil
+}
+```
+
+**TTL guidelines:**
+- Stats/counts: 30s (changes infrequently)
+- Ready queues: 15s (needs fresher data)
+- Comments: 15s (user may be waiting for updates)
+- Session lists: 30s (expensive to fetch)
+
+**Cache invalidation:** Expose POST /api/cache/invalidate for forced refresh after mutations.
+
+**Related files:**
+- `cmd/orch/serve_agents_cache.go` - Agents/beads caching
+- `cmd/orch/serve_beads.go` - Beads stats caching
+
+**Source:** `2026-01-07-inv-api-beads-endpoint-takes-5s.md` - 450x improvement with TTL caching
 
 ---
 
@@ -390,6 +444,8 @@ This guide synthesizes findings from:
 | `2026-01-03-inv-map-serve-go-api-handler.md` | File split strategy |
 | `2026-01-05-inv-pending-reviews-api-times-out.md` | Batch fetching |
 | `2025-12-26-add-api-reflect-endpoint-expose.md` | Simple JSON endpoints |
+| `2026-01-07-inv-api-beads-endpoint-takes-5s.md` | TTL-based caching |
+| `2026-01-08-inv-backend-sends-last-activity-api.md` | Adding response fields |
 
 ---
 
