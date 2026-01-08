@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { SettingsPanel } from '$lib/components/settings-panel';
+	import { DaemonConfigPanel } from '$lib/components/daemon-config-panel';
 	import {
 		activeAgents,
 		deadAgents,
@@ -238,12 +240,16 @@
 			</Tooltip.Root>
 		{/if}
 
-		<!-- Daemon indicator -->
+		<!-- Daemon indicator (clickable to show config) -->
 		{#if $daemon}
-			<Tooltip.Root>
-				<Tooltip.Trigger>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
-						<span {...props} class="inline-flex items-center gap-2 cursor-default" data-testid="daemon-indicator">
+						<button
+							{...props}
+							class="inline-flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 transition-colors"
+							data-testid="daemon-indicator"
+						>
 							<span class="text-lg">{getDaemonEmoji($daemon)}</span>
 							<span class="inline-flex items-baseline gap-1">
 								{#if $daemon.running}
@@ -253,27 +259,31 @@
 									<span class="text-xs text-muted-foreground">daemon</span>
 								{/if}
 							</span>
-						</span>
+						</button>
 					{/snippet}
-				</Tooltip.Trigger>
-				<Tooltip.Content>
-					{#if $daemon.running}
-						<p class="font-medium">Daemon {$daemon.status}</p>
-						<p class="text-xs text-muted-foreground">
-							{$daemon.capacity_used}/{$daemon.capacity_max} agents • {$daemon.ready_count} ready
-						</p>
-						{#if $daemon.last_poll_ago}
-							<p class="text-xs text-muted-foreground">Last poll: {$daemon.last_poll_ago}</p>
-						{/if}
-						{#if $daemon.last_spawn_ago}
-							<p class="text-xs text-muted-foreground">Last spawn: {$daemon.last_spawn_ago}</p>
-						{/if}
-					{:else}
-						<p>Daemon not running</p>
-						<p class="text-xs text-muted-foreground">Start with: orch daemon run</p>
-					{/if}
-				</Tooltip.Content>
-			</Tooltip.Root>
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content class="w-80" align="end">
+					<div class="p-2 space-y-3">
+						<!-- Status summary at top -->
+						<div class="pb-2 border-b">
+							{#if $daemon.running}
+								<p class="text-sm font-medium">Daemon {$daemon.status}</p>
+								<p class="text-xs text-muted-foreground">
+									{$daemon.capacity_used}/{$daemon.capacity_max} agents • {$daemon.ready_count} ready
+								</p>
+								{#if $daemon.last_poll_ago}
+									<p class="text-xs text-muted-foreground">Last poll: {$daemon.last_poll_ago}</p>
+								{/if}
+							{:else}
+								<p class="text-sm font-medium text-amber-500">Daemon not running</p>
+								<p class="text-xs text-muted-foreground">Start with: orch daemon run</p>
+							{/if}
+						</div>
+						<!-- Config editing panel -->
+						<DaemonConfigPanel />
+					</div>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		{/if}
 	</div>
 	<!-- Connection button and settings - pushed to end -->

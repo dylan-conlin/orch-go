@@ -273,6 +273,15 @@ func runServe(portNum int) error {
 	// GET/PUT /api/config - user configuration settings
 	mux.HandleFunc("/api/config", corsHandler(handleConfig))
 
+	// GET/PUT /api/config/daemon - daemon-specific configuration
+	mux.HandleFunc("/api/config/daemon", corsHandler(handleDaemonConfig))
+
+	// GET /api/config/drift - check if plist matches config
+	mux.HandleFunc("/api/config/drift", corsHandler(handleConfigDrift))
+
+	// POST /api/config/regenerate - regenerate plist from config
+	mux.HandleFunc("/api/config/regenerate", corsHandler(handleConfigRegenerate))
+
 	// GET /api/changelog - aggregated changelog across ecosystem repos
 	mux.HandleFunc("/api/changelog", corsHandler(handleChangelog))
 
