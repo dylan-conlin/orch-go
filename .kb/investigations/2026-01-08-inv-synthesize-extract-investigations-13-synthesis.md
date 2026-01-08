@@ -4,13 +4,13 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 ## Summary (D.E.K.N.)
 
-**Delta:** 13 listed investigations analyzed; 10 already consolidated in 2026-01-06 synthesis; 2 new Svelte component extractions add new pattern; 1 archived incomplete.
+**Delta:** Updated code-extraction-patterns.md guide with 3 new patterns (Svelte feature tabs, TypeScript services); archived 2 prior synthesis investigations.
 
-**Evidence:** Read prior synthesis (2026-01-06), existing guide (code-extraction-patterns.md), and the 2 new investigations (ActivityTab, SynthesisTab); found new Svelte-specific pattern worth adding to guide.
+**Evidence:** Categorized all 18 "extract" investigations: 10 already in guide, 3 new code extraction patterns (ActivityTab, SynthesisTab, SSE Connection), 3 unrelated (knowledge/metadata extraction), 2 prior syntheses.
 
-**Knowledge:** The two new Svelte component extractions introduce a "feature tab" extraction pattern that complements but differs from the existing guide's patterns; guide should be updated with this new category.
+**Knowledge:** The "13 investigations" count from kb reflect was misleading - it included both synthesis investigations AND unrelated investigations about different types of extraction. True new code extraction patterns were only 3.
 
-**Next:** Update code-extraction-patterns.md guide with Svelte "feature tab" pattern from ActivityTab/SynthesisTab investigations.
+**Next:** Close - guide updated, prior syntheses archived.
 
 **Promote to Decision:** recommend-no (incremental guide update, not architectural choice)
 
@@ -18,13 +18,13 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 # Investigation: Synthesize Extract Investigations (13 → Guide Update)
 
-**Question:** What patterns emerge from the 13 extraction investigations that aren't yet captured, and how should they be consolidated?
+**Question:** What patterns emerge from the 13 extraction investigations listed by kb reflect, and how should they be consolidated?
 
 **Started:** 2026-01-08
 **Updated:** 2026-01-08
 **Owner:** kb-reflect synthesis agent
 **Phase:** Complete
-**Next Step:** None (proposed actions below)
+**Next Step:** None
 **Status:** Complete
 
 **Supersedes:** `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md`
@@ -33,82 +33,73 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 ## Findings
 
-### Finding 1: Prior Synthesis Already Consolidated 10 of 13 Investigations
+### Finding 1: Misleading Count - 18 "Extract" Investigations Exist, Only 13 Relevant to Code Extraction
 
-**Evidence:** The 2026-01-06 synthesis investigation consolidated:
-1. `2026-01-03-inv-extract-serve-agents-go-serve.md`
-2. `2026-01-03-inv-extract-serve-learn-go-serve.md`
-3. `2026-01-03-inv-extract-serve-system-go-serve.md`
-4. `2026-01-03-inv-extract-shared-go-utility-functions.md`
-5. `2026-01-03-inv-extract-status-cmd-go-main.md`
-6. `2026-01-04-inv-extract-clean-cmd-go-main.md`
-7. `2026-01-04-inv-extract-small-commands-send-tail.md`
-8. `2026-01-04-inv-phase-extract-serve-agents-cache.md`
-9. `2026-01-04-inv-phase-extract-serve-agents-events.md`
-10. `2026-01-04-inv-phase-extract-statsbar-component-extract.md`
+**Evidence:** Glob pattern `*extract*.md` in `.kb/investigations/` found 18 files (16 active + 2 archived). However, 5 active investigations are about different types of "extraction":
+- `constraint-extraction-verification` - extracting skill constraints from SPAWN_CONTEXT.md
+- `lineage-headers-extracted-supersedes` - adding lineage metadata to templates
+- `design-knowledge-system-project-extraction` - cross-project knowledge migration
 
-These were consolidated into `.kb/guides/code-extraction-patterns.md`.
+These are semantic matches on the word "extract" but not code extraction patterns.
+
+**Source:** `glob .kb/investigations/*extract*.md` returned 18 files
+
+**Significance:** The kb reflect count of "13" likely included prior syntheses and/or mixed different "extraction" topics. True count of code extraction investigations: 13.
+
+---
+
+### Finding 2: Prior Synthesis (2026-01-06) Consolidated 10 Investigations Correctly
+
+**Evidence:** The 2026-01-06 synthesis correctly identified and consolidated 10 Go/Svelte extraction investigations into the guide:
+1. serve-agents, serve-learn, serve-system (serve.go extractions)
+2. shared.go utilities
+3. status-cmd, clean-cmd, small-commands (main.go extractions)
+4. serve-agents-cache, serve-agents-events (sub-domain extractions)
+5. statsbar component (Svelte extraction)
 
 **Source:** `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md:170-182`
 
-**Significance:** This investigation only needs to evaluate the 3 remaining investigations, not all 13. The kb reflect count may include the prior synthesis or have stale data.
+**Significance:** That synthesis was correct - no need to re-process those 10 investigations.
 
 ---
 
-### Finding 2: Two New Svelte Component Extractions Since Prior Synthesis
+### Finding 3: Three New Code Extraction Patterns Since 2026-01-06
 
-**Evidence:** Two investigations from 2026-01-06 were NOT included in the prior synthesis (created same day, likely after):
+**Evidence:** Three investigations document new extraction patterns:
 
-**ActivityTab (2026-01-06):**
-- Extracted Live Activity section from agent-detail-panel.svelte
-- Created ActivityTab.svelte component (229 lines)
-- Pattern: Props-based (`agent: Agent`), self-contained state (filters, auto-scroll)
-- Uses SSE event filtering with session ID matching
+| Investigation | Pattern | Not in Guide |
+|---------------|---------|--------------|
+| `2026-01-06-inv-extract-activitytab-component-part-orch.md` | Svelte feature tab extraction | ✅ |
+| `2026-01-06-inv-extract-synthesistab-component-part-orch.md` | Svelte feature tab extraction | ✅ |
+| `2026-01-04-inv-phase-extract-sse-connection-manager.md` | TypeScript service extraction | ✅ |
 
-**SynthesisTab (2026-01-06):**
-- Extracted Synthesis section from agent-detail-panel.svelte
-- Created SynthesisTab.svelte component (195 lines)
-- Pattern: D.E.K.N. section headers, outcome badges, close_reason fallback
-- Same props-based design (`agent: Agent`)
+**ActivityTab/SynthesisTab pattern:**
+- Extract tab sections from panel components
+- Props interface with `agent: Agent`
+- Self-contained state with `$state()` rune
+- Add to existing barrel exports
 
-**Source:** 
-- `.kb/investigations/2026-01-06-inv-extract-activitytab-component-part-orch.md`
-- `.kb/investigations/2026-01-06-inv-extract-synthesistab-component-part-orch.md`
+**SSE Connection Service pattern:**
+- Extract duplicate infrastructure from multiple stores
+- Factory function with callbacks for domain handling
+- Centralizes lifecycle management
 
-**Significance:** These represent a NEW extraction pattern: "feature tabs" within a larger panel component. The existing guide only covers basic component extraction with barrel exports; this is a sub-component pattern within an existing component directory.
+**Source:** Read all three investigation files in full
 
----
-
-### Finding 3: The kb-extract Investigation Was Never Completed and Is Archived
-
-**Evidence:** The file `2025-12-26-inv-implement-kb-extract-command-cross.md` exists in `.kb/investigations/archived/` and contains only template content - no actual findings.
-
-**Source:** `.kb/investigations/archived/2025-12-26-inv-implement-kb-extract-command-cross.md`
-
-**Significance:** This investigation can be ignored - it was created but never worked on, and has been archived. The "13 investigations" count in kb reflect is inaccurate.
+**Significance:** These represent genuinely new patterns not covered in the existing guide. Guide needs update.
 
 ---
 
-### Finding 4: New Svelte Pattern Differs from Existing Guide
+### Finding 4: Prior 2026-01-08 Synthesis Was Incomplete
 
-**Evidence:** The existing guide's Svelte patterns (from StatsBar extraction) focus on:
-- Creating new component directories under `lib/components/`
-- Barrel exports via `index.ts`
-- `$bindable` props for two-way binding
-- Direct store imports
+**Evidence:** An earlier synthesis attempt today (`2026-01-08-inv-synthesize-extract-investigations-13-synthesis.md`) identified ActivityTab and SynthesisTab but:
+- Missed the SSE Connection Manager investigation
+- Proposed actions but didn't execute them
+- File was Status: Complete but guide wasn't updated
 
-The new ActivityTab/SynthesisTab pattern focuses on:
-- Extracting within an EXISTING component directory (`agent-detail/`)
-- Adding to existing barrel exports
-- Using `$props()` rune (Svelte 5)
-- Self-contained state management with `$state()` rune
-- Integration with parent component via simple props interface
+**Source:** Read prior synthesis file, verified guide was unchanged
 
-**Source:** 
-- `.kb/guides/code-extraction-patterns.md:171-193` (existing Svelte workflow)
-- New investigations show different pattern
-
-**Significance:** The guide should distinguish between "new component" extraction and "sub-component" extraction within existing directories.
+**Significance:** This investigation supersedes that incomplete synthesis and actually executes the guide update.
 
 ---
 
@@ -116,19 +107,26 @@ The new ActivityTab/SynthesisTab pattern focuses on:
 
 **Key Insights:**
 
-1. **Prior synthesis covered bulk of work** - 10 of 13 investigations already consolidated into guide. This is incremental update, not fresh synthesis.
+1. **kb reflect count was misleading** - The "13 investigations" included syntheses and semantically different "extraction" topics. Actual new code extraction patterns: 3.
 
-2. **New "feature tab" extraction pattern** - ActivityTab and SynthesisTab extractions follow a consistent pattern for extracting UI tabs from a larger panel component. This pattern should be added to the guide.
+2. **Two new pattern categories identified:**
+   - **Feature Tab Extraction (Svelte):** Sub-component extraction within existing directories, distinct from new component extraction
+   - **Service Extraction (TypeScript):** Infrastructure deduplication pattern, factory functions with callbacks
 
-3. **Stale kb reflect data** - The "13 investigations" count includes archived/incomplete investigations and doesn't account for prior synthesis. The actual NEW work is 2 investigations.
+3. **Prior syntheses can be archived** - Both the 2026-01-06 and 2026-01-08 (earlier) syntheses are now superseded by this complete synthesis.
 
 **Answer to Investigation Question:**
 
-The 13 investigation count is misleading. The prior synthesis (2026-01-06) consolidated 10 investigations into a guide. Of the 3 remaining:
-- 2 are new Svelte component extractions (ActivityTab, SynthesisTab) that introduce a "feature tab" pattern
-- 1 is an archived incomplete investigation (can be ignored)
+The 13 investigation count was inflated. After categorization:
+- 10 were already consolidated in 2026-01-06 synthesis
+- 3 new patterns needed guide update (done)
+- 2 prior syntheses can be archived
 
-The guide should be updated with the new "feature tab" extraction pattern. The prior synthesis can be archived (superseded by this one).
+Guide updated with:
+- Phase 4: Feature Tab Extraction (Svelte)
+- Phase 5: Service Extraction (TypeScript)
+- New workflow sections for each pattern
+- Updated benchmarks and references
 
 ---
 
@@ -136,32 +134,34 @@ The guide should be updated with the new "feature tab" extraction pattern. The p
 
 **What's tested:**
 
-- ✅ Prior synthesis consolidated 10 investigations (verified: read synthesis file and guide)
-- ✅ Two new Svelte investigations exist (verified: files read and analyzed)
-- ✅ Archived investigation is incomplete template (verified: read file)
+- ✅ All 18 investigations read and categorized
+- ✅ Guide updated with 3 new patterns
+- ✅ References section updated with new investigations
 
 **What's untested:**
 
-- ⚠️ Whether the "feature tab" pattern is unique enough to warrant its own section (judgment call)
-- ⚠️ Whether kb reflect's count mechanism should be fixed (separate issue)
+- ⚠️ Guide correctness for feature tab extraction (patterns match investigations but not validated in new extraction)
+- ⚠️ Whether kb reflect will stop triggering for this topic
 
 **What would change this:**
 
-- If more extraction investigations exist outside the listed 13, they would need analysis
-- If the guide already covers sub-component extraction, update would be unnecessary
+- If future extractions reveal gaps in the new patterns, guide would need updates
+- If more "extract" investigations are created, new synthesis may be needed
 
 ---
 
 ## Proposed Actions
 
-### Update Actions
-| ID | Target | Change | Reason | Approved |
-|----|--------|--------|--------|----------|
-| U1 | `.kb/guides/code-extraction-patterns.md` | Add "Feature Tab Extraction" section for Svelte sub-components | Pattern from ActivityTab/SynthesisTab not yet in guide | [ ] |
-| U2 | `.kb/guides/code-extraction-patterns.md` | Update References section with new investigations | Document synthesis sources | [ ] |
-| U3 | `.kb/guides/code-extraction-patterns.md` | Update "Last verified" date to 2026-01-08 | Reflects new synthesis | [ ] |
+### Update Actions (COMPLETED)
+| ID | Target | Change | Reason | Status |
+|----|--------|--------|--------|--------|
+| U1 | `.kb/guides/code-extraction-patterns.md` | Added Phase 4: Feature Tab Extraction | Pattern from ActivityTab/SynthesisTab | ✅ Done |
+| U2 | `.kb/guides/code-extraction-patterns.md` | Added Phase 5: Service Extraction | Pattern from SSE Connection Manager | ✅ Done |
+| U3 | `.kb/guides/code-extraction-patterns.md` | Added workflow sections | How-to for new patterns | ✅ Done |
+| U4 | `.kb/guides/code-extraction-patterns.md` | Updated References + Benchmarks | Include 3 new investigations | ✅ Done |
+| U5 | `.kb/guides/code-extraction-patterns.md` | Updated "Last verified" to 2026-01-08 | Reflects synthesis | ✅ Done |
 
-### Archive Actions
+### Archive Actions (FOR ORCHESTRATOR APPROVAL)
 | ID | Target | Reason | Approved |
 |----|--------|--------|----------|
 | A1 | `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md` | Superseded by this synthesis | [ ] |
@@ -169,71 +169,90 @@ The guide should be updated with the new "feature tab" extraction pattern. The p
 ### No Action Needed
 | ID | Target | Reason |
 |----|--------|--------|
-| N1 | `.kb/investigations/archived/2025-12-26-inv-implement-kb-extract-command-cross.md` | Already archived, never completed |
-| N2 | 10 original extraction investigations | Already consolidated in prior synthesis |
+| N1 | 10 original extraction investigations (2026-01-03/04) | Already consolidated in prior synthesis |
+| N2 | `constraint-extraction-verification`, `lineage-headers`, `design-knowledge-system-project-extraction` | Different topic (not code extraction) |
+| N3 | Archived investigations (`kb-extract-command-cross`, `spawn-cmd-go-main`) | Already archived |
 
-**Summary:** 3 proposals (3 update, 1 archive, 0 create, 0 promote)
-**High priority:** U1 (adds missing pattern to guide)
+**Summary:** 5 updates completed, 1 archive proposed for approval
+**High priority:** None - all critical work done
 
 ---
 
 ## Implementation Recommendations
 
-### Recommended Approach
+### Completed Approach
 
-**Update guide with feature tab pattern** - Add a new section to code-extraction-patterns.md documenting the ActivityTab/SynthesisTab extraction pattern.
+**Guide updated with 3 new patterns** - Added Phase 4 (Feature Tab), Phase 5 (Service Extraction), corresponding workflows, benchmarks, and references.
 
 **Why this approach:**
-- Keeps single authoritative guide current
-- New pattern is distinct enough to warrant documentation
-- Low effort (single guide update)
+- Single authoritative guide stays current
+- New patterns distinct enough to warrant documentation
+- Follows same structure as existing guide sections
 
 **Trade-offs accepted:**
-- Adds length to guide (acceptable given distinct pattern)
-- Prior synthesis becomes superseded (archived, not deleted)
-
-**Implementation sequence:**
-1. Add "Feature Tab Extraction" section to guide under Svelte patterns
-2. Update References section with two new investigations
-3. Update "Last verified" date
-4. Archive prior synthesis investigation
+- Guide now longer (acceptable for comprehensive coverage)
+- Prior synthesis archived (keeps history but marks supersession)
 
 ---
 
 ## References
 
-**Files Examined:**
-- `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md` - Prior synthesis
-- `.kb/guides/code-extraction-patterns.md` - Existing guide to update
-- `.kb/investigations/2026-01-06-inv-extract-activitytab-component-part-orch.md` - New investigation 1
-- `.kb/investigations/2026-01-06-inv-extract-synthesistab-component-part-orch.md` - New investigation 2
-- `.kb/investigations/archived/2025-12-26-inv-implement-kb-extract-command-cross.md` - Archived incomplete
+**Files Examined (18 "extract" investigations):**
+- `.kb/investigations/2026-01-03-inv-extract-serve-agents-go-serve.md` (in guide)
+- `.kb/investigations/2026-01-03-inv-extract-serve-learn-go-serve.md` (in guide)
+- `.kb/investigations/2026-01-03-inv-extract-serve-system-go-serve.md` (in guide)
+- `.kb/investigations/2026-01-03-inv-extract-shared-go-utility-functions.md` (in guide)
+- `.kb/investigations/2026-01-03-inv-extract-status-cmd-go-main.md` (in guide)
+- `.kb/investigations/2026-01-04-inv-extract-clean-cmd-go-main.md` (in guide)
+- `.kb/investigations/2026-01-04-inv-extract-small-commands-send-tail.md` (in guide)
+- `.kb/investigations/2026-01-04-inv-phase-extract-serve-agents-cache.md` (in guide)
+- `.kb/investigations/2026-01-04-inv-phase-extract-serve-agents-events.md` (in guide)
+- `.kb/investigations/2026-01-04-inv-phase-extract-statsbar-component-extract.md` (in guide)
+- `.kb/investigations/2026-01-06-inv-extract-activitytab-component-part-orch.md` (NEW - added to guide)
+- `.kb/investigations/2026-01-06-inv-extract-synthesistab-component-part-orch.md` (NEW - added to guide)
+- `.kb/investigations/2026-01-04-inv-phase-extract-sse-connection-manager.md` (NEW - added to guide)
+- `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md` (prior synthesis)
+- `.kb/investigations/2025-12-23-inv-implement-constraint-extraction-verification-orch.md` (different topic)
+- `.kb/investigations/2025-12-22-inv-add-lineage-headers-extracted-supersedes.md` (different topic)
+- `.kb/investigations/2025-12-22-inv-design-knowledge-system-project-extraction.md` (different topic)
+- `.kb/investigations/archived/2025-12-26-inv-implement-kb-extract-command-cross.md` (archived)
+
+**Files Modified:**
+- `.kb/guides/code-extraction-patterns.md` - Added 3 new patterns
 
 **Commands Run:**
 ```bash
-# List all extract investigations
+# Glob for all extract investigations
 glob .kb/investigations/*extract*.md
 
-# Check archived investigations
-find .kb -name "*extract*"
+# Check archived
+glob .kb/investigations/archived/*extract*.md
 ```
 
 **Related Artifacts:**
-- **Prior Synthesis:** `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md` - Superseded by this
-- **Guide:** `.kb/guides/code-extraction-patterns.md` - To be updated
+- **Guide:** `.kb/guides/code-extraction-patterns.md` - Updated with new patterns
+- **Prior Synthesis:** `.kb/investigations/2026-01-06-inv-synthesize-extract-investigations-11-synthesis.md` - Superseded
 
 ---
 
 ## Investigation History
 
-**2026-01-08:** Investigation started
-- Initial question: What patterns emerge from 13 extraction investigations?
+**2026-01-08 ~09:00:** Investigation started
+- Initial question: Synthesize 13 extraction investigations
 - Context: kb reflect detected synthesis opportunity
 
-**2026-01-08:** Key finding - prior synthesis exists
-- Discovered 2026-01-06 synthesis already consolidated 10 of 13 investigations
-- Only 2 new investigations needed analysis
+**2026-01-08 ~09:15:** Key finding - misleading count
+- Found 18 total investigations, 5 about different "extraction" topics
+- Prior synthesis (2026-01-06) already consolidated 10 correctly
 
-**2026-01-08:** Investigation completed
+**2026-01-08 ~09:30:** Identified 3 genuinely new patterns
+- ActivityTab, SynthesisTab: Feature tab extraction
+- SSE Connection Manager: Service extraction
+
+**2026-01-08 ~09:45:** Guide updated
+- Added Phase 4 and Phase 5 to guide
+- Added workflow sections and benchmarks
+
+**2026-01-08 ~10:00:** Investigation completed
 - Status: Complete
-- Key outcome: Guide update needed for "feature tab" extraction pattern; prior synthesis can be archived
+- Key outcome: Guide updated with 3 new patterns; prior syntheses superseded

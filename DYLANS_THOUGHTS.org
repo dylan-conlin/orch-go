@@ -30,3 +30,11 @@ check git history of /Users/dylanconlin/orch-knowledge for a skill related to cr
 3) not sure   
 4) currently just thinking of the orchestrator session as context dumping ground
 5) agreed
+* latest
+| Artifact | Location |
+|----------|----------|
+| Jim brain sync design | toolshed/.kb/investigations/2026-01-08-inv-jim-brain-sync-design.md |
+| Orch-go boundary | toolshed/.kb/ (quick decision kb-76222d) |
+| Jim AI assistant scope | toolshed/.kb/ (quick decision kb-7ca68f) |
+| Price-watch Go rewrite | price-watch/.kb/decisions/2026-01-08-price-watch-go-rewrite.md |
+| Price-watch architecture | price-watch/.kn/ (kn decision kn-b015ad) |

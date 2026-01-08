@@ -156,3 +156,4 @@ func maybeAutoRebuild() {
 		fmt.Fprintf(os.Stderr, "   Continuing with stale binary. Run 'make install' manually.\n")
 	}
 }
+// test comment Thu Jan  8 15:56:54 PST 2026

@@ -224,3 +224,16 @@ https://svelte.dev/e/a11y_label_has_associated_control
 12:24:03 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
 12:24:03 PM [vite] (client) page reload .svelte-kit/generated/root.js
 12:24:03 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 1425 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
+3:22:13 PM [vite-plugin-svelte] src/lib/components/daemon-config-panel/daemon-config-panel.svelte:233:4 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+3:22:13 PM [vite-plugin-svelte] src/lib/components/daemon-config-panel/daemon-config-panel.svelte:233:4 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
