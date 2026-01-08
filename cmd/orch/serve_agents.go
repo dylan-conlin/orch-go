@@ -777,14 +777,20 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Populate project_dir from beadsProjectDirs lookup (for workspace path construction)
+			// Track if we got a reliable project dir from workspace cache (vs using session directory)
+			hasReliableProjectDir := false
 			if agentProjectDir, ok := beadsProjectDirs[agents[i].BeadsID]; ok {
 				agents[i].ProjectDir = agentProjectDir
+				hasReliableProjectDir = true
 			}
 
 			// Auto-discover investigation path if not provided via beads comment
 			// This uses a fallback chain: .kb/investigations/ matching -> workspace .md files
 			// Uses invDirCache to avoid O(n²) directory scanning (built once before this loop)
-			if agents[i].InvestigationPath == "" {
+			// IMPORTANT: Only auto-discover if we have a reliable project dir from workspace cache.
+			// The session directory (s.Directory) may be the orchestrator's cwd due to OpenCode --attach bug,
+			// which would cause us to search the wrong project's .kb/investigations/ for cross-project agents.
+			if agents[i].InvestigationPath == "" && hasReliableProjectDir {
 				workspaceName := agents[i].ID
 				if idx := strings.Index(workspaceName, " ["); idx != -1 {
 					workspaceName = workspaceName[:idx]
