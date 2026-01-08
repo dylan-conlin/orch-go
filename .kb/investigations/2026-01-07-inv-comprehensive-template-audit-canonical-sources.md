@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Templates are split by ownership domain (kb-cli owns knowledge artifact templates, orch-go owns agent lifecycle templates), with canonical sources in Go constants, embeddable files, and .orch/templates/ directory, documented in existing decision `.kb/decisions/2025-12-22-template-ownership-model.md`.
+**Delta:** Templates are split by ownership domain (kb-cli owns knowledge artifact templates, orch-go owns agent lifecycle templates), with canonical sources in Go constants, embeddable files, and .orch/templates/ directory. Screenshots are an UNDOCUMENTED artifact type with no formal template, storage convention, or lifecycle management.
 
-**Evidence:** Found 14+ distinct templates across 4 locations: pkg/spawn/context.go (5 Go constants), .orch/templates/ (3 files), pkg/claudemd/templates/ (4 CLAUDE.md types), kb-cli/cmd/kb/create.go (4 embedded templates), plus ~90 skill component files in orch-knowledge that compile to deployed skills.
+**Evidence:** Found 14+ distinct templates across 4 locations plus ~90 skill components. Screenshots come from 3 sources (Playwright MCP, Glass tools, user-pasted) but have NO canonical storage, NO reference pattern, and NO lifecycle documentation. User screenshots live in ~/Screenshots/ and are referenced inline in org/markdown files.
 
-**Knowledge:** Template ownership follows the principle "the tool that creates the artifact owns its template" - kb-cli creates .kb/ artifacts, orch-go creates .orch/workspace/ artifacts. Skills are compiled by skillc and deployed to ~/.claude/skills/.
+**Knowledge:** Template ownership follows "the tool that creates the artifact owns its template." However, screenshots are a gap - they're produced by multiple tools but owned by none. The verify package checks for screenshot MENTIONS in beads comments but doesn't manage actual screenshot files.
 
-**Next:** Close this investigation - template ownership is well-documented and the system is coherent. Reference this audit for template inventory.
+**Next:** Create decision: Should screenshots have a formal storage convention (e.g., `.orch/workspace/{name}/screenshots/`)? Currently they're ephemeral or external references with no artifact lifecycle.
 
-**Promote to Decision:** recommend-no (confirms existing decision, no new architectural choice needed)
+**Promote to Decision:** recommend-yes (screenshots need architectural decision on storage, referencing, and lifecycle)
 
 ---
 
@@ -194,6 +194,35 @@ Simply follow the guidance provided below.
 
 ---
 
+### Finding 8: Screenshots - An Undocumented Artifact Type
+
+**Evidence:** Screenshots are produced by THREE distinct sources but have NO formal artifact management:
+
+| Source | Tool | Storage | Lifecycle |
+|--------|------|---------|-----------|
+| **Playwright MCP** | `browser_take_screenshot` | Playwright stores in test-results/ or temp | Ephemeral (not committed) |
+| **Glass tools** | `glass_screenshot` | Returns base64 in response | Ephemeral (not stored) |
+| **User-pasted** | Dylan pastes paths | `~/Screenshots/screenshot_*.png` | External, macOS managed |
+
+**Key Observations:**
+1. **No canonical storage**: Screenshots don't have a `.orch/workspace/{name}/screenshots/` convention
+2. **No referencing standard**: User screenshots are referenced as absolute paths in org/markdown files (e.g., `DYLANS_THOUGHTS.org`)
+3. **Verification pattern exists**: `pkg/verify/visual.go` checks for screenshot MENTIONS in beads comments (lines 85-107) but doesn't manage actual files
+4. **Evidence patterns**: The verify package looks for patterns like `screenshot`, `captured image`, `browser_take_screenshot`, `playwright`
+
+**Source:**
+- `pkg/verify/visual.go:82-107` (evidence patterns)
+- `DYLANS_THOUGHTS.org` (user screenshot references)
+- `web/test-results/` (Playwright output directory - currently empty)
+
+**Significance:** Screenshots are treated as ephemeral verification evidence, not persistent artifacts. This works for verification gates but creates issues:
+1. **Discoverability**: No way to find "all screenshots for agent X"
+2. **Lifecycle**: No cleanup, no archival strategy
+3. **Relationship to text**: Screenshots support investigations/decisions but aren't formally linked
+4. **Cross-session context**: User screenshots in ~/Screenshots/ become orphaned references over time
+
+---
+
 ## Synthesis
 
 **Key Insights:**
@@ -207,6 +236,11 @@ Simply follow the guidance provided below.
    - Skills: Edit source in orch-knowledge, run `skillc deploy`
 
 3. **Skills are Embedded, Not Referenced** - When an agent is spawned, the skill content is copied into SPAWN_CONTEXT.md. This is intentional (see `.kb/decisions/2025-11-22-skill-system-hybrid-architecture.md`).
+
+4. **Screenshots are a Gap** - Unlike text artifacts (investigation, decision, synthesis), screenshots have no template, no storage convention, and no lifecycle. They exist in three disconnected systems:
+   - Playwright: Test automation artifacts (ephemeral)
+   - Glass: Real-time browser context (base64, not persisted)
+   - User: External files referenced by path (orphan-prone)
 
 **Answer to Investigation Question:**
 
@@ -231,6 +265,14 @@ Simply follow the guidance provided below.
 - Skills are embedded INTO spawn templates at spawn time
 - Spawn templates are generated from Go constants WITH skill content injected
 - Knowledge artifact templates are independent of spawn templates
+- **Screenshots have NO relationship to any template** - they're verification evidence only
+
+**Screenshot Artifact Gap:**
+Screenshots are NOT covered by the template ownership model:
+- No owner (multiple tools produce them)
+- No template (no consistent structure)
+- No storage (ephemeral or external)
+- No lifecycle (no create/archive/cleanup)
 
 ---
 
@@ -242,44 +284,64 @@ Simply follow the guidance provided below.
 - ✅ Go constants match .orch/templates/ files (verified: compared content)
 - ✅ Skill embedding works via {{.SkillContent}} placeholder (verified: read context.go:216-228)
 - ✅ Override mechanism exists for claudemd templates (verified: LoadTemplate() checks user path first)
+- ✅ Screenshot verification checks for MENTIONS, not files (verified: pkg/verify/visual.go:82-107)
+- ✅ User screenshots stored in ~/Screenshots/ as external references (verified: DYLANS_THOUGHTS.org)
 
 **What's untested:**
 
 - ⚠️ Whether all skill components successfully compile (not run `skillc deploy`)
 - ⚠️ Whether user overrides in ~/.kb/templates/ work (kb-cli not deeply audited)
 - ⚠️ Whether .orch/templates/ overrides are actually used at runtime (would need to modify and test)
+- ⚠️ Whether Playwright screenshots persist anywhere useful (test-results/ was empty)
+- ⚠️ Whether Glass screenshots are ever persisted (appears base64-only)
 
 **What would change this:**
 
 - Finding additional template locations not discovered
 - Discovering templates that bypass the ownership model
 - Finding templates that are duplicated across tools
+- Finding an existing screenshot storage convention not discovered
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** This is an audit/inventory investigation - no implementation needed.
+**Purpose:** Audit revealed text templates are well-organized, but screenshots are a gap requiring a decision.
 
 ### Recommended Approach ⭐
 
-**Document and Close** - This investigation confirms the existing template ownership model is accurate and well-implemented.
+**Create Screenshot Artifact Decision** - Define storage, referencing, and lifecycle for screenshots.
 
 **Why this approach:**
-- Prior decision (2025-12-22) correctly documents the architecture
-- No inconsistencies found between documentation and implementation
-- Template locations are predictable and follow established patterns
+- Text templates have clear ownership; screenshots don't
+- Three disconnected systems (Playwright, Glass, user) create discoverability issues
+- Verification gate checks for mentions but can't verify actual files
+- Cross-session references to ~/Screenshots/ become orphans
+
+**Proposed decision outline:**
+
+| Question | Options |
+|----------|---------|
+| **Where to store?** | A) `.orch/workspace/{name}/screenshots/` (per-agent) B) `.orch/screenshots/` (per-project) C) Keep external (status quo) |
+| **How to reference?** | A) Relative paths in workspace B) Copy into workspace C) Symbolic links |
+| **Lifecycle?** | A) Archive with workspace B) Cleanup after N days C) Manual management |
+| **Ownership?** | A) orch-go owns all screenshots B) Source tool owns (Playwright vs Glass) C) No owner (evidence-only) |
 
 **Trade-offs accepted:**
-- Not testing every override mechanism
-- Not auditing kb-cli templates deeply (separate codebase)
+- Adding screenshot management increases complexity
+- May be overkill for ephemeral verification evidence
 
 ### Alternative Approaches Considered
 
-**Option B: Consolidate template documentation**
-- **Pros:** Single reference for all templates
-- **Cons:** Creates maintenance burden, prior decision is sufficient
-- **When to use instead:** If templates change frequently or cause confusion
+**Option B: Status quo (no change)**
+- **Pros:** No added complexity; screenshots are just verification evidence
+- **Cons:** Orphaned references, no discoverability, no lifecycle
+- **When to use instead:** If screenshots rarely need to be retrieved later
+
+**Option C: Lightweight convention only**
+- **Pros:** Establish convention without tooling (e.g., "put screenshots in workspace")
+- **Cons:** No enforcement, may not be followed
+- **When to use instead:** If formal tooling is premature
 
 ---
 
