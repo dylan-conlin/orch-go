@@ -42,6 +42,18 @@ orch spawn --inline investigation "task"
 5. **Prompt Sending:** `SendPromptAfterReady()` types the prompt once TUI is ready
 6. **Registration:** Agent registered with window ID (e.g., `@360`) for tracking
 
+### Session Types
+
+| Session | Constant | Purpose |
+|---------|----------|---------|
+| `workers-{project}` | `workers-orch-go`, etc. | Worker agents for specific project |
+| `orchestrator` | `OrchestratorSessionName` | Regular orchestrators |
+| `meta-orchestrator` | `MetaOrchestratorSessionName` | Meta-orchestrators (cross-project) |
+
+**Routing logic:** Spawn code detects skill type and routes to appropriate session. Meta-orchestrators use `EnsureMetaOrchestratorSession()`, regular orchestrators use `EnsureOrchestratorSession()`.
+
+**Why separated:** Viewing `tmux ls` immediately shows the hierarchy. No need to read workspace names to distinguish orchestrator types.
+
 ### Window Naming Convention
 
 ```
@@ -217,6 +229,7 @@ orch version --source
 - 2025-12-21-inv-tmux-spawn-killed.md (SIGKILL debugging)
 - 2025-12-22-debug-orch-send-fails-silently-tmux.md (session validation)
 - archived/2025-12-23-inv-test-tmux-spawn.md (integration testing)
+- 2026-01-06-inv-tmux-session-naming-confusing-hard.md (meta-orchestrator session separation)
 
 **Knowledge entries:**
 - kn-34d52f - "orch-go tmux spawn is fire-and-forget - no session ID capture"
