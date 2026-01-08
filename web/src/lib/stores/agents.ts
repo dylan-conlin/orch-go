@@ -222,7 +222,22 @@ function createAgentStore() {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
 				const data = await response.json();
-				set(data || []);
+				// Transform API response: current_activity comes as string from backend,
+				// but frontend expects object {type, text, timestamp}
+				const transformed = (data || []).map((agent: Agent & { current_activity?: string | Agent['current_activity'], last_activity_at?: string }) => {
+					if (typeof agent.current_activity === 'string' && agent.current_activity) {
+						return {
+							...agent,
+							current_activity: {
+								type: 'text' as const,
+								text: agent.current_activity,
+								timestamp: agent.last_activity_at ? new Date(agent.last_activity_at).getTime() : Date.now()
+							}
+						};
+					}
+					return agent;
+				});
+				set(transformed);
 			} catch (error) {
 				// Don't log abort errors - they're expected during cleanup
 				if (error instanceof Error && error.name === 'AbortError') {
