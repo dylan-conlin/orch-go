@@ -44,6 +44,8 @@ type AgentAPIResponse struct {
 	ProjectDir           string               `json:"project_dir,omitempty"`           // Project directory for the agent
 	SynthesisContent     string               `json:"synthesis_content,omitempty"`     // Raw SYNTHESIS.md content for inline rendering
 	InvestigationContent string               `json:"investigation_content,omitempty"` // Raw investigation file content for inline rendering
+	CurrentActivity      string               `json:"current_activity,omitempty"`      // Last activity text from session messages
+	LastActivityAt       string               `json:"last_activity_at,omitempty"`      // ISO 8601 timestamp of last activity
 }
 
 // GapAPIResponse represents gap analysis data for the API.
@@ -857,14 +859,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// in determineAgentStatus() handles all status determination in one place.
 	// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
 
-	// Fetch token usage for agents with valid session IDs
+	// Fetch token usage and last activity for agents with valid session IDs
 	// Parallelized to avoid sequential HTTP calls causing ~20s delays with 200+ agents.
 	// Uses goroutines with semaphore to limit concurrent requests.
-	type tokenResult struct {
-		index  int
-		tokens *opencode.TokenStats
+	// Both tokens and activity are extracted from the same GetMessages call for efficiency.
+	type sessionResult struct {
+		index    int
+		tokens   *opencode.TokenStats
+		activity *opencode.LastActivity
 	}
-	tokenChan := make(chan tokenResult, len(agents))
+	resultChan := make(chan sessionResult, len(agents))
 
 	// Limit concurrent HTTP requests to avoid overwhelming the OpenCode server
 	const maxConcurrent = 20
@@ -885,22 +889,40 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			sem <- struct{}{}        // Acquire semaphore
 			defer func() { <-sem }() // Release semaphore
 
-			tokens, err := client.GetSessionTokens(sessionID)
-			if err == nil && tokens != nil {
-				tokenChan <- tokenResult{index: idx, tokens: tokens}
+			// Fetch messages once and extract both tokens and activity
+			messages, err := client.GetMessages(sessionID)
+			if err != nil || len(messages) == 0 {
+				return
 			}
+
+			result := sessionResult{index: idx}
+
+			// Extract tokens
+			tokenStats := opencode.AggregateTokens(messages)
+			result.tokens = &tokenStats
+
+			// Extract last activity from messages
+			result.activity = extractLastActivityFromMessages(messages)
+
+			resultChan <- result
 		}(i, agents[i].SessionID)
 	}
 
 	// Wait for all goroutines to complete, then close channel
 	go func() {
 		wg.Wait()
-		close(tokenChan)
+		close(resultChan)
 	}()
 
 	// Collect results
-	for result := range tokenChan {
-		agents[result.index].Tokens = result.tokens
+	for result := range resultChan {
+		if result.tokens != nil {
+			agents[result.index].Tokens = result.tokens
+		}
+		if result.activity != nil {
+			agents[result.index].CurrentActivity = result.activity.Text
+			agents[result.index].LastActivityAt = time.Unix(result.activity.Timestamp/1000, 0).Format(time.RFC3339)
+		}
 	}
 
 	// Apply time and project filters for non-session agents.
@@ -1118,6 +1140,84 @@ func extractGapAnalysisFromEvent(data map[string]interface{}) *GapAPIResponse {
 		Constraints:    constraints,
 		Decisions:      decisions,
 		Investigations: investigations,
+	}
+}
+
+// extractLastActivityFromMessages extracts the last meaningful activity from messages.
+// It looks for the most recent assistant message and extracts a summary of what
+// the agent is doing (tool use, text generation, etc.).
+// Returns nil if no activity can be extracted.
+func extractLastActivityFromMessages(messages []opencode.Message) *opencode.LastActivity {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// Find the last assistant message (most relevant for activity)
+	var lastAssistantMsg *opencode.Message
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role == "assistant" {
+			lastAssistantMsg = &messages[i]
+			break
+		}
+	}
+
+	if lastAssistantMsg == nil {
+		return nil
+	}
+
+	// Extract activity from message parts
+	// Priority: tool invocation > text > reasoning
+	var activityText string
+	for _, part := range lastAssistantMsg.Parts {
+		switch part.Type {
+		case "tool-invocation", "tool":
+			// Tool use is the most informative activity
+			activityText = "Using tool"
+			if part.Text != "" {
+				// Truncate tool text for display
+				toolText := part.Text
+				if len(toolText) > 40 {
+					toolText = toolText[:40] + "..."
+				}
+				activityText = "Using tool: " + toolText
+			}
+		case "text":
+			if part.Text != "" && activityText == "" {
+				// Truncate long text
+				text := part.Text
+				if len(text) > 80 {
+					// Find last space before 80 chars
+					cutoff := 77
+					for i := cutoff; i > 0; i-- {
+						if text[i] == ' ' {
+							cutoff = i
+							break
+						}
+					}
+					text = text[:cutoff] + "..."
+				}
+				activityText = text
+			}
+		case "reasoning":
+			if activityText == "" {
+				activityText = "Thinking..."
+			}
+		}
+	}
+
+	if activityText == "" {
+		return nil
+	}
+
+	// Use message completion time if available, otherwise created time
+	timestamp := lastAssistantMsg.Info.Time.Completed
+	if timestamp == 0 {
+		timestamp = lastAssistantMsg.Info.Time.Created
+	}
+
+	return &opencode.LastActivity{
+		Text:      activityText,
+		Timestamp: timestamp,
 	}
 }
 

@@ -413,6 +413,104 @@ func (c *Client) GetLastMessage(sessionID string) (*Message, error) {
 	return &messages[len(messages)-1], nil
 }
 
+// LastActivity represents the most recent activity from a session.
+// This is used to populate agent activity on initial dashboard load.
+type LastActivity struct {
+	Text      string // Activity description (truncated for display)
+	Timestamp int64  // Unix timestamp in milliseconds
+}
+
+// GetLastActivity extracts the last meaningful activity from session messages.
+// It looks for the most recent assistant message and extracts a summary of what
+// the agent is doing (tool use, text generation, etc.).
+// Returns nil if no activity can be extracted.
+func (c *Client) GetLastActivity(sessionID string) (*LastActivity, error) {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+
+	// Find the last assistant message (most relevant for activity)
+	var lastAssistantMsg *Message
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role == "assistant" {
+			lastAssistantMsg = &messages[i]
+			break
+		}
+	}
+
+	if lastAssistantMsg == nil {
+		return nil, nil
+	}
+
+	// Extract activity from message parts
+	// Priority: tool invocation > text > reasoning
+	var activityText string
+	for _, part := range lastAssistantMsg.Parts {
+		switch part.Type {
+		case "tool-invocation", "tool":
+			// Tool use is the most informative activity
+			activityText = "Using tool: " + extractToolName(part.Text)
+			break
+		case "text":
+			if part.Text != "" && activityText == "" {
+				// Truncate long text
+				activityText = truncateText(part.Text, 80)
+			}
+		case "reasoning":
+			if activityText == "" {
+				activityText = "Thinking..."
+			}
+		}
+	}
+
+	if activityText == "" {
+		return nil, nil
+	}
+
+	// Use message completion time if available, otherwise created time
+	timestamp := lastAssistantMsg.Info.Time.Completed
+	if timestamp == 0 {
+		timestamp = lastAssistantMsg.Info.Time.Created
+	}
+
+	return &LastActivity{
+		Text:      activityText,
+		Timestamp: timestamp,
+	}, nil
+}
+
+// extractToolName tries to extract a tool name from tool invocation text.
+// Tool text can be JSON or plain text depending on OpenCode version.
+func extractToolName(text string) string {
+	// Try to extract tool name - the text might be structured or plain
+	if text == "" {
+		return "unknown"
+	}
+	// Truncate for display
+	if len(text) > 50 {
+		return text[:50] + "..."
+	}
+	return text
+}
+
+// truncateText truncates text to maxLen characters with ellipsis.
+func truncateText(text string, maxLen int) string {
+	if len(text) <= maxLen {
+		return text
+	}
+	// Find last space before maxLen to avoid cutting words
+	for i := maxLen - 3; i > 0; i-- {
+		if text[i] == ' ' {
+			return text[:i] + "..."
+		}
+	}
+	return text[:maxLen-3] + "..."
+}
+
 // CreateSessionRequest represents the request body for creating a new session.
 type CreateSessionRequest struct {
 	Title     string `json:"title,omitempty"`
