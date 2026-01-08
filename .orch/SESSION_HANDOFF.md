@@ -1,66 +1,52 @@
-# Session Handoff - 2026-01-08
+# Session Handoff - 2026-01-08 (Afternoon)
 
 ## Session Focus
-Traced dead/stale agent surfacing problem from phone chat with Dylan. The "25-28% not completing" was both a real visibility problem AND a metrics bug.
+Agent visibility improvements - dead/stalled detection and dashboard state visualization.
 
-## Key Findings
+## Key Accomplishments
 
-### The Dead/Stale Agent Story
-1. **Dec 27 - Jan 2**: Dead/stale agent surfacing was added then reverted in 347-commit spiral
-2. **The surfacing was CORRECT** - it showed agents failing to complete properly
-3. **The rollback removed visibility, not the problem** - 25-28% still not completing, just invisible
-4. **Root cause of spiral**: Dylan said "fix the dead agent problem" → agents interpreted as "hide them" rather than "understand why"
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Dead agent detection** | ✅ Done | 3-min heartbeat threshold, restored from prior session |
+| **Stalled detection** | ✅ Done | 15-min phase unchanged, advisory only in Needs Attention |
+| **Stats deduplication** | ✅ Done | Now counts unique beads_ids (283 vs 310 events) |
+| **Event emission: bd close** | ✅ Done | New `orch emit` command + `.beads/hooks/on_close` script |
+| **Event emission: zombie reconciliation** | ✅ Done | Events logged with source=reconcile |
+| **Backend last activity** | ✅ Done | Fixes "Starting up..." display for idle agents |
+| **Agent card visualization** | ✅ Done | Dead (skull/red), stalled (timer/orange), tooltips |
+| **tmux bug investigation** | ✅ Done | Bug is external to orch-go (check ~/.tmux.conf hooks) |
 
-### Investigation Results
-- **Metrics bug discovered**: True completion rate is ~89%, not 72-75%
-- **82% of "missing" completions** have closed beads issues (work done, event tracking gap)
-- **Recommendation**: Fix stats deduplication, emit events from zombie reconciliation
+## Agent States Now Surfaced
 
-## Work Completed
+| State | Indicator | Threshold | Dashboard |
+|-------|-----------|-----------|-----------|
+| **Dead** | Red border, skull icon | 3 min no heartbeat | Needs Attention |
+| **Stalled** | Orange border, timer icon | 15 min same phase | Needs Attention |
+| **AT-RISK** | Yellow indicator | Idle for extended time | Agent cards |
+| **Active** | Green | Actively processing | Agent cards |
 
-| Task | Result |
-|------|--------|
-| Dead agent detection restored | ✅ Commit `4b50086d` - 3-min heartbeat, "Needs Attention" section in dashboard |
-| Investigation: 25-28% not completing | ✅ Found it's mostly metrics bug, true rate ~89% |
-| Scrollbar fix (double scrollbar) | ✅ Worked (confirmed by Dylan) |
-| Scrollbar fix (abandoned agent) | Stalled at Planning, abandoned |
-| Scrollbar styling (dark theme) | 🔄 Agent running: `orch-go-ohhi9` |
-| tmux switching bug investigation | 🔄 Agent running: `orch-go-2pyaw` |
+## Key Files Changed
 
-## Active Agents
-```
-orch-go-ohhi9  - Unify scrollbar styling (dark theme)
-orch-go-2pyaw  - Investigate tmux session switching bug
-```
-
-## Open Issues Created
-- `orch-go-2pyaw` - Bug: Worker agents cause tmux session switch from orchestrator to workers-orch-go
-
-## Constraints Added
-- `kn-1e82ea`: UI worker agents must use `--mcp playwright`, not Glass tools
+- `pkg/verify/beads_api.go` - PhaseReportedAt timestamp
+- `cmd/orch/serve_agents.go` - IsStalled calculation, last activity
+- `cmd/orch/stats_cmd.go` - Deduplication by beads_id
+- `cmd/orch/emit_cmd.go` - New command for event emission
+- `cmd/orch/reconcile.go` - Event emission on zombie close
+- `web/src/lib/stores/agents.ts` - stalledAgents derived store
+- `web/src/lib/components/agent-card/agent-card.svelte` - State visualization
+- `web/src/lib/components/needs-attention/needs-attention.svelte` - Stalled section
 
 ## Git Status
-- Pushed to origin/master
-- Branch is up to date
+- All changes committed and pushed to origin/master
+- 132 stale workspaces archived
 
 ## Next Session Should
-1. **Complete the two running agents** - `orch complete orch-go-ohhi9` and `orch complete orch-go-2pyaw`
-2. **Review tmux investigation findings** - root cause of session switching
-3. **Consider**: Fix stats deduplication per investigation recommendation
-4. **Consider**: Add "stalled" detection (agent active but no progress) as second phase after dead detection proves stable
-
-## Meta-Insight for Dylan
-The chat traced a pattern: "Fix X" gets interpreted as "make X go away" rather than "understand and resolve root cause of X." Better framing: "Why is X happening? Investigate before changing anything."
+1. **Verify dashboard visually** - Check dead/stalled/at-risk indicators render correctly
+2. **Test the full flow** - Spawn agent, let it stall, verify Needs Attention surfaces it
+3. **Consider**: Add auto-notification when agents go stalled (desktop notification)
 
 ## Resume Commands
 ```bash
-# Check agent status
 orch status
-
-# Complete when ready
-orch complete orch-go-ohhi9
-orch complete orch-go-2pyaw
-
-# See investigation findings
-cat .kb/investigations/2026-01-08-inv-*
+orch stats  # Should show ~89% completion rate now
 ```
