@@ -323,27 +323,24 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// EARLY FILTERING: Apply time and project filters immediately after fetching sessions.
+	// EARLY FILTERING: Apply time filter immediately after fetching sessions.
 	// This is critical for performance - filtering BEFORE expensive operations (workspace cache,
 	// beads batch fetches) reduces the number of sessions we need to process.
 	// Previously: filters were applied at the END, causing 20s+ cold cache times.
-	// Now: filters applied early, reducing expensive operations proportionally.
+	// Now: time filter applied early, reducing expensive operations proportionally.
+	//
+	// NOTE: Project filter is NOT applied here because s.Directory may be the orchestrator's cwd
+	// due to OpenCode --attach bug, not the actual target project directory from --workdir spawns.
+	// The correct project_dir is populated later from workspace cache (line ~727) and filtered
+	// at the end (line ~894) using agent.ProjectDir which has the correct value.
 	now := time.Now()
-	if sinceDuration > 0 || projectFilterParam != "" {
+	if sinceDuration > 0 {
 		filtered := make([]opencode.Session, 0, len(sessions))
 		for _, s := range sessions {
 			// Time filter: check session updated_at or created_at
-			if sinceDuration > 0 {
-				updatedAt := time.Unix(s.Time.Updated/1000, 0)
-				if now.Sub(updatedAt) > sinceDuration {
-					// Session is too old, skip it
-					continue
-				}
-			}
-
-			// Project filter: check session directory
-			if projectFilterParam != "" && !filterByProject(s.Directory, projectFilterParam) {
-				// Session is from a different project, skip it
+			updatedAt := time.Unix(s.Time.Updated/1000, 0)
+			if now.Sub(updatedAt) > sinceDuration {
+				// Session is too old, skip it
 				continue
 			}
 
