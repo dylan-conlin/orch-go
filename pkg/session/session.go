@@ -11,6 +11,7 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,18 +23,64 @@ import (
 // TimeFormat is the timestamp format used in session storage.
 const TimeFormat = time.RFC3339Nano
 
-// Checkpoint thresholds for orchestrator session duration discipline.
-// Sessions exceeding these durations should checkpoint or hand off.
+// Default checkpoint thresholds for agent sessions.
+// These are for agents that accumulate implementation context which degrades.
+// For orchestrator sessions, use longer thresholds via GetCheckpointStatusWithType.
+//
+// DEPRECATED: Use GetCheckpointStatusWithType for type-aware thresholds.
+// These constants are kept for backward compatibility with existing tests.
 const (
 	// CheckpointWarningDuration is when to start suggesting checkpoints (2 hours).
+	// For orchestrator sessions, use CheckpointThresholds.OrchestratorWarning (4h default).
 	CheckpointWarningDuration = 2 * time.Hour
 
 	// CheckpointStrongDuration is when to strongly recommend handoff (3 hours).
+	// For orchestrator sessions, use CheckpointThresholds.OrchestratorStrong (6h default).
 	CheckpointStrongDuration = 3 * time.Hour
 
 	// CheckpointMaxDuration is the maximum recommended session duration (4 hours).
+	// For orchestrator sessions, use CheckpointThresholds.OrchestratorMax (8h default).
 	CheckpointMaxDuration = 4 * time.Hour
 )
+
+// SessionType indicates the type of session for checkpoint threshold selection.
+type SessionType string
+
+const (
+	// SessionTypeAgent is for implementation agents that accumulate code context.
+	SessionTypeAgent SessionType = "agent"
+
+	// SessionTypeOrchestrator is for orchestrator sessions that coordinate work.
+	// Orchestrators delegate to agents, so their context doesn't degrade as quickly.
+	SessionTypeOrchestrator SessionType = "orchestrator"
+)
+
+// CheckpointThresholds holds the duration thresholds for session checkpoints.
+type CheckpointThresholds struct {
+	Warning time.Duration
+	Strong  time.Duration
+	Max     time.Duration
+}
+
+// DefaultAgentThresholds returns the default checkpoint thresholds for agent sessions.
+// Agents accumulate implementation context which degrades over time.
+func DefaultAgentThresholds() CheckpointThresholds {
+	return CheckpointThresholds{
+		Warning: 2 * time.Hour,
+		Strong:  3 * time.Hour,
+		Max:     4 * time.Hour,
+	}
+}
+
+// DefaultOrchestratorThresholds returns the default checkpoint thresholds for orchestrator sessions.
+// Orchestrators coordinate work and delegate to agents, so context persists longer.
+func DefaultOrchestratorThresholds() CheckpointThresholds {
+	return CheckpointThresholds{
+		Warning: 4 * time.Hour,
+		Strong:  6 * time.Hour,
+		Max:     8 * time.Hour,
+	}
+}
 
 // DefaultPath returns the default session file path.
 func DefaultPath() string {
@@ -315,7 +362,32 @@ type CheckpointStatus struct {
 
 // GetCheckpointStatus returns checkpoint status for the current session.
 // Returns nil if no session is active.
+//
+// DEPRECATED: Use GetCheckpointStatusWithType for type-aware thresholds.
+// This method uses agent thresholds (2h/3h/4h) for backward compatibility.
 func (s *Store) GetCheckpointStatus() *CheckpointStatus {
+	return s.GetCheckpointStatusWithThresholds(DefaultAgentThresholds())
+}
+
+// GetCheckpointStatusWithType returns checkpoint status using type-appropriate thresholds.
+// For orchestrator sessions, use longer thresholds since coordination context persists better.
+// For agent sessions, use shorter thresholds since implementation context degrades faster.
+// Returns nil if no session is active.
+func (s *Store) GetCheckpointStatusWithType(sessionType SessionType) *CheckpointStatus {
+	var thresholds CheckpointThresholds
+	switch sessionType {
+	case SessionTypeOrchestrator:
+		thresholds = DefaultOrchestratorThresholds()
+	default:
+		thresholds = DefaultAgentThresholds()
+	}
+	return s.GetCheckpointStatusWithThresholds(thresholds)
+}
+
+// GetCheckpointStatusWithThresholds returns checkpoint status using custom thresholds.
+// This allows callers to provide their own thresholds (e.g., from config).
+// Returns nil if no session is active.
+func (s *Store) GetCheckpointStatusWithThresholds(thresholds CheckpointThresholds) *CheckpointStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -329,26 +401,35 @@ func (s *Store) GetCheckpointStatus() *CheckpointStatus {
 		Duration: duration,
 	}
 
+	// Format duration for messages
+	formatDuration := func(d time.Duration) string {
+		hours := int(d.Hours())
+		if hours > 0 {
+			return fmt.Sprintf("%dh", hours)
+		}
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+
 	switch {
-	case duration >= CheckpointMaxDuration:
+	case duration >= thresholds.Max:
 		status.Level = "exceeded"
-		status.Message = "Session has exceeded 4h max - handoff immediately"
+		status.Message = fmt.Sprintf("Session has exceeded %s max - handoff immediately", formatDuration(thresholds.Max))
 		status.NextThreshold = 0
 
-	case duration >= CheckpointStrongDuration:
+	case duration >= thresholds.Strong:
 		status.Level = "strong"
-		status.Message = "Session at 3h+ - strongly recommend handoff"
-		status.NextThreshold = CheckpointMaxDuration - duration
+		status.Message = fmt.Sprintf("Session at %s+ - strongly recommend handoff", formatDuration(thresholds.Strong))
+		status.NextThreshold = thresholds.Max - duration
 
-	case duration >= CheckpointWarningDuration:
+	case duration >= thresholds.Warning:
 		status.Level = "warning"
-		status.Message = "Session at 2h+ - consider checkpoint or handoff"
-		status.NextThreshold = CheckpointStrongDuration - duration
+		status.Message = fmt.Sprintf("Session at %s+ - consider checkpoint or handoff", formatDuration(thresholds.Warning))
+		status.NextThreshold = thresholds.Strong - duration
 
 	default:
 		status.Level = "ok"
 		status.Message = "Session within normal duration"
-		status.NextThreshold = CheckpointWarningDuration - duration
+		status.NextThreshold = thresholds.Warning - duration
 	}
 
 	return status

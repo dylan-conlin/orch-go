@@ -319,8 +319,9 @@ func runSessionStatus() error {
 		}
 		output.Counts = counts
 
-		// Get checkpoint status
-		output.Checkpoint = store.GetCheckpointStatus()
+		// Get checkpoint status using orchestrator thresholds
+		// (orch session is for orchestrator sessions, not agent sessions)
+		output.Checkpoint = store.GetCheckpointStatusWithType(session.SessionTypeOrchestrator)
 	}
 
 	// JSON output
@@ -510,12 +511,13 @@ func runSessionEnd() error {
 		fmt.Printf("\n⚠️  %d agent(s) still active. Use 'orch status' to monitor.\n", activeCount)
 	}
 
-	// Show checkpoint advice based on session duration
-	if duration >= session.CheckpointMaxDuration {
-		fmt.Println("\n⛔ Session exceeded 4h checkpoint max.")
+	// Show checkpoint advice based on session duration using orchestrator thresholds
+	orchThresholds := session.DefaultOrchestratorThresholds()
+	if duration >= orchThresholds.Max {
+		fmt.Printf("\n⛔ Session exceeded %s checkpoint max.\n", formatSessionDuration(orchThresholds.Max))
 		fmt.Println("   Consider shorter sessions to maintain quality.")
-	} else if duration >= session.CheckpointStrongDuration {
-		fmt.Println("\n🟡 Session was 3h+. Good to hand off, but review quality of late work.")
+	} else if duration >= orchThresholds.Strong {
+		fmt.Printf("\n🟡 Session was %s+. Good to hand off, but review quality of late work.\n", formatSessionDuration(orchThresholds.Strong))
 	}
 
 	return nil

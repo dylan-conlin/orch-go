@@ -898,3 +898,179 @@ func TestLoadMissingDaemonSection(t *testing.T) {
 		t.Errorf("Load() without daemon section should have default paths, got %d", len(paths))
 	}
 }
+
+// =============================================================================
+// Tests for SessionConfig - Checkpoint Thresholds
+// =============================================================================
+
+func TestSessionCheckpointDefaults(t *testing.T) {
+	cfg := &Config{}
+
+	// Test orchestrator defaults
+	if cfg.OrchestratorCheckpointWarning() != DefaultOrchestratorWarningMinutes {
+		t.Errorf("OrchestratorCheckpointWarning() = %d, want %d", cfg.OrchestratorCheckpointWarning(), DefaultOrchestratorWarningMinutes)
+	}
+	if cfg.OrchestratorCheckpointStrong() != DefaultOrchestratorStrongMinutes {
+		t.Errorf("OrchestratorCheckpointStrong() = %d, want %d", cfg.OrchestratorCheckpointStrong(), DefaultOrchestratorStrongMinutes)
+	}
+	if cfg.OrchestratorCheckpointMax() != DefaultOrchestratorMaxMinutes {
+		t.Errorf("OrchestratorCheckpointMax() = %d, want %d", cfg.OrchestratorCheckpointMax(), DefaultOrchestratorMaxMinutes)
+	}
+
+	// Test agent defaults
+	if cfg.AgentCheckpointWarning() != DefaultAgentWarningMinutes {
+		t.Errorf("AgentCheckpointWarning() = %d, want %d", cfg.AgentCheckpointWarning(), DefaultAgentWarningMinutes)
+	}
+	if cfg.AgentCheckpointStrong() != DefaultAgentStrongMinutes {
+		t.Errorf("AgentCheckpointStrong() = %d, want %d", cfg.AgentCheckpointStrong(), DefaultAgentStrongMinutes)
+	}
+	if cfg.AgentCheckpointMax() != DefaultAgentMaxMinutes {
+		t.Errorf("AgentCheckpointMax() = %d, want %d", cfg.AgentCheckpointMax(), DefaultAgentMaxMinutes)
+	}
+
+	// Verify orchestrator thresholds are longer than agent thresholds
+	if cfg.OrchestratorCheckpointWarning() <= cfg.AgentCheckpointWarning() {
+		t.Errorf("Orchestrator warning (%d) should be > agent warning (%d)",
+			cfg.OrchestratorCheckpointWarning(), cfg.AgentCheckpointWarning())
+	}
+	if cfg.OrchestratorCheckpointStrong() <= cfg.AgentCheckpointStrong() {
+		t.Errorf("Orchestrator strong (%d) should be > agent strong (%d)",
+			cfg.OrchestratorCheckpointStrong(), cfg.AgentCheckpointStrong())
+	}
+	if cfg.OrchestratorCheckpointMax() <= cfg.AgentCheckpointMax() {
+		t.Errorf("Orchestrator max (%d) should be > agent max (%d)",
+			cfg.OrchestratorCheckpointMax(), cfg.AgentCheckpointMax())
+	}
+}
+
+func TestSessionCheckpointCustomValues(t *testing.T) {
+	cfg := &Config{
+		Session: SessionConfig{
+			OrchestratorCheckpoints: &CheckpointThresholds{
+				WarningMinutes: intPtr(300), // 5h
+				StrongMinutes:  intPtr(420), // 7h
+				MaxMinutes:     intPtr(540), // 9h
+			},
+			AgentCheckpoints: &CheckpointThresholds{
+				WarningMinutes: intPtr(90),  // 1.5h
+				StrongMinutes:  intPtr(150), // 2.5h
+				MaxMinutes:     intPtr(210), // 3.5h
+			},
+		},
+	}
+
+	// Test custom orchestrator values
+	if cfg.OrchestratorCheckpointWarning() != 300 {
+		t.Errorf("OrchestratorCheckpointWarning() = %d, want 300", cfg.OrchestratorCheckpointWarning())
+	}
+	if cfg.OrchestratorCheckpointStrong() != 420 {
+		t.Errorf("OrchestratorCheckpointStrong() = %d, want 420", cfg.OrchestratorCheckpointStrong())
+	}
+	if cfg.OrchestratorCheckpointMax() != 540 {
+		t.Errorf("OrchestratorCheckpointMax() = %d, want 540", cfg.OrchestratorCheckpointMax())
+	}
+
+	// Test custom agent values
+	if cfg.AgentCheckpointWarning() != 90 {
+		t.Errorf("AgentCheckpointWarning() = %d, want 90", cfg.AgentCheckpointWarning())
+	}
+	if cfg.AgentCheckpointStrong() != 150 {
+		t.Errorf("AgentCheckpointStrong() = %d, want 150", cfg.AgentCheckpointStrong())
+	}
+	if cfg.AgentCheckpointMax() != 210 {
+		t.Errorf("AgentCheckpointMax() = %d, want 210", cfg.AgentCheckpointMax())
+	}
+}
+
+func TestLoadSessionConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file with session settings
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+session:
+  orchestrator_checkpoints:
+    warning_minutes: 300
+    strong_minutes: 420
+    max_minutes: 540
+  agent_checkpoints:
+    warning_minutes: 90
+    strong_minutes: 150
+    max_minutes: 210
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Test loaded orchestrator values
+	if cfg.OrchestratorCheckpointWarning() != 300 {
+		t.Errorf("Load() OrchestratorCheckpointWarning() = %d, want 300", cfg.OrchestratorCheckpointWarning())
+	}
+	if cfg.OrchestratorCheckpointStrong() != 420 {
+		t.Errorf("Load() OrchestratorCheckpointStrong() = %d, want 420", cfg.OrchestratorCheckpointStrong())
+	}
+	if cfg.OrchestratorCheckpointMax() != 540 {
+		t.Errorf("Load() OrchestratorCheckpointMax() = %d, want 540", cfg.OrchestratorCheckpointMax())
+	}
+
+	// Test loaded agent values
+	if cfg.AgentCheckpointWarning() != 90 {
+		t.Errorf("Load() AgentCheckpointWarning() = %d, want 90", cfg.AgentCheckpointWarning())
+	}
+	if cfg.AgentCheckpointStrong() != 150 {
+		t.Errorf("Load() AgentCheckpointStrong() = %d, want 150", cfg.AgentCheckpointStrong())
+	}
+	if cfg.AgentCheckpointMax() != 210 {
+		t.Errorf("Load() AgentCheckpointMax() = %d, want 210", cfg.AgentCheckpointMax())
+	}
+}
+
+func TestLoadMissingSessionSection(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config without session section
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Should use defaults
+	if cfg.OrchestratorCheckpointWarning() != DefaultOrchestratorWarningMinutes {
+		t.Errorf("Load() without session section should default orchestrator warning to %d, got %d",
+			DefaultOrchestratorWarningMinutes, cfg.OrchestratorCheckpointWarning())
+	}
+	if cfg.AgentCheckpointWarning() != DefaultAgentWarningMinutes {
+		t.Errorf("Load() without session section should default agent warning to %d, got %d",
+			DefaultAgentWarningMinutes, cfg.AgentCheckpointWarning())
+	}
+}

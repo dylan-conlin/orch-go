@@ -41,6 +41,31 @@ type ReflectConfig struct {
 	CreateIssues *bool `yaml:"create_issues,omitempty"`
 }
 
+// SessionConfig holds settings for orchestrator session management.
+type SessionConfig struct {
+	// OrchestratorCheckpoints holds checkpoint thresholds for orchestrator sessions.
+	// Orchestrator sessions coordinate work and don't accumulate implementation context,
+	// so they can safely run longer than agent sessions.
+	OrchestratorCheckpoints *CheckpointThresholds `yaml:"orchestrator_checkpoints,omitempty"`
+
+	// AgentCheckpoints holds checkpoint thresholds for agent sessions.
+	// Agents accumulate implementation context which degrades over time,
+	// so they need shorter checkpoint thresholds.
+	AgentCheckpoints *CheckpointThresholds `yaml:"agent_checkpoints,omitempty"`
+}
+
+// CheckpointThresholds defines the checkpoint duration thresholds for sessions.
+type CheckpointThresholds struct {
+	// WarningMinutes is when to start suggesting checkpoints.
+	WarningMinutes *int `yaml:"warning_minutes,omitempty"`
+
+	// StrongMinutes is when to strongly recommend handoff.
+	StrongMinutes *int `yaml:"strong_minutes,omitempty"`
+
+	// MaxMinutes is the maximum recommended session duration.
+	MaxMinutes *int `yaml:"max_minutes,omitempty"`
+}
+
 // DaemonConfig holds settings for the orch daemon plist generation.
 // This is the declarative source of truth for ~/Library/LaunchAgents/com.orch.daemon.plist.
 type DaemonConfig struct {
@@ -90,6 +115,8 @@ type Config struct {
 	DefaultTier string `yaml:"default_tier,omitempty"`
 	// Daemon holds settings for the orch daemon plist generation.
 	Daemon DaemonConfig `yaml:"daemon,omitempty"`
+	// Session holds settings for orchestrator session management.
+	Session SessionConfig `yaml:"session,omitempty"`
 }
 
 // ConfigPath returns the path to the user config file.
@@ -277,4 +304,73 @@ func (c *Config) DaemonPath() []string {
 		}
 	}
 	return result
+}
+
+// Default checkpoint thresholds (in minutes).
+// Agent sessions use shorter thresholds because implementation context degrades.
+// Orchestrator sessions use longer thresholds because coordination context persists better.
+const (
+	// Agent session defaults (implementation work)
+	DefaultAgentWarningMinutes = 120 // 2 hours
+	DefaultAgentStrongMinutes  = 180 // 3 hours
+	DefaultAgentMaxMinutes     = 240 // 4 hours
+
+	// Orchestrator session defaults (coordination work)
+	DefaultOrchestratorWarningMinutes = 240 // 4 hours
+	DefaultOrchestratorStrongMinutes  = 360 // 6 hours
+	DefaultOrchestratorMaxMinutes     = 480 // 8 hours
+)
+
+// OrchestratorCheckpointWarning returns the warning threshold for orchestrator sessions.
+// Defaults to 4 hours if not configured.
+func (c *Config) OrchestratorCheckpointWarning() int {
+	if c.Session.OrchestratorCheckpoints != nil && c.Session.OrchestratorCheckpoints.WarningMinutes != nil {
+		return *c.Session.OrchestratorCheckpoints.WarningMinutes
+	}
+	return DefaultOrchestratorWarningMinutes
+}
+
+// OrchestratorCheckpointStrong returns the strong threshold for orchestrator sessions.
+// Defaults to 6 hours if not configured.
+func (c *Config) OrchestratorCheckpointStrong() int {
+	if c.Session.OrchestratorCheckpoints != nil && c.Session.OrchestratorCheckpoints.StrongMinutes != nil {
+		return *c.Session.OrchestratorCheckpoints.StrongMinutes
+	}
+	return DefaultOrchestratorStrongMinutes
+}
+
+// OrchestratorCheckpointMax returns the max threshold for orchestrator sessions.
+// Defaults to 8 hours if not configured.
+func (c *Config) OrchestratorCheckpointMax() int {
+	if c.Session.OrchestratorCheckpoints != nil && c.Session.OrchestratorCheckpoints.MaxMinutes != nil {
+		return *c.Session.OrchestratorCheckpoints.MaxMinutes
+	}
+	return DefaultOrchestratorMaxMinutes
+}
+
+// AgentCheckpointWarning returns the warning threshold for agent sessions.
+// Defaults to 2 hours if not configured.
+func (c *Config) AgentCheckpointWarning() int {
+	if c.Session.AgentCheckpoints != nil && c.Session.AgentCheckpoints.WarningMinutes != nil {
+		return *c.Session.AgentCheckpoints.WarningMinutes
+	}
+	return DefaultAgentWarningMinutes
+}
+
+// AgentCheckpointStrong returns the strong threshold for agent sessions.
+// Defaults to 3 hours if not configured.
+func (c *Config) AgentCheckpointStrong() int {
+	if c.Session.AgentCheckpoints != nil && c.Session.AgentCheckpoints.StrongMinutes != nil {
+		return *c.Session.AgentCheckpoints.StrongMinutes
+	}
+	return DefaultAgentStrongMinutes
+}
+
+// AgentCheckpointMax returns the max threshold for agent sessions.
+// Defaults to 4 hours if not configured.
+func (c *Config) AgentCheckpointMax() int {
+	if c.Session.AgentCheckpoints != nil && c.Session.AgentCheckpoints.MaxMinutes != nil {
+		return *c.Session.AgentCheckpoints.MaxMinutes
+	}
+	return DefaultAgentMaxMinutes
 }

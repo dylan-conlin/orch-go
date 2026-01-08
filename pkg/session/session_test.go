@@ -378,3 +378,147 @@ func TestCheckpointConstants(t *testing.T) {
 		t.Errorf("CheckpointMaxDuration = %v, want 4h", CheckpointMaxDuration)
 	}
 }
+
+func TestDefaultThresholds(t *testing.T) {
+	// Verify default agent thresholds
+	agentThresholds := DefaultAgentThresholds()
+	if agentThresholds.Warning != 2*time.Hour {
+		t.Errorf("DefaultAgentThresholds().Warning = %v, want 2h", agentThresholds.Warning)
+	}
+	if agentThresholds.Strong != 3*time.Hour {
+		t.Errorf("DefaultAgentThresholds().Strong = %v, want 3h", agentThresholds.Strong)
+	}
+	if agentThresholds.Max != 4*time.Hour {
+		t.Errorf("DefaultAgentThresholds().Max = %v, want 4h", agentThresholds.Max)
+	}
+
+	// Verify default orchestrator thresholds (longer than agent)
+	orchThresholds := DefaultOrchestratorThresholds()
+	if orchThresholds.Warning != 4*time.Hour {
+		t.Errorf("DefaultOrchestratorThresholds().Warning = %v, want 4h", orchThresholds.Warning)
+	}
+	if orchThresholds.Strong != 6*time.Hour {
+		t.Errorf("DefaultOrchestratorThresholds().Strong = %v, want 6h", orchThresholds.Strong)
+	}
+	if orchThresholds.Max != 8*time.Hour {
+		t.Errorf("DefaultOrchestratorThresholds().Max = %v, want 8h", orchThresholds.Max)
+	}
+
+	// Verify orchestrator thresholds are longer than agent thresholds
+	if orchThresholds.Warning <= agentThresholds.Warning {
+		t.Errorf("Orchestrator warning (%v) should be > agent warning (%v)",
+			orchThresholds.Warning, agentThresholds.Warning)
+	}
+	if orchThresholds.Strong <= agentThresholds.Strong {
+		t.Errorf("Orchestrator strong (%v) should be > agent strong (%v)",
+			orchThresholds.Strong, agentThresholds.Strong)
+	}
+	if orchThresholds.Max <= agentThresholds.Max {
+		t.Errorf("Orchestrator max (%v) should be > agent max (%v)",
+			orchThresholds.Max, agentThresholds.Max)
+	}
+}
+
+func TestGetCheckpointStatusWithType(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "session.json")
+
+	store, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Start session
+	if err := store.Start("Test type-aware checkpoints"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Test SessionTypeAgent returns agent thresholds
+	agentStatus := store.GetCheckpointStatusWithType(SessionTypeAgent)
+	if agentStatus == nil {
+		t.Fatal("GetCheckpointStatusWithType(agent) returned nil")
+	}
+	if agentStatus.Level != "ok" {
+		t.Errorf("Agent status level = %q, want 'ok' for new session", agentStatus.Level)
+	}
+
+	// Test SessionTypeOrchestrator returns orchestrator thresholds
+	orchStatus := store.GetCheckpointStatusWithType(SessionTypeOrchestrator)
+	if orchStatus == nil {
+		t.Fatal("GetCheckpointStatusWithType(orchestrator) returned nil")
+	}
+	if orchStatus.Level != "ok" {
+		t.Errorf("Orchestrator status level = %q, want 'ok' for new session", orchStatus.Level)
+	}
+}
+
+func TestOrchestratorThresholdsAreLonger(t *testing.T) {
+	// Test that at 3h, agent would be at "strong" but orchestrator is still "ok"
+	agentThresholds := DefaultAgentThresholds()
+	orchThresholds := DefaultOrchestratorThresholds()
+
+	testDuration := 3 * time.Hour
+
+	// At 3h, agent should hit strong threshold
+	var agentLevel string
+	switch {
+	case testDuration >= agentThresholds.Max:
+		agentLevel = "exceeded"
+	case testDuration >= agentThresholds.Strong:
+		agentLevel = "strong"
+	case testDuration >= agentThresholds.Warning:
+		agentLevel = "warning"
+	default:
+		agentLevel = "ok"
+	}
+	if agentLevel != "strong" {
+		t.Errorf("Agent at 3h = %q, want 'strong'", agentLevel)
+	}
+
+	// At 3h, orchestrator should still be "ok"
+	var orchLevel string
+	switch {
+	case testDuration >= orchThresholds.Max:
+		orchLevel = "exceeded"
+	case testDuration >= orchThresholds.Strong:
+		orchLevel = "strong"
+	case testDuration >= orchThresholds.Warning:
+		orchLevel = "warning"
+	default:
+		orchLevel = "ok"
+	}
+	if orchLevel != "ok" {
+		t.Errorf("Orchestrator at 3h = %q, want 'ok'", orchLevel)
+	}
+}
+
+func TestGetCheckpointStatusWithThresholds(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "session.json")
+
+	store, err := New(sessionPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Start session
+	if err := store.Start("Test custom thresholds"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	// Test with custom thresholds
+	customThresholds := CheckpointThresholds{
+		Warning: 1 * time.Minute,
+		Strong:  2 * time.Minute,
+		Max:     3 * time.Minute,
+	}
+
+	status := store.GetCheckpointStatusWithThresholds(customThresholds)
+	if status == nil {
+		t.Fatal("GetCheckpointStatusWithThresholds() returned nil")
+	}
+	// New session should be "ok" even with short thresholds
+	if status.Level != "ok" {
+		t.Errorf("Status level = %q, want 'ok' for new session", status.Level)
+	}
+}
