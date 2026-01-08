@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -127,6 +128,10 @@ func runSessionStart(goal string) error {
 		fmt.Printf("  Workspace:  %s\n", workspacePath)
 	}
 
+	// Surface reflection suggestions for high-count synthesis opportunities
+	// This proactively surfaces consolidation needs that accumulated since last reflection
+	surfaceReflectSuggestions()
+
 	return nil
 }
 
@@ -173,6 +178,61 @@ func createSessionWorkspace(goal string) (string, error) {
 	}
 
 	return workspacePath, nil
+}
+
+// SynthesisWarningThreshold is the minimum count of investigations to show a warning.
+// Matches SynthesisIssueThreshold in kb-cli to maintain consistency.
+const SynthesisWarningThreshold = 10
+
+// SuggestionFreshnessHours is the maximum age of suggestions to consider fresh.
+// Suggestions older than this are considered stale and won't be shown.
+const SuggestionFreshnessHours = 24
+
+// surfaceReflectSuggestions loads and displays synthesis warnings from reflect-suggestions.json.
+// This proactively surfaces consolidation needs at session start so orchestrators are aware
+// of accumulated investigation clusters that need synthesis into guides.
+func surfaceReflectSuggestions() {
+	suggestions, err := daemon.LoadSuggestions()
+	if err != nil || suggestions == nil {
+		// No suggestions file or failed to load - silently skip
+		return
+	}
+
+	// Check freshness - skip stale suggestions
+	if time.Since(suggestions.Timestamp).Hours() > SuggestionFreshnessHours {
+		return
+	}
+
+	// Filter to high-count synthesis opportunities
+	var highCount []daemon.SynthesisSuggestion
+	for _, s := range suggestions.Synthesis {
+		if s.Count >= SynthesisWarningThreshold {
+			highCount = append(highCount, s)
+		}
+	}
+
+	if len(highCount) == 0 {
+		return
+	}
+
+	// Display synthesis warnings
+	fmt.Println()
+	fmt.Println("📚 SYNTHESIS OPPORTUNITIES")
+	fmt.Printf("   %d topics have accumulated %d+ investigations:\n", len(highCount), SynthesisWarningThreshold)
+
+	// Show top 5 topics
+	maxShow := 5
+	if len(highCount) < maxShow {
+		maxShow = len(highCount)
+	}
+	for i := 0; i < maxShow; i++ {
+		s := highCount[i]
+		fmt.Printf("   • %s: %d investigations → kb create guide \"%s\"\n", s.Topic, s.Count, s.Topic)
+	}
+	if len(highCount) > maxShow {
+		fmt.Printf("   ... and %d more topics\n", len(highCount)-maxShow)
+	}
+	fmt.Printf("   Run 'kb reflect --type synthesis' for details.\n")
 }
 
 // ============================================================================
