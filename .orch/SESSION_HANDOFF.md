@@ -1,156 +1,66 @@
-# Session Handoff - 2026-01-07 (Markdown Issues Spike)
+# Session Handoff - 2026-01-08
 
-**Session:** Strategic discussion on tracking layer
-**Focus:** Should we replace beads with markdown-based issues?
+## Session Focus
+Traced dead/stale agent surfacing problem from phone chat with Dylan. The "25-28% not completing" was both a real visibility problem AND a metrics bug.
 
----
+## Key Findings
 
-## What Happened
+### The Dead/Stale Agent Story
+1. **Dec 27 - Jan 2**: Dead/stale agent surfacing was added then reverted in 347-commit spiral
+2. **The surfacing was CORRECT** - it showed agents failing to complete properly
+3. **The rollback removed visibility, not the problem** - 25-28% still not completing, just invisible
+4. **Root cause of spiral**: Dylan said "fix the dead agent problem" → agents interpreted as "hide them" rather than "understand why"
 
-Resumed from prior session about the Strategic Orchestrator Model. Dylan raised friction with beads:
-- "Issues aren't artifacts"
-- "Opacity" 
-- "Shoehorned"
-- "Not our project"
+### Investigation Results
+- **Metrics bug discovered**: True completion rate is ~89%, not 72-75%
+- **82% of "missing" completions** have closed beads issues (work done, event tracking gap)
+- **Recommendation**: Fix stats deduplication, emit events from zombie reconciliation
 
-Through discussion, we refined the problem:
+## Work Completed
 
-**The tracking layer needs to be as legible and moldable as the knowledge layer.**
+| Task | Result |
+|------|--------|
+| Dead agent detection restored | ✅ Commit `4b50086d` - 3-min heartbeat, "Needs Attention" section in dashboard |
+| Investigation: 25-28% not completing | ✅ Found it's mostly metrics bug, true rate ~89% |
+| Scrollbar fix (double scrollbar) | ✅ Worked (confirmed by Dylan) |
+| Scrollbar fix (abandoned agent) | Stalled at Planning, abandoned |
+| Scrollbar styling (dark theme) | 🔄 Agent running: `orch-go-ohhi9` |
+| tmux switching bug investigation | 🔄 Agent running: `orch-go-2pyaw` |
 
-Currently:
-- Knowledge layer (kb): legible, moldable, direct access, Dylan owns it
-- Tracking layer (beads): opaque, indirect access, someone else's decisions
-
-This matters because Dylan needs visibility into system state without going through the AI. He built 2 UIs (beads-ui-svelte, orch-go dashboard) to recover observability that markdown would provide natively.
-
----
-
-## Key Insight
-
-The real issue isn't "beads vs markdown" for agents. It's about **who has direct access to system state**.
-
-| Audience | Beads | Markdown |
-|----------|-------|----------|
-| Agents (via CLI) | ✅ Works | ✅ Would work |
-| Orchestrator (via CLI) | ✅ Works | ✅ Would work |
-| Dylan (directly) | ❌ Needs UI | ✅ Native access |
-
----
-
-## Evidence Gathered
-
-### What beads provides (and whether it matters):
-
-| Feature | Importance | Can replicate? |
-|---------|-----------|----------------|
-| Atomic operations | Low (agents work serially) | Yes |
-| Dependency queries | Low (<1% usage) | Yes (JSONL scan) |
-| Performance | Low at current scale | Yes (kb-cli is fine) |
-| Schema enforcement | Medium | Yes (templates + validation) |
-| Built CLI | Known cost | Yes (~1000 lines) |
-| Sync mechanism | Low | Yes (same git workflow) |
-
-### kb-cli patterns already solve the hard problems:
-- JSONL for structured metadata (`.kb/quick/entries.jsonl`)
-- Markdown for rich content (investigations, decisions)
-- Templates with structure (D.E.K.N.)
-- Cross-project search
-- Proven at scale
-
-### Beads DB corruption revealed tracking/knowledge disconnect:
-- Dashboard epic showed "open" but was complete
-- 3 synthesis issues showed "ready" but work was done Jan 6
-- Issues were created *after* work completed (daemon auto-creation)
-- No reconciliation between artifacts and tracking
-
----
-
-## Decisions Made
-
-None formally. This is still exploratory.
-
-**Direction emerging:** Markdown-based issues using kb-cli patterns. The losses are acceptable, the cost is known (~2-3 days), the patterns are proven.
-
----
-
-## Spike Created
-
-Created `.issues/orch-go-akhff.md` as a test of markdown-based epic format.
-
-**Irony:** The epic is about making agent state visible in the dashboard (tabs). We're testing whether markdown makes issue state visible to Dylan. Same problem, two levels.
-
-**Outcome:** The epic was already complete but beads showed it as open. We verified code, closed it. The markdown file now shows full history directly.
-
----
-
-## Issues Closed This Session
-
-| Issue | Reason |
-|-------|--------|
-| orch-go-akhff | Epic complete - all tabs implemented, panel refactored |
-| orch-go-8qg67 | Synthesis already done Jan 6 |
-| orch-go-1lrzg | Synthesis already done Jan 6 |
-| orch-go-5kjlw | Synthesis already done Jan 6 |
-
----
-
-## Beads DB Rebuilt
-
-The DB was corrupted (FK violations, `no such column: repro`). Rebuilt via:
-```bash
-rm .beads/beads.db && bd init
+## Active Agents
+```
+orch-go-ohhi9  - Unify scrollbar styling (dark theme)
+orch-go-2pyaw  - Investigate tmux session switching bug
 ```
 
-Imported 1528 issues. Some cleanup needed (`bd doctor --fix`).
+## Open Issues Created
+- `orch-go-2pyaw` - Bug: Worker agents cause tmux session switch from orchestrator to workers-orch-go
 
----
+## Constraints Added
+- `kn-1e82ea`: UI worker agents must use `--mcp playwright`, not Glass tools
 
-## Open Questions
+## Git Status
+- Pushed to origin/master
+- Branch is up to date
 
-1. **Should we run a proper spike?** We created `.issues/orch-go-akhff.md` but the epic was already done. Need an actually-in-progress issue to test whether direct access changes how Dylan works.
+## Next Session Should
+1. **Complete the two running agents** - `orch complete orch-go-ohhi9` and `orch complete orch-go-2pyaw`
+2. **Review tmux investigation findings** - root cause of session switching
+3. **Consider**: Fix stats deduplication per investigation recommendation
+4. **Consider**: Add "stalled" detection (agent active but no progress) as second phase after dead detection proves stable
 
-2. **What format for markdown issues?** Draft exists in `.issues/orch-go-akhff.md`:
-   - Understanding section (problem, constraints, risks, done criteria)
-   - Children table (linked issues)
-   - Execution log (key events with dates)
-   - Evidence chain (linked artifacts)
-
-3. **Build vs continue spiking?** Evidence is strong. Could proceed to build `issue` CLI using kb-cli patterns. Or continue spiking with real in-progress work.
-
----
-
-## Files Changed
-
-- `.issues/orch-go-akhff.md` - Created (spike markdown epic)
-- `.beads/beads.db` - Rebuilt from JSONL
-- `.beads/issues.jsonl` - Updated (closed 4 issues)
-
----
-
-## Next Session
-
-Options:
-
-1. **Continue spike** - Pick an actually in-progress issue, maintain it as markdown for a week, observe whether Dylan uses it
-
-2. **Build the thing** - Start `issue` CLI using kb-cli patterns. The evidence is probably sufficient.
-
-3. **Different direction** - Dylan may have other priorities
-
-**Recommended:** Ask Dylan. The analysis is done; this is now a prioritization decision.
-
----
+## Meta-Insight for Dylan
+The chat traced a pattern: "Fix X" gets interpreted as "make X go away" rather than "understand and resolve root cause of X." Better framing: "Why is X happening? Investigate before changing anything."
 
 ## Resume Commands
-
 ```bash
-# Check current state
+# Check agent status
 orch status
-bd ready
 
-# See the spike file
-cat .issues/orch-go-akhff.md
+# Complete when ready
+orch complete orch-go-ohhi9
+orch complete orch-go-2pyaw
 
-# See what needs cleanup
-bd doctor
+# See investigation findings
+cat .kb/investigations/2026-01-08-inv-*
 ```
