@@ -66,3 +66,5 @@
 {"time":"2026-01-08T06:55:59-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-08T07:02:36-08:00","action":"bypass","reason":"fixing dashboard activity display bug - already tested"}
 {"time":"2026-01-08T07:02:36-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-08T08:30:45-08:00","action":"bypass","reason":"fixing visible bug - activity shows Starting up instead of actual activity"}
+{"time":"2026-01-08T11:26:10-08:00","action":"bypass","reason":"daemon config editing feature - adds new API endpoints only, no behavior changes to existing infrastructure"}

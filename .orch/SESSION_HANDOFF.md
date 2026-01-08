@@ -1,76 +1,91 @@
-# Session Handoff - 2026-01-08 (Late Morning)
+# Session Handoff - 2026-01-08 (Afternoon)
 
 ## Session Focus
-Synthesis of Jan 8 investigations + fixing observation infrastructure bugs.
+Principle addition protocol, synthesis issue bug fix, config-as-code design initiation.
 
 ## Key Accomplishments
 
 | Item | Status | Notes |
 |------|--------|-------|
-| **Decision: Observation Infrastructure Principle** | Created | `.kb/decisions/2026-01-08-observation-infrastructure-principle.md` |
-| **Fix: SSE clearing current_activity** | Fixed | Frontend was erasing activity on idle transition, showing "Starting up..." |
-| **Fix: Beads RPC failure** | Fixed | Stray `orch-go.db` file caused daemon health check failure |
-| **Completed agents** | 2 closed | `orch-go-tuofe` (debugging), `orch-go-18t3i` (epic child inference) |
+| **Observation Infrastructure principle** | Added | `~/.kb/principles.md` + orchestrator skill quick reference |
+| **Principle-addition protocol followed** | Done | Used `~/.kb/guides/principle-addition.md` |
+| **Synthesis issue bug ACTUALLY fixed** | Done | Plist had `--reflect=false` instead of `--reflect-issues=false` |
+| **67 synthesis issues closed** | Done | Backlog down from 105 to 44 open issues |
+| **Dylan's working style documented** | Done | "Always prefer long-term solution" in `~/.claude/CLAUDE.md` |
+| **Config-as-code epic initiated** | Spawned | `orch-go-xzr2q` - design for external config management |
+| **Plugin mechanization epic created** | Created | `orch-go-n5h2g` with investigation child `orch-go-n5h2g.1` |
 
-## The Observation Principle
+## Bugs Fixed
 
-Synthesized 11 investigations from today into a key principle:
+### Synthesis Issue Auto-Creation (FINALLY)
+**Root cause:** Plist had wrong flag name
+- Wrong: `--reflect=false` (controls whether reflection runs)
+- Right: `--reflect-issues=false` (controls whether issues are created)
 
-> **"If the system can't observe it, the system can't manage it."**
+**Why it was sticky:**
+1. Flag names are similar (`--reflect` vs `--reflect-issues`)
+2. Plist is outside git (no version control, no review)
+3. No verification after "fix" - nobody checked the actual plist
+4. Session amnesia - original context lost between sessions
+5. Multiple bugs in same area (kb-cli JSON parse + plist flag)
 
-Observation infrastructure is load-bearing. Gaps create false signals (agents appear "dead" when actually complete).
+**Fix:** Updated plist, restarted daemon, closed all synthesis issues.
 
-**Five gaps identified and addressed:**
-1. Events not emitted (bd close bypass) - fixed earlier
-2. Events double-counted (stats) - fixed earlier  
-3. State not surfaced (dead/stalled) - dead restored, stalled designed
-4. Progress signals missing (activity) - **fixed this session**
-5. RPC failures silent (beads) - **diagnosed this session**
+## Issues Created
 
-## Bugs Fixed This Session
+| ID | Title | Status |
+|----|-------|--------|
+| `orch-go-mv4jv` | Ensure all orch ecosystem repos have GitHub remotes | Open |
+| `orch-go-poa2m` | OpenCode plugin: surface constraints when editing guarded files | Open |
+| `orch-go-n5h2g` | Epic: Mechanize principles via OpenCode plugins | Open |
+| `orch-go-n5h2g.1` | Investigate OpenCode plugin capabilities | triage:ready |
+| `orch-go-xzr2q` | Design: Config-as-code for external config | triage:ready |
 
-### 1. SSE Clearing Activity Bug
-**Symptom:** Agents showed "Starting up..." even after completing work
-**Root cause:** `handleSSEEvent` for `session.status` idle was setting `current_activity: undefined`
-**Fix:** Keep `current_activity` when going idle, only clear `is_processing`
-**File:** `web/src/lib/stores/agents.ts:698-708`
+## Knowledge Captured
 
-### 2. Beads RPC Silent Failure
-**Symptom:** Agent `orch-go-tuofe` showed as "dead" despite having Phase: Complete in beads
-**Root cause:** Empty `orch-go.db` file in `.beads/` caused daemon to fail health check with "multiple database files found"
-**Fix:** Remove stray database file
-**Constraint recorded:** `kn-e3e9c6` - beads daemon fails silently with multiple .db files
+| Type | ID | Content |
+|------|-----|---------|
+| Constraint | `kb-447746` | Daemon plist changes require verification |
+| Constraint | `kn-8afaff` | Principle changes require protocol |
 
-## Files Changed This Session
+## Files Changed
 
-- `.kb/decisions/2026-01-08-observation-infrastructure-principle.md` (created)
-- `web/src/lib/stores/agents.ts` - Don't clear activity on idle
-- `.kn/entries.jsonl` - Constraint about beads multi-db failure
+- `~/.kb/principles.md` - Added Observation Infrastructure principle
+- `~/.claude/CLAUDE.md` - Added Dylan's working style preference
+- `~/orch-knowledge/skills/src/meta/orchestrator/.skillc/SKILL.md.template` - Added principle to quick reference
+- `~/Library/LaunchAgents/com.orch.daemon.plist` - Fixed `--reflect-issues=false`
 
 ## Git Status
-- All changes committed and pushed to origin/master
-- Working tree clean (except build artifacts)
+- 1 commit ahead of origin (needs push)
+- Beads and kn changes uncommitted (normal operational state)
 
-## Outstanding Work
+## Agents Spawned (triage:ready)
+- `orch-go-n5h2g.1` - OpenCode plugin capabilities investigation
+- `orch-go-xzr2q` - Config-as-code design
 
-| Item | Status | Notes |
-|------|--------|-------|
-| Stalled agent detection | Designed | 15-min threshold, pending implementation |
-| Epic child inference | Merged | Agent completed this session |
-| Dashboard performance epic | Open | `orch-go-8s2kl` |
+## Key Insights
+
+### Config Drift Pattern
+External config (plists, symlinks, env vars) drifts invisibly because it's outside version control. The synthesis bug persisted 2 days because the "fix" was never verified. Solution: config-as-code with single source of truth.
+
+### Plugin Mechanization Opportunity
+OpenCode plugins can hook into:
+- `tool.execute.before/after` - gate operations, track actions
+- `file.edited` - surface protocols for guarded files
+- `session.created/idle` - inject context, capture friction
+- `experimental.session.compacting` - preserve knowledge
+
+Current plugins only scratch the surface. Epic created to explore systematically.
 
 ## Resume Commands
 ```bash
 cd ~/Documents/personal/orch-go
+git push  # 1 commit ahead
 orch status
-bd ready | head -5
+bd ready | head -10
 ```
 
-## Key Learning
-When dashboard shows unexpected state (dead vs complete), trace the observation pipeline:
-1. Is beads daemon healthy? (`bd daemon health`)
-2. Are comments being fetched? (test RPC connection)
-3. Is phase parsing working? (check commentsMap population)
-4. Is Priority Cascade running? (dead < phaseComplete < issueClosed)
-
-Silent failures in any step cause the cascade to fall through to session heartbeat status.
+## Next Session Priorities
+1. Review daemon-spawned investigations when complete
+2. Push pending commits
+3. Monitor for synthesis issue recurrence (should be fixed now)

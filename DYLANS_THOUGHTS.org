@@ -1,147 +1,21 @@
 #+title: Dylans Thoughts
 
 
-* DONE the number one pain point today is related to rate-limiting. when building orch-go, workers spawned a ton of concurrent agents while testing the spawn command. this resulted in maxing out both of my claude max accounts session limits. so then i setup opencode to use my gemini api key so i could use gemini 3 flash. using this model as orchestrator, we couldn't spawn because spawns were trying to use an anthropic api key. i also realized that the gemini 3 flash model is actually on par with opus 4.5 and even faster, which led me to investigations into model arbitrage. 
+* DONE i think what i'm sensing is the edge of my understanding when it comes
+to the possibilities opencode has when it comes to their plugin system allowing us to hook into important steps in the system. like this instance for example. what i really want to know is what are we already doing in this vein already? what opportunities exist we should know about? how can we better mechanize the principles by plugging into opencode? do you have anything to add to this before we create an epic for it?
+* DONE i'm still seeing the deprecation notices for kn. i think we integrated that into kb quick awhile ago? are we ready to finally complete the migration to kb quick?
+* DONE is this orch-go-n5h2g.1 topic worthy of a new guide? we have multiple plugins now and are developing a deeper understanding of how the orchestration system should integrate with the execution layer
+* TODO new ui design stuff
+** TODO we've made small improvements related to worker agent real-time activity: /Users/dylanconlin/Screenshots/screenshot_2026-01-08_11-12-16.png
 
-all of this has made me realize that i really need to prioritize model accessibility and flexibility, usage monitoring, etc
+maybe use this skill? /Users/dylanconlin/orch-knowledge/skills/src/shared/design-principles
 
+remaining pain points:
+- default should be more legible
+- tool calls/steps/reasoning etc should form a coherent, readable feed
+- activity feed should also be accessible when agent isn't actively working.
 
-BUT!!! i'm also in the middle of transitioning from orch-cli to orch-go. should i complete that and then look into the rate-limiting pains?
+examples from claude code:
+/Users/dylanconlin/Screenshots/screenshot_2026-01-08_11-16-28.png
+/Users/dylanconlin/Screenshots/screenshot_2026-01-08_11-17-50.png
 
-
-
-* DONE our work today where we made it easier to switch between claude max plan accounts is helpful
-
-* TODO now that we have the synthesis procotol, what should we do about all the earlier investigations/decisions littered throughout the orch ecosystem? they likely have varying structures and outdated decisions as well as valuable information.
-* TODO i'm concerned about the quality of the kb search command. often i notice that agents end up finding results better by grepping
-* TODO i'm noticing the orch tail command is still using tmux
-* TODO auth and model issues
-
-
-ok, so i recently started testing out gemini 3 flash as an orchestrator, but it has led to various issues. the system is not ready for the model flexibility i'm looking for. the problems i'm seeing seem to be related to the fact that orch has ways of handling models and opencode has its own way of handling models. i think they're fighting with eachother, so now i'm seeing spawns like this: /Users/dylanconlin/Screenshots/screenshot_2025-12-21_09-39-52.png
-
-first things first, i think we need an investigation into how both system handle model defaults and model selection and how they should play together
-
-because i'm starting to think that i might want more model flexibility than opencode is currently designed for.
-
-
-i just ran this "
-orch-go on  master [$!?] via 🐹 v1.23.5 on ☁️  dylan.conlin@sendcutsend.com
-❯ oc --model anthropic/claude-opus-4-5-20251101
-" which confusingly starts the session here: 
-
-  ~/Documents/personal/opencode/packages/opencode:dev                          local
-
-
- i don't want two opencode installs on my machine. i just want the from src install: /Users/dylanconlin/Documents/personal/opencode 
-* TODO new thoughts i've been having
-i'm realizing that there is more value than i initially realized in well-defined process when it comes to orchestration. we have the orchestrator skill, which packs a lot in, but i'm wondering if it's overloaded. beads itself has an entire process of intricate steps of creation, scoping, prioritizing, etc. and then there is review and synthesis, another phase of the orchestration lifecycle. have we ever actually sat down and tried to define this? there's a flow, a sequence, a cadence, but you can also approach it from different angles - plan heavy or dive in and learn as you go? daemon focused with proper triage or spawn as you go? there is a lot here to think about. where do we even begin? and what about things like post-mortems? process reflection? what can we learn from existing solutions that pre-date ai agent orchestration? what can we learn from the state of the art?
-
-i get wrecked because i chase the most exciting new idea i have, so i need the system to heavily stage and sequence the work.
-
-* RECENT
-** TODO new question epic: now that we have the orch servers command, is this something the orchestrator should be aware of? is this useful for the orchestrator? on a per-project basis it could be useful for workers to know about local relevant servers. I'd like to explore this
-** TODO new issue: find command always takes forever. example: find ~ -name "opencode.jsonc" -path "*/dotfiles/*" 2>/dev/null | head -3
-should we consider a better tool? a wrapper to scope find searches? better defaults? 
-** TODO new question epic: often, i'll come across a reddit thread, a youtube video, a blog post, a hacker news post, etc and i'll want to discuss it with an agent in context of something i'm working on or something i've seen etc. let's discuss a workflow for this. we should already have an investigation into reddit/hacker news access for practitioner information. where would something like this live? i'm currently asking this question from orch-go because this is where i've recently been orchestrating from. worth discussing. this relates to the meta-orchestration question and cross-project orchestration questions that have been surfacing throughout the system. might be good to kb reflect on this
-** TODO nate jones post i'd like to discuss
-
-natesnewsletter.substack.com
-Smart people get fooled by AI first — because they can rationalize anything. (Self-Audit Framework)
-Nate
-5–6 minutes
-
-“Not suffering from psychosis.”
-
-That’s what David Budden wrote on X, responding to the pile-on after he announced he’d essentially cracked one of mathematics’ seven hardest unsolved problems — using ChatGPT and formal verification tooling.
-
-I admint I thought to myself, “If you’re in a situation where you have to tweet that to the world, you’re already in a pretty bad place.”
-
-Budden has a PhD from Melbourne, postdocs at MIT and Harvard, six years at DeepMind rising to Director of Engineering, and a serious publication record. He is not a crank. And yet he’s put $45,000 (across three public bets) on an outrageous claim: that he can resolve not one but two Clay Millennium Prize problems with AI assistance.
-
-The money is split across three public bets: $10,000 against Marcus Hutter and $10,000 against Isaac King on Navier-Stokes, plus $25,000 against University of Toronto mathematician Daniel Litt on the Hodge Conjecture. He announced this as his new company PingYou came out of stealth — which has people debating whether this is sincere conviction, attention-seeking, or both.
-
-The mathematical community’s response has been swift and brutal. The critique isn’t just “wrong” — it’s that his Lean code may formalize a trivial or different version of Navier-Stokes, not the actual Clay problem. Basically, this math problem is so complicated, he may claim he solved it while solving the easy-mode version instead.
-
-One explicit failure mode listed in the prediction markets: “the Lean proof could compile while proving a different or weaker statement than the Clay Millennium problem.” The public resolution criteria are measured in months, not vibes — one market resolves on whether he’s actually solved Navier-Stokes by end of January 2026. Current odds: single digits. And I think that’s high.
-
-Budden’s story is one example of a debate spreading faster than the math debate: the conversation around the term “LLM psychosis.” Yes, there’s no settled definition, but online, people are using it as shorthand for a real workflow failure — when an AI system that’s good at producing plausible explanations pushes users into overconfident acceptance of outputs they can’t audit. That’s a fancy way of saying: when AI convinces you you’re right about something you cannot know.
-
-I’m not using “psychosis” clinically here. I’m pointing at a collapse in some people’s ability to know the edges of their competence because AI fools them.
-
-The real question isn’t whether Budden is right. It’s what happened to his ability to evaluate his own work. Especially as a founder, that’s a question relevant for his whole team at this point. And it’s increasingly a question we should be asking of ourselves, our leaders, and our teams.
-
-Here’s what’s inside:
-
-    Why LLMs make automation bias worse than traditional systems — research shows AI explanations increase trust even when completely wrong, and the most vulnerable people aren’t novices
-
-    Three warning signs this pattern is developing — confirmatory prompting disguised as verification, operating beyond your evaluation capacity, and the “me and the AI versus everyone else” dynamic
-
-    What to do about it — the specific questions to ask before trusting any AI-assisted conclusion, plus a full adversarial prompt framework for ongoing work
-
-    What to watch for in your organization — behavioral signals that someone’s judgment is being compromised by AI validation loops
-
-    Prompts to check your work — these 10 prompts are designed to act as a detailed set of screens that check your work with a helpfully adversarial grounding. Basically, they’re designed to give you the tools to have the LLMs do professional quality grading on your own work so you don’t fool yourself!
-
-        Adversarial Mini-Check — quick pre-ship attack and calibration checklist
-
-        Before You Start — sets adversarial rules and evidence discipline
-
-        Audit Boundary Check — identify needed verification skills and reviewers
-
-        Disconfirmation Pass — structured attempt to break the conclusion
-
-        Reality Check — anticipate expert objections without fake consensus
-
-        Confidence Calibration — score certainty; define tests to raise confidence
-
-        Final Gate — commit/no-commit decision with stop conditions
-
-        Project Ground Rules — enforce correctness-first behavior across sessions
-
-        2-Minute Reality Check — fast grounding, falsifiability, next action
-
-        Full Assessment — deep anti-spiral review before high-stakes moves
-
-In 2026, a lot of smart people armed with LLMs and formal tools will ship convincing-looking but wrong work faster than many of our teams can audit it. That’s the risk. What I’m putting together here is your early warning radar so you see it coming!
-
-Let’s dig in.
-* web ui design
-** dashboard design
-look at the web-ui from my perspective: /Users/dylanconlin/Screenshots/screenshot_2025-12-25_11-00-36.png
-
-
-
-** slide-out pane:
-this is the slide-out pane i see when i click on an agent card:
-/Users/dylanconlin/Screenshots/screenshot_2025-12-25_10-46-54.png
-
-design question: when are slide-outs preferred over modals? (in this case it seems like they act the same, but the slide-out gives us less horizontal space)
-
-the most valuable information (what i can't glean from the agent card) is this /Users/dylanconlin/Screenshots/screenshot_2025-12-25_10-50-19.png
-
-it has multiple issues:
-- duplication
-- tiny little window
-- poor formatting
-- etc.
-
-concerning the "copy identifiers" features, copying is useful because it help me easily sync with the orchestrator session, but we should think about how to do this more compactly.
-** human review step?
-
-
-* web dashboard issues
-when i open a completed investigation i see this: /Users/dylanconlin/Screenshots/screenshot_2026-01-06_13-36-38.png
-
-- slide out pane should be wider
-- only useful quick copy button is the beads issue
-- no need for quick commands at bottom
-- the vertical space should be a tabbed display where we can click to different sections for the entire lifecycle, so inputs, message feed, outputs etc
-
-i'd like to have a design discussion about this to help me refine what this should look like
-* answers
-1) 80-85% of viewport
-2) if actively processing, then the live messages should fill the vertical space. new messages should appear at the bottom of the feed like how claude code does it. i also don't want to see a bunch of messy tool calls etc. i'd like to see clear signal
-   - completed agents i want to see output, so investigation and synthesis tabs
-- just a summary
-- no
