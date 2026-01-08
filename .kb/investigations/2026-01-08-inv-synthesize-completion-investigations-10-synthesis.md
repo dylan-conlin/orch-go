@@ -22,9 +22,9 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Started:** 2026-01-08
 **Updated:** 2026-01-08
-**Owner:** kb-reflect synthesis agent
+**Owner:** kb-reflect synthesis agent (og-work-synthesize-completion-investigations-08jan-bd19)
 **Phase:** Complete
-**Next Step:** None
+**Next Step:** None - guide already exists at `.kb/guides/completion.md`
 **Status:** Complete
 
 ---
@@ -43,6 +43,19 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 | 8 | 2026-01-04 | Test Completion Works Say Hello | Validation test - full workflow including artifacts |
 | 9 | 2026-01-06 | Diagnose Overall 66% Completion Rate | Rate misleading due to data quality; actual tracked rate ~80% |
 | 10 | 2026-01-07 | Address 340 Active Workspaces | Archival gap, not completion gap; `orch clean --stale` needed |
+
+**Additional Related Investigations Found (not in original list):**
+| # | Date | Investigation | Key Finding |
+|---|------|---------------|-------------|
+| 11 | 2025-12-22 | SSE-based Completion Tracking | CompletionService bridges SSE detection with slot management |
+| 12 | 2025-12-25 | Fix Dashboard Completion Detection Untracked | SYNTHESIS.md fallback for untracked agents |
+| 13 | 2025-12-25 | Add Daemon Completion Polling Close | Polling-based Phase: Complete detection; SSE unreliable |
+| 14 | 2025-12-25 | Orchestrator Completion Lifecycle Design | Two-mode (Active/Triage) completion; work-type-specific flows |
+| 15 | 2026-01-06 | Diagnose Investigation Skill 32% Rate | Test spawns (71% of failures) + skill mismatches (14%) |
+| 16 | 2026-01-06 | Diagnose Investigation Skill 29% Rate | Missing completion events bug discovered; true rate ~94% |
+| 17 | 2026-01-06 | Diagnose Orchestrator Skill 18% Rate | Orchestrators are coordination roles BY DESIGN; not a bug |
+
+**Note:** The guide at `.kb/guides/completion.md` already exists and covers the original 10 investigations. This synthesis validates that the guide is complete and adds context from additional related investigations.
 
 ---
 
@@ -243,36 +256,40 @@ These patterns should be consolidated into a guide. The test-validation investig
 
 ## Proposed Actions
 
-### Archive Actions
-| ID | Target | Reason | Approved |
-|----|--------|--------|----------|
-| A1 | `2025-12-19-inv-desktop-notifications-completion.md` | Implementation complete, pattern captured | [ ] |
-| A2 | `2025-12-26-inv-ui-completion-gate-require-screenshot.md` | Implementation complete with tests | [ ] |
-| A3 | `2025-12-27-inv-implement-cross-project-completion-adding.md` | Implementation complete, design investigation sufficient | [ ] |
-| A4 | `2026-01-04-inv-phase-completion-verification-orchestrator-spawns.md` | Implementation complete with tests | [ ] |
-| A5 | `2026-01-04-inv-test-completion-works-04jan.md` | Test validation only, no reusable knowledge | [ ] |
-| A6 | `2026-01-04-inv-test-completion-works-say-hello.md` | Test validation only, no reusable knowledge | [ ] |
+**STATUS UPDATE:** The guide at `.kb/guides/completion.md` **already exists** (330 lines). It was created in a previous synthesis effort. Several investigations in the original list have already been archived.
 
-### Keep (No Archive) Actions
-| ID | Target | Reason | Approved |
-|----|--------|--------|----------|
-| K1 | `2025-12-27-inv-completion-escalation-model.md` | Contains full escalation design; may not be fully implemented | [ ] |
-| K2 | `2025-12-27-inv-design-cross-project-completion-ux.md` | Design reference with multiple options considered | [ ] |
-| K3 | `2026-01-06-inv-diagnose-overall-66-completion-rate.md` | Recent diagnostic; action items may be pending | [ ] |
-| K4 | `2026-01-07-inv-address-340-active-workspaces-completion.md` | Recent; auto-archive recommendation may be pending | [ ] |
+### Archive Actions (Pending - need orchestrator approval)
+| ID | Target | Reason | Status |
+|----|--------|--------|--------|
+| A1 | `2025-12-19-inv-desktop-notifications-completion.md` | Implementation complete, pattern captured | **Already archived** |
+| A2 | `2025-12-26-inv-ui-completion-gate-require-screenshot.md` | Implementation complete with tests | **Already archived** |
+| A3 | `2025-12-27-inv-implement-cross-project-completion-adding.md` | Implementation complete, design investigation sufficient | **Already archived** |
+| A4 | `2026-01-04-inv-phase-completion-verification-orchestrator-spawns.md` | Implementation complete with tests | **Already archived** |
+| A5 | `2026-01-04-inv-test-completion-works-04jan.md` | Test validation only, no reusable knowledge | **Already archived** |
+| A6 | `2026-01-04-inv-test-completion-works-say-hello.md` | Test validation only, no reusable knowledge | **Already archived** |
 
-### Create Actions
-| ID | Type | Title | Description | Approved |
-|----|------|-------|-------------|----------|
-| C1 | guide | "Completion Workflow" | Single authoritative reference consolidating notification, verification, escalation, cross-project, and metrics patterns | [ ] |
+### Active Investigations (Current reference)
+| ID | Target | Status | Notes |
+|----|--------|--------|-------|
+| K1 | `2025-12-27-inv-completion-escalation-model-completed-agents.md` | Active | Full 5-tier escalation design; implementation status unclear |
+| K2 | `2025-12-27-inv-design-cross-project-completion-ux.md` | Active | Design reference with option analysis |
+| K3 | `2026-01-06-inv-diagnose-overall-66-completion-rate.md` | Active | Recent diagnostic; stats segmentation pending |
+| K4 | `2026-01-07-inv-address-340-active-workspaces-completion.md` | Active | Auto-archive recommendation pending |
+| K5 | `2026-01-06-inv-diagnose-investigation-skill-32-completion.md` | Active | Test spawn pollution analysis |
+| K6 | `2026-01-06-inv-diagnose-investigation-skill-29-completion.md` | Active | Completion event recording bug |
+| K7 | `2026-01-06-inv-diagnose-orchestrator-skill-18-completion.md` | Active | Coordination skills BY DESIGN |
 
-### Update Actions
+### Guide Status
+| ID | Type | Title | Status |
+|----|------|-------|--------|
+| C1 | guide | "Completion Workflow" | **ALREADY EXISTS** at `.kb/guides/completion.md` (330 lines) |
+
+### Update Actions (Optional - for consistency)
 | ID | Target | Change | Reason | Approved |
 |----|--------|--------|--------|----------|
-| U1 | Kept investigations | Add "See guide: .kb/guides/completion.md" at top | Direct readers to consolidated reference | [ ] |
+| U1 | Active investigations | Add "See guide: .kb/guides/completion.md" at top | Direct readers to consolidated reference | [ ] |
 
-**Summary:** 10 proposals (6 archive, 0 promote, 1 create, 3 update/keep)
-**High priority:** C1 (guide creation), A5, A6 (test-only investigations have no value)
+**Summary:** Guide already exists. 6 investigations already archived. 7 active investigations serve as current reference material for ongoing issues (metrics, workspace lifecycle, completion events bug). Optional update action to cross-reference guide.
 
 ---
 
