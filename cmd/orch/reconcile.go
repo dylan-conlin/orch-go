@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -259,6 +260,7 @@ func getLastPhase(beadsID string) string {
 
 func runReconcileFix(zombies []ZombieIssue) error {
 	reader := bufio.NewReader(os.Stdin)
+	logger := events.NewLogger(events.DefaultLogPath())
 	var successCount, failCount int
 	for _, z := range zombies {
 		var mode string
@@ -285,6 +287,22 @@ func runReconcileFix(zombies []ZombieIssue) error {
 			action := "Reset"
 			if mode == "close" {
 				action = "Closed"
+				// Emit agent.completed event for closed zombies so stats capture these completions
+				event := events.Event{
+					Type:      "agent.completed",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"beads_id":           z.ID,
+						"reason":             "zombie_reconciled",
+						"source":             "reconcile",
+						"project":            z.Project,
+						"last_phase":         z.LastPhase,
+						"hours_since_update": z.HoursSinceUpdate,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "  Warning: failed to log event: %v\n", err)
+				}
 			}
 			fmt.Printf("  ✓ %s %s\n", action, z.ID)
 			successCount++
