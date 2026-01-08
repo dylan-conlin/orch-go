@@ -194,3 +194,33 @@ Google Chrome is requesting /.well-known/appspecific/com.chrome.devtools.json to
 https://svelte.dev/e/a11y_label_has_associated_control
 11:16:56 AM [vite-plugin-svelte] src/lib/components/daemon-config-panel/daemon-config-panel.svelte:233:4 A form label must be associated with a control
 https://svelte.dev/e/a11y_label_has_associated_control
+12:23:13 PM [vite] (client) hmr update /src/lib/components/agent-detail/activity-tab.svelte, /src/app.css
+12:23:13 PM [vite] (ssr) page reload src/lib/components/agent-detail/activity-tab.svelte
+12:23:25 PM [vite] (client) hmr update /src/lib/components/agent-detail/activity-tab.svelte, /src/app.css
+12:23:25 PM [vite] (ssr) page reload src/lib/components/agent-detail/activity-tab.svelte
+12:23:38 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+12:23:38 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+12:23:38 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+12:23:38 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+12:23:38 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+12:23:38 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+12:23:38 PM [vite] (client) page reload .svelte-kit/generated/root.js
+12:23:38 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+12:23:44 PM [vite] (client) hmr update /src/lib/components/agent-detail/activity-tab.svelte, /src/app.css
+12:23:44 PM [vite] (ssr) page reload src/lib/components/agent-detail/activity-tab.svelte
+12:23:53 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+12:23:53 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+12:23:53 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+12:23:53 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+12:23:53 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+12:23:53 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+12:23:53 PM [vite] (client) page reload .svelte-kit/generated/root.js
+12:23:53 PM [vite] (ssr) page reload .svelte-kit/generated/root.js
+12:24:03 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/0.js
+12:24:03 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/1.js
+12:24:03 PM [vite] (client) page reload .svelte-kit/generated/client/nodes/2.js
+12:24:03 PM [vite] (client) page reload .svelte-kit/generated/client/app.js
+12:24:03 PM [vite] (client) page reload .svelte-kit/generated/client/matchers.js
+12:24:03 PM [vite] (ssr) page reload .svelte-kit/generated/server/internal.js
+12:24:03 PM [vite] (client) page reload .svelte-kit/generated/root.js
+12:24:03 PM [vite] (ssr) page reload .svelte-kit/generated/root.js

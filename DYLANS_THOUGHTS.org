@@ -18,4 +18,15 @@ remaining pain points:
 examples from claude code:
 /Users/dylanconlin/Screenshots/screenshot_2026-01-08_11-16-28.png
 /Users/dylanconlin/Screenshots/screenshot_2026-01-08_11-17-50.png
+** TODO figure out how to improve the ready queue display: /Users/dylanconlin/Screenshots/screenshot_2026-01-08_11-38-19.png
+this is the type of issue where the approach i prefer is for the orchestrator to view the screenshot and then present a recommendation
 
+
+check git history of /Users/dylanconlin/orch-knowledge for a skill related to creating ui mocks using a prompt-based approach with nano-banana pro
+
+* noano
+1) i think we've already started thinking about screenshot handling in the eco-system, should search for related artifacts/work
+2) once i say it's good enough. i could tell the orchestrator or the worker i've signed off.
+3) not sure   
+4) currently just thinking of the orchestrator session as context dumping ground
+5) agreed
