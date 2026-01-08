@@ -41,6 +41,38 @@ type ReflectConfig struct {
 	CreateIssues *bool `yaml:"create_issues,omitempty"`
 }
 
+// DaemonConfig holds settings for the orch daemon plist generation.
+// This is the declarative source of truth for ~/Library/LaunchAgents/com.orch.daemon.plist.
+type DaemonConfig struct {
+	// PollInterval is how often the daemon polls for ready issues (in seconds).
+	// Defaults to 60 if not specified.
+	PollInterval *int `yaml:"poll_interval,omitempty"`
+
+	// MaxAgents is the maximum number of concurrent agents the daemon will spawn.
+	// Defaults to 3 if not specified.
+	MaxAgents *int `yaml:"max_agents,omitempty"`
+
+	// Label is the beads label to filter for when finding ready issues.
+	// Defaults to "triage:ready" if not specified.
+	Label string `yaml:"label,omitempty"`
+
+	// Verbose enables verbose logging in the daemon.
+	// Defaults to true if not specified.
+	Verbose *bool `yaml:"verbose,omitempty"`
+
+	// ReflectIssues controls whether the daemon creates issues from kb reflect findings.
+	// Defaults to false if not specified.
+	ReflectIssues *bool `yaml:"reflect_issues,omitempty"`
+
+	// WorkingDirectory is the directory the daemon runs from.
+	// Defaults to ~/Documents/personal/orch-go if not specified.
+	WorkingDirectory string `yaml:"working_directory,omitempty"`
+
+	// Path is a list of directories to add to the daemon's PATH environment variable.
+	// These are prepended to the system PATH.
+	Path []string `yaml:"path,omitempty"`
+}
+
 // Config represents the user-level orch configuration.
 type Config struct {
 	// Backend specifies the orchestration backend (e.g., "opencode").
@@ -56,6 +88,8 @@ type Config struct {
 	// When set to "light" or empty, skill defaults are used.
 	// Explicit --light or --full flags still override this setting.
 	DefaultTier string `yaml:"default_tier,omitempty"`
+	// Daemon holds settings for the orch daemon plist generation.
+	Daemon DaemonConfig `yaml:"daemon,omitempty"`
 }
 
 // ConfigPath returns the path to the user config file.
@@ -157,4 +191,90 @@ func (c *Config) GetDefaultTier() string {
 		return "full"
 	}
 	return "" // Use skill defaults
+}
+
+// DaemonPollInterval returns the daemon poll interval in seconds.
+// Defaults to 60 seconds if not configured.
+func (c *Config) DaemonPollInterval() int {
+	if c.Daemon.PollInterval == nil {
+		return 60 // Default to 60 seconds
+	}
+	return *c.Daemon.PollInterval
+}
+
+// DaemonMaxAgents returns the maximum number of concurrent agents.
+// Defaults to 3 if not configured.
+func (c *Config) DaemonMaxAgents() int {
+	if c.Daemon.MaxAgents == nil {
+		return 3 // Default to 3 agents
+	}
+	return *c.Daemon.MaxAgents
+}
+
+// DaemonLabel returns the beads label filter for ready issues.
+// Defaults to "triage:ready" if not configured.
+func (c *Config) DaemonLabel() string {
+	if c.Daemon.Label == "" {
+		return "triage:ready" // Default label
+	}
+	return c.Daemon.Label
+}
+
+// DaemonVerbose returns whether verbose logging is enabled.
+// Defaults to true if not configured.
+func (c *Config) DaemonVerbose() bool {
+	if c.Daemon.Verbose == nil {
+		return true // Default to verbose
+	}
+	return *c.Daemon.Verbose
+}
+
+// DaemonReflectIssues returns whether to create issues from kb reflect findings.
+// Defaults to false if not configured.
+func (c *Config) DaemonReflectIssues() bool {
+	if c.Daemon.ReflectIssues == nil {
+		return false // Default to false (the flag that caused the bug!)
+	}
+	return *c.Daemon.ReflectIssues
+}
+
+// DaemonWorkingDirectory returns the daemon's working directory.
+// Defaults to ~/Documents/personal/orch-go if not configured.
+func (c *Config) DaemonWorkingDirectory() string {
+	if c.Daemon.WorkingDirectory == "" {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, "Documents", "personal", "orch-go")
+	}
+	// Expand ~ in path
+	if len(c.Daemon.WorkingDirectory) > 0 && c.Daemon.WorkingDirectory[0] == '~' {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, c.Daemon.WorkingDirectory[1:])
+	}
+	return c.Daemon.WorkingDirectory
+}
+
+// DaemonPath returns the PATH directories to add to the daemon environment.
+// Defaults to common orch tool locations if not configured.
+func (c *Config) DaemonPath() []string {
+	if len(c.Daemon.Path) == 0 {
+		home, _ := os.UserHomeDir()
+		return []string{
+			filepath.Join(home, ".bun", "bin"),
+			filepath.Join(home, "bin"),
+			filepath.Join(home, "go", "bin"),
+			"/opt/homebrew/bin",
+			filepath.Join(home, ".local", "bin"),
+		}
+	}
+	// Expand ~ in each path
+	result := make([]string, len(c.Daemon.Path))
+	for i, p := range c.Daemon.Path {
+		if len(p) > 0 && p[0] == '~' {
+			home, _ := os.UserHomeDir()
+			result[i] = filepath.Join(home, p[1:])
+		} else {
+			result[i] = p
+		}
+	}
+	return result
 }

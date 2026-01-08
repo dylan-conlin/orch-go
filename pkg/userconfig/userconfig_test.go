@@ -504,3 +504,397 @@ func TestLoadMissingDefaultTier(t *testing.T) {
 		t.Errorf("Load() without default_tier should return empty string, got %q", cfg.GetDefaultTier())
 	}
 }
+
+// =============================================================================
+// Tests for DaemonConfig
+// =============================================================================
+
+func TestDaemonPollInterval(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval *int
+		expected int
+	}{
+		{
+			name:     "nil defaults to 60",
+			interval: nil,
+			expected: 60,
+		},
+		{
+			name:     "explicit value",
+			interval: intPtr(30),
+			expected: 30,
+		},
+		{
+			name:     "explicit zero",
+			interval: intPtr(0),
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					PollInterval: tt.interval,
+				},
+			}
+			if got := cfg.DaemonPollInterval(); got != tt.expected {
+				t.Errorf("DaemonPollInterval() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDaemonMaxAgents(t *testing.T) {
+	tests := []struct {
+		name      string
+		maxAgents *int
+		expected  int
+	}{
+		{
+			name:      "nil defaults to 3",
+			maxAgents: nil,
+			expected:  3,
+		},
+		{
+			name:      "explicit value",
+			maxAgents: intPtr(5),
+			expected:  5,
+		},
+		{
+			name:      "explicit zero",
+			maxAgents: intPtr(0),
+			expected:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					MaxAgents: tt.maxAgents,
+				},
+			}
+			if got := cfg.DaemonMaxAgents(); got != tt.expected {
+				t.Errorf("DaemonMaxAgents() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDaemonLabel(t *testing.T) {
+	tests := []struct {
+		name     string
+		label    string
+		expected string
+	}{
+		{
+			name:     "empty defaults to triage:ready",
+			label:    "",
+			expected: "triage:ready",
+		},
+		{
+			name:     "explicit value",
+			label:    "custom:label",
+			expected: "custom:label",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					Label: tt.label,
+				},
+			}
+			if got := cfg.DaemonLabel(); got != tt.expected {
+				t.Errorf("DaemonLabel() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDaemonVerbose(t *testing.T) {
+	tests := []struct {
+		name     string
+		verbose  *bool
+		expected bool
+	}{
+		{
+			name:     "nil defaults to true",
+			verbose:  nil,
+			expected: true,
+		},
+		{
+			name:     "explicit true",
+			verbose:  boolPtr(true),
+			expected: true,
+		},
+		{
+			name:     "explicit false",
+			verbose:  boolPtr(false),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					Verbose: tt.verbose,
+				},
+			}
+			if got := cfg.DaemonVerbose(); got != tt.expected {
+				t.Errorf("DaemonVerbose() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDaemonReflectIssues(t *testing.T) {
+	tests := []struct {
+		name          string
+		reflectIssues *bool
+		expected      bool
+	}{
+		{
+			name:          "nil defaults to false",
+			reflectIssues: nil,
+			expected:      false, // THIS IS THE BUG-CAUSING FLAG - default should be false!
+		},
+		{
+			name:          "explicit true",
+			reflectIssues: boolPtr(true),
+			expected:      true,
+		},
+		{
+			name:          "explicit false",
+			reflectIssues: boolPtr(false),
+			expected:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					ReflectIssues: tt.reflectIssues,
+				},
+			}
+			if got := cfg.DaemonReflectIssues(); got != tt.expected {
+				t.Errorf("DaemonReflectIssues() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDaemonWorkingDirectory(t *testing.T) {
+	// Get actual home dir for testing
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		name     string
+		workDir  string
+		expected string
+	}{
+		{
+			name:     "empty defaults to ~/Documents/personal/orch-go",
+			workDir:  "",
+			expected: filepath.Join(home, "Documents", "personal", "orch-go"),
+		},
+		{
+			name:     "tilde expansion",
+			workDir:  "~/custom/path",
+			expected: filepath.Join(home, "custom/path"),
+		},
+		{
+			name:     "absolute path unchanged",
+			workDir:  "/absolute/path",
+			expected: "/absolute/path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					WorkingDirectory: tt.workDir,
+				},
+			}
+			if got := cfg.DaemonWorkingDirectory(); got != tt.expected {
+				t.Errorf("DaemonWorkingDirectory() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDaemonPath(t *testing.T) {
+	// Get actual home dir for testing
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		name     string
+		path     []string
+		expected []string
+	}{
+		{
+			name: "empty defaults to common paths",
+			path: nil,
+			expected: []string{
+				filepath.Join(home, ".bun", "bin"),
+				filepath.Join(home, "bin"),
+				filepath.Join(home, "go", "bin"),
+				"/opt/homebrew/bin",
+				filepath.Join(home, ".local", "bin"),
+			},
+		},
+		{
+			name: "explicit paths with tilde expansion",
+			path: []string{"~/.custom/bin", "/opt/bin"},
+			expected: []string{
+				filepath.Join(home, ".custom/bin"),
+				"/opt/bin",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Daemon: DaemonConfig{
+					Path: tt.path,
+				},
+			}
+			got := cfg.DaemonPath()
+			if len(got) != len(tt.expected) {
+				t.Errorf("DaemonPath() returned %d paths, want %d", len(got), len(tt.expected))
+				return
+			}
+			for i, path := range got {
+				if path != tt.expected[i] {
+					t.Errorf("DaemonPath()[%d] = %q, want %q", i, path, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestLoadDaemonConfig(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config directory and file with daemon settings
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+daemon:
+  poll_interval: 30
+  max_agents: 5
+  label: "custom:ready"
+  verbose: false
+  reflect_issues: true
+  working_directory: ~/custom/dir
+  path:
+    - ~/.custom/bin
+    - /opt/custom/bin
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.DaemonPollInterval() != 30 {
+		t.Errorf("Load() DaemonPollInterval() = %d, want 30", cfg.DaemonPollInterval())
+	}
+
+	if cfg.DaemonMaxAgents() != 5 {
+		t.Errorf("Load() DaemonMaxAgents() = %d, want 5", cfg.DaemonMaxAgents())
+	}
+
+	if cfg.DaemonLabel() != "custom:ready" {
+		t.Errorf("Load() DaemonLabel() = %q, want %q", cfg.DaemonLabel(), "custom:ready")
+	}
+
+	if cfg.DaemonVerbose() {
+		t.Error("Load() DaemonVerbose() = true, want false")
+	}
+
+	if !cfg.DaemonReflectIssues() {
+		t.Error("Load() DaemonReflectIssues() = false, want true")
+	}
+
+	expectedWorkDir := filepath.Join(tmpDir, "custom/dir")
+	if cfg.DaemonWorkingDirectory() != expectedWorkDir {
+		t.Errorf("Load() DaemonWorkingDirectory() = %q, want %q", cfg.DaemonWorkingDirectory(), expectedWorkDir)
+	}
+
+	paths := cfg.DaemonPath()
+	if len(paths) != 2 {
+		t.Errorf("Load() DaemonPath() returned %d paths, want 2", len(paths))
+	}
+}
+
+func TestLoadMissingDaemonSection(t *testing.T) {
+	// Save original home and restore after test
+	originalHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create config without daemon section
+	configDir := filepath.Join(tmpDir, ".orch")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	configContent := `backend: opencode
+`
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	// Should use defaults
+	if cfg.DaemonPollInterval() != 60 {
+		t.Errorf("Load() without daemon section should default poll_interval to 60, got %d", cfg.DaemonPollInterval())
+	}
+
+	if cfg.DaemonMaxAgents() != 3 {
+		t.Errorf("Load() without daemon section should default max_agents to 3, got %d", cfg.DaemonMaxAgents())
+	}
+
+	if cfg.DaemonLabel() != "triage:ready" {
+		t.Errorf("Load() without daemon section should default label to triage:ready, got %q", cfg.DaemonLabel())
+	}
+
+	if !cfg.DaemonVerbose() {
+		t.Error("Load() without daemon section should default verbose to true")
+	}
+
+	if cfg.DaemonReflectIssues() {
+		t.Error("Load() without daemon section should default reflect_issues to false")
+	}
+
+	// Path should have defaults
+	paths := cfg.DaemonPath()
+	if len(paths) < 3 {
+		t.Errorf("Load() without daemon section should have default paths, got %d", len(paths))
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +23,7 @@ var (
 	doctorVerbose   bool // Show verbose output
 	doctorStaleOnly bool // Check stale binary only, exit with code 1 if stale
 	doctorSessions  bool // Cross-reference workspaces and OpenCode sessions
+	doctorConfig    bool // Check for config drift (plist vs config.yaml)
 )
 
 var doctorCmd = &cobra.Command{
@@ -37,13 +39,15 @@ Services checked:
 Use --fix to automatically start services that are not running.
 Use --stale-only to check if the orch binary is stale (exit 1 if stale).
 Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
+Use --config to detect drift between config.yaml and external config (plist).
 
 Examples:
   orch doctor              # Check service health
   orch doctor --fix        # Check and start missing services
   orch doctor --verbose    # Show detailed output
   orch doctor --stale-only # Check binary staleness only (for scripts/hooks)
-  orch doctor --sessions   # Cross-reference workspaces and sessions`,
+  orch doctor --sessions   # Cross-reference workspaces and sessions
+  orch doctor --config     # Check for config drift`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -54,6 +58,7 @@ func init() {
 	doctorCmd.Flags().BoolVarP(&doctorVerbose, "verbose", "v", false, "Show verbose output")
 	doctorCmd.Flags().BoolVar(&doctorStaleOnly, "stale-only", false, "Check binary staleness only (exit 1 if stale)")
 	doctorCmd.Flags().BoolVar(&doctorSessions, "sessions", false, "Cross-reference workspaces and OpenCode sessions")
+	doctorCmd.Flags().BoolVar(&doctorConfig, "config", false, "Check for config drift (plist vs config.yaml)")
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -94,6 +99,11 @@ func runDoctor() error {
 	// Handle --sessions flag for workspace ↔ session cross-reference
 	if doctorSessions {
 		return runSessionsCrossReference()
+	}
+
+	// Handle --config flag for config drift detection
+	if doctorConfig {
+		return runConfigDriftCheck()
 	}
 
 	fmt.Println("orch doctor - Service Health Check")
@@ -870,4 +880,223 @@ func printSessionsCrossReferenceReport(report *SessionsCrossReferenceReport, pro
 	if report.RegistryMismatches > 0 {
 		fmt.Println("  - Registry entries with missing sessions can be cleaned with 'orch clean'")
 	}
+}
+
+// ConfigDrift represents a single configuration drift between expected and actual values.
+type ConfigDrift struct {
+	Field    string `json:"field"`
+	Expected string `json:"expected"`
+	Actual   string `json:"actual"`
+}
+
+// ConfigDriftReport contains the results of config drift detection.
+type ConfigDriftReport struct {
+	Healthy    bool          `json:"healthy"`
+	PlistFound bool          `json:"plist_found"`
+	Drifts     []ConfigDrift `json:"drifts"`
+}
+
+// runConfigDriftCheck compares the expected config (from config.yaml) with the actual plist.
+func runConfigDriftCheck() error {
+	fmt.Println("orch doctor --config")
+	fmt.Println("Checking daemon plist drift against ~/.orch/config.yaml...")
+	fmt.Println()
+
+	report, err := checkPlistDrift()
+	if err != nil {
+		return fmt.Errorf("drift check error: %w", err)
+	}
+
+	if !report.PlistFound {
+		fmt.Println("✗ Plist not found: ~/Library/LaunchAgents/com.orch.daemon.plist")
+		fmt.Println()
+		fmt.Println("To generate the plist from config:")
+		fmt.Println("  orch config generate plist")
+		return nil
+	}
+
+	if report.Healthy {
+		fmt.Println("✓ No drift detected - plist matches config.yaml")
+		return nil
+	}
+
+	fmt.Printf("✗ Found %d drift(s):\n", len(report.Drifts))
+	fmt.Println()
+	for _, drift := range report.Drifts {
+		fmt.Printf("  %s:\n", drift.Field)
+		fmt.Printf("    config:  %s\n", drift.Expected)
+		fmt.Printf("    plist:   %s\n", drift.Actual)
+		fmt.Println()
+	}
+
+	fmt.Println("To fix, regenerate the plist from config:")
+	fmt.Println("  orch config generate plist")
+
+	return nil
+}
+
+// checkPlistDrift compares expected plist values from config.yaml with actual plist file.
+func checkPlistDrift() (*ConfigDriftReport, error) {
+	report := &ConfigDriftReport{
+		Healthy: true,
+		Drifts:  make([]ConfigDrift, 0),
+	}
+
+	// Get expected values from config
+	cfg, err := userconfig.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Read actual plist
+	plistPath := getPlistPath()
+	plistContent, err := os.ReadFile(plistPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			report.PlistFound = false
+			report.Healthy = false
+			return report, nil
+		}
+		return nil, fmt.Errorf("failed to read plist: %w", err)
+	}
+	report.PlistFound = true
+
+	// Parse plist to extract values
+	actualValues, err := parsePlistValues(string(plistContent))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse plist: %w", err)
+	}
+
+	// Compare expected vs actual
+	comparisons := []struct {
+		Field    string
+		Expected string
+		Actual   string
+	}{
+		{
+			Field:    "poll_interval",
+			Expected: fmt.Sprintf("%d", cfg.DaemonPollInterval()),
+			Actual:   actualValues["poll_interval"],
+		},
+		{
+			Field:    "max_agents",
+			Expected: fmt.Sprintf("%d", cfg.DaemonMaxAgents()),
+			Actual:   actualValues["max_agents"],
+		},
+		{
+			Field:    "label",
+			Expected: cfg.DaemonLabel(),
+			Actual:   actualValues["label"],
+		},
+		{
+			Field:    "verbose",
+			Expected: fmt.Sprintf("%v", cfg.DaemonVerbose()),
+			Actual:   actualValues["verbose"],
+		},
+		{
+			Field:    "reflect_issues",
+			Expected: fmt.Sprintf("%v", cfg.DaemonReflectIssues()),
+			Actual:   actualValues["reflect_issues"],
+		},
+		{
+			Field:    "working_directory",
+			Expected: cfg.DaemonWorkingDirectory(),
+			Actual:   actualValues["working_directory"],
+		},
+	}
+
+	for _, c := range comparisons {
+		if c.Expected != c.Actual {
+			report.Drifts = append(report.Drifts, ConfigDrift{
+				Field:    c.Field,
+				Expected: c.Expected,
+				Actual:   c.Actual,
+			})
+			report.Healthy = false
+		}
+	}
+
+	return report, nil
+}
+
+// parsePlistValues extracts key values from the daemon plist.
+// Uses simple string parsing (not full XML parsing) since the plist has a known structure.
+func parsePlistValues(content string) (map[string]string, error) {
+	values := make(map[string]string)
+
+	// Extract ProgramArguments to parse flags
+	// Look for patterns like:
+	// <string>--poll-interval</string>
+	// <string>60</string>
+
+	// Parse poll-interval
+	if idx := strings.Index(content, "--poll-interval"); idx != -1 {
+		// Find the next <string> after this
+		remaining := content[idx:]
+		if start := strings.Index(remaining, "</string>"); start != -1 {
+			remaining = remaining[start+9:] // Skip past </string>
+			if strings.HasPrefix(strings.TrimSpace(remaining), "<string>") {
+				remaining = strings.TrimSpace(remaining)[8:] // Skip <string>
+				if end := strings.Index(remaining, "</string>"); end != -1 {
+					values["poll_interval"] = remaining[:end]
+				}
+			}
+		}
+	}
+
+	// Parse max-agents
+	if idx := strings.Index(content, "--max-agents"); idx != -1 {
+		remaining := content[idx:]
+		if start := strings.Index(remaining, "</string>"); start != -1 {
+			remaining = remaining[start+9:]
+			if strings.HasPrefix(strings.TrimSpace(remaining), "<string>") {
+				remaining = strings.TrimSpace(remaining)[8:]
+				if end := strings.Index(remaining, "</string>"); end != -1 {
+					values["max_agents"] = remaining[:end]
+				}
+			}
+		}
+	}
+
+	// Parse label (--label flag value)
+	if idx := strings.Index(content, "--label"); idx != -1 {
+		remaining := content[idx:]
+		if start := strings.Index(remaining, "</string>"); start != -1 {
+			remaining = remaining[start+9:]
+			if strings.HasPrefix(strings.TrimSpace(remaining), "<string>") {
+				remaining = strings.TrimSpace(remaining)[8:]
+				if end := strings.Index(remaining, "</string>"); end != -1 {
+					values["label"] = remaining[:end]
+				}
+			}
+		}
+	}
+
+	// Parse verbose (presence of --verbose flag)
+	values["verbose"] = "false"
+	if strings.Contains(content, "<string>--verbose</string>") {
+		values["verbose"] = "true"
+	}
+
+	// Parse reflect-issues (--reflect-issues=true/false)
+	values["reflect_issues"] = "true" // Default
+	if idx := strings.Index(content, "--reflect-issues="); idx != -1 {
+		remaining := content[idx+17:] // Skip "--reflect-issues="
+		if end := strings.Index(remaining, "</string>"); end != -1 {
+			values["reflect_issues"] = remaining[:end]
+		}
+	}
+
+	// Parse WorkingDirectory
+	if idx := strings.Index(content, "<key>WorkingDirectory</key>"); idx != -1 {
+		remaining := content[idx:]
+		if start := strings.Index(remaining, "<string>"); start != -1 {
+			remaining = remaining[start+8:]
+			if end := strings.Index(remaining, "</string>"); end != -1 {
+				values["working_directory"] = remaining[:end]
+			}
+		}
+	}
+
+	return values, nil
 }
