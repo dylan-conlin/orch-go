@@ -134,6 +134,24 @@
 		return date.toLocaleTimeString();
 	}
 
+	// Prevent body scroll when panel is open to avoid double scrollbar
+	$effect(() => {
+		if (!browser) return;
+		
+		if ($selectedAgent) {
+			// Panel is open - disable body scroll
+			document.body.style.overflow = 'hidden';
+		} else {
+			// Panel is closed - restore body scroll
+			document.body.style.overflow = '';
+		}
+		
+		// Cleanup when effect is destroyed (component unmounts)
+		return () => {
+			document.body.style.overflow = '';
+		};
+	});
+
 	onMount(() => {
 		if (browser) {
 			window.addEventListener('keydown', handleKeydown);
