@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { AgentCard } from '$lib/components/agent-card';
 	import { errorEvents } from '$lib/stores/agentlog';
 	import { pendingReviews, type PendingReviewAgent, type PendingReviewItem } from '$lib/stores/pending-reviews';
 	import { beads } from '$lib/stores/beads';
-	import { createIssue } from '$lib/stores/agents';
+	import { createIssue, deadAgents } from '$lib/stores/agents';
 
 	// State for issue creation (same as pending-reviews)
 	let creatingIssue: { [key: string]: boolean } = {};
@@ -24,7 +25,8 @@
 	$: totalErrors = $errorEvents.length;
 	$: totalReviews = $pendingReviews?.total_unreviewed ?? 0;
 	$: totalBlocked = $beads?.blocked_issues ?? 0;
-	$: totalAttentionItems = totalErrors + totalReviews + (totalBlocked > 0 ? 1 : 0);
+	$: totalDead = $deadAgents.length;
+	$: totalAttentionItems = totalErrors + totalReviews + (totalBlocked > 0 ? 1 : 0) + totalDead;
 
 	function getItemKey(workspaceId: string, index: number): string {
 		return `${workspaceId}-${index}`;
@@ -111,6 +113,22 @@
 			</Badge>
 		</div>
 		<div class="p-2 space-y-2">
+			<!-- Dead Agents Section (crashed/stuck/killed) -->
+			{#if totalDead > 0}
+				<div class="rounded border bg-card p-2 border-red-500/30">
+					<div class="flex items-center gap-2 mb-2">
+						<span class="text-sm">💀</span>
+						<span class="text-xs font-medium text-red-500">Dead Agents ({totalDead})</span>
+						<span class="text-[10px] text-muted-foreground">No activity for 3+ min - crashed/stuck/killed</span>
+					</div>
+					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+						{#each $deadAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+							<AgentCard {agent} />
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			<!-- Errors Section -->
 			{#if totalErrors > 0}
 				<div class="rounded border bg-card p-2 border-red-500/30">

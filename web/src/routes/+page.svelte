@@ -19,6 +19,7 @@
 		trulyActiveAgents,
 		recentAgents,
 		archivedAgents,
+		deadAgents,
 		sseEvents,
 		connectionStatus,
 		connectSSE,
@@ -370,11 +371,12 @@
 	// Archive uses volatile sort (updated_at) since historical recency matters more there
 	$: sortedActiveAgents = sortAgents(applyFilters($trulyActiveAgents), true);
 	$: sortedNeedsReviewAgents = sortAgents(applyFilters($needsReviewAgents), true);
+	$: sortedDeadAgents = sortAgents(applyFilters($deadAgents), true);
 	$: sortedRecentAgents = sortAgents(applyFilters($recentAgents), true);
 	$: sortedArchivedAgents = sortAgents(applyFilters($archivedAgents), false);
 
 	// Total visible agents across all sections (for filter count)
-	$: totalVisibleAgents = sortedActiveAgents.length + sortedNeedsReviewAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
+	$: totalVisibleAgents = sortedActiveAgents.length + sortedNeedsReviewAgents.length + sortedDeadAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
 
 <div class="space-y-3">

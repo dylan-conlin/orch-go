@@ -4,6 +4,7 @@
 	import { SettingsPanel } from '$lib/components/settings-panel';
 	import {
 		activeAgents,
+		deadAgents,
 		connectionStatus,
 		connectSSE,
 		disconnectSSE
@@ -138,7 +139,7 @@
 			</Tooltip.Content>
 		</Tooltip.Root>
 
-		<!-- Active agents indicator -->
+		<!-- Active agents indicator (with dead count if any) -->
 		<Tooltip.Root>
 			<Tooltip.Trigger>
 				{#snippet child({ props })}
@@ -147,12 +148,18 @@
 						<span class="inline-flex items-baseline gap-1">
 							<span class="text-xl font-bold" class:text-green-500={$activeAgents.length > 0}>{$activeAgents.length}</span>
 							<span class="text-xs text-muted-foreground">active</span>
+							{#if $deadAgents.length > 0}
+								<span class="text-xs text-red-500">(+{$deadAgents.length} need attention)</span>
+							{/if}
 						</span>
 					</span>
 				{/snippet}
 			</Tooltip.Trigger>
 			<Tooltip.Content>
 				<p>{$activeAgents.length === 0 ? 'No active agents' : `${$activeAgents.length} agent${$activeAgents.length === 1 ? '' : 's'} running`}</p>
+				{#if $deadAgents.length > 0}
+					<p class="text-xs text-red-500 mt-1">{$deadAgents.length} dead agent{$deadAgents.length === 1 ? '' : 's'} - no activity for 3+ min</p>
+				{/if}
 			</Tooltip.Content>
 		</Tooltip.Root>
 

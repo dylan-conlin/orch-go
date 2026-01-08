@@ -2,7 +2,8 @@ import { writable, derived } from 'svelte/store';
 import { createSSEConnection, type SSEConnection } from '../services/sse-connection';
 
 // Agent types matching orch-go registry
-export type AgentState = 'active' | 'idle' | 'completed' | 'abandoned' | 'deleted';
+// 'dead' = no activity for 3+ minutes (crashed/stuck/killed) - needs attention
+export type AgentState = 'active' | 'idle' | 'completed' | 'abandoned' | 'deleted' | 'dead';
 
 // Synthesis data from SYNTHESIS.md (D.E.K.N. format)
 export interface Synthesis {
@@ -64,7 +65,7 @@ export interface Agent {
 
 // Display state for agent cards - derived from agent status + phase + activity
 // Provides clearer visual distinction between different agent states
-export type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned';
+export type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' | 'completed' | 'abandoned' | 'dead';
 
 /**
  * Compute the display state from agent status + phase + activity
@@ -79,6 +80,7 @@ export type DisplayState = 'running' | 'ready-for-review' | 'idle' | 'waiting' |
 export function computeDisplayState(agent: Agent): DisplayState {
 	if (agent.status === 'completed') return 'completed';
 	if (agent.status === 'abandoned') return 'abandoned';
+	if (agent.status === 'dead') return 'dead';
 	
 	if (agent.status === 'active') {
 		// Phase: Complete means agent reported done, waiting for orchestrator to close
@@ -285,6 +287,12 @@ export const completedAgents = derived(agents, ($agents) =>
 
 export const abandonedAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'abandoned')
+);
+
+// Dead agents: no activity for 3+ minutes (crashed/stuck/killed)
+// These need immediate attention - surfaced in "Needs Attention" section
+export const deadAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => a.status === 'dead')
 );
 
 // Needs Review: agents at Phase: Complete that haven't been closed yet

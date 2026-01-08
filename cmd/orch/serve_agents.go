@@ -403,6 +403,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	activeThreshold := 10 * time.Minute
 	displayThreshold := 30 * time.Minute
 
+	// Dead threshold: if no activity for 3 minutes, session is dead.
+	// Agents are constantly reading, editing, running commands - 3 min silence = dead.
+	// This is critical for visibility: dead agents need attention (crashed/stuck/killed).
+	deadThreshold := 3 * time.Minute
+
 	// beadsFetchThreshold limits which sessions we fetch beads data for.
 	// Sessions older than this are excluded from beads lookups entirely.
 	// This is a MAJOR optimization: with 600+ sessions but only ~6 active,
@@ -426,8 +431,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		timeSinceUpdate := now.Sub(updatedAt)
 
 		// Determine status based on recent activity
+		// Priority: dead (3min silence) > active (recent) > idle (10min+)
+		// Dead agents need attention - they're crashed/stuck/killed.
 		status := "active"
-		if timeSinceUpdate > activeThreshold {
+		if timeSinceUpdate > deadThreshold {
+			status = "dead" // No activity for 3+ minutes = dead (crashed/stuck/killed)
+		} else if timeSinceUpdate > activeThreshold {
 			status = "idle" // Session exists but hasn't had recent activity
 		}
 
