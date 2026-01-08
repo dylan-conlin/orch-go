@@ -29,6 +29,11 @@ const MinInvestigationsForSynthesis = 3
 
 // TopicKeywords are the primary domain keywords to track for synthesis opportunities.
 // These are high-level topic areas that warrant synthesis when multiple investigations exist.
+//
+// NOTE: Meta-topics (investigation, synthesis, artifact, skill) are intentionally excluded.
+// These are about the orchestration system itself, not domain topics worth synthesizing.
+// Multiple investigations about "how we do investigations" don't need a synthesis -
+// they're process improvements, not domain knowledge accumulation.
 var TopicKeywords = []string{
 	// Core orchestration concepts
 	"daemon",
@@ -47,11 +52,6 @@ var TopicKeywords = []string{
 	"server",
 	"api",
 	"sse",
-	// Knowledge system
-	"synthesis",
-	"investigation",
-	"artifact",
-	"skill",
 	// Agent lifecycle
 	"agent",
 	"headless",
