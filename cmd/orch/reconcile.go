@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -258,40 +259,50 @@ func getLastPhase(beadsID string) string {
 
 func runReconcileFix(zombies []ZombieIssue) error {
 	reader := bufio.NewReader(os.Stdin)
+	var successCount, failCount int
 	for _, z := range zombies {
+		var mode string
 		if reconcileFixAll {
-			applyFix(z, reconcileFixMode, "")
-			continue
+			mode = reconcileFixMode
+		} else {
+			fmt.Printf("Fix %s? [r]eset [c]lose [s]kip: ", z.ID)
+			input, _ := reader.ReadString('\n')
+			switch strings.TrimSpace(strings.ToLower(input)) {
+			case "r", "reset", "":
+				mode = "reset"
+			case "c", "close":
+				mode = "close"
+			default:
+				// Skip
+				continue
+			}
 		}
-		fmt.Printf("Fix %s? [r]eset [c]lose [s]kip: ", z.ID)
-		input, _ := reader.ReadString('\n')
-		switch strings.TrimSpace(strings.ToLower(input)) {
-		case "r", "reset", "":
-			applyFix(z, "reset", "")
-		case "c", "close":
-			applyFix(z, "close", "")
+
+		if err := applyFix(z, mode, ""); err != nil {
+			fmt.Printf("  ✗ Failed to %s %s: %v\n", mode, z.ID, err)
+			failCount++
+		} else {
+			action := "Reset"
+			if mode == "close" {
+				action = "Closed"
+			}
+			fmt.Printf("  ✓ %s %s\n", action, z.ID)
+			successCount++
 		}
+	}
+
+	if successCount > 0 || failCount > 0 {
+		fmt.Printf("\nReconcile complete: %d succeeded, %d failed\n", successCount, failCount)
 	}
 	return nil
 }
 
 func applyFix(z ZombieIssue, mode, reason string) error {
-	socketPath, _ := beads.FindSocketPath("")
-	client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-	if err := client.Connect(); err != nil {
-		return applyFixFallback(z, mode, reason)
-	}
-	defer client.Close()
-
-	switch mode {
-	case "reset":
-		status := "open"
-		_, err := client.Update(&beads.UpdateArgs{ID: z.ID, Status: &status})
-		return err
-	case "close":
-		return client.CloseIssue(z.ID, "Zombie reconciled")
-	}
-	return nil
+	// For zombie reconciliation, always use --force because zombies
+	// are inherently incomplete (no agent working on them, likely no
+	// "Phase: Complete" comment). Using CLI fallback with --force is
+	// the most reliable approach.
+	return applyFixFallback(z, mode, reason)
 }
 
 func applyFixFallback(z ZombieIssue, mode, reason string) error {
@@ -299,7 +310,32 @@ func applyFixFallback(z ZombieIssue, mode, reason string) error {
 	case "reset":
 		return beads.FallbackUpdate(z.ID, "open")
 	case "close":
-		return beads.FallbackClose(z.ID, "Zombie reconciled")
+		// Use --force for zombie reconciliation since zombies typically
+		// don't have "Phase: Complete" comments (they were abandoned)
+		return forceCloseIssue(z.ID, "Zombie reconciled")
+	}
+	return nil
+}
+
+// forceCloseIssue closes an issue with --force flag to bypass "Phase: Complete" check.
+// This is specifically for zombie reconciliation where issues were abandoned.
+func forceCloseIssue(id, reason string) error {
+	args := []string{"close", id, "--force"}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+
+	// Use "bd" command - ResolveBdPath should be called at startup
+	cmd := exec.Command("bd", args...)
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd close failed: %w: %s", err, string(output))
+	}
+	// Also check output for error patterns since bd close may return 0 on soft errors
+	outputStr := string(output)
+	if strings.Contains(outputStr, "Error:") || strings.Contains(outputStr, "error:") {
+		return fmt.Errorf("bd close failed: %s", strings.TrimSpace(outputStr))
 	}
 	return nil
 }
