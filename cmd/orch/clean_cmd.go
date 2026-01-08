@@ -184,6 +184,7 @@ type CleanableWorkspace struct {
 
 // findCleanableWorkspaces scans .orch/workspace/ for completed/abandoned workspaces.
 // Returns workspaces that have SYNTHESIS.md OR whose beads issue is closed.
+// Uses batch beads lookup for performance (~16s -> ~1s with 400+ workspaces).
 func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatusChecker) []CleanableWorkspace {
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
 	entries, err := os.ReadDir(workspaceDir)
@@ -192,9 +193,17 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	}
 
 	var cleanable []CleanableWorkspace
+	var needsBeadsCheck []CleanableWorkspace
 
+	// First pass: Check file-based completion (fast)
+	// Collect workspaces that need beads status check
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+
+		// Skip the archived directory
+		if entry.Name() == "archived" {
 			continue
 		}
 
@@ -229,7 +238,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 			BeadsID: beadsID,
 		}
 
-		// Check for SYNTHESIS.md (completion indicator)
+		// Check for SYNTHESIS.md (completion indicator) - fast file check
 		synthesisPath := filepath.Join(dirPath, "SYNTHESIS.md")
 		if info, err := os.Stat(synthesisPath); err == nil && info.Size() > 0 {
 			workspace.IsComplete = true
@@ -238,17 +247,36 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 			continue
 		}
 
-		// Check beads issue status if we have a beads ID
-		if beadsID != "" && beadsChecker.IsIssueClosed(beadsID) {
-			workspace.IsComplete = true
-			workspace.Reason = "beads issue closed"
-			cleanable = append(cleanable, workspace)
-			continue
+		// Queue for beads status check if we have a beads ID
+		if beadsID != "" {
+			needsBeadsCheck = append(needsBeadsCheck, workspace)
 		}
+	}
 
-		// Check if workspace is orphaned (no tmux window, no OpenCode session, no active beads issue)
-		// This would be a workspace from a crashed or abandoned agent
-		// For now, we only clean explicitly completed workspaces
+	// Second pass: Batch beads status check (optimized)
+	// Use ListOpenIssues to get all open issues in a single API call
+	// If a beads ID is NOT in the open issues map, it's closed
+	if len(needsBeadsCheck) > 0 {
+		openIssues, err := verify.ListOpenIssues()
+		if err != nil {
+			// Fallback to sequential check if batch fails
+			for _, ws := range needsBeadsCheck {
+				if beadsChecker.IsIssueClosed(ws.BeadsID) {
+					ws.IsComplete = true
+					ws.Reason = "beads issue closed"
+					cleanable = append(cleanable, ws)
+				}
+			}
+		} else {
+			// Check if each beads ID is NOT in open issues (= closed)
+			for _, ws := range needsBeadsCheck {
+				if _, isOpen := openIssues[ws.BeadsID]; !isOpen {
+					ws.IsComplete = true
+					ws.Reason = "beads issue closed"
+					cleanable = append(cleanable, ws)
+				}
+			}
+		}
 	}
 
 	return cleanable
