@@ -321,7 +321,8 @@ func hasSessionHandoff(workspacePath string) bool {
 // resolveShortBeadsID resolves a potentially short beads ID to a full ID.
 // Short IDs like "57dn" are resolved to full IDs like "orch-go-57dn".
 // This ensures commands receive full IDs that bd commands can use.
-// If resolution fails, returns the original ID (best effort).
+// Returns an error if the issue doesn't exist - this prevents spawning
+// agents with invalid beads IDs that can never be closed.
 func resolveShortBeadsID(id string) (string, error) {
 	// Try RPC client first for ID resolution
 	socketPath, err := beads.FindSocketPath("")
@@ -342,9 +343,24 @@ func resolveShortBeadsID(id string) (string, error) {
 	// bd show handles short ID resolution and returns the full ID
 	issue, err := beads.FallbackShow(id)
 	if err != nil {
-		// If resolution fails completely, return original ID with warning
-		fmt.Fprintf(os.Stderr, "Warning: could not resolve beads ID '%s': %v\n", id, err)
-		return id, nil
+		// Issue doesn't exist - return error with helpful hint for cross-project issues
+		// Extract project prefix from ID if present (e.g., "kb-cli" from "kb-cli-xyz123")
+		hint := ""
+		if parts := strings.Split(id, "-"); len(parts) >= 2 {
+			// Check if ID looks like it has a project prefix (e.g., "kb-cli-xyz123")
+			// Project prefixes are typically not just single short segments
+			possibleProject := parts[0]
+			if len(parts) >= 3 {
+				possibleProject = parts[0] + "-" + parts[1]
+			}
+			hint = fmt.Sprintf("\n\nHint: Issue '%s' may belong to a different project.\n"+
+				"If the issue is in '%s', try:\n"+
+				"  cd ~/Documents/personal/%s && orch complete %s\n"+
+				"Or use --workdir:\n"+
+				"  orch complete %s --workdir ~/Documents/personal/%s",
+				id, possibleProject, possibleProject, id, id, possibleProject)
+		}
+		return "", fmt.Errorf("beads issue '%s' not found%s", id, hint)
 	}
 
 	return issue.ID, nil

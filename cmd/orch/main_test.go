@@ -817,12 +817,13 @@ func TestDetermineBeadsID(t *testing.T) {
 		wantErrContains string
 	}{
 		{
-			name:          "explicit issue ID provided",
-			spawnIssue:    "explicit-issue-123",
-			spawnNoTrack:  false,
-			createBeadsFn: nil, // should not be called
-			wantID:        "explicit-issue-123",
-			wantErr:       false,
+			name:            "explicit issue ID provided but not found",
+			spawnIssue:      "explicit-issue-123",
+			spawnNoTrack:    false,
+			createBeadsFn:   nil, // should not be called
+			wantID:          "",
+			wantErr:         true,
+			wantErrContains: "not found",
 		},
 		{
 			name:          "no-track flag set",

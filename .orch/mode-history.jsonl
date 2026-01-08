@@ -64,3 +64,5 @@
 {"time":"2026-01-08T06:45:39-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-08T06:54:20-08:00","action":"bypass","reason":"Updating dashboard agent cards to show dead/stalled states - this is a feature improvement for better visibility"}
 {"time":"2026-01-08T06:55:59-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-08T07:02:36-08:00","action":"bypass","reason":"fixing dashboard activity display bug - already tested"}
+{"time":"2026-01-08T07:02:36-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
