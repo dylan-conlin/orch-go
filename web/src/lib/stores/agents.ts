@@ -702,9 +702,10 @@ function handleSSEEvent(data: any) {
 							if (agent.session_id === sessionID) {
 								return {
 									...agent,
-									is_processing: false,
-									// Clear activity when idle (agent finished)
-									current_activity: undefined
+									is_processing: false
+									// Note: Don't clear current_activity here - the last activity
+									// should persist so users can see what the agent was doing.
+									// Clearing it causes "Starting up..." to show for completed agents.
 								};
 							}
 							return agent;
