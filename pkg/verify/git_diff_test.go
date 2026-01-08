@@ -46,8 +46,8 @@ func TestParseDeltaFiles(t *testing.T) {
 			expected: []string{"pkg/new_file.go", "pkg/existing.go", "pkg/another.go"},
 		},
 		{
-			name:  "empty delta",
-			delta: "",
+			name:     "empty delta",
+			delta:    "",
 			expected: nil,
 		},
 		{
@@ -73,6 +73,27 @@ func TestParseDeltaFiles(t *testing.T) {
 			delta: `This is a sentence.
 - ` + "`pkg/verify/check.go`" + ` - Real file`,
 			expected: []string{"pkg/verify/check.go"},
+		},
+		{
+			name: "skip event type names",
+			delta: `### Evidence
+- Old method: ` + "`hasCodeChanges=true`" + ` (incorrect)
+- New method: ` + "`hasCodeChanges=false`" + ` (correct)
+- Event: ` + "`session.created`" + ` plugin
+- Event: ` + "`agent.spawned`" + ` event
+
+### Files Modified
+- ` + "`pkg/verify/test_evidence.go`" + ` - Fixed the bug`,
+			expected: []string{"pkg/verify/test_evidence.go"},
+		},
+		{
+			name: "skip version numbers",
+			delta: `### Notes
+- Using version ` + "`v0.33.2`" + ` of the library
+
+### Files Modified
+- ` + "`go.mod`" + ` - Updated dependency`,
+			expected: []string{"go.mod"},
 		},
 	}
 
@@ -115,21 +136,50 @@ func TestIsLikelyFilePath(t *testing.T) {
 		input    string
 		expected bool
 	}{
-		// Valid file paths
+		// Valid file paths with known extensions
 		{"pkg/verify/check.go", true},
 		{"main.go", true},
 		{".beads/beads.db", true},
 		{"path/to/file.txt", true},
 		{"README.md", true},
+		{"config.yaml", true},
+		{"./local/file.go", true},
+		{".gitignore", true}, // dotfile with no extension
+		{".env", true},       // dotfile with no extension
+		{".env.local", true}, // dotfile with extension
+		{"package.json", true},
+		{"web/src/routes/page.svelte", true},
+		{"web/src/lib/api.ts", true},
+		{".kb/investigations/2026-01-08-test.md", true},
 
-		// Invalid paths
-		{"", false},                                  // empty
-		{"no-extension", false},                      // no extension
-		{"https://example.com/file.go", false},       // URL
-		{"This is a sentence.", false},               // sentence (contains space)
-		{"e.g.", false},                              // abbreviation
-		{"i.e.", false},                              // abbreviation
-		{"etc.", false},                              // abbreviation
+		// Event type names (the bug - these were matching as file paths)
+		// These have . but NOT a known file extension
+		{"session.created", false},
+		{"agent.spawned", false},
+		{"task.completed", false},
+		{"Phase.Complete", false},
+		{"worker.started", false},
+		{"agent.completed", false},
+		{"spawn.timeout", false},
+
+		// Version numbers (not files)
+		{"v0.33.2", false},
+		{"v1.0.0", false},
+		{"1.2.3", false},
+
+		// Invalid paths - other reasons
+		{"", false},                            // empty
+		{"no-extension", false},                // no extension
+		{"https://example.com/file.go", false}, // URL
+		{"This is a sentence.", false},         // sentence (contains space)
+		{"e.g.", false},                        // abbreviation
+		{"i.e.", false},                        // abbreviation
+		{"etc.", false},                        // abbreviation
+
+		// Special patterns that should NOT match
+		{"hasCodeChanges=true", false},               // assignment, contains =
+		{"key=value.json", false},                    // assignment pattern, contains =
+		{"og-work-dashboard-two-modes-27dec", false}, // workspace name (no extension)
 	}
 
 	for _, tt := range tests {
