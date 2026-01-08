@@ -461,13 +461,36 @@
       "created": "2026-01-07",
       "source": ".kb/investigations/2026-01-07-inv-cross-project-agents-show-wrong.md",
       "notes": "Supersedes incomplete feat-017. Root cause: OpenCode --attach mode uses server's cwd, not CLI's cwd. kb projects provides reliable alternative source of project directories."
+    },
+    {
+      "id": "feat-042",
+      "title": "Implement post-synthesis investigation archival to synthesized/ subdirectory",
+      "description": "Move investigations that have been synthesized into a guide to .kb/investigations/synthesized/{guide-name}/ subdirectory. Creates explicit provenance chain between source investigations and synthesis artifact. Implement 'kb archive --synthesized-into {guide}' command that: 1) Moves matching investigations to synthesized/{guide-name}/, 2) Optionally adds Sources section to guide referencing archived investigations. Update synthesis_opportunities.go to exclude synthesized/ subdirectory from scanning. Add meta-topic exclusions (investigation, synthesis, artifact, skill) to TopicKeywords check. File targets: pkg/verify/synthesis_opportunities.go (meta-topic exclusions), kb-cli/cmd/kb/archive.go (new command). Out of scope: Automatic archival post-synthesis, guide auto-update. Acceptance: 'kb archive --synthesized-into dashboard' moves dashboard investigations to synthesized/dashboard/, synthesis opportunities stop showing already-synthesized topics.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-07",
+      "source": ".kb/investigations/2026-01-07-design-post-synthesis-investigation-archival.md",
+      "repo": "kb-cli",
+      "notes": "Addresses 667 investigation accumulation problem. Follows existing archived/ pattern. Two-part implementation: orch-go (detection update) + kb-cli (archive command)."
+    },
+    {
+      "id": "feat-043",
+      "title": "Add meta-topic exclusions to synthesis opportunity detection",
+      "description": "Exclude meta-topics (investigation, synthesis, artifact, skill) from TopicKeywords in synthesis opportunity detection. These are about the knowledge system itself, not domain topics, and create noise in synthesis suggestions. Add MetaTopicExclusions list and filter check before counting investigations per topic. File targets: pkg/verify/synthesis_opportunities.go (add MetaTopicExclusions, modify topic loop). Acceptance: 'orch status' no longer shows 'investigation' or 'synthesis' as synthesis opportunities.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-07",
+      "source": ".kb/investigations/2026-01-07-design-post-synthesis-investigation-archival.md",
+      "notes": "Quick fix (~30 min). Part of feat-042 but can be done independently."
     }
   ],
   "meta": {
     "last_updated": "2026-01-07",
-    "total_features": 41,
+    "total_features": 43,
     "by_status": {
-      "todo": 39,
+      "todo": 41,
       "in_progress": 0,
       "done": 2
     }
