@@ -48,8 +48,9 @@ type globalWorkspaceCacheType struct {
 	cache *workspaceCache
 
 	// Cache metadata
-	fetchedAt time.Time
-	ttl       time.Duration
+	fetchedAt   time.Time
+	ttl         time.Duration
+	projectDirs []string // Track which project dirs the cache was built with
 }
 
 // Global workspace cache
@@ -58,9 +59,15 @@ var globalWorkspaceCacheInstance = &globalWorkspaceCacheType{
 }
 
 // getCachedWorkspace returns cached workspace data or builds fresh if stale.
+// Rebuilds cache if:
+// 1. Cache is nil (never built or invalidated)
+// 2. Cache TTL expired
+// 3. Project directories have changed (new projects registered)
 func (c *globalWorkspaceCacheType) getCachedWorkspace(projectDirs []string) *workspaceCache {
 	c.mu.RLock()
-	if c.cache != nil && time.Since(c.fetchedAt) < c.ttl {
+	cacheValid := c.cache != nil && time.Since(c.fetchedAt) < c.ttl
+	dirsMatch := projectDirsMatch(c.projectDirs, projectDirs)
+	if cacheValid && dirsMatch {
 		result := c.cache
 		c.mu.RUnlock()
 		return result
@@ -73,9 +80,30 @@ func (c *globalWorkspaceCacheType) getCachedWorkspace(projectDirs []string) *wor
 	c.mu.Lock()
 	c.cache = wsCache
 	c.fetchedAt = time.Now()
+	c.projectDirs = projectDirs // Store the project dirs this cache was built with
 	c.mu.Unlock()
 
 	return wsCache
+}
+
+// projectDirsMatch checks if two slices of project directories contain the same entries.
+// Order doesn't matter, but all entries must match.
+func projectDirsMatch(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	// Create a set from a
+	aSet := make(map[string]bool, len(a))
+	for _, dir := range a {
+		aSet[dir] = true
+	}
+	// Check all entries in b are in a
+	for _, dir := range b {
+		if !aSet[dir] {
+			return false
+		}
+	}
+	return true
 }
 
 // Default TTLs for cached data
@@ -115,6 +143,7 @@ func (c *globalWorkspaceCacheType) invalidate() {
 
 	c.cache = nil
 	c.fetchedAt = time.Time{}
+	c.projectDirs = nil
 }
 
 // Global beads cache instance, initialized in runServe

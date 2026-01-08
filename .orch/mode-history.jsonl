@@ -43,3 +43,6 @@
 {"time":"2026-01-07T07:36:38-08:00","action":"bypass","reason":"Adding transcript export for orch abandon - does not affect agent observation/management during normal operation"}
 {"time":"2026-01-07T08:11:07-08:00","action":"bypass","reason":"Fixing critical PATH issue that prevents beads API from working"}
 {"time":"2026-01-07T09:58:37-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-07T10:54:50-08:00","action":"bypass","reason":"completing performance fix for api/beads endpoints - already tested and working"}
+{"time":"2026-01-07T11:08:39-08:00","action":"bypass","reason":"Dashboard filtering feature - stable changes to add query string support"}
+{"time":"2026-01-07T16:21:38-08:00","action":"bypass","reason":"implementing activity feed persistence feature per orch-go-04o7j"}
