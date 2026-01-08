@@ -2,14 +2,14 @@
 
 **Orchestrator:** meta-orch-rebase-opencode-07jan
 **Focus:** Ecosystem Stability & Completion Rate (Friction Loop & Synthesis)
-**Duration:** 2026-01-07T21:00 → 2026-01-08T01:30
+**Duration:** 2026-01-07T21:00 → 2026-01-08T02:30
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Hardened the ecosystem by fixing `kb ask` synthesis grounding and implementing semantic pattern matching for context gaps. Synthesized ~100 investigations across Dashboard, Spawn, and Orchestrator clusters to reduce knowledge debt and cleared duplicate issues. Designed and filed implementation tasks for a workspace-scoped screenshot storage system.
+Hardened the ecosystem by fixing `kb ask` synthesis grounding and resolving a dashboard bug that mis-mapped agents to outdated (2025) investigations. Synthesized ~100 investigations across Dashboard, Spawn, and Orchestrator clusters to reduce knowledge debt. Validated through OpenCode tool-call log analysis that agents are actively adopting the new guides within their first 3-5 actions.
 
 ---
 
@@ -26,42 +26,41 @@ Hardened the ecosystem by fixing `kb ask` synthesis grounding and implementing s
 | orch-go-t8f11 | orch-go-t8f11 | investigation | success | Synthesized 14 dashboard investigations into guide. |
 | orch-go-bdfgu | orch-go-bdfgu | investigation | success | Synthesized 60 spawn investigations into guide. |
 | orch-go-qv8cc | orch-go-qv8cc | investigation | success | Synthesized 12 orchestrator investigations into guide. |
-
-### Still Running
-| Agent | Issue | Skill | Phase | ETA |
-|-------|-------|-------|-------|-----|
-| orch-go-e89kl | orch-go-e89kl | investigation | Planning | 10m |
+| orch-go-e89kl | orch-go-e89kl | investigation | success | Synthesized 28 daemon investigations into guide. |
 
 ---
 
 ## Evidence (What Was Observed)
 
 ### Patterns Across Agents
-- **Semantic Fragmentation:** Gaps like "synthesize X" and "synthesize Y" were treated as separate, hiding recurring friction. Fixed via semantic pattern matching in `orch-go-5mm7q`.
-- **Tool Naming Friction:** Agents repeatedly failed to find `AskUserQuestion` because the tool is named `question`. Fixed in core skills (orch-go-y0vvg).
+- **Fuzzy Discovery Bug:** The dashboard picked the first alphabetical match for investigations, often choosing outdated 2025 files. Fixed via reverse-chronological sorting and match scoring.
+- **Guide Adoption:** Analysis of OpenCode session part storage confirmed that agents for `e89kl`, `9tg1d`, and `qv8cc` read relevant guides within their first few tool calls.
+- **Semantic Fragmentation:** Context gaps with varying text (e.g., "synthesize X" vs "synthesize Y") were treated as separate. Fixed via template-based pattern matching.
 
 ### Completions
-- **`kb ask` Grounding:** Unit tests passed for keyword extraction. Natural language queries now correctly retrieve relevant context.
-- **Backlog Noise:** Found 29 duplicate issues for orchestrator synthesis alone. Mass-closed duplicates to restore signal.
+- **`kb ask` Grounding:** unit tests confirmed natural language queries correctly retrieve relevant context.
+- **Backlog Noise:** Mass-closed 29+ duplicate issues for orchestrator synthesis clusters.
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### Decisions Made
-- **Screenshot Storage:** Chose workspace-scoped storage (`.orch/workspace/{name}/screenshots/`) to ensure agent ownership and automatic lifecycle management.
-- **Semantic Normalization:** Chose template-based matching for gap queries (e.g., `synthesize * investigations`) as a low-latency, high-precision grouping mechanism.
-- **Skill Deployment:** `skillc deploy` must be run from `~/orch-knowledge/skills/src` to avoid nested directory creation in `~/.claude/skills/`.
+- **Dashboard Priority:** Prioritized newest investigations and Beads ID matches over alphabetical keyword matches.
+- **Action Log Boundaries:** Keep `action-log.jsonl` for high-level outcomes/pattern detection; use session part storage for full auditing (file reads).
+- **Screenshot Storage:** Chose workspace-scoped storage (`.orch/workspace/{name}/screenshots/`) for automatic lifecycle management and agent ownership.
 
 ### Constraints Discovered
-- **`kn` Deprecation:** `kn` CLI is deprecated in favor of `kb quick`. Migrated all entries using `kb migrate kn`.
-- **Manual Spawn Bypass:** Manual spawns now REQUIRE the `--bypass-triage` flag to acknowledge the daemon-first preference.
+- **`kn` Deprecation:** Migrated all legacy entries to `.kb/quick/` using `kb migrate kn`.
+- **Manual Spawn Bypass:** Manual spawns now REQUIRE `--bypass-triage` to acknowledge the daemon-first preference.
 
 ### Artifacts Created
 - `.kb/investigations/2026-01-07-design-screenshot-artifact-storage-decision.md`
 - `.kb/guides/dashboard.md` (Updated)
 - `.kb/guides/spawn.md` (Updated)
+- `.kb/guides/daemon.md` (Updated)
 - `.kb/guides/orchestrator-session-management.md` (Updated)
+- `scripts/analyze_guide_reads.ts` (For ad-hoc guide adoption analysis)
 
 ---
 
@@ -70,22 +69,21 @@ Hardened the ecosystem by fixing `kb ask` synthesis grounding and implementing s
 **Recommendation:** continue-focus
 
 ### Immediate Actions
-1. **Monitor `orch-go-e89kl`**: Synthesis of 28 daemon investigations.
-2. **Execute Screenshot Implementation**: Spawning the 4 new feature-impl issues (orch-go-bl0hz, orch-go-bdtyl, orch-go-tbrrs, orch-go-0rwv4).
-3. **Synthesis Round 2**: Address remaining debt (investigation (33), complete (22), context (17)).
+1. **Execute Screenshot Implementation**: Spawning implementation tasks (orch-go-bl0hz, orch-go-bdtyl, orch-go-tbrrs, orch-go-0rwv4).
+2. **Synthesis Round 2**: Address remaining debt (investigation (34), complete (22), context (17)).
+3. **Telemetry Improvement**: Consider logging `Read` actions to `action-log.jsonl` ONLY when target is in `.kb/guides/` to simplify adoption tracking.
 
 ### Context to reload
 - `.kb/guides/spawn.md` (Verify new flag documentation)
-- `.kb/investigations/2026-01-07-design-screenshot-artifact-storage-decision.md`
 - `orch-go-0vscq` (Friction Loop Epic)
 
 ---
 
 ## Session Metadata
 **Agents spawned:** 6 (qv8cc, bdfgu, t8f11, 0vscq.4, z7vq3, e89kl)
-**Agents completed:** 8 (bigrc, 0vscq.4, 5mm7q, 9tg1d, z7vq3, t8f11, bdfgu, qv8cc)
-**Issues closed:** orch-go-bigrc, orch-go-0vscq.4, orch-go-5mm7q, orch-go-9tg1d, orch-go-z7vq3, orch-go-t8f11, orch-go-bdfgu, orch-go-qv8cc, orch-go-y0vvg, orch-go-t7eqk + 20+ duplicates.
+**Agents completed:** 9 (bigrc, 0vscq.4, 5mm7q, 9tg1d, z7vq3, t8f11, bdfgu, qv8cc, e89kl)
+**Issues closed:** ~35 total.
 
 **Repos touched:** orch-go, orch-knowledge
 **PRs:** N/A (Direct push to master)
-**Commits:** ~16 total across session.
+**Commits:** ~20 total across session.
