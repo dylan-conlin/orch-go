@@ -297,6 +297,34 @@ orch complete proj-123
 orch clean
 ```
 
+## Event Tracking
+
+Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregation.
+
+### Event Types
+
+| Event | Source | Purpose |
+|-------|--------|---------|
+| `session.spawned` | `orch spawn` | Agent created |
+| `agent.completed` | `orch complete` or `bd close` hook | Agent finished work |
+| `agent.abandoned` | `orch abandon` | Agent abandoned |
+
+### Beads Close Hook
+
+When issues are closed directly via `bd close` (bypassing `orch complete`), the beads hook at `.beads/hooks/on_close` emits an `agent.completed` event. This closes the tracking gap.
+
+**Hook location:** `.beads/hooks/on_close` (project-specific)
+
+**Manual event emission:**
+```bash
+# Emit completion event directly (used by hooks)
+orch emit agent.completed --beads-id proj-123 --reason "Closed via bd close"
+```
+
+**To enable in a project:**
+1. Create `.beads/hooks/on_close` (executable)
+2. Copy content from orch-go's hook as a template
+
 ## Related
 
 - **Python orch-cli:** `~/Documents/personal/orch-cli` (fallback: `orch-py`)

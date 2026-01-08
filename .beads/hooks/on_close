@@ -1,0 +1,40 @@
+#!/bin/bash
+# .beads/hooks/on_close
+# Emit agent.completed event when issues are closed via bd close
+#
+# This closes the tracking gap where work completes but bypasses orch complete.
+# The event is logged to ~/.orch/events.jsonl for stats aggregation.
+#
+# Called by beads with:
+#   Args: <issue_id> <event_type>
+#   Stdin: JSON representation of the issue
+#
+# Example:
+#   on_close proj-123 close < issue.json
+
+ISSUE_ID="$1"
+EVENT_TYPE="$2"
+
+# Only emit for close events (safety check)
+if [ "$EVENT_TYPE" != "close" ]; then
+    exit 0
+fi
+
+# Skip if no issue ID provided
+if [ -z "$ISSUE_ID" ]; then
+    exit 0
+fi
+
+# Read close_reason from stdin JSON if available
+CLOSE_REASON=$(cat | jq -r '.close_reason // empty' 2>/dev/null)
+
+# Emit the agent.completed event
+# Use --reason if we have a close reason from the issue
+if [ -n "$CLOSE_REASON" ]; then
+    orch emit agent.completed --beads-id "$ISSUE_ID" --reason "$CLOSE_REASON" 2>/dev/null
+else
+    orch emit agent.completed --beads-id "$ISSUE_ID" --reason "Closed via bd close" 2>/dev/null
+fi
+
+# Exit successfully even if orch emit fails (hooks should not block bd close)
+exit 0
