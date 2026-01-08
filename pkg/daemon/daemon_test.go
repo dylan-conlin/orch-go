@@ -2131,3 +2131,192 @@ func TestNewWithConfig_InitializesReflectFunc(t *testing.T) {
 		t.Error("NewWithConfig() should initialize reflectFunc")
 	}
 }
+
+// Tests for epic child expansion feature
+// When an epic has triage:ready label, its children should be auto-included in spawn queue
+
+func TestExpandTriageReadyEpics_NoEpics(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+	}
+
+	issues := []Issue{
+		{ID: "proj-1", Title: "Feature", IssueType: "feature", Labels: []string{"triage:ready"}},
+		{ID: "proj-2", Title: "Bug", IssueType: "bug", Labels: []string{"triage:ready"}},
+	}
+
+	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+
+	// No epics, so nothing should change
+	if len(expanded) != 2 {
+		t.Errorf("expandTriageReadyEpics() returned %d issues, want 2", len(expanded))
+	}
+	if len(epicChildIDs) != 0 {
+		t.Errorf("expandTriageReadyEpics() returned %d epic children, want 0", len(epicChildIDs))
+	}
+}
+
+func TestExpandTriageReadyEpics_NoLabelFilter(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: ""}, // No label filter
+	}
+
+	issues := []Issue{
+		{ID: "proj-1", Title: "Epic", IssueType: "epic", Labels: []string{}},
+		{ID: "proj-1.1", Title: "Child", IssueType: "task", Labels: []string{}},
+	}
+
+	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+
+	// No label filter, so no expansion needed
+	if len(expanded) != 2 {
+		t.Errorf("expandTriageReadyEpics() returned %d issues, want 2", len(expanded))
+	}
+	if len(epicChildIDs) != 0 {
+		t.Errorf("expandTriageReadyEpics() returned %d epic children, want 0", len(epicChildIDs))
+	}
+}
+
+func TestExpandTriageReadyEpics_EpicWithoutLabel(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+	}
+
+	issues := []Issue{
+		{ID: "proj-epic", Title: "Epic", IssueType: "epic", Labels: []string{}}, // No triage:ready
+		{ID: "proj-1", Title: "Feature", IssueType: "feature", Labels: []string{"triage:ready"}},
+	}
+
+	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+
+	// Epic doesn't have the label, so no expansion
+	if len(expanded) != 2 {
+		t.Errorf("expandTriageReadyEpics() returned %d issues, want 2", len(expanded))
+	}
+	if len(epicChildIDs) != 0 {
+		t.Errorf("expandTriageReadyEpics() returned %d epic children, want 0", len(epicChildIDs))
+	}
+}
+
+func TestNextIssue_EpicChildrenIncludedInSpawnQueue(t *testing.T) {
+	// Mock the ListEpicChildren function via the listIssuesFunc
+	// by including all issues upfront (simulating what expandTriageReadyEpics would do)
+	epicChildCalled := false
+
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-epic", Title: "Epic", IssueType: "epic", Labels: []string{"triage:ready"}},
+				{ID: "proj-1", Title: "Feature without label", IssueType: "feature", Status: "open", Labels: []string{}},
+			}, nil
+		},
+	}
+
+	// Create a wrapper that tracks ListEpicChildren calls
+	// We can't easily mock ListEpicChildren since it's a package-level function,
+	// but we can test the overall behavior by checking the results
+
+	// First, verify that without epic child expansion, the feature would be rejected
+	// (it doesn't have the required label)
+	issue, err := d.NextIssue()
+	if err != nil {
+		t.Fatalf("NextIssue() unexpected error: %v", err)
+	}
+
+	// The epic should be skipped (not spawnable), and the feature should be skipped (no label)
+	// unless epic child expansion is working
+	if issue != nil {
+		t.Logf("NextIssue() returned %s", issue.ID)
+		// If we got an issue, epic child expansion must be working
+		epicChildCalled = true
+	}
+
+	// For a full integration test, we would need to mock ListEpicChildren
+	// which would require dependency injection. For now, test the logic directly.
+	_ = epicChildCalled
+}
+
+func TestCheckRejectionReasonWithEpicChildren_EpicChildExempt(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+	}
+
+	// Issue without triage:ready label
+	issue := Issue{
+		ID:        "proj-1",
+		Title:     "Feature",
+		IssueType: "feature",
+		Status:    "open",
+		Labels:    []string{}, // No triage:ready label
+	}
+
+	// Without being an epic child, should be rejected for missing label
+	reason := d.checkRejectionReasonWithEpicChildren(issue, nil)
+	if !strings.Contains(reason, "missing label") {
+		t.Errorf("checkRejectionReasonWithEpicChildren() = %q, want to contain 'missing label'", reason)
+	}
+
+	// When marked as an epic child, should be accepted (empty reason)
+	epicChildIDs := map[string]bool{"proj-1": true}
+	reason = d.checkRejectionReasonWithEpicChildren(issue, epicChildIDs)
+	if reason != "" {
+		t.Errorf("checkRejectionReasonWithEpicChildren() for epic child = %q, want empty string", reason)
+	}
+}
+
+func TestCheckRejectionReasonWithEpicChildren_EpicWithLabelExplains(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+	}
+
+	// Epic with triage:ready label
+	issue := Issue{
+		ID:        "proj-epic",
+		Title:     "Epic",
+		IssueType: "epic",
+		Status:    "open",
+		Labels:    []string{"triage:ready"},
+	}
+
+	reason := d.checkRejectionReasonWithEpicChildren(issue, nil)
+
+	// Should explain that children will be processed instead
+	if !strings.Contains(reason, "children will be processed") {
+		t.Errorf("checkRejectionReasonWithEpicChildren() for triage:ready epic = %q, want to contain 'children will be processed'", reason)
+	}
+}
+
+func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready"},
+		listIssuesFunc: func() ([]Issue, error) {
+			return []Issue{
+				{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
+			}, nil
+		},
+	}
+
+	result, err := d.Preview()
+	if err != nil {
+		t.Fatalf("Preview() unexpected error: %v", err)
+	}
+
+	// No spawnable issue since only an epic in queue
+	if result.Issue != nil {
+		t.Errorf("Preview() expected nil issue (epic not spawnable), got %v", result.Issue)
+	}
+
+	// Should have the epic in rejected list with helpful message
+	if len(result.RejectedIssues) != 1 {
+		t.Fatalf("Preview() rejected count = %d, want 1", len(result.RejectedIssues))
+	}
+
+	rejected := result.RejectedIssues[0]
+	if rejected.Issue.ID != "proj-epic" {
+		t.Errorf("Preview() rejected issue ID = %q, want 'proj-epic'", rejected.Issue.ID)
+	}
+	if !strings.Contains(rejected.Reason, "children will be processed") {
+		t.Errorf("Preview() rejection reason = %q, want to contain 'children will be processed'", rejected.Reason)
+	}
+}

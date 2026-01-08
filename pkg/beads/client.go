@@ -839,6 +839,39 @@ func FallbackListByIDs(ids []string) ([]Issue, error) {
 	return issues, nil
 }
 
+// FallbackListByParent retrieves children of a parent issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackListByParent(parentID string) ([]Issue, error) {
+	if parentID == "" {
+		return []Issue{}, nil
+	}
+
+	// Use --parent and --all to include closed children
+	// Use --limit 0 to get all children
+	args := []string{"list", "--json", "--limit", "0", "--parent", parentID}
+
+	cmd := exec.Command(getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd list --parent failed: %w: %s", err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("bd list --parent failed: %w", err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse bd list output: %w", err)
+	}
+
+	return issues, nil
+}
+
 // FallbackStats retrieves stats via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.

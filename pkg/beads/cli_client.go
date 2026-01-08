@@ -125,8 +125,16 @@ func (c *CLIClient) Show(id string) (*Issue, error) {
 // List retrieves issues matching the given criteria.
 func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 	cmdArgs := []string{"list", "--json"}
-	if args != nil && args.Status != "" {
-		cmdArgs = append(cmdArgs, "--status", args.Status)
+	if args != nil {
+		if args.Status != "" {
+			cmdArgs = append(cmdArgs, "--status", args.Status)
+		}
+		if args.Parent != "" {
+			cmdArgs = append(cmdArgs, "--parent", args.Parent)
+		}
+		if args.Limit > 0 {
+			cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
+		}
 	}
 
 	cmd := c.bdCommand(cmdArgs...)

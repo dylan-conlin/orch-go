@@ -203,6 +203,11 @@ func (d *Daemon) NextIssue() (*Issue, error) {
 // Returns nil if no spawnable issues are available after excluding skipped ones.
 // Issues are sorted by priority (0 = highest priority).
 // If a label filter is configured, only issues with that label are considered.
+//
+// Epic child expansion: When an epic has the required label (e.g., triage:ready),
+// its children are automatically included in the spawn queue even if they don't
+// have the label themselves. This implements the user mental model that labeling
+// an epic means "process this entire epic".
 func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	issues, err := d.listIssuesFunc()
 	if err != nil {
@@ -212,6 +217,10 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	if d.Config.Verbose {
 		fmt.Printf("  DEBUG: Found %d open issues\n", len(issues))
 	}
+
+	// Expand triage:ready epics by including their children.
+	// This allows "label the epic" to mean "process the entire epic".
+	issues, epicChildIDs := d.expandTriageReadyEpics(issues)
 
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(issues, func(i, j int) bool {
@@ -257,11 +266,20 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			continue
 		}
 		// Skip issues without required label (if filter is set)
+		// BUT: Children of triage:ready epics are exempt from this check
+		// (they inherit triage-ready status from their parent)
 		if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
-			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Skipping %s (missing label %s, has %v)\n", issue.ID, d.Config.Label, issue.Labels)
+			// Check if this issue is a child of a triage:ready epic
+			if _, isEpicChild := epicChildIDs[issue.ID]; !isEpicChild {
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Skipping %s (missing label %s, has %v)\n", issue.ID, d.Config.Label, issue.Labels)
+				}
+				continue
 			}
-			continue
+			// Epic child - proceed even without label
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Including %s (epic child, inherits triage status from parent)\n", issue.ID)
+			}
 		}
 		// Skip issues with blocking dependencies (open/in_progress dependencies)
 		blockers, err := beads.CheckBlockingDependencies(issue.ID)
@@ -287,6 +305,64 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 	}
 
 	return nil, nil
+}
+
+// expandTriageReadyEpics finds epics with the required label and includes their children.
+// Returns the expanded issue list and a map of issue IDs that are epic children
+// (for label exemption in NextIssueExcluding).
+func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]bool) {
+	epicChildIDs := make(map[string]bool)
+
+	// If no label filter is set, no expansion needed
+	if d.Config.Label == "" {
+		return issues, epicChildIDs
+	}
+
+	// Find epics with the required label
+	var epicsToExpand []string
+	existingIDs := make(map[string]bool)
+	for _, issue := range issues {
+		existingIDs[issue.ID] = true
+		if issue.IssueType == "epic" && issue.HasLabel(d.Config.Label) {
+			epicsToExpand = append(epicsToExpand, issue.ID)
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Found triage:ready epic %s, will include children\n", issue.ID)
+			}
+		}
+	}
+
+	// No epics to expand
+	if len(epicsToExpand) == 0 {
+		return issues, epicChildIDs
+	}
+
+	// Expand each epic by fetching its children
+	for _, epicID := range epicsToExpand {
+		children, err := ListEpicChildren(epicID)
+		if err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Warning: could not list children of epic %s: %v\n", epicID, err)
+			}
+			continue
+		}
+
+		for _, child := range children {
+			// Only add if not already in the list
+			if !existingIDs[child.ID] {
+				issues = append(issues, child)
+				existingIDs[child.ID] = true
+				epicChildIDs[child.ID] = true
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Added epic child %s (from parent %s)\n", child.ID, epicID)
+				}
+			} else {
+				// Already in list, but mark as epic child for label exemption
+				epicChildIDs[child.ID] = true
+			}
+		}
+	}
+
+	return issues, epicChildIDs
 }
 
 // AvailableSlots returns the number of agent slots available for spawning.
@@ -416,6 +492,9 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
+	// Expand triage:ready epics by including their children
+	issues, epicChildIDs := d.expandTriageReadyEpics(issues)
+
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(issues, func(i, j int) bool {
 		return issues[i].Priority < issues[j].Priority
@@ -424,7 +503,7 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 	var spawnable *Issue
 	for _, issue := range issues {
 		// Check each rejection reason in order and collect all rejected issues
-		reason := d.checkRejectionReason(issue)
+		reason := d.checkRejectionReasonWithEpicChildren(issue, epicChildIDs)
 		if reason != "" {
 			result.RejectedIssues = append(result.RejectedIssues, RejectedIssue{
 				Issue:  issue,
@@ -468,14 +547,28 @@ func (d *Daemon) Preview() (*PreviewResult, error) {
 
 // checkRejectionReason checks if an issue should be rejected and returns the reason.
 // Returns empty string if the issue is spawnable.
+// This is the legacy version that doesn't consider epic children.
 func (d *Daemon) checkRejectionReason(issue Issue) string {
+	return d.checkRejectionReasonWithEpicChildren(issue, nil)
+}
+
+// checkRejectionReasonWithEpicChildren checks if an issue should be rejected and returns the reason.
+// The epicChildIDs map contains IDs of issues that are children of triage:ready epics.
+// These children are exempt from the label requirement check.
+// Returns empty string if the issue is spawnable.
+func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs map[string]bool) string {
 	// Check for empty/missing type first (the main problem case from the bug report)
 	if issue.IssueType == "" {
 		return "missing type (required for skill inference)"
 	}
 
 	// Check for non-spawnable type
+	// Note: Epics with triage:ready are not spawnable themselves, but their children are.
+	// The message is informative to explain why epics are rejected.
 	if !IsSpawnableType(issue.IssueType) {
+		if issue.IssueType == "epic" && issue.HasLabel(d.Config.Label) {
+			return fmt.Sprintf("type 'epic' not spawnable (children will be processed instead)")
+		}
 		return fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)
 	}
 
@@ -490,8 +583,12 @@ func (d *Daemon) checkRejectionReason(issue Issue) string {
 	}
 
 	// Check for missing required label
+	// Epic children are exempt from this check - they inherit triage status from parent
 	if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
-		return fmt.Sprintf("missing label '%s'", d.Config.Label)
+		if epicChildIDs == nil || !epicChildIDs[issue.ID] {
+			return fmt.Sprintf("missing label '%s'", d.Config.Label)
+		}
+		// Epic child - exempt from label requirement
 	}
 
 	// Check for blocking dependencies

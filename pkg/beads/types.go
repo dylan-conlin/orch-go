@@ -99,6 +99,9 @@ type ListArgs struct {
 	Limit     int      `json:"limit,omitempty"`
 	// Title filters by title text (case-insensitive substring match).
 	Title string `json:"title,omitempty"`
+	// Parent filters by parent issue ID (shows children of specified issue).
+	// Used for listing children of an epic.
+	Parent string `json:"parent,omitempty"`
 }
 
 // ShowArgs represents arguments for showing an issue.

@@ -76,6 +76,36 @@ func ListOpenIssues() ([]Issue, error) {
 	return ListReadyIssues()
 }
 
+// ListEpicChildren retrieves children of an epic by its ID.
+// Uses the beads RPC client if available, falling back to CLI.
+func ListEpicChildren(epicID string) ([]Issue, error) {
+	if epicID == "" {
+		return []Issue{}, nil
+	}
+
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			beadsIssues, err := client.List(&beads.ListArgs{Parent: epicID, Limit: 0})
+			if err == nil {
+				return convertBeadsIssues(beadsIssues), nil
+			}
+			// Fall through to CLI fallback on List() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI if daemon unavailable
+	beadsIssues, err := beads.FallbackListByParent(epicID)
+	if err != nil {
+		return nil, err
+	}
+	return convertBeadsIssues(beadsIssues), nil
+}
+
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
 func SpawnWork(beadsID string) error {
