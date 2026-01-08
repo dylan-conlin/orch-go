@@ -1,3 +1,7 @@
+---
+linked_issues:
+  - orch-go-qv8cc
+---
 <!--
 D.E.K.N. Summary - 30-second handoff for fresh Claude
 Fill this at the END of your investigation, before marking Complete.
@@ -5,15 +9,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Synthesized 12 new orchestrator investigations (Jan 6-7, 2026) into the session management guide, identifying 5 major new themes: checkpoint discipline, frame collapse detection, stats correlation, dashboard context-following, and interactive orchestrator value.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Read all 12 investigations, extracted 9 findings, updated guide with new sections for checkpoint thresholds (2h/3h/4h), frame collapse multi-layer detection, coordination skill clarification, and dashboard troubleshooting.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Interactive orchestrators are NOT compensation for daemon gaps - they serve goal refinement, synthesis, and frame correction that daemon cannot replicate. Session infrastructure has matured from experimental to operational with proper status updates and checkpoint warnings.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - guide updated. Follow-up items: workspace-based stats correlation, FindRecentSession title matching fix, coordination skills display separation.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (synthesis consolidates existing decisions, doesn't establish new architectural patterns)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +46,9 @@ Guidelines:
 **Started:** 2026-01-07
 **Updated:** 2026-01-07
 **Owner:** Investigation agent
-**Phase:** Investigating
-**Next Step:** Read all new investigations since Jan 6
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** N/A
@@ -229,100 +233,86 @@ The guide should be updated with:
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** The investigation deliverable IS the guide update. Additional implementation items identified.
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Guide-first maintenance with periodic synthesis** - Future orchestrator investigations should update the guide as their primary artifact. Synthesis should happen after every 10-15 new investigations.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Single source of truth prevents duplicate investigations
+- New learnings immediately benefit all agents
+- Debugging checklist prevents unnecessary spawns
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Guide may grow large over time (mitigated by clear sections)
+- Needs periodic refresh (mitigated by "last verified" date)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. ✅ Guide updated with 12 new investigation findings
+2. Future investigations reference and update the guide
+3. Monthly synthesis cadence to consolidate new patterns
 
-### Alternative Approaches Considered
+### Follow-up Items Identified
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+| Item | Priority | Source Investigation |
+|------|----------|---------------------|
+| Add workspace-based correlation to orch stats | Medium | 2026-01-07-design-orch-stats-miscounts-orchestrator-meta.md |
+| Add --title to opencode attach or fix FindRecentSession | Medium | 2026-01-06-inv-orchestrator-sessions-spawned-via-tmux.md |
+| Consider OpenCode plugin for frame collapse detection | Low | 2026-01-06-inv-detect-orchestrator-frame-collapse-doing.md |
+| Separate coordination skills from task skills in stats display | Medium | 2026-01-06-inv-diagnose-orchestrator-skill-18-completion.md |
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Guide updated with checkpoint discipline, frame collapse detection, stats clarification, dashboard context-following
+- ✅ History section updated to reflect Jan 7 synthesis
+- ✅ Future orchestrators can debug session issues using guide before spawning investigations
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - Dashboard context following
+- `.kb/investigations/2026-01-07-inv-add-principles-quick-reference-orchestrator.md` - Skill update
+- `.kb/investigations/2026-01-07-inv-update-orchestrator-skill-add-dashboard.md` - Skill update
+- `.kb/investigations/2026-01-07-design-orch-stats-miscounts-orchestrator-meta.md` - Stats correlation bug
+- `.kb/investigations/2026-01-06-inv-diagnose-orchestrator-skill-18-completion.md` - Completion rate analysis
+- `.kb/investigations/2026-01-06-inv-orchestrator-sessions-checkpoint-discipline-max.md` - Checkpoint discipline
+- `.kb/investigations/2026-01-06-inv-orchestrator-sessions-spawned-via-tmux.md` - Session ID capture
+- `.kb/investigations/2026-01-06-inv-detect-orchestrator-frame-collapse-doing.md` - Frame collapse detection
+- `.kb/investigations/2026-01-06-inv-session-registry-doesnt-update-orchestrator.md` - Registry status fix
+- `.kb/investigations/2026-01-06-inv-interactive-orchestrator-sessions-don-create.md` - Interactive workspace gap
+- `.kb/investigations/2026-01-06-inv-investigate-interactive-orchestrators-compensation-pattern.md` - Interactive orchestrator value
+- `.kb/investigations/2026-01-06-inv-synthesize-orchestrator-investigations-28-synthesis.md` - Prior synthesis
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Find all orchestrator investigations
+glob .kb/investigations/*orchestrator*.md
 
-# [Command description]
-[command]
+# Create investigation file
+kb create investigation synthesize-orchestrator-investigations
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Guide:** `.kb/guides/orchestrator-session-management.md` - Updated with synthesis findings
+- **Prior Synthesis:** `.kb/investigations/2026-01-06-inv-synthesize-orchestrator-investigations-28-synthesis.md` - Previous consolidation
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-07:** Investigation started
+- Initial question: What new patterns emerged from Jan 6-7 orchestrator investigations?
+- Context: 12 new investigations since prior synthesis
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-07:** Themes identified
+- 9 key findings across: dashboard context, stats correlation, checkpoint discipline, frame collapse detection, session registry, interactive workspaces, skill updates
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-07:** Guide updated
+- Added sections: Checkpoint Discipline, Dashboard Context Following, new Common Problems
+- Updated Key Decisions with interactive orchestrator value, checkpoint discipline
+
+**2026-01-07:** Investigation completed
+- Status: Complete
+- Key outcome: Guide updated with 12 new investigation findings; identified 4 follow-up implementation items
