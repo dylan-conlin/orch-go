@@ -1,15 +1,15 @@
 # Session Handoff
 
 **Orchestrator:** meta-orch-rebase-opencode-07jan
-**Focus:** Ecosystem Stability & Completion Rate
-**Duration:** 2026-01-07T18:30 → 2026-01-07T20:45
+**Focus:** Ecosystem Stability & Completion Rate (Friction Loop & Synthesis)
+**Duration:** 2026-01-07T21:00 → 2026-01-08T01:30
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Rebased `opencode` fork on latest upstream (1,412 commits), preserving custom cross-project session lookup and `attach` flags. Synthesized Dashboard and Registry debt into a new Guide and self-describing schema, and launched the **Friction Loop Precision & Automation** epic to address systemic agent failure patterns.
+Hardened the ecosystem by fixing `kb ask` synthesis grounding and implementing semantic pattern matching for context gaps. Synthesized ~100 investigations across Dashboard, Spawn, and Orchestrator clusters to reduce knowledge debt and cleared duplicate issues. Designed and filed implementation tasks for a workspace-scoped screenshot storage system.
 
 ---
 
@@ -18,80 +18,50 @@ Rebased `opencode` fork on latest upstream (1,412 commits), preserving custom cr
 ### Completed
 | Agent | Issue | Skill | Outcome | Key Finding |
 |-------|-------|-------|---------|-------------|
-| (Manual) | N/A | orchestrator | success | `opencode` rebase is stable; `getGlobal` fix preserved. |
-| (Manual) | N/A | orchestrator | success | Dashboard debt was administrative; synthesized into Guide. |
+| orch-go-bigrc | orch-go-bigrc | architect | success | `kb ask` now handles natural language via keyword extraction. |
+| orch-go-0vscq.4 | orch-go-0vscq.4 | investigation | success | Gaps need semantic grouping to detect recurrence (spawned 5mm7q). |
+| orch-go-5mm7q | orch-go-5mm7q | feature-impl | success | Implemented 12 semantic patterns in `normalizeQuery`. |
+| orch-go-9tg1d | orch-go-9tg1d | feature-impl | success | `spawn.md` guide updated with 14 missing flags and behaviors. |
+| orch-go-z7vq3 | orch-go-z7vq3 | architect | success | Designed screenshot storage in `.orch/workspace/{agent}/screenshots/`. |
+| orch-go-t8f11 | orch-go-t8f11 | investigation | success | Synthesized 14 dashboard investigations into guide. |
+| orch-go-bdfgu | orch-go-bdfgu | investigation | success | Synthesized 60 spawn investigations into guide. |
+| orch-go-qv8cc | orch-go-qv8cc | investigation | success | Synthesized 12 orchestrator investigations into guide. |
 
 ### Still Running
 | Agent | Issue | Skill | Phase | ETA |
 |-------|-------|-------|-------|-----|
-| (Daemon) | orch-go-bigrc | systematic-debugging | Planning | 1h |
-| (Daemon) | orch-go-0vscq.4 | investigation | Planning | 1h |
+| orch-go-e89kl | orch-go-e89kl | investigation | Planning | 10m |
 
 ---
 
 ## Evidence (What Was Observed)
 
 ### Patterns Across Agents
-- **Dual Failure in "Ask" Tooling:** Agents hit friction because skills documented a non-existent `AskUserQuestion` tool, AND the fallback `kb ask` was failing to ground answers even when context existed.
-- **Ghost Friction:** The "registry population" gap was a false positive caused by agents looking for `registry.json` (legacy) instead of `sessions.json` (current).
+- **Semantic Fragmentation:** Gaps like "synthesize X" and "synthesize Y" were treated as separate, hiding recurring friction. Fixed via semantic pattern matching in `orch-go-5mm7q`.
+- **Tool Naming Friction:** Agents repeatedly failed to find `AskUserQuestion` because the tool is named `question`. Fixed in core skills (orch-go-y0vvg).
 
 ### Completions
-- **Dashboard Synthesis:** Recent `og-feat-dashboard-*` agents successfully implemented hybrid SSE+API and cross-project filtering. The system was just lagging in formalizing this into a Guide.
-- **Registry Synthesis:** `sessions.json` now has a self-describing schema (`_schema` field) which documents the file format for future agents.
-
-### System Behavior
-- **Issue Explosion:** 928 issues created in 24h was a symptom of "knowledge atom" fragmentation. Manual synthesis immediately reduced this noise.
-- **Triage Gate:** The system correctly blocked manual spawns, forcing the orchestrator to use the daemon-driven triage workflow.
+- **`kb ask` Grounding:** Unit tests passed for keyword extraction. Natural language queries now correctly retrieve relevant context.
+- **Backlog Noise:** Found 29 duplicate issues for orchestrator synthesis alone. Mass-closed duplicates to restore signal.
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### Decisions Made
-- **`opencode` Rebase:** Chose to manually resolve `server.ts` conflicts to ensure `getGlobal` was applied to the new `describeRoute` pattern.
-- **Registry Deprecation:** Renamed legacy `agent-registry.json` to `.bak` to prevent agent hallucinations.
-- **Coherence Over Patches:** Created `.kb/guides/dashboard-architecture.md` instead of spawning more synthesis agents.
+- **Screenshot Storage:** Chose workspace-scoped storage (`.orch/workspace/{name}/screenshots/`) to ensure agent ownership and automatic lifecycle management.
+- **Semantic Normalization:** Chose template-based matching for gap queries (e.g., `synthesize * investigations`) as a low-latency, high-precision grouping mechanism.
+- **Skill Deployment:** `skillc deploy` must be run from `~/orch-knowledge/skills/src` to avoid nested directory creation in `~/.claude/skills/`.
 
 ### Constraints Discovered
-- **Bun Version:** Upstream `opencode` now requires Bun 1.3.5.
-- **Gap Tracker Persistence:** `orch learn` patterns persist after resolution until manually cleared.
-
-### Externalized
-- `kn decide "Manual synthesis for Dashboard" --reason "Administrative debt, not implementation gap"`
-- `kn constrain "Deprecate agent-registry.json" --reason "Causes filename misconception hallucinations"`
+- **`kn` Deprecation:** `kn` CLI is deprecated in favor of `kb quick`. Migrated all entries using `kb migrate kn`.
+- **Manual Spawn Bypass:** Manual spawns now REQUIRE the `--bypass-triage` flag to acknowledge the daemon-first preference.
 
 ### Artifacts Created
-- `.kb/guides/dashboard-architecture.md` - Source of truth for dashboard subsystem.
-- `packages/opencode/src/session/index.ts` - Added `getGlobal` and merged `permission` field.
-- `packages/opencode/src/server/server.ts` - Applied `getGlobal` to refactored API.
-
----
-
-## Friction (What Was Harder Than It Should Be)
-
-### Tooling Friction
-- **`kb ask` Grounding:** Failed to answer "What is orch-go?" despite rich context. This is the primary driver of agent friction right now.
-- **`orch learn` Noise:** Surfaced task-specific strings (phase names) as systemic gaps.
-
-### Context Friction
-- **Registry Hallucination:** Agents repeatedly looked for `registry.json`. Fixed via self-describing schema in `sessions.json`.
-
-### Skill/Spawn Friction
-- **`feature-impl` Documentation:** Referenced `AskUserQuestion` which doesn't exist.
-
----
-
-## Focus Progress
-
-### Where We Started
-- `opencode` fork was stale (1,400+ commits behind).
-- Backlog was exploding with 900+ issues and 59 recurring gaps.
-- Completion rate was <80%.
-
-### Where We Ended
-- `opencode` is current and rebuilt.
-- Backlog noise reduced via manual synthesis of Dashboard/Registry clusters.
-- Epic `orch-go-0vscq` launched to harden the friction detection loop.
+- `.kb/investigations/2026-01-07-design-screenshot-artifact-storage-decision.md`
+- `.kb/guides/dashboard.md` (Updated)
+- `.kb/guides/spawn.md` (Updated)
+- `.kb/guides/orchestrator-session-management.md` (Updated)
 
 ---
 
@@ -99,38 +69,23 @@ Rebased `opencode` fork on latest upstream (1,412 commits), preserving custom cr
 
 **Recommendation:** continue-focus
 
-### If Continue Focus
-**Immediate:** Monitor `orch-go-bigrc` (Fix `kb ask`). This is the critical path for improving agent completion rates.
-**Then:** Review the audit of gap patterns (`orch-go-0vscq.4`) to implement the semantic filter.
-**Context to reload:**
-- `.kb/guides/dashboard-architecture.md`
+### Immediate Actions
+1. **Monitor `orch-go-e89kl`**: Synthesis of 28 daemon investigations.
+2. **Execute Screenshot Implementation**: Spawning the 4 new feature-impl issues (orch-go-bl0hz, orch-go-bdtyl, orch-go-tbrrs, orch-go-0rwv4).
+3. **Synthesis Round 2**: Address remaining debt (investigation (33), complete (22), context (17)).
+
+### Context to reload
+- `.kb/guides/spawn.md` (Verify new flag documentation)
+- `.kb/investigations/2026-01-07-design-screenshot-artifact-storage-decision.md`
 - `orch-go-0vscq` (Friction Loop Epic)
 
 ---
 
-## Unexplored Questions
-
-**Questions that emerged during this session that weren't directly in scope:**
-- **Playwright Viewport:** `orch learn` still shows historical viewport gaps. Need to verify if the `1440x900` fix is truly universal.
-- **Registry Session IDs:** Some orchestrator sessions have empty `session_id` in `sessions.json`. Does this break `orch resume`?
-
-**System improvement ideas:**
-- **Semantic Triage:** Filter `orch learn` patterns against issue/phase regexes.
-- **Skill-Execution Bridge:** Trace tool failures back to the specific lines in `SKILL.md` that prompted them.
-
----
-
 ## Session Metadata
+**Agents spawned:** 6 (qv8cc, bdfgu, t8f11, 0vscq.4, z7vq3, e89kl)
+**Agents completed:** 8 (bigrc, 0vscq.4, 5mm7q, 9tg1d, z7vq3, t8f11, bdfgu, qv8cc)
+**Issues closed:** orch-go-bigrc, orch-go-0vscq.4, orch-go-5mm7q, orch-go-9tg1d, orch-go-z7vq3, orch-go-t8f11, orch-go-bdfgu, orch-go-qv8cc, orch-go-y0vvg, orch-go-t7eqk + 20+ duplicates.
 
-**Agents spawned:** 0 (Manual orchestrator work)
-**Agents completed:** 0
-**Issues closed:** orch-go-zl1kk, orch-go-b8bu8, orch-go-qjmf6, orch-go-akrcw
-**Issues created:** orch-go-y0vvg, orch-go-t7eqk, orch-go-bigrc, orch-go-0vscq, orch-go-0vscq.4, orch-go-0vscq.5, orch-go-0vscq.6
-**Issues blocked:** None
-
-**Repos touched:** orch-go, opencode
-**PRs:** N/A (Direct push to dev/master)
-**Commits (by agents):** 0 (Orchestrator commits: 5)
-
-**Workspace:** `.orch/workspace/meta-orch-rebase-opencode-07jan/`
-**Transcript:** `.orch/workspace/meta-orch-rebase-opencode-07jan/TRANSCRIPT.md`
+**Repos touched:** orch-go, orch-knowledge
+**PRs:** N/A (Direct push to master)
+**Commits:** ~16 total across session.
