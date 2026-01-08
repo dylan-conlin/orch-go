@@ -536,3 +536,113 @@ func TestAggregateStatsOrchestratorWorkspaceCorrelation(t *testing.T) {
 		t.Errorf("expected 100%% meta-orchestrator completion rate, got %.1f%%", metaOrchStats.CompletionRate)
 	}
 }
+
+func TestAggregateStatsDeduplicationByBeadsID(t *testing.T) {
+	now := time.Now().Unix()
+
+	// This test verifies that multiple completion events for the same beads_id
+	// are deduplicated and only counted once.
+	events := []StatsEvent{
+		// 3 spawns with different beads_ids
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill":    "feature-impl",
+			"beads_id": "orch-go-abc1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 3600, Data: map[string]interface{}{
+			"skill":    "feature-impl",
+			"beads_id": "orch-go-abc2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 1800, Data: map[string]interface{}{
+			"skill":    "investigation",
+			"beads_id": "orch-go-abc3",
+		}},
+		// Multiple completion events for the SAME beads_id (simulates duplicate events)
+		// orch-go-abc1 has 3 completion events
+		{Type: "agent.completed", Timestamp: now - 6000, Data: map[string]interface{}{"beads_id": "orch-go-abc1"}},
+		{Type: "agent.completed", Timestamp: now - 5500, Data: map[string]interface{}{"beads_id": "orch-go-abc1"}},
+		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "orch-go-abc1"}},
+		// orch-go-abc2 has 2 completion events
+		{Type: "agent.completed", Timestamp: now - 4000, Data: map[string]interface{}{"beads_id": "orch-go-abc2"}},
+		{Type: "agent.completed", Timestamp: now - 3500, Data: map[string]interface{}{"beads_id": "orch-go-abc2"}},
+		// orch-go-abc3 has 1 completion event (no duplicate)
+		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{"beads_id": "orch-go-abc3"}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should have 3 spawns (unique)
+	if report.Summary.TotalSpawns != 3 {
+		t.Errorf("expected 3 spawns, got %d", report.Summary.TotalSpawns)
+	}
+
+	// Should have 3 completions (deduplicated by beads_id)
+	// NOT 6 (the actual number of completion events)
+	if report.Summary.TotalCompletions != 3 {
+		t.Errorf("expected 3 completions (deduplicated), got %d (should not count %d events)", report.Summary.TotalCompletions, 6)
+	}
+
+	// Completion rate should be 100% (3/3)
+	expectedRate := 100.0
+	if report.Summary.CompletionRate < expectedRate-0.1 {
+		t.Errorf("expected completion rate 100%%, got %.1f%%", report.Summary.CompletionRate)
+	}
+
+	// Check skill breakdown
+	var featureImplStats *SkillStatsSummary
+	var invStats *SkillStatsSummary
+	for i := range report.SkillStats {
+		if report.SkillStats[i].Skill == "feature-impl" {
+			featureImplStats = &report.SkillStats[i]
+		}
+		if report.SkillStats[i].Skill == "investigation" {
+			invStats = &report.SkillStats[i]
+		}
+	}
+
+	if featureImplStats == nil {
+		t.Fatal("feature-impl skill not found in stats")
+	}
+	// feature-impl should have 2 completions (abc1 and abc2), not 5 (3+2 events)
+	if featureImplStats.Completions != 2 {
+		t.Errorf("expected 2 feature-impl completions (deduplicated), got %d", featureImplStats.Completions)
+	}
+
+	if invStats == nil {
+		t.Fatal("investigation skill not found in stats")
+	}
+	if invStats.Completions != 1 {
+		t.Errorf("expected 1 investigation completion, got %d", invStats.Completions)
+	}
+}
+
+func TestAggregateStatsDeduplicationMixedEventTypes(t *testing.T) {
+	now := time.Now().Unix()
+
+	// Test deduplication when both session.completed and agent.completed exist
+	// for the same beads_id
+	events := []StatsEvent{
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill":    "feature-impl",
+			"beads_id": "orch-go-mixed1",
+		}},
+		// Both event types for the same beads_id
+		{Type: "session.completed", SessionID: "ses_1", Timestamp: now - 5000, Data: map[string]interface{}{
+			"beads_id": "orch-go-mixed1",
+		}},
+		{Type: "agent.completed", Timestamp: now - 4000, Data: map[string]interface{}{
+			"beads_id": "orch-go-mixed1",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should have 1 spawn
+	if report.Summary.TotalSpawns != 1 {
+		t.Errorf("expected 1 spawn, got %d", report.Summary.TotalSpawns)
+	}
+
+	// Should have 1 completion (deduplicated across event types)
+	if report.Summary.TotalCompletions != 1 {
+		t.Errorf("expected 1 completion (deduplicated across event types), got %d", report.Summary.TotalCompletions)
+	}
+}
