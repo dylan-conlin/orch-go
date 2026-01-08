@@ -231,17 +231,42 @@ func (f *FollowerState) emitChange(cwd, projectDir string) {
 	}
 }
 
-// GetTmuxCwd gets the current working directory of the orchestrator tmux pane.
+// GetTmuxCwd gets the current working directory of the active window in a tmux session.
+// It uses a two-step approach:
+// 1. Get the active window index via #{window_index}
+// 2. Get that specific window's pane cwd via session:index target
+//
+// This is necessary because using just the session name (-t session) returns the
+// first pane in the session, not the active window's pane.
 func GetTmuxCwd(sessionName string) (string, error) {
-	cmd, err := tmuxCommand("display-message", "-t", sessionName, "-p", "#{pane_current_path}")
+	// Step 1: Get active window index
+	indexCmd, err := tmuxCommand("display-message", "-t", sessionName, "-p", "#{window_index}")
 	if err != nil {
-		return "", fmt.Errorf("failed to get tmux cwd: %w", err)
+		return "", fmt.Errorf("failed to create tmux command for window index: %w", err)
 	}
-	output, err := cmd.Output()
+	indexOutput, err := indexCmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to get tmux cwd: %w", err)
+		return "", fmt.Errorf("failed to get active window index: %w", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	windowIndex := strings.TrimSpace(string(indexOutput))
+
+	// Empty window index indicates the session doesn't exist
+	// (tmux display-message returns empty for non-existent sessions)
+	if windowIndex == "" {
+		return "", fmt.Errorf("session %q not found or has no windows", sessionName)
+	}
+
+	// Step 2: Get that window's pane cwd
+	target := fmt.Sprintf("%s:%s", sessionName, windowIndex)
+	cwdCmd, err := tmuxCommand("display-message", "-t", target, "-p", "#{pane_current_path}")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command for pane cwd: %w", err)
+	}
+	cwdOutput, err := cwdCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get pane cwd: %w", err)
+	}
+	return strings.TrimSpace(string(cwdOutput)), nil
 }
 
 // findProjectDir walks up from cwd to find a directory containing .beads/ or .orch/.

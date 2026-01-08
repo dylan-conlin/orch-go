@@ -1,6 +1,8 @@
 package tmux
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -597,5 +599,88 @@ func TestBuildStandaloneCommandEnv(t *testing.T) {
 	// Check that the command starts with ORCH_WORKER=1
 	if !strings.HasPrefix(cmd, "ORCH_WORKER=1 ") {
 		t.Errorf("BuildStandaloneCommand() should start with 'ORCH_WORKER=1 ', got: %q", cmd)
+	}
+}
+
+// TestGetTmuxCwd tests the GetTmuxCwd function returns the active window's cwd.
+func TestGetTmuxCwd(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	// Create a test session with multiple windows in different directories
+	project := "orch-go-test-cwd"
+	projectDir1 := "/tmp/orch-go-test-cwd-1"
+	projectDir2 := "/tmp/orch-go-test-cwd-2"
+
+	// Create test directories
+	_ = os.MkdirAll(projectDir1, 0755)
+	_ = os.MkdirAll(projectDir2, 0755)
+	defer os.RemoveAll(projectDir1)
+	defer os.RemoveAll(projectDir2)
+
+	sessionName, err := EnsureWorkersSession(project, projectDir1)
+	if err != nil {
+		t.Skipf("Could not ensure workers session: %v", err)
+	}
+	defer func() { _ = KillSession(sessionName) }()
+
+	// The first window is created by EnsureWorkersSession, it will be in projectDir1
+	// Create a second window in a different directory
+	window2Target, _, err := CreateWindow(sessionName, "test-cwd-2", projectDir2)
+	if err != nil {
+		t.Fatalf("Could not create window 2: %v", err)
+	}
+
+	// Select window 2 (make it active)
+	err = SelectWindow(window2Target)
+	if err != nil {
+		t.Fatalf("Could not select window 2: %v", err)
+	}
+
+	// GetTmuxCwd should now return projectDir2 (the active window's cwd)
+	cwd, err := GetTmuxCwd(sessionName)
+	if err != nil {
+		t.Fatalf("GetTmuxCwd failed: %v", err)
+	}
+
+	// Resolve symlinks for comparison (macOS /tmp -> /private/tmp)
+	expectedDir2, _ := evalSymlinks(projectDir2)
+
+	// The cwd should be projectDir2 since that window is active
+	if cwd != expectedDir2 && cwd != projectDir2 {
+		t.Errorf("GetTmuxCwd() = %q, want %q (should return active window's cwd, not first window)", cwd, expectedDir2)
+	}
+}
+
+// evalSymlinks resolves symlinks in a path, returning the original if resolution fails.
+func evalSymlinks(path string) (string, error) {
+	resolved, err := os.Readlink(path)
+	if err != nil {
+		// Not a symlink or can't resolve - try filepath.EvalSymlinks
+		return evalSymlinksRecursive(path)
+	}
+	return resolved, nil
+}
+
+// evalSymlinksRecursive resolves all symlinks in a path.
+func evalSymlinksRecursive(path string) (string, error) {
+	// Use filepath.EvalSymlinks for full resolution
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path, err
+	}
+	return resolved, nil
+}
+
+// TestGetTmuxCwdNonExistentSession tests GetTmuxCwd handles non-existent session gracefully.
+func TestGetTmuxCwdNonExistentSession(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("tmux not available")
+	}
+
+	_, err := GetTmuxCwd("nonexistent-session-12345")
+	if err == nil {
+		t.Error("Expected error when getting cwd for non-existent session")
 	}
 }
