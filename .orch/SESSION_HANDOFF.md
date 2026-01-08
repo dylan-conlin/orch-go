@@ -1,52 +1,64 @@
-# Session Handoff - 2026-01-08 (Afternoon)
+# Session Handoff - 2026-01-08 (Evening)
 
 ## Session Focus
-Agent visibility improvements - dead/stalled detection and dashboard state visualization.
+Continued agent visibility work + fixed critical spawn bug discovered via dead agent investigation.
 
 ## Key Accomplishments
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Dead agent detection** | ✅ Done | 3-min heartbeat threshold, restored from prior session |
-| **Stalled detection** | ✅ Done | 15-min phase unchanged, advisory only in Needs Attention |
-| **Stats deduplication** | ✅ Done | Now counts unique beads_ids (283 vs 310 events) |
-| **Event emission: bd close** | ✅ Done | New `orch emit` command + `.beads/hooks/on_close` script |
-| **Event emission: zombie reconciliation** | ✅ Done | Events logged with source=reconcile |
-| **Backend last activity** | ✅ Done | Fixes "Starting up..." display for idle agents |
-| **Agent card visualization** | ✅ Done | Dead (skull/red), stalled (timer/orange), tooltips |
-| **tmux bug investigation** | ✅ Done | Bug is external to orch-go (check ~/.tmux.conf hooks) |
+| **Dashboard activity fix** | ✅ Done | Fixed "Starting up..." always showing - API sends string, frontend expected object |
+| **Dead agent investigation** | ✅ Done | ok-9ph0 was orphaned due to invalid beads_id - led to root cause discovery |
+| **Spawn validation fix** | ✅ Done | `resolveShortBeadsID` now fails if issue doesn't exist (was silently returning invalid ID) |
 
-## Agent States Now Surfaced
+## The Bug We Fixed
 
-| State | Indicator | Threshold | Dashboard |
-|-------|-----------|-----------|-----------|
-| **Dead** | Red border, skull icon | 3 min no heartbeat | Needs Attention |
-| **Stalled** | Orange border, timer icon | 15 min same phase | Needs Attention |
-| **AT-RISK** | Yellow indicator | Idle for extended time | Agent cards |
-| **Active** | Green | Actively processing | Agent cards |
+**Problem:** `orch spawn --issue ok-9ph0` succeeded even though `ok-9ph0` was never a beads issue.
 
-## Key Files Changed
+**Root cause:** `resolveShortBeadsID()` returned the invalid ID with just a warning instead of an error.
 
-- `pkg/verify/beads_api.go` - PhaseReportedAt timestamp
-- `cmd/orch/serve_agents.go` - IsStalled calculation, last activity
-- `cmd/orch/stats_cmd.go` - Deduplication by beads_id
-- `cmd/orch/emit_cmd.go` - New command for event emission
-- `cmd/orch/reconcile.go` - Event emission on zombie close
-- `web/src/lib/stores/agents.ts` - stalledAgents derived store
-- `web/src/lib/components/agent-card/agent-card.svelte` - State visualization
-- `web/src/lib/components/needs-attention/needs-attention.svelte` - Stalled section
+**Impact:** Agents could spawn with beads_ids that don't exist, making them impossible to properly close. They'd complete work, report "Task complete!", but have nowhere to close the issue - appearing as "dead" orphans.
+
+**Fix:** Now returns error with helpful cross-project hints:
+```
+beads issue 'kb-cli-xyz123' not found
+
+Hint: Issue 'kb-cli-xyz123' may belong to a different project.
+If the issue is in 'kb-cli', try:
+  cd ~/Documents/personal/kb-cli && orch complete kb-cli-xyz123
+```
+
+## Key Insight from This Session
+
+The deeper question "why not require every spawn has a beads issue?" led us to discover the system *intends* this but had a bug in enforcement. The lenient error handling in `resolveShortBeadsID` was the gap.
+
+**Agent lifecycle understanding gained:**
+- Every spawn should have a beads issue (unless `--no-track`)
+- If `--issue X` is provided but X doesn't exist, spawn should FAIL, not proceed with invalid ID
+- Orphaned agents happen when this invariant is violated
+
+## Files Changed This Session
+
+- `web/src/lib/stores/agents.ts` - Transform API string current_activity to object format
+- `cmd/orch/shared.go` - resolveShortBeadsID now returns error when issue not found
+- `cmd/orch/main_test.go` - Updated test expectations for new strict behavior
 
 ## Git Status
 - All changes committed and pushed to origin/master
-- 132 stale workspaces archived
+- Working tree clean
 
 ## Next Session Should
-1. **Verify dashboard visually** - Check dead/stalled/at-risk indicators render correctly
-2. **Test the full flow** - Spawn agent, let it stall, verify Needs Attention surfaces it
-3. **Consider**: Add auto-notification when agents go stalled (desktop notification)
+1. **Consider daemon auto-cleanup** - Now that we understand the lifecycle, implement daemon closing sessions that report "Phase: Complete" + idle
+2. **Watch for** - Any other places where invalid beads_ids might slip through
+3. **Completion rate** - Should improve now that orphans won't be created
 
 ## Resume Commands
 ```bash
+cd ~/Documents/personal/orch-go
 orch status
-orch stats  # Should show ~89% completion rate now
+orch stats  # Should show improved completion rate over time
 ```
+
+## Key Investigations Referenced
+- `.kb/investigations/2026-01-08-inv-25-28-agents-not-completing.md` - Why completion rate looked low
+- `.kb/investigations/2026-01-08-inv-restore-dead-agent-detection-surfacing.md` - Dead agent detection design
