@@ -18,6 +18,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -605,6 +606,9 @@ func runComplete(identifier, workdir string) error {
 		// Check for new CLI commands that may need skill documentation
 		newCommands := detectNewCLICommands(beadsProjectDir)
 		if len(newCommands) > 0 {
+			// Track new commands in doc debt registry
+			newlyTracked := trackDocDebt(newCommands)
+
 			fmt.Println()
 			fmt.Println("┌─────────────────────────────────────────────────────────────┐")
 			fmt.Println("│  📚 NEW CLI COMMANDS DETECTED                               │")
@@ -616,6 +620,11 @@ func runComplete(identifier, workdir string) error {
 			fmt.Println("│  Consider updating skill documentation:                     │")
 			fmt.Println("│  - ~/.claude/skills/meta/orchestrator/SKILL.md              │")
 			fmt.Println("│  - docs/orch-commands-reference.md                          │")
+			fmt.Println("├─────────────────────────────────────────────────────────────┤")
+			if newlyTracked > 0 {
+				fmt.Printf("│  📝 Added %d command(s) to doc debt tracker                  │\n", newlyTracked)
+			}
+			fmt.Println("│  Run 'orch doctor --docs' to see all undocumented commands  │")
 			fmt.Println("└─────────────────────────────────────────────────────────────┘")
 		}
 	}
@@ -823,6 +832,32 @@ func detectNewCLICommands(projectDir string) []string {
 	}
 
 	return newCommands
+}
+
+// trackDocDebt adds new commands to the doc debt tracker.
+// Returns the number of newly tracked commands.
+func trackDocDebt(commands []string) int {
+	debt, err := userconfig.LoadDocDebt()
+	if err != nil {
+		// Silent failure - don't break completion for doc tracking issues
+		return 0
+	}
+
+	newlyTracked := 0
+	for _, cmd := range commands {
+		if debt.AddCommand(cmd) {
+			newlyTracked++
+		}
+	}
+
+	if newlyTracked > 0 {
+		if err := userconfig.SaveDocDebt(debt); err != nil {
+			// Silent failure
+			return 0
+		}
+	}
+
+	return newlyTracked
 }
 
 // NotableChangelogEntry represents a notable change from the changelog.

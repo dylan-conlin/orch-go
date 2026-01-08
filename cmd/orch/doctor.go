@@ -24,6 +24,7 @@ var (
 	doctorStaleOnly bool // Check stale binary only, exit with code 1 if stale
 	doctorSessions  bool // Cross-reference workspaces and OpenCode sessions
 	doctorConfig    bool // Check for config drift (plist vs config.yaml)
+	doctorDocs      bool // Check for undocumented CLI commands (doc debt)
 )
 
 var doctorCmd = &cobra.Command{
@@ -40,6 +41,7 @@ Use --fix to automatically start services that are not running.
 Use --stale-only to check if the orch binary is stale (exit 1 if stale).
 Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
 Use --config to detect drift between config.yaml and external config (plist).
+Use --docs to check for undocumented CLI commands (doc debt).
 
 Examples:
   orch doctor              # Check service health
@@ -47,7 +49,8 @@ Examples:
   orch doctor --verbose    # Show detailed output
   orch doctor --stale-only # Check binary staleness only (for scripts/hooks)
   orch doctor --sessions   # Cross-reference workspaces and sessions
-  orch doctor --config     # Check for config drift`,
+  orch doctor --config     # Check for config drift
+  orch doctor --docs       # Check for undocumented CLI commands`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -59,6 +62,7 @@ func init() {
 	doctorCmd.Flags().BoolVar(&doctorStaleOnly, "stale-only", false, "Check binary staleness only (exit 1 if stale)")
 	doctorCmd.Flags().BoolVar(&doctorSessions, "sessions", false, "Cross-reference workspaces and OpenCode sessions")
 	doctorCmd.Flags().BoolVar(&doctorConfig, "config", false, "Check for config drift (plist vs config.yaml)")
+	doctorCmd.Flags().BoolVar(&doctorDocs, "docs", false, "Check for undocumented CLI commands (doc debt)")
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -104,6 +108,11 @@ func runDoctor() error {
 	// Handle --config flag for config drift detection
 	if doctorConfig {
 		return runConfigDriftCheck()
+	}
+
+	// Handle --docs flag for doc debt check
+	if doctorDocs {
+		return runDocDebtCheck()
 	}
 
 	fmt.Println("orch doctor - Service Health Check")
@@ -1099,4 +1108,72 @@ func parsePlistValues(content string) (map[string]string, error) {
 	}
 
 	return values, nil
+}
+
+// DocDebtReport contains the results of doc debt detection.
+type DocDebtReport struct {
+	Healthy             bool                      `json:"healthy"`
+	TotalCommands       int                       `json:"total_commands"`
+	UndocumentedCount   int                       `json:"undocumented_count"`
+	DocumentedCount     int                       `json:"documented_count"`
+	UndocumentedEntries []userconfig.DocDebtEntry `json:"undocumented_entries"`
+}
+
+// runDocDebtCheck surfaces undocumented CLI commands from the doc debt tracker.
+func runDocDebtCheck() error {
+	fmt.Println("orch doctor --docs")
+	fmt.Println("Checking for undocumented CLI commands...")
+	fmt.Println()
+
+	debt, err := userconfig.LoadDocDebt()
+	if err != nil {
+		return fmt.Errorf("failed to load doc debt: %w", err)
+	}
+
+	report := &DocDebtReport{
+		TotalCommands:       len(debt.Commands),
+		UndocumentedEntries: debt.UndocumentedCommands(),
+	}
+	report.UndocumentedCount = len(report.UndocumentedEntries)
+	report.DocumentedCount = report.TotalCommands - report.UndocumentedCount
+	report.Healthy = report.UndocumentedCount == 0
+
+	if report.TotalCommands == 0 {
+		fmt.Println("No CLI commands tracked yet.")
+		fmt.Println("Doc debt tracking starts automatically when new commands are detected during 'orch complete'.")
+		return nil
+	}
+
+	// Print summary
+	fmt.Printf("Total tracked commands: %d\n", report.TotalCommands)
+	fmt.Printf("Documented: %d\n", report.DocumentedCount)
+	fmt.Printf("Undocumented: %d\n", report.UndocumentedCount)
+	fmt.Println()
+
+	if report.Healthy {
+		fmt.Println("✓ All tracked CLI commands are documented")
+		return nil
+	}
+
+	// Print undocumented commands
+	fmt.Println("✗ Undocumented commands:")
+	fmt.Println()
+	for _, entry := range report.UndocumentedEntries {
+		fmt.Printf("  • %s (added %s)\n", entry.CommandFile, entry.DateAdded)
+		if doctorVerbose && len(entry.DocLocations) > 0 {
+			for _, loc := range entry.DocLocations {
+				fmt.Printf("      → %s\n", loc)
+			}
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Documentation locations to update:")
+	fmt.Println("  - ~/.claude/skills/meta/orchestrator/SKILL.md")
+	fmt.Println("  - docs/orch-commands-reference.md")
+	fmt.Println()
+	fmt.Println("After documenting, mark as complete:")
+	fmt.Println("  orch docs mark <command-file>")
+
+	return nil
 }
