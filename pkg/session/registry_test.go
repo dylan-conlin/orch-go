@@ -1,8 +1,10 @@
 package session
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -483,5 +485,66 @@ func TestRegistryStaleLockCleanup(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Get() returned nil")
+	}
+}
+
+func TestRegistrySchemaIncluded(t *testing.T) {
+	tmpDir := t.TempDir()
+	regPath := filepath.Join(tmpDir, "sessions.json")
+	reg := NewRegistry(regPath)
+
+	session := OrchestratorSession{
+		WorkspaceName: "test-schema-session",
+		SessionID:     "ses_schema",
+		ProjectDir:    "/tmp/test",
+		SpawnTime:     time.Now(),
+		Goal:          "Test schema",
+		Status:        "active",
+	}
+
+	if err := reg.Register(session); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	// Read raw file to verify schema is included
+	data, err := os.ReadFile(regPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	// Verify _schema field exists
+	if !strings.Contains(string(data), `"_schema"`) {
+		t.Error("File does not contain _schema field")
+	}
+
+	// Verify key documentation fields exist
+	if !strings.Contains(string(data), `"primary_key"`) {
+		t.Error("File does not contain primary_key documentation")
+	}
+	if !strings.Contains(string(data), `"status_values"`) {
+		t.Error("File does not contain status_values documentation")
+	}
+	if !strings.Contains(string(data), `"safe_operations"`) {
+		t.Error("File does not contain safe_operations documentation")
+	}
+	if !strings.Contains(string(data), `"to_modify"`) {
+		t.Error("File does not contain to_modify documentation")
+	}
+
+	// Verify the schema can be unmarshaled
+	var regData RegistryData
+	if err := json.Unmarshal(data, &regData); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	// Verify schema values
+	if regData.Schema.Version != "1.0" {
+		t.Errorf("Schema.Version = %q, want %q", regData.Schema.Version, "1.0")
+	}
+	if !strings.Contains(regData.Schema.StatusValues, "active") {
+		t.Errorf("Schema.StatusValues does not contain 'active': %q", regData.Schema.StatusValues)
+	}
+	if !strings.Contains(regData.Schema.PrimaryKey, "workspace_name") {
+		t.Errorf("Schema.PrimaryKey does not mention workspace_name: %q", regData.Schema.PrimaryKey)
 	}
 }

@@ -47,8 +47,32 @@ type OrchestratorSession struct {
 	Status string `json:"status"`
 }
 
+// RegistrySchema provides inline documentation for the registry format.
+// This makes the file self-describing for agents and humans who encounter it.
+type RegistrySchema struct {
+	Version      string `json:"version"`
+	Description  string `json:"description"`
+	PrimaryKey   string `json:"primary_key"`
+	StatusValues string `json:"status_values"`
+	SafeOps      string `json:"safe_operations"`
+	Modify       string `json:"to_modify"`
+}
+
+// DefaultRegistrySchema returns the schema metadata for sessions.json.
+func DefaultRegistrySchema() RegistrySchema {
+	return RegistrySchema{
+		Version:      "1.0",
+		Description:  "Orchestrator session registry - tracks spawned agent sessions",
+		PrimaryKey:   "workspace_name (unique identifier for each session)",
+		StatusValues: "active | completed | abandoned",
+		SafeOps:      "read-only; file uses locking for concurrent access",
+		Modify:       "use orch commands (orch spawn, orch complete, orch abandon)",
+	}
+}
+
 // RegistryData is the on-disk format of the session registry.
 type RegistryData struct {
+	Schema   RegistrySchema        `json:"_schema,omitempty"`
 	Sessions []OrchestratorSession `json:"sessions"`
 }
 
@@ -145,6 +169,9 @@ func (r *Registry) save(data *RegistryData) error {
 	if err := os.MkdirAll(filepath.Dir(r.path), 0755); err != nil {
 		return err
 	}
+
+	// Always include schema for self-describing artifact
+	data.Schema = DefaultRegistrySchema()
 
 	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
