@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { AgentCard } from '$lib/components/agent-card';
 	import { errorEvents } from '$lib/stores/agentlog';
 	import { pendingReviews, type PendingReviewAgent, type PendingReviewItem } from '$lib/stores/pending-reviews';
@@ -120,7 +121,23 @@
 					<div class="flex items-center gap-2 mb-2">
 						<span class="text-sm">💀</span>
 						<span class="text-xs font-medium text-red-500">Dead Agents ({totalDead})</span>
-						<span class="text-[10px] text-muted-foreground">No activity for 3+ min - crashed/stuck/killed</span>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<span class="text-[10px] text-muted-foreground cursor-help underline decoration-dotted">No activity for 3+ min</span>
+							</Tooltip.Trigger>
+							<Tooltip.Content class="max-w-xs">
+								<p class="font-medium text-red-500">Agent Unresponsive</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									These agents have sent no heartbeat or activity for more than 3 minutes.
+								</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									<strong>Possible causes:</strong> Agent crashed, process killed, SSH disconnect, rate limited, or completely stuck.
+								</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									<strong>Suggested action:</strong> Check tmux/terminal for the agent, or run <code class="bg-muted px-1 rounded">orch abandon &lt;id&gt;</code> to clean up.
+								</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
 					</div>
 					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
 						{#each $deadAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
@@ -136,7 +153,23 @@
 					<div class="flex items-center gap-2 mb-2">
 						<span class="text-sm">⏱️</span>
 						<span class="text-xs font-medium text-orange-500">Stalled Agents ({totalStalled})</span>
-						<span class="text-[10px] text-muted-foreground">Same phase for 15+ min - may be stuck</span>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<span class="text-[10px] text-muted-foreground cursor-help underline decoration-dotted">Same phase for 15+ min</span>
+							</Tooltip.Trigger>
+							<Tooltip.Content class="max-w-xs">
+								<p class="font-medium text-orange-500">Progress Stalled</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									These agents are still active but haven't changed phase in 15+ minutes.
+								</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									<strong>Possible causes:</strong> Blocked on a question, stuck in a loop, waiting for input, or working on a long task.
+								</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									<strong>Suggested action:</strong> Check the agent's output for BLOCKED or QUESTION status. If truly stuck, consider sending a message with <code class="bg-muted px-1 rounded">orch send &lt;id&gt;</code>.
+								</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
 					</div>
 					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
 						{#each $stalledAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
