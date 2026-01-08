@@ -103,17 +103,63 @@ func (e *ActionEvent) PatternKey() string {
 // normalizeTarget normalizes a target for pattern grouping.
 // This helps group similar actions (e.g., different file paths with same suffix).
 func normalizeTarget(target string) string {
-	// For file paths, keep the basename and extension
-	if strings.Contains(target, "/") {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "(empty)"
+	}
+
+	// Truncate very long targets (bash commands, etc.)
+	const maxLen = 60
+	if len(target) > maxLen {
+		target = target[:maxLen] + "..."
+	}
+
+	// Detect if this is likely a bash command (starts with cd, contains &&, ||, |, etc.)
+	if strings.HasPrefix(target, "cd ") ||
+		strings.Contains(target, " && ") ||
+		strings.Contains(target, " || ") ||
+		strings.Contains(target, " | ") {
+		// Extract the main command (first command after && or the whole thing)
+		cmd := target
+		if idx := strings.Index(target, " && "); idx != -1 {
+			cmd = strings.TrimSpace(target[idx+4:])
+		}
+		// Get first word of command
+		parts := strings.Fields(cmd)
+		if len(parts) > 0 {
+			cmdName := parts[0]
+			// For orch/bd/kb commands, include the subcommand
+			if (cmdName == "orch" || cmdName == "bd" || cmdName == "kb" || cmdName == "git") && len(parts) > 1 {
+				return cmdName + " " + parts[1]
+			}
+			return cmdName
+		}
+	}
+
+	// Detect if this is a file path (starts with / or ~, and looks like a path)
+	if (strings.HasPrefix(target, "/") || strings.HasPrefix(target, "~")) &&
+		!strings.Contains(target, " ") {
+		// It's a file path - extract meaningful part
 		base := filepath.Base(target)
-		// Keep the file extension pattern
-		if ext := filepath.Ext(base); ext != "" {
+		if ext := filepath.Ext(base); ext != "" && len(ext) <= 5 {
 			return "*" + ext
 		}
 		return base
 	}
-	// For other targets, normalize whitespace
-	return strings.TrimSpace(target)
+
+	// For URLs, extract the host
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		// Keep just the host part for grouping
+		target = strings.TrimPrefix(target, "http://")
+		target = strings.TrimPrefix(target, "https://")
+		if idx := strings.Index(target, "/"); idx != -1 {
+			target = target[:idx]
+		}
+		return target
+	}
+
+	// For CSS selectors and other targets, return as-is (truncated)
+	return target
 }
 
 // Logger handles action outcome logging to a JSONL file.
