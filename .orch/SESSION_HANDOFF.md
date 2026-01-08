@@ -1,64 +1,76 @@
-# Session Handoff - 2026-01-08 (Evening)
+# Session Handoff - 2026-01-08 (Late Morning)
 
 ## Session Focus
-Continued agent visibility work + fixed critical spawn bug discovered via dead agent investigation.
+Synthesis of Jan 8 investigations + fixing observation infrastructure bugs.
 
 ## Key Accomplishments
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **Dashboard activity fix** | ✅ Done | Fixed "Starting up..." always showing - API sends string, frontend expected object |
-| **Dead agent investigation** | ✅ Done | ok-9ph0 was orphaned due to invalid beads_id - led to root cause discovery |
-| **Spawn validation fix** | ✅ Done | `resolveShortBeadsID` now fails if issue doesn't exist (was silently returning invalid ID) |
+| Item | Status | Notes |
+|------|--------|-------|
+| **Decision: Observation Infrastructure Principle** | Created | `.kb/decisions/2026-01-08-observation-infrastructure-principle.md` |
+| **Fix: SSE clearing current_activity** | Fixed | Frontend was erasing activity on idle transition, showing "Starting up..." |
+| **Fix: Beads RPC failure** | Fixed | Stray `orch-go.db` file caused daemon health check failure |
+| **Completed agents** | 2 closed | `orch-go-tuofe` (debugging), `orch-go-18t3i` (epic child inference) |
 
-## The Bug We Fixed
+## The Observation Principle
 
-**Problem:** `orch spawn --issue ok-9ph0` succeeded even though `ok-9ph0` was never a beads issue.
+Synthesized 11 investigations from today into a key principle:
 
-**Root cause:** `resolveShortBeadsID()` returned the invalid ID with just a warning instead of an error.
+> **"If the system can't observe it, the system can't manage it."**
 
-**Impact:** Agents could spawn with beads_ids that don't exist, making them impossible to properly close. They'd complete work, report "Task complete!", but have nowhere to close the issue - appearing as "dead" orphans.
+Observation infrastructure is load-bearing. Gaps create false signals (agents appear "dead" when actually complete).
 
-**Fix:** Now returns error with helpful cross-project hints:
-```
-beads issue 'kb-cli-xyz123' not found
+**Five gaps identified and addressed:**
+1. Events not emitted (bd close bypass) - fixed earlier
+2. Events double-counted (stats) - fixed earlier  
+3. State not surfaced (dead/stalled) - dead restored, stalled designed
+4. Progress signals missing (activity) - **fixed this session**
+5. RPC failures silent (beads) - **diagnosed this session**
 
-Hint: Issue 'kb-cli-xyz123' may belong to a different project.
-If the issue is in 'kb-cli', try:
-  cd ~/Documents/personal/kb-cli && orch complete kb-cli-xyz123
-```
+## Bugs Fixed This Session
 
-## Key Insight from This Session
+### 1. SSE Clearing Activity Bug
+**Symptom:** Agents showed "Starting up..." even after completing work
+**Root cause:** `handleSSEEvent` for `session.status` idle was setting `current_activity: undefined`
+**Fix:** Keep `current_activity` when going idle, only clear `is_processing`
+**File:** `web/src/lib/stores/agents.ts:698-708`
 
-The deeper question "why not require every spawn has a beads issue?" led us to discover the system *intends* this but had a bug in enforcement. The lenient error handling in `resolveShortBeadsID` was the gap.
-
-**Agent lifecycle understanding gained:**
-- Every spawn should have a beads issue (unless `--no-track`)
-- If `--issue X` is provided but X doesn't exist, spawn should FAIL, not proceed with invalid ID
-- Orphaned agents happen when this invariant is violated
+### 2. Beads RPC Silent Failure
+**Symptom:** Agent `orch-go-tuofe` showed as "dead" despite having Phase: Complete in beads
+**Root cause:** Empty `orch-go.db` file in `.beads/` caused daemon to fail health check with "multiple database files found"
+**Fix:** Remove stray database file
+**Constraint recorded:** `kn-e3e9c6` - beads daemon fails silently with multiple .db files
 
 ## Files Changed This Session
 
-- `web/src/lib/stores/agents.ts` - Transform API string current_activity to object format
-- `cmd/orch/shared.go` - resolveShortBeadsID now returns error when issue not found
-- `cmd/orch/main_test.go` - Updated test expectations for new strict behavior
+- `.kb/decisions/2026-01-08-observation-infrastructure-principle.md` (created)
+- `web/src/lib/stores/agents.ts` - Don't clear activity on idle
+- `.kn/entries.jsonl` - Constraint about beads multi-db failure
 
 ## Git Status
 - All changes committed and pushed to origin/master
-- Working tree clean
+- Working tree clean (except build artifacts)
 
-## Next Session Should
-1. **Consider daemon auto-cleanup** - Now that we understand the lifecycle, implement daemon closing sessions that report "Phase: Complete" + idle
-2. **Watch for** - Any other places where invalid beads_ids might slip through
-3. **Completion rate** - Should improve now that orphans won't be created
+## Outstanding Work
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Stalled agent detection | Designed | 15-min threshold, pending implementation |
+| Epic child inference | Merged | Agent completed this session |
+| Dashboard performance epic | Open | `orch-go-8s2kl` |
 
 ## Resume Commands
 ```bash
 cd ~/Documents/personal/orch-go
 orch status
-orch stats  # Should show improved completion rate over time
+bd ready | head -5
 ```
 
-## Key Investigations Referenced
-- `.kb/investigations/2026-01-08-inv-25-28-agents-not-completing.md` - Why completion rate looked low
-- `.kb/investigations/2026-01-08-inv-restore-dead-agent-detection-surfacing.md` - Dead agent detection design
+## Key Learning
+When dashboard shows unexpected state (dead vs complete), trace the observation pipeline:
+1. Is beads daemon healthy? (`bd daemon health`)
+2. Are comments being fetched? (test RPC connection)
+3. Is phase parsing working? (check commentsMap population)
+4. Is Priority Cascade running? (dead < phaseComplete < issueClosed)
+
+Silent failures in any step cause the cascade to fall through to session heartbeat status.
