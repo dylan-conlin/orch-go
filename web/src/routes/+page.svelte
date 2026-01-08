@@ -130,6 +130,8 @@
 
 		// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP
+		// Note: beads.fetch() is called without projectDir initially - will be refetched
+		// when orchestrator context is loaded (see reactive block below)
 		Promise.all([
 			beads.fetch(),
 			config.fetch()
@@ -162,12 +164,15 @@
 
 		// Refresh all data every 60 seconds (all fetches are already non-blocking)
 		const refreshInterval = setInterval(() => {
+			// Get current project_dir from context (if following orchestrator)
+			const projectDir = $filters.followOrchestrator ? $orchestratorContext.project_dir : undefined;
+			
 			Promise.all([
 				usage.fetch(),
 				focus.fetch(),
 				servers.fetch(),
-				beads.fetch(),
-				readyIssues.fetch(),
+				beads.fetch(projectDir),
+				readyIssues.fetch(projectDir),
 				daemon.fetch(),
 				hotspots.fetch(),
 				orchestratorSessions.fetch()
@@ -210,6 +215,15 @@
 		if ($filters.followOrchestrator && $orchestratorContext.project) {
 			// Auto-update project filter from orchestrator context
 			filters.setProjectFilter($orchestratorContext.project, $orchestratorContext.included_projects);
+		}
+	}
+
+	// Refetch beads when orchestrator context changes (if following)
+	// This makes the beads stats and ready queue follow which project the orchestrator is working in
+	$: {
+		if (typeof window !== 'undefined' && $filters.followOrchestrator && $orchestratorContext.project_dir) {
+			beads.fetch($orchestratorContext.project_dir).catch(console.error);
+			readyIssues.fetch($orchestratorContext.project_dir).catch(console.error);
 		}
 	}
 

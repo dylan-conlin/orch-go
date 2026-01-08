@@ -12,6 +12,7 @@ export interface BeadsStats {
 	ready_issues: number;
 	closed_issues: number;
 	avg_lead_time_hours?: number;
+	project_dir?: string;
 	error?: string;
 }
 
@@ -29,6 +30,7 @@ export interface ReadyIssue {
 export interface BeadsReadyResponse {
 	issues: ReadyIssue[];
 	count: number;
+	project_dir?: string;
 	error?: string;
 }
 
@@ -40,9 +42,15 @@ function createBeadsStore() {
 		subscribe,
 		set,
 		// Fetch beads stats from orch-go API
-		async fetch(): Promise<void> {
+		// projectDir: Optional project directory to query (for following orchestrator context)
+		async fetch(projectDir?: string): Promise<void> {
 			try {
-				const response = await fetch(`${API_BASE}/api/beads`);
+				const params = new URLSearchParams();
+				if (projectDir) {
+					params.set('project_dir', projectDir);
+				}
+				const url = `${API_BASE}/api/beads${params.toString() ? '?' + params.toString() : ''}`;
+				const response = await fetch(url);
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
@@ -72,9 +80,15 @@ function createReadyIssuesStore() {
 		subscribe,
 		set,
 		// Fetch ready issues from orch-go API
-		async fetch(): Promise<void> {
+		// projectDir: Optional project directory to query (for following orchestrator context)
+		async fetch(projectDir?: string): Promise<void> {
 			try {
-				const response = await fetch(`${API_BASE}/api/beads/ready`);
+				const params = new URLSearchParams();
+				if (projectDir) {
+					params.set('project_dir', projectDir);
+				}
+				const url = `${API_BASE}/api/beads/ready${params.toString() ? '?' + params.toString() : ''}`;
+				const response = await fetch(url);
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}

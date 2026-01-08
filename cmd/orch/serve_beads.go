@@ -11,21 +11,29 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
+// projectCacheEntry holds cached data for a single project.
+type projectCacheEntry struct {
+	stats          *beads.Stats
+	statsFetchedAt time.Time
+
+	readyIssues    []beads.Issue
+	readyFetchedAt time.Time
+}
+
 // beadsStatsCache provides TTL-based caching for /api/beads and /api/beads/ready.
 // Without caching, each request spawns a bd process which takes ~1.5s for stats.
 // With 30s TTL, most dashboard polls hit cache (instant) while data stays fresh.
+// Cache is project-aware: each project_dir has its own cache entry.
 type beadsStatsCache struct {
 	mu sync.RWMutex
 
-	// Cached stats data
-	stats          *beads.Stats
-	statsFetchedAt time.Time
-	statsTTL       time.Duration
+	// Per-project cache entries (keyed by project directory)
+	// Empty string key is used for default project (sourceDir)
+	projects map[string]*projectCacheEntry
 
-	// Cached ready issues
-	readyIssues    []beads.Issue
-	readyFetchedAt time.Time
-	readyTTL       time.Duration
+	// TTL for stats and ready issues
+	statsTTL time.Duration
+	readyTTL time.Duration
 }
 
 // Global beads stats cache, initialized in runServe
@@ -33,20 +41,47 @@ var globalBeadsStatsCache *beadsStatsCache
 
 func newBeadsStatsCache() *beadsStatsCache {
 	return &beadsStatsCache{
+		projects: make(map[string]*projectCacheEntry),
 		statsTTL: 30 * time.Second, // Stats change infrequently
 		readyTTL: 15 * time.Second, // Ready queue changes more often
 	}
 }
 
+// getOrCreateEntry returns the cache entry for a project, creating one if needed.
+func (c *beadsStatsCache) getOrCreateEntry(projectDir string) *projectCacheEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.projects == nil {
+		c.projects = make(map[string]*projectCacheEntry)
+	}
+
+	entry, ok := c.projects[projectDir]
+	if !ok {
+		entry = &projectCacheEntry{}
+		c.projects[projectDir] = entry
+	}
+	return entry
+}
+
 // getStats returns cached stats or fetches fresh if stale.
-func (c *beadsStatsCache) getStats() (*beads.Stats, error) {
+// projectDir specifies which project's beads to query. Empty string uses default.
+func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
+	entry := c.getOrCreateEntry(projectDir)
+
 	c.mu.RLock()
-	if c.stats != nil && time.Since(c.statsFetchedAt) < c.statsTTL {
-		result := c.stats
+	if entry.stats != nil && time.Since(entry.statsFetchedAt) < c.statsTTL {
+		result := entry.stats
 		c.mu.RUnlock()
 		return result, nil
 	}
 	c.mu.RUnlock()
+
+	// Determine the directory to use
+	workDir := projectDir
+	if workDir == "" {
+		workDir = beads.DefaultDir
+	}
 
 	// Fetch fresh stats
 	var stats *beads.Stats
@@ -54,7 +89,7 @@ func (c *beadsStatsCache) getStats() (*beads.Stats, error) {
 
 	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
 	// This happens when daemon crashes but server keeps stale connection reference.
-	socketPath, findErr := beads.FindSocketPath(beads.DefaultDir)
+	socketPath, findErr := beads.FindSocketPath(workDir)
 	socketExists := findErr == nil && socketPath != ""
 	if socketExists {
 		if _, statErr := os.Stat(socketPath); statErr != nil {
@@ -62,7 +97,11 @@ func (c *beadsStatsCache) getStats() (*beads.Stats, error) {
 		}
 	}
 
-	if beadsClient != nil && socketExists {
+	// For non-default projects, always use CLI client with project dir
+	if projectDir != "" && projectDir != beads.DefaultDir {
+		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+		stats, err = cliClient.Stats()
+	} else if beadsClient != nil && socketExists {
 		stats, err = beadsClient.Stats()
 		if err != nil {
 			// Fallback to CLI on RPC error
@@ -77,22 +116,31 @@ func (c *beadsStatsCache) getStats() (*beads.Stats, error) {
 	}
 
 	c.mu.Lock()
-	c.stats = stats
-	c.statsFetchedAt = time.Now()
+	entry.stats = stats
+	entry.statsFetchedAt = time.Now()
 	c.mu.Unlock()
 
 	return stats, nil
 }
 
 // getReadyIssues returns cached ready issues or fetches fresh if stale.
-func (c *beadsStatsCache) getReadyIssues() ([]beads.Issue, error) {
+// projectDir specifies which project's beads to query. Empty string uses default.
+func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, error) {
+	entry := c.getOrCreateEntry(projectDir)
+
 	c.mu.RLock()
-	if c.readyIssues != nil && time.Since(c.readyFetchedAt) < c.readyTTL {
-		result := c.readyIssues
+	if entry.readyIssues != nil && time.Since(entry.readyFetchedAt) < c.readyTTL {
+		result := entry.readyIssues
 		c.mu.RUnlock()
 		return result, nil
 	}
 	c.mu.RUnlock()
+
+	// Determine the directory to use
+	workDir := projectDir
+	if workDir == "" {
+		workDir = beads.DefaultDir
+	}
 
 	// Fetch fresh ready issues
 	var issues []beads.Issue
@@ -100,7 +148,7 @@ func (c *beadsStatsCache) getReadyIssues() ([]beads.Issue, error) {
 
 	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
 	// This happens when daemon crashes but server keeps stale connection reference.
-	socketPath, findErr := beads.FindSocketPath(beads.DefaultDir)
+	socketPath, findErr := beads.FindSocketPath(workDir)
 	socketExists := findErr == nil && socketPath != ""
 	if socketExists {
 		if _, statErr := os.Stat(socketPath); statErr != nil {
@@ -108,7 +156,11 @@ func (c *beadsStatsCache) getReadyIssues() ([]beads.Issue, error) {
 		}
 	}
 
-	if beadsClient != nil && socketExists {
+	// For non-default projects, always use CLI client with project dir
+	if projectDir != "" && projectDir != beads.DefaultDir {
+		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+		issues, err = cliClient.Ready(nil)
+	} else if beadsClient != nil && socketExists {
 		issues, err = beadsClient.Ready(nil)
 		if err != nil {
 			// Fallback to CLI on RPC error
@@ -123,21 +175,25 @@ func (c *beadsStatsCache) getReadyIssues() ([]beads.Issue, error) {
 	}
 
 	c.mu.Lock()
-	c.readyIssues = issues
-	c.readyFetchedAt = time.Now()
+	entry.readyIssues = issues
+	entry.readyFetchedAt = time.Now()
 	c.mu.Unlock()
 
 	return issues, nil
 }
 
 // invalidate clears cached data, forcing fresh fetches on next request.
-func (c *beadsStatsCache) invalidate() {
+// If projectDir is empty, clears all projects.
+func (c *beadsStatsCache) invalidate(projectDir string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.stats = nil
-	c.readyIssues = nil
-	c.statsFetchedAt = time.Time{}
-	c.readyFetchedAt = time.Time{}
+
+	if projectDir == "" {
+		// Clear all
+		c.projects = make(map[string]*projectCacheEntry)
+	} else {
+		delete(c.projects, projectDir)
+	}
 }
 
 // BeadsAPIResponse is the JSON structure returned by /api/beads.
@@ -149,22 +205,31 @@ type BeadsAPIResponse struct {
 	ReadyIssues    int     `json:"ready_issues"`
 	ClosedIssues   int     `json:"closed_issues"`
 	AvgLeadTimeHrs float64 `json:"avg_lead_time_hours,omitempty"`
+	ProjectDir     string  `json:"project_dir,omitempty"`
 	Error          string  `json:"error,omitempty"`
 }
 
 // handleBeads returns beads stats using cached data when available.
 // The cache has a 30s TTL to balance freshness with performance.
 // Without caching, each request spawns a bd process (~1.5s overhead).
+// Query params:
+//   - project_dir: Optional project directory to query. If not provided, uses default.
 func handleBeads(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Get project_dir from query params (for following orchestrator context)
+	projectDir := r.URL.Query().Get("project_dir")
+
 	// Use cached stats when available
-	stats, err := globalBeadsStatsCache.getStats()
+	stats, err := globalBeadsStatsCache.getStats(projectDir)
 	if err != nil {
-		resp := BeadsAPIResponse{Error: fmt.Sprintf("Failed to get bd stats: %v", err)}
+		resp := BeadsAPIResponse{
+			Error:      fmt.Sprintf("Failed to get bd stats: %v", err),
+			ProjectDir: projectDir,
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
@@ -178,6 +243,7 @@ func handleBeads(w http.ResponseWriter, r *http.Request) {
 		ReadyIssues:    stats.Summary.ReadyIssues,
 		ClosedIssues:   stats.Summary.ClosedIssues,
 		AvgLeadTimeHrs: stats.Summary.AvgLeadTimeHours,
+		ProjectDir:     projectDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -199,27 +265,34 @@ type ReadyIssueResponse struct {
 
 // BeadsReadyAPIResponse is the JSON structure returned by /api/beads/ready.
 type BeadsReadyAPIResponse struct {
-	Issues []ReadyIssueResponse `json:"issues"`
-	Count  int                  `json:"count"`
-	Error  string               `json:"error,omitempty"`
+	Issues     []ReadyIssueResponse `json:"issues"`
+	Count      int                  `json:"count"`
+	ProjectDir string               `json:"project_dir,omitempty"`
+	Error      string               `json:"error,omitempty"`
 }
 
 // handleBeadsReady returns list of ready issues for dashboard queue visibility.
 // The cache has a 15s TTL to balance freshness with performance.
 // Without caching, each request spawns a bd process (~80ms overhead).
+// Query params:
+//   - project_dir: Optional project directory to query. If not provided, uses default.
 func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Get project_dir from query params (for following orchestrator context)
+	projectDir := r.URL.Query().Get("project_dir")
+
 	// Use cached ready issues when available
-	issues, err := globalBeadsStatsCache.getReadyIssues()
+	issues, err := globalBeadsStatsCache.getReadyIssues(projectDir)
 	if err != nil {
 		resp := BeadsReadyAPIResponse{
-			Issues: []ReadyIssueResponse{},
-			Count:  0,
-			Error:  fmt.Sprintf("Failed to get ready issues: %v", err),
+			Issues:     []ReadyIssueResponse{},
+			Count:      0,
+			ProjectDir: projectDir,
+			Error:      fmt.Sprintf("Failed to get ready issues: %v", err),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -240,8 +313,9 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := BeadsReadyAPIResponse{
-		Issues: readyIssues,
-		Count:  len(readyIssues),
+		Issues:     readyIssues,
+		Count:      len(readyIssues),
+		ProjectDir: projectDir,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

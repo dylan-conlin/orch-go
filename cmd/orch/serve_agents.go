@@ -455,6 +455,16 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
 
+		// For cross-project agent visibility: use cached PROJECT_DIR from workspace
+		// This is O(1) lookup and should happen for ALL agents (including stale)
+		// to ensure correct project filtering when using --workdir spawns.
+		// The session's directory may be wrong (orchestrator's cwd vs target workdir).
+		if agent.BeadsID != "" {
+			if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
+				beadsProjectDirs[agent.BeadsID] = agentProjectDir
+			}
+		}
+
 		// Collect beads ID for batch fetch - only for NON-STALE agents with beads ID.
 		// Stale agents (older than beadsFetchThreshold) are included in response but
 		// skip beads fetch for performance optimization.
@@ -462,12 +472,6 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] && !isStale {
 			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 			seenBeadsIDs[agent.BeadsID] = true
-
-			// For cross-project agent visibility: use cached PROJECT_DIR
-			// This replaces expensive directory scanning with O(1) lookup
-			if agentProjectDir := wsCache.lookupProjectDir(agent.BeadsID); agentProjectDir != "" {
-				beadsProjectDirs[agent.BeadsID] = agentProjectDir
-			}
 		}
 
 		// Deduplicate by title - keep the most recently updated session
@@ -1098,8 +1102,9 @@ func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Invalidate beads stats cache (stats, ready issues)
+	// Empty string clears all project caches
 	if globalBeadsStatsCache != nil {
-		globalBeadsStatsCache.invalidate()
+		globalBeadsStatsCache.invalidate("")
 	}
 
 	// Invalidate workspace cache (workspace metadata)
