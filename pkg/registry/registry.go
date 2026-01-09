@@ -297,19 +297,40 @@ func (r *Registry) mergeAgents(current, ours []*Agent) []*Agent {
 }
 
 // Register adds a new agent to the registry.
-// Returns error if agent ID already exists.
+// If an agent with the same ID exists but is non-active (abandoned/completed/deleted),
+// reuses that slot. Returns error if agent ID already exists and is active.
 func (r *Registry) Register(agent *Agent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check for duplicate by agent ID
-	for _, a := range r.agents {
+	// Check for existing agent with same ID
+	for i, a := range r.agents {
 		if a.ID == agent.ID {
-			return fmt.Errorf("agent '%s' already registered", agent.ID)
+			// If existing agent is active, reject
+			if a.Status == StateActive {
+				return fmt.Errorf("agent '%s' already registered", agent.ID)
+			}
+
+			// Reuse slot for non-active agent (abandoned/completed/deleted)
+			now := time.Now().Format(TimeFormat)
+			r.agents[i] = &Agent{
+				ID:         agent.ID,
+				BeadsID:    agent.BeadsID,
+				SessionID:  agent.SessionID,
+				WorkspaceName: agent.WorkspaceName,
+				ProjectDir: agent.ProjectDir,
+				WindowID:   agent.WindowID,
+				Skill:      agent.Skill,
+				Status:     StateActive,
+				SpawnedAt:  now,
+				UpdatedAt:  now,
+				Tier:       agent.Tier,
+			}
+			return nil
 		}
 	}
 
-	// Set timestamps
+	// No existing agent - append as new
 	now := time.Now().Format(TimeFormat)
 	agent.SpawnedAt = now
 	agent.UpdatedAt = now
@@ -344,14 +365,14 @@ func (r *Registry) Find(identifier string) *Agent {
 	return nil
 }
 
-// ListAgents returns all non-deleted agents.
+// ListAgents returns all active agents (excludes abandoned, completed, and deleted).
 func (r *Registry) ListAgents() []*Agent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]*Agent, 0)
 	for _, a := range r.agents {
-		if a.Status != StateDeleted {
+		if a.Status == StateActive {
 			result = append(result, a)
 		}
 	}
