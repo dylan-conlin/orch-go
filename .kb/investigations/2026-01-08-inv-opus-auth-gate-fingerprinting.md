@@ -41,6 +41,18 @@ Modified `opencode` (`packages/opencode/src/provider/provider.ts`) and `orch-go`
 
 Injecting these headers into the `opencode` Anthropic provider caused Gemini Flash spawns to hang in an `idle` state. The headers may have conflicted with Bun's `fetch` or the API SDK's expectations.
 
+### 4. Zombie Agent Discovery
+
+Spawning agents with Opus before understanding the auth gate created **zombie agents** - agents that never actually started running but remained tracked in the system:
+
+- **orch-go-mo0ja** (in_progress) - "Investigate Opus 4.5 restriction" - hung with OpenCode session
+- **orch-go-pzi2i** (open) - "Opus auth gate post-mortem" - no session created
+- **orch-go-aoei0** (in_progress) - "Test Opus connectivity" - hung with OpenCode session
+- **orch-go-gd1gd** (closed via force) - Never actually ran
+- **orch-go-lwc3o** (closed via force) - Never actually ran
+
+These agents consumed slots in the concurrency limit without doing work. Cleanup required manually deleting OpenCode sessions and closing beads issues.
+
 ## Test performed
 
 **Test:** Modified `opencode` and `orch-go` to inject specific headers (User-Agent, x-app, anthropic-version, x-anthropic-additional-protection, anthropic-beta) into Anthropic API requests. Attempted to make requests to `claude-opus-4-5-20251101` and observed responses.
@@ -53,8 +65,9 @@ Spoofing the Opus 4.5 auth gate via direct header injection with the current Ope
 ## Recommendation
 
 1.  **Abandon Spoofing for now:** Do not attempt to use Opus 4.5 via `opencode` until a more robust proxy or fingerprint bypass is developed (possibly involving a real Claude Code binary as a bridge).
-2.  **Stick to Sonnet/Gemini:** Use Sonnet 3.5 or Gemini Flash for orchestration.
-3.  **Monitor OpenCode Upstream:** Watch for updates to `opencode` or `claude-code-acp` that might address this model gate.
+2.  **Never spawn with Opus:** Spawning agents with restricted models creates zombie agents that consume concurrency slots without doing work. Use Gemini Flash (default) or Sonnet for all spawns until Opus restriction is bypassed.
+3.  **Stick to Sonnet/Gemini:** Use Sonnet 3.5 or Gemini Flash for orchestration.
+4.  **Monitor OpenCode Upstream:** Watch for updates to `opencode` or `claude-code-acp` that might address this model gate.
 
 ## Evidence
 
