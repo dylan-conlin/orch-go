@@ -329,3 +329,9 @@ https://svelte.dev/e/a11y_label_has_associated_control
 
 Google Chrome is requesting /.well-known/appspecific/com.chrome.devtools.json to automatically configure devtools project settings. To learn why, and how to prevent this message, see https://svelte.dev/docs/cli/devtools-json
 
+2:26:02 PM [vite] (client) hmr update /src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte, /src/app.css
+2:26:02 PM [vite] (ssr) page reload src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte
+2:27:42 PM [vite] (client) hmr update /src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte, /src/app.css
+2:27:42 PM [vite] (ssr) page reload src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte
+2:27:46 PM [vite] (client) hmr update /src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte, /src/app.css
+2:27:46 PM [vite] (ssr) page reload src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte

@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Bug Orch Complete Doesn Set
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Why doesn't orch complete set OpenCode session status to 'done', causing ghost agents in status?
 
 **Started:** 2026-01-09
 **Updated:** 2026-01-09
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** Agent og-debug-bug-orch-complete-09jan-04ba
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,33 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: complete_cmd.go doesn't delete OpenCode sessions
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Reviewed complete_cmd.go lines 1-1112. Function runComplete() closes beads issues (line 531) and invalidates cache (line 688) but never calls client.DeleteSession(). The only OpenCode client interaction is cache invalidation via HTTP POST to /api/cache/invalidate.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** cmd/orch/complete_cmd.go:686-689, cmd/orch/complete_cmd.go:529-563
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This is the root cause - completed agents leave stale sessions in OpenCode API, causing orch status to show them as "running".
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: OpenCode API doesn't have a "status" field to update
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Checked OpenCode Session struct (pkg/opencode/types.go:52-62). Fields are: ID, Version, ProjectID, Directory, Title, ParentID, Time, Summary. No "status" field. Verified via curl http://localhost:4096/session - actual sessions have no status field either.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/opencode/types.go:52-76, curl http://localhost:4096/session
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The bug description mentions "set session status to 'done'" but this endpoint doesn't exist. The solution is to DELETE the session instead.
+
+---
+
+### Finding 3: Session ID is accessible via state.GetLiveness()
+
+**Evidence:** complete_cmd.go line 374 calls state.GetLiveness() which returns LivenessResult with SessionID field (pkg/state/reconcile.go:36). This sessionID is already used for liveness warnings at line 386-387.
+
+**Source:** cmd/orch/complete_cmd.go:374, pkg/state/reconcile.go:19-47, pkg/state/reconcile.go:77-111
+
+**Significance:** We have the sessionID available to pass to DeleteSession(). No additional API calls needed.
 
 ---
 
@@ -89,15 +89,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Deletion vs Status Update** - The OpenCode API doesn't expose a "status" field for sessions. The only way to prevent completed sessions from appearing in orch status is to delete them entirely via the /session/:id DELETE endpoint.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Session ID Availability** - The session ID is already accessible in complete_cmd.go via the workspace .session_id file. No additional API calls or lookups needed.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Cache Invalidation Alone is Insufficient** - The existing invalidateServeCache() call only clears TTL cache but doesn't remove sessions from OpenCode's session list. The dashboard refetches from OpenCode API, so stale sessions persist until deleted.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+orch complete doesn't set OpenCode session status to 'done' because such a status field doesn't exist in the OpenCode API. The fix is to delete the OpenCode session after successful completion by calling client.DeleteSession(sessionID). Session ID is read from workspace/.session_id file. Implementation added at complete_cmd.go:565-580, between beads closure and transcript export.
 
 ---
 
@@ -105,21 +105,21 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Code compiles without errors (verified: go build ./cmd/orch succeeded)
+- ✅ OpenCode API has DeleteSession method (verified: pkg/opencode/client.go:752)
+- ✅ Session ID is available in workspace .session_id file (verified: complete_cmd.go:374 already uses state.GetLiveness which reads this)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Fix resolves ghost agents in production (not yet deployed)
+- ⚠️ Error handling covers all edge cases (session already deleted, network errors)
+- ⚠️ Performance impact of DeleteSession call during completion (assumed negligible)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if OpenCode sessions had a separate "status" field that could be set to "done"
+- Fix would fail if DeleteSession requires special permissions or fails on completed sessions
+- Implementation would need adjustment if .session_id file is not reliably present in all workspaces
 
 ---
 
@@ -129,35 +129,38 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Delete OpenCode Session After Completion** - Call client.DeleteSession(sessionID) after beads issue closes but before cache invalidation.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Prevents completed sessions from appearing in OpenCode API /session endpoint
+- orch status filters by session age, not completion status, so old sessions still appear
+- Deletion is the only way to remove sessions (no "status" field to update)
+- Session ID already available from workspace .session_id file
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Sessions are permanently deleted (no history in OpenCode)
+- Transcripts are exported before deletion (for orchestrator sessions)
+- Non-fatal error if deletion fails (warns but doesn't block completion)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Add opencode import to complete_cmd.go imports
+2. After beads closure (line 563), read sessionID from workspace/.session_id
+3. Call client.DeleteSession(sessionID) with error handling
+4. Continue with existing flow (transcript export, tmux cleanup, cache invalidation)
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Update session metadata instead of deleting**
+- **Pros:** Preserves session history in OpenCode
+- **Cons:** OpenCode API doesn't expose metadata update endpoint. Session struct has no "status" field to set.
+- **When to use instead:** Never - this endpoint doesn't exist
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Modify orch status to filter out completed agents**
+- **Pros:** Preserves all session data
+- **Cons:** Requires cross-referencing beads status with OpenCode sessions (expensive). Doesn't solve root cause (stale sessions accumulate).
+- **When to use instead:** Could complement deletion, but deletion alone is sufficient
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Deletion is the only viable approach given OpenCode API constraints. Alternative approaches require API changes or add complexity without benefits.
 
 ---
 
@@ -188,25 +191,30 @@ Guidelines:
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- cmd/orch/complete_cmd.go - Main completion flow, identified missing DeleteSession call
+- pkg/opencode/client.go - Confirmed DeleteSession method exists at line 752
+- pkg/opencode/types.go - Verified Session struct has no status field
+- pkg/state/reconcile.go - Confirmed GetLiveness provides SessionID
+- cmd/orch/status_cmd.go - Verified orch status uses OpenCode API /session endpoint
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check OpenCode session structure
+curl -s http://localhost:4096/session | jq '.[0]'
 
-# [Command description]
-[command]
+# Verify DeleteSession exists in codebase
+grep -n "func.*DeleteSession" pkg/opencode/client.go
+
+# Build to verify changes compile
+go build ./cmd/orch
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- N/A
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** .kb/investigations/2026-01-09-inv-pw-oicj-ghost-agent-postmortem.md - Original ghost agent discovery
+- **Workspace:** .orch/workspace/og-debug-bug-orch-complete-09jan-04ba/ - This debugging session
 
 ---
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -561,6 +562,26 @@ func runComplete(identifier, workdir string) error {
 		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
 	}
 	fmt.Printf("Reason: %s\n", reason)
+
+	// Delete OpenCode session to prevent ghost agents in orch status
+	// This is done after closing the beads issue but before cleanup, so if
+	// deletion fails, the issue is still properly closed.
+	if workspacePath != "" {
+		// Try to get session ID from workspace .session_id file
+		sessionFile := filepath.Join(workspacePath, ".session_id")
+		if data, err := os.ReadFile(sessionFile); err == nil {
+			sessionID := strings.TrimSpace(string(data))
+			if sessionID != "" {
+				client := opencode.NewClient(serverURL)
+				if err := client.DeleteSession(sessionID); err != nil {
+					// Non-fatal - session might already be deleted or not exist
+					fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session %s: %v\n", sessionID[:12], err)
+				} else {
+					fmt.Printf("Deleted OpenCode session: %s\n", sessionID[:12])
+				}
+			}
+		}
+	}
 
 	// For orchestrator sessions, export transcript before cleanup
 	if workspacePath != "" && isOrchestratorSession {
