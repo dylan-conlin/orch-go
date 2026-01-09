@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Aligned `orch session status` states with `orch status` and improved JSON output for checkpoints.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** `orch session status` now correctly identifies "running" and "idle" agents, and JSON output provides human-readable duration strings.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** State consistency between commands improves user mental models; real-time reconciliation is the authoritative source for agent status.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close investigation and proceed with session.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (tactical improvement)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-09
 **Updated:** 2026-01-09
 **Owner:** Worker Agent
-**Phase:** Investigating
-**Next Step:** Examine `cmd/orch/main.go` and `pkg/opencode/client.go` to understand the current implementation of `orch status`.
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** N/A
@@ -62,6 +62,27 @@ Guidelines:
 **Source:** `cmd/orch/main.go`, `pkg/opencode/client.go`
 
 **Significance:** This will establish the baseline understanding of how session status is currently handled.
+
+---
+
+### Finding 2: Discrepancy between `orch status` and `orch session status`
+
+**Evidence:** `orch status` distinguishes between "running" and "idle" states for agents, while `orch session status` groups both under "active". 
+
+`orch status` (in `cmd/orch/status_cmd.go`):
+- `completed`: beads issue closed
+- `phantom`: beads issue open but agent not running
+- `running`: actively processing
+- `idle`: running but not processing
+
+`orch session status` (in `pkg/session/session.go` via `GetSpawnStatuses`):
+- `active`: agent is alive (tmux or OpenCode)
+- `phantom`: beads issue open but not alive
+- `completed`: beads issue closed and not alive
+
+**Source:** `cmd/orch/status_cmd.go`, `pkg/session/session.go`
+
+**Significance:** This inconsistency can be confusing for users. Aligning the states would provide better visibility into what agents are doing in the session status view.
 
 ---
 
@@ -83,21 +104,31 @@ Guidelines:
 
 **Significance:** [Why this matters, what it tells us, implications for the investigation question]
 
+### Finding 3: Aligned session status and improved JSON output
+
+**Evidence:** I have successfully:
+1. Added `IsProcessing` to `state.LivenessResult` to track if an OpenCode session is actively generating a response.
+2. Updated `pkg/session/session.go` to use `running` and `idle` states for spawns, aligning it with `orch status`.
+3. Updated `cmd/orch/session.go` to display these states and included them in the `counts` summary.
+4. Improved `session.CheckpointStatus` JSON output by adding display strings and hiding raw `time.Duration` fields.
+
+**Source:** `pkg/state/reconcile.go`, `pkg/session/session.go`, `cmd/orch/session.go`
+
+**Significance:** These changes provide consistent visibility into agent activity across both global status and session status views, and make the session status JSON output more suitable for consumption by other tools (like the dashboard).
+
 ---
 
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
-
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **State consistency matters** - Having different definitions of "active" between `orch status` and `orch session status` was a point of confusion that has now been resolved.
+2. **Real-time reconciliation is powerful** - Deriving agent state at query time ensures the status is always accurate, even if the agent died or stalled without updating a file.
+3. **JSON output needs to be user-friendly** - Raw `time.Duration` values are difficult to read in JSON; providing formatted display strings improves usability.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The `orch status` command retrieves session status by querying the OpenCode API and reconciling it with tmux and beads data. The mechanism for updating this status is now consistent across commands, distinguishing between "running" (actively processing) and "idle" (running but waiting) states. The session status display and JSON output have been improved to reflect this.
 
 ---
 
@@ -105,120 +136,27 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Aligned state logic (verified: `orch session status` now shows `🟡` for idle agents).
+- ✅ Updated counts summary (verified: JSON output includes `running` and `idle` counts).
+- ✅ Cleaner JSON for checkpoints (verified: `duration` and `next_threshold` are now human-readable strings).
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Transition from `running` to `idle` in real-time monitoring (though `orch status` handles it, and the underlying logic is shared).
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Changes to the OpenCode API message format would require updates to `IsSessionProcessing`.
 
 ---
 
-## Implementation Recommendations
+## Self-Review
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+- [x] Real test performed (not code review)
+- [x] Conclusion from evidence (not speculation)
+- [x] Question answered
+- [x] File complete
 
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
-
-**Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
-
-**Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Self-Review Status:** PASSED
 
 ---
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
-
----
-
-## References
-
-**Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
-
-**Commands Run:**
-```bash
-# [Command description]
-[command]
-
-# [Command description]
-[command]
-```
-
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
-**Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
-
----
-
-## Investigation History
-
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
-
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
-
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
