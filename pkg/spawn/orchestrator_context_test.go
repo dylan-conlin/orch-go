@@ -138,6 +138,16 @@ func TestWriteOrchestratorContext(t *testing.T) {
 	if _, err := os.Stat(spawnTimePath); os.IsNotExist(err) {
 		t.Error("expected .spawn_time file to exist")
 	}
+
+	// Check screenshots directory was created
+	screenshotsPath := filepath.Join(workspacePath, "screenshots")
+	stat, err := os.Stat(screenshotsPath)
+	if os.IsNotExist(err) {
+		t.Error("expected screenshots directory to exist")
+	}
+	if err == nil && !stat.IsDir() {
+		t.Error("expected screenshots to be a directory")
+	}
 }
 
 func TestWriteContext_RoutesToOrchestrator(t *testing.T) {
@@ -552,12 +562,12 @@ This is a project-specific template.
 func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 	t.Run("context mentions template when it was copied", func(t *testing.T) {
 		cfg := &Config{
-			Task:                   "orchestrate work",
-			SessionGoal:            "Complete the feature epic",
-			SkillName:              "orchestrator",
-			ProjectDir:             "/tmp/test",
-			WorkspaceName:          "og-orch-test-04jan",
-			IsOrchestrator:         true,
+			Task:                      "orchestrate work",
+			SessionGoal:               "Complete the feature epic",
+			SkillName:                 "orchestrator",
+			ProjectDir:                "/tmp/test",
+			WorkspaceName:             "og-orch-test-04jan",
+			IsOrchestrator:            true,
 			HasSessionHandoffTemplate: true, // This flag should be set by WriteOrchestratorContext
 		}
 
@@ -574,12 +584,12 @@ func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 
 	t.Run("context does not mention template when not copied", func(t *testing.T) {
 		cfg := &Config{
-			Task:                   "orchestrate work",
-			SessionGoal:            "Complete the feature epic",
-			SkillName:              "orchestrator",
-			ProjectDir:             "/tmp/test",
-			WorkspaceName:          "og-orch-test-04jan",
-			IsOrchestrator:         true,
+			Task:                      "orchestrate work",
+			SessionGoal:               "Complete the feature epic",
+			SkillName:                 "orchestrator",
+			ProjectDir:                "/tmp/test",
+			WorkspaceName:             "og-orch-test-04jan",
+			IsOrchestrator:            true,
 			HasSessionHandoffTemplate: false,
 		}
 

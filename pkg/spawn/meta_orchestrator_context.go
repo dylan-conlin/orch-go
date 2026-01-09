@@ -259,6 +259,11 @@ func WriteMetaOrchestratorContext(cfg *Config) error {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
 
+	// Create screenshots subdirectory for agent-produced visual artifacts
+	if err := CreateScreenshotsDir(workspacePath); err != nil {
+		return err
+	}
+
 	// Write context file (named META_ORCHESTRATOR_CONTEXT.md for meta-orchestrator spawns)
 	contextPath := filepath.Join(workspacePath, "META_ORCHESTRATOR_CONTEXT.md")
 	if err := os.WriteFile(contextPath, []byte(content), 0644); err != nil {

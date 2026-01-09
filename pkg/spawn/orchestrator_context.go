@@ -195,6 +195,11 @@ func WriteOrchestratorContext(cfg *Config) error {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
 
+	// Create screenshots subdirectory for agent-produced visual artifacts
+	if err := CreateScreenshotsDir(workspacePath); err != nil {
+		return err
+	}
+
 	// Copy SESSION_HANDOFF.md template to workspace if it exists (as reference)
 	cfg.HasSessionHandoffTemplate = copySessionHandoffTemplate(cfg.ProjectDir, workspacePath)
 

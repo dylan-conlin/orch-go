@@ -25,6 +25,16 @@ var (
 	regexMultiNewline          = regexp.MustCompile(`\n{3,}`)
 )
 
+// CreateScreenshotsDir creates the screenshots/ subdirectory in a workspace.
+// This directory is for agent-produced visual artifacts (e.g., UI screenshots for verification).
+func CreateScreenshotsDir(workspacePath string) error {
+	screenshotsPath := filepath.Join(workspacePath, "screenshots")
+	if err := os.MkdirAll(screenshotsPath, 0755); err != nil {
+		return fmt.Errorf("failed to create screenshots directory: %w", err)
+	}
+	return nil
+}
+
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
@@ -295,8 +305,6 @@ func StripBeadsInstructions(content string) string {
 	skipUntilNextSection := false
 	inCodeBlockDuringSkip := false // Track if we entered a code block while skipping
 
-
-
 	for i, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
 
@@ -484,6 +492,11 @@ func WriteContext(cfg *Config) error {
 	workspacePath := cfg.WorkspacePath()
 	if err := os.MkdirAll(workspacePath, 0755); err != nil {
 		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Create screenshots subdirectory for agent-produced visual artifacts
+	if err := CreateScreenshotsDir(workspacePath); err != nil {
+		return err
 	}
 
 	// Write context file

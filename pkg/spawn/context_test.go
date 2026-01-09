@@ -448,6 +448,65 @@ func TestWriteContext(t *testing.T) {
 	}
 }
 
+func TestWriteContext_CreatesScreenshotsDir(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := &Config{
+		Task:          "test task",
+		Project:       "test",
+		ProjectDir:    tempDir,
+		WorkspaceName: "og-test-08jan",
+		BeadsID:       "test-456",
+	}
+
+	if err := WriteContext(cfg); err != nil {
+		t.Fatalf("WriteContext failed: %v", err)
+	}
+
+	// Check screenshots directory was created
+	screenshotsPath := filepath.Join(tempDir, ".orch", "workspace", "og-test-08jan", "screenshots")
+	stat, err := os.Stat(screenshotsPath)
+	if os.IsNotExist(err) {
+		t.Errorf("expected screenshots directory to exist at %s", screenshotsPath)
+	}
+	if err == nil && !stat.IsDir() {
+		t.Errorf("expected screenshots to be a directory, got file")
+	}
+}
+
+func TestCreateScreenshotsDir(t *testing.T) {
+	t.Run("creates screenshots directory in workspace", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		if err := CreateScreenshotsDir(tempDir); err != nil {
+			t.Fatalf("CreateScreenshotsDir failed: %v", err)
+		}
+
+		screenshotsPath := filepath.Join(tempDir, "screenshots")
+		stat, err := os.Stat(screenshotsPath)
+		if os.IsNotExist(err) {
+			t.Error("expected screenshots directory to exist")
+		}
+		if err == nil && !stat.IsDir() {
+			t.Error("expected screenshots to be a directory")
+		}
+	})
+
+	t.Run("idempotent - does not error if directory exists", func(t *testing.T) {
+		tempDir := t.TempDir()
+		screenshotsPath := filepath.Join(tempDir, "screenshots")
+
+		// Create directory first
+		if err := os.MkdirAll(screenshotsPath, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Calling again should not error
+		if err := CreateScreenshotsDir(tempDir); err != nil {
+			t.Errorf("CreateScreenshotsDir should be idempotent, got error: %v", err)
+		}
+	})
+}
+
 func TestMinimalPrompt(t *testing.T) {
 	cfg := &Config{
 		ProjectDir:    "/Users/test/orch-go",
@@ -1034,12 +1093,12 @@ func TestGenerateRegisteredProjectsContext_Format(t *testing.T) {
 	// Test that the format is correct when we provide a mock project list
 	// We can't easily test the actual kb command in unit tests,
 	// but we can verify the format of the generated context
-	
+
 	projects := []RegisteredProject{
 		{Name: "orch-go", Path: "/Users/test/orch-go"},
 		{Name: "snap", Path: "/Users/test/snap"},
 	}
-	
+
 	// Build expected output
 	var sb strings.Builder
 	sb.WriteString("## Registered Projects\n\n")
@@ -1050,9 +1109,9 @@ func TestGenerateRegisteredProjectsContext_Format(t *testing.T) {
 		sb.WriteString("| " + p.Name + " | `" + p.Path + "` |\n")
 	}
 	sb.WriteString("\n**Usage:** `orch spawn --workdir <path> SKILL \"task\"`\n\n")
-	
+
 	expected := sb.String()
-	
+
 	// Verify the format matches our expectations
 	if !strings.Contains(expected, "## Registered Projects") {
 		t.Error("expected registered projects header")

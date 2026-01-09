@@ -63,9 +63,9 @@ Test skill content for meta-orchestrator.
 		"work toward",   // Task-completion language
 		"When you've accomplished",
 		"produce a SESSION_HANDOFF.md",
-		"/exit",        // Meta-orchestrators don't exit
+		"/exit",           // Meta-orchestrators don't exit
 		"Phase: Complete", // Worker-level tracking
-		"bd comment",   // Worker-level tracking
+		"bd comment",      // Worker-level tracking
 	}
 
 	for _, pattern := range forbiddenPatterns {
@@ -117,6 +117,16 @@ func TestWriteMetaOrchestratorContext(t *testing.T) {
 	spawnTimePath := filepath.Join(workspacePath, ".spawn_time")
 	if _, err := os.Stat(spawnTimePath); os.IsNotExist(err) {
 		t.Error("expected .spawn_time file to exist")
+	}
+
+	// Check screenshots directory was created
+	screenshotsPath := filepath.Join(workspacePath, "screenshots")
+	stat, err := os.Stat(screenshotsPath)
+	if os.IsNotExist(err) {
+		t.Error("expected screenshots directory to exist")
+	}
+	if err == nil && !stat.IsDir() {
+		t.Error("expected screenshots to be a directory")
 	}
 }
 
@@ -348,8 +358,8 @@ func TestWriteContext_PriorityOrder(t *testing.T) {
 		SkillName:          "meta-orchestrator",
 		ProjectDir:         tempDir,
 		WorkspaceName:      "og-work-priority-test-04jan",
-		IsOrchestrator:     true,  // Both are true
-		IsMetaOrchestrator: true,  // Meta should take priority
+		IsOrchestrator:     true, // Both are true
+		IsMetaOrchestrator: true, // Meta should take priority
 	}
 
 	if err := WriteContext(cfg); err != nil {
