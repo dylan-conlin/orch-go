@@ -83,3 +83,5 @@
 {"time":"2026-01-09T12:55:36-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-09T13:14:34-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-09T13:14:57-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-09T13:17:35-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-09T14:16:01-08:00","action":"bypass","reason":"Bug fix: stale beadsClient cleanup when daemon socket disappears - mutex-protected lifecycle management"}
