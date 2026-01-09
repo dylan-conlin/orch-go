@@ -424,6 +424,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// By limiting to recent sessions, we reduce this to ~10-20 RPC calls.
 	// Sessions older than this are simply excluded from the API response.
 	beadsFetchThreshold := 2 * time.Hour
+	if sinceDuration > beadsFetchThreshold {
+		beadsFetchThreshold = sinceDuration
+	} else if sinceDuration == 0 {
+		// "all" requested
+		beadsFetchThreshold = 365 * 24 * time.Hour
+	}
 
 	// Track which agents need post-filtering by beads ID (idle > displayThreshold)
 	// These will be filtered out after Phase check unless Phase: Complete
@@ -650,6 +656,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			// Read session ID from workspace
 			if sessionID := spawn.ReadSessionID(workspacePath); sessionID != "" {
 				agent.SessionID = sessionID
+			}
+
+			// Read spawn time from workspace
+			if spawnTime := spawn.ReadSpawnTime(workspacePath); !spawnTime.IsZero() {
+				agent.SpawnedAt = spawnTime.Format(time.RFC3339)
 			}
 
 			// Parse synthesis (only for full-tier)
