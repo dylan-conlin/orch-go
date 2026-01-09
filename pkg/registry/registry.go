@@ -317,14 +317,11 @@ func (r *Registry) Register(agent *Agent) error {
 				ID:         agent.ID,
 				BeadsID:    agent.BeadsID,
 				SessionID:  agent.SessionID,
-				WorkspaceName: agent.WorkspaceName,
 				ProjectDir: agent.ProjectDir,
-				WindowID:   agent.WindowID,
 				Skill:      agent.Skill,
 				Status:     StateActive,
 				SpawnedAt:  now,
 				UpdatedAt:  now,
-				Tier:       agent.Tier,
 			}
 			return nil
 		}
