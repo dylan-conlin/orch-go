@@ -36,9 +36,11 @@ const TimeFormat = time.RFC3339Nano
 // Agent represents a tracked agent in the registry.
 type Agent struct {
 	// Core identification
-	ID        string `json:"id"`                   // Unique identifier (workspace name)
-	BeadsID   string `json:"beads_id,omitempty"`   // Foreign key to beads issue
-	SessionID string `json:"session_id,omitempty"` // OpenCode session ID
+	ID         string `json:"id"`                   // Unique identifier (workspace name)
+	BeadsID    string `json:"beads_id,omitempty"`   // Foreign key to beads issue
+	Mode       string `json:"mode,omitempty"`       // Agent mode: "claude" or "opencode"
+	SessionID  string `json:"session_id,omitempty"` // OpenCode session ID
+	TmuxWindow string `json:"tmux_window,omitempty"` // Tmux window name (for claude mode)
 
 	// State
 	Status AgentState `json:"status"`
@@ -316,7 +318,9 @@ func (r *Registry) Register(agent *Agent) error {
 			r.agents[i] = &Agent{
 				ID:         agent.ID,
 				BeadsID:    agent.BeadsID,
+				Mode:       agent.Mode,
 				SessionID:  agent.SessionID,
+				TmuxWindow: agent.TmuxWindow,
 				ProjectDir: agent.ProjectDir,
 				Skill:      agent.Skill,
 				Status:     StateActive,
