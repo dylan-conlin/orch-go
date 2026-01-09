@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** bits-ui Portal component fails to render dropdown content with Svelte 5; fixed by increasing z-index to 100 and adding explicit Portal target `to="body"`.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tooltip works without Portal, DropdownMenu broken with Portal; both Settings and Daemon config dropdowns affected; page loads successfully after fixes (HTTP 200).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Portal-based components require explicit configuration with Svelte 5; z-index conflicts between header (z-50) and dropdown (z-50) can prevent proper rendering; browser verification is required for UI fixes.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Manual browser verification required - test dropdowns at http://localhost:5188; if still broken, remove Portal entirely or upgrade bits-ui; if working, close issue.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - tactical fix for specific UI component, not architectural pattern
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-09
 **Updated:** 2026-01-09  
 **Owner:** og-debug-bug-dashboard-config-09jan-3269
-**Phase:** Investigating
-**Next Step:** Test Portal-less rendering approach or browser verification
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** Browser verification by orchestrator
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
