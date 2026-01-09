@@ -73,74 +73,135 @@ pkg/
 
 These guides synthesize 280+ investigations into authoritative references. Created Jan 4, 2026 after repeatedly re-investigating documented problems.
 
-## Server Management Architecture (Three Layers)
+## Dashboard Server Management (Overmind)
 
-The orchestration system uses three distinct layers for server management:
+**Changed Jan 9, 2026:** Replaced launchd with overmind for dashboard services. See `.kb/investigations/2026-01-09-inv-overmind-vs-launchd-prototype.md` for rationale.
 
-| Layer | Component | Purpose | Lifecycle |
-|-------|-----------|---------|-----------|
-| **1. Persistent Services** | launchd plists | Background services that run always | macOS-managed, auto-restart |
-| **2. Project Dev Servers** | tmuxinator | Per-project vite/API servers | Manual via `orch servers` |
-| **3. CLI Wrapper** | `orch servers` | User-facing commands | Wraps tmuxinator |
+### What is Overmind?
 
-### Layer 1: Persistent Services (launchd)
+Standard process manager (like foreman) that provides:
+- ✅ Unified start/stop/restart
+- ✅ Health checks (`overmind status`)
+- ✅ Automatic process supervision
+- ✅ Clean child process cleanup
+- ✅ Unified logs with color coding
+- ✅ Atomic deployment
 
-Located in `~/Library/LaunchAgents/`:
-- `com.orch.daemon.plist` - Agent spawner daemon, polls beads for triage:ready issues
-- `com.orch-go.serve.plist` - API server for dashboard (port 3348)
-- `com.orch-go.web.plist` - Dashboard dev server (vite on port 5188)
+### Procfile (Single Source of Truth)
 
-These run continuously and auto-restart on failure.
+Location: `Procfile` (project root)
 
-### Layer 2: Project Dev Servers (tmuxinator)
-
-Located in `~/.tmuxinator/workers-{project}.yml`:
-- Per-project tmux sessions with "servers" window
-- Project-specific vite/API/docker commands
-- Started/stopped manually or via `orch servers`
-
-### Layer 3: CLI Wrapper (orch servers)
-
-Wraps tmuxinator with port registry awareness:
-- `orch servers list` - Shows projects with ports and status
-- `orch servers start <project>` - Runs `tmuxinator start workers-{project}`
-- `orch servers stop <project>` - Kills the tmux session
-
-**Key insight:** Layer 1 is for orch-go infrastructure. Layer 2 is for OTHER projects' dev servers. Don't run orch-go vite in both layers.
-
-### Launchd Operations (Restarting Services)
-
-**All services:**
-```bash
-# Check status
-launchctl list | grep -E "orch|opencode"
-
-# Service-specific restart (preferred - uses kickstart)
-launchctl kickstart -k gui/$(id -u)/com.orch.daemon
-launchctl kickstart -k gui/$(id -u)/com.orch-go.serve
-launchctl kickstart -k gui/$(id -u)/com.orch-go.web
-launchctl kickstart -k gui/$(id -u)/com.opencode.serve
+```procfile
+api: orch serve
+web: cd web && bun run dev
+opencode: ~/.bun/bin/opencode serve --port 4096
 ```
 
-**After editing a plist file:**
+That's it. All dashboard services in 3 lines.
+
+### Common Commands
+
 ```bash
-# Unload, then reload (required for plist changes)
-launchctl bootout gui/$(id -u)/com.orch-go.web
-launchctl load ~/Library/LaunchAgents/com.orch-go.web.plist
+# Start all services (auto-starts on shell init via ~/.zshrc)
+overmind start
+
+# Start in daemon mode (background)
+overmind start -D
+
+# Check what's running
+overmind status
+# Output:
+# PROCESS   PID       STATUS
+# api       44568     running
+# web       44569     running
+# opencode  44570     running
+
+# Restart everything (atomic deployment)
+overmind restart
+
+# Restart single service
+overmind restart api
+overmind restart web
+
+# View unified logs
+overmind echo
+
+# Stop everything cleanly
+overmind quit
 ```
 
-**Service ports:**
+### Atomic Deployment
+
+When you rebuild the binary or change code:
+
+```bash
+make build && overmind restart
+```
+
+That's it. Overmind kills old processes cleanly, starts new ones, no port conflicts, no orphans.
+
+### Service Ports
+
 | Service | Port | Purpose |
 |---------|------|---------|
-| `com.opencode.serve` | 4096 | OpenCode server (Claude sessions) |
-| `com.orch-go.serve` | 3348 | orch serve API (dashboard backend) |
-| `com.orch-go.web` | 5188 | Vite dev server (dashboard frontend) |
-| `com.orch.daemon` | N/A | Agent spawner (no port) |
+| `api` | 3348 | orch serve API (dashboard backend) |
+| `web` | 5188 | Vite dev server (dashboard frontend) |
+| `opencode` | 4096 | OpenCode server (Claude sessions) |
 
-**Gotchas:**
-- Use `kickstart -k` for restart (not `stop`/`start`)
-- After plist edits, must `bootout` then `load` (not just restart)
-- Check logs: `~/.orch/logs/` for orch services, `~/.orch/daemon.log` for daemon
+### Auto-Start on Shell Init
+
+Added to `~/.zshrc`:
+
+```bash
+# Auto-start dashboard services if not already running
+if [[ -f ~/Documents/personal/orch-go/Procfile ]] && ! overmind status &>/dev/null; then
+    (cd ~/Documents/personal/orch-go && overmind start -D &>/dev/null &)
+fi
+
+# Convenience aliases
+alias orch-restart='cd ~/Documents/personal/orch-go && overmind restart'
+alias orch-logs='cd ~/Documents/personal/orch-go && overmind echo'
+alias orch-status='cd ~/Documents/personal/orch-go && overmind status'
+```
+
+### Troubleshooting
+
+**Services not starting:**
+```bash
+cd ~/Documents/personal/orch-go
+overmind quit  # Stop cleanly
+rm .overmind.sock  # Remove stale socket
+overmind start  # Start fresh
+```
+
+**Check logs:**
+```bash
+overmind echo  # View all service logs
+```
+
+**Kill stuck processes:**
+```bash
+lsof -ti:3348 | xargs kill -9  # Force kill port 3348
+lsof -ti:5188 | xargs kill -9  # Force kill port 5188
+overmind start  # Restart
+```
+
+### What Replaced launchd
+
+Previously used 3 launchd plists (120+ lines XML) for:
+- `com.orch-go.serve.plist`
+- `com.orch-go.web.plist`
+- `com.opencode.serve.plist`
+
+Now: **Procfile (3 lines)** + overmind.
+
+**Benefits:**
+- No 143 mystery restarts
+- No orphaned vite processes
+- No "old binary still running after rebuild"
+- No "did you restart?" questions
+- Atomic deployment
+- Visible status
 
 ## Key Packages
 
