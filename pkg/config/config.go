@@ -19,7 +19,22 @@ import (
 
 // Config represents the project configuration.
 type Config struct {
-	Servers map[string]int `yaml:"servers"`
+	SpawnMode string         `yaml:"spawn_mode"`           // "claude" | "opencode"
+	Claude    ClaudeConfig   `yaml:"claude,omitempty"`     // Claude mode settings
+	OpenCode  OpenCodeConfig `yaml:"opencode,omitempty"`   // OpenCode mode settings
+	Servers   map[string]int `yaml:"servers,omitempty"`
+}
+
+// ClaudeConfig holds settings for Claude mode spawning.
+type ClaudeConfig struct {
+	Model       string `yaml:"model"`         // "opus" | "sonnet" | "haiku"
+	TmuxSession string `yaml:"tmux_session"`  // tmux session name
+}
+
+// OpenCodeConfig holds settings for OpenCode mode spawning.
+type OpenCodeConfig struct {
+	Model  string `yaml:"model"`  // default model for spawns
+	Server string `yaml:"server"` // HTTP server URL
 }
 
 // DefaultPath returns the default config file path for a project directory.
@@ -41,10 +56,8 @@ func Load(projectDir string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Initialize servers map if nil
-	if cfg.Servers == nil {
-		cfg.Servers = make(map[string]int)
-	}
+	// Apply defaults for backward compatibility
+	cfg.ApplyDefaults()
 
 	return &cfg, nil
 }
@@ -70,6 +83,35 @@ func Save(projectDir string, cfg *Config) error {
 	}
 
 	return nil
+}
+
+// ApplyDefaults sets default values for unspecified config fields.
+func (c *Config) ApplyDefaults() {
+	// Default spawn mode to opencode for backward compatibility
+	if c.SpawnMode == "" {
+		c.SpawnMode = "opencode"
+	}
+
+	// Default Claude settings
+	if c.Claude.Model == "" {
+		c.Claude.Model = "opus"
+	}
+	if c.Claude.TmuxSession == "" {
+		c.Claude.TmuxSession = "workers-orch-go"
+	}
+
+	// Default OpenCode settings
+	if c.OpenCode.Model == "" {
+		c.OpenCode.Model = "flash"
+	}
+	if c.OpenCode.Server == "" {
+		c.OpenCode.Server = "http://localhost:4096"
+	}
+
+	// Initialize servers map if nil
+	if c.Servers == nil {
+		c.Servers = make(map[string]int)
+	}
 }
 
 // GetServerPort returns the port for a service, or 0 and false if not found.
