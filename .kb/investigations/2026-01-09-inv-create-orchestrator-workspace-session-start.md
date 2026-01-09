@@ -11,7 +11,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Knowledge:** Issue description is partially outdated; multiple conflicting patterns exist (session/ vs workspace/, date-based vs timestamp-based, og-orch-* naming); progressive vs end-population approaches conflict; workspace path not tracked in session.json.
 
-**Next:** Escalate 5 design questions to orchestrator (workspace location, SESSION_HANDOFF.md population timing, SPAWN_CONTEXT.md necessity, SYNTHESIS.md purpose, issue status); cannot proceed with implementation until decisions made.
+**Next:** Close issue orch-go-xn6ok as already implemented (feature exists since Jan 6 commit 205f7ba); optionally create new issue for workspace_path tracking enhancement.
 
 **Promote to Decision:** recommend-no - These are one-time clarifications, not architectural patterns
 
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-09
 **Updated:** 2026-01-09
 **Owner:** orch-go-xn6ok
-**Phase:** Investigating
-**Next Step:** Clarify requirements with orchestrator (issue description may be outdated)
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None (investigation complete, issue to be closed)
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -202,7 +202,16 @@ Workspace creation for orchestrator sessions was partially implemented on Jan 6,
 
 **Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
 
-**⚠️ ESCALATION REQUIRED:** Multiple design decisions need orchestrator input before implementation can proceed.
+**✅ ORCHESTRATOR DECISIONS RECEIVED:**
+
+All 5 questions clarified:
+1. **Location:** Current (~/.orch/session/{date}/) is CORRECT - don't move to .orch/workspace/
+2. **SESSION_HANDOFF.md:** Progressive filling is CORRECT - issue requirement was wrong
+3. **SPAWN_CONTEXT.md:** NOT needed for interactive sessions (only for spawned agents)
+4. **SYNTHESIS.md:** NOT needed for interactive sessions (orchestrators use investigation/decision files)
+5. **Issue status:** Outdated - feature already implemented Jan 6, close as duplicate
+
+**Outcome:** Issue should be closed as already implemented. Optional enhancement: add workspace_path to session.json (create separate issue).
 
 ### Questions for Orchestrator
 
@@ -334,3 +343,13 @@ grep -n "createSessionWorkspace" cmd/orch/session.go
 **2026-01-09 15:00:** Investigation paused for escalation
 - Status: Paused - needs orchestrator clarification
 - Key outcome: Workspace creation exists but differs from issue requirements; need design decisions before proceeding
+
+**2026-01-09 15:15:** Orchestrator decisions received
+- All 5 questions clarified
+- Current implementation is correct - no changes needed
+- Issue description was wrong on multiple points (location, SESSION_HANDOFF.md timing, SPAWN_CONTEXT.md/SYNTHESIS.md necessity)
+- Decision: Close issue as already implemented
+
+**2026-01-09 15:15:** Investigation completed
+- Status: Complete
+- Key outcome: Feature already exists as of Jan 6; issue should be closed as duplicate/outdated
