@@ -12,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -61,9 +62,9 @@ func init() {
 }
 
 func runAbandon(beadsID, reason, workdir string) error {
-	// Strategy: Check liveness directly via tmux and OpenCode, not registry
-	// An agent is "alive" if it has a tmux window OR an active OpenCode session
-
+	// Strategy: Use registry to determine mode and route abandonment
+	// Fall back to direct discovery if not in registry
+	
 	// Determine project directory - use --workdir if provided, otherwise current directory
 	var projectDir string
 	var err error
@@ -117,29 +118,68 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	client := opencode.NewClient(serverURL)
 
-	// Check for tmux window
+	// Try registry first (primary source of truth)
+	agentReg, _ := registry.New("")
+	var agent *registry.Agent
+	if agentReg != nil {
+		agent = agentReg.Find(beadsID)
+	}
+
 	var windowInfo *tmux.WindowInfo
-	sessions, _ := tmux.ListWorkersSessions()
-	for _, session := range sessions {
-		window, err := tmux.FindWindowByBeadsID(session, beadsID)
-		if err == nil && window != nil {
-			windowInfo = window
-			break
-		}
-	}
-
-	// Check for OpenCode session
 	var sessionID string
-	allSessions, _ := client.ListSessions(projectDir)
-	for _, s := range allSessions {
-		if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
-			sessionID = s.ID
-			break
+	var workspacePath, agentName string
+
+	if agent != nil {
+		fmt.Printf("Found agent in registry: %s (mode: %s)\n", agent.ID, agent.Mode)
+		agentName = agent.ID
+		sessionID = agent.SessionID
+		if agent.Mode == registry.ModeTmux && agent.TmuxWindow != "" {
+			windowInfo = &tmux.WindowInfo{
+				Target: agent.TmuxWindow,
+				Name:   agent.TmuxWindow,
+			}
+		}
+		// Resolve workspace path from project dir and agent ID
+		if agent.ProjectDir != "" {
+			workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
 		}
 	}
 
-	// Find workspace for logging
-	workspacePath, agentName := findWorkspaceByBeadsID(projectDir, beadsID)
+	// Discovery fallback if registry didn't give us everything
+	if windowInfo == nil {
+		// Check for tmux window
+		sessions, _ := tmux.ListWorkersSessions()
+		for _, session := range sessions {
+			window, err := tmux.FindWindowByBeadsID(session, beadsID)
+			if err == nil && window != nil {
+				windowInfo = window
+				break
+			}
+		}
+	}
+
+	if sessionID == "" {
+		// Check for OpenCode session
+		allSessions, _ := client.ListSessions(projectDir)
+		for _, s := range allSessions {
+			if strings.Contains(s.Title, beadsID) || extractBeadsIDFromTitle(s.Title) == beadsID {
+				sessionID = s.ID
+				break
+			}
+		}
+	}
+
+	if workspacePath == "" || agentName == "" {
+		// Find workspace for logging
+		wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
+		if workspacePath == "" {
+			workspacePath = wPath
+		}
+		if agentName == "" {
+			agentName = aName
+		}
+	}
+
 	if agentName == "" {
 		agentName = beadsID // Use beads ID as fallback
 	}

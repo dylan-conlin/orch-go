@@ -24,6 +24,9 @@ type LivenessResult struct {
 	// OpencodeLive indicates if an OpenCode session is active.
 	OpencodeLive bool
 
+	// IsProcessing indicates if the agent is actively generating a response.
+	IsProcessing bool
+
 	// BeadsOpen indicates if the beads issue is open (not closed).
 	BeadsOpen bool
 
@@ -95,6 +98,10 @@ func GetLiveness(beadsID, serverURL, projectDir string) LivenessResult {
 	// 3. Check OpenCode session
 	if serverURL != "" {
 		result.OpencodeLive, result.SessionID = checkOpenCodeSession(serverURL, projectDir, beadsID, workspacePath)
+		if result.OpencodeLive && result.SessionID != "" {
+			client := opencode.NewClient(serverURL)
+			result.IsProcessing = client.IsSessionProcessing(result.SessionID)
+		}
 	}
 
 	// 4. Check tmux window

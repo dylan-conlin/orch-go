@@ -290,7 +290,7 @@ func runComplete(identifier, workdir string) error {
 			}
 
 			// Use beadsProjectDir for verification (where the beads issue lives)
-			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "")
+			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "", serverURL)
 			if err != nil {
 				return fmt.Errorf("verification failed: %w", err)
 			}
@@ -341,7 +341,7 @@ func runComplete(identifier, workdir string) error {
 	} else {
 		// --force was used, run verification anyway to capture which gates would have failed
 		if !isOrchestratorSession && !isUntracked {
-			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "")
+			result, err := verify.VerifyCompletionFull(beadsID, workspacePath, beadsProjectDir, "", serverURL)
 			if err == nil {
 				skillName = result.Skill
 				if !result.Passed {

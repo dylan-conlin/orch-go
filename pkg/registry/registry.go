@@ -29,6 +29,12 @@ const (
 	StateDeleted   AgentState = "deleted"
 )
 
+// Agent modes.
+const (
+	ModeTmux     = "claude"
+	ModeHeadless = "opencode"
+)
+
 // TimeFormat is the timestamp format used in the registry.
 // Using RFC3339Nano for sub-second precision in concurrent operations.
 const TimeFormat = time.RFC3339Nano

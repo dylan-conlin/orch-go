@@ -286,7 +286,7 @@ func getCompletionsForReview() ([]CompletionInfo, error) {
 				// Use lightweight verification for review (avoids O(n) git/build commands)
 				// Full verification with git diff, build checks, etc. is done in orch complete
 				comments := commentsMap[ws.beadsID]
-				result, err := verify.VerifyCompletionForReview(ws.beadsID, ws.dirPath, "", comments)
+				result, err := verify.VerifyCompletionForReview(ws.beadsID, ws.dirPath, "", serverURL, comments)
 				if err != nil {
 					info.VerifyError = fmt.Sprintf("verification error: %v", err)
 					info.VerifyOK = false

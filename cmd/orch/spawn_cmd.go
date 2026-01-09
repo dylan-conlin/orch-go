@@ -24,6 +24,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -1277,6 +1278,9 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		}
 	}
 
+	// Register agent in general registry
+	registerAgent(cfg, result.SessionID, "", registry.ModeHeadless)
+
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, result.SessionID, task)
 
@@ -1362,6 +1366,9 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	// Start background cleanup goroutine
 	result.StartBackgroundCleanup()
+
+	// Register agent in general registry
+	registerAgent(cfg, sessionID, "", registry.ModeHeadless)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -1552,6 +1559,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 		}
 	}
+
+	// Register agent in general registry
+	registerAgent(cfg, sessionID, windowTarget, registry.ModeTmux)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -2011,5 +2021,34 @@ func logTriageBypass(skillName, task string) {
 	}
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log triage bypass: %v\n", err)
+	}
+}
+
+// registerAgent registers any agent (worker or orchestrator) in the general agent registry.
+func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode string) {
+	agentReg, err := registry.New("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to open agent registry: %v\n", err)
+		return
+	}
+
+	agent := &registry.Agent{
+		ID:         cfg.WorkspaceName,
+		BeadsID:    cfg.BeadsID,
+		Mode:       mode,
+		SessionID:  sessionID,
+		TmuxWindow: tmuxWindow,
+		ProjectDir: cfg.ProjectDir,
+		Skill:      cfg.SkillName,
+		Status:     registry.StateActive,
+	}
+
+	if err := agentReg.Register(agent); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to register agent in registry: %v\n", err)
+		return
+	}
+
+	if err := agentReg.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save agent registry: %v\n", err)
 	}
 }

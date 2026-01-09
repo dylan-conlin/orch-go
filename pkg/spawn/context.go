@@ -524,6 +524,14 @@ func WriteContext(cfg *Config) error {
 		}
 	}
 
+	// Write spawn mode file for orch complete to be mode-aware
+	if cfg.SpawnMode != "" {
+		spawnModePath := filepath.Join(workspacePath, ".spawn_mode")
+		if err := os.WriteFile(spawnModePath, []byte(cfg.SpawnMode), 0644); err != nil {
+			return fmt.Errorf("failed to write spawn mode file: %w", err)
+		}
+	}
+
 	return nil
 }
 

@@ -250,6 +250,7 @@ func runDaemonLoop() error {
 		// - Block/Failed: Requires human review (issue stays open)
 		completionConfig := daemon.CompletionConfig{
 			ProjectDir: projectDir,
+			ServerURL:  serverURL,
 			DryRun:     false,
 			Verbose:    daemonVerbose,
 		}

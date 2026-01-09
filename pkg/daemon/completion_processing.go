@@ -31,6 +31,10 @@ type CompletionConfig struct {
 	// ProjectDir is the project root directory.
 	// Used to locate workspaces and verify constraints.
 	ProjectDir string
+
+	// ServerURL is the OpenCode server URL.
+	// Used for mode-aware backend verification.
+	ServerURL string
 }
 
 // DefaultCompletionConfig returns sensible defaults for completion configuration.
@@ -200,6 +204,7 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		agent.WorkspacePath,
 		config.ProjectDir,
 		tier,
+		config.ServerURL,
 	)
 	if err != nil {
 		result.Error = fmt.Errorf("verification failed: %w", err)

@@ -1,4 +1,4 @@
-spawn_mode: opencode
+spawn_mode: claude
 claude:
     model: opus
     tmux_session: workers-orch-go

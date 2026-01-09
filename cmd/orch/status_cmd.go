@@ -14,6 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
@@ -77,6 +78,7 @@ type AccountUsage struct {
 type AgentInfo struct {
 	SessionID    string                        `json:"session_id"`
 	BeadsID      string                        `json:"beads_id,omitempty"`
+	Mode         string                        `json:"mode,omitempty"` // Agent mode: "claude" or "opencode"
 	Skill        string                        `json:"skill,omitempty"`
 	Account      string                        `json:"account,omitempty"`
 	Runtime      string                        `json:"runtime"`
@@ -171,6 +173,13 @@ func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
 
+	// Initialize agent registry
+	agentReg, err := registry.New("")
+	if err != nil {
+		// Log error but continue - registry might be missing or corrupt
+		fmt.Fprintf(os.Stderr, "Warning: failed to load agent registry: %v\n", err)
+	}
+
 	agents := make([]AgentInfo, 0)
 	seenBeadsIDs := make(map[string]bool)
 
@@ -213,16 +222,81 @@ func runStatus(serverURL string) error {
 	// Get current project's workspace directory for workspace lookups
 	projectDir, _ := os.Getwd()
 
-	// Phase 1: Collect agents from tmux windows (primary source of truth for "active")
-	type tmuxAgent struct {
-		beadsID string
-		skill   string
-		project string
-		window  string
-		title   string
-	}
-	var tmuxAgents []tmuxAgent
+	// Phase 1: Collect agents from registry (primary source of truth for mode)
+	if agentReg != nil {
+		registryAgents := agentReg.ListActive()
+		if statusAll {
+			registryAgents = append(registryAgents, agentReg.ListCompleted()...)
+		}
 
+		for _, a := range registryAgents {
+			if a.BeadsID != "" {
+				if !seenBeadsIDs[a.BeadsID] {
+					beadsIDsToFetch = append(beadsIDsToFetch, a.BeadsID)
+					seenBeadsIDs[a.BeadsID] = true
+				}
+				if a.ProjectDir != "" {
+					beadsProjectDirs[a.BeadsID] = a.ProjectDir
+				}
+			}
+
+			// Unify into AgentInfo
+			info := AgentInfo{
+				SessionID:  a.SessionID,
+				BeadsID:    a.BeadsID,
+				Mode:       a.Mode,
+				Skill:      a.Skill,
+				ProjectDir: a.ProjectDir,
+				Project:    extractProjectFromBeadsID(a.BeadsID),
+			}
+
+			// Mode-aware enrichment
+			if a.Mode == "claude" || a.Mode == "tmux" {
+				info.Window = a.TmuxWindow
+				info.Title = a.TmuxWindow // Default to window name
+
+				// Check if tmux window actually exists
+				windowExists := false
+				if a.TmuxWindow != "" {
+					if strings.HasPrefix(a.TmuxWindow, "@") {
+						windowExists = tmux.WindowExistsByID(a.TmuxWindow)
+					} else {
+						windowExists = tmux.WindowExists(a.TmuxWindow)
+					}
+				}
+
+				if !windowExists {
+					info.SessionID = "tmux-stalled"
+				}
+
+				// Even in claude mode, we might have an OpenCode session for tokens/processing
+				if a.SessionID != "" {
+					if s, ok := sessionMap[a.SessionID]; ok {
+						createdAt := time.Unix(s.Time.Created/1000, 0)
+						info.Runtime = formatDuration(now.Sub(createdAt))
+						info.IsProcessing = client.IsSessionProcessing(s.ID)
+						if info.Title == "" || info.Title == a.TmuxWindow {
+							info.Title = s.Title
+						}
+					}
+				}
+			} else if a.Mode == "opencode" || a.Mode == "headless" {
+				if s, ok := sessionMap[a.SessionID]; ok {
+					createdAt := time.Unix(s.Time.Created/1000, 0)
+					info.Runtime = formatDuration(now.Sub(createdAt))
+					info.Title = s.Title
+					info.IsProcessing = client.IsSessionProcessing(s.ID)
+				} else {
+					info.SessionID = "api-stalled"
+				}
+			}
+
+			// Add to agents list
+			agents = append(agents, info)
+		}
+	}
+
+	// Phase 2: Discovery - Collect agents from tmux windows (for untracked or legacy agents)
 	workersSessions, _ := tmux.ListWorkersSessions()
 	for _, sessionName := range workersSessions {
 		windows, _ := tmux.ListWindows(sessionName)
@@ -237,12 +311,28 @@ func runStatus(serverURL string) error {
 				continue
 			}
 
-			tmuxAgents = append(tmuxAgents, tmuxAgent{
-				beadsID: beadsID,
-				skill:   extractSkillFromWindowName(w.Name),
-				project: extractProjectFromBeadsID(beadsID),
-				window:  w.Target,
-				title:   w.Name,
+			// Skip if already tracked via registry
+			if seenBeadsIDs[beadsID] {
+				// Enrich existing AgentInfo with window details if missing
+				for i := range agents {
+					if agents[i].BeadsID == beadsID {
+						if agents[i].Window == "" {
+							agents[i].Window = w.Target
+							agents[i].Title = w.Name
+						}
+						break
+					}
+				}
+				continue
+			}
+
+			agents = append(agents, AgentInfo{
+				BeadsID: beadsID,
+				Mode:    "claude", // Legacy/untracked tmux agents are claude mode
+				Skill:   extractSkillFromWindowName(w.Name),
+				Project: extractProjectFromBeadsID(beadsID),
+				Window:  w.Target,
+				Title:   w.Name,
 			})
 
 			if beadsID != "" && !seenBeadsIDs[beadsID] {
@@ -252,15 +342,7 @@ func runStatus(serverURL string) error {
 		}
 	}
 
-	// Phase 2: Collect beads IDs from active OpenCode sessions
-	type opcodeAgent struct {
-		session *opencode.Session
-		beadsID string
-		skill   string
-		project string
-	}
-	var opcodeAgents []opcodeAgent
-
+	// Phase 3: Discovery - Collect beads IDs from active OpenCode sessions (untracked)
 	for _, s := range sessions {
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		if now.Sub(updatedAt) > maxIdleTime {
@@ -272,17 +354,21 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
-		// Skip if already tracked via tmux
+		// Skip if already tracked via registry or tmux
 		if seenBeadsIDs[beadsID] {
 			continue
 		}
 
-		sessionCopy := s // Copy to avoid closure issues
-		opcodeAgents = append(opcodeAgents, opcodeAgent{
-			session: &sessionCopy,
-			beadsID: beadsID,
-			skill:   extractSkillFromTitle(s.Title),
-			project: extractProjectFromBeadsID(beadsID),
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+		agents = append(agents, AgentInfo{
+			SessionID:    s.ID,
+			BeadsID:      beadsID,
+			Mode:         "opencode", // Untracked OpenCode sessions are opencode mode
+			Title:        s.Title,
+			Runtime:      formatDuration(now.Sub(createdAt)),
+			Skill:        extractSkillFromTitle(s.Title),
+			Project:      extractProjectFromBeadsID(beadsID),
+			IsProcessing: client.IsSessionProcessing(s.ID),
 		})
 
 		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
@@ -333,115 +419,51 @@ func runStatus(serverURL string) error {
 	// This also provides task info for closed issues (not returned by ListOpenIssues)
 	allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
 
-	// === Now build agents from collected data ===
+	// === Now enrich and filter agents ===
 
-	// Process tmux agents
-	for _, ta := range tmuxAgents {
-		// Check if there's an active OpenCode session for this beads ID
-		session := beadsToSession[ta.beadsID]
-		sessionID := ""
-		runtime := "unknown"
-		isPhantom := true
-		isProcessing := false
-
-		if session != nil {
-			sessionID = session.ID
-			createdAt := time.Unix(session.Time.Created/1000, 0)
-			runtime = formatDuration(now.Sub(createdAt))
-			isPhantom = false
-			// Check if the session is actively processing (has pending response)
-			isProcessing = client.IsSessionProcessing(session.ID)
-		} else {
-			sessionID = "tmux-stalled"
-		}
+	for i := range agents {
+		agent := &agents[i]
 
 		// Get phase from pre-fetched comments
-		var phase, task string
-		var isCompleted bool
-		if comments, ok := commentsMap[ta.beadsID]; ok {
+		if comments, ok := commentsMap[agent.BeadsID]; ok {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
-				phase = phaseStatus.Phase
+				agent.Phase = phaseStatus.Phase
 			}
 		}
+
 		// Get task and check closed status from pre-fetched issues
-		if issue, ok := allIssues[ta.beadsID]; ok {
-			task = truncate(issue.Title, 40)
-			isCompleted = strings.EqualFold(issue.Status, "closed")
+		if issue, ok := allIssues[agent.BeadsID]; ok {
+			agent.Task = truncate(issue.Title, 40)
+			agent.IsCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
-		// Get project directory for this agent (for context risk assessment)
-		agentProjectDir := projectDir
-		if dir, ok := beadsProjectDirs[ta.beadsID]; ok {
-			agentProjectDir = dir
+		// Determine phantom status
+		// For now, if we have a session ID or a tmux window, it's not a phantom
+		if agent.SessionID != "" && agent.SessionID != "tmux-stalled" {
+			agent.IsPhantom = false
+		} else if agent.Window != "" {
+			agent.IsPhantom = false
+		} else {
+			agent.IsPhantom = true
 		}
 
-		agents = append(agents, AgentInfo{
-			SessionID:    sessionID,
-			BeadsID:      ta.beadsID,
-			Skill:        ta.skill,
-			Title:        ta.title,
-			Runtime:      runtime,
-			Window:       ta.window,
-			Phase:        phase,
-			Task:         task,
-			Project:      ta.project,
-			ProjectDir:   agentProjectDir,
-			IsPhantom:    isPhantom,
-			IsProcessing: isProcessing,
-			IsCompleted:  isCompleted,
-		})
-	}
-
-	// Process OpenCode agents (not in tmux)
-	for _, oa := range opcodeAgents {
-		createdAt := time.Unix(oa.session.Time.Created/1000, 0)
-		runtime := formatDuration(now.Sub(createdAt))
-
-		// OpenCode agents are NOT phantom because they have a running session.
-		// Phantom means "beads issue open but agent not running" - but these agents ARE running.
-		isPhantom := false
-
-		// Check if the session is actively processing (has pending response)
-		isProcessing := client.IsSessionProcessing(oa.session.ID)
-
-		// Get issue for task and closed status
-		issue := allIssues[oa.beadsID]
-
-		// Get phase from pre-fetched comments
-		var phase, task string
-		var isCompleted bool
-		if comments, ok := commentsMap[oa.beadsID]; ok {
-			phaseStatus := verify.ParsePhaseFromComments(comments)
-			if phaseStatus.Found {
-				phase = phaseStatus.Phase
+		// If it's claude mode and we matched a session, get runtime
+		if agent.Mode == "claude" && agent.SessionID != "" {
+			if s, ok := sessionMap[agent.SessionID]; ok {
+				createdAt := time.Unix(s.Time.Created/1000, 0)
+				agent.Runtime = formatDuration(now.Sub(createdAt))
+				if agent.Title == "" {
+					agent.Title = s.Title
+				}
+				agent.IsProcessing = client.IsSessionProcessing(s.ID)
 			}
 		}
-		if issue != nil {
-			task = truncate(issue.Title, 40)
-			isCompleted = strings.EqualFold(issue.Status, "closed")
-		}
 
-		// Get project directory for this agent (for context risk assessment)
-		agentProjectDir := projectDir
-		if dir, ok := beadsProjectDirs[oa.beadsID]; ok {
-			agentProjectDir = dir
+		// Ensure runtime has a value
+		if agent.Runtime == "" {
+			agent.Runtime = "unknown"
 		}
-
-		agents = append(agents, AgentInfo{
-			SessionID:    oa.session.ID,
-			Title:        oa.session.Title,
-			Runtime:      runtime,
-			BeadsID:      oa.beadsID,
-			Skill:        oa.skill,
-			Phase:        phase,
-			Task:         task,
-			Project:      oa.project,
-			ProjectDir:   agentProjectDir,
-			IsPhantom:    isPhantom,
-			IsProcessing: isProcessing,
-			IsCompleted:  isCompleted,
-		})
 	}
 
 	// Phase 3: Filter agents based on flags
@@ -940,17 +962,21 @@ func printAgentsWideFormat(agents []AgentInfo) {
 	}
 
 	if hasRisk {
-		fmt.Printf("  %-18s %-8s %-12s %-25s %-12s %-7s %-16s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
-		fmt.Printf("  %s\n", strings.Repeat("-", 120))
+		fmt.Printf("  %-18s %-8s %-8s %-12s %-25s %-12s %-7s %-16s %s\n", "BEADS ID", "MODE", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
+		fmt.Printf("  %s\n", strings.Repeat("-", 130))
 	} else {
-		fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
-		fmt.Printf("  %s\n", strings.Repeat("-", 115))
+		fmt.Printf("  %-18s %-8s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "MODE", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
+		fmt.Printf("  %s\n", strings.Repeat("-", 125))
 	}
 
 	for _, agent := range agents {
 		beadsID := agent.BeadsID
 		if beadsID == "" {
 			beadsID = "-"
+		}
+		mode := agent.Mode
+		if mode == "" {
+			mode = "-"
 		}
 		phase := agent.Phase
 		if phase == "" {
@@ -969,8 +995,9 @@ func printAgentsWideFormat(agents []AgentInfo) {
 
 		if hasRisk {
 			risk := formatContextRisk(agent.ContextRisk)
-			fmt.Printf("  %-18s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
+			fmt.Printf("  %-18s %-8s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
 				beadsID,
+				mode,
 				status,
 				truncate(phase, 10),
 				truncate(task, 23),
@@ -979,8 +1006,9 @@ func printAgentsWideFormat(agents []AgentInfo) {
 				tokens,
 				risk)
 		} else {
-			fmt.Printf("  %-18s %-8s %-12s %-28s %-15s %-8s %s\n",
+			fmt.Printf("  %-18s %-8s %-8s %-12s %-28s %-15s %-8s %s\n",
 				beadsID,
+				mode,
 				status,
 				truncate(phase, 10),
 				truncate(task, 26),
