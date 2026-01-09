@@ -831,3 +831,273 @@ func TestHasWebChangesSinceTimeForWorkspace(t *testing.T) {
 		// false positives when multiple agents run concurrently with similar spawn times.
 	})
 }
+
+func TestHasScreenshotFilesInWorkspace(t *testing.T) {
+	t.Run("empty workspace path returns false", func(t *testing.T) {
+		hasFiles, files := HasScreenshotFilesInWorkspace("")
+		if hasFiles {
+			t.Error("expected hasFiles=false for empty workspace path")
+		}
+		if len(files) > 0 {
+			t.Errorf("expected no files for empty workspace path, got %v", files)
+		}
+	})
+
+	t.Run("non-existent workspace returns false", func(t *testing.T) {
+		hasFiles, files := HasScreenshotFilesInWorkspace("/nonexistent/workspace/path")
+		if hasFiles {
+			t.Error("expected hasFiles=false for non-existent workspace")
+		}
+		if len(files) > 0 {
+			t.Errorf("expected no files for non-existent workspace, got %v", files)
+		}
+	})
+
+	t.Run("workspace without screenshots directory returns false", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		// Don't create screenshots directory
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if hasFiles {
+			t.Error("expected hasFiles=false when screenshots dir doesn't exist")
+		}
+		if len(files) > 0 {
+			t.Errorf("expected no files, got %v", files)
+		}
+	})
+
+	t.Run("empty screenshots directory returns false", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if hasFiles {
+			t.Error("expected hasFiles=false for empty screenshots directory")
+		}
+		if len(files) > 0 {
+			t.Errorf("expected no files for empty directory, got %v", files)
+		}
+	})
+
+	t.Run("finds PNG screenshot files", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Create a PNG file
+		if err := os.WriteFile(filepath.Join(screenshotsDir, "dashboard.png"), []byte("fake png"), 0644); err != nil {
+			t.Fatalf("failed to create PNG file: %v", err)
+		}
+
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if !hasFiles {
+			t.Error("expected hasFiles=true when PNG file exists")
+		}
+		if len(files) != 1 || files[0] != "dashboard.png" {
+			t.Errorf("expected [dashboard.png], got %v", files)
+		}
+	})
+
+	t.Run("finds multiple screenshot files with different extensions", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Create files with various extensions
+		testFiles := []string{
+			"screenshot1.png",
+			"screenshot2.jpg",
+			"screenshot3.jpeg",
+			"screenshot4.webp",
+			"screenshot5.gif",
+		}
+		for _, f := range testFiles {
+			if err := os.WriteFile(filepath.Join(screenshotsDir, f), []byte("fake image"), 0644); err != nil {
+				t.Fatalf("failed to create file %s: %v", f, err)
+			}
+		}
+
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if !hasFiles {
+			t.Error("expected hasFiles=true when image files exist")
+		}
+		if len(files) != 5 {
+			t.Errorf("expected 5 files, got %d: %v", len(files), files)
+		}
+	})
+
+	t.Run("ignores non-image files", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Create non-image files
+		nonImageFiles := []string{
+			"readme.txt",
+			"data.json",
+			"script.js",
+			".gitkeep",
+		}
+		for _, f := range nonImageFiles {
+			if err := os.WriteFile(filepath.Join(screenshotsDir, f), []byte("content"), 0644); err != nil {
+				t.Fatalf("failed to create file %s: %v", f, err)
+			}
+		}
+
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if hasFiles {
+			t.Errorf("expected hasFiles=false for non-image files, got files: %v", files)
+		}
+	})
+
+	t.Run("ignores subdirectories", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Create a subdirectory with .png name
+		subDir := filepath.Join(screenshotsDir, "somedir.png")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if hasFiles {
+			t.Errorf("expected hasFiles=false when only subdirectory exists, got files: %v", files)
+		}
+	})
+
+	t.Run("case insensitive extension matching", func(t *testing.T) {
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Create files with uppercase extensions
+		testFiles := []string{
+			"screenshot1.PNG",
+			"screenshot2.JPG",
+			"screenshot3.JPEG",
+		}
+		for _, f := range testFiles {
+			if err := os.WriteFile(filepath.Join(screenshotsDir, f), []byte("fake image"), 0644); err != nil {
+				t.Fatalf("failed to create file %s: %v", f, err)
+			}
+		}
+
+		hasFiles, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if !hasFiles {
+			t.Error("expected hasFiles=true for uppercase extension files")
+		}
+		if len(files) != 3 {
+			t.Errorf("expected 3 files, got %d: %v", len(files), files)
+		}
+	})
+}
+
+func TestVerifyVisualVerificationWithScreenshotFiles(t *testing.T) {
+	// These tests verify that screenshot files in the workspace
+	// are recognized as visual verification evidence
+
+	t.Run("screenshot file provides evidence for feature-impl skill", func(t *testing.T) {
+		// This test simulates a feature-impl skill with web changes
+		// and a screenshot file in the workspace
+
+		// Create workspace with SPAWN_CONTEXT.md indicating feature-impl skill
+		workspacePath := t.TempDir()
+		spawnContext := `TASK: Test feature implementation
+
+## SKILL GUIDANCE (feature-impl)
+
+This is a feature-impl skill spawn.
+`
+		if err := os.WriteFile(filepath.Join(workspacePath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+			t.Fatalf("failed to create SPAWN_CONTEXT.md: %v", err)
+		}
+
+		// Create screenshots directory with an image file
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(screenshotsDir, "dashboard.png"), []byte("fake png"), 0644); err != nil {
+			t.Fatalf("failed to create PNG file: %v", err)
+		}
+
+		// Manually simulate the verification logic
+		// Since we can't easily mock git for web changes, we test the evidence detection part
+
+		// First verify skill detection works
+		skillName, _ := ExtractSkillNameFromSpawnContext(workspacePath)
+		if skillName != "feature-impl" {
+			t.Fatalf("expected skill name 'feature-impl', got %q", skillName)
+		}
+
+		// Verify screenshot file detection
+		hasScreenshots, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if !hasScreenshots {
+			t.Error("expected screenshot files to be detected")
+		}
+		if len(files) != 1 || files[0] != "dashboard.png" {
+			t.Errorf("expected [dashboard.png], got %v", files)
+		}
+
+		// In a full integration test with git, the verification would:
+		// 1. Detect web changes
+		// 2. Detect feature-impl skill (requires verification)
+		// 3. Find screenshot files as evidence
+		// 4. Still require human approval (evidence is found, but approval is needed)
+	})
+
+	t.Run("evidence includes screenshot file names", func(t *testing.T) {
+		// This test verifies that when screenshot files are found,
+		// they appear in the Evidence field with proper naming
+
+		workspacePath := t.TempDir()
+		screenshotsDir := filepath.Join(workspacePath, "screenshots")
+		if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+			t.Fatalf("failed to create screenshots dir: %v", err)
+		}
+
+		// Create multiple screenshot files
+		if err := os.WriteFile(filepath.Join(screenshotsDir, "before.png"), []byte("fake"), 0644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(screenshotsDir, "after.png"), []byte("fake"), 0644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+
+		hasScreenshots, files := HasScreenshotFilesInWorkspace(workspacePath)
+		if !hasScreenshots {
+			t.Error("expected screenshot files to be detected")
+		}
+		if len(files) != 2 {
+			t.Errorf("expected 2 files, got %d: %v", len(files), files)
+		}
+
+		// Verify file names are in the list
+		foundBefore, foundAfter := false, false
+		for _, f := range files {
+			if f == "before.png" {
+				foundBefore = true
+			}
+			if f == "after.png" {
+				foundAfter = true
+			}
+		}
+		if !foundBefore || !foundAfter {
+			t.Errorf("expected to find before.png and after.png, got %v", files)
+		}
+	})
+}

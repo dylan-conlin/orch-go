@@ -2,6 +2,7 @@
 package verify
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -369,6 +370,50 @@ func HasVisualVerificationInSynthesis(workspacePath string) (bool, []string) {
 	return len(evidence) > 0, evidence
 }
 
+// screenshotExtensions defines file extensions that are considered screenshot files.
+var screenshotExtensions = []string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+// HasScreenshotFilesInWorkspace checks if the workspace's screenshots/ directory
+// contains any image files (screenshots captured by the agent).
+// Returns true if any screenshot files exist, along with the list of file names.
+func HasScreenshotFilesInWorkspace(workspacePath string) (bool, []string) {
+	if workspacePath == "" {
+		return false, nil
+	}
+
+	screenshotsDir := filepath.Join(workspacePath, "screenshots")
+
+	// Check if screenshots directory exists
+	stat, err := os.Stat(screenshotsDir)
+	if err != nil || !stat.IsDir() {
+		return false, nil
+	}
+
+	// Read directory contents
+	entries, err := os.ReadDir(screenshotsDir)
+	if err != nil {
+		return false, nil
+	}
+
+	var screenshotFiles []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		lower := strings.ToLower(name)
+		for _, ext := range screenshotExtensions {
+			if strings.HasSuffix(lower, ext) {
+				screenshotFiles = append(screenshotFiles, name)
+				break
+			}
+		}
+	}
+
+	return len(screenshotFiles) > 0, screenshotFiles
+}
+
 // VerifyVisualVerification checks if visual verification was performed for web/ changes.
 // This is a gate that blocks completion if web/ files were modified without visual verification evidence
 // AND explicit human approval.
@@ -454,6 +499,17 @@ func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir str
 		if hasEvidence {
 			result.HasEvidence = true
 			result.Evidence = append(result.Evidence, evidence...)
+		}
+	}
+
+	// Check for actual screenshot files in workspace
+	if workspacePath != "" {
+		hasScreenshots, screenshotFiles := HasScreenshotFilesInWorkspace(workspacePath)
+		if hasScreenshots {
+			result.HasEvidence = true
+			for _, file := range screenshotFiles {
+				result.Evidence = append(result.Evidence, "Screenshot file: "+file)
+			}
 		}
 	}
 
