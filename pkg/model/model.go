@@ -15,10 +15,10 @@ func (m ModelSpec) Format() string {
 }
 
 // DefaultModel is used when no model is specified.
-// Flash is the default (cheapest/fastest, as Opus is restricted to Claude Code as of Jan 2026).
+// Sonnet is the default (Flash has TPM limits that make it unusable for real work).
 var DefaultModel = ModelSpec{
-	Provider: "google",
-	ModelID:  "gemini-3-flash-preview",
+	Provider: "anthropic",
+	ModelID:  "claude-sonnet-4-5-20250929",
 }
 
 // Aliases maps short names to full model specs.
