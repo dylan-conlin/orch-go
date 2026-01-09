@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Bug Dashboard Config Panel Dropdownmenu
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Why does the DropdownMenu component not render content when clicked in the dashboard config panel and settings panel?
 
 **Started:** 2026-01-09
-**Updated:** 2026-01-09
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Updated:** 2026-01-09  
+**Owner:** og-debug-bug-dashboard-config-09jan-3269
+**Phase:** Investigating
+**Next Step:** Test Portal-less rendering approach or browser verification
+**Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,64 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Tooltip works without Portal, DropdownMenu uses Portal
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- `tooltip-content.svelte` renders directly to TooltipPrimitive.Content (no Portal wrapper)
+- `dropdown-menu-content.svelte` wraps DropdownMenuPrimitive.Content in DropdownMenuPrimitive.Portal
+- Tooltip components function correctly in the dashboard
+- DropdownMenu components do not render visible content
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- `web/src/lib/components/ui/tooltip/tooltip-content.svelte` (lines 13-21)
+- `web/src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte` (lines 13-23)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Portal is the key difference between working (Tooltip) and broken (DropdownMenu) components, suggesting Portal rendering issue with bits-ui + Svelte 5.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Both Settings and Daemon config dropdowns are broken
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- Prior investigation (og-feat-dashboard-config-editing-08jan-13ee) noted "Same behavior observed for Settings dropdown"
+- Both SettingsPanel and DaemonConfigPanel use DropdownMenu.Root wrapper
+- Both use identical {#snippet child({ props })} pattern for triggers
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `web/src/lib/components/settings-panel/settings-panel.svelte` (lines 19-36)
+- `web/src/lib/components/stats-bar/stats-bar.svelte` (lines 245-286)
+- `.orch/workspace/og-feat-dashboard-config-editing-08jan-13ee/SYNTHESIS.md` (line 58)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This is a systemic issue affecting all DropdownMenu components, not specific to the daemon config panel.
+
+---
+
+### Finding 3: Z-index conflict with header
+
+**Evidence:**
+- Header has `z-50` (sticky top-0)
+- DropdownMenu.Content has `z-50` by default
+- Same z-index level could cause rendering conflicts
+
+**Source:**
+- `web/src/routes/+layout.svelte` (line 52)
+- `web/src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte` (line 18)
+
+**Significance:** Z-index increased to 100 to ensure dropdown renders above header, but this doesn't solve the core Portal issue.
+
+---
+
+### Finding 4: bits-ui version and Svelte 5 compatibility
+
+**Evidence:**
+- bits-ui: ^2.11.0
+- svelte: ^5.43.8
+- Portal component from bits-ui may have compatibility issues with Svelte 5 runes
+
+**Source:**
+- `web/package.json` (dependencies)
+
+**Significance:** Version compatibility may be root cause, but cannot verify without web access to bits-ui GitHub/docs.
 
 ---
 
