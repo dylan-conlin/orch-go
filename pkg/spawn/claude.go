@@ -27,9 +27,9 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 
 	// 4. Launch claude using the SPAWN_CONTEXT.md file
 	contextPath := cfg.ContextFilePath()
-	// Command: claude --file SPAWN_CONTEXT.md
-	// We type the command into the shell in the new window
-	launchCmd := fmt.Sprintf("claude --file %q", contextPath)
+	// Command: cat SPAWN_CONTEXT.md | claude
+	// Pipe the file content to claude (no --file flag exists)
+	launchCmd := fmt.Sprintf("cat %q | claude", contextPath)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)
