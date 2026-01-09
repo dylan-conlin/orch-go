@@ -335,3 +335,45 @@ Google Chrome is requesting /.well-known/appspecific/com.chrome.devtools.json to
 2:27:42 PM [vite] (ssr) page reload src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte
 2:27:46 PM [vite] (client) hmr update /src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte, /src/app.css
 2:27:46 PM [vite] (ssr) page reload src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte
+2:29:30 PM [vite] (client) hmr update /src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte, /src/app.css
+2:29:30 PM [vite] (ssr) page reload src/lib/components/ui/dropdown-menu/dropdown-menu-content.svelte
+2:47:46 PM [vite] (client) hmr update /src/routes/+layout.svelte, /src/app.css, /src/routes/+page.svelte, /src/lib/components/agent-detail/agent-detail-panel.svelte, /src/lib/components/agent-detail/activity-tab.svelte, /src/lib/components/needs-attention/needs-attention.svelte, /src/lib/components/recent-wins/recent-wins.svelte, /src/lib/components/agent-card/agent-card.svelte, /src/lib/components/stats-bar/stats-bar.svelte
+2:47:46 PM [vite] (ssr) page reload src/lib/stores/agents.ts
+2:48:00 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+2:48:00 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+2:48:11 PM [vite] (client) hmr update /src/lib/components/agent-card/agent-card.svelte, /src/app.css
+2:48:11 PM [vite] (ssr) page reload src/lib/components/agent-card/agent-card.svelte
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 599 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
+3:10:47 PM [vite-plugin-svelte] src/lib/components/daemon-config-panel/daemon-config-panel.svelte:233:4 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+3:10:48 PM [vite-plugin-svelte] src/lib/components/daemon-config-panel/daemon-config-panel.svelte:233:4 A form label must be associated with a control
+https://svelte.dev/e/a11y_label_has_associated_control
+
+Google Chrome is requesting /.well-known/appspecific/com.chrome.devtools.json to automatically configure devtools project settings. To learn why, and how to prevent this message, see https://svelte.dev/docs/cli/devtools-json
+
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 547 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
+
+> swarm-dashboard@0.1.0 dev
+> vite dev
+
+
+  VITE v6.4.1  ready in 478 ms
+
+  ➜  Local:   http://localhost:5188/
+  ➜  Network: use --host to expose
