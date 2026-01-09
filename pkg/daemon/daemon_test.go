@@ -2324,3 +2324,57 @@ func TestPreview_EpicWithTriageReadyShowsHelpfulMessage(t *testing.T) {
 		t.Errorf("Preview() rejection reason = %q, want to contain 'children will be processed'", rejected.Reason)
 	}
 }
+
+func TestExpandTriageReadyEpics_FiltersClosedChildren(t *testing.T) {
+	d := &Daemon{
+		Config: Config{Label: "triage:ready", Verbose: true},
+		listEpicChildrenFunc: func(epicID string) ([]Issue, error) {
+			if epicID == "proj-epic" {
+				return []Issue{
+					{ID: "proj-child-1", Title: "Open Child", IssueType: "feature", Status: "open"},
+					{ID: "proj-child-2", Title: "Closed Child", IssueType: "feature", Status: "closed"},
+					{ID: "proj-child-3", Title: "In Progress Child", IssueType: "feature", Status: "in_progress"},
+				}, nil
+			}
+			return []Issue{}, nil
+		},
+	}
+
+	issues := []Issue{
+		{ID: "proj-epic", Title: "Epic", IssueType: "epic", Status: "open", Labels: []string{"triage:ready"}},
+	}
+
+	expanded, epicChildIDs := d.expandTriageReadyEpics(issues)
+
+	// Should have original epic + 2 children (open and in_progress, but NOT closed)
+	if len(expanded) != 3 {
+		t.Errorf("expandTriageReadyEpics() returned %d issues, want 3 (epic + 2 open children)", len(expanded))
+	}
+
+	// Only the 2 non-closed children should be marked as epic children
+	if len(epicChildIDs) != 2 {
+		t.Errorf("expandTriageReadyEpics() returned %d epic children, want 2", len(epicChildIDs))
+	}
+
+	// Verify open child is included
+	if !epicChildIDs["proj-child-1"] {
+		t.Error("expandTriageReadyEpics() did not include open child proj-child-1")
+	}
+
+	// Verify closed child is NOT included
+	if epicChildIDs["proj-child-2"] {
+		t.Error("expandTriageReadyEpics() incorrectly included closed child proj-child-2")
+	}
+
+	// Verify in_progress child is included
+	if !epicChildIDs["proj-child-3"] {
+		t.Error("expandTriageReadyEpics() did not include in_progress child proj-child-3")
+	}
+
+	// Verify the closed child is not in the expanded issues list
+	for _, issue := range expanded {
+		if issue.ID == "proj-child-2" {
+			t.Error("expandTriageReadyEpics() added closed child to issues list")
+		}
+	}
+}

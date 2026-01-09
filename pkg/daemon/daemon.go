@@ -354,6 +354,13 @@ func (d *Daemon) expandTriageReadyEpics(issues []Issue) ([]Issue, map[string]boo
 		}
 
 		for _, child := range children {
+			// Skip closed children - they shouldn't be spawned
+			if child.Status == "closed" {
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Skipping closed epic child %s (from parent %s)\n", child.ID, epicID)
+				}
+				continue
+			}
 			// Only add if not already in the list
 			if !existingIDs[child.ID] {
 				issues = append(issues, child)
