@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** expandTriageReadyEpics() was including ALL epic children without filtering by status, causing spawn failures on closed issues.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Added status filter in daemon.go:358-363 that skips closed children; test TestExpandTriageReadyEpics_FiltersClosedChildren verifies only open/in_progress children are included.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Epic child expansion must respect issue status - closed children should never enter the spawn queue.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Fix deployed, all tests passing, issue can be closed.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (implementation detail, not architectural pattern)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-09
 **Updated:** 2026-01-09
 **Owner:** systematic-debugging agent
-**Phase:** Investigating
-**Next Step:** Implement fix to filter closed children
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -109,15 +109,15 @@ for _, child := range children {
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Epic expansion lacked status awareness** - The expandTriageReadyEpics function added ALL children from ListEpicChildren without checking if they were closed, blocked, or otherwise unspawnable.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Inconsistent filtering logic** - NextIssueExcluding filters "blocked" and "in_progress" but assumed closed issues wouldn't be in the list. Epic expansion bypassed this assumption.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Simple fix with high impact** - Adding a single status check (child.Status == "closed") prevents spawn failures and aligns epic expansion with the rest of the daemon's filtering logic.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+expandTriageReadyEpics() included closed children because it had no status filtering logic in the child expansion loop (Finding 1). The fix adds a status check at daemon.go:358-363 to skip closed children before adding them to the spawn queue (Finding 2, 3). This prevents spawn failures and aligns with existing filtering patterns elsewhere in the daemon.
 
 ---
 
