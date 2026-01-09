@@ -27,9 +27,10 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 
 	// 4. Launch claude using the SPAWN_CONTEXT.md file
 	contextPath := cfg.ContextFilePath()
-	// Command: cat SPAWN_CONTEXT.md | claude
+	// Command: cat SPAWN_CONTEXT.md | claude --dangerously-skip-permissions
 	// Pipe the file content to claude (no --file flag exists)
-	launchCmd := fmt.Sprintf("cat %q | claude", contextPath)
+	// Use --dangerously-skip-permissions to avoid blocking on edit prompts
+	launchCmd := fmt.Sprintf("cat %q | claude --dangerously-skip-permissions", contextPath)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)
