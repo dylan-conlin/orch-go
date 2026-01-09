@@ -1,3 +1,10 @@
+spawn_mode: opencode
+claude:
+    model: opus
+    tmux_session: workers-orch-go
+opencode:
+    model: flash
+    server: http://localhost:4096
 servers:
-  web: 5188
-  api: 3348
+    api: 3348
+    web: 5188
