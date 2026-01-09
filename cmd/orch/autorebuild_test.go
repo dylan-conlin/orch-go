@@ -285,3 +285,54 @@ func TestAutoRebuildIntegrationSkip(t *testing.T) {
 		t.Error("shouldAutoRebuild should return false when ORCH_NO_AUTOREBUILD=1")
 	}
 }
+
+// TestHasJSONFlag tests the JSON flag detection in os.Args.
+func TestHasJSONFlag(t *testing.T) {
+	// Save and restore original os.Args
+	origArgs := os.Args
+	defer func() {
+		os.Args = origArgs
+	}()
+
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{
+			name: "no json flag",
+			args: []string{"orch", "status"},
+			want: false,
+		},
+		{
+			name: "json flag present",
+			args: []string{"orch", "status", "--json"},
+			want: true,
+		},
+		{
+			name: "json flag with other flags",
+			args: []string{"orch", "status", "--all", "--json", "--project", "foo"},
+			want: true,
+		},
+		{
+			name: "json flag first",
+			args: []string{"orch", "--json", "status"},
+			want: true,
+		},
+		{
+			name: "json substring but not flag",
+			args: []string{"orch", "status", "--format=json"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Args = tt.args
+			result := hasJSONFlag()
+			if result != tt.want {
+				t.Errorf("hasJSONFlag() with args %v = %v, want %v", tt.args, result, tt.want)
+			}
+		})
+	}
+}

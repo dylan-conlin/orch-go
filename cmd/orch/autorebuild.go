@@ -140,6 +140,18 @@ func autoRebuildAndReexec() error {
 	return syscall.Exec(executable, os.Args, os.Environ())
 }
 
+// hasJSONFlag checks if the --json flag is present in os.Args.
+// This is used to suppress auto-rebuild warnings when JSON output is requested,
+// since warnings to stderr would break JSON parsers that capture both streams.
+func hasJSONFlag() bool {
+	for _, arg := range os.Args {
+		if arg == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
 // maybeAutoRebuild checks if auto-rebuild is needed and performs it.
 // This should be called at the top of main() before rootCmd.Execute().
 // On successful rebuild, this function does not return (process is replaced).
@@ -151,9 +163,13 @@ func maybeAutoRebuild() {
 
 	// Attempt rebuild - if it fails, continue with stale binary
 	if err := autoRebuildAndReexec(); err != nil {
-		// Log the error but continue with stale binary
-		fmt.Fprintf(os.Stderr, "⚠️  Auto-rebuild failed: %v\n", err)
-		fmt.Fprintf(os.Stderr, "   Continuing with stale binary. Run 'make install' manually.\n")
+		// Suppress warning if --json flag is present to avoid breaking JSON parsers
+		// that capture both stdout and stderr (e.g., orch status --json 2>&1 | jq)
+		if !hasJSONFlag() {
+			// Log the error but continue with stale binary
+			fmt.Fprintf(os.Stderr, "⚠️  Auto-rebuild failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "   Continuing with stale binary. Run 'make install' manually.\n")
+		}
 	}
 }
 // test comment Thu Jan  8 15:56:54 PST 2026
