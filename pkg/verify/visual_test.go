@@ -1101,3 +1101,358 @@ This is a feature-impl skill spawn.
 		}
 	})
 }
+
+// Tests for WebChangeRisk and risk assessment
+
+func TestWebChangeRisk_String(t *testing.T) {
+	tests := []struct {
+		risk WebChangeRisk
+		want string
+	}{
+		{WebRiskNone, "NONE"},
+		{WebRiskLow, "LOW"},
+		{WebRiskMedium, "MEDIUM"},
+		{WebRiskHigh, "HIGH"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.risk.String(); got != tt.want {
+				t.Errorf("WebChangeRisk.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWebChangeRisk_RequiresVisualVerification(t *testing.T) {
+	tests := []struct {
+		risk WebChangeRisk
+		want bool
+	}{
+		{WebRiskNone, false},
+		{WebRiskLow, false},
+		{WebRiskMedium, true},
+		{WebRiskHigh, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.risk.String(), func(t *testing.T) {
+			if got := tt.risk.RequiresVisualVerification(); got != tt.want {
+				t.Errorf("RequiresVisualVerification() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWebFileChange_Helpers(t *testing.T) {
+	t.Run("IsCSSOnlyFile", func(t *testing.T) {
+		tests := []struct {
+			path string
+			want bool
+		}{
+			{"web/src/app.css", true},
+			{"web/src/styles.scss", true},
+			{"web/src/Component.svelte", false},
+			{"web/src/api.ts", false},
+		}
+		for _, tt := range tests {
+			change := WebFileChange{Path: tt.path}
+			if got := change.IsCSSOnlyFile(); got != tt.want {
+				t.Errorf("IsCSSOnlyFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("IsRouteFile", func(t *testing.T) {
+		tests := []struct {
+			path string
+			want bool
+		}{
+			{"web/src/routes/+page.svelte", true},
+			{"web/src/routes/dashboard/+page.svelte", true},
+			{"web/src/pages/index.tsx", true},
+			{"web/src/components/Button.svelte", false},
+			{"web/src/lib/api.ts", false},
+		}
+		for _, tt := range tests {
+			change := WebFileChange{Path: tt.path}
+			if got := change.IsRouteFile(); got != tt.want {
+				t.Errorf("IsRouteFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("IsComponentFile", func(t *testing.T) {
+		tests := []struct {
+			path string
+			want bool
+		}{
+			{"web/src/components/Button.svelte", true},
+			{"web/src/lib/utils.ts", true},
+			{"web/src/Component.svelte", true},
+			{"web/src/Component.tsx", true},
+			{"web/src/Component.jsx", true},
+			{"web/src/Component.vue", true},
+			{"web/src/app.css", false},
+		}
+		for _, tt := range tests {
+			change := WebFileChange{Path: tt.path}
+			if got := change.IsComponentFile(); got != tt.want {
+				t.Errorf("IsComponentFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("IsLayoutFile", func(t *testing.T) {
+		tests := []struct {
+			path string
+			want bool
+		}{
+			{"web/src/routes/+layout.svelte", true},
+			{"web/src/routes/_layout.svelte", true},
+			{"web/src/layout.svelte", true},
+			{"web/src/Layout.tsx", true},
+			{"web/src/routes/+page.svelte", false},
+			{"web/src/components/Button.svelte", false},
+		}
+		for _, tt := range tests {
+			change := WebFileChange{Path: tt.path}
+			if got := change.IsLayoutFile(); got != tt.want {
+				t.Errorf("IsLayoutFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		}
+	})
+
+	t.Run("TotalChanges", func(t *testing.T) {
+		change := WebFileChange{LinesAdded: 10, LinesRemoved: 5}
+		if got := change.TotalChanges(); got != 15 {
+			t.Errorf("TotalChanges() = %v, want 15", got)
+		}
+	})
+}
+
+func TestAssessWebChangeRisk(t *testing.T) {
+	tests := []struct {
+		name    string
+		changes []WebFileChange
+		want    WebChangeRisk
+	}{
+		{
+			name:    "empty changes",
+			changes: []WebFileChange{},
+			want:    WebRiskNone,
+		},
+		{
+			name: "small CSS change - LOW risk",
+			changes: []WebFileChange{
+				{Path: "web/src/app.css", LinesAdded: 3, LinesRemoved: 1, IsNew: false},
+			},
+			want: WebRiskLow,
+		},
+		{
+			name: "larger CSS change - MEDIUM risk",
+			changes: []WebFileChange{
+				{Path: "web/src/app.css", LinesAdded: 15, LinesRemoved: 5, IsNew: false},
+			},
+			want: WebRiskMedium,
+		},
+		{
+			name: "new route file - HIGH risk",
+			changes: []WebFileChange{
+				{Path: "web/src/routes/new-page/+page.svelte", LinesAdded: 50, LinesRemoved: 0, IsNew: true},
+			},
+			want: WebRiskHigh,
+		},
+		{
+			name: "new layout file - HIGH risk",
+			changes: []WebFileChange{
+				{Path: "web/src/routes/+layout.svelte", LinesAdded: 30, LinesRemoved: 0, IsNew: true},
+			},
+			want: WebRiskHigh,
+		},
+		{
+			name: "new component - MEDIUM risk",
+			changes: []WebFileChange{
+				{Path: "web/src/components/NewButton.svelte", LinesAdded: 20, LinesRemoved: 0, IsNew: true},
+			},
+			want: WebRiskMedium,
+		},
+		{
+			name: "small component modification - LOW risk",
+			changes: []WebFileChange{
+				{Path: "web/src/components/Button.svelte", LinesAdded: 2, LinesRemoved: 1, IsNew: false},
+			},
+			want: WebRiskLow,
+		},
+		{
+			name: "medium component modification - MEDIUM risk",
+			changes: []WebFileChange{
+				{Path: "web/src/components/Button.svelte", LinesAdded: 15, LinesRemoved: 10, IsNew: false},
+			},
+			want: WebRiskMedium,
+		},
+		{
+			name: "large component modification - HIGH risk",
+			changes: []WebFileChange{
+				{Path: "web/src/components/Dashboard.svelte", LinesAdded: 40, LinesRemoved: 20, IsNew: false},
+			},
+			want: WebRiskHigh,
+		},
+		{
+			name: "large route modification - HIGH risk",
+			changes: []WebFileChange{
+				{Path: "web/src/routes/+page.svelte", LinesAdded: 40, LinesRemoved: 30, IsNew: false},
+			},
+			want: WebRiskHigh,
+		},
+		{
+			name: "mixed changes - takes highest risk",
+			changes: []WebFileChange{
+				{Path: "web/src/app.css", LinesAdded: 2, LinesRemoved: 1, IsNew: false},                  // LOW
+				{Path: "web/src/components/Button.svelte", LinesAdded: 5, LinesRemoved: 2, IsNew: false}, // LOW
+				{Path: "web/src/routes/new/+page.svelte", LinesAdded: 50, LinesRemoved: 0, IsNew: true},  // HIGH
+			},
+			want: WebRiskHigh,
+		},
+		{
+			name: "multiple low risk changes stay LOW",
+			changes: []WebFileChange{
+				{Path: "web/src/app.css", LinesAdded: 2, LinesRemoved: 1, IsNew: false},
+				{Path: "web/src/styles.css", LinesAdded: 3, LinesRemoved: 2, IsNew: false},
+			},
+			want: WebRiskLow,
+		},
+		{
+			name: "large layout change - HIGH risk",
+			changes: []WebFileChange{
+				{Path: "web/src/routes/+layout.svelte", LinesAdded: 25, LinesRemoved: 10, IsNew: false},
+			},
+			want: WebRiskHigh,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AssessWebChangeRisk(tt.changes)
+			if got != tt.want {
+				t.Errorf("AssessWebChangeRisk() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAssessSingleFileRisk(t *testing.T) {
+	tests := []struct {
+		name   string
+		change WebFileChange
+		want   WebChangeRisk
+	}{
+		{
+			name:   "new route always HIGH",
+			change: WebFileChange{Path: "web/src/routes/new/+page.svelte", IsNew: true, LinesAdded: 5},
+			want:   WebRiskHigh,
+		},
+		{
+			name:   "new layout always HIGH",
+			change: WebFileChange{Path: "web/src/routes/+layout.svelte", IsNew: true, LinesAdded: 10},
+			want:   WebRiskHigh,
+		},
+		{
+			name:   "CSS <=10 lines is LOW",
+			change: WebFileChange{Path: "web/src/app.css", LinesAdded: 5, LinesRemoved: 3, IsNew: false},
+			want:   WebRiskLow,
+		},
+		{
+			name:   "CSS >10 lines is MEDIUM",
+			change: WebFileChange{Path: "web/src/app.css", LinesAdded: 8, LinesRemoved: 5, IsNew: false},
+			want:   WebRiskMedium,
+		},
+		{
+			name:   "component <=5 lines is LOW",
+			change: WebFileChange{Path: "web/src/components/Btn.svelte", LinesAdded: 3, LinesRemoved: 1, IsNew: false},
+			want:   WebRiskLow,
+		},
+		{
+			name:   "component 6-30 lines is MEDIUM",
+			change: WebFileChange{Path: "web/src/components/Btn.svelte", LinesAdded: 15, LinesRemoved: 5, IsNew: false},
+			want:   WebRiskMedium,
+		},
+		{
+			name:   "component >30 lines is HIGH",
+			change: WebFileChange{Path: "web/src/components/Btn.svelte", LinesAdded: 25, LinesRemoved: 10, IsNew: false},
+			want:   WebRiskHigh,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := assessSingleFileRisk(tt.change)
+			if got != tt.want {
+				t.Errorf("assessSingleFileRisk() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseNumstatOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		wantLen int
+	}{
+		{
+			name:    "empty output",
+			output:  "",
+			wantLen: 0,
+		},
+		{
+			name:    "non-web files only",
+			output:  "10\t5\tpkg/verify/check.go\n3\t1\tcmd/orch/main.go\n",
+			wantLen: 0,
+		},
+		{
+			name:    "web file",
+			output:  "10\t5\tweb/src/app.css\n",
+			wantLen: 1,
+		},
+		{
+			name:    "mixed files",
+			output:  "10\t5\tpkg/verify/check.go\n3\t1\tweb/src/app.css\n5\t2\tweb/src/Component.svelte\n",
+			wantLen: 2,
+		},
+		{
+			name:    "binary file",
+			output:  "-\t-\tweb/src/image.png\n",
+			wantLen: 0, // .png is not a web file extension
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			changes, err := parseNumstatOutput(tt.output, "/tmp")
+			if err != nil {
+				t.Fatalf("parseNumstatOutput() error = %v", err)
+			}
+			if len(changes) != tt.wantLen {
+				t.Errorf("parseNumstatOutput() returned %d changes, want %d", len(changes), tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestVisualVerificationResult_IncludesRiskLevel(t *testing.T) {
+	// Test that the result struct properly includes risk level
+	result := VisualVerificationResult{
+		Passed:        true,
+		HasWebChanges: true,
+		RiskLevel:     WebRiskMedium,
+	}
+
+	if result.RiskLevel != WebRiskMedium {
+		t.Errorf("RiskLevel = %v, want MEDIUM", result.RiskLevel)
+	}
+
+	if result.RiskLevel.String() != "MEDIUM" {
+		t.Errorf("RiskLevel.String() = %v, want MEDIUM", result.RiskLevel.String())
+	}
+}

@@ -2,6 +2,7 @@
 package verify
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,16 +70,59 @@ func IsSkillRequiringVisualVerification(skillName string) bool {
 	return false
 }
 
+// WebChangeRisk represents the risk level of web/ file changes.
+// Risk determines whether visual verification is required:
+// - LOW: Trivial changes (CSS properties, colors) - no verification required
+// - MEDIUM: Component/layout changes - verification required
+// - HIGH: New pages, significant UX changes - verification required
+type WebChangeRisk int
+
+const (
+	// WebRiskNone means no web changes detected
+	WebRiskNone WebChangeRisk = iota
+	// WebRiskLow means trivial changes that don't need visual verification
+	// Examples: single CSS property, color changes, adding existing class
+	WebRiskLow
+	// WebRiskMedium means changes that need visual verification
+	// Examples: new component, layout changes, style file modifications
+	WebRiskMedium
+	// WebRiskHigh means significant UI changes that definitely need verification
+	// Examples: new pages, major UX changes, route additions
+	WebRiskHigh
+)
+
+// String returns a human-readable name for the risk level.
+func (r WebChangeRisk) String() string {
+	switch r {
+	case WebRiskNone:
+		return "NONE"
+	case WebRiskLow:
+		return "LOW"
+	case WebRiskMedium:
+		return "MEDIUM"
+	case WebRiskHigh:
+		return "HIGH"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// RequiresVisualVerification returns true if this risk level requires visual verification.
+func (r WebChangeRisk) RequiresVisualVerification() bool {
+	return r >= WebRiskMedium
+}
+
 // VisualVerificationResult represents the result of checking for visual verification evidence.
 type VisualVerificationResult struct {
-	Passed           bool     // Whether verification passed
-	HasWebChanges    bool     // Whether web/ files were changed
-	HasEvidence      bool     // Whether visual verification evidence was found
-	HasHumanApproval bool     // Whether human/orchestrator explicitly approved
-	NeedsApproval    bool     // Whether human approval is required but missing
-	Errors           []string // Error messages
-	Warnings         []string // Warning messages
-	Evidence         []string // Evidence found (for debugging)
+	Passed           bool          // Whether verification passed
+	HasWebChanges    bool          // Whether web/ files were changed
+	RiskLevel        WebChangeRisk // Risk level of the web changes
+	HasEvidence      bool          // Whether visual verification evidence was found
+	HasHumanApproval bool          // Whether human/orchestrator explicitly approved
+	NeedsApproval    bool          // Whether human approval is required but missing
+	Errors           []string      // Error messages
+	Warnings         []string      // Warning messages
+	Evidence         []string      // Evidence found (for debugging)
 }
 
 // visualEvidencePatterns defines patterns that indicate visual verification was performed.
@@ -293,6 +337,351 @@ func IsWebFile(filePath string) bool {
 	return false
 }
 
+// WebFileChange represents a changed web file with its diff stats.
+type WebFileChange struct {
+	Path         string // File path (e.g., "web/src/routes/page.svelte")
+	LinesAdded   int    // Number of lines added
+	LinesRemoved int    // Number of lines removed (renamed to avoid Go reserved word)
+	IsNew        bool   // Whether this is a newly created file
+}
+
+// IsCSSOnlyFile returns true if the file is a pure CSS/SCSS file.
+func (w WebFileChange) IsCSSOnlyFile() bool {
+	return strings.HasSuffix(w.Path, ".css") || strings.HasSuffix(w.Path, ".scss")
+}
+
+// IsRouteFile returns true if the file is in a routes directory (Svelte/Next.js pattern).
+func (w WebFileChange) IsRouteFile() bool {
+	return strings.Contains(w.Path, "/routes/") || strings.Contains(w.Path, "/pages/")
+}
+
+// IsComponentFile returns true if the file is a component file.
+func (w WebFileChange) IsComponentFile() bool {
+	return strings.Contains(w.Path, "/components/") ||
+		strings.Contains(w.Path, "/lib/") ||
+		strings.HasSuffix(w.Path, ".svelte") ||
+		strings.HasSuffix(w.Path, ".tsx") ||
+		strings.HasSuffix(w.Path, ".jsx") ||
+		strings.HasSuffix(w.Path, ".vue")
+}
+
+// IsLayoutFile returns true if the file is a layout file.
+func (w WebFileChange) IsLayoutFile() bool {
+	base := filepath.Base(w.Path)
+	return strings.HasPrefix(base, "+layout") ||
+		strings.HasPrefix(base, "_layout") ||
+		base == "layout.svelte" ||
+		base == "layout.tsx" ||
+		base == "Layout.tsx" ||
+		base == "Layout.svelte"
+}
+
+// TotalChanges returns the total number of line changes.
+func (w WebFileChange) TotalChanges() int {
+	return w.LinesAdded + w.LinesRemoved
+}
+
+// lowRiskCSSPatterns are patterns that indicate trivial CSS changes.
+// These don't require visual verification.
+var lowRiskCSSPatterns = []string{
+	"color:", "background-color:", "border-color:", "fill:", "stroke:",
+	"opacity:", "visibility:",
+	"font-size:", "font-weight:", "font-family:",
+	"padding:", "margin:", "gap:",
+	"z-index:", "cursor:",
+}
+
+// AssessWebChangeRisk evaluates the risk level of web file changes.
+// Returns the highest risk level among all changed files.
+//
+// Risk heuristics:
+// - LOW: CSS-only files with small changes (≤10 lines), or trivial modifications
+// - MEDIUM: Component changes, style files with significant changes, layout modifications
+// - HIGH: New route files, new pages, major UX restructuring
+func AssessWebChangeRisk(changes []WebFileChange) WebChangeRisk {
+	if len(changes) == 0 {
+		return WebRiskNone
+	}
+
+	maxRisk := WebRiskLow
+
+	for _, change := range changes {
+		risk := assessSingleFileRisk(change)
+		if risk > maxRisk {
+			maxRisk = risk
+		}
+	}
+
+	return maxRisk
+}
+
+// assessSingleFileRisk determines the risk level for a single file change.
+func assessSingleFileRisk(change WebFileChange) WebChangeRisk {
+	// New route files are always HIGH risk - new pages need visual verification
+	if change.IsNew && change.IsRouteFile() {
+		return WebRiskHigh
+	}
+
+	// New layout files are HIGH risk - they affect multiple pages
+	if change.IsNew && change.IsLayoutFile() {
+		return WebRiskHigh
+	}
+
+	// New component files are MEDIUM risk
+	if change.IsNew && change.IsComponentFile() {
+		return WebRiskMedium
+	}
+
+	// Large changes to route files are HIGH risk
+	if change.IsRouteFile() && change.TotalChanges() > 50 {
+		return WebRiskHigh
+	}
+
+	// Large layout changes are HIGH risk
+	if change.IsLayoutFile() && change.TotalChanges() > 20 {
+		return WebRiskHigh
+	}
+
+	// CSS-only files with small changes are LOW risk
+	if change.IsCSSOnlyFile() {
+		if change.TotalChanges() <= 10 {
+			return WebRiskLow
+		}
+		// Larger CSS changes are MEDIUM risk
+		return WebRiskMedium
+	}
+
+	// Component modifications
+	if change.IsComponentFile() {
+		// Small component changes (e.g., adding a class, tweaking styles)
+		if change.TotalChanges() <= 5 {
+			return WebRiskLow
+		}
+		// Medium-sized component changes
+		if change.TotalChanges() <= 30 {
+			return WebRiskMedium
+		}
+		// Large component changes
+		return WebRiskHigh
+	}
+
+	// Default: MEDIUM risk for unclassified web files
+	return WebRiskMedium
+}
+
+// GetWebChangesWithStats returns web file changes with their diff stats.
+// Uses git diff --numstat to get line counts for each changed file.
+func GetWebChangesWithStats(projectDir, workspacePath string) ([]WebFileChange, error) {
+	spawnTime := spawn.ReadSpawnTime(workspacePath)
+
+	if spawnTime.IsZero() {
+		// Fallback to last 5 commits if no spawn time
+		return getWebChangesFromRecentCommits(projectDir)
+	}
+
+	return getWebChangesSinceTimeForWorkspace(projectDir, spawnTime, workspacePath)
+}
+
+// getWebChangesFromRecentCommits gets web file changes from the last 5 commits.
+func getWebChangesFromRecentCommits(projectDir string) ([]WebFileChange, error) {
+	// Get files changed in last 5 commits with stats
+	cmd := exec.Command("git", "diff", "--numstat", "HEAD~5..HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Try with fewer commits
+		cmd = exec.Command("git", "diff", "--numstat", "HEAD~1..HEAD")
+		cmd.Dir = projectDir
+		output, err = cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return parseNumstatOutput(string(output), projectDir)
+}
+
+// getWebChangesSinceTimeForWorkspace gets web file changes since spawn time for this workspace.
+func getWebChangesSinceTimeForWorkspace(projectDir string, since time.Time, workspacePath string) ([]WebFileChange, error) {
+	// If no workspace path, use unscoped check
+	if workspacePath == "" {
+		return getWebChangesSinceTime(projectDir, since)
+	}
+
+	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Convert workspace path to relative path
+	relWorkspace := workspacePath
+	if filepath.IsAbs(workspacePath) && filepath.IsAbs(projectDir) {
+		rel, err := filepath.Rel(projectDir, workspacePath)
+		if err == nil {
+			relWorkspace = rel
+		}
+	}
+
+	// Get commit hashes that touch the workspace
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H", "--", relWorkspace)
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+		return nil, nil // No commits touching workspace
+	}
+
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	// Collect all changes from commits that touched workspace
+	var allChanges []WebFileChange
+	seen := make(map[string]bool)
+
+	for _, hash := range commitHashes {
+		if hash == "" {
+			continue
+		}
+
+		// Get numstat for this commit
+		cmd := exec.Command("git", "show", "--numstat", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		changes, err := parseNumstatOutput(string(output), projectDir)
+		if err != nil {
+			continue
+		}
+
+		// Merge changes, taking max values for duplicates
+		for _, change := range changes {
+			if seen[change.Path] {
+				// Find and update existing
+				for i := range allChanges {
+					if allChanges[i].Path == change.Path {
+						allChanges[i].LinesAdded += change.LinesAdded
+						allChanges[i].LinesRemoved += change.LinesRemoved
+						break
+					}
+				}
+			} else {
+				seen[change.Path] = true
+				allChanges = append(allChanges, change)
+			}
+		}
+	}
+
+	return allChanges, nil
+}
+
+// getWebChangesSinceTime gets web file changes since a specific time.
+func getWebChangesSinceTime(projectDir string, since time.Time) ([]WebFileChange, error) {
+	sinceStr := since.UTC().Format("2006-01-02T15:04:05Z")
+
+	// Get commit hashes since spawn time
+	cmd := exec.Command("git", "log", "--since="+sinceStr, "--format=%H")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(output))) == 0 {
+		return nil, nil
+	}
+
+	commitHashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+	var allChanges []WebFileChange
+	seen := make(map[string]bool)
+
+	for _, hash := range commitHashes {
+		if hash == "" {
+			continue
+		}
+
+		cmd := exec.Command("git", "show", "--numstat", "--format=", hash)
+		cmd.Dir = projectDir
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		changes, err := parseNumstatOutput(string(output), projectDir)
+		if err != nil {
+			continue
+		}
+
+		for _, change := range changes {
+			if !seen[change.Path] {
+				seen[change.Path] = true
+				allChanges = append(allChanges, change)
+			}
+		}
+	}
+
+	return allChanges, nil
+}
+
+// parseNumstatOutput parses git diff --numstat output into WebFileChange structs.
+// Format: added<TAB>removed<TAB>filepath
+// Binary files show "-" for counts.
+func parseNumstatOutput(output string, projectDir string) ([]WebFileChange, error) {
+	var changes []WebFileChange
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+
+		filePath := parts[2]
+		if !IsWebFile(filePath) {
+			continue
+		}
+
+		// Parse line counts (may be "-" for binary files)
+		added := 0
+		removed := 0
+		if parts[0] != "-" {
+			var n int
+			_, err := fmt.Sscanf(parts[0], "%d", &n)
+			if err == nil {
+				added = n
+			}
+		}
+		if parts[1] != "-" {
+			var n int
+			_, err := fmt.Sscanf(parts[1], "%d", &n)
+			if err == nil {
+				removed = n
+			}
+		}
+
+		// Check if file is new by looking for it in the first commit
+		isNew := isNewFile(projectDir, filePath)
+
+		changes = append(changes, WebFileChange{
+			Path:         filePath,
+			LinesAdded:   added,
+			LinesRemoved: removed,
+			IsNew:        isNew,
+		})
+	}
+
+	return changes, nil
+}
+
+// isNewFile checks if a file was created (not modified) by checking git status.
+func isNewFile(projectDir, filePath string) bool {
+	// Check if file exists in HEAD~1
+	cmd := exec.Command("git", "cat-file", "-e", "HEAD~1:"+filePath)
+	cmd.Dir = projectDir
+	err := cmd.Run()
+	// If error, file didn't exist before → it's new
+	return err != nil
+}
+
 // HasVisualVerificationEvidence checks beads comments for evidence of visual verification.
 // Returns true if any comment mentions screenshots, visual verification, or browser testing.
 func HasVisualVerificationEvidence(comments []Comment) (bool, []string) {
@@ -445,7 +834,7 @@ func VerifyVisualVerification(beadsID, workspacePath, projectDir string) VisualV
 // VerifyVisualVerificationWithComments is like VerifyVisualVerification but accepts pre-fetched comments.
 // If comments is nil, comments will be fetched from beads API.
 func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir string, comments []Comment) VisualVerificationResult {
-	result := VisualVerificationResult{Passed: true}
+	result := VisualVerificationResult{Passed: true, RiskLevel: WebRiskNone}
 
 	// Check if web/ files were modified by this agent (scoped by spawn time)
 	result.HasWebChanges = HasWebChangesForAgent(projectDir, workspacePath)
@@ -465,7 +854,29 @@ func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir str
 		return result
 	}
 
-	// UI-focused skill (feature-impl) - need visual verification evidence AND human approval
+	// UI-focused skill (feature-impl) - assess risk level of web changes
+	webChanges, err := GetWebChangesWithStats(projectDir, workspacePath)
+	if err != nil {
+		result.Warnings = append(result.Warnings, "failed to get web change stats: "+err.Error())
+		// Fall back to requiring verification if we can't assess risk
+		result.RiskLevel = WebRiskMedium
+	} else {
+		result.RiskLevel = AssessWebChangeRisk(webChanges)
+	}
+
+	// LOW risk changes don't require visual verification
+	if !result.RiskLevel.RequiresVisualVerification() {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("web/ files modified with %s risk - visual verification not required", result.RiskLevel))
+		// Add details about what was changed
+		for _, change := range webChanges {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("  %s: +%d/-%d lines", change.Path, change.LinesAdded, change.LinesRemoved))
+		}
+		return result
+	}
+
+	// MEDIUM/HIGH risk - need visual verification evidence AND human approval
 
 	// Check beads comments for evidence and approval (use pre-fetched if available)
 	if comments == nil {
@@ -517,7 +928,7 @@ func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir str
 	if !result.HasEvidence {
 		result.Passed = false
 		result.Errors = append(result.Errors,
-			"web/ files modified but no visual verification evidence found",
+			fmt.Sprintf("web/ files modified with %s risk - visual verification required", result.RiskLevel),
 			"Agent must capture screenshot or mention visual verification in beads comment",
 			"Example: bd comment <id> \"Visual verification: screenshot captured showing [description]\"",
 		)
@@ -526,7 +937,7 @@ func VerifyVisualVerificationWithComments(beadsID, workspacePath, projectDir str
 		result.Passed = false
 		result.NeedsApproval = true
 		result.Errors = append(result.Errors,
-			"web/ files modified - visual evidence found but requires human approval",
+			fmt.Sprintf("web/ files modified with %s risk - visual evidence found but requires human approval", result.RiskLevel),
 			"Use: orch complete <id> --approve   OR",
 			"Add approval comment: bd comment <id> \"✅ APPROVED\"",
 		)
