@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
@@ -32,7 +33,9 @@ var (
 
 	// beadsClient is a persistent RPC client for beads operations.
 	// Initialized at startup with auto-reconnect enabled.
-	beadsClient *beads.Client
+	// Protected by beadsClientMu for thread-safe access across HTTP handlers.
+	beadsClient   *beads.Client
+	beadsClientMu sync.RWMutex
 )
 
 var serveCmd = &cobra.Command{

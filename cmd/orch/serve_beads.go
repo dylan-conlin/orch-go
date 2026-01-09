@@ -97,12 +97,34 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 		}
 	}
 
+	// Thread-safe cleanup of stale beadsClient when socket disappears.
+	// This prevents holding broken connection state when daemon restarts.
+	beadsClientMu.Lock()
+	if !socketExists && beadsClient != nil {
+		beadsClient.Close()
+		beadsClient = nil
+	}
+
+	// Reinitialize beadsClient if socket reappears and client is nil.
+	// This handles daemon restarts gracefully without server restart.
+	if socketExists && beadsClient == nil && socketPath != "" {
+		beadsClient = beads.NewClient(socketPath,
+			beads.WithAutoReconnect(3),
+			beads.WithTimeout(5*time.Second),
+		)
+		// Don't block on connection - let execute() handle reconnect
+	}
+
+	// Capture client reference under lock for use after unlock
+	currentClient := beadsClient
+	beadsClientMu.Unlock()
+
 	// For non-default projects, always use CLI client with project dir
 	if projectDir != "" && projectDir != beads.DefaultDir {
 		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
 		stats, err = cliClient.Stats()
-	} else if beadsClient != nil && socketExists {
-		stats, err = beadsClient.Stats()
+	} else if currentClient != nil && socketExists {
+		stats, err = currentClient.Stats()
 		if err != nil {
 			// Fallback to CLI on RPC error
 			stats, err = beads.FallbackStats()
@@ -156,12 +178,34 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 		}
 	}
 
+	// Thread-safe cleanup of stale beadsClient when socket disappears.
+	// This prevents holding broken connection state when daemon restarts.
+	beadsClientMu.Lock()
+	if !socketExists && beadsClient != nil {
+		beadsClient.Close()
+		beadsClient = nil
+	}
+
+	// Reinitialize beadsClient if socket reappears and client is nil.
+	// This handles daemon restarts gracefully without server restart.
+	if socketExists && beadsClient == nil && socketPath != "" {
+		beadsClient = beads.NewClient(socketPath,
+			beads.WithAutoReconnect(3),
+			beads.WithTimeout(5*time.Second),
+		)
+		// Don't block on connection - let execute() handle reconnect
+	}
+
+	// Capture client reference under lock for use after unlock
+	currentClient := beadsClient
+	beadsClientMu.Unlock()
+
 	// For non-default projects, always use CLI client with project dir
 	if projectDir != "" && projectDir != beads.DefaultDir {
 		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
 		issues, err = cliClient.Ready(nil)
-	} else if beadsClient != nil && socketExists {
-		issues, err = beadsClient.Ready(nil)
+	} else if currentClient != nil && socketExists {
+		issues, err = currentClient.Ready(nil)
 		if err != nil {
 			// Fallback to CLI on RPC error
 			issues, err = beads.FallbackReady()
@@ -374,8 +418,13 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 	var issue *beads.Issue
 	var err error
 
-	if beadsClient != nil {
-		issue, err = beadsClient.Create(&beads.CreateArgs{
+	// Thread-safe access to beadsClient
+	beadsClientMu.RLock()
+	currentClient := beadsClient
+	beadsClientMu.RUnlock()
+
+	if currentClient != nil {
+		issue, err = currentClient.Create(&beads.CreateArgs{
 			Title:       req.Title,
 			Description: req.Description,
 			IssueType:   req.IssueType,
