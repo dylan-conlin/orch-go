@@ -26,7 +26,7 @@ type AgentAPIResponse struct {
 	BeadsID              string               `json:"beads_id,omitempty"`
 	BeadsTitle           string               `json:"beads_title,omitempty"`
 	Skill                string               `json:"skill,omitempty"`
-	Status               string               `json:"status"`            // "active", "idle", "completed", etc.
+	Status               string               `json:"status"`            // "active", "idle", "dead", "completed", "awaiting-cleanup"
 	Phase                string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
 	Task                 string               `json:"task,omitempty"`    // Task description from beads issue
 	Project              string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
@@ -1029,29 +1029,51 @@ func checkWorkspaceSynthesis(workspacePath string) bool {
 //
 // Priority order (highest to lowest):
 //  1. Beads issue closed → "completed" (orchestrator verified completion)
-//  2. Phase: Complete reported → "completed" (agent declared done)
-//  3. SYNTHESIS.md exists → "completed" (artifact proves completion)
-//  4. Session activity → sessionStatus ("active" or "idle")
+//  2. Phase: Complete reported AND session dead → "awaiting-cleanup" (agent done, needs orch complete)
+//  3. Phase: Complete reported → "completed" (agent declared done, still has active session)
+//  4. SYNTHESIS.md exists AND session dead → "awaiting-cleanup" (artifact proves completion, needs cleanup)
+//  5. SYNTHESIS.md exists → "completed" (artifact proves completion)
+//  6. Session activity → sessionStatus ("active", "idle", or "dead")
 //
-// This replaces the scattered status determination logic with a clear, deterministic model.
+// The "awaiting-cleanup" status distinguishes completed-but-orphaned agents from crashed agents.
+// This helps orchestrators prioritize: awaiting-cleanup needs orch complete, dead needs investigation.
 // See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md for design rationale.
+// See .kb/investigations/2026-01-08-inv-handle-multiple-agents-same-beads.md for awaiting-cleanup addition.
 func determineAgentStatus(issueClosed bool, phaseComplete bool, workspacePath string, sessionStatus string) string {
 	// Priority 1: Beads issue closed → completed (orchestrator verified completion)
 	if issueClosed {
 		return "completed"
 	}
 
-	// Priority 2: Phase: Complete reported → completed (agent declared done)
+	hasSynthesis := checkWorkspaceSynthesis(workspacePath)
+	isDead := sessionStatus == "dead"
+
+	// Priority 2: Phase: Complete reported AND session dead → awaiting-cleanup
+	// Agent finished work and reported completion, but orchestrator hasn't run orch complete.
+	// This is NOT an error state - the agent did its job, just needs cleanup.
+	if phaseComplete && isDead {
+		return "awaiting-cleanup"
+	}
+
+	// Priority 3: Phase: Complete reported (session still active/idle) → completed
 	if phaseComplete {
 		return "completed"
 	}
 
-	// Priority 3: SYNTHESIS.md exists → completed (artifact proves completion)
-	if checkWorkspaceSynthesis(workspacePath) {
+	// Priority 4: SYNTHESIS.md exists AND session dead → awaiting-cleanup
+	// Agent wrote synthesis artifact (proof of completion) but session is dead.
+	// Similar to Phase: Complete case - needs cleanup, not investigation.
+	if hasSynthesis && isDead {
+		return "awaiting-cleanup"
+	}
+
+	// Priority 5: SYNTHESIS.md exists (session still active/idle) → completed
+	if hasSynthesis {
 		return "completed"
 	}
 
-	// Priority 4: Session activity (fallback)
+	// Priority 6: Session activity (fallback)
+	// "dead" agents without completion signals truly need attention (crashed/stuck)
 	return sessionStatus
 }
 

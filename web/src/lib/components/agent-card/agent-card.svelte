@@ -42,6 +42,8 @@
 				return 'completed';
 			case 'abandoned':
 				return 'abandoned';
+			case 'awaiting-cleanup':
+				return 'secondary'; // Amber/warning style
 			default:
 				return 'default';
 		}
@@ -55,6 +57,8 @@
 				return 'bg-blue-500';
 			case 'abandoned':
 				return 'bg-red-500';
+			case 'awaiting-cleanup':
+				return 'bg-amber-500'; // Distinct from dead (red) and completed (blue)
 			default:
 				return 'bg-gray-500';
 		}
@@ -255,10 +259,10 @@
 <button
 	type="button"
 	onclick={handleClick}
-	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {displayState === 'running' ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : displayState === 'ready-for-review' ? 'border-blue-500 shadow-md shadow-blue-500/20' : displayState === 'dead' ? 'border-red-500 shadow-md shadow-red-500/20' : agent.is_stalled ? 'border-orange-500 shadow-md shadow-orange-500/20' : displayState === 'idle' ? 'border-orange-500/50' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
+	class="group relative w-full cursor-pointer rounded border bg-card p-2 text-left transition-all duration-500 hover:border-primary/50 hover:shadow-sm {displayState === 'running' ? 'border-yellow-500 shadow-md shadow-yellow-500/20' : displayState === 'ready-for-review' ? 'border-blue-500 shadow-md shadow-blue-500/20' : displayState === 'dead' ? 'border-red-500 shadow-md shadow-red-500/20' : displayState === 'awaiting-cleanup' ? 'border-amber-500 shadow-md shadow-amber-500/20' : agent.is_stalled ? 'border-orange-500 shadow-md shadow-orange-500/20' : displayState === 'idle' ? 'border-orange-500/50' : ''} {isSelected ? 'ring-2 ring-primary border-primary' : ''}"
 >
 	<!-- Status indicator bar at top - color reflects display state -->
-	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t transition-colors duration-500 ${displayState === 'running' ? 'bg-yellow-500' : displayState === 'ready-for-review' ? 'bg-blue-500' : displayState === 'dead' ? 'bg-red-500' : agent.is_stalled ? 'bg-orange-500' : displayState === 'idle' ? 'bg-orange-500' : getStatusColor(agent.status)}`}></div>
+	<div class={`absolute left-0 top-0 h-0.5 w-full rounded-t transition-colors duration-500 ${displayState === 'running' ? 'bg-yellow-500' : displayState === 'ready-for-review' ? 'bg-blue-500' : displayState === 'dead' ? 'bg-red-500' : displayState === 'awaiting-cleanup' ? 'bg-amber-500' : agent.is_stalled ? 'bg-orange-500' : displayState === 'idle' ? 'bg-orange-500' : getStatusColor(agent.status)}`}></div>
 
 	<!-- Header: Status + Phase + Duration -->
 	<div class="flex items-center justify-between gap-1">
@@ -333,6 +337,19 @@
 					<p class="text-xs text-muted-foreground">
 						No activity for 3+ minutes.<br />
 						Agent may have crashed, been killed, or is completely stuck.
+					</p>
+				</Tooltip.Content>
+			</Tooltip.Root>
+		{:else if displayState === 'awaiting-cleanup'}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<span class="text-amber-500">🧹</span>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<p class="font-medium text-amber-500">Awaiting Cleanup</p>
+					<p class="text-xs text-muted-foreground">
+						Agent completed work but wasn't formally closed.<br />
+						Run <code class="bg-muted px-1 rounded">orch complete</code> to clean up.
 					</p>
 				</Tooltip.Content>
 			</Tooltip.Root>

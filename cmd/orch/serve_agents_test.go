@@ -793,9 +793,11 @@ func TestHandleCacheInvalidateMethodNotAllowed(t *testing.T) {
 // TestDetermineAgentStatus tests the Priority Cascade model for agent status determination.
 // Priority order:
 //  1. Beads issue closed → "completed"
-//  2. Phase: Complete reported → "completed"
-//  3. SYNTHESIS.md exists → "completed"
-//  4. Session activity → "active" (<10min) or "idle" (>=10min)
+//  2. Phase: Complete reported AND dead → "awaiting-cleanup"
+//  3. Phase: Complete reported → "completed"
+//  4. SYNTHESIS.md exists AND dead → "awaiting-cleanup"
+//  5. SYNTHESIS.md exists → "completed"
+//  6. Session activity → "active", "idle", or "dead"
 func TestDetermineAgentStatus(t *testing.T) {
 	// Create a temporary workspace with SYNTHESIS.md for testing
 	tmpDir := t.TempDir()
@@ -806,7 +808,7 @@ func TestDetermineAgentStatus(t *testing.T) {
 		issueClosed    bool
 		phaseComplete  bool
 		hasSynthesis   bool
-		sessionStatus  string // "active" or "idle" based on activity
+		sessionStatus  string // "active", "idle", or "dead" based on activity
 		expectedStatus string
 	}{
 		// Priority 1: Beads closed overrides everything
@@ -826,7 +828,24 @@ func TestDetermineAgentStatus(t *testing.T) {
 			sessionStatus:  "idle",
 			expectedStatus: "completed",
 		},
-		// Priority 2: Phase: Complete overrides synthesis and session
+		{
+			name:           "beads_closed_even_if_dead",
+			issueClosed:    true,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "dead",
+			expectedStatus: "completed",
+		},
+		// Priority 2: Phase: Complete + dead → awaiting-cleanup
+		{
+			name:           "phase_complete_dead_awaiting_cleanup",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   false,
+			sessionStatus:  "dead",
+			expectedStatus: "awaiting-cleanup",
+		},
+		// Priority 3: Phase: Complete + active/idle → completed
 		{
 			name:           "phase_complete_overrides_session",
 			issueClosed:    false,
@@ -843,7 +862,16 @@ func TestDetermineAgentStatus(t *testing.T) {
 			sessionStatus:  "idle",
 			expectedStatus: "completed",
 		},
-		// Priority 3: SYNTHESIS.md overrides session
+		// Priority 4: SYNTHESIS.md + dead → awaiting-cleanup
+		{
+			name:           "synthesis_dead_awaiting_cleanup",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   true,
+			sessionStatus:  "dead",
+			expectedStatus: "awaiting-cleanup",
+		},
+		// Priority 5: SYNTHESIS.md + active/idle → completed
 		{
 			name:           "synthesis_overrides_session",
 			issueClosed:    false,
@@ -860,7 +888,7 @@ func TestDetermineAgentStatus(t *testing.T) {
 			sessionStatus:  "idle",
 			expectedStatus: "completed",
 		},
-		// Priority 4: Session activity is the fallback
+		// Priority 6: Session activity is the fallback
 		{
 			name:           "active_session",
 			issueClosed:    false,
@@ -876,6 +904,14 @@ func TestDetermineAgentStatus(t *testing.T) {
 			hasSynthesis:   false,
 			sessionStatus:  "idle",
 			expectedStatus: "idle",
+		},
+		{
+			name:           "dead_session_no_completion",
+			issueClosed:    false,
+			phaseComplete:  false,
+			hasSynthesis:   false,
+			sessionStatus:  "dead",
+			expectedStatus: "dead",
 		},
 		// Combined scenarios - higher priority wins
 		{
@@ -893,6 +929,14 @@ func TestDetermineAgentStatus(t *testing.T) {
 			hasSynthesis:   true,
 			sessionStatus:  "active",
 			expectedStatus: "completed",
+		},
+		{
+			name:           "phase_complete_with_synthesis_dead",
+			issueClosed:    false,
+			phaseComplete:  true,
+			hasSynthesis:   true,
+			sessionStatus:  "dead",
+			expectedStatus: "awaiting-cleanup",
 		},
 	}
 

@@ -99,6 +99,7 @@
 			case 'active': return 'bg-green-500';
 			case 'completed': return 'bg-blue-500';
 			case 'abandoned': return 'bg-red-500';
+			case 'awaiting-cleanup': return 'bg-amber-500';
 			default: return 'bg-gray-500';
 		}
 	}
@@ -108,6 +109,7 @@
 			case 'active': return 'active';
 			case 'completed': return 'completed';
 			case 'abandoned': return 'abandoned';
+			case 'awaiting-cleanup': return 'secondary';
 			default: return 'default';
 		}
 	}

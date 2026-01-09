@@ -6,7 +6,7 @@
 	import { errorEvents } from '$lib/stores/agentlog';
 	import { pendingReviews, type PendingReviewAgent, type PendingReviewItem } from '$lib/stores/pending-reviews';
 	import { beads } from '$lib/stores/beads';
-	import { createIssue, deadAgents, stalledAgents } from '$lib/stores/agents';
+	import { createIssue, deadAgents, stalledAgents, awaitingCleanupAgents } from '$lib/stores/agents';
 
 	// State for issue creation (same as pending-reviews)
 	let creatingIssue: { [key: string]: boolean } = {};
@@ -28,7 +28,8 @@
 	$: totalBlocked = $beads?.blocked_issues ?? 0;
 	$: totalDead = $deadAgents.length;
 	$: totalStalled = $stalledAgents.length;
-	$: totalAttentionItems = totalErrors + totalReviews + (totalBlocked > 0 ? 1 : 0) + totalDead + totalStalled;
+	$: totalAwaitingCleanup = $awaitingCleanupAgents.length;
+	$: totalAttentionItems = totalErrors + totalReviews + (totalBlocked > 0 ? 1 : 0) + totalDead + totalStalled + totalAwaitingCleanup;
 
 	function getItemKey(workspaceId: string, index: number): string {
 		return `${workspaceId}-${index}`;
@@ -141,6 +142,38 @@
 					</div>
 					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
 						{#each $deadAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
+							<AgentCard {agent} />
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Awaiting Cleanup Section (completed but not formally closed) -->
+			{#if totalAwaitingCleanup > 0}
+				<div class="rounded border bg-card p-2 border-amber-500/30">
+					<div class="flex items-center gap-2 mb-2">
+						<span class="text-sm">🧹</span>
+						<span class="text-xs font-medium text-amber-500">Awaiting Cleanup ({totalAwaitingCleanup})</span>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<span class="text-[10px] text-muted-foreground cursor-help underline decoration-dotted">Completed but not closed</span>
+							</Tooltip.Trigger>
+							<Tooltip.Content class="max-w-xs">
+								<p class="font-medium text-amber-500">Needs Cleanup</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									These agents completed their work (SYNTHESIS.md or Phase: Complete exists) but weren't formally closed.
+								</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									<strong>This is NOT an error</strong> - the agent did its job correctly.
+								</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									<strong>Suggested action:</strong> Run <code class="bg-muted px-1 rounded">orch complete &lt;id&gt;</code> to close the issue and clean up the workspace.
+								</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					</div>
+					<div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+						{#each $awaitingCleanupAgents as agent, i (`${agent.id}-${agent.session_id ?? i}`)}
 							<AgentCard {agent} />
 						{/each}
 					</div>
