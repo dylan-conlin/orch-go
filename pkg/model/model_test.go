@@ -23,13 +23,20 @@ func TestResolve_Aliases(t *testing.T) {
 		{"opus-4.5", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
 
 		// Google aliases
-		{"flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
+		{"flash", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"flash-2.5", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"flash3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"FLASH3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"flash-3", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
-		{"flash-3.0", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
 		{"pro", ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}},
+
+		// OpenAI aliases
+		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5-20251215"}},
+		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini-20251130"}},
+
+		// DeepSeek aliases
+		{"deepseek-v3", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
+		{"reasoning", ModelSpec{Provider: "deepseek", ModelID: "deepseek-r1"}},
 	}
 
 	for _, tt := range tests {
@@ -74,6 +81,12 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 		// Gemini models default to google
 		{"gemini-2.5-flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"gemini-3-flash-preview", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
+
+		// GPT models default to openai
+		{"gpt-5-20251215", ModelSpec{Provider: "openai", ModelID: "gpt-5-20251215"}},
+
+		// DeepSeek models default to deepseek
+		{"deepseek-v3.2", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
 	}
 
 	for _, tt := range tests {

@@ -42,6 +42,16 @@ var Aliases = map[string]ModelSpec{
 	"flash-3":   {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"pro":       {Provider: "google", ModelID: "gemini-2.5-pro"},
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
+
+	// OpenAI models (GPT)
+	"gpt5":      {Provider: "openai", ModelID: "gpt-5-20251215"},
+	"gpt-5":     {Provider: "openai", ModelID: "gpt-5-20251215"},
+	"gpt5-mini": {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
+
+	// DeepSeek models
+	"deepseek-v3": {Provider: "deepseek", ModelID: "deepseek-v3.2"},
+	"deepseek-r1": {Provider: "deepseek", ModelID: "deepseek-r1"},
+	"reasoning":   {Provider: "deepseek", ModelID: "deepseek-r1"},
 }
 
 // Resolve resolves a model specification to a full ModelSpec.
@@ -78,6 +88,12 @@ func Resolve(spec string) ModelSpec {
 	if strings.Contains(specLower, "gemini") {
 		return ModelSpec{Provider: "google", ModelID: spec}
 	}
+	if strings.Contains(specLower, "gpt") {
+		return ModelSpec{Provider: "openai", ModelID: spec}
+	}
+	if strings.Contains(specLower, "deepseek") {
+		return ModelSpec{Provider: "deepseek", ModelID: spec}
+	}
 
 	// Default to anthropic for unknown models
 	return ModelSpec{Provider: "anthropic", ModelID: spec}
@@ -85,20 +101,10 @@ func Resolve(spec string) ModelSpec {
 
 // ListAliases returns a formatted list of available model aliases.
 func ListAliases() []string {
-	// Group by provider
-	anthropic := []string{}
-	google := []string{}
-
-	for alias, spec := range Aliases {
-		if spec.Provider == "anthropic" {
-			anthropic = append(anthropic, alias)
-		} else if spec.Provider == "google" {
-			google = append(google, alias)
-		}
-	}
-
-	return append(
-		[]string{"Anthropic: opus, sonnet, haiku (also -4.5 variants)"},
+	return []string{
+		"Anthropic: opus, sonnet, haiku (also -4.5 variants)",
 		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
-	)
+		"OpenAI: gpt-5, gpt-5-mini",
+		"DeepSeek: deepseek-v3, deepseek-r1, reasoning (alias for r1)",
+	}
 }
