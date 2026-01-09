@@ -2,9 +2,11 @@
 
 **Purpose:** Single authoritative reference for orch-go's OpenCode integration. Read this before debugging OpenCode issues.
 
-**Last verified:** 2026-01-06
+**Last verified:** 2026-01-08
 
-**Synthesized from:** 16 investigations (2025-12-19 to 2025-12-26)
+**Synthesized from:** 24 investigations (2025-12-19 to 2026-01-08)
+
+**Related guide:** `.kb/guides/opencode-plugins.md` - Comprehensive plugin system reference
 
 ---
 
@@ -145,6 +147,16 @@ These routes get proxied to `desktop.opencode.ai` and fail:
 
 **NOT the fix:** This is NOT an authentication issue. Token refresh is handled automatically by OpenCode.
 
+### Cross-project sessions show wrong directory
+
+**Cause:** Sessions created via `orch spawn --workdir ~/other-project` have the orchestrator's directory (orch-go) instead of the target project directory.
+
+**Impact:** Sessions unfindable via directory-based queries (`x-opencode-directory` header filtering).
+
+**Root cause:** `cmd.Dir` is set but `BuildSpawnCommand` doesn't explicitly pass directory to OpenCode session creation.
+
+**Status:** Bug identified (2026-01-06), fix pending. Workaround: Query all sessions and filter client-side.
+
 ### "No user message found in conversation"
 
 **Cause:** OpenCode's `/prompt_async` endpoint doesn't await the prompt call, leading to race conditions.
@@ -186,6 +198,23 @@ bun add @opencode-ai/plugin
 2. Call `IsSessionProcessing()` for recently active sessions
 3. Skip deletion if session is actively processing
 
+### Session accumulation (too many sessions, slow API)
+
+**Cause:** Sessions persist indefinitely in `~/.local/share/opencode/storage/`.
+
+**Symptoms:** Slow dashboard API, high memory usage, 600+ sessions.
+
+**Fix:** Use `orch clean --sessions` to delete sessions older than N days (default: 7):
+```bash
+orch clean --sessions                    # Delete sessions > 7 days old
+orch clean --sessions --sessions-days 3  # Delete sessions > 3 days old
+orch clean --sessions --dry-run          # Preview what would be deleted
+```
+
+**Notes:**
+- Active sessions (IsSessionProcessing check) are skipped
+- 461 sessions deleted in initial test (627 → 166)
+
 ---
 
 ## Key Decisions (from investigations)
@@ -198,6 +227,10 @@ These are settled. Don't re-investigate:
 - **Sessions created by standalone TUI ARE visible via API** - Python's discover_opencode_session() proves this works.
 - **x-opencode-directory header controls disk vs memory session listing** - WITH header = disk (238+), WITHOUT = memory (2-3).
 - **pkg/opencode/ provides the right abstraction level** - No additional abstraction needed on top of existing package.
+- **Plugin system is the bridge for principle mechanization** - See `.kb/guides/opencode-plugins.md` for comprehensive reference on Gates, Context Injection, and Observation patterns.
+- **session.idle is deprecated** - Prefer `session.status` event with `status.type === "idle"` check. Still functional but will be removed.
+- **OpenCode sessions share central storage** - All servers query same `~/.local/share/opencode/storage/`; `x-opencode-directory` is for filtering, not isolation.
+- **Question tool is `question`, not `AskUserQuestion`** - Skills corrected to use proper JSON interface with questions array containing question/header/options.
 
 ---
 
@@ -324,6 +357,14 @@ If those don't answer your question, then investigate. But update this doc with 
 | 2025-12-26 | Health Endpoint Redirect | Wrong endpoint tested (/sessions vs /session) |
 | 2025-12-26 | Theme Selection System | 28 themes, JSON-based, hierarchical |
 | 2025-12-26 | Port Theme System | Full theme system ported to dashboard |
+| 2026-01-06 | Cross-Project Sessions | Sessions share storage; directory bug in spawn |
+| 2026-01-06 | Session Cleanup Mechanism | `orch clean --sessions` implemented |
+| 2026-01-07 | Question Tool Correction | Tool is `question` not `AskUserQuestion` |
+| 2026-01-08 | Plugin Capabilities | Full hook analysis, 3 mechanization patterns |
+| 2026-01-08 | Session Compaction | `experimental.session.compacting` preserves context |
+| 2026-01-08 | Constraint Surfacing | Enhanced guarded-files plugin with kb context |
+| 2026-01-08 | Event Reliability | file.edited reliable; session.idle deprecated |
+| 2026-01-08 | Plugin Guide | Authoritative `.kb/guides/opencode-plugins.md` created |
 
 ### Source Code
 
@@ -342,4 +383,5 @@ If those don't answer your question, then investigate. But update this doc with 
 ## History
 
 - **2026-01-06:** Created by synthesizing 16 investigations spanning 2025-12-19 to 2025-12-26
-- **Evolution:** From POC (Dec 19) → full HTTP client → SSE monitoring → session cleanup → theme system
+- **2026-01-08:** Updated with 8 new investigations (2026-01-06 to 2026-01-08), added plugin system decisions and new common problems
+- **Evolution:** From POC (Dec 19) → full HTTP client → SSE monitoring → session cleanup → theme system → plugin system for principle mechanization (Jan 08)
