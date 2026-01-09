@@ -1,7 +1,7 @@
 # Decision: Dual Spawn Mode Architecture
 
 **Date:** 2026-01-09
-**Status:** Accepted
+**Status:** Implemented
 **Context:** Cost and rate limit constraints with Gemini API
 
 ## Problem
