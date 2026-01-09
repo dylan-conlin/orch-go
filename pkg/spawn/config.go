@@ -172,6 +172,9 @@ type Config struct {
 	// UsageInfo contains the current account usage at spawn time.
 	// Used for telemetry and monitoring. May be nil if usage check failed.
 	UsageInfo *UsageInfo
+
+	// SpawnMode specifies the spawn backend: "opencode" or "claude"
+	SpawnMode string
 }
 
 // UsageInfo contains account usage data at spawn time.

@@ -20,6 +20,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -998,6 +999,13 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
+	// Load project config to get spawn mode
+	projCfg, _ := config.Load(projectDir)
+	spawnBackend := "opencode"
+	if projCfg != nil {
+		spawnBackend = projCfg.SpawnMode
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:               task,
@@ -1023,6 +1031,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		IsOrchestrator:     isOrchestrator,
 		IsMetaOrchestrator: isMetaOrchestrator,
 		UsageInfo:          usageInfo,
+		SpawnMode:          spawnBackend,
 	}
 
 	// Pre-spawn token estimation and validation
@@ -1058,7 +1067,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), or headless (default for workers)
+	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), claude (tmux), or headless (default for workers)
 	if inline {
 		// Inline mode (blocking) - run in current terminal with TUI
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
@@ -1067,6 +1076,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Explicit --headless flag overrides all other mode decisions
 	if headless {
 		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
+	}
+
+	// Claude mode: Use tmux + claude CLI
+	if cfg.SpawnMode == "claude" {
+		return runSpawnClaude(serverURL, cfg, beadsID, skillName, task, attach)
 	}
 
 	// Orchestrator-type skills default to tmux mode (visible interaction)
@@ -1605,6 +1619,68 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	// Attach if requested
 	if attach {
 		if err := tmux.Attach(windowTarget); err != nil {
+			return fmt.Errorf("failed to attach to tmux: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// runSpawnClaude spawns the agent using Claude Code CLI in a tmux window.
+func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, task string, attach bool) error {
+	result, err := spawn.SpawnClaude(cfg)
+	if err != nil {
+		return err
+	}
+
+	// Register orchestrator session in registry if needed
+	registerOrchestratorSession(cfg, "", task)
+
+	// Log the session creation
+	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"window":              result.Window,
+		"window_id":           result.WindowID,
+		"spawn_mode":          "claude",
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
+	addUsageInfoToEventData(eventData, cfg.UsageInfo)
+	event := events.Event{
+		Type:      "session.spawned",
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Focus the newly created window
+	selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
+	if err := selectCmd.Run(); err != nil {
+		// Non-fatal
+		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+	}
+
+	// Print spawn summary with prominent gap warning if needed
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
+	fmt.Printf("Spawned agent in Claude mode (tmux):\n")
+	fmt.Printf("  Window:     %s\n", result.Window)
+	fmt.Printf("  Window ID:  %s\n", result.WindowID)
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	// Print context quality with visual indicators
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
+
+	// Attach if requested
+	if attach {
+		if err := tmux.Attach(result.Window); err != nil {
 			return fmt.Errorf("failed to attach to tmux: %w", err)
 		}
 	}
