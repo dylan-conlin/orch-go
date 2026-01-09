@@ -15,10 +15,10 @@ func (m ModelSpec) Format() string {
 }
 
 // DefaultModel is used when no model is specified.
-// Opus is the default (covered by Max subscription, best quality).
+// Flash is the default (cheapest/fastest, as Opus is restricted to Claude Code as of Jan 2026).
 var DefaultModel = ModelSpec{
-	Provider: "anthropic",
-	ModelID:  "claude-opus-4-5-20251101",
+	Provider: "google",
+	ModelID:  "gemini-3-flash-preview",
 }
 
 // Aliases maps short names to full model specs.
@@ -36,7 +36,7 @@ var Aliases = map[string]ModelSpec{
 	"haiku-4-5":  {Provider: "anthropic", ModelID: "claude-haiku-4-5-20251001"},
 
 	// Google models (Gemini)
-	"flash":     {Provider: "google", ModelID: "gemini-2.5-flash"},
+	"flash":     {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"flash-2.5": {Provider: "google", ModelID: "gemini-2.5-flash"},
 	"flash3":    {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"flash-3":   {Provider: "google", ModelID: "gemini-3-flash-preview"},
