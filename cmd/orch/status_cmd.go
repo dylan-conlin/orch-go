@@ -78,7 +78,8 @@ type AccountUsage struct {
 type AgentInfo struct {
 	SessionID    string                        `json:"session_id"`
 	BeadsID      string                        `json:"beads_id,omitempty"`
-	Mode         string                        `json:"mode,omitempty"` // Agent mode: "claude" or "opencode"
+	Mode         string                        `json:"mode,omitempty"`  // Agent mode: "claude" or "opencode"
+	Model        string                        `json:"model,omitempty"` // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
 	Skill        string                        `json:"skill,omitempty"`
 	Account      string                        `json:"account,omitempty"`
 	Runtime      string                        `json:"runtime"`
@@ -245,6 +246,7 @@ func runStatus(serverURL string) error {
 				SessionID:  a.SessionID,
 				BeadsID:    a.BeadsID,
 				Mode:       a.Mode,
+				Model:      a.Model,
 				Skill:      a.Skill,
 				ProjectDir: a.ProjectDir,
 				Project:    extractProjectFromBeadsID(a.BeadsID),
@@ -962,11 +964,11 @@ func printAgentsWideFormat(agents []AgentInfo) {
 	}
 
 	if hasRisk {
-		fmt.Printf("  %-18s %-8s %-8s %-12s %-25s %-12s %-7s %-16s %s\n", "BEADS ID", "MODE", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
-		fmt.Printf("  %s\n", strings.Repeat("-", 130))
+		fmt.Printf("  %-18s %-8s %-8s %-12s %-20s %-25s %-12s %-7s %-16s %s\n", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
+		fmt.Printf("  %s\n", strings.Repeat("-", 145))
 	} else {
-		fmt.Printf("  %-18s %-8s %-8s %-12s %-28s %-15s %-8s %s\n", "BEADS ID", "MODE", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
-		fmt.Printf("  %s\n", strings.Repeat("-", 125))
+		fmt.Printf("  %-18s %-8s %-20s %-8s %-12s %-23s %-12s %-8s %s\n", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
+		fmt.Printf("  %s\n", strings.Repeat("-", 135))
 	}
 
 	for _, agent := range agents {
@@ -978,6 +980,7 @@ func printAgentsWideFormat(agents []AgentInfo) {
 		if mode == "" {
 			mode = "-"
 		}
+		modelDisplay := formatModelForDisplay(agent.Model)
 		phase := agent.Phase
 		if phase == "" {
 			phase = "-"
@@ -995,9 +998,10 @@ func printAgentsWideFormat(agents []AgentInfo) {
 
 		if hasRisk {
 			risk := formatContextRisk(agent.ContextRisk)
-			fmt.Printf("  %-18s %-8s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
+			fmt.Printf("  %-18s %-8s %-20s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
 				beadsID,
 				mode,
+				modelDisplay,
 				status,
 				truncate(phase, 10),
 				truncate(task, 23),
@@ -1006,13 +1010,14 @@ func printAgentsWideFormat(agents []AgentInfo) {
 				tokens,
 				risk)
 		} else {
-			fmt.Printf("  %-18s %-8s %-8s %-12s %-28s %-15s %-8s %s\n",
+			fmt.Printf("  %-18s %-8s %-20s %-8s %-12s %-23s %-12s %-8s %s\n",
 				beadsID,
 				mode,
+				modelDisplay,
 				status,
 				truncate(phase, 10),
-				truncate(task, 26),
-				truncate(skill, 13),
+				truncate(task, 21),
+				truncate(skill, 10),
 				agent.Runtime,
 				tokens)
 		}
@@ -1033,17 +1038,18 @@ func formatContextRisk(risk *verify.ContextExhaustionRisk) string {
 }
 
 // printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
-// Drops TASK column, abbreviates SKILL.
-// Columns: BEADS ID, STATUS, PHASE, SKILL, RUNTIME, TOKENS
+// Drops TASK column, abbreviates SKILL and MODEL.
+// Columns: BEADS ID, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS
 func printAgentsNarrowFormat(agents []AgentInfo) {
-	fmt.Printf("  %-18s %-8s %-12s %-10s %-8s %s\n", "BEADS ID", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
-	fmt.Printf("  %s\n", strings.Repeat("-", 75))
+	fmt.Printf("  %-18s %-10s %-8s %-10s %-8s %-8s %s\n", "BEADS ID", "MODEL", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 85))
 
 	for _, agent := range agents {
 		beadsID := agent.BeadsID
 		if beadsID == "" {
 			beadsID = "-"
 		}
+		modelDisplay := formatModelForDisplay(agent.Model)
 		phase := agent.Phase
 		if phase == "" {
 			phase = "-"
@@ -1055,11 +1061,12 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		status := getAgentStatus(agent)
 		tokens := formatTokenStatsCompact(agent.Tokens)
 
-		fmt.Printf("  %-18s %-8s %-12s %-10s %-8s %s\n",
+		fmt.Printf("  %-18s %-10s %-8s %-10s %-8s %-8s %s\n",
 			beadsID,
+			truncate(modelDisplay, 9),
 			status,
-			truncate(phase, 10),
-			truncate(skill, 8),
+			truncate(phase, 9),
+			truncate(skill, 7),
 			agent.Runtime,
 			tokens)
 	}
@@ -1076,6 +1083,7 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		if beadsID == "" {
 			beadsID = "-"
 		}
+		modelDisplay := formatModelForDisplay(agent.Model)
 		phase := agent.Phase
 		if phase == "" {
 			phase = "-"
@@ -1096,7 +1104,7 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		} else {
 			fmt.Printf("  %s [%s]\n", beadsID, status)
 		}
-		fmt.Printf("    Phase: %s | Skill: %s\n", phase, skill)
+		fmt.Printf("    Model: %s | Phase: %s | Skill: %s\n", modelDisplay, phase, skill)
 		fmt.Printf("    Task: %s\n", truncate(task, 50))
 		fmt.Printf("    Runtime: %s | Tokens: %s\n", agent.Runtime, formatTokenStats(agent.Tokens))
 		if agent.ContextRisk != nil && agent.ContextRisk.Reason != "" {
@@ -1183,6 +1191,38 @@ func abbreviateSkill(skill string) string {
 		return abbr
 	}
 	return skill
+}
+
+// formatModelForDisplay formats a model spec for compact display.
+// Shortens common model names (e.g., "gemini-3-flash-preview" -> "flash3", "claude-opus-4-5-20251101" -> "opus-4.5")
+func formatModelForDisplay(model string) string {
+	if model == "" {
+		return "-"
+	}
+	
+	// Map full model IDs to short display names
+	modelAbbreviations := map[string]string{
+		"gemini-3-flash-preview":     "flash3",
+		"gemini-2.5-flash":           "flash-2.5",
+		"gemini-2.5-pro":             "pro-2.5",
+		"claude-opus-4-5-20251101":   "opus-4.5",
+		"claude-sonnet-4-5-20250929": "sonnet-4.5",
+		"claude-haiku-4-5-20251001":  "haiku-4.5",
+		"gpt-5":                      "gpt5",
+		"gpt-5.2":                    "gpt5-latest",
+		"gpt-5-mini":                 "gpt5-mini",
+		"o3":                         "o3",
+		"o3-mini":                    "o3-mini",
+		"deepseek-chat":              "deepseek",
+		"deepseek-reasoner":          "deepseek-r1",
+	}
+	
+	if abbr, ok := modelAbbreviations[model]; ok {
+		return abbr
+	}
+	
+	// For unknown models, truncate to 18 chars
+	return truncate(model, 18)
 }
 
 // formatTokenCount formats a token count with K/M suffixes for readability.

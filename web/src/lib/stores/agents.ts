@@ -41,6 +41,7 @@ export interface Agent {
 	deleted_at?: string;
 	project_dir?: string;
 	skill?: string;
+	model?: string; // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
 	primary_artifact?: string;
 	is_interactive?: boolean;
 	// New fields from enhanced API

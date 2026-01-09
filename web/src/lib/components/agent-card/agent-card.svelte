@@ -254,6 +254,29 @@
 	function hasOutcomeDetails(outcome: string): boolean {
 		return outcome.includes('(') || outcome.length > 20;
 	}
+
+	/**
+	 * Format model name for badge display (shortened versions)
+	 */
+	function formatModelBadge(model: string): string {
+		const modelAbbreviations: Record<string, string> = {
+			'gemini-3-flash-preview': 'flash3',
+			'gemini-2.5-flash': 'flash-2.5',
+			'gemini-2.5-pro': 'pro-2.5',
+			'claude-opus-4-5-20251101': 'opus-4.5',
+			'claude-sonnet-4-5-20250929': 'sonnet-4.5',
+			'claude-haiku-4-5-20251001': 'haiku-4.5',
+			'gpt-5': 'gpt5',
+			'gpt-5.2': 'gpt5-latest',
+			'gpt-5-mini': 'gpt5-mini',
+			'o3': 'o3',
+			'o3-mini': 'o3-mini',
+			'deepseek-chat': 'deepseek',
+			'deepseek-reasoner': 'deepseek-r1'
+		};
+		
+		return modelAbbreviations[model] || model.substring(0, 12);
+	}
 </script>
 
 <button
@@ -457,7 +480,7 @@
 		</Tooltip.Root>
 	{/if}
 
-	<!-- Project + Skill + Beads -->
+	<!-- Project + Skill + Model + Beads -->
 	<div class="mt-1 flex flex-wrap items-center gap-1">
 		{#if agent.project}
 			<Badge variant="secondary" class="h-4 px-1 text-[10px]">
@@ -468,6 +491,18 @@
 			<Badge variant="outline" class="h-4 px-1 text-[10px]">
 				{agent.skill}
 			</Badge>
+		{/if}
+		{#if agent.model}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					<Badge variant="outline" class="h-4 px-1 text-[10px] text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700">
+						{formatModelBadge(agent.model)}
+					</Badge>
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<p class="text-xs">Model: {agent.model}</p>
+				</Tooltip.Content>
+			</Tooltip.Root>
 		{/if}
 		{#if agent.beads_id}
 			<Tooltip.Root>

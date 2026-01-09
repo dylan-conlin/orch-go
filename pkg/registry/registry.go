@@ -47,6 +47,7 @@ type Agent struct {
 	Mode       string `json:"mode,omitempty"`       // Agent mode: "claude" or "opencode"
 	SessionID  string `json:"session_id,omitempty"` // OpenCode session ID
 	TmuxWindow string `json:"tmux_window,omitempty"` // Tmux window name (for claude mode)
+	Model      string `json:"model,omitempty"`      // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
 
 	// State
 	Status AgentState `json:"status"`

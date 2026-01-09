@@ -1279,7 +1279,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	}
 
 	// Register agent in general registry
-	registerAgent(cfg, result.SessionID, "", registry.ModeHeadless)
+	registerAgent(cfg, result.SessionID, "", registry.ModeHeadless, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, result.SessionID, task)
@@ -1368,7 +1368,7 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	result.StartBackgroundCleanup()
 
 	// Register agent in general registry
-	registerAgent(cfg, sessionID, "", registry.ModeHeadless)
+	registerAgent(cfg, sessionID, "", registry.ModeHeadless, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -1561,7 +1561,7 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	}
 
 	// Register agent in general registry
-	registerAgent(cfg, sessionID, windowTarget, registry.ModeTmux)
+	registerAgent(cfg, sessionID, windowTarget, registry.ModeTmux, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -2025,7 +2025,7 @@ func logTriageBypass(skillName, task string) {
 }
 
 // registerAgent registers any agent (worker or orchestrator) in the general agent registry.
-func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode string) {
+func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode, modelSpec string) {
 	agentReg, err := registry.New("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to open agent registry: %v\n", err)
@@ -2038,6 +2038,7 @@ func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode string) {
 		Mode:       mode,
 		SessionID:  sessionID,
 		TmuxWindow: tmuxWindow,
+		Model:      modelSpec,
 		ProjectDir: cfg.ProjectDir,
 		Skill:      cfg.SkillName,
 		Status:     registry.StateActive,
