@@ -40,4 +40,7 @@ check git history of /Users/dylanconlin/orch-knowledge for a skill related to cr
 | Price-watch architecture | price-watch/.kn/ (kn decision kn-b015ad) |
 * glass google test
 i had to click this: /Users/dylanconlin/Screenshots/screenshot_2026-01-08_16-28-43.png
+* i'm curious about these 'awaiting cleanup'
+/Users/dylanconlin/Screenshots/screenshot_2026-01-08_18-01-16.png
+
 

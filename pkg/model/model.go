@@ -40,7 +40,6 @@ var Aliases = map[string]ModelSpec{
 	"flash-2.5": {Provider: "google", ModelID: "gemini-2.5-flash"},
 	"flash3":    {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"flash-3":   {Provider: "google", ModelID: "gemini-3-flash-preview"},
-	"flash-3.0": {Provider: "google", ModelID: "gemini-3-flash-preview"},
 	"pro":       {Provider: "google", ModelID: "gemini-2.5-pro"},
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
 }
