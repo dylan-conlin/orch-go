@@ -19,7 +19,7 @@ Successfully tested the OpenCode spawn process by echoing "hello" and verified e
 
 ### Commits
 - `478564c2` - investigation: test-opencode-spawn-echo-hello - checkpoint
-- [Final commit hash will be added]
+- `84aa72de` - investigation: test-opencode-spawn-echo-hello - complete
 
 ---
 
