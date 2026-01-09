@@ -2,7 +2,7 @@
 
 **Purpose:** Authoritative reference for tmux-based agent spawning in orch-go.
 
-**Synthesized from:** 11 investigations (Dec 20-23, 2025) covering architecture, concurrent spawning, session resolution, attach mode, fallback mechanisms, and debugging.
+**Synthesized from:** 11 investigations (Dec 20-23, 2025) and 6 follow-up investigations (Jan 2026) covering architecture, concurrent spawning, session resolution, attach mode, fallback mechanisms, orchestrator session types, and debugging.
 
 ---
 
@@ -32,6 +32,8 @@ orch spawn --inline investigation "task"
 | **Inline** | `--inline` | Yes (blocking) | No | Debugging, quick tasks |
 
 **Key decision:** Headless is the default because it's optimal for automation. Tmux is opt-in for when you want visual monitoring.
+
+**Orchestrator-type skills exception:** Skills with `skill-type: policy` or `skill-type: orchestrator` default to tmux mode for interactive visibility. This is controlled by `cfg.IsOrchestrator` in spawn logic (spawn_cmd.go:789).
 
 ### How Tmux Mode Works
 
@@ -196,6 +198,18 @@ orch version --source
 2. Let fallback chain find the session
 3. Check session exists first: `orch status --json | jq`
 
+### Dashboard Showing Wrong Project
+
+**Symptom:** Dashboard shows beads/agents from wrong project
+
+**Cause:** `GetTmuxCwd()` was returning first window's cwd instead of active window's cwd.
+
+**Fix (2026-01-08):** Two-step approach in `pkg/tmux/follower.go`:
+1. Get active window index: `tmux display-message -t session -p "#{window_index}"`
+2. Get that window's cwd: `tmux display-message -t session:index -p "#{pane_current_path}"`
+
+**Verification:** `go test ./pkg/tmux/... -run TestGetTmuxCwd`
+
 ---
 
 ## Best Practices
@@ -219,17 +233,24 @@ orch version --source
 
 ## References
 
-**Superseded investigations:**
-- 2025-12-20-inv-migrate-orch-go-tmux-http.md (architecture decision)
-- 2025-12-20-inv-tmux-concurrent-{delta,epsilon,zeta}.md (concurrent testing)
-- 2025-12-21-debug-orch-send-fails-silently-tmux.md (session resolution fix)
-- 2025-12-21-inv-add-tmux-fallback-orch-status.md (fallback mechanisms)
-- 2025-12-21-inv-add-tmux-flag-orch-spawn.md (--tmux flag implementation)
-- 2025-12-21-inv-implement-attach-mode-tmux-spawn.md (attach mode)
-- 2025-12-21-inv-tmux-spawn-killed.md (SIGKILL debugging)
-- 2025-12-22-debug-orch-send-fails-silently-tmux.md (session validation)
+**Superseded investigations (archived):**
+- archived/2025-12-20-inv-migrate-orch-go-tmux-http.md (architecture decision)
+- archived/2025-12-20-inv-tmux-concurrent-{delta,epsilon,zeta}.md (concurrent testing)
+- archived/2025-12-21-debug-orch-send-fails-silently-tmux.md (session resolution fix)
+- archived/2025-12-21-inv-add-tmux-fallback-orch-status.md (fallback mechanisms)
+- archived/2025-12-21-inv-add-tmux-flag-orch-spawn.md (--tmux flag implementation)
+- archived/2025-12-21-inv-implement-attach-mode-tmux-spawn.md (attach mode)
+- archived/2025-12-21-inv-tmux-spawn-killed.md (SIGKILL debugging)
+- archived/2025-12-22-debug-orch-send-fails-silently-tmux.md (session validation)
 - archived/2025-12-23-inv-test-tmux-spawn.md (integration testing)
-- 2026-01-06-inv-tmux-session-naming-confusing-hard.md (meta-orchestrator session separation)
+- archived/2026-01-06-inv-tmux-session-naming-confusing-hard.md (meta-orchestrator session separation)
+- archived/2026-01-06-inv-synthesize-tmux-investigations-11-synthesis.md (created this guide)
+- archived/2026-01-08-inv-synthesize-tmux-investigations-12-synthesis.md (triage for archival)
+
+**Related investigations (not archived):**
+- 2026-01-04-inv-test-spawnable-orchestrator-tmux-default.md (orchestrator tmux default)
+- 2026-01-06-inv-orchestrator-sessions-spawned-via-tmux.md (attach mode --dir fix)
+- 2026-01-08-inv-fix-gettmuxcwd-active-window-instead.md (GetTmuxCwd fix)
 
 **Knowledge entries:**
 - kn-34d52f - "orch-go tmux spawn is fire-and-forget - no session ID capture"
