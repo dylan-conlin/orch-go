@@ -172,6 +172,13 @@ func runDoctor() error {
 		report.Healthy = false
 	}
 
+	// Check overmind services
+	overmindStatus := checkOvermindServices()
+	report.Services = append(report.Services, overmindStatus)
+	if !overmindStatus.Running {
+		report.Healthy = false
+	}
+
 	// Check beads daemon
 	beadsDaemonStatus := checkBeadsDaemon()
 	report.Services = append(report.Services, beadsDaemonStatus)
@@ -370,6 +377,38 @@ func checkWebUI() ServiceStatus {
 	} else {
 		status.Running = true
 		status.Details = fmt.Sprintf("Running (status %d)", resp.StatusCode)
+	}
+
+	return status
+}
+
+// checkOvermindServices checks if overmind is running via launchd supervision.
+// Since overmind runs in daemon mode, we check if the process is running.
+func checkOvermindServices() ServiceStatus {
+	status := ServiceStatus{
+		Name:      "Overmind (launchd)",
+		CanFix:    false,
+		FixAction: "launchctl kickstart -k gui/$(id -u)/com.overmind.orch-go",
+	}
+
+	// Check for overmind process
+	cmd := exec.Command("pgrep", "-f", "overmind start")
+	output, err := cmd.Output()
+	if err != nil || len(output) == 0 {
+		status.Running = false
+		status.Details = "overmind process not running"
+		return status
+	}
+
+	// Extract PID from output
+	pids := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(pids) > 0 {
+		status.Running = true
+		if len(pids) == 1 {
+			status.Details = fmt.Sprintf("Running (PID %s)", pids[0])
+		} else {
+			status.Details = fmt.Sprintf("Running (%d instances)", len(pids))
+		}
 	}
 
 	return status
