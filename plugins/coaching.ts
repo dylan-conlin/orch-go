@@ -54,6 +54,7 @@ const METRICS_PATH = join(homedir(), ".orch", "coaching-metrics.jsonl")
 const MAX_LINES = 1000 // Keep last 1000 lines
 const STRATEGIC_PAUSE_MS = 30 * 1000 // 30 seconds = strategic pause
 const VARIATION_THRESHOLD = 3 // 3+ variations triggers behavioral_variation metric
+const COACH_SESSION_ID = process.env.ORCH_COACH_SESSION_ID || "" // Coach session to stream metrics to
 
 function log(...args: any[]) {
   if (DEBUG) console.log(LOG_PREFIX, ...args)
@@ -520,10 +521,110 @@ function flushMetrics(state: SessionState): void {
 }
 
 /**
+ * Phase 3: Stream metric to coach session for investigation.
+ * Coach receives metric + context and decides whether to intervene.
+ */
+async function streamToCoach(
+  client: any,
+  sessionId: string,
+  metric: CoachingMetric,
+  context: { recentCommands?: string[]; recommendation?: string }
+): Promise<void> {
+  if (!COACH_SESSION_ID) {
+    return // Coach streaming disabled
+  }
+
+  // Avoid infinite loop - don't stream if this IS the coach session
+  if (sessionId === COACH_SESSION_ID) {
+    log("Skipping coach stream - current session is coach")
+    return
+  }
+
+  try {
+    // Format message for coach investigation
+    const message = formatMetricForCoach(metric, context)
+
+    // Stream to coach session asynchronously
+    await client.session.promptAsync({
+      sessionID: COACH_SESSION_ID,
+      parts: [
+        {
+          type: "text",
+          text: message,
+        },
+      ],
+    })
+
+    log(`✓ Streamed ${metric.metric_type} metric to coach session ${COACH_SESSION_ID}`)
+  } catch (err) {
+    if (DEBUG) console.error(LOG_PREFIX, "Failed to stream to coach:", err)
+  }
+}
+
+/**
+ * Format coaching metric into readable message for coach investigation.
+ */
+function formatMetricForCoach(metric: CoachingMetric, context: any): string {
+  const lines = [
+    `## Orchestrator Pattern Detected`,
+    ``,
+    `**Metric:** ${metric.metric_type}`,
+    `**Timestamp:** ${metric.timestamp}`,
+    `**Session:** ${metric.session_id}`,
+    `**Value:** ${metric.value}`,
+    ``,
+  ]
+
+  // Add metric-specific details
+  if (metric.metric_type === "behavioral_variation") {
+    lines.push(
+      `**Pattern:** ${metric.value} consecutive variations in ${metric.details.group} without strategic pause`,
+      ``,
+      `**Recent Commands:**`,
+      ...metric.details.commands.map((cmd: string) => `- \`${cmd}\``),
+      ``,
+      `**Threshold:** ${metric.details.threshold} variations`,
+      ``
+    )
+  } else if (metric.metric_type === "circular_pattern") {
+    lines.push(
+      `**Pattern:** Decision contradicts prior investigation recommendation`,
+      ``,
+      `**Decision Command:** \`${metric.details.decision_command}\``,
+      `**Decision Keywords:** ${metric.details.decision_keywords.join(", ")}`,
+      ``,
+      `**Contradicts Investigation:** ${metric.details.contradicts_investigation}`,
+      `**Recommendation:** ${metric.details.recommendation}`,
+      `**Recommendation Keywords:** ${metric.details.recommendation_keywords.join(", ")}`,
+      `**Recommendation Date:** ${metric.details.recommendation_date}`,
+      ``
+    )
+  }
+
+  // Add context if provided
+  if (context.recentCommands) {
+    lines.push(`**Recent Transcript Context:**`, ...context.recentCommands.map((cmd) => `- ${cmd}`), ``)
+  }
+
+  if (context.recommendation) {
+    lines.push(`**Investigation Recommendation:** ${context.recommendation}`, ``)
+  }
+
+  lines.push(
+    `---`,
+    ``,
+    `**Your Task:** Investigate whether this pattern is a real concern or false positive. Use Read tool to examine .kb/investigations/ for context. Provide observations if intervention needed.`
+  )
+
+  return lines.join("\n")
+}
+
+/**
  * OpenCode plugin that tracks orchestrator behavioral patterns.
  */
-export const CoachingPlugin: Plugin = async ({ directory }) => {
+export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   log("Plugin initialized, directory:", directory)
+  log("Coach session ID:", COACH_SESSION_ID || "not set (coach streaming disabled)")
 
   // Prune old metrics on startup
   pruneMetrics()
@@ -642,7 +743,7 @@ export const CoachingPlugin: Plugin = async ({ directory }) => {
                 .filter((h) => h.group === group)
                 .slice(-VARIATION_THRESHOLD)
 
-              writeMetric({
+              const metric = {
                 timestamp: new Date().toISOString(),
                 session_id: state.sessionId,
                 metric_type: "behavioral_variation",
@@ -652,11 +753,18 @@ export const CoachingPlugin: Plugin = async ({ directory }) => {
                   commands: recentHistory.map((h) => h.command.substring(0, 100)),
                   threshold: VARIATION_THRESHOLD,
                 },
-              })
+              }
+
+              writeMetric(metric)
 
               log(
                 `⚠️ BEHAVIORAL VARIATION DETECTED: ${state.variation.variationCount} variations in ${group} without strategic pause`
               )
+
+              // Phase 3: Stream to coach session for investigation
+              streamToCoach(client, sessionId, metric, {
+                recentCommands: recentHistory.map((h) => h.command),
+              })
             }
           } else {
             // Different group - reset counter
@@ -676,7 +784,7 @@ export const CoachingPlugin: Plugin = async ({ directory }) => {
           const contradiction = findContradiction(decisionKeywords, investigationRecommendations)
 
           if (contradiction) {
-            writeMetric({
+            const metric = {
               timestamp: new Date().toISOString(),
               session_id: state.sessionId,
               metric_type: "circular_pattern",
@@ -689,11 +797,18 @@ export const CoachingPlugin: Plugin = async ({ directory }) => {
                 recommendation_keywords: contradiction.keywords,
                 recommendation_date: contradiction.date,
               },
-            })
+            }
+
+            writeMetric(metric)
 
             log(
               `⚠️ CIRCULAR PATTERN DETECTED: Command uses ${decisionKeywords.join(", ")} but ${contradiction.fileName} recommended ${contradiction.keywords.join(", ")}`
             )
+
+            // Phase 3: Stream to coach session for investigation
+            streamToCoach(client, sessionId, metric, {
+              recommendation: contradiction.next,
+            })
           }
         }
       }
