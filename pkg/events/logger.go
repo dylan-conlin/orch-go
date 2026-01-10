@@ -26,6 +26,12 @@ const (
 	EventTypeAgentCompleted = "agent.completed"
 	// EventTypeVerificationFailed indicates verification failed before user decides to --force or fix.
 	EventTypeVerificationFailed = "verification.failed"
+	// EventTypeServiceCrashed indicates a service crashed (PID changed unexpectedly).
+	EventTypeServiceCrashed = "service.crashed"
+	// EventTypeServiceRestarted indicates a service was automatically restarted after a crash.
+	EventTypeServiceRestarted = "service.restarted"
+	// EventTypeServiceStarted indicates a service started (first time seen).
+	EventTypeServiceStarted = "service.started"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -228,6 +234,75 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 	return l.Log(Event{
 		Type:      EventTypeAgentCompleted,
 		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// ServiceEventData contains the data for service lifecycle events.
+type ServiceEventData struct {
+	ServiceName  string `json:"service_name"`
+	ProjectPath  string `json:"project_path"`
+	OldPID       int    `json:"old_pid,omitempty"`
+	NewPID       int    `json:"new_pid,omitempty"`
+	RestartCount int    `json:"restart_count,omitempty"`
+	AutoRestart  bool   `json:"auto_restart,omitempty"` // Was it auto-restarted by monitor?
+}
+
+// LogServiceCrashed logs a service crash event.
+func (l *Logger) LogServiceCrashed(data ServiceEventData) error {
+	eventData := map[string]interface{}{
+		"service_name": data.ServiceName,
+		"project_path": data.ProjectPath,
+	}
+	if data.OldPID != 0 {
+		eventData["old_pid"] = data.OldPID
+	}
+	if data.NewPID != 0 {
+		eventData["new_pid"] = data.NewPID
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeServiceCrashed,
+		SessionID: data.ServiceName, // Use service name as session ID for grouping
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// LogServiceRestarted logs a service restart event (after crash).
+func (l *Logger) LogServiceRestarted(data ServiceEventData) error {
+	eventData := map[string]interface{}{
+		"service_name":  data.ServiceName,
+		"project_path":  data.ProjectPath,
+		"restart_count": data.RestartCount,
+		"auto_restart":  data.AutoRestart,
+	}
+	if data.NewPID != 0 {
+		eventData["new_pid"] = data.NewPID
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeServiceRestarted,
+		SessionID: data.ServiceName,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// LogServiceStarted logs a service start event (first time seen).
+func (l *Logger) LogServiceStarted(data ServiceEventData) error {
+	eventData := map[string]interface{}{
+		"service_name": data.ServiceName,
+		"project_path": data.ProjectPath,
+	}
+	if data.NewPID != 0 {
+		eventData["pid"] = data.NewPID
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeServiceStarted,
+		SessionID: data.ServiceName,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	})

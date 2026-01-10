@@ -74,6 +74,17 @@ func (n *Notifier) Error(message string) error {
 	return n.backend.Notify("OpenCode Error", message, "")
 }
 
+// ServiceCrashed sends a notification that a service has crashed.
+// Returns nil immediately if notifications are disabled.
+func (n *Notifier) ServiceCrashed(serviceName string, projectPath string) error {
+	if !n.enabled {
+		return nil
+	}
+	title := fmt.Sprintf("Service Crashed: %s", serviceName)
+	message := fmt.Sprintf("Project: %s", projectPath)
+	return n.backend.Notify(title, message, "")
+}
+
 // IsEnabled returns whether notifications are enabled.
 func (n *Notifier) IsEnabled() bool {
 	return n.enabled

@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/notify"
+	"github.com/dylan-conlin/orch-go/pkg/service"
 	"github.com/spf13/cobra"
 )
 
@@ -196,6 +199,15 @@ func runServe(portNum int) error {
 	// Initialize beads stats cache to prevent slow API responses.
 	// Without caching, /api/beads spawns bd stats (~1.5s) on every request.
 	globalBeadsStatsCache = newBeadsStatsCache()
+
+	// Start service monitoring daemon (Phase 1 MVP: crash detection + auto-restart)
+	// Polls overmind status every 10s, tracks PIDs, emits crash notifications, auto-restarts services
+	notifier := notify.Default()
+	eventLogger := events.NewDefaultLogger()
+	eventAdapter := service.NewEventLoggerAdapter(eventLogger)
+	monitor := service.NewMonitor(sourceDir, notifier, eventAdapter, 10*time.Second, true)
+	monitor.Start()
+	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled)")
 
 	mux := http.NewServeMux()
 
