@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** The lagging understanding hypothesis is CONFIRMED - Dec 27-Jan 2 added observability (dead/stalled detection) that Dylan misinterpreted as "system spiraling" because his understanding lagged behind the system changes, leading to rollback of real improvements that had to be restored Jan 8.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Git log shows observability commits Dec 27-Jan 2 (784c2703, 5ba15ce0, 803751b7); Jan 2 post-mortem characterizes dead/stalled states as "internal states that confused the user"; Jan 8 restoration investigation states features "were reverted during spiral" and "the feature itself was CORRECT."
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Verification bottleneck applies to human understanding, not just code correctness - systems can add observability faster than humans can understand what the new visibility means, causing valuable features to be misinterpreted as problems.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Update blog narrative in `.kb/investigations/2026-01-10-inv-trace-verification-bottleneck-story-system.md` to include this meta-level insight as a teaching moment.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes - This establishes a meta-principle about observability and human comprehension that should be formalized as guidance for future infrastructure work.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-10
 **Updated:** 2026-01-10
 **Owner:** Agent og-inv-verify-lagging-understanding-10jan-76aa
-**Phase:** Investigating
-**Next Step:** Check git history Dec 27-Jan 2 for observability changes, compare to Jan 8 observation infrastructure gaps
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** Update blog narrative with meta-level insight
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -65,23 +65,45 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Dead/stalled agent detection WAS added during Dec 27-Jan 2
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Multiple commits during the Dec 27-Jan 2 period explicitly added observability:
+- `5ba15ce0` (Jan 1): "feat: orch status detects dead/orphaned sessions" - added IsDead field, 💀 status indicator, dead count tracking
+- `803751b7` (Jan 2): "fix: clean up OpenCode sessions on completion and differentiate dead states" - separated "done" (Phase:Complete) from "dead" (crashed mid-work)
+- `6f62bd8a` (Jan 2): "fix(dashboard): separate working agents from dead/stalled in Active section" - split dashboard into "Working" vs "Needs Attention" sections
+- `784c2703` (Dec 28): "Simplify dead session detection to 3-minute heartbeat" - simple rule: no activity for 3min = dead
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `git log --since="2025-12-27" --until="2026-01-02" --oneline | grep "dead\|stalled"`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** These commits prove that the Dec 27-Jan 2 period DID improve observability by making dead/stalled agents visible. The features were working as designed - surfacing hidden problems.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: These observability features had to be RESTORED on Jan 8
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Jan 8 investigation explicitly states the features "were reverted during Dec 27 - Jan 2 spiral":
+- Investigation title: "Restore Dead Agent Detection Surfacing"
+- Line 22: "How to restore dead agent detection and surfacing that was **reverted during Dec 27 - Jan 2 spiral**?"
+- Line 51: "**The feature itself (visibility into dead agents) was CORRECT.** The problem was the complexity added around it."
+- Restore commit `4b50086d` (Jan 5-8): "feat: restore dead agent detection with 3-minute heartbeat"
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `.kb/investigations/2026-01-08-inv-restore-dead-agent-detection-surfacing.md`, `git show 4b50086d`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The observability features were **removed** sometime between Jan 2 and Jan 8, then had to be **restored**. This proves they were lost during the spiral period.
+
+---
+
+### Finding 4: The Jan 2 post-mortem characterized visibility as a PROBLEM
+
+**Evidence:** The post-mortem lists the addition of dead/stalled states as part of the spiral:
+- Line 5: "The dashboard showed dead/stale/stalled agents (internal states that confused the user)"
+- Line 11: "Agent states grew from 5 to 7 (added `dead`, `stalled`)" - listed as a problem metric
+- Line 21: "Added `dead` and `stalled` states to represent failure modes" - timeline entry during crisis
+- Line 52-55: "Complexity as Solution to Complexity" section describes adding status types as the wrong response
+
+**Source:** `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md:5,11,21,52-55`
+
+**Significance:** Dylan interpreted the **visibility of dead agents** as "internal states that confused the user" rather than "valuable observability surfacing hidden problems." This is the lagging understanding - mistaking new visibility for new problems.
 
 ---
 
@@ -89,15 +111,21 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Observability was added, not system degradation** - The Dec 27-Jan 2 period added dead/stalled detection (commits 784c2703, 5ba15ce0, 803751b7, 6f62bd8a). These features made EXISTING dead agents visible that were previously hidden. The dashboard was showing reality, not creating problems.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Visibility was misinterpreted as spiraling** - The post-mortem characterizes dead/stalled states as "internal states that confused the user" (line 5) and lists their addition as a problem metric (line 11). Dylan saw agents marked as "dead" and interpreted this as system degradation, when in fact the agents had ALWAYS been dead - they were just invisible before.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **The feature was correct, understanding lagged** - The Jan 8 restoration investigation explicitly states: "The feature itself (visibility into dead agents) was CORRECT. The problem was the complexity added around it." (line 51). Dylan's understanding caught up 6 days later - the observability was valuable, it just revealed uncomfortable truth.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**YES - the lagging understanding hypothesis is CONFIRMED.**
+
+The Dec 27-Jan 2 spiral DID improve observability by adding dead/stalled agent detection. These features worked as designed - they made previously-hidden problems visible. But Dylan's understanding lagged behind the system changes. When the dashboard started showing "dead" and "stalled" agents, Dylan interpreted this as "the system is spiraling" rather than "the system is now showing me what was always broken."
+
+This led to a rollback that discarded real improvements. Six days later (Jan 8), Dylan realized the observability itself was valuable and had to restore it, acknowledging "the feature itself was CORRECT."
+
+The meta-lesson: **Verification bottleneck applies to human understanding, not just code correctness.** The system added observability faster than Dylan could understand what the new visibility meant.
 
 ---
 
@@ -105,21 +133,22 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ **Observability commits existed Dec 27-Jan 2** - Verified via `git log` showing commits 784c2703, 5ba15ce0, 803751b7, 6f62bd8a with dead/stalled detection code
+- ✅ **Features were characterized as problems in post-mortem** - Read `.kb/post-mortems/2026-01-02-system-spiral-dec27-jan02.md` lines 5, 11, 21 stating dead/stalled as "internal states that confused the user"
+- ✅ **Features had to be restored Jan 8** - Read `.kb/investigations/2026-01-08-inv-restore-dead-agent-detection-surfacing.md` stating "reverted during Dec 27 - Jan 2 spiral"
+- ✅ **Jan 8 investigation acknowledged feature was correct** - Line 51 explicitly states "The feature itself (visibility into dead agents) was CORRECT"
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ **Whether Dylan explicitly remembers the misinterpretation** - Have not interviewed Dylan about his reasoning during the spiral
+- ⚠️ **Whether dead agents actually existed before Dec 27** - Assumed based on 25-28% agent failure rate cited in Jan 8 investigation, but not verified in pre-Dec-27 logs
+- ⚠️ **Exact mechanism of rollback** - Did not find explicit `git revert` or `git reset` command, unclear how features were removed
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if post-mortem characterized dead/stalled detection as a **good** addition (it didn't - it listed it as a problem)
+- Finding would be wrong if Jan 8 investigation said features were **newly created** rather than **restored** (it explicitly says "restore")
+- Finding would be wrong if commit dates showed restoration BEFORE the spiral (they don't - restoration is Jan 5-8, after Jan 2 post-mortem)
 
 ---
 
@@ -129,21 +158,23 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Add lagging understanding meta-layer to blog narrative** - Expand the verification bottleneck story to include the human understanding lag as a critical meta-pattern.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Reveals that verification bottleneck applies at TWO levels: code correctness AND human understanding
+- Shows how observability improvements can be misinterpreted as system degradation when understanding lags
+- Provides actionable lesson: "When new observability reveals problems, ask: are these new problems or newly-visible old problems?"
+- Strengthens blog's teaching impact by showing the same principle (verification bottleneck) manifesting in the human's cognition
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Makes the narrative more complex (two levels of verification lag instead of one)
+- Requires Dylan to acknowledge a misinterpretation on his part (uncomfortable but valuable)
+- Might confuse readers if not explained clearly
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Add new section to blog narrative after Act 2 titled "The Meta-Level Twist: Understanding Lagged Too"
+2. Present the evidence: observability added → interpreted as spiraling → rolled back → restored later
+3. Extract the lesson: "We didn't just add changes faster than we could verify the code - we added observability faster than we could understand what it meant"
 
 ### Alternative Approaches Considered
 
