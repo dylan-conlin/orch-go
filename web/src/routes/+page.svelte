@@ -139,6 +139,9 @@
 		// which is the most critical data for initial render
 		connectSSE();
 
+		// Connect to servicelog SSE for real-time service crash/restart notifications
+		connectServicelogSSE();
+
 		// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP
 		// Note: beads.fetch() is called without projectDir initially - will be refetched

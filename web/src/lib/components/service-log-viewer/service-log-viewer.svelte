@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { servicelogEvents, type ServiceLogEvent } from '$lib/stores/servicelog';
 	import { Badge } from '$lib/components/ui/badge';
-	import { X } from 'lucide-svelte';
 
 	export let serviceName: string;
 	export let onClose: () => void;
@@ -82,10 +81,10 @@
 			</div>
 			<button
 				on:click={onClose}
-				class="rounded-lg p-1 hover:bg-accent transition-colors"
+				class="rounded-lg p-1 hover:bg-accent transition-colors text-xl leading-none"
 				aria-label="Close"
 			>
-				<X class="h-5 w-5" />
+				×
 			</button>
 		</div>
 
