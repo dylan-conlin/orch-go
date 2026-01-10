@@ -6,6 +6,7 @@
  * - Missing strategic reasoning (low context-gathering ratio)
  * - Analysis paralysis (tool repetition sequences)
  * - Behavioral variation (3+ debugging attempts without strategic pause)
+ * - Circular patterns (contradicting prior investigation recommendations)
  *
  * Hypothesis: Do quantified metrics drive orchestrator behavior change?
  *
@@ -22,12 +23,28 @@
  * - Strategic pause heuristic: 30s no tools = pause (resets variation counter)
  * - Emit behavioral_variation metric when 3+ variations detected
  *
+ * Phase 2 (Cross-Document Circular Detection):
+ * - Parse investigation D.E.K.N. summaries from .kb/investigations/*.md
+ * - Extract "Next:" field recommendations (architectural guidance)
+ * - Track architectural decisions in session (git commits, bd create, file edits)
+ * - Emit circular_pattern metric when decisions contradict prior recommendations
+ * - Example: "Next: Use overmind" → session creates launchd plists
+ *
  * Reference: docs/designs/2026-01-10-orchestrator-coaching-plugin.md
  * Reference: .kb/investigations/2026-01-10-inv-probe-pattern-retrospective-validate-detection.md
+ * Reference: .kb/investigations/2026-01-10-inv-phase-cross-document-parsing-circular.md
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
-import { appendFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs"
+import {
+  appendFileSync,
+  mkdirSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  statSync,
+} from "fs"
 import { homedir } from "os"
 import { join, dirname } from "path"
 
@@ -48,6 +65,17 @@ interface CoachingMetric {
   metric_type: string
   value: number
   details?: any
+}
+
+/**
+ * Phase 2: Investigation recommendation for circular pattern detection.
+ */
+interface InvestigationRecommendation {
+  filePath: string // Path to investigation file
+  fileName: string // Just the filename for display
+  date: string // From filename YYYY-MM-DD
+  next: string // Content of **Next:** field
+  keywords: string[] // Extracted keywords for matching (launchd, overmind, etc.)
 }
 
 /**
@@ -165,6 +193,188 @@ function isContextCheck(command: string): boolean {
 function isSpawn(command: string): boolean {
   if (!command) return false
   return command.includes("orch spawn")
+}
+
+/**
+ * Phase 2: Parse D.E.K.N. Summary from investigation markdown.
+ * Extracts the **Next:** field which contains architectural recommendations.
+ */
+function parseDEKNSummary(content: string): string | null {
+  // Look for ## Summary (D.E.K.N.) section
+  const deknMatch = content.match(/## Summary \(D\.E\.K\.N\.\)([\s\S]*?)(?=\n##|$)/i)
+  if (!deknMatch) {
+    return null
+  }
+
+  const deknSection = deknMatch[1]
+
+  // Extract **Next:** field
+  const nextMatch = deknSection.match(/\*\*Next:\*\*\s+(.+?)(?=\n\*\*|$)/s)
+  if (!nextMatch) {
+    return null
+  }
+
+  return nextMatch[1].trim()
+}
+
+/**
+ * Phase 2: Extract architectural keywords from recommendation text.
+ * Keywords are used for contradiction detection.
+ */
+function extractKeywords(text: string): string[] {
+  const lowerText = text.toLowerCase()
+  const keywords: string[] = []
+
+  // Architecture patterns
+  const patterns = [
+    "launchd",
+    "overmind",
+    "tmux",
+    "systemd",
+    "docker",
+    "kubernetes",
+    "procfile",
+    "plist",
+    "daemon",
+    "supervisor",
+  ]
+
+  for (const pattern of patterns) {
+    if (lowerText.includes(pattern)) {
+      keywords.push(pattern)
+    }
+  }
+
+  return keywords
+}
+
+/**
+ * Phase 2: Load all investigation recommendations from .kb/investigations/.
+ * Returns array of parsed recommendations with Next field and keywords.
+ */
+function loadInvestigationRecommendations(directory: string): InvestigationRecommendation[] {
+  const recommendations: InvestigationRecommendation[] = []
+  const invDir = join(directory, ".kb", "investigations")
+
+  if (!existsSync(invDir)) {
+    log("Investigation directory not found:", invDir)
+    return recommendations
+  }
+
+  try {
+    const files = readdirSync(invDir)
+
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue
+
+      const filePath = join(invDir, file)
+      const stat = statSync(filePath)
+      if (!stat.isFile()) continue
+
+      // Extract date from filename (YYYY-MM-DD-...)
+      const dateMatch = file.match(/^(\d{4}-\d{2}-\d{2})/)
+      if (!dateMatch) continue
+
+      const content = readFileSync(filePath, "utf-8")
+      const next = parseDEKNSummary(content)
+
+      if (next) {
+        const keywords = extractKeywords(next)
+        recommendations.push({
+          filePath,
+          fileName: file,
+          date: dateMatch[1],
+          next,
+          keywords,
+        })
+
+        log(`Loaded recommendation from ${file}: ${keywords.join(", ")}`)
+      }
+    }
+
+    log(`Loaded ${recommendations.length} investigation recommendations`)
+  } catch (err) {
+    if (DEBUG) console.error(LOG_PREFIX, "Failed to load investigation recommendations:", err)
+  }
+
+  return recommendations
+}
+
+/**
+ * Phase 2: Detect if command represents an architectural decision.
+ * Returns extracted keywords if it's a decision, null otherwise.
+ */
+function detectArchitecturalDecision(command: string): string[] | null {
+  if (!command) return null
+
+  const lowerCommand = command.toLowerCase()
+
+  // Git commit messages often contain architectural choices
+  if (command.includes("git commit")) {
+    // Extract commit message after -m flag
+    const messageMatch = command.match(/-m\s+["']([^"']+)["']/i)
+    if (messageMatch) {
+      return extractKeywords(messageMatch[1])
+    }
+  }
+
+  // File edits to architecture files (plist, Procfile, etc.)
+  if (
+    command.includes(".plist") ||
+    command.includes("Procfile") ||
+    command.includes("launchd") ||
+    command.includes("overmind")
+  ) {
+    return extractKeywords(command)
+  }
+
+  // bd create for architectural issues
+  if (command.includes("bd create") && (command.includes("--type") || command.includes("-t"))) {
+    return extractKeywords(command)
+  }
+
+  return null
+}
+
+/**
+ * Phase 2: Check if decision keywords contradict recommendation keywords.
+ * Returns contradicting recommendation if found, null otherwise.
+ */
+function findContradiction(
+  decisionKeywords: string[],
+  recommendations: InvestigationRecommendation[]
+): InvestigationRecommendation | null {
+  if (!decisionKeywords.length) return null
+
+  // Look for recommendations with different keywords in same domain
+  // Example: decision has "launchd", recommendation has "overmind"
+  const architectureGroups = {
+    process_supervision: ["launchd", "overmind", "systemd", "supervisor", "daemon"],
+    containerization: ["docker", "kubernetes"],
+  }
+
+  for (const group of Object.values(architectureGroups)) {
+    const decisionInGroup = decisionKeywords.filter((k) => group.includes(k))
+    if (!decisionInGroup.length) continue
+
+    // Find recommendations with DIFFERENT keywords in same group
+    for (const rec of recommendations) {
+      const recInGroup = rec.keywords.filter((k) => group.includes(k))
+      if (!recInGroup.length) continue
+
+      // Check for contradiction: different keywords in same domain
+      const hasContradiction = recInGroup.some((rk) => !decisionKeywords.includes(rk))
+
+      if (hasContradiction) {
+        log(
+          `Potential circular pattern: Decision uses ${decisionInGroup.join(", ")} but ${rec.fileName} recommended ${recInGroup.join(", ")}`
+        )
+        return rec
+      }
+    }
+  }
+
+  return null
 }
 
 /**
@@ -318,6 +528,10 @@ export const CoachingPlugin: Plugin = async ({ directory }) => {
   // Prune old metrics on startup
   pruneMetrics()
 
+  // Phase 2: Load investigation recommendations for circular pattern detection
+  const investigationRecommendations = loadInvestigationRecommendations(directory)
+  log(`Loaded ${investigationRecommendations.length} investigation recommendations for circular detection`)
+
   // Session state (Map<sessionID, SessionState>)
   const sessions = new Map<string, SessionState>()
 
@@ -453,6 +667,33 @@ export const CoachingPlugin: Plugin = async ({ directory }) => {
             }
             state.variation.currentGroup = group
             state.variation.variationCount = 1
+          }
+        }
+
+        // Phase 2: Circular pattern detection
+        const decisionKeywords = detectArchitecturalDecision(command)
+        if (decisionKeywords && decisionKeywords.length > 0) {
+          const contradiction = findContradiction(decisionKeywords, investigationRecommendations)
+
+          if (contradiction) {
+            writeMetric({
+              timestamp: new Date().toISOString(),
+              session_id: state.sessionId,
+              metric_type: "circular_pattern",
+              value: 1,
+              details: {
+                decision_command: command.substring(0, 200),
+                decision_keywords: decisionKeywords,
+                contradicts_investigation: contradiction.fileName,
+                recommendation: contradiction.next.substring(0, 200),
+                recommendation_keywords: contradiction.keywords,
+                recommendation_date: contradiction.date,
+              },
+            })
+
+            log(
+              `⚠️ CIRCULAR PATTERN DETECTED: Command uses ${decisionKeywords.join(", ")} but ${contradiction.fileName} recommended ${contradiction.keywords.join(", ")}`
+            )
           }
         }
       }
