@@ -54,10 +54,49 @@
 			}
 		}
 	});
+
+	// Load approval status when agent changes
+	$effect(() => {
+		if ($selectedAgent) {
+			// Reset approval state
+			isApproved = false;
+			approvalTimestamp = null;
+
+			// Check if agent has workspace_path and load review state
+			if ($selectedAgent.workspace_path) {
+				loadApprovalStatus($selectedAgent.workspace_path);
+			}
+		}
+	});
+
+	// Load approval status from review state
+	async function loadApprovalStatus(workspacePath: string) {
+		try {
+			const response = await fetch(`https://localhost:3348/api/file?path=${encodeURIComponent(workspacePath + '/.review-state.json')}`);
+			if (!response.ok) {
+				// File doesn't exist or error - no approval yet
+				return;
+			}
+
+			const data = await response.json();
+			if (data.approved && data.approved_at) {
+				isApproved = true;
+				approvalTimestamp = data.approved_at;
+			}
+		} catch (err) {
+			// Ignore errors - just means no approval status available
+			console.log('No approval status found:', err);
+		}
+	}
 	
 	// Track which items were recently copied
 	let copiedItem: string | null = $state(null);
 	let copyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	// Approval state
+	let isApproving = $state(false);
+	let isApproved = $state(false);
+	let approvalTimestamp: string | null = $state(null);
 
 	// Close panel handler
 	function closePanel() {
@@ -90,6 +129,48 @@
 			}, 2000);
 		} catch (err) {
 			console.error('Failed to copy:', err);
+		}
+	}
+
+	// Approve agent's work
+	async function approveAgent() {
+		if (!$selectedAgent || isApproving || isApproved) return;
+
+		// Prompt for optional description
+		const description = prompt('Approval description (optional):');
+		if (description === null) return; // User cancelled
+
+		isApproving = true;
+
+		try {
+			const response = await fetch('https://localhost:3348/api/approve', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					agent_id: $selectedAgent.id,
+					description: description.trim(),
+				}),
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Failed to approve agent');
+			}
+
+			const data = await response.json();
+			
+			// Update approval state
+			isApproved = true;
+			approvalTimestamp = new Date().toISOString();
+
+			console.log('Agent approved:', data.message);
+		} catch (err) {
+			console.error('Failed to approve agent:', err);
+			alert(`Failed to approve: ${err instanceof Error ? err.message : 'Unknown error'}`);
+		} finally {
+			isApproving = false;
 		}
 	}
 
@@ -212,6 +293,24 @@
 						Processing
 					</Badge>
 				{/if}
+				
+				<!-- Approval Status/Action -->
+				{#if isApproved}
+					<Badge variant="default" class="bg-green-600">
+						✅ Approved
+					</Badge>
+				{:else if $selectedAgent.status === 'completed'}
+					<Button 
+						variant="outline" 
+						size="sm" 
+						onclick={approveAgent}
+						disabled={isApproving}
+						class="ml-2"
+					>
+						{isApproving ? 'Approving...' : 'Approve'}
+					</Button>
+				{/if}
+
 				<span class="ml-auto text-sm text-muted-foreground">
 					{$selectedAgent.runtime || formatDuration($selectedAgent.spawned_at)}
 				</span>
