@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -25,6 +28,7 @@ var (
 	doctorSessions  bool // Cross-reference workspaces and OpenCode sessions
 	doctorConfig    bool // Check for config drift (plist vs config.yaml)
 	doctorDocs      bool // Check for undocumented CLI commands (doc debt)
+	doctorWatch     bool // Continuous monitoring with desktop notifications
 )
 
 const (
@@ -49,6 +53,7 @@ Use --stale-only to check if the orch binary is stale (exit 1 if stale).
 Use --sessions to cross-reference workspaces and OpenCode sessions for zombies.
 Use --config to detect drift between config.yaml and external config (plist).
 Use --docs to check for undocumented CLI commands (doc debt).
+Use --watch to continuously monitor services and send desktop notifications on failures.
 
 Examples:
   orch doctor              # Check service health
@@ -57,7 +62,8 @@ Examples:
   orch doctor --stale-only # Check binary staleness only (for scripts/hooks)
   orch doctor --sessions   # Cross-reference workspaces and sessions
   orch doctor --config     # Check for config drift
-  orch doctor --docs       # Check for undocumented CLI commands`,
+  orch doctor --docs       # Check for undocumented CLI commands
+  orch doctor --watch      # Continuous monitoring with notifications`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDoctor()
 	},
@@ -70,6 +76,7 @@ func init() {
 	doctorCmd.Flags().BoolVar(&doctorSessions, "sessions", false, "Cross-reference workspaces and OpenCode sessions")
 	doctorCmd.Flags().BoolVar(&doctorConfig, "config", false, "Check for config drift (plist vs config.yaml)")
 	doctorCmd.Flags().BoolVar(&doctorDocs, "docs", false, "Check for undocumented CLI commands (doc debt)")
+	doctorCmd.Flags().BoolVarP(&doctorWatch, "watch", "w", false, "Continuous monitoring with desktop notifications")
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -120,6 +127,11 @@ func runDoctor() error {
 	// Handle --docs flag for doc debt check
 	if doctorDocs {
 		return runDocDebtCheck()
+	}
+
+	// Handle --watch flag for continuous monitoring
+	if doctorWatch {
+		return runDoctorWatch()
 	}
 
 	fmt.Println("orch doctor - Service Health Check")
@@ -1282,4 +1294,148 @@ func runDocDebtCheck() error {
 	fmt.Println("  orch docs mark <command-file>")
 
 	return nil
+}
+
+// runDoctorWatch runs continuous health monitoring with desktop notifications.
+// Polls every 30 seconds and notifies on state transitions (healthy → unhealthy).
+func runDoctorWatch() error {
+	fmt.Println("orch doctor --watch")
+	fmt.Println("Continuous Health Monitoring")
+	fmt.Println("============================")
+	fmt.Println()
+	fmt.Println("Press Ctrl+C to stop")
+	fmt.Println()
+
+	// Create notifier
+	notifier := notify.Default()
+
+	// Track previous health state to detect transitions
+	previousHealth := make(map[string]bool)
+
+	// Set up signal handler for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Create ticker for 30-second polling
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	// Run initial check immediately
+	runHealthCheckWithNotifications(notifier, previousHealth)
+
+	// Main watch loop
+	for {
+		select {
+		case <-ticker.C:
+			runHealthCheckWithNotifications(notifier, previousHealth)
+		case <-sigChan:
+			fmt.Println("\nStopping health monitoring...")
+			return nil
+		}
+	}
+}
+
+// runHealthCheckWithNotifications runs a health check and sends notifications on state changes.
+func runHealthCheckWithNotifications(notifier *notify.Notifier, previousHealth map[string]bool) {
+	// Run all health checks
+	report := &DoctorReport{
+		Healthy:  true,
+		Services: make([]ServiceStatus, 0),
+	}
+
+	// Check all services (same as regular doctor command)
+	binaryStatus := checkStaleBinary()
+	binaryServiceStatus := ServiceStatus{
+		Name:   "orch binary",
+		CanFix: false,
+	}
+	if binaryStatus.Error != "" {
+		binaryServiceStatus.Running = true
+		binaryServiceStatus.Details = binaryStatus.Error
+	} else if binaryStatus.Stale {
+		binaryServiceStatus.Running = false
+		binaryServiceStatus.Details = fmt.Sprintf("STALE (binary=%s, HEAD=%s)", binaryStatus.BinaryHash[:12], binaryStatus.CurrentHash[:12])
+		report.Healthy = false
+	} else {
+		binaryServiceStatus.Running = true
+		binaryServiceStatus.Details = "UP TO DATE"
+	}
+	report.Services = append(report.Services, binaryServiceStatus)
+
+	openCodeStatus := checkOpenCode()
+	report.Services = append(report.Services, openCodeStatus)
+	if !openCodeStatus.Running {
+		report.Healthy = false
+	}
+
+	orchServeStatus := checkOrchServe()
+	report.Services = append(report.Services, orchServeStatus)
+	if !orchServeStatus.Running {
+		report.Healthy = false
+	}
+
+	webUIStatus := checkWebUI()
+	report.Services = append(report.Services, webUIStatus)
+	if !webUIStatus.Running {
+		report.Healthy = false
+	}
+
+	overmindStatus := checkOvermindServices()
+	report.Services = append(report.Services, overmindStatus)
+	if !overmindStatus.Running {
+		report.Healthy = false
+	}
+
+	beadsDaemonStatus := checkBeadsDaemon()
+	report.Services = append(report.Services, beadsDaemonStatus)
+	// Beads daemon is optional
+
+	stalledStatus := checkStalledSessions()
+	report.Services = append(report.Services, stalledStatus)
+	if !stalledStatus.Running {
+		report.Healthy = false
+	}
+
+	// Print current status with timestamp
+	fmt.Printf("[%s] ", time.Now().Format("15:04:05"))
+	if report.Healthy {
+		fmt.Println("✓ All services healthy")
+	} else {
+		fmt.Printf("✗ %d service(s) unhealthy\n", countUnhealthy(report.Services))
+	}
+
+	// Check for state transitions and send notifications
+	for _, svc := range report.Services {
+		wasHealthy, exists := previousHealth[svc.Name]
+		isHealthy := svc.Running
+
+		// Update current state
+		previousHealth[svc.Name] = isHealthy
+
+		// Notify only on transition from healthy to unhealthy
+		if exists && wasHealthy && !isHealthy {
+			message := fmt.Sprintf("%s: %s", svc.Name, svc.Details)
+			if err := notifier.ServiceCrashed(svc.Name, "orch-go"); err != nil {
+				fmt.Printf("  ⚠️  Failed to send notification: %v\n", err)
+			} else {
+				fmt.Printf("  📬 Notification sent: %s\n", message)
+			}
+		}
+
+		// Print current unhealthy services
+		if !isHealthy {
+			fmt.Printf("  ✗ %s: %s\n", svc.Name, svc.Details)
+		}
+	}
+}
+
+// countUnhealthy counts the number of unhealthy services in a report.
+func countUnhealthy(services []ServiceStatus) int {
+	count := 0
+	for _, svc := range services {
+		if !svc.Running {
+			count++
+		}
+	}
+	return count
 }
