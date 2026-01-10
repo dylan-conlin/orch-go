@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** The Verification Bottleneck principle ("the system cannot change faster than a human can verify behavior") emerged after two complete rollbacks (462 commits lost) when analysis revealed all individual commits were correct but the system still failed due to verification happening slower than changes.
+**Delta:** The Verification Bottleneck principle ("the system cannot change faster than a human can verify behavior") emerged after two complete rollbacks (462 commits lost) when analysis revealed all individual commits were correct but the system still failed due to verification happening slower than changes; ADDITION: verification bottleneck hit twice - at code level AND understanding level (observability improvements misinterpreted as system degradation, then restored 6 days later).
 
-**Evidence:** Dec 21 post-mortem shows 115 commits/24h with tactical analysis (7 guardrails, 5 checkpoints); Jan 2 post-mortem shows 347 commits/6 days repeating same pattern despite first analysis; verification table confirms all sampled "fix:" commits were real fixes; principle explicitly stated in Jan 2 post-mortem section 5.
+**Evidence:** Dec 21 post-mortem shows 115 commits/24h with tactical analysis (7 guardrails, 5 checkpoints); Jan 2 post-mortem shows 347 commits/6 days repeating same pattern despite first analysis; verification table confirms all sampled "fix:" commits were real fixes; principle explicitly stated in Jan 2 post-mortem section 5; ADDITION: git log shows dead/stalled detection added Dec 27-Jan 2 (commits 784c2703, 5ba15ce0, 803751b7), Jan 2 post-mortem calls this "internal states that confused the user", Jan 8 restoration investigation confirms "feature itself was CORRECT."
 
-**Knowledge:** Local correctness (each commit works) doesn't guarantee global correctness (system works) when changes outpace verification; agents were doing exactly what they said (thorough, systematic, well-documented) yet system spiraled; failure mode is compositional not individual; more automation doesn't fix verification bottleneck.
+**Knowledge:** Local correctness (each commit works) doesn't guarantee global correctness (system works) when changes outpace verification; agents were doing exactly what they said (thorough, systematic, well-documented) yet system spiraled; failure mode is compositional not individual; more automation doesn't fix verification bottleneck; ADDITION: verification bottleneck applies to human understanding not just code - systems can add observability faster than humans can understand what new visibility means.
 
-**Next:** Blog narrative ready for review/publication; teaching framework extracted (warning signs, checkpoints, pacing); recommend creating follow-up decision document formalizing Verification Bottleneck principle with teeth.
+**Next:** Blog narrative ready for review/publication; teaching framework extracted (warning signs, checkpoints, pacing); meta-level insight added (understanding lag); recommend creating follow-up decision document formalizing Verification Bottleneck principle with teeth.
 
-**Promote to Decision:** recommend-yes - This establishes a foundational principle for human-AI collaboration that applies beyond this codebase; principle has teeth (violated = rollback); tested across three cases (Dec 21 spiral, Dec 27-Jan 2 spiral, launchd patches).
+**Promote to Decision:** recommend-yes - This establishes a foundational principle for human-AI collaboration that applies beyond this codebase; principle has teeth (violated = rollback); tested across three cases (Dec 21 spiral, Dec 27-Jan 2 spiral, launchd patches); meta-level insight shows principle applies to human cognition too.
 
 <!--
 Example D.E.K.N.:
@@ -450,6 +450,43 @@ Think about it:
 - And changes happen every 25 minutes (347 commits / 6 days = one commit every 25 minutes)
 - Then verification is always chasing changes
 - And you never actually confirm the system works as a whole
+
+### The Meta-Level Twist: Understanding Lagged Too
+
+But here's where it gets even more interesting. We discovered something else when we dug deeper into what actually happened during those 6 days.
+
+**The system wasn't just spiraling - it was becoming MORE observable.**
+
+During Dec 27-Jan 2, agents added features to detect dead agents and surface them in the dashboard. Commit after commit added observability:
+- Dead session detection (agents silent for 3+ minutes)
+- Separation of "working" vs "needs attention" in the UI
+- Differentiation between "completed successfully" and "died mid-work"
+
+These were GOOD changes. They made previously-invisible problems visible.
+
+But here's what we wrote in the Jan 2 post-mortem:
+
+> "The dashboard showed dead/stale/stalled agents (internal states that confused the user)"
+
+We interpreted the **visibility of problems** as **the system creating problems**.
+
+When the dashboard started showing agents marked as "dead" and "stalled," we saw that as system degradation. We thought: "The system is spiraling - look at all these broken agents!"
+
+The reality? Those agents had ALWAYS been dead. They were just invisible before.
+
+Our understanding lagged behind the system changes. The dashboard was finally showing us reality, but we mistook new visibility for new dysfunction.
+
+So we rolled it all back. On January 2, we reverted 347 commits, including the observability improvements.
+
+Six days later (January 8), we had to restore the dead agent detection. Because - as the restoration investigation put it:
+
+> "The feature itself (visibility into dead agents) was CORRECT. The problem was the complexity added around it."
+
+**The verification bottleneck hit us twice:**
+1. **Code level:** Changes happened faster than we could verify they worked
+2. **Understanding level:** Observability improved faster than we could understand what the new visibility meant
+
+This is the meta-lesson within the lesson: When new observability reveals problems you didn't know existed, pause and ask: "Are these new problems, or newly-visible old problems?"
 
 ### Why This Matters for You
 
