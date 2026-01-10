@@ -11,16 +11,17 @@ import (
 // Gate names for verification tracking.
 // These constants are used in events to identify which verification gates failed.
 const (
-	GatePhaseComplete  = "phase_complete"      // Phase: Complete not reported
-	GateSynthesis      = "synthesis"           // SYNTHESIS.md missing
-	GateSessionHandoff = "session_handoff"     // SESSION_HANDOFF.md missing (orchestrator)
-	GateConstraint     = "constraint"          // Constraint verification failed
-	GatePhaseGate      = "phase_gate"          // Required phase gate not passed
-	GateSkillOutput    = "skill_output"        // Required skill outputs missing
-	GateVisualVerify   = "visual_verification" // Visual verification required
-	GateTestEvidence   = "test_evidence"       // Test execution evidence required
-	GateGitDiff        = "git_diff"            // Git diff doesn't match claims
-	GateBuild          = "build"               // Project build failed
+	GatePhaseComplete      = "phase_complete"       // Phase: Complete not reported
+	GateSynthesis          = "synthesis"            // SYNTHESIS.md missing
+	GateSessionHandoff     = "session_handoff"      // SESSION_HANDOFF.md missing (orchestrator)
+	GateConstraint         = "constraint"           // Constraint verification failed
+	GatePhaseGate          = "phase_gate"           // Required phase gate not passed
+	GateSkillOutput        = "skill_output"         // Required skill outputs missing
+	GateVisualVerify       = "visual_verification"  // Visual verification required
+	GateTestEvidence       = "test_evidence"        // Test execution evidence required
+	GateGitDiff            = "git_diff"             // Git diff doesn't match claims
+	GateBuild              = "build"                // Project build failed
+	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
 )
 
 // VerificationResult represents the result of a completion verification.
@@ -277,6 +278,21 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 			result.GatesFailed = append(result.GatesFailed, GateBuild)
 		}
 		result.Warnings = append(result.Warnings, buildResult.Warnings...)
+	}
+
+	// Verify decision patch count (prevent launchd-style patch accumulation)
+	// After N patches to same decision, require architect review before more patches
+	// Skip for orchestrator tier (they don't produce investigation patches)
+	if !isOrch {
+		decisionPatchResult := VerifyDecisionPatchCount(workspacePath, projectDir)
+		if decisionPatchResult != nil {
+			if !decisionPatchResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, decisionPatchResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateDecisionPatchLimit)
+			}
+			result.Warnings = append(result.Warnings, decisionPatchResult.Warnings...)
+		}
 	}
 
 	return result, nil
