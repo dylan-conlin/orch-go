@@ -203,6 +203,38 @@ Now: **Procfile (3 lines)** + overmind.
 - Atomic deployment
 - Visible status
 
+### launchd Supervision of Overmind
+
+**Added Jan 10, 2026:** While overmind manages the services, launchd now supervises overmind itself for automatic crash recovery.
+
+**Why this matters:** If overmind crashes, all 3 services (api, web, opencode) go down with it. launchd supervision ensures automatic recovery.
+
+**Setup:**
+
+The launchd plist at `~/Library/LaunchAgents/com.overmind.orch-go.plist` provides:
+- **KeepAlive=true** - Auto-restart overmind if it crashes
+- **RunAtLoad=true** - Auto-start at login
+- **EnvironmentVariables** - PATH includes /opt/homebrew/bin (tmux) and ~/.bun/bin (orch/opencode/bun)
+- **WorkingDirectory** - Set to project path so overmind finds Procfile
+- **StandardErrorPath/StandardOutPath** - Logs to `~/.orch/overmind-*.log`
+
+**Verification:**
+
+```bash
+# Check launchd job status
+launchctl list | grep com.overmind.orch-go
+# Should show: -	0	com.overmind.orch-go
+
+# Test crash recovery
+rm -f .overmind.sock && pkill -f "tmux.*overmind-orch-go"
+sleep 5 && overmind status
+# Should show all services back to "running"
+```
+
+**Tested:** Crash recovery verified - overmind auto-restarts within 5 seconds, all services return to running state.
+
+**See:** `.kb/investigations/2026-01-10-inv-p0-supervise-overmind-via-launchd.md` for full investigation and test results.
+
 ## Key Packages
 
 ### cmd/orch/main.go (Entry Point)
