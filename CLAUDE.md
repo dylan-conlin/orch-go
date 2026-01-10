@@ -118,167 +118,171 @@ orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task"
 
 These guides synthesize 280+ investigations into authoritative references. Created Jan 4, 2026 after repeatedly re-investigating documented problems.
 
-## Dashboard Server Management (Overmind)
+## Dashboard Server Management
 
-**Changed Jan 9, 2026:** Replaced launchd with overmind for dashboard services. See `.kb/investigations/2026-01-09-inv-overmind-vs-launchd-prototype.md` for rationale.
+**Changed Jan 10, 2026:** Individual launchd plists for auto-restart reliability. Overmind available for dev workflow but NOT supervised by launchd. See `.kb/decisions/2026-01-10-individual-launchd-services.md` for rationale.
 
-### What is Overmind?
+### Architecture (Production)
 
-Standard process manager (like foreman) that provides:
-- ✅ Unified start/stop/restart
-- ✅ Health checks (`overmind status`)
-- ✅ Automatic process supervision
-- ✅ Clean child process cleanup
-- ✅ Unified logs with color coding
-- ✅ Atomic deployment
+Each service runs directly under launchd supervision for auto-restart on crash:
 
-### Procfile (Single Source of Truth)
+```
+launchd (macOS native supervisor)
+├── com.opencode.serve → opencode serve --port 4096
+├── com.orch.serve → orch serve
+├── com.orch.web → ~/.orch/start-web.sh (bun run dev)
+└── com.orch.doctor → orch doctor --daemon (monitoring)
+```
 
-Location: `Procfile` (project root)
+### Service Ports
 
+| Service | Port | Plist | Purpose |
+|---------|------|-------|---------|
+| OpenCode | 4096 | `com.opencode.serve.plist` | Claude/Gemini API sessions |
+| orch serve | 3348 | `com.orch.serve.plist` | Dashboard backend API |
+| Web UI | 5188 | `com.orch.web.plist` | Dashboard frontend (Vite) |
+| orch doctor | N/A | `com.orch.doctor.plist` | Self-healing daemon |
+
+### launchd Plists
+
+All plists located at `~/Library/LaunchAgents/`:
+
+**OpenCode:**
+```xml
+com.opencode.serve.plist
+  ProgramArguments: /Users/dylanconlin/.bun/bin/opencode serve --port 4096
+  WorkingDirectory: ~/Documents/personal/orch-go
+  KeepAlive: true (auto-restart on crash)
+  RunAtLoad: true (start at login)
+```
+
+**orch serve:**
+```xml
+com.orch.serve.plist
+  ProgramArguments: /Users/dylanconlin/bin/orch serve
+  WorkingDirectory: ~/Documents/personal/orch-go
+  KeepAlive: true
+  RunAtLoad: true
+```
+
+**Web UI:**
+```xml
+com.orch.web.plist
+  ProgramArguments: /Users/dylanconlin/.orch/start-web.sh
+  (Script uses real bun path: /opt/homebrew/bin/bun)
+  KeepAlive: true
+  RunAtLoad: true
+```
+
+**orch doctor (self-healing):**
+```xml
+com.orch.doctor.plist
+  ProgramArguments: /Users/dylanconlin/bin/orch doctor --daemon
+  KeepAlive: true (daemon itself supervised)
+  Polls services every 30s, kills orphans
+```
+
+### Management Commands
+
+**Check service status:**
+```bash
+orch doctor  # Health check all services
+launchctl list | grep -E "opencode|orch"  # launchd status
+```
+
+**Restart individual services:**
+```bash
+launchctl kickstart -k gui/$(id -u)/com.opencode.serve
+launchctl kickstart -k gui/$(id -u)/com.orch.serve
+launchctl kickstart -k gui/$(id -u)/com.orch.web
+```
+
+**Atomic deployment (rebuild + restart all):**
+```bash
+orch deploy  # Builds, kills orphans, restarts services, verifies health
+```
+
+**View logs:**
+```bash
+orch logs server  # orch serve logs
+orch logs daemon  # orch doctor logs
+tail -f ~/.orch/opencode-stdout.log  # OpenCode logs
+tail -f ~/.orch/web-stdout.log  # Web UI logs
+```
+
+### Crash Recovery (Verified)
+
+All services tested and confirmed auto-restart:
+
+**OpenCode** - Killed PID 33029 → launchd restarted as PID 17103 within 5s ✓
+**orch serve** - Killed PID 80517 → launchd restarted as PID 18822 within 5s ✓
+**Web UI** - Killed PID 18822 → launchd restarted as PID 34128 within 5s ✓
+
+**Testing date:** 2026-01-10 09:04
+**Success criteria:** Zero "did you restart?" for 1 week (tracking begins 2026-01-10 09:05)
+
+### Overmind (Development Workflow Only)
+
+Overmind is still available for **dev workflow** but NOT supervised by launchd:
+
+**Why use overmind:**
+- Unified start/stop for development: `overmind start`
+- View unified logs with color coding: `overmind echo`
+- Restart individual services: `overmind restart api`
+
+**Why NOT supervised by launchd:**
+- tmux PATH propagation issues
+- Circular dependency (need overmind for restart, need launchd for overmind, launchd can't run overmind)
+- Adds complexity layer without reliability benefit
+
+**Procfile** (for overmind dev workflow):
 ```procfile
 api: orch serve
 web: cd web && bun run dev
 opencode: ~/.bun/bin/opencode serve --port 4096
 ```
 
-That's it. All dashboard services in 3 lines.
-
-### Common Commands
-
+**Dev workflow commands:**
 ```bash
-# Start all services (auto-starts on shell init via ~/.zshrc)
-overmind start
-
-# Start in daemon mode (background)
-overmind start -D
-
-# Check what's running
-overmind status
-# Output:
-# PROCESS   PID       STATUS
-# api       44568     running
-# web       44569     running
-# opencode  44570     running
-
-# Restart everything (atomic deployment)
-overmind restart
-
-# Restart single service
-overmind restart api
-overmind restart web
-
-# View unified logs
-overmind echo
-
-# Stop everything cleanly
-overmind quit
+overmind start -D  # Start in daemon mode
+overmind status  # Check what's running
+overmind restart  # Restart all
+overmind quit  # Stop all
 ```
 
-### Atomic Deployment
+### What This Architecture Provides
 
-When you rebuild the binary or change code:
-
-```bash
-make build && overmind restart
-```
-
-That's it. Overmind kills old processes cleanly, starts new ones, no port conflicts, no orphans.
-
-### Service Ports
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| `api` | 3348 | orch serve API (dashboard backend) |
-| `web` | 5188 | Vite dev server (dashboard frontend) |
-| `opencode` | 4096 | OpenCode server (Claude sessions) |
-
-### Auto-Start on Shell Init
-
-Added to `~/.zshrc`:
-
-```bash
-# Auto-start dashboard services if not already running
-if [[ -f ~/Documents/personal/orch-go/Procfile ]] && ! overmind status &>/dev/null; then
-    (cd ~/Documents/personal/orch-go && overmind start -D &>/dev/null &)
-fi
-
-# Convenience aliases
-alias orch-restart='cd ~/Documents/personal/orch-go && overmind restart'
-alias orch-logs='cd ~/Documents/personal/orch-go && overmind echo'
-alias orch-status='cd ~/Documents/personal/orch-go && overmind status'
-```
+1. ✅ **Auto-restart on crash** - launchd KeepAlive for all services
+2. ✅ **Auto-start at login** - launchd RunAtLoad
+3. ✅ **Self-healing** - orch doctor daemon kills orphans
+4. ✅ **Atomic deployment** - `orch deploy` for rebuild + restart + verify
+5. ✅ **Observability** - `orch logs`, health checks, event streaming
+6. ✅ **Cache invalidation** - X-Orch-Version headers prevent stale UI
+7. ✅ **No tmux dependency** - Each service runs directly
+8. ✅ **Simple, direct** - No overmind + launchd + tmux PATH complexity
 
 ### Troubleshooting
 
 **Services not starting:**
 ```bash
-cd ~/Documents/personal/orch-go
-overmind quit  # Stop cleanly
-rm .overmind.sock  # Remove stale socket
-overmind start  # Start fresh
+orch doctor --fix  # Attempts to restart failed services
+launchctl list | grep -E "opencode|orch"  # Check exit codes
+tail -f ~/.orch/*-stderr.log  # View error logs
 ```
 
-**Check logs:**
+**Port conflicts:**
 ```bash
-overmind echo  # View all service logs
+lsof -ti:4096 | xargs kill -9  # Kill orphan on 4096
+lsof -ti:3348 | xargs kill -9  # Kill orphan on 3348
+lsof -ti:5188 | xargs kill -9  # Kill orphan on 5188
+launchctl kickstart -k gui/$(id -u)/com.opencode.serve  # Restart
 ```
 
-**Kill stuck processes:**
+**Reload plists after changes:**
 ```bash
-lsof -ti:3348 | xargs kill -9  # Force kill port 3348
-lsof -ti:5188 | xargs kill -9  # Force kill port 5188
-overmind start  # Restart
+launchctl unload ~/Library/LaunchAgents/com.opencode.serve.plist
+launchctl load ~/Library/LaunchAgents/com.opencode.serve.plist
 ```
-
-### What Replaced launchd
-
-Previously used 3 launchd plists (120+ lines XML) for:
-- `com.orch-go.serve.plist`
-- `com.orch-go.web.plist`
-- `com.opencode.serve.plist`
-
-Now: **Procfile (3 lines)** + overmind.
-
-**Benefits:**
-- No 143 mystery restarts
-- No orphaned vite processes
-- No "old binary still running after rebuild"
-- No "did you restart?" questions
-- Atomic deployment
-- Visible status
-
-### launchd Supervision of Overmind
-
-**Added Jan 10, 2026:** While overmind manages the services, launchd now supervises overmind itself for automatic crash recovery.
-
-**Why this matters:** If overmind crashes, all 3 services (api, web, opencode) go down with it. launchd supervision ensures automatic recovery.
-
-**Setup:**
-
-The launchd plist at `~/Library/LaunchAgents/com.overmind.orch-go.plist` provides:
-- **KeepAlive=true** - Auto-restart overmind if it crashes
-- **RunAtLoad=true** - Auto-start at login
-- **EnvironmentVariables** - PATH includes /opt/homebrew/bin (tmux) and ~/.bun/bin (orch/opencode/bun)
-- **WorkingDirectory** - Set to project path so overmind finds Procfile
-- **StandardErrorPath/StandardOutPath** - Logs to `~/.orch/overmind-*.log`
-
-**Verification:**
-
-```bash
-# Check launchd job status
-launchctl list | grep com.overmind.orch-go
-# Should show: -	0	com.overmind.orch-go
-
-# Test crash recovery
-rm -f .overmind.sock && pkill -f "tmux.*overmind-orch-go"
-sleep 5 && overmind status
-# Should show all services back to "running"
-```
-
-**Tested:** Crash recovery verified - overmind auto-restarts within 5 seconds, all services return to running state.
-
-**See:** `.kb/investigations/2026-01-10-inv-p0-supervise-overmind-via-launchd.md` for full investigation and test results.
 
 ## Key Packages
 
