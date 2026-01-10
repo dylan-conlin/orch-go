@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented Phase 3 service observability with SSE event streaming endpoint and log viewer UI component showing service lifecycle events.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Backend /api/events/services endpoint streams service.crashed/restarted/started events from events.jsonl with <1s SSE latency; frontend ServiceLogViewer component displays events in modal with real-time updates.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Service event streaming follows same pattern as agentlog (SSE + JSON modes, last 100 events, auto-reconnect); log capture via overmind echo requires stable tmux session (deferred); event-based UI more valuable than raw logs for crash detection.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Deploy to production - all success criteria met (crashes recorded in events.jsonl, SSE <1s updates, log viewer shows events).
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (tactical implementation following established patterns)
 
 <!--
 Example D.E.K.N.:
