@@ -728,6 +728,22 @@ func checkAndAutoSwitchAccount() error {
 	return nil
 }
 
+// validateModeModelCombo checks for known invalid mode+model combinations.
+// Returns a warning error (non-blocking) if an invalid combination is detected.
+func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
+	// Invalid combination: opencode + opus
+	// Opus requires Claude Code CLI auth, opencode backend creates zombie agents
+	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {
+		return fmt.Errorf(`Warning: opencode backend with opus model may fail (auth blocked).
+  Recommendation: Use --model sonnet (default) or let auto-selection use claude backend`)
+	}
+
+	// Note: Flash model is blocked earlier in the flow (hard error, not warning)
+	// Claude backend + non-opus models work but are non-optimal (using Max sub for cheap models)
+
+	return nil
+}
+
 func runSpawnWithSkill(serverURL, skillName, task string, inline bool, headless bool, tmux bool, attach bool) error {
 	return runSpawnWithSkillInternal(serverURL, skillName, task, inline, headless, tmux, attach, false)
 }
@@ -927,6 +943,22 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Resolve model - convert aliases to full format
 	resolvedModel := model.Resolve(spawnModel)
 
+	// Validate flash model - TPM rate limits make it unusable
+	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
+		return fmt.Errorf(`
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🚫 Flash model not supported                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Gemini Flash has TPM (tokens per minute) rate limits that make it           │
+│  unsuitable for agent work. Use sonnet (default) or opus instead.            │
+│                                                                             │
+│  Available options:                                                         │
+│    • --model sonnet  (default, pay-per-token via OpenCode)                  │
+│    • --model opus    (Max subscription via claude CLI)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+`)
+	}
+
 	// Parse skill requirements to determine what context to gather
 	requires := spawn.ParseSkillRequires(skillContent)
 
@@ -1012,18 +1044,37 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Load project config (used for server ports, etc.)
 	projCfg, _ := config.Load(projectDir)
 
-	// Determine spawn backend
-	// --opus flag = use claude CLI in tmux (Max subscription, Opus model)
-	// No --opus = use opencode headless with sonnet (default)
+	// Determine spawn backend with auto-selection based on model
+	// Priority:
+	//   1. Explicit --opus flag (forces claude mode)
+	//   2. Auto-selection based on --model flag (opus → claude, sonnet → opencode)
+	//   3. Config default (spawn_mode in project config)
+	//   4. Default to opencode
 	spawnBackend := "opencode"
+
 	if spawnOpus {
+		// Explicit --opus flag: use claude CLI
+		spawnBackend = "claude"
+	} else if spawnModel != "" {
+		// Auto-select backend based on model
+		modelLower := strings.ToLower(spawnModel)
+		if modelLower == "opus" || strings.Contains(modelLower, "opus") {
+			// Opus model: use claude CLI (Max subscription)
+			spawnBackend = "claude"
+			fmt.Println("Auto-selected claude backend for opus model")
+		} else if modelLower == "sonnet" || strings.Contains(modelLower, "sonnet") {
+			// Sonnet model: use opencode (pay-per-token API)
+			spawnBackend = "opencode"
+		}
+		// Other models default to opencode (handled by default value above)
+	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
+		// Config default: respect project spawn_mode setting
 		spawnBackend = "claude"
 	}
 
-	// If config has spawn_mode and no --opus flag, respect config default
-	// This allows users to set spawn_mode in config as a project default
-	if !spawnOpus && projCfg != nil && projCfg.SpawnMode == "claude" {
-		spawnBackend = "claude"
+	// Validate mode+model combination
+	if err := validateModeModelCombo(spawnBackend, resolvedModel); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
 	}
 
 	// Build spawn config
