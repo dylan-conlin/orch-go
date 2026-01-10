@@ -55,6 +55,7 @@
 	import { services } from '$lib/stores/services';
 	import { ServicesSection } from '$lib/components/services-section';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
+	import { coaching, startCoachingPolling, stopCoachingPolling } from '$lib/stores/coaching';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -75,7 +76,8 @@
 		// pendingReviews removed - not actively used
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
 		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
-		services: true // Services expanded by default (important visibility)
+		services: true, // Services expanded by default (important visibility)
+		coaching: true // Coaching metrics expanded by default
 	};
 	
 	// Track whether component has mounted and loaded initial state
@@ -138,9 +140,9 @@
 		// Connect to primary SSE immediately - this triggers agents.fetch() on connection
 		// which is the most critical data for initial render
 		connectSSE();
-
-		// Connect to servicelog SSE for real-time service crash/restart notifications
+		connectAgentlogSSE();
 		connectServicelogSSE();
+		startCoachingPolling();
 
 		// Fetch critical data in parallel using Promise.all
 		// These affect the primary dashboard view and should load ASAP
@@ -213,6 +215,7 @@
 		disconnectSSE();
 		disconnectAgentlogSSE();
 		disconnectServicelogSSE();
+		stopCoachingPolling();
 		orchestratorContext.stopPolling();
 	});
 
@@ -402,6 +405,68 @@
 <div class="space-y-3">
 	<!-- Stats Bar Component -->
 	<StatsBar bind:readyQueueExpanded={sectionState.readyQueue} />
+
+	<!-- Orchestrator Coaching Metrics -->
+	{#if $coaching.coaching.length > 0}
+	<div class="rounded-lg border bg-card" data-testid="coaching-section">
+		<button
+			class="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-accent/50 transition-colors border-b"
+			onclick={() => { sectionState.coaching = !sectionState.coaching; }}
+			aria-expanded={sectionState.coaching}
+		>
+			<div class="flex items-center gap-2">
+				<span class="text-sm">📊</span>
+				<span class="text-sm font-medium">Orchestrator Coaching</span>
+				{#if $coaching.session.duration_minutes > 0}
+					<Badge variant="outline" class="h-5 px-1.5 text-xs">
+						{$coaching.session.duration_minutes}m
+					</Badge>
+				{/if}
+			</div>
+			<span class="text-muted-foreground transition-transform {sectionState.coaching ? 'rotate-180' : ''}">
+				<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="6 9 12 15 18 9"></polyline>
+				</svg>
+			</span>
+		</button>
+		{#if sectionState.coaching}
+			<div class="p-3 space-y-2">
+				<!-- Metrics Grid -->
+				<div class="grid gap-2 grid-cols-3">
+					{#each Object.entries($coaching.metrics) as [key, metric]}
+						<div class="rounded border p-2 {
+							metric.status === 'good' ? 'border-green-500/30 bg-green-500/5' :
+							metric.status === 'warning' ? 'border-yellow-500/30 bg-yellow-500/5' :
+							'border-red-500/30 bg-red-500/5'
+						}">
+							<div class="text-xs text-muted-foreground">{metric.label}</div>
+							<div class="text-xl font-bold {
+								metric.status === 'good' ? 'text-green-500' :
+								metric.status === 'warning' ? 'text-yellow-500' :
+								'text-red-500'
+							}">
+								{metric.value.toFixed(2)}
+							</div>
+						</div>
+					{/each}
+				</div>
+				
+				<!-- Coaching Messages -->
+				<div class="rounded border p-2 bg-muted/20">
+					<div class="text-xs font-semibold mb-1">Coaching:</div>
+					<ul class="space-y-1 text-xs">
+						{#each $coaching.coaching as message}
+							<li class="flex items-start gap-1">
+								<span class="mt-0.5">•</span>
+								<span>{message}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			</div>
+		{/if}
+	</div>
+	{/if}
 
 	<!-- Orchestrator Sessions (always visible at top when active) -->
 	<OrchestratorSessionsSection

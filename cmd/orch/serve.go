@@ -349,6 +349,9 @@ func runServe(portNum int) error {
 	// GET /api/context - returns current tmux cwd and resolved projects for "follow orchestrator" filtering
 	mux.HandleFunc("/api/context", corsHandler(handleContext))
 
+	// GET /api/coaching - returns orchestrator behavioral coaching metrics
+	mux.HandleFunc("/api/coaching", corsHandler(handleCoaching))
+
 	// GET /api/session/{sessionID}/messages - proxies OpenCode session messages for activity feed history
 	// Uses prefix matching to extract sessionID from path
 	mux.HandleFunc("/api/session/", corsHandler(handleSessionMessages))
