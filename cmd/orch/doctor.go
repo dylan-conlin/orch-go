@@ -27,6 +27,11 @@ var (
 	doctorDocs      bool // Check for undocumented CLI commands (doc debt)
 )
 
+const (
+	// DefaultWebPort is the port the web UI (vite dev server) runs on for orch-go.
+	DefaultWebPort = 5188
+)
+
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check health of orch services and optionally fix issues",
@@ -35,7 +40,9 @@ var doctorCmd = &cobra.Command{
 Services checked:
   - OpenCode server (default port 4096)
   - orch serve API server (default port 3348)
+  - Web UI (vite dev server, port 5188)
   - Beads daemon
+  - Overmind services (api, web, opencode)
 
 Use --fix to automatically start services that are not running.
 Use --stale-only to check if the orch binary is stale (exit 1 if stale).
@@ -155,6 +162,13 @@ func runDoctor() error {
 	orchServeStatus := checkOrchServe()
 	report.Services = append(report.Services, orchServeStatus)
 	if !orchServeStatus.Running {
+		report.Healthy = false
+	}
+
+	// Check web UI
+	webUIStatus := checkWebUI()
+	report.Services = append(report.Services, webUIStatus)
+	if !webUIStatus.Running {
 		report.Healthy = false
 	}
 
@@ -303,6 +317,59 @@ func checkOrchServe() ServiceStatus {
 		// TCP works, HTTPS works, but health endpoint returns non-200
 		status.Running = true
 		status.Details = fmt.Sprintf("Running (health status %d)", resp.StatusCode)
+	}
+
+	return status
+}
+
+// checkWebUI checks if the web UI (vite dev server) is running.
+// Uses plain HTTP (not HTTPS) since vite serves over HTTP.
+func checkWebUI() ServiceStatus {
+	status := ServiceStatus{
+		Name:      "Web UI",
+		Port:      DefaultWebPort,
+		URL:       fmt.Sprintf("http://localhost:%d", DefaultWebPort),
+		CanFix:    false, // Web UI is started via overmind, not directly
+		FixAction: "Run: overmind restart web",
+	}
+
+	// Simple TCP connect check first
+	addr := fmt.Sprintf("localhost:%d", DefaultWebPort)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		status.Running = false
+		status.Details = "Not listening"
+		if doctorVerbose {
+			status.Details = fmt.Sprintf("Not listening: %v", err)
+		}
+		return status
+	}
+	conn.Close()
+
+	// TCP connect succeeded, try HTTP GET for more details
+	httpClient := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	resp, err := httpClient.Get(status.URL)
+	if err != nil {
+		// TCP worked but HTTP failed - server might still be starting
+		status.Running = true
+		status.Details = "Port listening (HTTP check pending)"
+		if doctorVerbose {
+			status.Details = fmt.Sprintf("Port listening (HTTP failed: %v)", err)
+		}
+		return status
+	}
+	defer resp.Body.Close()
+
+	// Any response from vite is good enough (could be 200 for app, or 404 for missing route)
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
+		status.Running = true
+		status.Details = "Responding"
+	} else {
+		status.Running = true
+		status.Details = fmt.Sprintf("Running (status %d)", resp.StatusCode)
 	}
 
 	return status
