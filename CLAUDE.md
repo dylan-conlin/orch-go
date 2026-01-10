@@ -58,6 +58,50 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
+## Dual Spawn Modes: Resilience by Design
+
+orch supports two spawn modes for redundancy:
+
+### Primary Path (Daemon + OpenCode API)
+```bash
+bd create "task" --type task -l triage:ready
+orch daemon run  # Auto-spawns via opencode API, headless
+```
+**Use for:** Normal workflow, high concurrency, batch processing
+
+**Characteristics:**
+- Headless (no tmux window)
+- High concurrency (5+ agents)
+- Depends on OpenCode server (localhost:4096)
+- Daemon-managed lifecycle
+
+### Escape Hatch (Manual + Claude CLI)
+```bash
+orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task" --issue ID
+```
+**Use for:**
+- 🔥 Building infrastructure the primary path depends on
+- 🔧 Debugging when OpenCode server is unstable
+- 🎯 Critical work that can't afford to lose progress to crashes
+- 👁️ Work requiring visual monitoring
+
+**Characteristics:**
+- Tmux window (visible progress)
+- Independent of OpenCode server
+- Crash-resistant (agents survive service restarts)
+- Manual lifecycle management
+
+### Architectural Principle: Critical Paths Need Escape Hatches
+
+**Pattern discovered Jan 10, 2026:** When building observability infrastructure, OpenCode server crashed repeatedly (3 times in 1 hour), killing all agents working on the fixes. Switched to `--mode claude --tmux` for critical agents (orch doctor, overmind supervision, dashboard integration), which survived crashes and completed the work.
+
+**General rule:** When infrastructure can fail, critical paths need independent secondary paths that:
+1. **Don't depend on what failed** (claude CLI ≠ opencode server)
+2. **Provide visibility** (tmux vs headless)
+3. **Can complete the work** (opus for quality)
+
+**See:** `.kb/guides/resilient-infrastructure-patterns.md` for implementation patterns
+
 ## Key References
 
 **Before debugging, check the relevant guide in `.kb/guides/`:**
@@ -70,6 +114,7 @@ pkg/
 | Beads integration | `beads-integration.md` | bd commands failing, issue tracking |
 | Skill system | `skill-system.md` | Skill not loading, wrong behavior |
 | Daemon | `daemon.md` | Auto-spawn issues, triage workflow |
+| Resilient infrastructure | `resilient-infrastructure-patterns.md` | Building/fixing critical infrastructure, escape hatches |
 
 These guides synthesize 280+ investigations into authoritative references. Created Jan 4, 2026 after repeatedly re-investigating documented problems.
 
