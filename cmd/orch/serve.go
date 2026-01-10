@@ -71,6 +71,7 @@ Endpoints:
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET/PUT /api/config - User configuration settings (~/.orch/config.yaml)
   GET /api/changelog - Aggregated changelog (?days=7&project=all)
+  POST /api/approve  - Approve agent's work (creates beads comment + updates manifest)
   GET /health        - Health check
 
 Examples:
@@ -157,6 +158,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/servers   - Project servers status")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
+	fmt.Println("  POST /api/approve  - Approve agent's work")
 	fmt.Println("  GET /api/daemon    - Daemon status (running, capacity, last poll)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions")
@@ -330,6 +332,9 @@ func runServe(portNum int) error {
 	// Uses prefix matching to extract sessionID from path
 	mux.HandleFunc("/api/session/", corsHandler(handleSessionMessages))
 
+	// POST /api/approve - approve an agent's work (creates beads comment + updates workspace manifest)
+	mux.HandleFunc("/api/approve", corsHandler(handleApprove))
+
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -368,6 +373,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET/PUT /api/config - User configuration settings")
 	fmt.Println("  GET /api/changelog - Aggregated changelog (?days=7&project=all)")
 	fmt.Println("  GET /api/file      - Read file contents (?path=/path/to/file)")
+	fmt.Println("  POST /api/approve  - Approve agent's work")
 	fmt.Println("  GET /health        - Health check")
 	fmt.Println("\nPress Ctrl+C to stop")
 
