@@ -2,74 +2,58 @@
 
 **Agent:** og-feat-phase-service-observability-10jan-6f8d
 **Issue:** orch-go-vtf1s
-**Duration:** 2026-01-10 → 2026-01-10 (~1.5h)
-**Outcome:** success
+**Duration:** 2026-01-10 00:42 → 2026-01-10 00:51 (~10min)
+**Outcome:** verification (no implementation - Phase 2 already complete)
 
 ---
 
 ## TLDR
 
-Implemented Phase 2 service observability dashboard integration: created services.ts store, ServiceCard and ServicesSection components following orchestrator-sessions patterns, integrated into +page.svelte. Dashboard now displays all overmind services (api, web, opencode) with status, PID, uptime, and restart count.
+Verified Phase 2 service observability dashboard integration is complete. All deliverables exist from prior agent (og-feat-phase-service-observability-10jan-5d1a). Monitoring shows "0 running" due to launchd PATH issue (orch-go-b6hwn), not Phase 2 implementation gap.
 
 ---
 
 ## Delta (What Changed)
 
 ### Files Created
-- `web/src/lib/stores/services.ts` - Services store with fetch() method, follows orchestrator-sessions pattern
-- `web/src/lib/components/service-card/index.ts` - Export barrel for ServiceCard component
-- `web/src/lib/components/service-card/service-card.svelte` - Service card component showing name, status badge, PID, uptime, restart count
-- `web/src/lib/components/services-section/index.ts` - Export barrel for ServicesSection component
-- `web/src/lib/components/services-section/services-section.svelte` - Collapsible services section with summary badges
-- `.kb/investigations/2026-01-10-inv-phase-service-observability-dashboard-integration.md` - Implementation investigation file
+- `.kb/investigations/2026-01-10-inv-phase-2-completion-verification.md` - Verification investigation documenting Phase 2 completion status
 
 ### Files Modified
-- `web/src/routes/+page.svelte` - Added services store import, ServicesSection component, fetch() calls in onMount and refresh interval, section state tracking
+None (verification only)
 
 ### Commits
-- `7b9ebdc9` - feat: add Phase 2 service observability dashboard integration
-- `bfb3a81b` - docs: update investigation for Phase 2 service observability
+- `4e99061c` - docs: verify Phase 2 service observability is complete
 
 ---
 
 ## Evidence (What Was Observed)
 
-- API endpoint /api/services already existed from Phase 1 (cmd/orch/serve_system.go:270-331) - verified via curl returned 200 OK with 3 services
-- Orchestrator-sessions pattern (collapsible section + card grid) fully reusable - copied component structure from web/src/lib/components/orchestrator-sessions-section/
-- Blue theming (border-blue-500/30, bg-blue-600) provides clear visual differentiation from purple orchestrator sessions
-- Dashboard renders Services section with 3 service cards (opencode, api, web) showing all required fields - verified via Glass screenshot
-- Section appears below OrchestratorSessionsSection in correct position - verified visually
-
-### Tests Run
-```bash
-# Test API endpoint
-curl -k https://localhost:3348/api/services
-# Returns: 200 OK with JSON containing 3 services (api, web, opencode)
-
-# Visual verification
-orch servers start orch-go
-# Dashboard at http://localhost:5188 shows Services section with 3 cards
-```
+- All Phase 2 deliverables exist: services.ts (1.7KB), ServiceCard (3.4KB), ServicesSection (1.8KB), integrated into +page.svelte
+- Prior agent's SYNTHESIS.md committed in 6eeb24ae (112 lines, full tier protocol followed)
+- API endpoint /api/services returns valid JSON structure with services array (currently showing PID 0 for all services)
+- Services ARE running: lsof shows processes on ports 3348 (api), 4096 (opencode), 5188 (web)
+- launchd error log shows "overmind: Can't find tmux" - PATH configuration issue
+- launchd job loaded: `launchctl list | grep com.overmind.orch-go` returns `-  0  com.overmind.orch-go`
 
 ---
 
 ## Knowledge (What Was Learned)
 
-### New Artifacts
-- `.kb/investigations/2026-01-10-inv-phase-service-observability-dashboard-integration.md` - Phase 2 implementation investigation
+### Key Findings
+1. Phase 2 implementation was completed by prior agent in session og-feat-phase-service-observability-10jan-5d1a (2026-01-10 00:21-00:29)
+2. Monitoring failure is NOT a Phase 2 bug - it's launchd unable to find tmux in PATH
+3. Issue dependencies are correct: orch-go-vtf1s (Phase 2) blocks orch-go-b6hwn (launchd supervision)
+4. The re-spawn was triggered by monitoring not working, creating false perception that Phase 2 wasn't complete
 
 ### Decisions Made
-- Decision 1: Reuse orchestrator-sessions component patterns (collapsible section + card grid) - reduces code duplication and ensures UX consistency
-- Decision 2: Blue theming for services section - differentiates from purple orchestrator sessions and green agents
-- Decision 3: Display restart count in card footer only when > 0 - reduces visual clutter for stable services
-- Decision 4: Use 60s polling refresh (same as other dashboard data) - sufficient for MVP, Phase 3 can add SSE streaming
+None - verification session only
 
 ### Constraints Discovered
-- Dashboard refresh uses 60s polling for all data - acceptable for service status but Phase 3 SSE would provide <1s updates
-- Single project support only (sourceDir hardcoded in serve.go) - multi-project requires config-based discovery (Phase 2 design doc mentioned this)
+- launchd's environment doesn't include /opt/homebrew/bin by default, causing tmux not found error
+- ServiceMonitor returns empty state when overmind is unreachable, resulting in PID 0 for all services
 
 ### Externalized via `kb quick`
-- No `kb quick` entries needed - implementation followed established Phase 2 design without new learnings requiring capture
+None - verification finding, not new learnings requiring capture
 
 ---
 
@@ -78,35 +62,30 @@ orch servers start orch-go
 **Recommendation:** close
 
 ### If Close
-- [x] All deliverables complete (store, components, dashboard integration)
-- [x] Tests passing (visual verification via screenshot, API endpoint returns valid JSON)
-- [x] Investigation file has `**Phase:** Complete` and `**Status:** Complete`
-- [x] Ready for `orch complete orch-go-vtf1s`
+- [x] Phase 2 deliverables verified complete (all files exist, integrated, documented)
+- [x] Monitoring issue identified as launchd PATH configuration (orch-go-b6hwn)
+- [x] Investigation file created and committed
+- [x] Ready for orchestrator to close orch-go-vtf1s
 
 ---
 
 ## Unexplored Questions
 
-**Questions that emerged during this session that weren't directly in scope:**
-- Multi-project service discovery - Phase 2 design mentioned ~/.orch/config.yaml but not implemented yet. Worth exploring when needed.
-- Service crash behavior - Restart count display works but actual crash notification/auto-restart not tested in this session (Phase 1 should handle it)
-- SSE streaming for real-time updates - Phase 3 feature, requires event emission from service monitor and /events/services endpoint
-
-**Areas worth exploring further:**
-- Cross-project service aggregation (display services from orch-go, kb-cli, beads simultaneously)
-- Service log viewer integration (click service card → show last 100 lines from overmind echo)
-- Service health checks beyond process monitoring (HTTP endpoint checks, resource usage)
+**Questions that emerged during this session:**
+- How to properly set PATH in launchd plist so tmux is found? (orch-go-b6hwn addresses this)
+- Should ServiceMonitor distinguish between "overmind unreachable" vs "no services running"?
+- Would visual verification (opening browser) reveal any UI issues with the completed Phase 2 dashboard?
 
 **What remains unclear:**
-- How restart count behaves after orch serve restart (does it persist or reset to 0?) - Monitor state is in-memory, likely resets
-- Empty state when no services running (does section hide or show "No services"?) - Not tested, assumed it hides based on {#if $services.total_count > 0}
+- Why was I spawned if Phase 2 was already complete? (Likely automated daemon spawn based on triage:ready label)
+- Will launchd supervision fix resolve monitoring completely, or are there other PATH issues?
 
 ---
 
 ## Session Metadata
 
-**Skill:** feature-impl
+**Skill:** feature-impl (verification mode)
 **Model:** claude-3-7-sonnet-20250219
 **Workspace:** `.orch/workspace/og-feat-phase-service-observability-10jan-6f8d/`
-**Investigation:** `.kb/investigations/2026-01-10-inv-phase-service-observability-dashboard-integration.md`
+**Investigation:** `.kb/investigations/2026-01-10-inv-phase-2-completion-verification.md`
 **Beads:** `bd show orch-go-vtf1s`
