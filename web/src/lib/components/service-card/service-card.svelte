@@ -3,9 +3,12 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Service } from '$lib/stores/services';
 	import { getStatusColor, getStatusIcon } from '$lib/stores/services';
+	import ServiceLogViewer from '$lib/components/service-log-viewer/service-log-viewer.svelte';
 
 	export let service: Service;
 	export let project: string;
+
+	let showLogViewer = false;
 
 	function getStatusVariant(status: string, pid: number) {
 		if (status === 'running' && pid !== 0) {
@@ -87,22 +90,37 @@
 		</Badge>
 	</div>
 
-	<!-- Restart count (if any) -->
-	{#if service.restart_count > 0}
-		<div class="mt-2 border-t border-blue-500/20 pt-2">
-			<div class="flex items-center gap-2 text-xs">
-				<Tooltip.Root>
-					<Tooltip.Trigger>
-						<span class="flex items-center gap-1 cursor-default text-yellow-400">
-							<span class="text-sm">⟳</span>
-							{service.restart_count} restart{service.restart_count === 1 ? '' : 's'}
-						</span>
-					</Tooltip.Trigger>
-					<Tooltip.Content>
-						<p>Service has restarted {service.restart_count} time{service.restart_count === 1 ? '' : 's'} since monitor started</p>
-					</Tooltip.Content>
-				</Tooltip.Root>
-			</div>
+	<!-- Restart count + View Events button -->
+	<div class="mt-2 border-t border-blue-500/20 pt-2">
+		<div class="flex items-center justify-between gap-2">
+			{#if service.restart_count > 0}
+				<div class="flex items-center gap-2 text-xs">
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							<span class="flex items-center gap-1 cursor-default text-yellow-400">
+								<span class="text-sm">⟳</span>
+								{service.restart_count} restart{service.restart_count === 1 ? '' : 's'}
+							</span>
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							<p>Service has restarted {service.restart_count} time{service.restart_count === 1 ? '' : 's'} since monitor started</p>
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
+			{:else}
+				<div></div>
+			{/if}
+			<button
+				on:click={() => showLogViewer = true}
+				class="text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded hover:bg-accent"
+			>
+				📊 Events
+			</button>
 		</div>
-	{/if}
+	</div>
 </div>
+
+<!-- Log viewer modal -->
+{#if showLogViewer}
+	<ServiceLogViewer serviceName={service.name} onClose={() => showLogViewer = false} />
+{/if}

@@ -35,6 +35,12 @@
 		connectAgentlogSSE,
 		disconnectAgentlogSSE
 	} from '$lib/stores/agentlog';
+	import {
+		servicelogEvents,
+		servicelogConnectionStatus,
+		connectServicelogSSE,
+		disconnectServicelogSSE
+	} from '$lib/stores/servicelog';
 	import { usage } from '$lib/stores/usage';
 	import { focus } from '$lib/stores/focus';
 	import { servers } from '$lib/stores/servers';
@@ -190,6 +196,7 @@
 		const handleBeforeUnload = () => {
 			disconnectSSE();
 			disconnectAgentlogSSE();
+			disconnectServicelogSSE();
 		};
 		window.addEventListener('beforeunload', handleBeforeUnload);
 
@@ -202,6 +209,7 @@
 	onDestroy(() => {
 		disconnectSSE();
 		disconnectAgentlogSSE();
+		disconnectServicelogSSE();
 		orchestratorContext.stopPolling();
 	});
 
