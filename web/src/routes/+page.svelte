@@ -12,6 +12,7 @@
 	import { RecentWins } from '$lib/components/recent-wins';
 	import { NeedsAttention } from '$lib/components/needs-attention';
 	import { StatsBar } from '$lib/components/stats-bar';
+	import { CacheValidationBanner } from '$lib/components/cache-validation-banner';
 	import {
 		agents,
 		activeAgents,
@@ -383,6 +384,9 @@
 	// Total visible agents across all sections (for filter count)
 	$: totalVisibleAgents = sortedActiveAgents.length + sortedNeedsReviewAgents.length + sortedDeadAgents.length + sortedRecentAgents.length + sortedArchivedAgents.length;
 </script>
+
+<!-- Cache Validation Banner (fixed at top) -->
+<CacheValidationBanner />
 
 <div class="space-y-3">
 	<!-- Stats Bar Component -->

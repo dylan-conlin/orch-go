@@ -1,5 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { createSSEConnection, type SSEConnection } from '../services/sse-connection';
+import { cacheValidation } from './cache-validation';
 
 // Agent types matching orch-go registry
 // 'dead' = no activity for 3+ minutes (crashed/stuck/killed) - needs investigation
@@ -221,6 +222,8 @@ function createAgentStore() {
 				const response = await fetch(`${API_BASE}/api/agents${queryString}`, {
 					signal: currentFetchController.signal
 				});
+				// Update cache validation from response headers
+				cacheValidation.updateFromResponse(response);
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}

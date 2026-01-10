@@ -64,6 +64,7 @@ Endpoints:
   GET /api/beads     - Beads stats (ready, blocked, open)
   GET /api/beads/ready - List of ready issues for queue visibility
   GET /api/servers   - Servers status across projects
+  GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)
   GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
@@ -157,6 +158,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/beads/ready - Ready issues list")
 	fmt.Println("  GET /api/servers   - Project servers status")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
+	fmt.Println("  GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  POST /api/approve  - Approve agent's work")
 	fmt.Println("  GET /api/daemon    - Daemon status (running, capacity, last poll)")
@@ -239,6 +241,11 @@ func runServe(portNum int) error {
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
 
+			// Cache invalidation headers (Phase 4: Dashboard Reliability)
+			// Enable dashboard to detect stale data and prompt reload when binary updates
+			w.Header().Set("X-Orch-Version", version)
+			w.Header().Set("X-Cache-Time", time.Now().Format(time.RFC3339))
+
 			// Handle preflight
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -274,7 +281,21 @@ func runServe(portNum int) error {
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
 
 	// GET /api/services - returns service health from overmind monitor
+	// GET /api/services/{name}/logs - returns logs for a specific service from overmind echo
 	mux.HandleFunc("/api/services", corsHandler(handleServices))
+	mux.HandleFunc("/api/services/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
+		// Route /api/services/{name}/logs to handleServiceLogs
+		if strings.HasSuffix(r.URL.Path, "/logs") {
+			handleServiceLogs(w, r)
+		} else if r.URL.Path == "/api/services" || r.URL.Path == "/api/services/" {
+			handleServices(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+
+	// GET /api/events/services - returns service lifecycle events (supports ?follow=true for SSE)
+	mux.HandleFunc("/api/events/services", corsHandler(handleServiceEvents))
 
 	// POST /api/issues - creates a new beads issue (for follow-up from synthesis)
 	mux.HandleFunc("/api/issues", corsHandler(handleIssues))
@@ -362,6 +383,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
+	fmt.Println("  GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
