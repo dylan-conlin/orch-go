@@ -42,7 +42,8 @@ var (
 	spawnSkill             string
 	spawnIssue             string
 	spawnPhases            string
-	spawnMode              string
+	spawnMode              string // Implementation mode: tdd or direct
+	spawnOpus              bool   // Use Opus via Claude CLI in tmux (implies claude mode)
 	spawnValidation        string
 	spawnInline            bool   // Run inline (blocking) with TUI
 	spawnHeadless          bool   // Run headless via HTTP API (automation/scripting)
@@ -75,6 +76,13 @@ Manual spawning is for exceptions only (urgent single items, complex context nee
 
 To proceed with manual spawn, you must acknowledge this with --bypass-triage.
 This creates friction to encourage the preferred daemon-driven workflow.
+
+Backend Modes (--backend):
+  claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus)
+  opencode: Uses OpenCode HTTP API (default)
+  
+  Config can set default mode (orch config set spawn_mode claude|opencode).
+  The --backend flag overrides the config setting for this spawn only.
 
 Spawn Modes:
   Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
@@ -159,6 +167,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnIssue, "issue", "", "Beads issue ID for tracking")
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
+	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
 	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
@@ -1000,11 +1009,21 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
-	// Load project config to get spawn mode
+	// Load project config (used for server ports, etc.)
 	projCfg, _ := config.Load(projectDir)
+
+	// Determine spawn backend
+	// --opus flag = use claude CLI in tmux (Max subscription, Opus model)
+	// No --opus = use opencode headless with sonnet (default)
 	spawnBackend := "opencode"
-	if projCfg != nil {
-		spawnBackend = projCfg.SpawnMode
+	if spawnOpus {
+		spawnBackend = "claude"
+	}
+
+	// If config has spawn_mode and no --opus flag, respect config default
+	// This allows users to set spawn_mode in config as a project default
+	if !spawnOpus && projCfg != nil && projCfg.SpawnMode == "claude" {
+		spawnBackend = "claude"
 	}
 
 	// Build spawn config
