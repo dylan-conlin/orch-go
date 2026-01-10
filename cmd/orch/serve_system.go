@@ -249,6 +249,93 @@ func handleServers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ServiceInfoAPIItem represents a single service in the API response.
+type ServiceInfoAPIItem struct {
+	Name         string `json:"name"`
+	PID          int    `json:"pid"`
+	Status       string `json:"status"`        // "running", "stopped", etc.
+	RestartCount int    `json:"restart_count"` // Number of restarts since monitor started
+	Uptime       string `json:"uptime"`        // Human-readable uptime (e.g., "2h 15m")
+}
+
+// ServicesAPIResponse is the JSON structure returned by /api/services.
+type ServicesAPIResponse struct {
+	Project      string               `json:"project"`       // Project name
+	Services     []ServiceInfoAPIItem `json:"services"`      // List of services
+	TotalCount   int                  `json:"total_count"`   // Total number of services
+	RunningCount int                  `json:"running_count"` // Number of running services
+	StoppedCount int                  `json:"stopped_count"` // Number of stopped services
+}
+
+// handleServices returns service health from the overmind monitor.
+func handleServices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	serviceMonitorMu.RLock()
+	monitor := serviceMonitor
+	serviceMonitorMu.RUnlock()
+
+	if monitor == nil {
+		// Service monitor not initialized (shouldn't happen but handle gracefully)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ServicesAPIResponse{
+			Project:      "unknown",
+			Services:     []ServiceInfoAPIItem{},
+			TotalCount:   0,
+			RunningCount: 0,
+			StoppedCount: 0,
+		})
+		return
+	}
+
+	// Get current service state from monitor
+	states := monitor.GetState()
+
+	// Convert to API format
+	var services []ServiceInfoAPIItem
+	runningCount := 0
+	stoppedCount := 0
+
+	for _, state := range states {
+		// Calculate uptime (time since last seen)
+		uptime := formatDuration(time.Since(state.LastSeen))
+
+		services = append(services, ServiceInfoAPIItem{
+			Name:         state.Name,
+			PID:          state.PID,
+			Status:       state.Status,
+			RestartCount: state.RestartCount,
+			Uptime:       uptime,
+		})
+
+		if state.Status == "running" && state.PID != 0 {
+			runningCount++
+		} else {
+			stoppedCount++
+		}
+	}
+
+	// Extract project name from source directory
+	projectName := filepath.Base(sourceDir)
+
+	resp := ServicesAPIResponse{
+		Project:      projectName,
+		Services:     services,
+		TotalCount:   len(services),
+		RunningCount: runningCount,
+		StoppedCount: stoppedCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode services: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
 // DaemonAPIResponse is the JSON structure returned by /api/daemon.
 type DaemonAPIResponse struct {
 	Running       bool   `json:"running"`                   // Whether the daemon is currently running

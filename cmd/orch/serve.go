@@ -39,6 +39,12 @@ var (
 	// Protected by beadsClientMu for thread-safe access across HTTP handlers.
 	beadsClient   *beads.Client
 	beadsClientMu sync.RWMutex
+
+	// serviceMonitor is the global service monitor instance for accessing service state.
+	// Initialized at startup and used by /api/services endpoint.
+	// Protected by serviceMonitorMu for thread-safe access across HTTP handlers.
+	serviceMonitor   *service.ServiceMonitor
+	serviceMonitorMu sync.RWMutex
 )
 
 var serveCmd = &cobra.Command{
@@ -149,6 +155,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/beads     - Beads stats")
 	fmt.Println("  GET /api/beads/ready - Ready issues list")
 	fmt.Println("  GET /api/servers   - Project servers status")
+	fmt.Println("  GET /api/services  - Service health from overmind monitor")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /api/daemon    - Daemon status (running, capacity, last poll)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats")
@@ -205,8 +212,8 @@ func runServe(portNum int) error {
 	notifier := notify.Default()
 	eventLogger := events.NewDefaultLogger()
 	eventAdapter := service.NewEventLoggerAdapter(eventLogger)
-	monitor := service.NewMonitor(sourceDir, notifier, eventAdapter, 10*time.Second, true)
-	monitor.Start()
+	serviceMonitor = service.NewMonitor(sourceDir, notifier, eventAdapter, 10*time.Second, true)
+	serviceMonitor.Start()
 	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled)")
 
 	mux := http.NewServeMux()
@@ -263,6 +270,9 @@ func runServe(portNum int) error {
 
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
+
+	// GET /api/services - returns service health from overmind monitor
+	mux.HandleFunc("/api/services", corsHandler(handleServices))
 
 	// POST /api/issues - creates a new beads issue (for follow-up from synthesis)
 	mux.HandleFunc("/api/issues", corsHandler(handleIssues))
@@ -346,6 +356,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
+	fmt.Println("  GET /api/services  - Service health from overmind monitor")
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")

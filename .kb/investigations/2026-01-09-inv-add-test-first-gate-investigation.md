@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Added test-first gate to investigation skill workflow (step 3) asking "What's the simplest test I can run right now? Can I test this in 60 seconds?"
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Successfully compiled skill with skillc and verified gate appears in deployed ~/.claude/skills/SKILL.md at lines 56-62 with all expected content.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Modular skill structure (workflow.md) enables surgical changes; gate placement between checkpoint and exploration prevents premature hypothesis-writing.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Monitor investigation agent spawns to observe whether agents follow the gate in practice; consider similar gates for other skills prone to "documentation diving."
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (tactical skill improvement, not an architectural pattern)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-09
 **Updated:** 2026-01-09
 **Owner:** Agent spawned from orch-go-jrhqe
-**Phase:** Investigating
-**Next Step:** Add gate to workflow.md
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -100,37 +100,53 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Modular skill structure enables targeted changes** - The investigation skill's modular design (intro.md, workflow.md, template.md, etc.) makes it easy to add a gate in the right place without affecting other components.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Gate placement is critical** - Inserting the test-first gate between IMMEDIATE CHECKPOINT and "Try things, observe" ensures agents consider quick testing before writing elaborate hypotheses.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **60-second rule is concrete and actionable** - By asking "Can I test this in 60 seconds?" the gate provides a clear decision point that prevents investigation theater.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The test-first gate was successfully added to workflow.md as step 3, between IMMEDIATE CHECKPOINT (step 2) and "Try things, observe" (step 4). The gate asks agents: "What's the simplest test I can run right now? Can I test this in 60 seconds?" This placement prevents agents from diving into documentation or writing elaborate hypotheses before attempting a quick practical test.
 
 ---
+
+## Test Performed
+
+**Test:** Built and deployed the investigation skill with the test-first gate, then verified the change in the deployed SKILL.md file.
+
+**Commands run:**
+```bash
+cd ~/orch-knowledge/skills/src/worker/investigation && skillc build
+cd ~/orch-knowledge/skills && skillc deploy --target ~/.claude/skills/ ./src/worker/investigation
+grep -A 10 "TEST-FIRST GATE" ~/.claude/skills/SKILL.md
+```
+
+**Result:** The test-first gate appears in the deployed SKILL.md at lines 56-62, with all expected content:
+- "Ask yourself: What's the simplest test I can run right now?"
+- "60-second rule: Can I test this in 60 seconds or less?"
+- Warning about avoiding documentation diving
+- Example comparing DevTools check (30 sec) vs reading SvelteKit docs (500+ lines)
 
 ## Structured Uncertainty
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Test-first gate added to workflow.md (verified via file edit)
+- ✅ Skill successfully compiled with skillc build (verified via command output)
+- ✅ Skill successfully deployed to ~/.claude/skills/ (verified via grep confirming gate text present)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether agents will actually follow the gate in practice (requires spawning investigation agents and observing behavior)
+- ⚠️ Whether the 60-second rule is the optimal threshold (not empirically validated)
+- ⚠️ Whether the gate prevents all investigation theater or just reduces it
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if the deployed SKILL.md did not contain the test-first gate text
+- Finding would be wrong if skillc build or deploy commands failed
 
 ---
 
