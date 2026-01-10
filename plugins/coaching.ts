@@ -422,6 +422,14 @@ interface VariationState {
 }
 
 /**
+ * Dylan pattern tracking state for Phase 3.5.
+ */
+interface DylanPatternState {
+  priorityUncertaintyCount: number // Count of "what's next?" type questions
+  compensationKeywords: string[] // Keywords from Dylan's provided context
+}
+
+/**
  * Session state tracker.
  */
 interface SessionState {
@@ -434,6 +442,8 @@ interface SessionState {
   lastFlush: number
   // Phase 1: Behavioral variation detection
   variation: VariationState
+  // Phase 3.5: Dylan pattern detection
+  dylan: DylanPatternState
 }
 
 /**
@@ -599,6 +609,40 @@ function formatMetricForCoach(metric: CoachingMetric, context: any): string {
       `**Recommendation Date:** ${metric.details.recommendation_date}`,
       ``
     )
+  } else if (metric.metric_type === "dylan_signal_prefix") {
+    lines.push(
+      `**Pattern:** Dylan used explicit signal prefix: \`${metric.details.prefix}:\``,
+      ``,
+      `**Message:** "${metric.details.message.substring(0, 200)}${metric.details.message.length > 200 ? "..." : ""}"`,
+      ``,
+      `**Signal Meaning:**`,
+      `- **frame-collapse**: Orchestrator dropped into worker mode (doing spawnable work)`,
+      `- **compensation**: Dylan providing context system should have surfaced`,
+      `- **focus**: Dylan redirecting to what actually matters`,
+      `- **step-back**: Need perspective, pause current thread`,
+      ``
+    )
+  } else if (metric.metric_type === "priority_uncertainty") {
+    lines.push(
+      `**Pattern:** Dylan asking "what's next?" type questions (${metric.value} times)`,
+      ``,
+      `**Recent Questions:**`,
+      ...metric.details.recent_questions.map((q: string) => `- "${q.substring(0, 150)}..."`),
+      ``,
+      `**Threshold:** ${metric.details.threshold}+ occurrences indicates orchestrator not providing strategic guidance`,
+      ``
+    )
+  } else if (metric.metric_type === "compensation_pattern") {
+    lines.push(
+      `**Pattern:** Dylan providing repeated context (${Math.round(metric.value * 100)}% keyword overlap)`,
+      ``,
+      `**Current Message:** "${metric.details.current_message.substring(0, 200)}..."`,
+      ``,
+      `**Overlapping Keywords:** ${metric.details.overlapping_keywords.join(", ")}`,
+      ``,
+      `**Indicates:** System failing to surface knowledge - orchestrator should have run \`kb context\` first`,
+      ``
+    )
   }
 
   // Add context if provided
@@ -617,6 +661,128 @@ function formatMetricForCoach(metric: CoachingMetric, context: any): string {
   )
 
   return lines.join("\n")
+}
+
+/**
+ * Phase 3.5: Extract user messages from messages array.
+ * Returns array of text content from user messages (role='user').
+ */
+function extractUserMessages(
+  messages: Array<{ info: any; parts: any[] }>
+): Array<{ text: string; messageId: string }> {
+  const userMessages: Array<{ text: string; messageId: string }> = []
+
+  for (const msg of messages) {
+    if (msg.info.role !== "user") continue
+
+    for (const part of msg.parts) {
+      if (part.type !== "text" || part.ignored || part.synthetic) continue
+      if (part.text && part.text.trim()) {
+        userMessages.push({
+          text: part.text.trim(),
+          messageId: msg.info.id || "unknown",
+        })
+      }
+    }
+  }
+
+  return userMessages
+}
+
+/**
+ * Phase 3.5: Detect Dylan's explicit signal prefixes.
+ * Returns prefix type if message starts with known prefix, null otherwise.
+ */
+function detectSignalPrefix(text: string): string | null {
+  const lowerText = text.toLowerCase()
+
+  const prefixes = [
+    "frame-collapse:",
+    "compensation:",
+    "focus:",
+    "step-back:",
+  ]
+
+  for (const prefix of prefixes) {
+    if (lowerText.startsWith(prefix)) {
+      return prefix.replace(":", "") // Return without colon for cleaner metric
+    }
+  }
+
+  return null
+}
+
+/**
+ * Phase 3.5: Detect priority uncertainty patterns.
+ * Returns true if message contains phrases indicating Dylan doesn't know what to do next.
+ */
+function detectPriorityUncertainty(text: string): boolean {
+  const lowerText = text.toLowerCase()
+
+  const patterns = [
+    "what's next",
+    "what should we focus on",
+    "what should i focus on",
+    "where should we start",
+    "what's the priority",
+  ]
+
+  return patterns.some((pattern) => lowerText.includes(pattern))
+}
+
+/**
+ * Phase 3.5: Extract keywords from text for compensation pattern detection.
+ * Simple keyword extraction (words >4 chars, not common stopwords).
+ */
+function extractKeywordsSimple(text: string): string[] {
+  const stopwords = new Set([
+    "this",
+    "that",
+    "with",
+    "from",
+    "have",
+    "been",
+    "were",
+    "they",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "should",
+    "could",
+    "would",
+    "there",
+  ])
+
+  const words = text.toLowerCase().match(/\b\w+\b/g) || []
+  const keywords: string[] = []
+
+  for (const word of words) {
+    if (word.length > 4 && !stopwords.has(word)) {
+      keywords.push(word)
+    }
+  }
+
+  return keywords
+}
+
+/**
+ * Phase 3.5: Detect compensation pattern (Dylan providing repeated context).
+ * Returns keyword overlap ratio if significant (>0.3), null otherwise.
+ */
+function detectCompensation(
+  newKeywords: string[],
+  priorKeywords: string[]
+): number | null {
+  if (newKeywords.length === 0 || priorKeywords.length === 0) return null
+
+  // Count overlapping keywords
+  const overlap = newKeywords.filter((k) => priorKeywords.includes(k)).length
+  const ratio = overlap / Math.max(newKeywords.length, priorKeywords.length)
+
+  // Significant overlap if >30% keywords repeat
+  return ratio > 0.3 ? ratio : null
 }
 
 /**
@@ -640,6 +806,136 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   let toolCallCounter = 0
 
   return {
+    /**
+     * Phase 3.5: Track Dylan's behavioral patterns via message monitoring.
+     * Detects: explicit prefixes, priority uncertainty, compensation patterns.
+     */
+    "experimental.chat.messages.transform": async (input: {}, output: { messages: Array<{ info: any; parts: any[] }> }) => {
+      // Extract user messages
+      const userMessages = extractUserMessages(output.messages)
+      if (userMessages.length === 0) return
+
+      // Get most recent user message
+      const latestMessage = userMessages[userMessages.length - 1]
+      const text = latestMessage.text
+
+      // Infer session ID from messages (use first message's info if available)
+      const sessionId = output.messages[0]?.info?.sessionID || "unknown"
+
+      // Get or create session state
+      let state = sessions.get(sessionId)
+      if (!state) {
+        state = {
+          sessionId,
+          contextChecks: 0,
+          spawns: 0,
+          reads: 0,
+          actions: 0,
+          toolWindow: [],
+          lastFlush: Date.now(),
+          variation: {
+            currentGroup: null,
+            variationCount: 0,
+            lastToolTimestamp: Date.now(),
+            variationHistory: [],
+          },
+          dylan: {
+            priorityUncertaintyCount: 0,
+            compensationKeywords: [],
+          },
+        }
+        sessions.set(sessionId, state)
+        log("Created session state for Dylan patterns:", sessionId)
+      }
+
+      // Pattern 1: Explicit Signal Prefixes
+      const prefix = detectSignalPrefix(text)
+      if (prefix) {
+        const metric = {
+          timestamp: new Date().toISOString(),
+          session_id: sessionId,
+          metric_type: "dylan_signal_prefix",
+          value: 1,
+          details: {
+            prefix,
+            message: text.substring(0, 500), // First 500 chars
+          },
+        }
+
+        writeMetric(metric)
+        log(`⚠️ DYLAN SIGNAL PREFIX DETECTED: ${prefix}`)
+
+        // Stream to coach
+        streamToCoach(client, sessionId, metric, {})
+      }
+
+      // Pattern 2: Priority Uncertainty
+      if (detectPriorityUncertainty(text)) {
+        state.dylan.priorityUncertaintyCount++
+
+        // Emit metric when threshold reached (2+ occurrences)
+        if (state.dylan.priorityUncertaintyCount >= 2) {
+          const recentQuestions = userMessages.slice(-5).map((m) => m.text)
+
+          const metric = {
+            timestamp: new Date().toISOString(),
+            session_id: sessionId,
+            metric_type: "priority_uncertainty",
+            value: state.dylan.priorityUncertaintyCount,
+            details: {
+              recent_questions: recentQuestions,
+              threshold: 2,
+            },
+          }
+
+          writeMetric(metric)
+          log(`⚠️ PRIORITY UNCERTAINTY DETECTED: ${state.dylan.priorityUncertaintyCount} occurrences`)
+
+          // Stream to coach
+          streamToCoach(client, sessionId, metric, {})
+
+          // Reset counter after emitting
+          state.dylan.priorityUncertaintyCount = 0
+        }
+      }
+
+      // Pattern 3: Compensation Pattern (keyword overlap)
+      const newKeywords = extractKeywordsSimple(text)
+      if (newKeywords.length > 0) {
+        const overlapRatio = detectCompensation(newKeywords, state.dylan.compensationKeywords)
+
+        if (overlapRatio !== null) {
+          const overlappingKeywords = newKeywords.filter((k) => state.dylan.compensationKeywords.includes(k))
+
+          const metric = {
+            timestamp: new Date().toISOString(),
+            session_id: sessionId,
+            metric_type: "compensation_pattern",
+            value: overlapRatio,
+            details: {
+              current_message: text.substring(0, 500),
+              overlapping_keywords: overlappingKeywords,
+              overlap_ratio: overlapRatio,
+            },
+          }
+
+          writeMetric(metric)
+          log(
+            `⚠️ COMPENSATION PATTERN DETECTED: ${Math.round(overlapRatio * 100)}% keyword overlap (${overlappingKeywords.length} keywords)`
+          )
+
+          // Stream to coach
+          streamToCoach(client, sessionId, metric, {})
+        }
+
+        // Update compensation keywords (keep last 100)
+        state.dylan.compensationKeywords.push(...newKeywords)
+        if (state.dylan.compensationKeywords.length > 100) {
+          state.dylan.compensationKeywords = state.dylan.compensationKeywords.slice(-100)
+        }
+      }
+    },
+
     /**
      * Track all tool executions and update session state.
      */
@@ -665,6 +961,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             variationCount: 0,
             lastToolTimestamp: Date.now(),
             variationHistory: [],
+          },
+          dylan: {
+            priorityUncertaintyCount: 0,
+            compensationKeywords: [],
           },
         }
         sessions.set(sessionId, state)
