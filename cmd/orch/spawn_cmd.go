@@ -43,6 +43,7 @@ var (
 	spawnIssue             string
 	spawnPhases            string
 	spawnMode              string // Implementation mode: tdd or direct
+	spawnBackendFlag       string // Spawn backend: claude or opencode (overrides config and auto-selection)
 	spawnOpus              bool   // Use Opus via Claude CLI in tmux (implies claude mode)
 	spawnValidation        string
 	spawnInline            bool   // Run inline (blocking) with TUI
@@ -167,6 +168,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnIssue, "issue", "", "Beads issue ID for tracking")
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
+	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI) or opencode (HTTP API). Overrides config and auto-selection.")
 	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
@@ -1046,13 +1048,21 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Determine spawn backend with auto-selection based on model
 	// Priority:
-	//   1. Explicit --opus flag (forces claude mode)
-	//   2. Auto-selection based on --model flag (opus → claude, sonnet → opencode)
-	//   3. Config default (spawn_mode in project config)
-	//   4. Default to opencode
+	//   1. Explicit --backend flag (highest priority)
+	//   2. Explicit --opus flag (forces claude mode)
+	//   3. Auto-selection based on --model flag (opus → claude, sonnet → opencode)
+	//   4. Config default (spawn_mode in project config)
+	//   5. Default to opencode
 	spawnBackend := "opencode"
 
-	if spawnOpus {
+	if spawnBackendFlag != "" {
+		// Explicit --backend flag: highest priority
+		spawnBackend = spawnBackendFlag
+		// Validate backend value
+		if spawnBackend != "claude" && spawnBackend != "opencode" {
+			return fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", spawnBackend)
+		}
+	} else if spawnOpus {
 		// Explicit --opus flag: use claude CLI
 		spawnBackend = "claude"
 	} else if spawnModel != "" {
