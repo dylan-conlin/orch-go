@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Plugin-level worker detection impossible because OpenCode plugins run in server process, not per-agent; moved detection to per-session in tool hooks using input.args.workdir and filePath patterns.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Verified bash tool has workdir parameter (opencode/packages/opencode/src/tool/bash.ts:65-70), implemented detectWorkerSession() with three signals (workdir, SPAWN_CONTEXT.md reads, filePath patterns), committed fix 6e6503ae.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** OpenCode architecture has single server process serving all sessions; process.env checks at plugin level fail because ORCH_WORKER set in spawned agent processes, not server; tool hooks provide per-session context via input.sessionID and input.args.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Fix complete and committed; smoke test by spawning worker and verifying sessionID not in coaching-metrics.jsonl; consider documenting "plugins run in server" in OpenCode plugin guide.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes (documents fundamental OpenCode plugin architecture constraint: server process vs per-agent detection, applies to all plugins checking env vars)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-10
 **Updated:** 2026-01-10
 **Owner:** Worker Agent
-**Phase:** Testing
-**Next Step:** Test worker filtering by spawning agent and checking metrics
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None (fix committed)
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
