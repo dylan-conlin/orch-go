@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Coach Session Pattern Monitoring
 
-**Question:** What is meant by "coach session for pattern monitoring" - what specifically should be investigated?
+**Question:** How does the coach session streaming work, and is this session properly receiving streamed metrics from the coaching plugin?
 
 **Started:** 2026-01-10 15:30
-**Updated:** 2026-01-10 15:30
+**Updated:** 2026-01-10 15:42
 **Owner:** Agent og-inv-coach-session-pattern-10jan-4f3f
 **Phase:** Investigating
-**Next Step:** Clarify scope with orchestrator - task description is ambiguous
-**Status:** QUESTION - Need clarification on what to investigate
+**Next Step:** Document architecture and test message reception
+**Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -78,23 +78,58 @@ Per AUTHORITY section: "Requirements ambiguous (multiple valid interpretations e
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Coach Session Architecture Clarified
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- Coaching plugin at `plugins/coaching.ts` lines 536-572 implements `streamToCoach()` function
+- Uses `client.session.promptAsync()` to send metrics asynchronously to coach session
+- Coach session ID set via `ORCH_COACH_SESSION_ID` environment variable (line 57)
+- Infinite loop prevention: skips streaming if current session IS the coach (line 549)
+- Test message "Can you receive this?" received successfully from orchestrator
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- plugins/coaching.ts:536-572 (streamToCoach function)
+- plugins/coaching.ts:57 (COACH_SESSION_ID env var)
+- User message received at 15:42
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:**
+This session is INTENDED to be the coach session that receives streamed pattern detections. The test message confirms the communication channel works. This is Phase 3 of the coaching plugin ("Stream to coach session for investigation").
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Detectable Pattern Types
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+The coaching plugin detects and streams 5 pattern types:
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+1. **behavioral_variation** (lines 1041-1068)
+   - 3+ consecutive variations in same semantic group without strategic pause
+   - Example: overmind start, overmind status, overmind restart repeatedly
+   - Threshold: `VARIATION_THRESHOLD = 3`, pause threshold: `STRATEGIC_PAUSE_MS = 30000`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+2. **circular_pattern** (lines 1082-1113)
+   - Architectural decisions contradicting prior investigation recommendations
+   - Example: Creating launchd plist when investigation recommended overmind
+   - Uses keyword extraction from D.E.K.N. summaries
+
+3. **dylan_signal_prefix** (lines 851-870)
+   - Explicit prefixes: frame-collapse:, compensation:, focus:, step-back:
+   - Indicates Dylan manually flagging orchestrator behavior
+
+4. **priority_uncertainty** (lines 872-900)
+   - "what's next?" type questions appearing 2+ times
+   - Signals orchestrator not providing strategic guidance
+
+5. **compensation_pattern** (lines 902-936)
+   - Dylan providing repeated context (>30% keyword overlap)
+   - Indicates system failing to surface knowledge
+
+**Source:**
+- plugins/coaching.ts:1041-1113 (detection implementation)
+- plugins/coaching.ts:577-664 (formatMetricForCoach - message formatting)
+
+**Significance:**
+The coach session's role is to INVESTIGATE whether detected patterns are real concerns or false positives, then provide observations if intervention needed. Not to auto-intervene, but to analyze.
 
 ---
 
