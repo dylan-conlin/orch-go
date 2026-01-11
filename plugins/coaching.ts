@@ -881,11 +881,23 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Infer session ID from messages (use first message's info if available)
       const sessionId = output.messages[0]?.info?.sessionID || "unknown"
 
-      // Check if this is a worker session (may not have tool args yet, but check cache)
+      // Check if this is a worker session
       const cachedWorkerStatus = workerSessions.get(sessionId)
       if (cachedWorkerStatus === true) {
         // Skip Dylan pattern detection for worker sessions
         return
+      }
+
+      // Early detection: check if any message contains .orch/workspace/ path
+      // This catches workers before they make tool calls
+      if (cachedWorkerStatus === undefined) {
+        for (const msg of userMessages) {
+          if (msg.text.includes(".orch/workspace/") || msg.text.includes("SPAWN_CONTEXT.md")) {
+            log(`Worker detected (message content): session ${sessionId}`)
+            workerSessions.set(sessionId, true)
+            return
+          }
+        }
       }
 
       // Get or create session state
