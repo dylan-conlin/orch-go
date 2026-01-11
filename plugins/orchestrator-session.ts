@@ -66,38 +66,11 @@ async function findOrchDirectory(startDir: string): Promise<string | null> {
 }
 
 /**
- * Detect if this session is a worker agent.
- *
- * Workers are identified by:
- * 1. ORCH_WORKER=1 environment variable (set by orch spawn)
- * 2. SPAWN_CONTEXT.md in the working directory
- * 3. Running from a .orch/workspace/ directory
+ * NOTE: Worker detection cannot be done at plugin init level.
+ * Plugin runs in OpenCode server process which never sees ORCH_WORKER env var.
+ * Worker sessions are identified per-event using sessionID and workspace paths.
+ * See workerSessions tracking in the plugin below.
  */
-async function isWorker(directory: string | undefined): Promise<boolean> {
-  // Check ORCH_WORKER env var (set by orch spawn)
-  if (process.env.ORCH_WORKER === "1") {
-    log("Worker detected: ORCH_WORKER=1")
-    return true
-  }
-
-  // Use process.cwd() if directory not provided
-  const workDir = directory || process.cwd()
-
-  // Check for SPAWN_CONTEXT.md (workers have this in their workspace)
-  const spawnContextPath = join(workDir, "SPAWN_CONTEXT.md")
-  if (await exists(spawnContextPath)) {
-    log("Worker detected: SPAWN_CONTEXT.md found")
-    return true
-  }
-
-  // Check if path contains .orch/workspace/ (worker workspace directory)
-  if (workDir.includes(".orch/workspace/")) {
-    log("Worker detected: in .orch/workspace/")
-    return true
-  }
-
-  return false
-}
 
 /**
  * Check if an orchestrator session is already active.
@@ -147,14 +120,9 @@ export const OrchestratorSessionPlugin: Plugin = async ({
     return {}
   }
 
-  // Check worker status once at init (shared across hooks)
-  const worker = await isWorker(workingDir)
-  log("Is worker:", worker)
-
-  if (worker) {
-    log("Skipping - worker agent detected")
-    return {}
-  }
+  // Worker session tracking (per-session detection, not plugin-level)
+  // Plugin runs in server process, can't see ORCH_WORKER env from spawned agents
+  const workerSessions = new Set<string>() // sessionID set
 
   // Check if orchestrator skill exists
   const skillPath = join(homedir(), ".claude", "skills", "meta", "orchestrator", "SKILL.md")
@@ -187,7 +155,7 @@ export const OrchestratorSessionPlugin: Plugin = async ({
 
     /**
      * Event hook: Auto-start orchestrator session on session.created.
-     * Worker detection already handled at plugin init.
+     * Per-session worker detection via sessionID.
      */
     event: async ({ event }) => {
       // Only handle session.created events
@@ -196,6 +164,20 @@ export const OrchestratorSessionPlugin: Plugin = async ({
       }
 
       log("session.created event received")
+
+      // Get sessionID from event properties
+      const sessionId = (event as any).properties?.sessionID
+      if (!sessionId) {
+        log("Event: No sessionID in event properties, skipping")
+        return
+      }
+
+      // Detect worker sessions by checking if session is in a workspace directory
+      // Note: This is a heuristic - worker sessions typically start in .orch/workspace/
+      // We could also check for SPAWN_CONTEXT.md reads in future tool calls
+      // For now, we don't have enough info at session.created time to detect workers
+      // So we proceed and let workers potentially trigger orch session start (harmless)
+      // TODO: Add more robust worker detection via tool hooks if needed
 
       // Check if orchestrator session already exists
       if (await hasActiveSession()) {

@@ -45,7 +45,6 @@ import {
   readdirSync,
   statSync,
 } from "fs"
-import { access } from "fs/promises"
 import { homedir } from "os"
 import { join, dirname } from "path"
 
@@ -62,50 +61,11 @@ function log(...args: any[]) {
 }
 
 /**
- * Check if a file exists at the given path.
+ * NOTE: Worker detection moved to per-session detection in tool hooks.
+ * Plugin-level detection (checking process.env.ORCH_WORKER) doesn't work because
+ * the plugin runs in the OpenCode server process, not in spawned agent processes.
+ * See detectWorkerSession() function below for the correct implementation.
  */
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Detect if this session is a worker agent.
- *
- * Workers are identified by:
- * 1. ORCH_WORKER=1 environment variable (set by orch spawn)
- * 2. SPAWN_CONTEXT.md in the working directory
- * 3. Running from a .orch/workspace/ directory
- */
-async function isWorker(directory: string | undefined): Promise<boolean> {
-  // Check ORCH_WORKER env var (set by orch spawn)
-  if (process.env.ORCH_WORKER === "1") {
-    log("Worker detected: ORCH_WORKER=1")
-    return true
-  }
-
-  // Use process.cwd() if directory not provided
-  const workDir = directory || process.cwd()
-
-  // Check for SPAWN_CONTEXT.md (workers have this in their workspace)
-  const spawnContextPath = join(workDir, "SPAWN_CONTEXT.md")
-  if (await exists(spawnContextPath)) {
-    log("Worker detected: SPAWN_CONTEXT.md found")
-    return true
-  }
-
-  // Check if path contains .orch/workspace/ (worker workspace directory)
-  if (workDir.includes(".orch/workspace/")) {
-    log("Worker detected: in .orch/workspace/")
-    return true
-  }
-
-  return false
-}
 
 interface CoachingMetric {
   timestamp: string
@@ -839,18 +799,64 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   log("Plugin initialized, directory:", directory)
   log("Coach session ID:", COACH_SESSION_ID || "not set (coach streaming disabled)")
 
-  // Skip metrics tracking for worker agents
-  if (await isWorker(directory)) {
-    log("Worker session detected - skipping coaching metrics tracking")
-    return {}
-  }
-
   // Prune old metrics on startup
   pruneMetrics()
 
   // Phase 2: Load investigation recommendations for circular pattern detection
   const investigationRecommendations = loadInvestigationRecommendations(directory)
   log(`Loaded ${investigationRecommendations.length} investigation recommendations for circular detection`)
+
+  // Worker session tracking (per-session detection, not plugin-level)
+  // Plugin runs in server process, can't see ORCH_WORKER env from spawned agents
+  const workerSessions = new Map<string, boolean>() // sessionID -> isWorker
+
+  /**
+   * Detect if a session is a worker by examining tool args.
+   * Returns true if worker detected, false otherwise.
+   * Caches result in workerSessions Map to avoid repeated checks.
+   */
+  function detectWorkerSession(sessionId: string, tool: string, args: any): boolean {
+    // Check cache first
+    const cached = workerSessions.get(sessionId)
+    if (cached !== undefined) {
+      return cached
+    }
+
+    let isWorker = false
+
+    // Detection signal 1: bash tool with workdir in .orch/workspace/
+    if (tool === "bash" && args?.workdir) {
+      if (args.workdir.includes(".orch/workspace/")) {
+        log(`Worker detected (bash workdir): session ${sessionId}, workdir: ${args.workdir}`)
+        isWorker = true
+      }
+    }
+
+    // Detection signal 2: read tool accessing SPAWN_CONTEXT.md
+    if (tool === "read" && args?.filePath) {
+      if (args.filePath.endsWith("SPAWN_CONTEXT.md")) {
+        log(`Worker detected (SPAWN_CONTEXT.md read): session ${sessionId}, file: ${args.filePath}`)
+        isWorker = true
+      }
+    }
+
+    // Detection signal 3: any tool with filePath in .orch/workspace/
+    if (args?.filePath && typeof args.filePath === "string") {
+      if (args.filePath.includes(".orch/workspace/")) {
+        log(`Worker detected (filePath in workspace): session ${sessionId}, file: ${args.filePath}`)
+        isWorker = true
+      }
+    }
+
+    // Cache the result
+    workerSessions.set(sessionId, isWorker)
+
+    if (isWorker) {
+      log(`Session ${sessionId} marked as worker (will skip metrics)`)
+    }
+
+    return isWorker
+  }
 
   // Session state (Map<sessionID, SessionState>)
   const sessions = new Map<string, SessionState>()
@@ -874,6 +880,13 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       // Infer session ID from messages (use first message's info if available)
       const sessionId = output.messages[0]?.info?.sessionID || "unknown"
+
+      // Check if this is a worker session (may not have tool args yet, but check cache)
+      const cachedWorkerStatus = workerSessions.get(sessionId)
+      if (cachedWorkerStatus === true) {
+        // Skip Dylan pattern detection for worker sessions
+        return
+      }
 
       // Get or create session state
       let state = sessions.get(sessionId)
@@ -997,6 +1010,12 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       const sessionId = input.sessionID
 
       if (!tool || !sessionId) return
+
+      // Check if this is a worker session (per-session detection)
+      if (detectWorkerSession(sessionId, tool, input.args)) {
+        // Skip all metrics tracking for worker sessions
+        return
+      }
 
       // Get or create session state
       let state = sessions.get(sessionId)
