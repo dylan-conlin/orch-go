@@ -45,6 +45,7 @@ import {
   readdirSync,
   statSync,
 } from "fs"
+import { access } from "fs/promises"
 import { homedir } from "os"
 import { join, dirname } from "path"
 
@@ -58,6 +59,52 @@ const COACH_SESSION_ID = process.env.ORCH_COACH_SESSION_ID || "" // Coach sessio
 
 function log(...args: any[]) {
   if (DEBUG) console.log(LOG_PREFIX, ...args)
+}
+
+/**
+ * Check if a file exists at the given path.
+ */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Detect if this session is a worker agent.
+ *
+ * Workers are identified by:
+ * 1. ORCH_WORKER=1 environment variable (set by orch spawn)
+ * 2. SPAWN_CONTEXT.md in the working directory
+ * 3. Running from a .orch/workspace/ directory
+ */
+async function isWorker(directory: string | undefined): Promise<boolean> {
+  // Check ORCH_WORKER env var (set by orch spawn)
+  if (process.env.ORCH_WORKER === "1") {
+    log("Worker detected: ORCH_WORKER=1")
+    return true
+  }
+
+  // Use process.cwd() if directory not provided
+  const workDir = directory || process.cwd()
+
+  // Check for SPAWN_CONTEXT.md (workers have this in their workspace)
+  const spawnContextPath = join(workDir, "SPAWN_CONTEXT.md")
+  if (await exists(spawnContextPath)) {
+    log("Worker detected: SPAWN_CONTEXT.md found")
+    return true
+  }
+
+  // Check if path contains .orch/workspace/ (worker workspace directory)
+  if (workDir.includes(".orch/workspace/")) {
+    log("Worker detected: in .orch/workspace/")
+    return true
+  }
+
+  return false
 }
 
 interface CoachingMetric {
@@ -791,6 +838,12 @@ function detectCompensation(
 export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   log("Plugin initialized, directory:", directory)
   log("Coach session ID:", COACH_SESSION_ID || "not set (coach streaming disabled)")
+
+  // Skip metrics tracking for worker agents
+  if (await isWorker(directory)) {
+    log("Worker session detected - skipping coaching metrics tracking")
+    return {}
+  }
 
   // Prune old metrics on startup
   pruneMetrics()
