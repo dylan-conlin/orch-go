@@ -1,32 +1,25 @@
 import { writable } from 'svelte/store';
 import type { Writable } from 'svelte/store';
 
-export interface CoachingMetric {
-	value: number;
-	label: string;
-	status: 'good' | 'warning' | 'poor';
-}
-
 export interface CoachingData {
+	overall_status: 'good' | 'warning' | 'poor';
+	status_message: string;
+	last_coaching_time?: string;
 	session: {
 		session_id: string;
 		started: string;
 		duration_minutes: number;
 	};
-	metrics: {
-		[key: string]: CoachingMetric;
-	};
-	coaching: string[];
 }
 
 const emptyCoaching: CoachingData = {
+	overall_status: 'good',
+	status_message: 'No metrics yet',
 	session: {
 		session_id: '',
 		started: '',
 		duration_minutes: 0
-	},
-	metrics: {},
-	coaching: []
+	}
 };
 
 export const coaching: Writable<CoachingData> = writable(emptyCoaching);

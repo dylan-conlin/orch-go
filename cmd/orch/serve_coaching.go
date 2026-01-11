@@ -20,19 +20,16 @@ type CoachingMetric struct {
 	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
-// CoachingResponse is the API response format.
+// CoachingResponse is the API response format (simplified for Frame 2).
 type CoachingResponse struct {
-	Session struct {
+	OverallStatus    string `json:"overall_status"` // good/warning/poor
+	StatusMessage    string `json:"status_message"` // e.g., "Orchestrator delegating well"
+	LastCoachingTime string `json:"last_coaching_time,omitempty"`
+	Session          struct {
 		SessionID       string `json:"session_id"`
 		Started         string `json:"started"`
 		DurationMinutes int    `json:"duration_minutes"`
 	} `json:"session"`
-	Metrics map[string]struct {
-		Value  float64 `json:"value"`
-		Label  string  `json:"label"`
-		Status string  `json:"status"` // good/warning/poor
-	} `json:"metrics"`
-	Coaching []string `json:"coaching"`
 }
 
 // readCoachingMetrics reads the last N lines from coaching-metrics.jsonl.
@@ -78,15 +75,11 @@ func readCoachingMetrics(limit int) ([]CoachingMetric, error) {
 	return metrics, nil
 }
 
-// aggregateMetrics aggregates metrics by session and calculates latest values.
+// aggregateMetrics aggregates metrics by session and calculates overall health status (Frame 2).
 func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 	resp := CoachingResponse{
-		Metrics: make(map[string]struct {
-			Value  float64 `json:"value"`
-			Label  string  `json:"label"`
-			Status string  `json:"status"`
-		}),
-		Coaching: []string{},
+		OverallStatus: "good",
+		StatusMessage: "No metrics yet",
 	}
 
 	if len(metrics) == 0 {
@@ -124,98 +117,51 @@ func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 	metricValues := make(map[string]float64)
 	for _, m := range sessionMetrics {
 		metricValues[m.Type] = m.Value
+		// Track last coaching time (when metric was written)
+		resp.LastCoachingTime = m.Timestamp
 	}
 
-	// Context ratio
-	if val, ok := metricValues["context_ratio"]; ok {
-		status := "poor"
-		if val >= 0.7 {
-			status = "good"
-		} else if val >= 0.4 {
-			status = "warning"
-		}
-
-		resp.Metrics["context_ratio"] = struct {
-			Value  float64 `json:"value"`
-			Label  string  `json:"label"`
-			Status string  `json:"status"`
-		}{
-			Value:  val,
-			Label:  "Context checks per spawn",
-			Status: status,
-		}
-
-		// Generate coaching
-		if status == "good" {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("✅ Good context-gathering ratio (%.2f)", val))
-		} else if status == "warning" {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("⚠️  Consider more kb context checks before spawning (%.2f)", val))
-		} else {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("❌ Low context-gathering ratio (%.2f) - use 'kb context' before spawns", val))
-		}
-	}
+	// Calculate overall health status based on aggregated metrics
+	// Thresholds: good = all metrics good, warning = any warning, poor = any poor
+	goodCount := 0
+	warningCount := 0
+	poorCount := 0
 
 	// Action ratio
 	if val, ok := metricValues["action_ratio"]; ok {
-		status := "poor"
 		if val >= 0.5 {
-			status = "good"
+			goodCount++
 		} else if val >= 0.3 {
-			status = "warning"
-		}
-
-		resp.Metrics["action_ratio"] = struct {
-			Value  float64 `json:"value"`
-			Label  string  `json:"label"`
-			Status string  `json:"status"`
-		}{
-			Value:  val,
-			Label:  "Actions per reads",
-			Status: status,
-		}
-
-		// Generate coaching
-		if status == "good" {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("✅ Good action-to-read balance (%.2f)", val))
-		} else if status == "warning" {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("⚠️  Low action ratio (%.2f) - consider more decisive action", val))
+			warningCount++
 		} else {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("❌ Too many reads without actions (%.2f) - analysis paralysis?", val))
+			poorCount++
 		}
 	}
 
 	// Analysis paralysis
 	if val, ok := metricValues["analysis_paralysis"]; ok {
-		status := "good"
-		if val >= 3 {
-			status = "poor"
-		} else if val >= 1 {
-			status = "warning"
-		}
-
-		resp.Metrics["analysis_paralysis"] = struct {
-			Value  float64 `json:"value"`
-			Label  string  `json:"label"`
-			Status string  `json:"status"`
-		}{
-			Value:  val,
-			Label:  "Tool repetition sequences",
-			Status: status,
-		}
-
-		// Generate coaching
-		if status == "good" {
-			resp.Coaching = append(resp.Coaching, "✅ No analysis paralysis detected")
-		} else if status == "warning" {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("⚠️  %d tool repetition sequence(s) detected", int(val)))
+		if val < 1 {
+			goodCount++
+		} else if val < 3 {
+			warningCount++
 		} else {
-			resp.Coaching = append(resp.Coaching, fmt.Sprintf("❌ %d tool repetition sequences - consider more decisive action", int(val)))
+			poorCount++
 		}
 	}
 
-	// If no metrics yet, add placeholder
-	if len(resp.Coaching) == 0 {
-		resp.Coaching = append(resp.Coaching, "No behavioral metrics yet - continue working to generate coaching insights")
+	// Determine overall status
+	if poorCount > 0 {
+		resp.OverallStatus = "poor"
+		resp.StatusMessage = "Orchestrator doing worker work"
+	} else if warningCount > 0 {
+		resp.OverallStatus = "warning"
+		resp.StatusMessage = "Orchestrator may be stuck - check in"
+	} else if goodCount > 0 {
+		resp.OverallStatus = "good"
+		resp.StatusMessage = "Orchestrator delegating well"
+	} else {
+		resp.OverallStatus = "good"
+		resp.StatusMessage = "No behavioral patterns detected yet"
 	}
 
 	return resp
