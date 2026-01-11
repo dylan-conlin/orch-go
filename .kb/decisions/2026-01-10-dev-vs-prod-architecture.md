@@ -123,6 +123,66 @@ journalctl -u orch-serve -f
 
 **No tmux dependency:** Each service runs directly (no PATH issues)
 
+## The Core Realization
+
+**Initial assumption:** "We need always-on for Mac, but we couldn't figure out how to build it."
+
+**Actual insight:** Mac was *resisting* being production because **dev environments aren't supposed to be always-on.**
+
+### The Circular Debugging Pattern
+
+**What happened (Jan 9-10):**
+1. Tried launchd plists → hit tmux PATH issues
+2. Debugged PATH for 1000+ lines → circular dependency discovered
+3. Tried launchd → overmind supervision → more PATH issues
+4. Went back to individual launchd plists → same architecture we started with
+5. Realized: "We're going in circles"
+
+**Why the circle existed:**
+- Goal: Always-on behavior (production requirement)
+- Environment: Development machine (Mac)
+- These are **fundamentally incompatible**
+
+**The system kept breaking because the architecture was fighting the use case.**
+
+### What "Always-On" Actually Means
+
+**Always-on is a production requirement:**
+- Services running 24/7
+- Survives reboots/crashes without intervention
+- Accessible from anywhere
+- Uptime matters
+
+**Development doesn't need this:**
+- You're actively working on it (started = working, stopped = not working)
+- You WANT to see crashes (not auto-restart them away)
+- You rebuild/restart constantly while iterating
+- Services should stop when you close your laptop (saves battery)
+
+### The Healthy Mental Model
+
+**Before (confused):**
+- "Mac should be like production"
+- "Need auto-restart so dashboard 'just works'"
+- "Why does launchd keep breaking?"
+- Fighting the environment
+
+**After (clear):**
+- "Mac is dev, VPS is prod"
+- "Dev = manual start/stop when working"
+- "Prod = always-on with supervision"
+- Working with the environment
+
+### Why This Matters
+
+**We didn't fail to build it.** We correctly identified that trying to make Mac production-like was the wrong goal.
+
+The 2 days of circular debugging wasn't wasted effort - it was the system teaching us that dev and prod are different use cases requiring different architectures.
+
+**The crashes today (12+ service crashes in 5 hours) validated the need for supervision - but that supervision belongs on the VPS, not the Mac.**
+
+---
+
 ## Implementation
 
 ### Cleanup Completed (2026-01-10)
