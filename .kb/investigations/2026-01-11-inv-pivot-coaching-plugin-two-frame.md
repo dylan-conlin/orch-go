@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Pivoted coaching plugin from passive dashboard metrics to active AI injection + simplified health indicator successfully implemented in two parallel frames.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Frame 1 adds injectCoachingMessage() using client.session.prompt() pattern (coaching.ts:543-595), Frame 2 replaces 3-column metrics grid with single status line (serve_coaching.go:24-27, +page.svelte:410-428).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Plugin injection requires client parameter passed to flushMetrics, dashboard simplification reduces UI from 25+ lines to 7 lines while preserving signal quality through aggregated status.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Test injection behavior in live orchestrator session to verify messages appear and don't block workflow, monitor dashboard for usability feedback.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (tactical implementation, not architectural pattern)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-11
 **Updated:** 2026-01-11
 **Owner:** Agent og-feat-pivot-coaching-plugin-11jan-be2c
-**Phase:** Investigating
-**Next Step:** Document current implementation findings
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
