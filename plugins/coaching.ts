@@ -485,8 +485,9 @@ function detectSequence(tools: string[]): number {
 
 /**
  * Calculate and flush metrics for a session.
+ * Now also injects coaching messages into the session when patterns detected.
  */
-function flushMetrics(state: SessionState): void {
+async function flushMetrics(state: SessionState, client: any): Promise<void> {
   const now = new Date().toISOString()
 
   // Context ratio: context checks per spawn
@@ -505,6 +506,7 @@ function flushMetrics(state: SessionState): void {
   }
 
   // Action ratio: actions per reads
+  let shouldInjectActionCoaching = false
   if (state.reads > 0) {
     const actionRatio = state.actions / state.reads
     writeMetric({
@@ -517,10 +519,16 @@ function flushMetrics(state: SessionState): void {
         reads: state.reads,
       },
     })
+
+    // Frame 1: Inject coaching when action ratio is low
+    if (actionRatio < 0.5 && state.reads >= 6) {
+      shouldInjectActionCoaching = true
+    }
   }
 
   // Tool repetition sequence (analysis paralysis)
   const sequence = detectSequence(state.toolWindow)
+  let shouldInjectAnalysisParalysis = false
   if (sequence >= 3) {
     writeMetric({
       timestamp: now,
@@ -531,10 +539,78 @@ function flushMetrics(state: SessionState): void {
         window: state.toolWindow.slice(-10),
       },
     })
+
+    shouldInjectAnalysisParalysis = true
+  }
+
+  // Inject coaching messages when thresholds exceeded
+  if (shouldInjectActionCoaching) {
+    await injectCoachingMessage(client, state.sessionId, "action_ratio", {
+      reads: state.reads,
+      actions: state.actions,
+    })
+  }
+
+  if (shouldInjectAnalysisParalysis) {
+    await injectCoachingMessage(client, state.sessionId, "analysis_paralysis", {
+      sequence,
+      toolWindow: state.toolWindow.slice(-10),
+    })
   }
 
   state.lastFlush = Date.now()
   log("Flushed metrics for session:", state.sessionId)
+}
+
+/**
+ * Frame 1: Inject coaching message directly into orchestrator session.
+ * Uses noReply:true pattern from agentlog-inject.ts to avoid blocking.
+ */
+async function injectCoachingMessage(
+  client: any,
+  sessionId: string,
+  patternType: "action_ratio" | "analysis_paralysis",
+  details: any
+): Promise<void> {
+  try {
+    let message = ""
+
+    if (patternType === "action_ratio") {
+      message = `## 📊 Orchestrator Coaching
+
+You've done **${details.reads} reads** with only **${details.actions} actions** (ratio: ${(details.actions / details.reads).toFixed(2)}).
+
+**Observation:** Low action-to-read ratio suggests analysis paralysis or investigation without delegation.
+
+**Consider:** Spawning an agent instead of investigating yourself, or taking action on what you've learned.`
+    } else if (patternType === "analysis_paralysis") {
+      message = `## 📊 Orchestrator Coaching
+
+Tool repetition sequence detected: **${details.sequence} consecutive uses** of the same tool.
+
+**Observation:** Repeated tool use without progress suggests stuck pattern.
+
+**Consider:** Stepping back to reassess approach, or spawning an agent to handle the investigation.`
+    }
+
+    // Inject using noReply:true pattern (from agentlog-inject.ts)
+    await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        noReply: true,
+        parts: [
+          {
+            type: "text",
+            text: message,
+          },
+        ],
+      },
+    })
+
+    log(`✅ Injected ${patternType} coaching into session ${sessionId}`)
+  } catch (err) {
+    if (DEBUG) console.error(LOG_PREFIX, "Failed to inject coaching:", err)
+  }
 }
 
 /**
@@ -1204,7 +1280,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         for (const [sid, s] of sessions.entries()) {
           // Only flush if there's activity to report
           if (s.spawns > 0 || s.reads > 0 || s.actions > 0) {
-            flushMetrics(s)
+            flushMetrics(s, client)
           }
         }
         toolCallCounter = 0
@@ -1214,7 +1290,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       const now = Date.now()
       if (now - state.lastFlush > 5 * 60 * 1000) {
         if (state.spawns > 0 || state.reads > 0 || state.actions > 0) {
-          flushMetrics(state)
+          flushMetrics(state, client)
         }
       }
     },
