@@ -148,3 +148,88 @@ func TestModelAutoSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestIsInfrastructureWork(t *testing.T) {
+	tests := []struct {
+		name    string
+		task    string
+		beadsID string
+		want    bool
+	}{
+		{
+			name:    "opencode keyword in task",
+			task:    "fix opencode server crash",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "spawn keyword in task",
+			task:    "update spawn logic to handle errors",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "dashboard keyword in task",
+			task:    "fix dashboard agent count",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "pkg/spawn path in task",
+			task:    "refactor pkg/spawn/context.go",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "cmd/orch path in task",
+			task:    "update cmd/orch/serve.go logging",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "skillc keyword in task",
+			task:    "fix skillc compilation issue",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "orchestration infrastructure phrase",
+			task:    "improve orchestration infrastructure",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "non-infrastructure task",
+			task:    "add user authentication feature",
+			beadsID: "",
+			want:    false,
+		},
+		{
+			name:    "case insensitive detection",
+			task:    "Fix OpenCode Server Bug",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "agent stores infrastructure",
+			task:    "update agents.ts store logic",
+			beadsID: "",
+			want:    true,
+		},
+		{
+			name:    "regular feature work",
+			task:    "implement user profile page",
+			beadsID: "",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isInfrastructureWork(tt.task, tt.beadsID)
+			if got != tt.want {
+				t.Errorf("isInfrastructureWork(%q, %q) = %v, want %v", tt.task, tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}

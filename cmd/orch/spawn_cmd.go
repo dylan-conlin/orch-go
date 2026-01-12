@@ -1082,6 +1082,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Priority:
 	//   1. Explicit --backend flag (highest priority)
 	//   2. Explicit --opus flag (forces claude mode)
+	//   2.5. Infrastructure work detection (auto-apply escape hatch)
 	//   3. Auto-selection based on --model flag (opus → claude, sonnet → opencode)
 	//   4. Config default (spawn_mode in project config)
 	//   5. Default to opencode
@@ -1097,6 +1098,28 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	} else if spawnOpus {
 		// Explicit --opus flag: use claude CLI
 		spawnBackend = "claude"
+	} else if isInfrastructureWork(task, beadsID) {
+		// Infrastructure work detection: auto-apply escape hatch
+		// Agents working on OpenCode/orch infrastructure need claude backend + tmux
+		// to survive server restarts (prevent agents from killing themselves)
+		spawnBackend = "claude"
+		fmt.Println("🔧 Infrastructure work detected - auto-applying escape hatch (--backend claude --tmux)")
+		fmt.Println("   This ensures the agent survives OpenCode server restarts.")
+
+		// Log the infrastructure work detection for pattern analysis
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "spawn.infrastructure_detected",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"task":     task,
+				"beads_id": beadsID,
+				"skill":    skillName,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
+		}
 	} else if spawnModel != "" {
 		// Auto-select backend based on model
 		modelLower := strings.ToLower(spawnModel)
@@ -2134,6 +2157,76 @@ func logTriageBypass(skillName, task string) {
 	if err := logger.Log(event); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log triage bypass: %v\n", err)
 	}
+}
+
+// isInfrastructureWork detects if a task involves infrastructure work that requires
+// the escape hatch (--backend claude --tmux) to prevent agents from killing themselves
+// when they restart the OpenCode server.
+//
+// Detection strategy:
+// - Check task description for infrastructure keywords
+// - Check beads issue title/description if spawning from issue
+// - Check for file paths that match infrastructure patterns
+//
+// Returns true if infrastructure work is detected, false otherwise.
+func isInfrastructureWork(task string, beadsID string) bool {
+	// Infrastructure keywords to check for
+	infrastructureKeywords := []string{
+		"opencode",
+		"orch-go",
+		"pkg/spawn",
+		"pkg/opencode",
+		"pkg/verify",
+		"pkg/state",
+		"cmd/orch",
+		"spawn_cmd.go",
+		"serve.go",
+		"status.go",
+		"main.go",
+		"dashboard",
+		"agent-card",
+		"agents.ts",
+		"daemon.ts",
+		"skillc",
+		"skill.yaml",
+		"SPAWN_CONTEXT",
+		"spawn system",
+		"spawn logic",
+		"spawn template",
+		"orchestration infrastructure",
+		"orchestration system",
+	}
+
+	// Check task description (case-insensitive)
+	taskLower := strings.ToLower(task)
+	for _, keyword := range infrastructureKeywords {
+		if strings.Contains(taskLower, keyword) {
+			return true
+		}
+	}
+
+	// Check beads issue if available
+	if beadsID != "" {
+		issue, err := verify.GetIssue(beadsID)
+		if err == nil {
+			// Check title
+			titleLower := strings.ToLower(issue.Title)
+			for _, keyword := range infrastructureKeywords {
+				if strings.Contains(titleLower, keyword) {
+					return true
+				}
+			}
+			// Check description
+			descLower := strings.ToLower(issue.Description)
+			for _, keyword := range infrastructureKeywords {
+				if strings.Contains(descLower, keyword) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // registerAgent registers any agent (worker or orchestrator) in the general agent registry.
