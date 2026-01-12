@@ -187,7 +187,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
-	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force spawn even if issue has blocking dependencies (bypasses dependency check)")
+	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 }
 
@@ -787,11 +787,43 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		preCheckDir, _ = os.Getwd()
 	}
 
-	// Check for hotspots in task target area (warning only, non-blocking)
+	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
+	// In hotspot areas (5+ bugs, persistent failures), strategic approach is required
+	// Tactical debugging only allowed with --force (requires justification)
 	if preCheckDir != "" {
 		if hotspotResult, err := RunHotspotCheckForSpawn(preCheckDir, task); err == nil && hotspotResult != nil {
-			// Print warning to stderr (doesn't block spawn)
-			fmt.Fprint(os.Stderr, hotspotResult.Warning)
+			// Strategic-first gate: block tactical spawns to hotspot areas unless:
+			// 1. --force flag provided (user explicitly overrides with justification), OR
+			// 2. Skill is architect (strategic approach, not tactical)
+			isStrategicSkill := skillName == "architect"
+
+			if !spawnForce && !isStrategicSkill {
+				// BLOCKING: Strategic approach required in hotspot area
+				fmt.Fprint(os.Stderr, hotspotResult.Warning)
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "🚫 STRATEGIC-FIRST ORCHESTRATION")
+				fmt.Fprintln(os.Stderr, "   Tactical debugging blocked in hotspot areas.")
+				fmt.Fprintln(os.Stderr, "   ")
+				fmt.Fprintln(os.Stderr, "   REQUIRED: Spawn architect first to understand root cause")
+				fmt.Fprintf(os.Stderr, "   orch spawn architect \"%s\"\n", task)
+				fmt.Fprintln(os.Stderr, "   ")
+				fmt.Fprintln(os.Stderr, "   To override (requires justification):")
+				fmt.Fprintf(os.Stderr, "   orch spawn --force %s \"%s\"\n", skillName, task)
+				fmt.Fprintln(os.Stderr, "")
+				return fmt.Errorf("strategic-first gate: architect required in hotspot area (use --force to override)")
+			}
+
+			// Strategic skill or --force used: print warning but allow
+			if spawnForce {
+				fmt.Fprint(os.Stderr, hotspotResult.Warning)
+				fmt.Fprintln(os.Stderr, "⚠️  --force used: bypassing strategic-first gate")
+				fmt.Fprintln(os.Stderr, "")
+			} else {
+				// Architect skill: print info message
+				fmt.Fprint(os.Stderr, hotspotResult.Warning)
+				fmt.Fprintln(os.Stderr, "✓ Strategic approach: architect skill in hotspot area")
+				fmt.Fprintln(os.Stderr, "")
+			}
 		}
 	}
 
