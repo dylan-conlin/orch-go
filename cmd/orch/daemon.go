@@ -106,15 +106,19 @@ Examples:
 
 var (
 	// Daemon flags
-	daemonDelay           int    // Delay between spawns in seconds
-	daemonDryRun          bool   // Preview mode - show what would be processed without spawning
-	daemonPollInterval    int    // Poll interval in seconds (0 = run once)
-	daemonMaxAgents       int    // Maximum concurrent agents (0 = no limit)
-	daemonLabel           string // Filter issues by label
-	daemonVerbose         bool   // Enable verbose output
-	daemonReflect         bool   // Run reflection analysis after processing (on exit)
-	daemonReflectInterval int    // Periodic reflection interval in minutes (0 = disabled)
-	daemonReflectIssues   bool   // Create beads issues for synthesis opportunities
+	daemonDelay                     int    // Delay between spawns in seconds
+	daemonDryRun                    bool   // Preview mode - show what would be processed without spawning
+	daemonPollInterval              int    // Poll interval in seconds (0 = run once)
+	daemonMaxAgents                 int    // Maximum concurrent agents (0 = no limit)
+	daemonLabel                     string // Filter issues by label
+	daemonVerbose                   bool   // Enable verbose output
+	daemonReflect                   bool   // Run reflection analysis after processing (on exit)
+	daemonReflectInterval           int    // Periodic reflection interval in minutes (0 = disabled)
+	daemonReflectIssues             bool   // Create beads issues for synthesis opportunities
+	daemonCleanupEnabled            bool   // Enable periodic session cleanup
+	daemonCleanupInterval           int    // Session cleanup interval in minutes (0 = disabled)
+	daemonCleanupAge                int    // Session age threshold in days for cleanup
+	daemonCleanupPreserveOrch       bool   // Preserve orchestrator sessions during cleanup
 )
 
 func init() {
@@ -136,6 +140,10 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions during cleanup (default: true)")
 	// Mark max-agents as hidden since --concurrency is the preferred name
 	daemonRunCmd.Flags().MarkHidden("max-agents")
 
@@ -158,15 +166,20 @@ func runDaemonLoop() error {
 
 	// Build configuration from flags
 	config := daemon.Config{
-		PollInterval:        time.Duration(daemonPollInterval) * time.Second,
-		MaxAgents:           daemonMaxAgents,
-		Label:               daemonLabel,
-		SpawnDelay:          time.Duration(daemonDelay) * time.Second,
-		DryRun:              daemonDryRun,
-		Verbose:             daemonVerbose,
-		ReflectEnabled:      daemonReflectInterval > 0,
-		ReflectInterval:     time.Duration(daemonReflectInterval) * time.Minute,
-		ReflectCreateIssues: daemonReflectIssues,
+		PollInterval:                time.Duration(daemonPollInterval) * time.Second,
+		MaxAgents:                   daemonMaxAgents,
+		Label:                       daemonLabel,
+		SpawnDelay:                  time.Duration(daemonDelay) * time.Second,
+		DryRun:                      daemonDryRun,
+		Verbose:                     daemonVerbose,
+		ReflectEnabled:              daemonReflectInterval > 0,
+		ReflectInterval:             time.Duration(daemonReflectInterval) * time.Minute,
+		ReflectCreateIssues:         daemonReflectIssues,
+		CleanupEnabled:              daemonCleanupEnabled && daemonCleanupInterval > 0,
+		CleanupInterval:             time.Duration(daemonCleanupInterval) * time.Minute,
+		CleanupAgeDays:              daemonCleanupAge,
+		CleanupPreserveOrchestrator: daemonCleanupPreserveOrch,
+		CleanupServerURL:            serverURL, // Use global serverURL from root command
 	}
 
 	d := daemon.NewWithConfig(config)
