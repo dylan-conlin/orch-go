@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -87,20 +88,6 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
-}
-
-// isOrchestratorSessionTitle checks if a session title indicates an orchestrator session.
-// This is used when we don't have workspace files (e.g., orphaned sessions).
-func isOrchestratorSessionTitle(title string) bool {
-	titleLower := strings.ToLower(title)
-	// Check for orchestrator patterns in title
-	if strings.Contains(titleLower, "orchestrator") ||
-		strings.Contains(titleLower, "meta-orch") ||
-		strings.HasPrefix(titleLower, "meta-") ||
-		strings.Contains(titleLower, "-orch-") {
-		return true
-	}
-	return false
 }
 
 // DefaultLivenessChecker checks if tmux windows and OpenCode sessions exist.
@@ -373,7 +360,13 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	// Clean stale OpenCode sessions (optional)
 	var staleSessionsDeleted int
 	if cleanSessions {
-		staleSessionsDeleted, err = cleanStaleSessions(serverURL, sessionsDays, dryRun, preserveOrchestrator)
+		staleSessionsDeleted, err = cleanup.CleanStaleSessions(cleanup.CleanStaleSessionsOptions{
+			ServerURL:            serverURL,
+			StaleDays:            sessionsDays,
+			DryRun:               dryRun,
+			PreserveOrchestrator: preserveOrchestrator,
+			Quiet:                false,
+		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean stale sessions: %v\n", err)
 		}
@@ -583,7 +576,7 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrat
 		}
 
 		// Also check title for orchestrator indicators (sessions without workspace files)
-		if preserveOrchestrator && isOrchestratorSessionTitle(title) {
+		if preserveOrchestrator && cleanup.IsOrchestratorSessionTitle(title) {
 			skippedOrch++
 			continue
 		}
@@ -1024,95 +1017,3 @@ func archiveStaleWorkspaces(projectDir string, staleDays int, dryRun bool, prese
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go
-
-// cleanStaleSessions deletes OpenCode sessions older than the specified number of days.
-// It skips sessions that are currently active (processing or recently updated).
-// If preserveOrchestrator is true, sessions associated with orchestrator workspaces are skipped.
-// Returns the number of sessions deleted and any error encountered.
-func cleanStaleSessions(serverURL string, staleDays int, dryRun bool, preserveOrchestrator bool) (int, error) {
-	fmt.Printf("\nScanning for stale OpenCode sessions (older than %d days)...\n", staleDays)
-
-	client := opencode.NewClient(serverURL)
-
-	// Get all in-memory sessions (without x-opencode-directory header)
-	sessions, err := client.ListSessions("")
-	if err != nil {
-		return 0, fmt.Errorf("failed to list sessions: %w", err)
-	}
-
-	fmt.Printf("  Found %d total sessions\n", len(sessions))
-
-	// Calculate the cutoff time
-	cutoff := time.Now().AddDate(0, 0, -staleDays)
-	cutoffMs := cutoff.UnixMilli()
-
-	// Find stale sessions (not updated since cutoff)
-	// Skip sessions that are actively processing
-	var staleSessions []opencode.Session
-	var skippedActive int
-
-	for _, session := range sessions {
-		// Skip recently updated sessions (within cutoff period)
-		if session.Time.Updated > cutoffMs {
-			continue
-		}
-
-		// Skip sessions that are currently processing
-		if client.IsSessionProcessing(session.ID) {
-			skippedActive++
-			continue
-		}
-
-		staleSessions = append(staleSessions, session)
-	}
-
-	if skippedActive > 0 {
-		fmt.Printf("  Skipped %d active sessions (currently processing)\n", skippedActive)
-	}
-
-	if len(staleSessions) == 0 {
-		fmt.Println("  No stale sessions found")
-		return 0, nil
-	}
-
-	fmt.Printf("  Found %d stale sessions:\n", len(staleSessions))
-
-	// Delete stale sessions
-	deleted := 0
-	skippedOrch := 0
-	for _, session := range staleSessions {
-		title := session.Title
-		if title == "" {
-			title = "(untitled)"
-		}
-
-		// Skip orchestrator sessions if --preserve-orchestrator is set
-		if preserveOrchestrator && isOrchestratorSessionTitle(title) {
-			skippedOrch++
-			continue
-		}
-
-		updatedAt := time.Unix(session.Time.Updated/1000, 0)
-		age := time.Since(updatedAt).Hours() / 24
-
-		if dryRun {
-			fmt.Printf("    [DRY-RUN] Would delete: %s (%s) - %.0f days old\n", session.ID[:12], title, age)
-			deleted++
-			continue
-		}
-
-		if err := client.DeleteSession(session.ID); err != nil {
-			fmt.Fprintf(os.Stderr, "    Warning: failed to delete %s: %v\n", session.ID[:12], err)
-			continue
-		}
-
-		fmt.Printf("    Deleted: %s (%s) - %.0f days old\n", session.ID[:12], title, age)
-		deleted++
-	}
-
-	if skippedOrch > 0 {
-		fmt.Printf("  Skipped %d orchestrator sessions (--preserve-orchestrator)\n", skippedOrch)
-	}
-
-	return deleted, nil
-}
