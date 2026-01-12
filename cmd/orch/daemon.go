@@ -268,8 +268,33 @@ func runDaemonLoop() error {
 		if result := d.RunPeriodicCleanup(); result != nil {
 			if result.Error != nil {
 				fmt.Fprintf(os.Stderr, "[%s] Cleanup error: %v\n", timestamp, result.Error)
+				// Log the cleanup error
+				event := events.Event{
+					Type:      "daemon.cleanup",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"deleted": 0,
+						"error":   result.Error.Error(),
+						"message": result.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup error event: %v\n", err)
+				}
 			} else if result.Deleted > 0 {
 				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
+				// Log the successful cleanup
+				event := events.Event{
+					Type:      "daemon.cleanup",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"deleted": result.Deleted,
+						"message": result.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup event: %v\n", err)
+				}
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Cleanup: no stale sessions found\n", timestamp)
 			}
