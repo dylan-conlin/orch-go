@@ -42,12 +42,12 @@ const TimeFormat = time.RFC3339Nano
 // Agent represents a tracked agent in the registry.
 type Agent struct {
 	// Core identification
-	ID         string `json:"id"`                   // Unique identifier (workspace name)
-	BeadsID    string `json:"beads_id,omitempty"`   // Foreign key to beads issue
-	Mode       string `json:"mode,omitempty"`       // Agent mode: "claude" or "opencode"
-	SessionID  string `json:"session_id,omitempty"` // OpenCode session ID
+	ID         string `json:"id"`                    // Unique identifier (workspace name)
+	BeadsID    string `json:"beads_id,omitempty"`    // Foreign key to beads issue
+	Mode       string `json:"mode,omitempty"`        // Agent mode: "claude" or "opencode"
+	SessionID  string `json:"session_id,omitempty"`  // OpenCode session ID
 	TmuxWindow string `json:"tmux_window,omitempty"` // Tmux window name (for claude mode)
-	Model      string `json:"model,omitempty"`      // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
+	Model      string `json:"model,omitempty"`       // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
 
 	// State
 	Status AgentState `json:"status"`
@@ -73,6 +73,31 @@ type registryData struct {
 }
 
 // Registry manages persistent state for spawned agents.
+//
+// DESIGN CONTRACT: Registry as Spawn-Time Metadata Cache
+//
+// The registry serves as a spawn-time snapshot for agent metadata lookups,
+// NOT as a lifecycle state tracker. This design is reflected in how commands
+// interact with the registry:
+//
+//   - spawn_cmd.go: Writes agent metadata on spawn (Register + Save)
+//   - status_cmd.go: Reads for listing active/completed agents
+//   - abandon_cmd.go: Reads for session ID lookups (Find)
+//   - complete_cmd.go: Does NOT interact with registry
+//   - clean_cmd.go: Does NOT interact with registry
+//
+// Agent lifecycle state is derived from authoritative sources:
+//   - OpenCode API: Session state (active, stopped, error)
+//   - Beads: Issue status (open, in_progress, closed)
+//
+// The Abandon(), Complete(), and Remove() methods were designed for state
+// transitions but are NOT integrated into lifecycle commands (zero production
+// usage as of 2026-01-11). These methods are deprecated and should not be used.
+//
+// This design emerged from 12+ investigations showing registry is a "caching
+// layer, not source of truth" (see .kb/investigations/2026-01-11-inv-registry-*).
+//
+// Decision: .kb/decisions/2026-01-12-registry-is-spawn-cache.md
 type Registry struct {
 	path    string
 	agents  []*Agent
@@ -431,6 +456,11 @@ func (r *Registry) ListCleanable() []*Agent {
 
 // Abandon marks an agent as abandoned.
 // Returns true if agent was found and abandoned, false otherwise.
+//
+// DEPRECATED: This method is not integrated into lifecycle commands.
+// The abandon_cmd.go uses Find() for lookups but never calls Abandon().
+// Agent state is derived from OpenCode API and beads, not from registry.
+// See Registry struct documentation for design rationale.
 func (r *Registry) Abandon(agentID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -449,6 +479,11 @@ func (r *Registry) Abandon(agentID string) bool {
 
 // Complete marks an agent as completed.
 // Returns true if agent was found and marked completed, false otherwise.
+//
+// DEPRECATED: This method is not integrated into lifecycle commands.
+// The complete_cmd.go does not even import pkg/registry.
+// Agent state is derived from OpenCode API and beads, not from registry.
+// See Registry struct documentation for design rationale.
 func (r *Registry) Complete(agentID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -467,6 +502,11 @@ func (r *Registry) Complete(agentID string) bool {
 
 // Remove marks an agent as deleted (tombstone pattern).
 // Returns true if agent was found and deleted, false otherwise.
+//
+// DEPRECATED: This method is not integrated into lifecycle commands.
+// The clean_cmd.go does not even import pkg/registry.
+// Agent state is derived from OpenCode API and beads, not from registry.
+// See Registry struct documentation for design rationale.
 func (r *Registry) Remove(agentID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
