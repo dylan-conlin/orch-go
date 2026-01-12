@@ -1,218 +1,145 @@
-# Session Handoff: 2026-01-09
+# Session Handoff - Strategic-First Orchestration
 
-**Session Duration:** 1h 58m
-**Focus:** Model selection strategy and dual spawn mode design
-**Commits:** 6 commits pushed to remote
-
----
-
-## What We Accomplished
-
-### 1. Investigated Opus Access Options ✅
-
-**Problem:** Opus 4.5 blocked via OAuth for opencode (Anthropic enforcement).
-
-**Investigation Path:**
-- Attempted `opencode-anthropic-auth@0.0.7` plugin update (bypassed until today)
-- Tested API key instead of OAuth
-- Found: Anthropic updated enforcement 2026-01-09 (cat and mouse game)
-
-**Decision:** Opus via OAuth is blocked and not worth chasing. Documented in:
-- `kb-eaf467` (constraint)
-- `.kb/investigations/2026-01-09-inv-explore-opencode-github-issue-7410.md`
-- `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md`
-
-### 2. Cost Analysis: API vs Max Subscription 💰
-
-**Evaluated Options:**
-
-| Option | Monthly Cost | Orchestrator | Workers | Pros/Cons |
-|--------|-------------|--------------|---------|-----------|
-| **2x Claude Max** | $200 | Sonnet (Max) | Flash (Max) | Current setup, Opus blocked |
-| **1x Max + Sonnet API** | $200-300 | Opus (Max) | Sonnet (API) | Opus for orchestration, $100-200 API cost |
-| **1x Max + Opus API** | $500-900 | Opus (Max) | Opus (API) | $0.24/spawn greeting alone! |
-| **1x Max + Flash API** | $120 | Opus (Max) | Flash (API) | Cheap but Gemini TPM limits |
-| **1x Max + Claude tmux** | $100 | Opus (Max) | Opus (Max tmux) | **Cheapest, best quality** |
-
-**Key Finding:** 38K token greeting ($0.24 on Opus API) due to kb context bloat makes API spawns expensive.
-
-**Rate Limit Discovery:**
-- Gemini Flash: Already at 4.73M/3M TPM (158% over limit from other projects)
-- Tier 3 requires $1K Google Cloud spend ($571 short)
-- Not worth pre-spending for marginal TPM increase
-
-### 3. Designed Dual Spawn Mode Architecture 🏗️
-
-**Decision:** Implement toggle between two spawn backends.
-
-**Architecture:**
-```yaml
-# .orch/config.yaml
-spawn_mode: claude  # or "opencode"
-
-claude:
-  model: opus
-  tmux_session: workers-orch-go
-
-opencode:
-  model: flash
-  server: http://localhost:4096
-```
-
-**Design Documents:**
-- `.kb/decisions/2026-01-09-dual-spawn-mode-architecture.md` - Full architecture
-- `.kb/guides/dual-spawn-mode-implementation.md` - 7-task implementation guide
-
-### 4. Implemented Config Toggle ✅ (Task 1 of 7)
-
-**Completed:** `orch-go-5w0fj`
-
-**What Works Now:**
-```bash
-orch config set spawn_mode claude    # Switch to Claude Code (tmux)
-orch config set spawn_mode opencode  # Switch to OpenCode (HTTP API)
-orch config get spawn_mode           # Check current mode
-```
-
-**Code Changes:**
-- `pkg/config/config.go` - Added `SpawnMode`, `ClaudeConfig`, `OpenCodeConfig`
-- `cmd/orch/config_cmd.go` - Added `set`/`get` subcommands
-- Defaults: `opencode` mode (backward compatible)
-
-**Commit:** `4ebf5082` - feat: add spawn_mode config with claude/opencode toggle
+**Date:** 2026-01-11
+**From Session:** 30h+ orchestrator session
+**To Session:** Fresh focus on strategic orchestration
 
 ---
 
-## Implementation Status
+## Key Insight Discovered
 
-### ✅ Completed (1/7)
-- [x] `orch-go-5w0fj` - Config system with spawn_mode toggle
+**Strategic-First Orchestration Principle:**
 
-### 🔓 Ready to Start (2/7)
-- [ ] `orch-go-0z5i4` - Implement Claude mode spawn (tmux + claude CLI)
-- [ ] `orch-go-1rk4z` - Add mode field to registry schema
+We consistently face choices between tactical (fix symptom) and strategic (understand pattern) approaches. The strategic path almost always:
+- Costs less total time (1 architect vs. 3+ debugging attempts)
+- Fixes the real problem (design flaw vs. surface bug)
+- Prevents future bugs (coherent system vs. patches)
 
-### 🔒 Blocked (4/7)
-- [ ] `orch-go-7ocqx` - Mode-aware status command (needs spawn + registry)
-- [ ] `orch-go-ec9kh` - Mode-aware complete command (needs spawn + registry)
-- [ ] `orch-go-wjf89` - Mode-aware monitor/send/abandon (needs spawn + registry)
-- [ ] `orch-go-h4eza` - Testing (needs all above)
+**Yet we keep defaulting to tactical.**
 
 ---
 
-## Key Decisions Made
+## The Pattern
 
-1. **Abandon Opus via OAuth/API** - Not worth $571 pre-spend or $0.24/spawn cost
-2. **Dual spawn mode over single backend** - Flexibility to switch based on budget/needs
-3. **Claude mode as budget option** - $100/month for unlimited Opus everywhere
-4. **OpenCode mode for dashboard** - $200-300/month when visual monitoring needed
+**Current behavior:**
+- HOTSPOT warning (5+ bugs) → "Consider architect" → User decides → Often ignores
+- Persistent failure (2+ abandons) → "Try reliability-testing" → Suggestion, not gate
+- Infrastructure work → Warning about circular dependency → User proceeds anyway
 
----
+**Strategic-first behavior:**
+- HOTSPOT warning → **Refuse to spawn debugging** → Require architect first
+- Persistent failure → **Auto-spawn architect** → Investigate pattern
+- Infrastructure work → **Auto-apply --backend claude** → Infrastructure detection
 
-## Next Session Tasks
-
-### Priority 1: Complete Claude Spawn Mode
-
-Implement `orch-go-0z5i4` (Claude spawn) and `orch-go-1rk4z` (registry schema):
-
-**Claude Spawn (`pkg/spawn/claude.go`):**
-- `SpawnClaude()` - Create tmux window, launch `claude --file SPAWN_CONTEXT.md`
-- `MonitorClaude()` - `tmux capture-pane` for output
-- `SendClaude()` - `tmux send-keys` for messages
-- `AbandonClaude()` - `tmux kill-window`
-
-**Registry Schema (`pkg/registry/registry.go`):**
-```go
-type Agent struct {
-    // ... existing fields
-    Mode        string `json:"mode"`           // "claude" | "opencode"
-    TmuxWindow  string `json:"tmux_window,omitempty"`   // Claude mode
-    SessionID   string `json:"session_id,omitempty"`    // OpenCode mode
-}
-```
-
-### Priority 2: Mode-Aware Commands
-
-After spawn + registry complete, update commands:
-- `status` - Route to tmux or HTTP based on mode
-- `complete` - Verify artifacts from tmux or HTTP
-- `monitor/send/abandon` - Backend-specific implementations
-
-### Priority 3: Testing
-
-Once all commands support both modes:
-- Test mode toggle
-- Test mixed registry (some claude, some opencode agents)
-- Test graceful fallback when backend unavailable
-
-**Estimate:** 2-3 hours for full implementation (spawn → testing)
+**Principle:** In areas with patterns (hotspots, persistent failures, infrastructure), strategic approach is DEFAULT. Tactical requires justification.
 
 ---
 
-## Files Changed This Session
+## Work Done This Session
 
-**Code:**
-- `pkg/config/config.go` - Config schema with spawn mode
-- `cmd/orch/config_cmd.go` - Config set/get commands
+### Issues Created
+1. **orch-go-vwjle** - Add stuck-agent detection and monitoring (P2)
+2. **orch-go-6a0p1** - Bug: orch abandon doesn't remove agent from registry (P1)
+3. **orch-go-ao6nf** - Add infrastructure work detection to triage/spawn (P2)
 
-**Documentation:**
-- `.kb/decisions/2026-01-09-dual-spawn-mode-architecture.md`
-- `.kb/guides/dual-spawn-mode-implementation.md`
-- `.kb/investigations/2026-01-09-debug-gemini-flash-rate-limiting.md`
-- `.kb/investigations/2026-01-09-inv-explore-opencode-github-issue-7410.md`
+### Knowledge Captured
+- **kb-4fddb6** - Constraint: Never spawn OpenCode infrastructure work without --backend claude --tmux
 
-**Config:**
-- `.orch/config.yaml` - Added spawn_mode, claude, opencode sections
+### Active Work
+- **orch-go-rcah9** - Architect agent running in tmux (og-arch-review-design-coaching-11jan-f74a)
+  - Investigating why coaching plugin has 8 bugs (hotspot)
+  - Should produce decision document on architectural approach
 
----
-
-## Knowledge Captured
-
-**Constraints:**
-- `kb-eaf467` - Opus 4.5 blocked via OAuth (use Sonnet/Gemini)
-- `kb-81f105` - Attempted plugin bypass (failed, Anthropic updated today)
-
-**Investigations:**
-- Gemini rate limits (4.73M/3M TPM, need Tier 3)
-- Opus API cost ($0.24/greeting, unsustainable)
-- opencode plugin bypass attempts (outdated by Anthropic)
-
-**Decisions:**
-- Dual spawn mode architecture (claude vs opencode)
-- Default to opencode (backward compat)
-- Claude mode for budget-conscious usage
+### Technical Fixes
+- Restarted OpenCode server (was down, port 4096)
+- Fixed duplicate agent display bug (abandoned agents staying in registry)
+- Identified stuck agent pattern (agents hang after 2min with no error)
 
 ---
 
-## Recommended Next Steps
+## Next Session Focus
 
-1. **Switch to Claude mode once implemented** - Save $100-200/month
-2. **Keep dashboard infrastructure** - Easy to switch back if needed
-3. **Monitor Gemini Tier 3 eligibility** - $571 more spend gets 20M TPM
-4. **Consider kb context optimization** - Reduce 38K greeting tokens
+**Primary Goal:** Design and implement Strategic-First Orchestration
+
+### Immediate Actions
+
+1. **Let architect complete** (orch-go-rcah9)
+   - Review its findings on coaching plugin design
+   - Use as case study for strategic vs tactical
+
+2. **Create principle document**
+   - `.kb/principles.md` entry for "Strategic-First Orchestration"
+   - Criteria for when strategic is required
+   - How to override (and why you shouldn't)
+
+3. **Make HOTSPOT a gate**
+   - Change from warning to blocking error
+   - Require `--force` to override (with justification)
+   - Update spawn logic to refuse tactical approaches in hotspots
+
+4. **Update orchestrator skill**
+   - Change guidance from "consider architect" to "architect required"
+   - Add infrastructure detection patterns
+   - Elevate principles over preferences
+
+### Design Questions to Answer
+
+- **How do we detect infrastructure work?** (path patterns, keywords, manual flag)
+- **What makes a good override justification?** (one-off, truly novel, post-strategic)
+- **Should strategic-first apply to daemon auto-spawns?** (probably yes)
+- **How do we measure success?** (fewer abandons in hotspots, faster time-to-resolution)
+
+### Success Criteria
+
+- HOTSPOT areas require architect first (enforced, not suggested)
+- Infrastructure work auto-applies escape hatch
+- Orchestrator applies principles without asking permission
+- Tactical path requires explicit justification
 
 ---
 
-## Context for Next Session
+## System State
 
-**Current State:**
-- Config toggle implemented and tested
-- spawn_mode defaults to "opencode" (backward compatible)
-- Ready to implement Claude spawn and registry updates
+**OpenCode server:** Running (port 4096)
+**Dashboard:** Running (port 3348)
+**Daemon:** Running (51 ready issues)
 
-**Architecture Choice:**
-- tmux + `claude` CLI for workers
-- Claude Code for orchestrator (this session)
-- All on single Max subscription ($100/month)
+**Active agents:** 30 (6 running, 24 idle with 24 AT-RISK)
+**Note:** Many idle agents need cleanup (orch clean)
 
-**Why This Matters:**
-- Eliminates API costs for spawns
-- Unlimited Opus for all agents
-- Loses dashboard (acceptable tradeoff)
-- Easy to revert if priorities change
+**Branch:** master (pushed to origin/master)
+**Uncommitted:** None (clean working tree)
 
 ---
 
-**Session Closed:** 2026-01-09 19:59 PST
-**Branch:** master (6 commits ahead)
-**Status:** Clean working tree, all changes pushed
+## The Meta-Pattern
+
+This insight connects to foundational principles:
+
+- **Coherence Over Patches** - After 3rd fix in same area, examine design
+- **Pressure Over Compensation** - Don't compensate for system failures, create pressure to fix
+- **Premise Before Solution** - Understand the problem before implementing fixes
+
+Strategic-first orchestration is the operational manifestation of these principles.
+
+**The deeper realization:** Orchestrator's job is to **apply principles, not ask permission to apply them.**
+
+---
+
+## Context for Fresh Claude
+
+You're starting a NEW session focused on implementing strategic-first orchestration. Previous session discovered the pattern but didn't implement it.
+
+**What exists:**
+- Principle insight (documented here)
+- Concrete examples (coaching plugin hotspot, infrastructure work)
+- Several related beads issues
+- One kb constraint (infrastructure work)
+
+**What doesn't exist yet:**
+- Principle document in .kb/principles.md
+- Gates in spawn logic (still warnings)
+- Updated orchestrator skill guidance
+- Infrastructure detection patterns
+
+**Your job:** Design and implement the strategic-first model. This is foundational work that changes how the entire orchestration system operates.
