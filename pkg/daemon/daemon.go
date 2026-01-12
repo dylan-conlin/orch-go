@@ -45,21 +45,46 @@ type Config struct {
 	// ReflectCreateIssues controls whether reflection creates beads issues
 	// for synthesis opportunities (topics with 10+ investigations).
 	ReflectCreateIssues bool
+
+	// CleanupEnabled controls whether periodic session cleanup is enabled.
+	// When enabled, the daemon will run session cleanup periodically.
+	CleanupEnabled bool
+
+	// CleanupInterval is how often to run session cleanup (0 = disabled).
+	// Default is 6 hours.
+	CleanupInterval time.Duration
+
+	// CleanupAgeDays is the age threshold in days for session cleanup.
+	// Sessions older than this will be deleted. Default is 7 days.
+	CleanupAgeDays int
+
+	// CleanupPreserveOrchestrator if true, skips orchestrator sessions.
+	// Default is true to avoid disrupting orchestrator sessions.
+	CleanupPreserveOrchestrator bool
+
+	// CleanupServerURL is the OpenCode server URL for cleanup operations.
+	// Defaults to http://localhost:4096.
+	CleanupServerURL string
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:        time.Minute,
-		MaxAgents:           3,
-		MaxSpawnsPerHour:    20, // Prevents runaway spawning
-		Label:               "triage:ready",
-		SpawnDelay:          10 * time.Second,
-		DryRun:              false,
-		Verbose:             false,
-		ReflectEnabled:      true,
-		ReflectInterval:     time.Hour, // Hourly by default
-		ReflectCreateIssues: true,
+		PollInterval:                time.Minute,
+		MaxAgents:                   3,
+		MaxSpawnsPerHour:            20, // Prevents runaway spawning
+		Label:                       "triage:ready",
+		SpawnDelay:                  10 * time.Second,
+		DryRun:                      false,
+		Verbose:                     false,
+		ReflectEnabled:              true,
+		ReflectInterval:             time.Hour, // Hourly by default
+		ReflectCreateIssues:         true,
+		CleanupEnabled:              true,
+		CleanupInterval:             6 * time.Hour, // Every 6 hours by default
+		CleanupAgeDays:              7,             // 7 days threshold
+		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
+		CleanupServerURL:            "http://localhost:4096",
 	}
 }
 
@@ -128,6 +153,9 @@ type Daemon struct {
 
 	// lastReflect tracks when reflection was last run for periodic reflection.
 	lastReflect time.Time
+
+	// lastCleanup tracks when session cleanup was last run for periodic cleanup.
+	lastCleanup time.Time
 
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
@@ -903,6 +931,71 @@ func (d *Daemon) NextReflectTime() time.Time {
 		return time.Now() // Due immediately
 	}
 	return d.lastReflect.Add(d.Config.ReflectInterval)
+}
+
+// ShouldRunCleanup returns true if periodic session cleanup should run.
+// This checks if cleanup is enabled and enough time has elapsed since the last run.
+func (d *Daemon) ShouldRunCleanup() bool {
+	if !d.Config.CleanupEnabled || d.Config.CleanupInterval <= 0 {
+		return false
+	}
+	// Run immediately if we've never run before
+	if d.lastCleanup.IsZero() {
+		return true
+	}
+	return time.Since(d.lastCleanup) >= d.Config.CleanupInterval
+}
+
+// CleanupResult contains the result of a cleanup operation.
+type CleanupResult struct {
+	Deleted int
+	Error   error
+	Message string
+}
+
+// RunPeriodicCleanup runs the periodic session cleanup if due.
+// Returns the result if cleanup was run, or nil if it wasn't due.
+func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
+	if !d.ShouldRunCleanup() {
+		return nil
+	}
+
+	// Import cleanup package functions via helper
+	deleted, err := runSessionCleanup(d.Config.CleanupServerURL, d.Config.CleanupAgeDays, d.Config.CleanupPreserveOrchestrator)
+	if err != nil {
+		return &CleanupResult{
+			Deleted: 0,
+			Error:   err,
+			Message: fmt.Sprintf("Session cleanup failed: %v", err),
+		}
+	}
+
+	// Update last cleanup time on success
+	d.lastCleanup = time.Now()
+
+	return &CleanupResult{
+		Deleted: deleted,
+		Error:   nil,
+		Message: fmt.Sprintf("Deleted %d stale sessions (age >%d days)", deleted, d.Config.CleanupAgeDays),
+	}
+}
+
+// LastCleanupTime returns when cleanup was last run.
+// Returns zero time if cleanup has never run.
+func (d *Daemon) LastCleanupTime() time.Time {
+	return d.lastCleanup
+}
+
+// NextCleanupTime returns when the next cleanup is scheduled.
+// Returns zero time if cleanup is disabled.
+func (d *Daemon) NextCleanupTime() time.Time {
+	if !d.Config.CleanupEnabled || d.Config.CleanupInterval <= 0 {
+		return time.Time{}
+	}
+	if d.lastCleanup.IsZero() {
+		return time.Now() // Due immediately
+	}
+	return d.lastCleanup.Add(d.Config.CleanupInterval)
 }
 
 // Run processes issues in a loop until the queue is empty or maxIterations is reached.

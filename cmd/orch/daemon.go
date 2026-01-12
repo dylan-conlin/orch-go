@@ -200,15 +200,22 @@ func runDaemonLoop() error {
 	defer daemon.RemoveStatusFile()
 
 	fmt.Println("Starting daemon...")
-	fmt.Printf("  Poll interval:   %s\n", formatDaemonDuration(config.PollInterval))
-	fmt.Printf("  Concurrency:     %d (worker pool)\n", config.MaxAgents)
-	fmt.Printf("  Required label:  %s\n", config.Label)
-	fmt.Printf("  Spawn delay:     %s\n", formatDaemonDuration(config.SpawnDelay))
+	fmt.Printf("  Poll interval:    %s\n", formatDaemonDuration(config.PollInterval))
+	fmt.Printf("  Concurrency:      %d (worker pool)\n", config.MaxAgents)
+	fmt.Printf("  Required label:   %s\n", config.Label)
+	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
 	if config.ReflectEnabled {
-		fmt.Printf("  Reflect interval: %s\n", formatDaemonDuration(config.ReflectInterval))
-		fmt.Printf("  Reflect issues:   %v\n", config.ReflectCreateIssues)
+		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
+		fmt.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
 	} else {
-		fmt.Println("  Reflect interval: disabled")
+		fmt.Println("  Reflect interval:  disabled")
+	}
+	if config.CleanupEnabled {
+		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
+		fmt.Printf("  Cleanup age:       %d days\n", config.CleanupAgeDays)
+		fmt.Printf("  Cleanup preserve:  %v (orchestrator sessions)\n", config.CleanupPreserveOrchestrator)
+	} else {
+		fmt.Println("  Cleanup interval:  disabled")
 	}
 	fmt.Println()
 
@@ -241,6 +248,17 @@ func runDaemonLoop() error {
 				fmt.Printf("[%s] Reflection: %s\n", timestamp, result.Suggestions.Summary())
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Reflection: no suggestions found\n", timestamp)
+			}
+		}
+
+		// Run periodic session cleanup if due
+		if result := d.RunPeriodicCleanup(); result != nil {
+			if result.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Cleanup error: %v\n", timestamp, result.Error)
+			} else if result.Deleted > 0 {
+				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Cleanup: no stale sessions found\n", timestamp)
 			}
 		}
 
