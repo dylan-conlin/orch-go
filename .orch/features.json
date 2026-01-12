@@ -82,7 +82,9 @@
       "priority": "high",
       "created": "2025-12-25",
       "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
-      "depends_on": ["feat-007"]
+      "depends_on": [
+        "feat-007"
+      ]
     },
     {
       "id": "feat-009",
@@ -93,7 +95,9 @@
       "priority": "medium",
       "created": "2025-12-25",
       "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
-      "depends_on": ["feat-007"]
+      "depends_on": [
+        "feat-007"
+      ]
     },
     {
       "id": "feat-010",
@@ -104,7 +108,9 @@
       "priority": "medium",
       "created": "2025-12-25",
       "source": ".kb/investigations/2025-12-25-inv-design-beads-integration-strategy-orch.md",
-      "depends_on": ["feat-007"]
+      "depends_on": [
+        "feat-007"
+      ]
     },
     {
       "id": "feat-011",
@@ -158,7 +164,9 @@
       "priority": "high",
       "created": "2025-12-26",
       "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
-      "depends_on": ["feat-014"]
+      "depends_on": [
+        "feat-014"
+      ]
     },
     {
       "id": "feat-016",
@@ -169,7 +177,9 @@
       "priority": "high",
       "created": "2025-12-26",
       "source": ".kb/investigations/2025-12-26-design-web-dashboard-daemon-visibility.md",
-      "depends_on": ["feat-015"]
+      "depends_on": [
+        "feat-015"
+      ]
     },
     {
       "id": "feat-017",
@@ -236,7 +246,9 @@
       "created": "2025-12-27",
       "source": ".kb/investigations/2025-12-27-inv-design-ui-validation-gate-system.md",
       "repo": "glass",
-      "depends_on": ["orch-go-l1is"],
+      "depends_on": [
+        "orch-go-l1is"
+      ],
       "notes": "Part of 3-tier UI validation gate design. Decision kn-cc1c45: CLI for orchestrator use."
     },
     {
@@ -284,7 +296,9 @@
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-design-too-many-knowledge-artifact-types.md",
       "repo": "kb-cli",
-      "depends_on": ["feat-025"],
+      "depends_on": [
+        "feat-025"
+      ],
       "notes": "Closes the kb reflect feedback loop - synthesis output is Guide, not more Investigation."
     },
     {
@@ -307,7 +321,9 @@
       "priority": "low",
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-inv-analyze-serve-agents-go-1399.md",
-      "depends_on": ["feat-027"],
+      "depends_on": [
+        "feat-027"
+      ],
       "notes": "Phase 2 of serve_agents.go refactor. Smaller extraction but completes separation of concerns."
     },
     {
@@ -330,7 +346,9 @@
       "priority": "medium",
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md",
-      "depends_on": ["feat-029"],
+      "depends_on": [
+        "feat-029"
+      ],
       "notes": "Phase 2 of dashboard hotspot refactor. Reduces +page.svelte by 200+ lines."
     },
     {
@@ -342,7 +360,9 @@
       "priority": "medium",
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-inv-analyze-dashboard-ui-hotspots-page.md",
-      "depends_on": ["feat-030"],
+      "depends_on": [
+        "feat-030"
+      ],
       "notes": "Phase 3 of dashboard hotspot refactor. Addresses status model complexity (4 fixes)."
     },
     {
@@ -365,7 +385,9 @@
       "priority": "medium",
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md",
-      "depends_on": ["feat-032"],
+      "depends_on": [
+        "feat-032"
+      ],
       "notes": "Phase 2 of meta-orchestrator architecture. Provides meta-visibility layer."
     },
     {
@@ -378,7 +400,9 @@
       "created": "2026-01-04",
       "source": ".kb/investigations/2026-01-04-design-meta-orchestrator-architecture-spawnable-orchestrator.md",
       "repo": "kb-cli",
-      "depends_on": ["feat-032"],
+      "depends_on": [
+        "feat-032"
+      ],
       "notes": "Phase 3 of meta-orchestrator architecture. Closes learning feedback loop."
     },
     {
@@ -401,7 +425,9 @@
       "priority": "high",
       "created": "2026-01-05",
       "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
-      "depends_on": ["feat-035"],
+      "depends_on": [
+        "feat-035"
+      ],
       "notes": "Phase 2 of orchestrator lifecycle without beads."
     },
     {
@@ -413,7 +439,9 @@
       "priority": "high",
       "created": "2026-01-05",
       "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
-      "depends_on": ["feat-035"],
+      "depends_on": [
+        "feat-035"
+      ],
       "notes": "Phase 3 of orchestrator lifecycle without beads."
     },
     {
@@ -425,7 +453,9 @@
       "priority": "medium",
       "created": "2026-01-05",
       "source": ".kb/decisions/2026-01-05-orchestrator-lifecycle-without-beads.md",
-      "depends_on": ["feat-035"],
+      "depends_on": [
+        "feat-035"
+      ],
       "notes": "Phase 4 of orchestrator lifecycle without beads."
     },
     {
@@ -495,6 +525,17 @@
       "created": "2026-01-08",
       "source": ".kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md",
       "notes": "Design decision: ONE threshold (15 min), ONE signal (phase unchanged), advisory only. Lesson from Dec 27-Jan 2 spiral: complexity kills."
+    },
+    {
+      "id": "feat-045",
+      "title": "Automatic periodic OpenCode session cleanup via daemon",
+      "description": "Extend orch daemon to run automatic session cleanup every 6 hours, deleting sessions older than 7 days that aren't actively processing. Leverages existing cleanStaleSessions() logic from clean command. Configurable via ~/.orch/config.yaml with cleanup.sessions.{enabled, interval, age_days, preserve_orchestrator}. Logs cleanup runs to daemon.log. Implementation: Extract cleanStaleSessions to pkg/cleanup/sessions.go for reuse, add scheduler goroutine to daemon using time.Ticker, add config options, add observability. File targets: pkg/cleanup/sessions.go (extract cleanStaleSessions), pkg/daemon/scheduler.go (new), pkg/daemon/daemon.go (integrate scheduler). Out of scope: Manual session cleanup (already exists as 'orch clean --sessions'). Acceptance: Sessions older than 7 days are deleted automatically every 6 hours, daemon stays responsive, cleanup runs logged to daemon.log.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-11",
+      "source": ".kb/investigations/2026-01-11-design-opencode-session-cleanup-mechanism.md",
+      "notes": "Addresses session accumulation leak (266 sessions vs ~29 expected). Two-tier cleanup strategy: event-based (existing) + periodic background (new)."
     }
   ],
   "meta": {
