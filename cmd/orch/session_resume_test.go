@@ -183,14 +183,30 @@ func TestCreateSessionHandoffDirectory(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 
+	// Create a mock reflection
+	reflection := &SessionReflection{
+		Summary:         "Test summary",
+		Accomplishments: "Test accomplishments",
+		ActiveWork:      "Test active work",
+		PendingWork:     "Test pending work",
+		Recommendations: "Test recommendations",
+		Context:         "Test context",
+	}
+
 	// Test creating session handoff directory
-	err := createSessionHandoffDirectory(tmpDir, sess)
+	err := createSessionHandoffDirectory(tmpDir, sess, reflection)
 	if err != nil {
 		t.Fatalf("createSessionHandoffDirectory() failed: %v", err)
 	}
 
-	// Verify latest symlink exists
-	latestSymlink := filepath.Join(tmpDir, ".orch", "session", "latest")
+	// Get current window name to construct the window-scoped path
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		t.Fatalf("failed to get window name: %v", err)
+	}
+
+	// Verify window-scoped latest symlink exists
+	latestSymlink := filepath.Join(tmpDir, ".orch", "session", windowName, "latest")
 	stat, err := os.Lstat(latestSymlink)
 	if err != nil {
 		t.Fatalf("latest symlink not created: %v", err)
@@ -205,7 +221,7 @@ func TestCreateSessionHandoffDirectory(t *testing.T) {
 		t.Fatalf("failed to read symlink: %v", err)
 	}
 
-	handoffPath := filepath.Join(tmpDir, ".orch", "session", target, "SESSION_HANDOFF.md")
+	handoffPath := filepath.Join(tmpDir, ".orch", "session", windowName, target, "SESSION_HANDOFF.md")
 	content, err := os.ReadFile(handoffPath)
 	if err != nil {
 		t.Fatalf("SESSION_HANDOFF.md not created: %v", err)
@@ -218,6 +234,20 @@ func TestCreateSessionHandoffDirectory(t *testing.T) {
 	}
 	if !contains(contentStr, "Session Handoff") {
 		t.Error("handoff missing title")
+	}
+
+	// Verify reflection content is populated (not placeholders)
+	if !contains(contentStr, "Test summary") {
+		t.Error("handoff missing reflection summary")
+	}
+	if !contains(contentStr, "Test accomplishments") {
+		t.Error("handoff missing reflection accomplishments")
+	}
+	if !contains(contentStr, "Test active work") {
+		t.Error("handoff missing reflection active work")
+	}
+	if contains(contentStr, "[Orchestrator fills this in during session end]") {
+		t.Error("handoff contains old placeholder text - reflection not populated")
 	}
 }
 

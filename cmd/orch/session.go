@@ -446,6 +446,16 @@ func formatSessionDuration(d time.Duration) string {
 // Session End Command
 // ============================================================================
 
+// SessionReflection holds the reflection content gathered during session end.
+type SessionReflection struct {
+	Summary         string
+	Accomplishments string
+	ActiveWork      string
+	PendingWork     string
+	Recommendations string
+	Context         string
+}
+
 var sessionEndCmd = &cobra.Command{
 	Use:   "end",
 	Short: "End the current session",
@@ -489,13 +499,19 @@ func runSessionEnd() error {
 		}
 	}
 
+	// Prompt for session reflection
+	reflection, err := promptSessionReflection(statuses)
+	if err != nil {
+		return fmt.Errorf("failed to gather reflection: %w", err)
+	}
+
 	// Create project-specific session directory and handoff
 	// This creates .orch/session/{timestamp}/ and updates latest symlink
 	projectDir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to get project directory: %v\n", err)
 	} else {
-		if err := createSessionHandoffDirectory(projectDir, store.Get()); err != nil {
+		if err := createSessionHandoffDirectory(projectDir, store.Get(), reflection); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to create session handoff directory: %v\n", err)
 		}
 	}
@@ -541,6 +557,90 @@ func runSessionEnd() error {
 	}
 
 	return nil
+}
+
+// promptSessionReflection prompts the user for session reflection content.
+func promptSessionReflection(statuses []session.SpawnStatus) (*SessionReflection, error) {
+	fmt.Println("\n📝 Session Reflection")
+	fmt.Println("═══════════════════════════════════════════════════════════")
+	fmt.Println("Please provide reflection for this session handoff.")
+	fmt.Println("Press Enter twice (blank line) to finish each section.")
+	fmt.Println("═══════════════════════════════════════════════════════════")
+
+	reflection := &SessionReflection{}
+
+	// Summary
+	fmt.Println("## Summary (1-3 sentences)")
+	fmt.Print("> ")
+	reflection.Summary = readMultiline()
+
+	// Accomplishments
+	fmt.Println("\n## What Was Accomplished")
+	fmt.Println("(Key achievements and completions from this session)")
+	fmt.Print("> ")
+	reflection.Accomplishments = readMultiline()
+
+	// Active Work
+	fmt.Println("\n## Active Work")
+	// Auto-populate with active agents if any
+	activeAgents := []string{}
+	for _, s := range statuses {
+		if s.State == "active" {
+			activeAgents = append(activeAgents, fmt.Sprintf("- %s: %s", s.BeadsID, s.Skill))
+		}
+	}
+	if len(activeAgents) > 0 {
+		fmt.Println("(Active agents detected - press Enter to accept or edit)")
+		defaultActive := strings.Join(activeAgents, "\n")
+		fmt.Printf("> %s\n", defaultActive)
+		userInput := readMultiline()
+		if strings.TrimSpace(userInput) == "" {
+			reflection.ActiveWork = defaultActive
+		} else {
+			reflection.ActiveWork = userInput
+		}
+	} else {
+		fmt.Println("(Agents still running or issues in progress)")
+		fmt.Print("> ")
+		reflection.ActiveWork = readMultiline()
+	}
+
+	// Pending Work
+	fmt.Println("\n## Pending Work")
+	fmt.Println("(Ready work that wasn't tackled)")
+	fmt.Print("> ")
+	reflection.PendingWork = readMultiline()
+
+	// Recommendations
+	fmt.Println("\n## Recommendations")
+	fmt.Println("(What should the next session focus on?)")
+	fmt.Print("> ")
+	reflection.Recommendations = readMultiline()
+
+	// Context
+	fmt.Println("\n## Context for Next Session")
+	fmt.Println("(Important context, decisions made, patterns discovered)")
+	fmt.Print("> ")
+	reflection.Context = readMultiline()
+
+	fmt.Println("\n✅ Reflection complete!")
+	return reflection, nil
+}
+
+// readMultiline reads input until a blank line is encountered.
+func readMultiline() string {
+	var lines []string
+	for {
+		var line string
+		fmt.Scanln(&line)
+		if line == "" && len(lines) > 0 {
+			break
+		}
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ============================================================================
@@ -711,7 +811,7 @@ func discoverSessionHandoff() (string, error) {
 // createSessionHandoffDirectory creates a timestamped session directory with SESSION_HANDOFF.md
 // and updates the latest symlink to point to it.
 // Session handoffs are scoped by tmux window name to prevent concurrent orchestrators from clobbering each other.
-func createSessionHandoffDirectory(projectDir string, sess *session.Session) error {
+func createSessionHandoffDirectory(projectDir string, sess *session.Session, reflection *SessionReflection) error {
 	if sess == nil {
 		return fmt.Errorf("no active session")
 	}
@@ -732,8 +832,38 @@ func createSessionHandoffDirectory(projectDir string, sess *session.Session) err
 		return fmt.Errorf("failed to create session directory: %w", err)
 	}
 
-	// Generate SESSION_HANDOFF.md content using the same template as spawned orchestrators
-	// For now, create a basic handoff - TODO: enhance with reflection prompts
+	// Populate handoff content from reflection or use placeholders
+	summary := reflection.Summary
+	if summary == "" {
+		summary = "[No summary provided]"
+	}
+
+	accomplishments := reflection.Accomplishments
+	if accomplishments == "" {
+		accomplishments = "[No accomplishments recorded]"
+	}
+
+	activeWork := reflection.ActiveWork
+	if activeWork == "" {
+		activeWork = "[No active work]"
+	}
+
+	pendingWork := reflection.PendingWork
+	if pendingWork == "" {
+		pendingWork = "[No pending work recorded]"
+	}
+
+	recommendations := reflection.Recommendations
+	if recommendations == "" {
+		recommendations = "[No recommendations]"
+	}
+
+	context := reflection.Context
+	if context == "" {
+		context = "[No additional context]"
+	}
+
+	// Generate SESSION_HANDOFF.md content with populated reflection
 	handoffContent := fmt.Sprintf(`# Session Handoff
 
 **Session Goal:** %s
@@ -744,41 +874,47 @@ func createSessionHandoffDirectory(projectDir string, sess *session.Session) err
 
 ## Summary
 
-[Orchestrator fills this in during session end]
+%s
 
 ---
 
 ## What Was Accomplished
 
-[Key achievements and completions from this session]
+%s
 
 ---
 
 ## Active Work
 
-[Agents still running or issues in progress]
+%s
 
 ---
 
 ## Pending Work
 
-[Ready work that wasn't tackled]
+%s
 
 ---
 
 ## Recommendations
 
-[What should the next session focus on?]
+%s
 
 ---
 
 ## Context for Next Session
 
-[Important context, decisions made, patterns discovered]
+%s
 `,
 		sess.Goal,
 		sess.StartedAt.Format("2006-01-02 15:04"),
 		time.Since(sess.StartedAt).String(),
+		summary,
+		accomplishments,
+		activeWork,
+		pendingWork,
+		recommendations,
+		context,
 	)
 
 	// Write SESSION_HANDOFF.md
