@@ -536,13 +536,24 @@
       "created": "2026-01-11",
       "source": ".kb/investigations/2026-01-11-design-opencode-session-cleanup-mechanism.md",
       "notes": "Addresses session accumulation leak (266 sessions vs ~29 expected). Two-tier cleanup strategy: event-based (existing) + periodic background (new)."
+    },
+    {
+      "id": "feat-046",
+      "title": "Implement backward-compatible session resume discovery with migration command",
+      "description": "Fix session resume --check returning exit 1 for pre-window-scoping handoffs. Add fallback logic to discoverSessionHandoff() that checks old non-window-scoped path (.orch/session/latest) if window-scoped path not found. Emit warning when fallback used suggesting 'orch session migrate'. Add 'orch session migrate' command to move old handoffs to window-scoped structure preserving timestamps. Enhance error messages to show both paths checked for better observability. File targets: cmd/orch/session.go (fallback logic, enhanced errors), cmd/orch/session_migrate.go (new migration command). Out of scope: Automatic migration, multi-window migration strategies. Acceptance: orch session resume --check returns 0 for both old and new structure handoffs, warning appears when old structure used, migration command successfully moves handoffs to window-scoped structure.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-13",
+      "source": ".kb/investigations/2026-01-13-design-session-resume-discovery-failure.md",
+      "notes": "Recommendation to promote to decision: establishes pattern for schema migrations in orch-go (backward-compatible discovery + optional migration tooling)."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-08",
-    "total_features": 44,
+    "last_updated": "2026-01-13",
+    "total_features": 45,
     "by_status": {
-      "todo": 42,
+      "todo": 43,
       "in_progress": 0,
       "done": 2
     }
