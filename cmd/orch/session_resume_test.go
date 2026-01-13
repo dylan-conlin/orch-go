@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
 func TestDiscoverSessionHandoff(t *testing.T) {
@@ -222,4 +223,176 @@ func TestCreateSessionHandoffDirectory(t *testing.T) {
 
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && stringContains(s, substr)
+}
+
+// TestDiscoverSessionHandoff_WindowScoped tests the new window-scoped discovery
+func TestDiscoverSessionHandoff_WindowScoped(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Save and restore working directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Change to test directory
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the actual window name that will be used in discovery
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		t.Fatalf("failed to get window name: %v", err)
+	}
+
+	// Create window-scoped session directory structure
+	sessionDir := filepath.Join(tmpDir, ".orch", "session", windowName, "2026-01-13-1400")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create SESSION_HANDOFF.md
+	handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte("window-scoped content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create latest symlink in window-scoped directory
+	latestSymlink := filepath.Join(tmpDir, ".orch", "session", windowName, "latest")
+	if err := os.Symlink("2026-01-13-1400", latestSymlink); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test discovery
+	got, err := discoverSessionHandoff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it found the window-scoped handoff
+	content, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatalf("failed to read discovered handoff: %v", err)
+	}
+	if string(content) != "window-scoped content" {
+		t.Errorf("got content %q, want %q", string(content), "window-scoped content")
+	}
+}
+
+// TestDiscoverSessionHandoff_BackwardCompatibility tests fallback to legacy structure
+func TestDiscoverSessionHandoff_BackwardCompatibility(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Save and restore working directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Change to test directory
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create ONLY legacy (non-window-scoped) structure
+	sessionDir := filepath.Join(tmpDir, ".orch", "session", "2026-01-13-1500")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create SESSION_HANDOFF.md in legacy location
+	handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte("legacy content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create legacy latest symlink (at root session level, not window-scoped)
+	latestSymlink := filepath.Join(tmpDir, ".orch", "session", "latest")
+	if err := os.Symlink("2026-01-13-1500", latestSymlink); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test discovery - should fall back to legacy structure
+	got, err := discoverSessionHandoff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it found the legacy handoff
+	content, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatalf("failed to read discovered handoff: %v", err)
+	}
+	if string(content) != "legacy content" {
+		t.Errorf("got content %q, want %q", string(content), "legacy content")
+	}
+}
+
+// TestDiscoverSessionHandoff_PreferWindowScoped tests that window-scoped is preferred over legacy
+func TestDiscoverSessionHandoff_PreferWindowScoped(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Save and restore working directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Change to test directory
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the actual window name that will be used in discovery
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		t.Fatalf("failed to get window name: %v", err)
+	}
+
+	// Window-scoped structure
+	windowScopedDir := filepath.Join(tmpDir, ".orch", "session", windowName, "2026-01-13-1600")
+	if err := os.MkdirAll(windowScopedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	windowScopedHandoff := filepath.Join(windowScopedDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(windowScopedHandoff, []byte("window-scoped content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	windowScopedLatest := filepath.Join(tmpDir, ".orch", "session", windowName, "latest")
+	if err := os.Symlink("2026-01-13-1600", windowScopedLatest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy structure
+	legacyDir := filepath.Join(tmpDir, ".orch", "session", "2026-01-13-1500")
+	if err := os.MkdirAll(legacyDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacyHandoff := filepath.Join(legacyDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(legacyHandoff, []byte("legacy content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	legacyLatest := filepath.Join(tmpDir, ".orch", "session", "latest")
+	if err := os.Symlink("2026-01-13-1500", legacyLatest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test discovery - should prefer window-scoped over legacy
+	got, err := discoverSessionHandoff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it found the window-scoped handoff (not legacy)
+	content, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatalf("failed to read discovered handoff: %v", err)
+	}
+	if string(content) != "window-scoped content" {
+		t.Errorf("got content %q, want %q (should prefer window-scoped)", string(content), "window-scoped content")
+	}
 }

@@ -51,6 +51,7 @@ func init() {
 	sessionCmd.AddCommand(sessionStatusCmd)
 	sessionCmd.AddCommand(sessionEndCmd)
 	sessionCmd.AddCommand(sessionResumeCmd)
+	sessionCmd.AddCommand(sessionMigrateCmd)
 
 	// Add --json flag to status command
 	sessionStatusCmd.Flags().BoolVar(&sessionJSON, "json", false, "Output as JSON")
@@ -659,6 +660,39 @@ func discoverSessionHandoff() (string, error) {
 			}
 		}
 
+		// BACKWARD COMPATIBILITY: Check for old non-window-scoped structure
+		// This fallback enables session resume for handoffs created before window-scoping was added
+		legacyLatestPath := filepath.Join(dir, ".orch", "session", "latest")
+		if stat, err := os.Lstat(legacyLatestPath); err == nil {
+			var sessionDir string
+			if stat.Mode()&os.ModeSymlink != 0 {
+				// It's a symlink - resolve it
+				target, err := os.Readlink(legacyLatestPath)
+				if err != nil {
+					return "", fmt.Errorf("failed to read legacy latest symlink: %w", err)
+				}
+				// If target is relative, resolve it relative to .orch/session/
+				if !filepath.IsAbs(target) {
+					sessionDir = filepath.Join(dir, ".orch", "session", target)
+				} else {
+					sessionDir = target
+				}
+			} else {
+				// It's a directory (not a symlink)
+				sessionDir = legacyLatestPath
+			}
+
+			// Check for SESSION_HANDOFF.md in the legacy session directory
+			handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+			if _, err := os.Stat(handoffPath); err == nil {
+				// Found legacy handoff - emit warning about migration
+				fmt.Fprintf(os.Stderr, "⚠️  Using legacy session handoff structure.\n")
+				fmt.Fprintf(os.Stderr, "   Run 'orch session migrate' to update to window-scoped structure.\n")
+				fmt.Fprintf(os.Stderr, "   (This prevents concurrent orchestrators from clobbering each other's context)\n\n")
+				return handoffPath, nil
+			}
+		}
+
 		// Move up one directory
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -668,7 +702,10 @@ func discoverSessionHandoff() (string, error) {
 		dir = parent
 	}
 
-	return "", fmt.Errorf("no session handoff found for window %q (no .orch/session/%s/latest/SESSION_HANDOFF.md in directory tree)", windowName, windowName)
+	// Enhanced error message showing both paths checked
+	windowScopedPath := fmt.Sprintf(".orch/session/%s/latest/SESSION_HANDOFF.md", windowName)
+	legacyPath := ".orch/session/latest/SESSION_HANDOFF.md"
+	return "", fmt.Errorf("no session handoff found for window %q\nChecked:\n  - Window-scoped: %s\n  - Legacy: %s", windowName, windowScopedPath, legacyPath)
 }
 
 // createSessionHandoffDirectory creates a timestamped session directory with SESSION_HANDOFF.md
@@ -764,6 +801,168 @@ func createSessionHandoffDirectory(projectDir string, sess *session.Session) err
 
 	fmt.Printf("\n📋 Session handoff created: %s\n", handoffPath)
 	fmt.Printf("   Latest symlink updated: .orch/session/%s/latest -> %s\n", windowName, timestamp)
+
+	return nil
+}
+
+// ============================================================================
+// Session Migrate Command - Migrate legacy handoffs to window-scoped structure
+// ============================================================================
+
+var sessionMigrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Migrate legacy session handoffs to window-scoped structure",
+	Long: `Migrate legacy session handoffs to window-scoped structure.
+
+Before window-scoping was added, session handoffs were stored in:
+  .orch/session/{timestamp}/SESSION_HANDOFF.md
+
+After window-scoping, they're stored in:
+  .orch/session/{window-name}/{timestamp}/SESSION_HANDOFF.md
+
+This command migrates old handoffs to the new structure.
+
+Examples:
+  orch session migrate              # Migrate to current window
+  orch session migrate --all        # Show migration status for all windows`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSessionMigrate()
+	},
+}
+
+func runSessionMigrate() error {
+	// Get current directory to find .orch/session
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Find project root by walking up to .orch directory
+	projectDir := currentDir
+	for {
+		sessionDir := filepath.Join(projectDir, ".orch", "session")
+		if _, err := os.Stat(sessionDir); err == nil {
+			break
+		}
+		parent := filepath.Dir(projectDir)
+		if parent == projectDir {
+			return fmt.Errorf("no .orch/session directory found (not in an orch-managed project)")
+		}
+		projectDir = parent
+	}
+
+	sessionBaseDir := filepath.Join(projectDir, ".orch", "session")
+
+	// Get current window name for migration target
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		return fmt.Errorf("failed to get window name: %w", err)
+	}
+
+	// Check for legacy handoffs (non-window-scoped directories)
+	entries, err := os.ReadDir(sessionBaseDir)
+	if err != nil {
+		return fmt.Errorf("failed to read session directory: %w", err)
+	}
+
+	var legacyDirs []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		// Legacy directories are timestamp format: YYYY-MM-DD-HHMM
+		// Window-scoped directories are names (e.g., "default", "pw", "og-feat-...")
+		name := entry.Name()
+		// Check if it looks like a timestamp (starts with digit)
+		if len(name) > 0 && name[0] >= '0' && name[0] <= '9' {
+			legacyDirs = append(legacyDirs, name)
+		}
+	}
+
+	if len(legacyDirs) == 0 {
+		fmt.Println("✅ No legacy handoffs found - already using window-scoped structure")
+		return nil
+	}
+
+	// Show what will be migrated
+	fmt.Printf("Found %d legacy handoff(s) to migrate:\n\n", len(legacyDirs))
+	for _, dir := range legacyDirs {
+		handoffPath := filepath.Join(sessionBaseDir, dir, "SESSION_HANDOFF.md")
+		if _, err := os.Stat(handoffPath); err == nil {
+			fmt.Printf("  • %s → .orch/session/%s/%s\n", dir, windowName, dir)
+		}
+	}
+
+	fmt.Printf("\nMigrate to window-scoped structure for window %q? (y/N): ", windowName)
+	var response string
+	fmt.Scanln(&response)
+
+	if response != "y" && response != "Y" {
+		fmt.Println("Migration cancelled")
+		return nil
+	}
+
+	// Perform migration
+	windowScopedDir := filepath.Join(sessionBaseDir, windowName)
+	if err := os.MkdirAll(windowScopedDir, 0755); err != nil {
+		return fmt.Errorf("failed to create window-scoped directory: %w", err)
+	}
+
+	migratedCount := 0
+	for _, dir := range legacyDirs {
+		sourcePath := filepath.Join(sessionBaseDir, dir)
+		destPath := filepath.Join(windowScopedDir, dir)
+
+		// Check if handoff exists
+		handoffPath := filepath.Join(sourcePath, "SESSION_HANDOFF.md")
+		if _, err := os.Stat(handoffPath); err != nil {
+			// Skip directories without handoffs
+			continue
+		}
+
+		// Move the directory
+		if err := os.Rename(sourcePath, destPath); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  Failed to migrate %s: %v\n", dir, err)
+			continue
+		}
+		migratedCount++
+	}
+
+	// Update latest symlink to point to most recent migrated handoff
+	if migratedCount > 0 {
+		// Find most recent timestamp directory
+		var latestTimestamp string
+		entries, _ := os.ReadDir(windowScopedDir)
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if name > latestTimestamp && len(name) > 0 && name[0] >= '0' && name[0] <= '9' {
+				latestTimestamp = name
+			}
+		}
+
+		if latestTimestamp != "" {
+			latestSymlink := filepath.Join(windowScopedDir, "latest")
+			_ = os.Remove(latestSymlink) // Remove old symlink if exists
+			if err := os.Symlink(latestTimestamp, latestSymlink); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  Failed to update latest symlink: %v\n", err)
+			}
+		}
+	}
+
+	// Remove legacy latest symlink at root level
+	legacyLatest := filepath.Join(sessionBaseDir, "latest")
+	if _, err := os.Lstat(legacyLatest); err == nil {
+		if err := os.Remove(legacyLatest); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  Failed to remove legacy latest symlink: %v\n", err)
+		}
+	}
+
+	fmt.Printf("\n✅ Successfully migrated %d handoff(s) to window-scoped structure\n", migratedCount)
+	fmt.Printf("   Window: %s\n", windowName)
+	fmt.Printf("   Location: .orch/session/%s/\n", windowName)
 
 	return nil
 }
