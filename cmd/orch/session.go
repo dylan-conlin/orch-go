@@ -559,30 +559,19 @@ func runSessionEnd() error {
 	return nil
 }
 
-// promptSessionReflection prompts the user for session reflection content.
+// promptSessionReflection creates a minimal reflection without prompting.
+// This allows orchestrators running in terminals to end sessions without blocking on stdin.
 func promptSessionReflection(statuses []session.SpawnStatus) (*SessionReflection, error) {
-	fmt.Println("\n📝 Session Reflection")
-	fmt.Println("═══════════════════════════════════════════════════════════")
-	fmt.Println("Please provide reflection for this session handoff.")
-	fmt.Println("Press Enter twice (blank line) to finish each section.")
-	fmt.Println("═══════════════════════════════════════════════════════════")
+	reflection := &SessionReflection{
+		Summary:          "[Session ended - no reflection provided]",
+		Accomplishments:  "[Orchestrator completed session]",
+		ActiveWork:       "",
+		PendingWork:      "[Not recorded]",
+		Recommendations:  "[See beads backlog]",
+		Context:          "[See session commits]",
+	}
 
-	reflection := &SessionReflection{}
-
-	// Summary
-	fmt.Println("## Summary (1-3 sentences)")
-	fmt.Print("> ")
-	reflection.Summary = readMultiline()
-
-	// Accomplishments
-	fmt.Println("\n## What Was Accomplished")
-	fmt.Println("(Key achievements and completions from this session)")
-	fmt.Print("> ")
-	reflection.Accomplishments = readMultiline()
-
-	// Active Work
-	fmt.Println("\n## Active Work")
-	// Auto-populate with active agents if any
+	// Auto-populate active agents if any
 	activeAgents := []string{}
 	for _, s := range statuses {
 		if s.State == "active" {
@@ -590,40 +579,11 @@ func promptSessionReflection(statuses []session.SpawnStatus) (*SessionReflection
 		}
 	}
 	if len(activeAgents) > 0 {
-		fmt.Println("(Active agents detected - press Enter to accept or edit)")
-		defaultActive := strings.Join(activeAgents, "\n")
-		fmt.Printf("> %s\n", defaultActive)
-		userInput := readMultiline()
-		if strings.TrimSpace(userInput) == "" {
-			reflection.ActiveWork = defaultActive
-		} else {
-			reflection.ActiveWork = userInput
-		}
+		reflection.ActiveWork = strings.Join(activeAgents, "\n")
 	} else {
-		fmt.Println("(Agents still running or issues in progress)")
-		fmt.Print("> ")
-		reflection.ActiveWork = readMultiline()
+		reflection.ActiveWork = "[No active agents]"
 	}
 
-	// Pending Work
-	fmt.Println("\n## Pending Work")
-	fmt.Println("(Ready work that wasn't tackled)")
-	fmt.Print("> ")
-	reflection.PendingWork = readMultiline()
-
-	// Recommendations
-	fmt.Println("\n## Recommendations")
-	fmt.Println("(What should the next session focus on?)")
-	fmt.Print("> ")
-	reflection.Recommendations = readMultiline()
-
-	// Context
-	fmt.Println("\n## Context for Next Session")
-	fmt.Println("(Important context, decisions made, patterns discovered)")
-	fmt.Print("> ")
-	reflection.Context = readMultiline()
-
-	fmt.Println("\n✅ Reflection complete!")
 	return reflection, nil
 }
 
