@@ -2,7 +2,7 @@
 
 **Domain:** Agent Spawning / Model Selection
 **Last Updated:** 2026-01-12
-**Synthesized From:** 2 investigations into Opus gate + 2 implementations of escape hatch pattern (Jan 8-11, 2026)
+**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026
 
 ---
 
@@ -22,7 +22,7 @@ Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but
 - **Haiku** - Fast, lower cost
 
 **Gemini Models:**
-- **Flash 2.0** (`gemini-2.0-flash-exp`) - Default for headless spawns, fast, cheap
+- **Flash 3** (`gemini-3-flash-preview`) - Fast, cheap, but 2,000 req/min TPM limit (Paid Tier 2)
 - **Pro** - Higher quality Gemini option
 
 ### Access Patterns
@@ -36,8 +36,9 @@ User → orch spawn → OpenCode HTTP API (localhost:4096) → Anthropic/Gemini 
 - Headless (no UI, returns immediately)
 - High concurrency (5+ agents simultaneously)
 - Dashboard visibility via SSE
-- Pay-per-token pricing (~$100-200/mo variable cost)
+- Pay-per-token pricing (unknown current spend, switched to Sonnet Jan 9)
 - **Constraint:** Cannot use Opus (fingerprinting blocks it)
+- **Constraint:** Gemini Flash has 2,000 req/min TPM limit (tool-heavy agents hit it)
 - **Dependency:** OpenCode server must be running
 
 **Pattern 2: Claude CLI (Escape Hatch)**
@@ -80,7 +81,7 @@ orch spawn feature-impl "task"
     ↓
 Backend: opencode (default)
     ↓
-Model: gemini-2.0-flash-exp (default)
+Model: claude-sonnet-4-5 (default since Jan 9, was gemini-3-flash before TPM limits)
     ↓
 Headless session via HTTP API
     ↓
@@ -255,6 +256,87 @@ OpenCode HTTP API provides:
 
 **Current answer:** No - headless primary path provides better ergonomics for most work. Reserve escape hatch for critical infrastructure.
 
+### Constraint 5: Gemini Flash TPM Limits Block Tool-Heavy Agents
+
+**Why we can't use Gemini Flash as default:**
+
+Google imposes 2,000 requests/minute limit on Gemini Flash 3 (Paid Tier 2):
+- Tool-heavy agents (investigation, systematic-debugging) make 35+ tool calls/second
+- Each tool use (Read, Grep, Bash, etc.) = one API request
+- Single agent can hit 2,000 req/min limit
+- Retry logic slows spawns to crawl
+
+**Evidence:** Investigation `2026-01-09-debug-gemini-flash-rate-limiting.md`
+
+**Implication:** Forced switch to Sonnet on Jan 9, 2026
+- Lost "free" model (Gemini via AI Studio)
+- Gained reliability (no rate limit throttling)
+- Lost cost visibility (no tracking of Sonnet spend)
+- Created new constraint: unknown budget trajectory
+
+**Workarounds attempted:**
+1. Apply for Tier 3 (20,000 req/min) - Status: Pending
+2. Use Sonnet instead - Status: Current solution
+3. Tolerate retry delays - Status: Unacceptable for production
+
+**Strategic question enabled:** "Should we invest in Tier 3 or accept Sonnet costs?"
+
+### Constraint 6: Community Workarounds are Fragile Cat-and-Mouse
+
+**Why we don't bypass Opus gate:**
+
+Community discovered workarounds for Anthropic's OAuth blocking:
+- Tool name renaming (`bash` → `Bash_tool`)
+- Official plugin (opencode-anthropic-auth@0.0.7)
+- Rotating suffix (TTL-based hourly changes)
+
+**All workarounds failed within hours:**
+- Official plugin: Worked 6 hours, then re-blocked
+- Tool renaming: Requires source edits on every OpenCode update
+- Rotating suffix: Most resilient but highest maintenance burden
+
+**Evidence:** Investigation `2026-01-09-inv-anthropic-oauth-community-workarounds.md` (474+ GitHub comments)
+
+**Anthropic's fingerprinting:**
+- Tool names (lowercase vs PascalCase + `_tool`)
+- OAuth scope (`user:sessions:claude_code`)
+- User-Agent patterns
+- TLS fingerprints (JA3)
+- HTTP/2 frame characteristics
+
+**Implication:** Anthropic iterates faster than community can stabilize workarounds
+
+**Community response:** 119+ users canceled Max subscriptions, migrated to alternative models
+
+**Strategic decision:** Abandon workarounds, use Sonnet API as fallback, Gemini as primary when Tier 3 available
+
+### Constraint 7: Cost Tracking Missing for Sonnet Usage
+
+**Why we don't know current spend:**
+
+Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implemented:
+- Dashboard shows Max subscription usage (OAuth)
+- Dashboard does NOT show API token usage (pay-per-token)
+- No alerts when approaching budget limits
+- Unknown daily burn rate
+
+**Evidence:** Investigation `2026-01-12-inv-sonnet-cost-tracking-requirements.md`
+
+**Strategic questions blocked:**
+1. "Is Sonnet cheaper than Max subscription ($200/mo)?"
+2. "Should we invest in Max for unlimited Opus?"
+3. "Which spawn types consume most budget?"
+4. "Are we approaching monthly limits?"
+
+**Implication:** Can't make data-driven decisions about model selection without cost visibility
+
+**Solutions available:**
+1. Anthropic Usage API (`/v1/billing/cost`) - Daily cost data
+2. Local token counting - Per-spawn granularity
+3. Hybrid approach (recommended) - Both for strategic + tactical decisions
+
+**Status:** Tracking not implemented, costs unknown since Jan 9
+
 ---
 
 ## Evolution
@@ -282,11 +364,29 @@ OpenCode HTTP API provides:
 - Flag was being ignored
 - Fixed naming, verified priority order
 
+**Jan 9, 2026:** Gemini Flash TPM limits hit
+- Single investigation agent hitting 2,000 req/min limit
+- Tool-heavy spawns (35+ calls/sec) trigger rate limiting
+- OpenCode retry logic causes 3-30s delays per request
+- Forced immediate switch to Sonnet for reliability
+
+**Jan 9, 2026:** Community Opus workarounds research
+- Discovered community had found tool name fingerprinting mechanism
+- Official plugin (0.0.7) released, then re-blocked within 6 hours
+- 474+ GitHub comments documenting cat-and-mouse game
+- Strategic decision: abandon workarounds, accept Sonnet/Gemini split
+
 **Jan 11, 2026:** Infrastructure work auto-detection added
 - Keyword-based detection (opencode, spawn, daemon, registry, etc.)
 - Auto-applies `--backend claude --tmux` at priority 2.5
 - Prevents agents from killing themselves
 - Makes escape hatch invisible for common cases
+
+**Jan 12, 2026:** Cost tracking gap identified
+- No visibility into Sonnet spend since Jan 9 switch
+- Dashboard shows Max usage but not API token usage
+- Strategic decisions blocked without cost data
+- Investigation documented requirements for tracking implementation
 
 **Jan 12, 2026:** Model created from synthesis
 - Recognized constraint has system-wide ripple effects
@@ -300,8 +400,11 @@ OpenCode HTTP API provides:
 
 **Investigations:**
 - `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md` - Initial discovery of auth gate, failed spoofing attempt, zombie agents
+- `.kb/investigations/2026-01-09-debug-gemini-flash-rate-limiting.md` - Gemini Flash TPM limits (2,000 req/min), forced switch to Sonnet
+- `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md` - Community bypass attempts, cat-and-mouse dynamics, 474+ GitHub comments
 - `.kb/investigations/2026-01-10-inv-fix-dual-mode-spawn-bug.md` - Backend flag implementation and naming fix
 - `.kb/investigations/2026-01-11-inv-add-infrastructure-work-detection-auto.md` - Keyword detection and auto-flag application
+- `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Cost visibility gap, tracking requirements, strategic questions blocked
 
 **Decisions informed by this model:**
 - Dual spawn architecture (primary + escape hatch)
@@ -320,8 +423,9 @@ OpenCode HTTP API provides:
 
 **Cost evidence:**
 - Claude Max: $200/mo flat (unlimited Opus via CLI)
-- Anthropic API: ~$100-200/mo variable (current usage, no Opus)
-- Gemini API: Included in pay-per-token (default model)
+- Anthropic API: Unknown current spend (switched to Sonnet Jan 9, no tracking)
+- Gemini API: Free via AI Studio (but 2,000 req/min limit hit)
+- Gemini Tier 3: Pending (20,000 req/min, would enable Flash as primary)
 
 **Failure evidence:**
 - Zombie agents: orch-go-mo0ja, orch-go-pzi2i, orch-go-aoei0 (Jan 8)
