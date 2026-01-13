@@ -412,6 +412,48 @@ ls -la ~/.config/opencode/plugin/session-resume.js
 - Hook/plugin file not executable: `chmod +x ~/.claude/hooks/session-start.sh`
 - `orch` command not in PATH for hook environment
 - Plugin syntax error (check OpenCode server logs)
+- **Hook output not in JSON format** (see below)
+- **Hook not registered in settings.json** (see below)
+
+---
+
+### Hook runs but handoff doesn't appear (Claude Code)
+
+**Symptoms:** Hook executes successfully when tested manually, but handoff doesn't appear in Claude Code session.
+
+**Cause 1: Output format**
+Hook output must be wrapped in JSON format for Claude Code:
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "content here"
+  }
+}
+```
+
+Plain text output is ignored. Check `~/.claude/hooks/session-start.sh` lines 10-22 for proper JSON wrapping.
+
+**Cause 2: Hook not registered**
+Hook must be in `~/.claude/settings.json`, not just `~/.claude/hooks/cdd-hooks.json`.
+
+Check settings.json has:
+```json
+"SessionStart": [
+  {
+    "hooks": [
+      {
+        "type": "command",
+        "command": "$HOME/.claude/hooks/session-start.sh",
+        "timeout": 10
+      }
+    ]
+  },
+  ...
+]
+```
+
+**Fix:** Commits `867d0af` and `ee14afc` in `~/.claude` repo contain correct configuration.
 
 ---
 
