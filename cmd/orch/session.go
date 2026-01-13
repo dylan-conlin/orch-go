@@ -40,16 +40,23 @@ Examples:
 }
 
 var (
-	sessionJSON bool
+	sessionJSON        bool
+	resumeForInjection bool
+	resumeCheck        bool
 )
 
 func init() {
 	sessionCmd.AddCommand(sessionStartCmd)
 	sessionCmd.AddCommand(sessionStatusCmd)
 	sessionCmd.AddCommand(sessionEndCmd)
+	sessionCmd.AddCommand(sessionResumeCmd)
 
 	// Add --json flag to status command
 	sessionStatusCmd.Flags().BoolVar(&sessionJSON, "json", false, "Output as JSON")
+
+	// Add flags for resume command
+	sessionResumeCmd.Flags().BoolVar(&resumeForInjection, "for-injection", false, "Output condensed format for hook injection")
+	sessionResumeCmd.Flags().BoolVar(&resumeCheck, "check", false, "Check if handoff exists (exit code only)")
 
 	rootCmd.AddCommand(sessionCmd)
 }
@@ -480,6 +487,17 @@ func runSessionEnd() error {
 		}
 	}
 
+	// Create project-specific session directory and handoff
+	// This creates .orch/session/{timestamp}/ and updates latest symlink
+	projectDir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to get project directory: %v\n", err)
+	} else {
+		if err := createSessionHandoffDirectory(projectDir, store.Get()); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create session handoff directory: %v\n", err)
+		}
+	}
+
 	// End the session
 	ended, err := store.End()
 	if err != nil {
@@ -519,6 +537,216 @@ func runSessionEnd() error {
 	} else if duration >= orchThresholds.Strong {
 		fmt.Printf("\n🟡 Session was %s+. Good to hand off, but review quality of late work.\n", formatSessionDuration(orchThresholds.Strong))
 	}
+
+	return nil
+}
+
+// ============================================================================
+// Session Resume Command
+// ============================================================================
+
+var sessionResumeCmd = &cobra.Command{
+	Use:   "resume",
+	Short: "Resume orchestrator session by injecting prior handoff",
+	Long: `Resume an orchestrator session by discovering and displaying the most recent SESSION_HANDOFF.md.
+
+This command walks up the directory tree to find .orch/session/latest/SESSION_HANDOFF.md
+and displays it in the format appropriate for the use case.
+
+Modes:
+  Default (interactive):  Display formatted handoff for manual review
+  --for-injection:        Output condensed format for hook injection (no decorations)
+  --check:                Just check if handoff exists (exit code 0 if yes, 1 if no)
+
+Discovery:
+  1. Starts from current directory
+  2. Walks up directory tree looking for .orch/session/latest symlink
+  3. Reads SESSION_HANDOFF.md from the symlink target
+  4. Fails gracefully if no handoff found (valid for fresh sessions)
+
+Examples:
+  orch session resume                  # Interactive display
+  orch session resume --for-injection  # For hooks (condensed format)
+  orch session resume --check          # Check existence only`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSessionResume()
+	},
+}
+
+func runSessionResume() error {
+	// Discover handoff by walking up directory tree
+	handoffPath, err := discoverSessionHandoff()
+	if err != nil {
+		if resumeCheck {
+			// Exit code 1 for --check mode when handoff not found
+			os.Exit(1)
+		}
+		return err
+	}
+
+	if resumeCheck {
+		// Exit code 0 for --check mode when handoff exists
+		os.Exit(0)
+	}
+
+	// Read the handoff content
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		return fmt.Errorf("failed to read handoff: %w", err)
+	}
+
+	// Output based on mode
+	if resumeForInjection {
+		// Condensed format for hooks (just the content, no decorations)
+		fmt.Print(string(content))
+	} else {
+		// Interactive format with metadata
+		fmt.Printf("📋 Session Handoff\n")
+		fmt.Printf("   Source: %s\n", handoffPath)
+		fmt.Println()
+		fmt.Print(string(content))
+	}
+
+	return nil
+}
+
+// discoverSessionHandoff walks up the directory tree to find .orch/session/latest/SESSION_HANDOFF.md.
+// Returns the full path to the handoff file, or an error if not found.
+func discoverSessionHandoff() (string, error) {
+	// Start from current directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Walk up the directory tree
+	dir := currentDir
+	for {
+		// Check for .orch/session/latest symlink
+		latestPath := filepath.Join(dir, ".orch", "session", "latest")
+		if stat, err := os.Lstat(latestPath); err == nil {
+			// latest exists - check if it's a symlink or directory
+			var sessionDir string
+			if stat.Mode()&os.ModeSymlink != 0 {
+				// It's a symlink - resolve it
+				target, err := os.Readlink(latestPath)
+				if err != nil {
+					return "", fmt.Errorf("failed to read latest symlink: %w", err)
+				}
+				// If target is relative, resolve it relative to .orch/session/
+				if !filepath.IsAbs(target) {
+					sessionDir = filepath.Join(dir, ".orch", "session", target)
+				} else {
+					sessionDir = target
+				}
+			} else {
+				// It's a directory (not a symlink)
+				sessionDir = latestPath
+			}
+
+			// Check for SESSION_HANDOFF.md in the session directory
+			handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+			if _, err := os.Stat(handoffPath); err == nil {
+				return handoffPath, nil
+			}
+		}
+
+		// Move up one directory
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached filesystem root
+			break
+		}
+		dir = parent
+	}
+
+	return "", fmt.Errorf("no session handoff found (no .orch/session/latest/SESSION_HANDOFF.md in directory tree)")
+}
+
+// createSessionHandoffDirectory creates a timestamped session directory with SESSION_HANDOFF.md
+// and updates the latest symlink to point to it.
+func createSessionHandoffDirectory(projectDir string, sess *session.Session) error {
+	if sess == nil {
+		return fmt.Errorf("no active session")
+	}
+
+	// Create timestamped directory name (YYYY-MM-DD-HHMM format)
+	timestamp := time.Now().Format("2006-01-02-1504")
+	sessionDir := filepath.Join(projectDir, ".orch", "session", timestamp)
+
+	// Create the session directory
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		return fmt.Errorf("failed to create session directory: %w", err)
+	}
+
+	// Generate SESSION_HANDOFF.md content using the same template as spawned orchestrators
+	// For now, create a basic handoff - TODO: enhance with reflection prompts
+	handoffContent := fmt.Sprintf(`# Session Handoff
+
+**Session Goal:** %s
+**Started:** %s
+**Duration:** %s
+
+---
+
+## Summary
+
+[Orchestrator fills this in during session end]
+
+---
+
+## What Was Accomplished
+
+[Key achievements and completions from this session]
+
+---
+
+## Active Work
+
+[Agents still running or issues in progress]
+
+---
+
+## Pending Work
+
+[Ready work that wasn't tackled]
+
+---
+
+## Recommendations
+
+[What should the next session focus on?]
+
+---
+
+## Context for Next Session
+
+[Important context, decisions made, patterns discovered]
+`,
+		sess.Goal,
+		sess.StartedAt.Format("2006-01-02 15:04"),
+		time.Since(sess.StartedAt).String(),
+	)
+
+	// Write SESSION_HANDOFF.md
+	handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte(handoffContent), 0644); err != nil {
+		return fmt.Errorf("failed to write SESSION_HANDOFF.md: %w", err)
+	}
+
+	// Update latest symlink
+	latestSymlink := filepath.Join(projectDir, ".orch", "session", "latest")
+	
+	// Remove existing symlink if present
+	_ = os.Remove(latestSymlink)
+
+	// Create new symlink (relative path to avoid absolute path issues)
+	if err := os.Symlink(timestamp, latestSymlink); err != nil {
+		return fmt.Errorf("failed to create latest symlink: %w", err)
+	}
+
+	fmt.Printf("\n📋 Session handoff created: %s\n", handoffPath)
+	fmt.Printf("   Latest symlink updated: .orch/session/latest -> %s\n", timestamp)
 
 	return nil
 }
