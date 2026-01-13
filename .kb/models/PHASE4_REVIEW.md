@@ -473,7 +473,33 @@ Using only models created today:
 
 4. **Model granularity:** Should subsystems get their own models? (e.g., WorkerPool from daemon model?)
 
-5. **Cross-domain patterns:** Do patterns emerge across all models? (e.g., "all async systems have reconciliation")
+5. **Cross-domain patterns (Meta-Models):** Do patterns emerge across all models? (e.g., "all async systems have reconciliation")
+
+   **Early signals at N=11 (Jan 13, 2026):**
+
+   **Pattern 1: "Distributed State Requires Reconciliation"**
+   - Found in: agent-lifecycle (4 layers), daemon (WorkerPool), dashboard (Priority Cascade), beads-integration (RPC fallback)
+   - Structure: State across independent systems → async updates → reconciliation at read time
+   - Frequency: 4/11 models (36%)
+
+   **Pattern 2: "Detection Hard When Observer Inside System"**
+   - Found in: beads-integration, completion-verification, daemon, dashboard, orchestrator-session (frame collapse)
+   - Structure: Observer part of observed system → need external vantage point → hierarchical observation
+   - Frequency: 5/11 models (45%)
+
+   **Decision:** Wait until N=20+ before formalizing meta-models
+
+   **Rationale:**
+   - Only 2 patterns detected (too early for meta-abstraction)
+   - Patterns might be well-understood CS concepts (eventual consistency, observer effect) not needing our documentation
+   - Meta-models fail OWNED test (we don't own distributed systems theory)
+   - Risk: Premature abstraction before pattern density clear
+
+   **At N=20, check:**
+   - Do 40%+ models share patterns? (stronger signal)
+   - Did new patterns emerge? (pattern diversity)
+   - Are patterns used for new system design? (strategic value)
+   - If yes to all → consider meta-model formalization
 
 ---
 
