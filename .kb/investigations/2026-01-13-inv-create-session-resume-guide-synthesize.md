@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Created practical session resume guide at `.kb/guides/session-resume-protocol.md` by synthesizing design doc and implementation findings.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Guide includes quick reference, flow diagram, command modes, workflows, troubleshooting, and implementation status following pattern from existing guides (spawn.md, completion.md).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Guides should prioritize practical usage (quick reference, workflows, troubleshooting) over design rationale, emphasize automatic behavior with manual fallback, and frame edge cases as valid scenarios.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Guide is complete and ready for use; consider adding condensed format optimization (Phase 4 from design doc) as future enhancement.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - This is documentation synthesis, not an architectural decision.
 
 <!--
 Example D.E.K.N.:
@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Create Session Resume Guide Synthesize
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How should the session resume guide be structured to provide practical usage guidance?
 
 **Started:** 2026-01-13
 **Updated:** 2026-01-13
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** og-inv-create-session-resume-13jan-f61e
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,49 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Design doc provides comprehensive requirements and architecture
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `.kb/investigations/2026-01-11-design-session-resume-protocol.md` contains:
+  - Problem statement (Dylan's need: zero cognitive load for session resumption)
+  - Requirements (R1-R7 covering context recovery, forcing functions, parity with worker spawns)
+  - Design options (hybrid approach chosen: automated hooks + CLI fallback)
+  - Detailed design (file structure, CLI command modes, plugin integration, hook setup)
+  - Implementation sequence (4 phases from foundation to optimization)
+  - Edge cases and success criteria
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `.kb/investigations/2026-01-11-design-session-resume-protocol.md`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Design doc provides the "why" and "what" - establishes user requirements and system goals that guide should reflect.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Implementation doc confirms system is built and working
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `.kb/investigations/2026-01-13-inv-implement-session-resume-protocol-orch.md` D.E.K.N. summary shows:
+  - `orch session resume` command implemented with 3 modes (interactive, --for-injection, --check)
+  - Session end creates `.orch/session/{timestamp}/SESSION_HANDOFF.md` with `latest` symlink
+  - Hooks integrated in both Claude Code (`~/.claude/hooks/session-start.sh`) and OpenCode (`~/.config/opencode/plugin/session-resume.js`)
+  - Manual testing confirmed all modes work
+  - Discovery walks up directory tree for project-specific handoffs
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `.kb/investigations/2026-01-13-inv-implement-session-resume-protocol-orch.md`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** System is complete and tested - guide should document the working system, not speculative design.
+
+---
+
+### Finding 3: Existing guides follow consistent practical pattern
+
+**Evidence:**
+- `.kb/guides/spawn.md` structure: Purpose → The Flow (diagram) → Modes (table) → Key sections → Debugging
+- `.kb/guides/completion.md` structure: Purpose + Quick Reference → System Evolution → Architecture → Workflows → Code References
+- Both emphasize: practical usage, quick reference, examples, troubleshooting, code locations
+
+**Source:** `.kb/guides/spawn.md`, `.kb/guides/completion.md`
+
+**Significance:** Guide should follow established pattern - practical, reference-oriented, with clear examples and troubleshooting.
 
 ---
 
@@ -89,15 +105,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Guide structure should emphasize practical usage over design rationale** - While the design doc is comprehensive, users need quick reference, common workflows, and troubleshooting first. Detailed architecture and implementation status come later.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Zero cognitive load principle drives all features** - Every section should reinforce that Dylan doesn't need to remember session mechanics. Automatic behavior is primary, manual commands are fallback.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Edge cases are features, not failures** - Fresh starts (no handoff) and cross-project isolation are intentional design, not error conditions. Guide must frame these as valid scenarios.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The session resume guide should follow the established pattern from spawn.md and completion.md: start with purpose and quick reference, show the flow visually, document all command modes with examples, cover common workflows before edge cases, and include troubleshooting. The guide emphasizes that the system works automatically (hooks inject handoffs) with manual commands as fallback, following the zero cognitive load principle from the design doc. Structure: Quick Reference → Problem Statement → How It Works (diagram) → File Structure → Command Modes → Workflows → Edge Cases → Troubleshooting → Implementation Status.
 
 ---
 
