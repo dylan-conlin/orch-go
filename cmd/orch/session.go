@@ -15,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // ============================================================================
@@ -560,7 +561,30 @@ func runSessionEnd() error {
 }
 
 // promptSessionReflection prompts the user for session reflection content.
+// In non-interactive contexts (no TTY), returns empty reflection for minimal handoff.
 func promptSessionReflection(statuses []session.SpawnStatus) (*SessionReflection, error) {
+	// Check if stdin is a terminal
+	// If not (e.g., orchestrator in background, piped input, automated context),
+	// skip prompts and return empty reflection to avoid blocking
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		// Non-interactive mode: create minimal reflection
+		reflection := &SessionReflection{}
+
+		// Auto-populate active work if any agents are active
+		activeAgents := []string{}
+		for _, s := range statuses {
+			if s.State == "active" {
+				activeAgents = append(activeAgents, fmt.Sprintf("- %s: %s", s.BeadsID, s.Skill))
+			}
+		}
+		if len(activeAgents) > 0 {
+			reflection.ActiveWork = strings.Join(activeAgents, "\n")
+		}
+
+		return reflection, nil
+	}
+
+	// Interactive mode: prompt for detailed reflection
 	fmt.Println("\n📝 Session Reflection")
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Println("Please provide reflection for this session handoff.")
