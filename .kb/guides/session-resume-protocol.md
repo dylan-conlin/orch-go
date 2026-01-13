@@ -2,6 +2,8 @@
 
 **Purpose:** Single authoritative reference for session handoff and automatic resume system.
 
+**Scope:** This protocol applies ONLY to **interactive orchestrator sessions** (when Dylan starts Claude Code or OpenCode directly). Spawned worker agents use SPAWN_CONTEXT.md instead and do NOT use this resume system.
+
 **Synthesized from:** Design doc (2026-01-11) + Implementation findings (2026-01-13)
 
 ---
@@ -22,20 +24,24 @@ orch session resume --for-injection
 orch session end
 ```
 
-**Automatic behavior:** When you start a new session in Claude Code or OpenCode, hooks automatically inject the latest handoff if one exists.
+**Automatic behavior:** When you start a new **interactive orchestrator session** in Claude Code or OpenCode, hooks automatically inject the latest handoff if one exists.
+
+**Not for workers:** Spawned agents (via `orch spawn`) receive SPAWN_CONTEXT.md at spawn time and do NOT use session resume.
 
 ---
 
 ## The Problem
 
-**Before session resume:**
-- Dylan had to remember session mechanics (create handoff, read handoff manually)
-- Fresh Claude instances didn't receive prior context automatically
-- Manual SESSION_HANDOFF.md creation bypassed proper tooling
-- No parity with worker spawns (workers get SPAWN_CONTEXT.md automatically)
+**Context:** This addresses continuity for **interactive orchestrator sessions** specifically. Workers are spawned fresh each time with SPAWN_CONTEXT.md.
 
-**Dylan's core need:**
-> "I want to be able to start any session just by saying 'let's resume' and from there, the orchestrator should have a protocol to determine what comes next. Session handoff mechanics should be handled automatically by the system, freeing me to think about higher level goals."
+**Before session resume:**
+- Dylan (orchestrator) had to remember session mechanics (create handoff, read handoff manually)
+- Fresh orchestrator instances didn't receive prior context automatically
+- Manual SESSION_HANDOFF.md creation bypassed proper tooling
+- No parity with worker spawns (workers get SPAWN_CONTEXT.md automatically, orchestrators needed similar mechanism)
+
+**Dylan's core need (for orchestrator sessions):**
+> "I want to be able to start any orchestrator session just by saying 'let's resume' and from there, the orchestrator should have a protocol to determine what comes next. Session handoff mechanics should be handled automatically by the system, freeing me to think about higher level goals."
 
 **Principle:** Pressure Over Compensation - if Dylan has to remember session mechanics, that's system failure.
 
@@ -43,13 +49,15 @@ orch session end
 
 ## How It Works
 
+**For interactive orchestrator sessions only.** Workers skip this entirely and use SPAWN_CONTEXT.md.
+
 ```
-Dylan starts new session
+Dylan starts new orchestrator session
          │
          ▼
 ┌────────────────────────────────────────┐
-│  SESSION START                         │
-│  (Claude Code or OpenCode)             │
+│  INTERACTIVE SESSION START             │
+│  (Claude Code or OpenCode - NOT spawn) │
 └────────────────────────────────────────┘
          │
          ▼
@@ -75,6 +83,21 @@ Dylan starts new session
 │   start is valid)                      │
 └────────────────────────────────────────┘
 ```
+
+---
+
+## Orchestrator Sessions vs Worker Sessions
+
+| Aspect | Interactive Orchestrator Session | Spawned Worker Session |
+|--------|----------------------------------|------------------------|
+| **How started** | Dylan runs `claude` or `opencode` | `orch spawn <skill> "task"` |
+| **Context source** | SESSION_HANDOFF.md (via hooks) | SPAWN_CONTEXT.md (at spawn) |
+| **Resume behavior** | Auto-inject prior session handoff | Fresh start every time |
+| **Duration** | Hours to days (multi-session) | 1-4 hours (single task) |
+| **Purpose** | Strategic coordination | Task execution |
+| **Who uses** | Orchestrators (Dylan as orchestrator) | Worker agents |
+
+**Key insight:** Orchestrators need continuity across sessions. Workers are ephemeral and receive full context at spawn time.
 
 ---
 
@@ -279,49 +302,51 @@ Each project maintains its own session history:
 
 ## Common Workflows
 
-### Starting Fresh Session
+**Note:** These workflows apply to interactive orchestrator sessions only. Workers (spawned agents) don't use these commands.
+
+### Starting Fresh Orchestrator Session
 
 ```bash
-# Start new session (no prior handoff)
+# Start new orchestrator session (no prior handoff)
 # Hook runs, finds no handoff, stays silent
 # ✅ This is valid - fresh starts are expected
 ```
 
-**No error:** Fresh sessions (first time in a project, or after long break) are valid scenarios.
+**No error:** Fresh orchestrator sessions (first time in a project, or after long break) are valid scenarios.
 
 ---
 
-### Resuming After Break
+### Resuming Orchestrator Session After Break
 
 ```bash
-# Start new session
+# Start new orchestrator session
 # Hook automatically injects latest handoff
-# Claude sees context from prior session
+# Claude sees context from prior orchestrator session
 ```
 
-**Zero cognitive load:** You don't need to remember to resume. It happens automatically.
+**Zero cognitive load:** You (orchestrator) don't need to remember to resume. It happens automatically.
 
 ---
 
-### Manual Review Before Resume
+### Manual Review Before Resuming Orchestrator Session
 
 ```bash
-# Before starting Claude session
+# Before starting orchestrator session
 orch session resume
 
 # Review handoff content
 # Decide if context is still relevant
-# Then start session (hook will inject same content)
+# Then start orchestrator session (hook will inject same content)
 ```
 
-**Use when:** You want to verify the handoff is still relevant before starting work.
+**Use when:** You want to verify the handoff is still relevant before starting orchestrator work.
 
 ---
 
-### Ending Session
+### Ending Orchestrator Session
 
 ```bash
-# Before closing Claude session
+# Before closing orchestrator session
 orch session end
 
 # Fill in reflection prompts
@@ -329,7 +354,9 @@ orch session end
 # Symlink updated to new session
 ```
 
-**Critical:** Run this BEFORE closing the session, not after. Fresh Claude won't have context to create meaningful handoff.
+**Critical:** Run this BEFORE closing the orchestrator session, not after. Fresh Claude won't have context to create meaningful handoff.
+
+**Not for workers:** Worker agents complete via `bd comment <id> "Phase: Complete"` and `/exit`, not `orch session end`.
 
 ---
 
@@ -533,9 +560,10 @@ Before saying "done" or "complete":
 
 ## Key Takeaways
 
-1. **Zero cognitive load:** Dylan doesn't need to remember to resume - hooks handle it automatically
-2. **Project-specific:** Each repo maintains its own session history via `.orch/session/`
-3. **Graceful degradation:** Fresh starts (no handoff) are valid and don't produce errors
-4. **Forcing function:** `orch session end` is part of session close protocol - creates handoff for next session
-5. **Cross-environment:** Works in both Claude Code and OpenCode via hooks/plugins
-6. **Manual fallback:** `orch session resume` command available if hooks fail or for manual review
+1. **Scope:** This is for **interactive orchestrator sessions only** - workers use SPAWN_CONTEXT.md instead
+2. **Zero cognitive load:** Dylan (orchestrator) doesn't need to remember to resume - hooks handle it automatically
+3. **Project-specific:** Each repo maintains its own session history via `.orch/session/`
+4. **Graceful degradation:** Fresh starts (no handoff) are valid and don't produce errors
+5. **Forcing function:** `orch session end` is part of session close protocol - creates handoff for next orchestrator session
+6. **Cross-environment:** Works in both Claude Code and OpenCode via hooks/plugins
+7. **Manual fallback:** `orch session resume` command available if hooks fail or for manual review
