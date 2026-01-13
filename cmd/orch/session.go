@@ -13,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -610,9 +611,16 @@ func runSessionResume() error {
 	return nil
 }
 
-// discoverSessionHandoff walks up the directory tree to find .orch/session/latest/SESSION_HANDOFF.md.
+// discoverSessionHandoff walks up the directory tree to find .orch/session/{window-name}/latest/SESSION_HANDOFF.md.
 // Returns the full path to the handoff file, or an error if not found.
+// Window-scoping prevents concurrent orchestrator sessions from clobbering each other's context.
 func discoverSessionHandoff() (string, error) {
+	// Get current tmux window name (or "default" if not in tmux)
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		return "", fmt.Errorf("failed to get tmux window name: %w", err)
+	}
+
 	// Start from current directory
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -622,8 +630,8 @@ func discoverSessionHandoff() (string, error) {
 	// Walk up the directory tree
 	dir := currentDir
 	for {
-		// Check for .orch/session/latest symlink
-		latestPath := filepath.Join(dir, ".orch", "session", "latest")
+		// Check for .orch/session/{window-name}/latest symlink
+		latestPath := filepath.Join(dir, ".orch", "session", windowName, "latest")
 		if stat, err := os.Lstat(latestPath); err == nil {
 			// latest exists - check if it's a symlink or directory
 			var sessionDir string
@@ -633,9 +641,9 @@ func discoverSessionHandoff() (string, error) {
 				if err != nil {
 					return "", fmt.Errorf("failed to read latest symlink: %w", err)
 				}
-				// If target is relative, resolve it relative to .orch/session/
+				// If target is relative, resolve it relative to .orch/session/{window-name}/
 				if !filepath.IsAbs(target) {
-					sessionDir = filepath.Join(dir, ".orch", "session", target)
+					sessionDir = filepath.Join(dir, ".orch", "session", windowName, target)
 				} else {
 					sessionDir = target
 				}
@@ -660,21 +668,29 @@ func discoverSessionHandoff() (string, error) {
 		dir = parent
 	}
 
-	return "", fmt.Errorf("no session handoff found (no .orch/session/latest/SESSION_HANDOFF.md in directory tree)")
+	return "", fmt.Errorf("no session handoff found for window %q (no .orch/session/%s/latest/SESSION_HANDOFF.md in directory tree)", windowName, windowName)
 }
 
 // createSessionHandoffDirectory creates a timestamped session directory with SESSION_HANDOFF.md
 // and updates the latest symlink to point to it.
+// Session handoffs are scoped by tmux window name to prevent concurrent orchestrators from clobbering each other.
 func createSessionHandoffDirectory(projectDir string, sess *session.Session) error {
 	if sess == nil {
 		return fmt.Errorf("no active session")
 	}
 
+	// Get current tmux window name (or "default" if not in tmux)
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		return fmt.Errorf("failed to get tmux window name: %w", err)
+	}
+
 	// Create timestamped directory name (YYYY-MM-DD-HHMM format)
 	timestamp := time.Now().Format("2006-01-02-1504")
-	sessionDir := filepath.Join(projectDir, ".orch", "session", timestamp)
+	// Structure: .orch/session/{window-name}/{timestamp}/
+	sessionDir := filepath.Join(projectDir, ".orch", "session", windowName, timestamp)
 
-	// Create the session directory
+	// Create the session directory (with parent window-scoped directory)
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
 		return fmt.Errorf("failed to create session directory: %w", err)
 	}
@@ -734,9 +750,10 @@ func createSessionHandoffDirectory(projectDir string, sess *session.Session) err
 		return fmt.Errorf("failed to write SESSION_HANDOFF.md: %w", err)
 	}
 
-	// Update latest symlink
-	latestSymlink := filepath.Join(projectDir, ".orch", "session", "latest")
-	
+	// Update window-scoped latest symlink
+	// Structure: .orch/session/{window-name}/latest -> {timestamp}
+	latestSymlink := filepath.Join(projectDir, ".orch", "session", windowName, "latest")
+
 	// Remove existing symlink if present
 	_ = os.Remove(latestSymlink)
 
@@ -746,7 +763,7 @@ func createSessionHandoffDirectory(projectDir string, sess *session.Session) err
 	}
 
 	fmt.Printf("\n📋 Session handoff created: %s\n", handoffPath)
-	fmt.Printf("   Latest symlink updated: .orch/session/latest -> %s\n", timestamp)
+	fmt.Printf("   Latest symlink updated: .orch/session/%s/latest -> %s\n", windowName, timestamp)
 
 	return nil
 }

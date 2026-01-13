@@ -60,6 +60,68 @@ func tmuxCommand(args ...string) (*exec.Cmd, error) {
 	return exec.Command(path, args...), nil
 }
 
+// GetCurrentWindowName returns the name of the current tmux window, or an error if not in tmux.
+// Returns "default" as fallback if not in a tmux session.
+// Window names are sanitized to be filesystem-safe (removes emojis, special chars, and spaces).
+func GetCurrentWindowName() (string, error) {
+	// Check if we're in a tmux session
+	if os.Getenv("TMUX") == "" {
+		return "default", nil
+	}
+
+	// Get the current window name using tmux display-message
+	cmd, err := tmuxCommand("display-message", "-p", "#{window_name}")
+	if err != nil {
+		return "", fmt.Errorf("failed to create tmux command: %w", err)
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get window name: %w", err)
+	}
+
+	windowName := strings.TrimSpace(string(output))
+	if windowName == "" {
+		return "default", nil
+	}
+
+	// Sanitize window name for filesystem safety
+	// Remove emojis and special characters, replace spaces with hyphens
+	sanitized := sanitizeWindowName(windowName)
+	if sanitized == "" {
+		return "default", nil
+	}
+
+	return sanitized, nil
+}
+
+// sanitizeWindowName converts a tmux window name to a filesystem-safe string.
+// Removes emojis, special characters, and replaces spaces with hyphens.
+func sanitizeWindowName(name string) string {
+	// Build result by filtering characters
+	var result strings.Builder
+	for _, r := range name {
+		// Keep alphanumeric, dash, and underscore
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			result.WriteRune(r)
+		} else if r == ' ' {
+			// Replace spaces with hyphens
+			result.WriteRune('-')
+		}
+		// Skip all other characters (emojis, brackets, special chars)
+	}
+
+	sanitized := result.String()
+
+	// Remove leading/trailing hyphens and collapse multiple hyphens
+	sanitized = strings.Trim(sanitized, "-")
+	for strings.Contains(sanitized, "--") {
+		sanitized = strings.ReplaceAll(sanitized, "--", "-")
+	}
+
+	return sanitized
+}
+
 // SKILL_EMOJIS maps skill names to their display emojis.
 var SKILL_EMOJIS = map[string]string{
 	"investigation":        "🔬",

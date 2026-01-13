@@ -80,26 +80,38 @@ Dylan starts new session
 
 ## File Structure
 
-Session handoffs are **project-specific**:
+Session handoffs are **window-scoped** to prevent concurrent orchestrator sessions from clobbering each other:
 
 ```bash
 {project}/.orch/session/
-├── latest -> 2026-01-13-0827/    # Symlink to most recent
-├── 2026-01-11-1935/
-│   └── SESSION_HANDOFF.md        # Created at session end
-└── 2026-01-13-0827/
-    └── SESSION_HANDOFF.md
+├── orchestrator/                  # Window name
+│   ├── latest -> 2026-01-13-0827/ # Symlink to most recent for this window
+│   ├── 2026-01-11-1935/
+│   │   └── SESSION_HANDOFF.md
+│   └── 2026-01-13-0827/
+│       └── SESSION_HANDOFF.md
+└── meta-orchestrator/             # Different window, independent handoffs
+    ├── latest -> 2026-01-13-0830/
+    └── 2026-01-13-0830/
+        └── SESSION_HANDOFF.md
 ```
 
 **Examples:**
-- `~/Documents/personal/orch-go/.orch/session/latest/SESSION_HANDOFF.md`
-- `~/orch-knowledge/.orch/session/latest/SESSION_HANDOFF.md`
+- `~/Documents/personal/orch-go/.orch/session/orchestrator/latest/SESSION_HANDOFF.md`
+- `~/orch-knowledge/.orch/session/default/latest/SESSION_HANDOFF.md` (not in tmux)
 
-**Why symlink:**
-- `orch session end` updates symlink to new session
-- `orch session resume` always reads from `latest/SESSION_HANDOFF.md`
-- No timestamp parsing needed
-- Project-specific: each repo maintains its own session history
+**Window scoping:**
+- Each tmux window gets its own handoff directory
+- `orch session end` creates `.orch/session/{window-name}/{timestamp}/`
+- `orch session resume` reads from `.orch/session/{window-name}/latest/`
+- If not in tmux, uses "default" as window name
+- Prevents concurrent sessions in different windows from interfering
+
+**Why this matters:**
+- Dylan can run multiple orchestrator sessions in different tmux windows
+- Each session maintains independent context
+- Session end from one window doesn't clobber another window's handoff
+- Enables parallel orchestration workflows
 
 ---
 
@@ -228,21 +240,25 @@ ln -sf 2026-01-13-0900 latest
 
 When you run `orch session resume`:
 
-1. **Start from current directory**
-2. **Walk up tree** to find `.orch/session/latest` symlink
-3. **Read** `{symlink}/SESSION_HANDOFF.md`
-4. **Exit code 1** if not found
+1. **Detect tmux window name** (or use "default" if not in tmux)
+2. **Start from current directory**
+3. **Walk up tree** to find `.orch/session/{window-name}/latest` symlink
+4. **Read** `{symlink}/SESSION_HANDOFF.md`
+5. **Exit code 1** if not found
 
-**Key insight:** Discovery works from any subdirectory within the project. You don't need to be in the project root.
+**Key insight:** Discovery is window-scoped - you get the handoff for YOUR window, not other windows' handoffs.
 
 **Example:**
 ```bash
-# Working in subdirectory
+# Working in orchestrator window
 cd ~/Documents/personal/orch-go/cmd/orch
 
-# Still finds handoff in project root
+# Finds handoff for "orchestrator" window
 orch session resume
-# → Reads ~/Documents/personal/orch-go/.orch/session/latest/SESSION_HANDOFF.md
+# → Reads ~/Documents/personal/orch-go/.orch/session/orchestrator/latest/SESSION_HANDOFF.md
+
+# Meanwhile, in meta-orchestrator window, gets different handoff
+# → Reads ~/Documents/personal/orch-go/.orch/session/meta-orchestrator/latest/SESSION_HANDOFF.md
 ```
 
 ---

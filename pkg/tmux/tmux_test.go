@@ -684,3 +684,86 @@ func TestGetTmuxCwdNonExistentSession(t *testing.T) {
 		t.Error("Expected error when getting cwd for non-existent session")
 	}
 }
+
+// TestGetCurrentWindowName tests getting the current tmux window name.
+func TestGetCurrentWindowName(t *testing.T) {
+	tests := []struct {
+		name        string
+		inTmux      bool
+		expectedErr bool
+		wantDefault bool
+	}{
+		{
+			name:        "not in tmux",
+			inTmux:      false,
+			expectedErr: false,
+			wantDefault: true,
+		},
+		{
+			name:        "in tmux",
+			inTmux:      true,
+			expectedErr: false,
+			wantDefault: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.inTmux && !IsAvailable() {
+				t.Skip("tmux not available")
+			}
+
+			// Save original TMUX env
+			originalTmux := os.Getenv("TMUX")
+			defer func() {
+				if originalTmux != "" {
+					os.Setenv("TMUX", originalTmux)
+				} else {
+					os.Unsetenv("TMUX")
+				}
+			}()
+
+			if !tt.inTmux {
+				// Simulate not being in tmux
+				os.Unsetenv("TMUX")
+			} else {
+				// For in-tmux test, we need an actual tmux session
+				// Create a test session
+				sessionName := "test-window-name-session"
+				windowName := "test-window"
+
+				cmd, err := tmuxCommand("new-session", "-d", "-s", sessionName, "-n", windowName)
+				if err != nil {
+					t.Fatalf("Failed to create tmux command: %v", err)
+				}
+				if err := cmd.Run(); err != nil {
+					t.Skipf("Could not create test tmux session: %v", err)
+				}
+				defer func() {
+					killCmd, _ := tmuxCommand("kill-session", "-t", sessionName)
+					_ = killCmd.Run()
+				}()
+
+				// Note: We can't actually test GetCurrentWindowName from inside the test
+				// because the test isn't running in that tmux session.
+				// We'll just test the "not in tmux" case properly.
+				t.Skip("Cannot test in-tmux case without running test inside tmux")
+			}
+
+			result, err := GetCurrentWindowName()
+
+			if (err != nil) != tt.expectedErr {
+				t.Errorf("GetCurrentWindowName() error = %v, wantErr %v", err, tt.expectedErr)
+				return
+			}
+
+			if tt.wantDefault && result != "default" {
+				t.Errorf("GetCurrentWindowName() = %q, want %q (not in tmux)", result, "default")
+			}
+
+			if !tt.wantDefault && result == "default" {
+				t.Errorf("GetCurrentWindowName() = %q, should not be default when in tmux", result)
+			}
+		})
+	}
+}
