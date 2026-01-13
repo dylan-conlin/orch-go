@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 )
 
 // TestGetProjectNameFromWorkdir verifies project name extraction.
@@ -176,9 +178,9 @@ func TestIsOrchestratorSessionTitle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.title, func(t *testing.T) {
-			result := isOrchestratorSessionTitle(tt.title)
+			result := cleanup.IsOrchestratorSessionTitle(tt.title)
 			if result != tt.expected {
-				t.Errorf("isOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
+				t.Errorf("cleanup.IsOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
 			}
 		})
 	}

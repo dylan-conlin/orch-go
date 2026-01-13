@@ -153,10 +153,12 @@ func TestDiscoverSessionHandoff(t *testing.T) {
 				return
 			}
 
-			// Verify path
+			// Verify path (resolve symlinks for comparison to handle /var vs /private/var on macOS)
 			expectedPath := filepath.Join(testDir, tt.expectPath)
-			if got != expectedPath {
-				t.Errorf("got path %q, want %q", got, expectedPath)
+			gotResolved, _ := filepath.EvalSymlinks(got)
+			expectedResolved, _ := filepath.EvalSymlinks(expectedPath)
+			if gotResolved != expectedResolved {
+				t.Errorf("got path %q, want %q", gotResolved, expectedResolved)
 			}
 
 			// Verify file exists and is readable
