@@ -3,33 +3,49 @@
 **Last Updated:** 2026-01-14
 **Applies To:** Mac development environment
 
-## Critical Rule: ONE Process Manager
-
-**overmind is the ONLY process manager for dev services.** Do not create:
-- ❌ launchd plists for opencode/orch/vite
-- ❌ systemd units (Mac doesn't use systemd anyway)
-- ❌ pm2 or other process managers
-- ❌ Shell scripts that auto-start services outside overmind
-
-**Why:** Multiple process managers race at startup, causing port conflicts. On Jan 14, 2026, launchd auto-started OpenCode on port 4096 before overmind, breaking all services.
-
-**Reference:** `.kb/decisions/2026-01-14-infrastructure-complexity-justified.md`
-
 ## Quick Start
 
 ```bash
-# Start all services
-overmind start -D
+# Start dashboard (handles orphan cleanup automatically)
+orch-dashboard start
 
 # Check status
-overmind status
+orch-dashboard status
 
 # View logs
-overmind echo
+orch-dashboard logs
 
-# Stop all
-overmind quit
+# Restart
+orch-dashboard restart
+
+# Stop
+orch-dashboard stop
 ```
+
+**Auto-start:** Dashboard auto-starts when you open a terminal (via .zshrc).
+
+## How It Works
+
+`orch-dashboard` is a wrapper around overmind that fixes the orphan process problem:
+
+1. **Kills orphans** - Any stray processes on ports 3348/5188/4096
+2. **Cleans state** - Removes stale `.overmind.sock`
+3. **Starts overmind** - Runs the 3 services via Procfile
+4. **Verifies** - Confirms all services are actually running
+
+**Location:** `~/bin/orch-dashboard`
+
+## Critical Rule: ONE Process Manager
+
+**overmind (via orch-dashboard) is the ONLY process manager for dev services.** Do not create:
+- ❌ launchd plists for opencode/orch/vite
+- ❌ systemd units (Mac doesn't use systemd anyway)
+- ❌ pm2 or other process managers
+- ❌ Direct overmind commands (use orch-dashboard instead)
+
+**Why:** Orphan processes from crashed overmind instances cause port conflicts. orch-dashboard handles this.
+
+**Reference:** `.kb/investigations/2026-01-14-inv-infrastructure-root-cause-synthesis.md`
 
 ## Architecture
 
