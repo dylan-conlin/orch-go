@@ -102,9 +102,29 @@ func runSessionStart(goal string) error {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
 
+	// Get current working directory (project directory)
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get project directory: %w", err)
+	}
+
+	// Generate session name in format {project}-{count}
+	sessionName, err := session.GenerateSessionName(projectDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to generate session name: %v\n", err)
+		// Fall back to timestamp-based name
+		sessionName = fmt.Sprintf("session-%s", time.Now().Format("20060102-1504"))
+	}
+
+	// Rename tmux window to match session name (auto-naming pattern)
+	if err := tmux.RenameCurrentWindow(sessionName); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to rename tmux window: %v\n", err)
+		// Continue anyway - window renaming is nice-to-have
+	}
+
 	// Create active session handoff in project-specific location
-	// This replaces the global ~/.orch workspace with project/.orch/session/{window}/active/
-	handoffPath, err := createActiveSessionHandoff(goal)
+	// This replaces the global ~/.orch workspace with project/.orch/session/{sessionName}/active/
+	handoffPath, err := createActiveSessionHandoff(goal, sessionName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to create active session handoff: %v\n", err)
 		// Continue anyway - handoff is nice-to-have for interactive sessions
@@ -113,9 +133,10 @@ func runSessionStart(goal string) error {
 	// Log the session start
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
-		"goal":       goal,
-		"was_active": wasActive,
-		"started_at": time.Now().Format(session.TimeFormat),
+		"goal":         goal,
+		"was_active":   wasActive,
+		"started_at":   time.Now().Format(session.TimeFormat),
+		"session_name": sessionName,
 	}
 	if handoffPath != "" {
 		eventData["handoff_path"] = handoffPath
@@ -133,6 +154,7 @@ func runSessionStart(goal string) error {
 		fmt.Println("Previous session ended.")
 	}
 	fmt.Printf("Session started: %s\n", goal)
+	fmt.Printf("  Name:       %s\n", sessionName)
 	fmt.Printf("  Start time: %s\n", time.Now().Format("15:04"))
 	if handoffPath != "" {
 		fmt.Printf("  Handoff:    %s\n", handoffPath)
@@ -145,26 +167,20 @@ func runSessionStart(goal string) error {
 	return nil
 }
 
-// createActiveSessionHandoff creates SESSION_HANDOFF.md in {project}/.orch/session/{window}/active/
+// createActiveSessionHandoff creates SESSION_HANDOFF.md in {project}/.orch/session/{sessionName}/active/
 // for progressive documentation during the session. This is the Active Directory Pattern:
 // - Session start creates active/ with PreFilledSessionHandoffTemplate
 // - Orchestrators fill sections as they work
 // - Session end archives active/ to timestamped directory
-func createActiveSessionHandoff(goal string) (string, error) {
+func createActiveSessionHandoff(goal, sessionName string) (string, error) {
 	// Get current working directory (project directory)
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("failed to get project directory: %w", err)
 	}
 
-	// Get current tmux window name (or "default" if not in tmux)
-	windowName, err := tmux.GetCurrentWindowName()
-	if err != nil {
-		return "", fmt.Errorf("failed to get tmux window name: %w", err)
-	}
-
-	// Create active directory: .orch/session/{window}/active/
-	activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+	// Create active directory: .orch/session/{sessionName}/active/
+	activeDir := filepath.Join(projectDir, ".orch", "session", sessionName, "active")
 	if err := os.MkdirAll(activeDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create active directory: %w", err)
 	}

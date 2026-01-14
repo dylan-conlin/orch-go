@@ -95,6 +95,43 @@ func GetCurrentWindowName() (string, error) {
 	return sanitized, nil
 }
 
+// RenameCurrentWindow renames the current tmux window.
+// Returns nil if not in a tmux session (no-op).
+func RenameCurrentWindow(newName string) error {
+	// Check if we're in a tmux session
+	if os.Getenv("TMUX") == "" {
+		return nil // Not in tmux, nothing to rename
+	}
+
+	// Get current window index to target the rename
+	cmd, err := tmuxCommand("display-message", "-p", "#{window_index}")
+	if err != nil {
+		return fmt.Errorf("failed to create tmux command: %w", err)
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get window index: %w", err)
+	}
+
+	windowIndex := strings.TrimSpace(string(output))
+	if windowIndex == "" {
+		return fmt.Errorf("failed to get window index: empty output")
+	}
+
+	// Rename the window using tmux rename-window
+	renameCmd, err := tmuxCommand("rename-window", "-t", windowIndex, newName)
+	if err != nil {
+		return fmt.Errorf("failed to create rename command: %w", err)
+	}
+
+	if err := renameCmd.Run(); err != nil {
+		return fmt.Errorf("failed to rename window: %w", err)
+	}
+
+	return nil
+}
+
 // sanitizeWindowName converts a tmux window name to a filesystem-safe string.
 // Removes emojis, special characters, and replaces spaces with hyphens.
 func sanitizeWindowName(name string) string {

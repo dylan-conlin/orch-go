@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -433,4 +435,68 @@ func (s *Store) GetCheckpointStatusWithThresholds(thresholds CheckpointThreshold
 	}
 
 	return status
+}
+
+// GenerateSessionName generates a session name in the format {project}-{count}.
+// Count is based on existing session directories for this project.
+// projectDir is the full path to the project directory.
+func GenerateSessionName(projectDir string) (string, error) {
+	// Extract project name from directory path
+	projectName := filepath.Base(projectDir)
+
+	// Session directories are in {projectDir}/.orch/session/
+	sessionBaseDir := filepath.Join(projectDir, ".orch", "session")
+
+	// Count existing session directories matching {project}-{number}
+	count, err := countProjectSessions(sessionBaseDir, projectName)
+	if err != nil {
+		return "", fmt.Errorf("failed to count sessions: %w", err)
+	}
+
+	// Generate name as {project}-{count+1}
+	return fmt.Sprintf("%s-%d", projectName, count+1), nil
+}
+
+// countProjectSessions counts existing session directories matching {project}-{number} pattern.
+// Returns the highest number found, so next session would be count+1.
+func countProjectSessions(sessionBaseDir, projectName string) (int, error) {
+	// Check if session directory exists
+	if _, err := os.Stat(sessionBaseDir); os.IsNotExist(err) {
+		return 0, nil // No sessions yet
+	}
+
+	// List all directories in session base
+	entries, err := os.ReadDir(sessionBaseDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read session directory: %w", err)
+	}
+
+	// Pattern: {project}-{number}
+	pattern := regexp.MustCompile(fmt.Sprintf(`^%s-(\d+)$`, regexp.QuoteMeta(projectName)))
+
+	maxCount := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Check if directory matches pattern
+		matches := pattern.FindStringSubmatch(entry.Name())
+		if matches == nil {
+			continue
+		}
+
+		// Extract number
+		num, err := strconv.Atoi(matches[1])
+		if err != nil {
+			continue // Skip invalid numbers
+		}
+
+		// Track maximum count
+		if num > maxCount {
+			maxCount = num
+		}
+	}
+
+	return maxCount, nil
 }

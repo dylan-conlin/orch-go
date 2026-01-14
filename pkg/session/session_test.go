@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -520,5 +521,204 @@ func TestGetCheckpointStatusWithThresholds(t *testing.T) {
 	// New session should be "ok" even with short thresholds
 	if status.Level != "ok" {
 		t.Errorf("Status level = %q, want 'ok' for new session", status.Level)
+	}
+}
+
+func TestGenerateSessionName(t *testing.T) {
+	// Create temp project directory
+	tmpDir := t.TempDir()
+	
+	// Create a subdirectory to simulate a real project name
+	projectDir := filepath.Join(tmpDir, "test-project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("Failed to create project dir: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		existingSessions []string
+		wantName       string
+	}{
+		{
+			name:           "no existing sessions",
+			existingSessions: nil,
+			wantName:       "test-project-1",
+		},
+		{
+			name:           "one existing session",
+			existingSessions: []string{"test-project-1"},
+			wantName:       "test-project-2",
+		},
+		{
+			name:           "multiple existing sessions",
+			existingSessions: []string{"test-project-1", "test-project-2", "test-project-3"},
+			wantName:       "test-project-4",
+		},
+		{
+			name:           "non-sequential numbers",
+			existingSessions: []string{"test-project-1", "test-project-5", "test-project-3"},
+			wantName:       "test-project-6",
+		},
+		{
+			name:           "mixed with other projects",
+			existingSessions: []string{"test-project-1", "other-project-1", "test-project-2"},
+			wantName:       "test-project-3",
+		},
+		{
+			name:           "non-matching directories ignored",
+			existingSessions: []string{"test-project-1", "random-name", "2026-01-13-1000"},
+			wantName:       "test-project-2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up session directory
+			sessionDir := filepath.Join(projectDir, ".orch", "session")
+			os.RemoveAll(sessionDir)
+
+			// Create existing session directories
+			for _, name := range tt.existingSessions {
+				dir := filepath.Join(sessionDir, name)
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatalf("Failed to create session dir %s: %v", name, err)
+				}
+			}
+
+			// Generate session name
+			got, err := GenerateSessionName(projectDir)
+			if err != nil {
+				t.Fatalf("GenerateSessionName() error = %v", err)
+			}
+
+			if got != tt.wantName {
+				t.Errorf("GenerateSessionName() = %q, want %q", got, tt.wantName)
+			}
+		})
+	}
+}
+
+func TestCountProjectSessions(t *testing.T) {
+	// Create temp directory
+	tmpDir := t.TempDir()
+	sessionDir := filepath.Join(tmpDir, ".orch", "session")
+
+	tests := []struct {
+		name     string
+		existing []string
+		project  string
+		want     int
+	}{
+		{
+			name:     "empty directory",
+			existing: nil,
+			project:  "test",
+			want:     0,
+		},
+		{
+			name:     "single session",
+			existing: []string{"test-1"},
+			project:  "test",
+			want:     1,
+		},
+		{
+			name:     "multiple sessions",
+			existing: []string{"test-1", "test-2", "test-3"},
+			project:  "test",
+			want:     3,
+		},
+		{
+			name:     "highest number returned",
+			existing: []string{"test-5", "test-2", "test-10"},
+			project:  "test",
+			want:     10,
+		},
+		{
+			name:     "filter by project name",
+			existing: []string{"test-1", "other-5", "test-2"},
+			project:  "test",
+			want:     2,
+		},
+		{
+			name:     "ignore non-matching",
+			existing: []string{"test-1", "random", "2026-01-13"},
+			project:  "test",
+			want:     1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up
+			os.RemoveAll(sessionDir)
+
+			// Create directories
+			if tt.existing != nil {
+				for _, name := range tt.existing {
+					dir := filepath.Join(sessionDir, name)
+					if err := os.MkdirAll(dir, 0755); err != nil {
+						t.Fatalf("Failed to create dir %s: %v", name, err)
+					}
+				}
+			}
+
+			got, err := countProjectSessions(sessionDir, tt.project)
+			if err != nil {
+				t.Fatalf("countProjectSessions() error = %v", err)
+			}
+
+			if got != tt.want {
+				t.Errorf("countProjectSessions() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateSessionNameProjectNameExtraction(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectPath string
+		wantPrefix  string
+	}{
+		{
+			name:        "simple project name",
+			projectPath: "/path/to/my-project",
+			wantPrefix:  "my-project-",
+		},
+		{
+			name:        "project with underscores",
+			projectPath: "/path/to/my_cool_project",
+			wantPrefix:  "my_cool_project-",
+		},
+		{
+			name:        "nested project",
+			projectPath: "/very/deep/path/to/project",
+			wantPrefix:  "project-",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp directory with the project name
+			tmpDir := t.TempDir()
+			projectDir := filepath.Join(tmpDir, filepath.Base(tt.projectPath))
+			if err := os.MkdirAll(projectDir, 0755); err != nil {
+				t.Fatalf("Failed to create project dir: %v", err)
+			}
+
+			got, err := GenerateSessionName(projectDir)
+			if err != nil {
+				t.Fatalf("GenerateSessionName() error = %v", err)
+			}
+
+			if !strings.HasPrefix(got, tt.wantPrefix) {
+				t.Errorf("GenerateSessionName() = %q, want prefix %q", got, tt.wantPrefix)
+			}
+
+			// Should end with -1 for first session
+			if !strings.HasSuffix(got, "-1") {
+				t.Errorf("GenerateSessionName() = %q, want suffix '-1'", got)
+			}
+		})
 	}
 }
