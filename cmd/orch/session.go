@@ -46,6 +46,7 @@ var (
 	sessionJSON        bool
 	resumeForInjection bool
 	resumeCheck        bool
+	validateJSON       bool
 )
 
 func init() {
@@ -54,6 +55,7 @@ func init() {
 	sessionCmd.AddCommand(sessionEndCmd)
 	sessionCmd.AddCommand(sessionResumeCmd)
 	sessionCmd.AddCommand(sessionMigrateCmd)
+	sessionCmd.AddCommand(sessionValidateCmd)
 
 	// Add --json flag to status command
 	sessionStatusCmd.Flags().BoolVar(&sessionJSON, "json", false, "Output as JSON")
@@ -61,6 +63,9 @@ func init() {
 	// Add flags for resume command
 	sessionResumeCmd.Flags().BoolVar(&resumeForInjection, "for-injection", false, "Output condensed format for hook injection")
 	sessionResumeCmd.Flags().BoolVar(&resumeCheck, "check", false, "Check if handoff exists (exit code only)")
+
+	// Add --json flag for validate command
+	sessionValidateCmd.Flags().BoolVar(&validateJSON, "json", false, "Output as JSON")
 
 	rootCmd.AddCommand(sessionCmd)
 }
@@ -140,6 +145,22 @@ func runSessionStart(goal string) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to create active session handoff: %v\n", err)
 		// Continue anyway - handoff is nice-to-have for interactive sessions
+	}
+
+	// Progressive Session Capture: Prompt for TLDR and Where We Started
+	// Part of decision 2026-01-14 - capture context when it's freshest
+	if handoffPath != "" {
+		responses, err := promptForStartSections()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to collect start section responses: %v\n", err)
+			// Continue anyway - we can still end the session and prompt for these later
+		} else if len(responses) > 0 {
+			if err := updateHandoffWithStartResponses(handoffPath, responses); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to update handoff with responses: %v\n", err)
+			} else {
+				fmt.Println("   ✅ Initial context captured in SESSION_HANDOFF.md")
+			}
+		}
 	}
 
 	// Log the session start
@@ -244,7 +265,7 @@ type HandoffSection struct {
 	Options     []string // Valid options (for choice-based sections)
 }
 
-// handoffSections defines all sections that need validation.
+// handoffSections defines all sections that need validation at session end.
 // Order matters - sections are validated and prompted in this order.
 var handoffSections = []HandoffSection{
 	{
@@ -293,6 +314,24 @@ var handoffSections = []HandoffSection{
 		Required:    false,
 		SkipValue:   "smooth",
 		Prompt:      "Tooling or context friction encountered (or 'smooth' to skip)",
+	},
+}
+
+// startSections defines sections to prompt for at session start.
+// Part of Progressive Session Capture (decision 2026-01-14).
+// These capture context when it's freshest: at session beginning.
+var startSections = []HandoffSection{
+	{
+		Name:        "TLDR",
+		Placeholder: "[Fill within first 5 tool calls: What is this session trying to accomplish?]",
+		Required:    true,
+		Prompt:      "What is this session trying to accomplish? (1-2 sentences)",
+	},
+	{
+		Name:        "Where We Started",
+		Placeholder: "[Fill within first 5 tool calls: What is the current state before you begin working?]",
+		Required:    true,
+		Prompt:      "What is the current state before you begin? (context for next session)",
 	},
 }
 
@@ -400,6 +439,67 @@ func promptForUnfilledSections(unfilled []HandoffSection) ([]UserResponse, error
 	}
 
 	return responses, nil
+}
+
+// promptForStartSections prompts the user for session start sections (TLDR, Where We Started).
+// Part of Progressive Session Capture - capture context when it's freshest.
+// Returns the collected responses.
+func promptForStartSections() ([]UserResponse, error) {
+	reader := bufio.NewReader(os.Stdin)
+	var responses []UserResponse
+
+	fmt.Println("\n📋 Session Start - Capture Initial Context")
+	fmt.Println("   (Part of Progressive Session Capture - these help with session handoffs)")
+	fmt.Println()
+
+	for _, section := range startSections {
+		fmt.Printf("   %s:\n", section.Name)
+		fmt.Printf("   %s\n", section.Prompt)
+		fmt.Printf("   > ")
+
+		// Read response
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
+		response = strings.TrimSpace(response)
+
+		// Check for empty required fields
+		if section.Required && response == "" {
+			return nil, fmt.Errorf("%s is required and cannot be empty", section.Name)
+		}
+
+		responses = append(responses, UserResponse{
+			Section:  section,
+			Response: response,
+		})
+		fmt.Println()
+	}
+
+	return responses, nil
+}
+
+// updateHandoffWithStartResponses updates the handoff file with session start responses.
+// This replaces the placeholder text with actual user input.
+func updateHandoffWithStartResponses(handoffPath string, responses []UserResponse) error {
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		return fmt.Errorf("failed to read handoff: %w", err)
+	}
+
+	result := string(content)
+
+	// Apply each response by replacing the placeholder
+	for _, r := range responses {
+		result = strings.ReplaceAll(result, r.Section.Placeholder, r.Response)
+	}
+
+	// Write updated content
+	if err := os.WriteFile(handoffPath, []byte(result), 0644); err != nil {
+		return fmt.Errorf("failed to write updated handoff: %w", err)
+	}
+
+	return nil
 }
 
 // updateHandoffWithResponses updates the handoff content with user responses.
@@ -1236,6 +1336,243 @@ func discoverSessionHandoff() (string, error) {
 }
 
 // ============================================================================
+// Session Validate Command - Check handoff quality without ending session
+// ============================================================================
+
+var sessionValidateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Show unfilled handoff sections without ending session",
+	Long: `Validate SESSION_HANDOFF.md quality by showing unfilled sections.
+
+This command checks the active session handoff for placeholder patterns
+and displays which sections still need to be filled. Unlike 'session end',
+it does NOT prompt for input or archive the handoff.
+
+Use cases:
+- Check handoff quality mid-session
+- Debug validation logic
+- Verify handoff is ready before ending session
+
+The command looks for the active session handoff in:
+  .orch/session/{window-name}/active/SESSION_HANDOFF.md
+
+If no active handoff exists, it reports that state.
+
+Examples:
+  orch session validate          # Human-readable output
+  orch session validate --json   # Machine-readable output`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSessionValidate()
+	},
+}
+
+// ValidationOutput is the JSON output format for session validate.
+type ValidationOutput struct {
+	Found           bool                    `json:"found"`
+	HandoffPath     string                  `json:"handoff_path,omitempty"`
+	WindowName      string                  `json:"window_name"`
+	TotalSections   int                     `json:"total_sections"`
+	UnfilledCount   int                     `json:"unfilled_count"`
+	RequiredFilled  int                     `json:"required_filled"`
+	RequiredTotal   int                     `json:"required_total"`
+	OptionalFilled  int                     `json:"optional_filled"`
+	OptionalTotal   int                     `json:"optional_total"`
+	UnfilledDetails []ValidationSectionInfo `json:"unfilled_details,omitempty"`
+}
+
+// ValidationSectionInfo describes an unfilled section for JSON output.
+type ValidationSectionInfo struct {
+	Name        string `json:"name"`
+	Required    bool   `json:"required"`
+	Placeholder string `json:"placeholder"`
+	Prompt      string `json:"prompt,omitempty"`
+}
+
+func runSessionValidate() error {
+	// Get window name from active session or current tmux window
+	windowName, err := getWindowNameForValidation()
+	if err != nil {
+		if validateJSON {
+			return outputValidationJSON(&ValidationOutput{
+				Found:      false,
+				WindowName: "",
+			})
+		}
+		return err
+	}
+
+	// Get project directory
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get project directory: %w", err)
+	}
+
+	// Look for active handoff
+	activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+	handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+
+	// Check if active handoff exists
+	if _, err := os.Stat(handoffPath); os.IsNotExist(err) {
+		if validateJSON {
+			return outputValidationJSON(&ValidationOutput{
+				Found:      false,
+				WindowName: windowName,
+			})
+		}
+		fmt.Printf("No active handoff found for window %q\n", windowName)
+		fmt.Printf("  Expected path: %s\n", handoffPath)
+		fmt.Println("\nStart a session with: orch session start \"your goal\"")
+		return nil
+	}
+
+	// Validate the handoff
+	validation, err := validateHandoff(activeDir)
+	if err != nil {
+		return fmt.Errorf("failed to validate handoff: %w", err)
+	}
+
+	// Count required vs optional sections
+	requiredTotal := 0
+	optionalTotal := 0
+	for _, section := range handoffSections {
+		if section.Required {
+			requiredTotal++
+		} else {
+			optionalTotal++
+		}
+	}
+
+	// Count unfilled by type
+	unfilledRequired := 0
+	unfilledOptional := 0
+	for _, section := range validation.Unfilled {
+		if section.Required {
+			unfilledRequired++
+		} else {
+			unfilledOptional++
+		}
+	}
+
+	// Build output
+	output := &ValidationOutput{
+		Found:          true,
+		HandoffPath:    handoffPath,
+		WindowName:     windowName,
+		TotalSections:  len(handoffSections),
+		UnfilledCount:  len(validation.Unfilled),
+		RequiredFilled: requiredTotal - unfilledRequired,
+		RequiredTotal:  requiredTotal,
+		OptionalFilled: optionalTotal - unfilledOptional,
+		OptionalTotal:  optionalTotal,
+	}
+
+	// Add unfilled details
+	for _, section := range validation.Unfilled {
+		output.UnfilledDetails = append(output.UnfilledDetails, ValidationSectionInfo{
+			Name:        section.Name,
+			Required:    section.Required,
+			Placeholder: section.Placeholder,
+			Prompt:      section.Prompt,
+		})
+	}
+
+	if validateJSON {
+		return outputValidationJSON(output)
+	}
+
+	// Human-readable output
+	fmt.Printf("📋 Session Handoff Validation\n")
+	fmt.Printf("   Window: %s\n", windowName)
+	fmt.Printf("   Path:   %s\n\n", handoffPath)
+
+	if len(validation.Unfilled) == 0 {
+		fmt.Println("✅ All sections filled!")
+		fmt.Printf("   Required: %d/%d filled\n", requiredTotal, requiredTotal)
+		fmt.Printf("   Optional: %d/%d filled\n", optionalTotal, optionalTotal)
+		fmt.Println("\n   Ready for: orch session end")
+		return nil
+	}
+
+	// Show summary
+	fmt.Printf("Status: %d/%d sections need attention\n\n", len(validation.Unfilled), len(handoffSections))
+
+	// Group by required vs optional
+	var requiredUnfilled, optionalUnfilled []HandoffSection
+	for _, section := range validation.Unfilled {
+		if section.Required {
+			requiredUnfilled = append(requiredUnfilled, section)
+		} else {
+			optionalUnfilled = append(optionalUnfilled, section)
+		}
+	}
+
+	// Show required unfilled
+	if len(requiredUnfilled) > 0 {
+		fmt.Printf("🔴 Required (%d unfilled):\n", len(requiredUnfilled))
+		for _, section := range requiredUnfilled {
+			fmt.Printf("   • %s\n", section.Name)
+			if len(section.Options) > 0 {
+				fmt.Printf("     Options: %s\n", strings.Join(section.Options, ", "))
+			}
+		}
+		fmt.Println()
+	} else {
+		fmt.Printf("✅ Required: %d/%d filled\n\n", requiredTotal, requiredTotal)
+	}
+
+	// Show optional unfilled
+	if len(optionalUnfilled) > 0 {
+		fmt.Printf("🟡 Optional (%d unfilled):\n", len(optionalUnfilled))
+		for _, section := range optionalUnfilled {
+			skipInfo := ""
+			if section.SkipValue != "" {
+				skipInfo = fmt.Sprintf(" (skip with: %q)", section.SkipValue)
+			}
+			fmt.Printf("   • %s%s\n", section.Name, skipInfo)
+		}
+		fmt.Println()
+	} else {
+		fmt.Printf("✅ Optional: %d/%d filled\n\n", optionalTotal, optionalTotal)
+	}
+
+	// Show next action
+	if len(requiredUnfilled) > 0 {
+		fmt.Println("Next: Fill required sections in SESSION_HANDOFF.md, or run 'orch session end' to fill interactively")
+	} else {
+		fmt.Println("Next: Ready for 'orch session end' (optional sections will be prompted)")
+	}
+
+	return nil
+}
+
+// getWindowNameForValidation returns the window name to use for validation.
+// It first checks for an active session (which stores the window name from session start),
+// then falls back to the current tmux window name.
+func getWindowNameForValidation() (string, error) {
+	// Try to get window name from active session first
+	store, err := session.New("")
+	if err == nil && store.IsActive() {
+		sess := store.Get()
+		if sess != nil && sess.WindowName != "" {
+			return sess.WindowName, nil
+		}
+	}
+
+	// Fall back to current tmux window
+	return tmux.GetCurrentWindowName()
+}
+
+// outputValidationJSON marshals and prints validation output as JSON.
+func outputValidationJSON(output *ValidationOutput) error {
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	fmt.Println(string(data))
+	return nil
+}
+
+// ============================================================================
 // Session Migrate Command - Migrate legacy handoffs to window-scoped structure
 // ============================================================================
 
@@ -1393,6 +1730,349 @@ func runSessionMigrate() error {
 	fmt.Printf("\n✅ Successfully migrated %d handoff(s) to window-scoped structure\n", migratedCount)
 	fmt.Printf("   Window: %s\n", windowName)
 	fmt.Printf("   Location: .orch/session/%s/\n", windowName)
+
+	return nil
+}
+
+// ============================================================================
+// Handoff Update After Complete - Progressive Capture
+// Part of "Capture at Context" principle: update handoff when agent completes
+// ============================================================================
+
+// SpawnCompletionInfo holds information about a completed spawn for handoff update.
+type SpawnCompletionInfo struct {
+	WorkspaceName string // e.g., "og-feat-auth-middleware-14jan-a1b2"
+	BeadsID       string // e.g., "orch-go-abc1"
+	Skill         string // e.g., "feature-impl"
+	Outcome       string // success | partial | failed
+	KeyFinding    string // 1-line insight from the completion
+}
+
+// findActiveSessionHandoff finds the active SESSION_HANDOFF.md for the current session.
+// Walks up from projectDir looking for .orch/session/{windowName}/active/SESSION_HANDOFF.md
+// Returns empty string if no active handoff exists.
+func findActiveSessionHandoff(projectDir string) string {
+	// Get current tmux window name (session identifier)
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		return ""
+	}
+
+	// Look for active handoff in project's session directory
+	activePath := filepath.Join(projectDir, ".orch", "session", windowName, "active", "SESSION_HANDOFF.md")
+	if _, err := os.Stat(activePath); err == nil {
+		return activePath
+	}
+
+	return ""
+}
+
+// promptSpawnCompletion prompts for spawn outcome and key finding after an agent completes.
+// Returns nil values if user skips the prompt.
+func promptSpawnCompletion(workspaceName, beadsID, skill string) (*SpawnCompletionInfo, error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("\n📋 Session Handoff - Spawn Completion")
+	fmt.Printf("   Agent: %s (%s)\n", workspaceName, beadsID)
+	fmt.Println()
+
+	// Prompt for outcome
+	fmt.Print("   Outcome [success/partial/failed] (Enter to skip): ")
+	outcomeStr, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("failed to read outcome: %w", err)
+	}
+	outcomeStr = strings.TrimSpace(outcomeStr)
+
+	// Allow skipping
+	if outcomeStr == "" {
+		fmt.Println("   Skipped spawn update")
+		return nil, nil
+	}
+
+	// Validate outcome
+	validOutcomes := []string{"success", "partial", "failed"}
+	valid := false
+	for _, v := range validOutcomes {
+		if outcomeStr == v {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return nil, fmt.Errorf("invalid outcome: %q (must be one of: success, partial, failed)", outcomeStr)
+	}
+
+	// Prompt for key finding
+	fmt.Print("   Key finding (1-line insight, Enter to skip): ")
+	keyFinding, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key finding: %w", err)
+	}
+	keyFinding = strings.TrimSpace(keyFinding)
+
+	if keyFinding == "" {
+		keyFinding = "Completed"
+	}
+
+	return &SpawnCompletionInfo{
+		WorkspaceName: workspaceName,
+		BeadsID:       beadsID,
+		Skill:         skill,
+		Outcome:       outcomeStr,
+		KeyFinding:    keyFinding,
+	}, nil
+}
+
+// promptEvidenceAndKnowledge prompts for optional evidence and knowledge additions.
+// Returns empty strings if user skips.
+func promptEvidenceAndKnowledge() (evidence, knowledge string, err error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Prompt for evidence (pattern observation)
+	fmt.Println()
+	fmt.Print("   Evidence pattern (optional, Enter to skip): ")
+	evidence, err = reader.ReadString('\n')
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read evidence: %w", err)
+	}
+	evidence = strings.TrimSpace(evidence)
+
+	// Prompt for knowledge (decision/constraint)
+	fmt.Print("   Knowledge learned (decision/constraint, Enter to skip): ")
+	knowledge, err = reader.ReadString('\n')
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read knowledge: %w", err)
+	}
+	knowledge = strings.TrimSpace(knowledge)
+
+	return evidence, knowledge, nil
+}
+
+// updateSpawnsTable adds a completed spawn row to the handoff's Spawns table.
+// Inserts under "### Completed" section.
+func updateSpawnsTable(content string, info *SpawnCompletionInfo) string {
+	// Find the "### Completed" table and add a row
+	completedMarker := "### Completed"
+	idx := strings.Index(content, completedMarker)
+	if idx == -1 {
+		return content // No Completed section found
+	}
+
+	// Find the table header row (starts with |)
+	tableStart := strings.Index(content[idx:], "| Agent |")
+	if tableStart == -1 {
+		return content
+	}
+	tableStart += idx
+
+	// Find the separator row (|-----)
+	separatorIdx := strings.Index(content[tableStart:], "|----")
+	if separatorIdx == -1 {
+		return content
+	}
+	separatorEnd := tableStart + separatorIdx
+	// Find end of separator line
+	newlineIdx := strings.Index(content[separatorEnd:], "\n")
+	if newlineIdx == -1 {
+		return content
+	}
+	insertPoint := separatorEnd + newlineIdx + 1
+
+	// Check if there's a placeholder row (contains {workspace})
+	// Look at the next line after separator
+	restOfContent := content[insertPoint:]
+	nextNewline := strings.Index(restOfContent, "\n")
+	var nextLine string
+	if nextNewline != -1 {
+		nextLine = restOfContent[:nextNewline]
+	} else {
+		nextLine = restOfContent
+	}
+
+	// Build new row
+	newRow := fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+		info.WorkspaceName, info.BeadsID, info.Skill, info.Outcome, info.KeyFinding)
+
+	// If next line is a placeholder, replace it; otherwise insert before it
+	if strings.Contains(nextLine, "{workspace}") || strings.Contains(nextLine, "{beads-id}") {
+		// Replace placeholder row
+		if nextNewline != -1 {
+			return content[:insertPoint] + newRow + content[insertPoint+nextNewline+1:]
+		}
+		return content[:insertPoint] + newRow
+	}
+
+	// Insert new row
+	return content[:insertPoint] + newRow + content[insertPoint:]
+}
+
+// updateEvidenceSection adds a pattern observation to the Evidence section.
+func updateEvidenceSection(content, evidence string) string {
+	if evidence == "" {
+		return content
+	}
+
+	// Find "## Evidence" section
+	evidenceMarker := "## Evidence"
+	idx := strings.Index(content, evidenceMarker)
+	if idx == -1 {
+		return content
+	}
+
+	// Find "### Patterns Across Agents" subsection
+	patternMarker := "### Patterns Across Agents"
+	patternIdx := strings.Index(content[idx:], patternMarker)
+	if patternIdx == -1 {
+		return content
+	}
+	patternIdx += idx
+
+	// Find end of subsection header line
+	newlineIdx := strings.Index(content[patternIdx:], "\n")
+	if newlineIdx == -1 {
+		return content
+	}
+	insertPoint := patternIdx + newlineIdx + 1
+
+	// Look at the next line to check for placeholder
+	restOfContent := content[insertPoint:]
+	nextNewline := strings.Index(restOfContent, "\n")
+	var nextLine string
+	if nextNewline != -1 {
+		nextLine = restOfContent[:nextNewline]
+	} else {
+		nextLine = restOfContent
+	}
+
+	// Build new line
+	newLine := fmt.Sprintf("- %s\n", evidence)
+
+	// If next line is a placeholder, replace it; otherwise insert
+	if strings.Contains(nextLine, "[Pattern 1:") || strings.Contains(nextLine, "[Pattern 2:") {
+		if nextNewline != -1 {
+			return content[:insertPoint] + newLine + content[insertPoint+nextNewline+1:]
+		}
+		return content[:insertPoint] + newLine
+	}
+
+	// Insert after header
+	return content[:insertPoint] + newLine + content[insertPoint:]
+}
+
+// updateKnowledgeSection adds a decision/constraint to the Knowledge section.
+func updateKnowledgeSection(content, knowledge string) string {
+	if knowledge == "" {
+		return content
+	}
+
+	// Find "## Knowledge" section
+	knowledgeMarker := "## Knowledge"
+	idx := strings.Index(content, knowledgeMarker)
+	if idx == -1 {
+		return content
+	}
+
+	// Find "### Decisions Made" subsection
+	decisionMarker := "### Decisions Made"
+	decisionIdx := strings.Index(content[idx:], decisionMarker)
+	if decisionIdx == -1 {
+		return content
+	}
+	decisionIdx += idx
+
+	// Find end of subsection header line
+	newlineIdx := strings.Index(content[decisionIdx:], "\n")
+	if newlineIdx == -1 {
+		return content
+	}
+	insertPoint := decisionIdx + newlineIdx + 1
+
+	// Look at the next line to check for placeholder
+	restOfContent := content[insertPoint:]
+	nextNewline := strings.Index(restOfContent, "\n")
+	var nextLine string
+	if nextNewline != -1 {
+		nextLine = restOfContent[:nextNewline]
+	} else {
+		nextLine = restOfContent
+	}
+
+	// Build new line
+	newLine := fmt.Sprintf("- %s\n", knowledge)
+
+	// If next line is a placeholder, replace it; otherwise insert
+	if strings.Contains(nextLine, "{topic}:") || strings.Contains(nextLine, "{decision}") {
+		if nextNewline != -1 {
+			return content[:insertPoint] + newLine + content[insertPoint+nextNewline+1:]
+		}
+		return content[:insertPoint] + newLine
+	}
+
+	// Insert after header
+	return content[:insertPoint] + newLine + content[insertPoint:]
+}
+
+// UpdateHandoffAfterComplete prompts for handoff updates after an agent completes.
+// This is called from orch complete to implement the "Capture at Context" principle.
+// The handoff is updated with:
+// - Spawns table row (outcome, key finding)
+// - Evidence section (optional pattern observation)
+// - Knowledge section (optional decision/constraint)
+//
+// Parameters:
+//   - projectDir: The project directory where .orch/session/ lives
+//   - workspaceName: The agent workspace name
+//   - beadsID: The beads issue ID
+//   - skill: The skill used for the agent
+//
+// Returns nil if no active session handoff exists (not an error - session may not be active).
+func UpdateHandoffAfterComplete(projectDir, workspaceName, beadsID, skill string) error {
+	// Find active session handoff
+	handoffPath := findActiveSessionHandoff(projectDir)
+	if handoffPath == "" {
+		// No active session - nothing to update
+		return nil
+	}
+
+	// Read current handoff content
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		return fmt.Errorf("failed to read handoff: %w", err)
+	}
+	contentStr := string(content)
+
+	// Prompt for spawn completion info
+	info, err := promptSpawnCompletion(workspaceName, beadsID, skill)
+	if err != nil {
+		return err
+	}
+	if info == nil {
+		// User skipped
+		return nil
+	}
+
+	// Update spawns table
+	contentStr = updateSpawnsTable(contentStr, info)
+
+	// Prompt for evidence and knowledge
+	evidence, knowledge, err := promptEvidenceAndKnowledge()
+	if err != nil {
+		return err
+	}
+
+	// Update evidence section
+	contentStr = updateEvidenceSection(contentStr, evidence)
+
+	// Update knowledge section
+	contentStr = updateKnowledgeSection(contentStr, knowledge)
+
+	// Write updated content
+	if err := os.WriteFile(handoffPath, []byte(contentStr), 0644); err != nil {
+		return fmt.Errorf("failed to write updated handoff: %w", err)
+	}
+
+	fmt.Printf("\n✅ Updated session handoff: %s\n", filepath.Base(filepath.Dir(filepath.Dir(handoffPath))))
 
 	return nil
 }
