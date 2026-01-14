@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -211,6 +212,84 @@ func createActiveSessionHandoff(goal, sessionName string) (string, error) {
 	}
 
 	return handoffPath, nil
+}
+
+// sessionSummary holds user-provided summary data for session handoff.
+type sessionSummary struct {
+	Outcome string // success, partial, blocked, or failed
+	Summary string // Optional brief summary of what was accomplished
+}
+
+// promptForSessionSummary prompts the user for session summary information.
+// This populates placeholders in SESSION_HANDOFF.md before archiving.
+func promptForSessionSummary() (*sessionSummary, error) {
+	fmt.Println("\n📋 Session Handoff Summary")
+	fmt.Println("   Fill in key information for the session handoff:")
+	fmt.Println()
+
+	// Prompt for outcome (required)
+	fmt.Print("Outcome [success/partial/blocked/failed]: ")
+	var outcome string
+	fmt.Scanln(&outcome)
+
+	// Validate outcome
+	validOutcomes := map[string]bool{
+		"success": true,
+		"partial": true,
+		"blocked": true,
+		"failed":  true,
+	}
+	if !validOutcomes[outcome] {
+		return nil, fmt.Errorf("invalid outcome: %q (must be success, partial, blocked, or failed)", outcome)
+	}
+
+	// Prompt for optional summary
+	fmt.Print("Brief summary (optional, press Enter to skip): ")
+	var summary string
+	reader := bufio.NewReader(os.Stdin)
+	summary, _ = reader.ReadString('\n')
+	summary = strings.TrimSpace(summary)
+
+	return &sessionSummary{
+		Outcome: outcome,
+		Summary: summary,
+	}, nil
+}
+
+// updateHandoffTemplate reads SESSION_HANDOFF.md from active/, replaces placeholders
+// with actual values, and writes it back. This finalizes the handoff before archiving.
+func updateHandoffTemplate(activeDir string, summary *sessionSummary, endTime string) error {
+	handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+
+	// Read existing handoff content
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		return fmt.Errorf("failed to read handoff: %w", err)
+	}
+
+	updatedContent := string(content)
+
+	// Replace {end-time} with actual end time
+	updatedContent = strings.ReplaceAll(updatedContent, "{end-time}", endTime)
+
+	// Replace outcome placeholder with user's choice
+	// The template has: {success | partial | blocked | failed}
+	outcomePattern := "{success | partial | blocked | failed}"
+	updatedContent = strings.ReplaceAll(updatedContent, outcomePattern, summary.Outcome)
+
+	// If summary provided, add it to TLDR section
+	if summary.Summary != "" {
+		// Replace the placeholder TLDR with actual summary
+		tldrPlaceholder := "[Fill within first 5 tool calls: What is this session trying to accomplish?]"
+		updatedContent = strings.ReplaceAll(updatedContent, tldrPlaceholder, summary.Summary)
+	}
+
+	// Write updated content back
+	if err := os.WriteFile(handoffPath, []byte(updatedContent), 0644); err != nil {
+		return fmt.Errorf("failed to write updated handoff: %w", err)
+	}
+
+	return nil
 }
 
 // archiveActiveSessionHandoff moves {project}/.orch/session/{window}/active/ to a timestamped directory
@@ -556,12 +635,34 @@ func runSessionEnd() error {
 		}
 	}
 
-	// Archive active session handoff to timestamped directory
-	// This implements the Active Directory Pattern: move active/ to {timestamp}/ and update latest symlink
+	// Get project directory
 	projectDir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to get project directory: %v\n", err)
 	} else {
+		// Check if active session handoff exists
+		windowName, err := tmux.GetCurrentWindowName()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to get window name: %v\n", err)
+		} else {
+			activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+			if _, err := os.Stat(activeDir); err == nil {
+				// Active handoff exists - prompt user for summary and update template
+				summary, err := promptForSessionSummary()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to get session summary: %v\n", err)
+				} else {
+					// Update handoff template with user input
+					endTime := time.Now().Format("2006-01-02 15:04")
+					if err := updateHandoffTemplate(activeDir, summary, endTime); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to update handoff template: %v\n", err)
+					}
+				}
+			}
+		}
+
+		// Archive active session handoff to timestamped directory
+		// This implements the Active Directory Pattern: move active/ to {timestamp}/ and update latest symlink
 		if err := archiveActiveSessionHandoff(projectDir); err != nil {
 			// Only warn - not all sessions will have active handoffs (pre-active-pattern sessions)
 			fmt.Fprintf(os.Stderr, "Warning: failed to archive session handoff: %v\n", err)
@@ -858,6 +959,16 @@ func discoverSessionHandoff() (string, error) {
 				fmt.Fprintf(os.Stderr, "   (This prevents concurrent orchestrators from clobbering each other's context)\n\n")
 				return handoffPath, nil
 			}
+		}
+
+		// PROJECT BOUNDARY CHECK: If .orch/ exists in this directory, this is the project root.
+		// Don't continue walking up - session handoffs are project-specific and should not
+		// leak across project boundaries. This prevents finding parent project or global handoffs.
+		orchDir := filepath.Join(dir, ".orch")
+		if _, err := os.Stat(orchDir); err == nil {
+			// This is the project root - we've checked all possible session handoff locations
+			// within this project (window-scoped, cross-window, and legacy). Stop the walk.
+			break
 		}
 
 		// Move up one directory

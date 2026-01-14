@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,5 +115,123 @@ func TestSuggestionFreshnessCheck(t *testing.T) {
 				t.Errorf("freshness = %v, want %v", isFresh, tt.wantFresh)
 			}
 		})
+	}
+}
+
+func TestUpdateHandoffTemplate(t *testing.T) {
+	// Create a temporary directory for testing
+	tmpDir := t.TempDir()
+
+	// Create a test handoff file with placeholders
+	testContent := `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Test focus
+**Duration:** 2026-01-14 15:00 → {end-time}
+**Outcome:** {success | partial | blocked | failed}
+
+## TLDR
+
+[Fill within first 5 tool calls: What is this session trying to accomplish?]
+
+## More sections...
+`
+	handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte(testContent), 0644); err != nil {
+		t.Fatalf("Failed to write test handoff: %v", err)
+	}
+
+	// Test updating the template
+	summary := &sessionSummary{
+		Outcome: "success",
+		Summary: "Fixed the bug and added tests",
+	}
+	endTime := "2026-01-14 16:00"
+
+	if err := updateHandoffTemplate(tmpDir, summary, endTime); err != nil {
+		t.Fatalf("updateHandoffTemplate failed: %v", err)
+	}
+
+	// Read updated content
+	updatedContent, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("Failed to read updated handoff: %v", err)
+	}
+
+	updated := string(updatedContent)
+
+	// Verify {end-time} was replaced
+	if strings.Contains(updated, "{end-time}") {
+		t.Error("Expected {end-time} to be replaced, but it's still present")
+	}
+	if !strings.Contains(updated, endTime) {
+		t.Errorf("Expected updated content to contain %q, but it doesn't", endTime)
+	}
+
+	// Verify outcome placeholder was replaced
+	if strings.Contains(updated, "{success | partial | blocked | failed}") {
+		t.Error("Expected outcome placeholder to be replaced, but it's still present")
+	}
+	if !strings.Contains(updated, "success") {
+		t.Error("Expected updated content to contain 'success', but it doesn't")
+	}
+
+	// Verify TLDR placeholder was replaced with summary
+	if strings.Contains(updated, "[Fill within first 5 tool calls: What is this session trying to accomplish?]") {
+		t.Error("Expected TLDR placeholder to be replaced, but it's still present")
+	}
+	if !strings.Contains(updated, summary.Summary) {
+		t.Errorf("Expected updated content to contain summary %q, but it doesn't", summary.Summary)
+	}
+}
+
+func TestUpdateHandoffTemplateNoSummary(t *testing.T) {
+	// Test that when no summary is provided, TLDR placeholder remains
+	tmpDir := t.TempDir()
+
+	testContent := `# Session Handoff
+
+**Duration:** 2026-01-14 15:00 → {end-time}
+**Outcome:** {success | partial | blocked | failed}
+
+## TLDR
+
+[Fill within first 5 tool calls: What is this session trying to accomplish?]
+`
+	handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte(testContent), 0644); err != nil {
+		t.Fatalf("Failed to write test handoff: %v", err)
+	}
+
+	summary := &sessionSummary{
+		Outcome: "partial",
+		Summary: "", // Empty summary
+	}
+	endTime := "2026-01-14 16:00"
+
+	if err := updateHandoffTemplate(tmpDir, summary, endTime); err != nil {
+		t.Fatalf("updateHandoffTemplate failed: %v", err)
+	}
+
+	updatedContent, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("Failed to read updated handoff: %v", err)
+	}
+
+	updated := string(updatedContent)
+
+	// End time should still be replaced
+	if strings.Contains(updated, "{end-time}") {
+		t.Error("Expected {end-time} to be replaced")
+	}
+
+	// Outcome should be replaced
+	if !strings.Contains(updated, "partial") {
+		t.Error("Expected outcome to be 'partial'")
+	}
+
+	// TLDR placeholder should remain when no summary provided
+	if !strings.Contains(updated, "[Fill within first 5 tool calls: What is this session trying to accomplish?]") {
+		t.Error("Expected TLDR placeholder to remain when no summary provided")
 	}
 }
