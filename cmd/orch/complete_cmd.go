@@ -508,6 +508,15 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Update session handoff with spawn completion info (Capture at Context principle)
+	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
+	if !isOrchestratorSession && agentName != "" && beadsID != "" {
+		if err := UpdateHandoffAfterComplete(beadsProjectDir, agentName, beadsID, skillName); err != nil {
+			// Non-critical - warn but don't fail completion
+			fmt.Fprintf(os.Stderr, "Warning: failed to update session handoff: %v\n", err)
+		}
+	}
+
 	// Determine close reason
 	reason := completeReason
 	if reason == "" {
