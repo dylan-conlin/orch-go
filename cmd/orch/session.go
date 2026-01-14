@@ -12,6 +12,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
@@ -175,6 +176,10 @@ func runSessionStart(goal string) error {
 	// This proactively surfaces consolidation needs that accumulated since last reflection
 	surfaceReflectSuggestions()
 
+	// Surface focus guidance - group ready issues into thematic threads
+	// Part of Capture at Context principle - surface context when it matters
+	surfaceFocusGuidance()
+
 	return nil
 }
 
@@ -224,79 +229,237 @@ func createActiveSessionHandoff(goal, sessionName string) (string, error) {
 	return handoffPath, nil
 }
 
-// sessionSummary holds user-provided summary data for session handoff.
-type sessionSummary struct {
-	Outcome string // success, partial, blocked, or failed
-	Summary string // Optional brief summary of what was accomplished
+// ============================================================================
+// Session Handoff Validation and Interactive Completion
+// Implements "Capture at Context" principle: validate all sections, prompt for unfilled ones
+// ============================================================================
+
+// HandoffSection describes a section in the SESSION_HANDOFF.md that needs validation.
+type HandoffSection struct {
+	Name        string   // Display name for the section
+	Placeholder string   // Pattern that indicates the section is unfilled
+	Required    bool     // Whether the section must be filled
+	SkipValue   string   // For optional sections, the value that means "skip"
+	Prompt      string   // Question to ask user if unfilled
+	Options     []string // Valid options (for choice-based sections)
 }
 
-// promptForSessionSummary prompts the user for session summary information.
-// This populates placeholders in SESSION_HANDOFF.md before archiving.
-func promptForSessionSummary() (*sessionSummary, error) {
-	fmt.Println("\n📋 Session Handoff Summary")
-	fmt.Println("   Fill in key information for the session handoff:")
-	fmt.Println()
+// handoffSections defines all sections that need validation.
+// Order matters - sections are validated and prompted in this order.
+var handoffSections = []HandoffSection{
+	{
+		Name:        "Outcome",
+		Placeholder: "{success | partial | blocked | failed}",
+		Required:    true,
+		Prompt:      "Session outcome [success/partial/blocked/failed]",
+		Options:     []string{"success", "partial", "blocked", "failed"},
+	},
+	{
+		Name:        "TLDR",
+		Placeholder: "[Fill within first 5 tool calls: What is this session trying to accomplish?]",
+		Required:    true,
+		Prompt:      "Brief summary of what this session accomplished",
+	},
+	{
+		Name:        "Where We Ended",
+		Placeholder: "{state of focus goal now}",
+		Required:    true,
+		Prompt:      "Current state of the focus goal (what's the situation now?)",
+	},
+	{
+		Name:        "Next Recommendation",
+		Placeholder: "{continue-focus | shift-focus | escalate | pause}",
+		Required:    true,
+		Prompt:      "Recommendation for next session [continue-focus/shift-focus/escalate/pause]",
+		Options:     []string{"continue-focus", "shift-focus", "escalate", "pause"},
+	},
+	{
+		Name:        "Evidence",
+		Placeholder: "[Pattern 1:",
+		Required:    false,
+		SkipValue:   "nothing notable",
+		Prompt:      "Notable patterns observed (or 'nothing notable' to skip)",
+	},
+	{
+		Name:        "Knowledge",
+		Placeholder: "{topic}:",
+		Required:    false,
+		SkipValue:   "none",
+		Prompt:      "Key decisions/constraints discovered (or 'none' to skip)",
+	},
+	{
+		Name:        "Friction",
+		Placeholder: "[Tool gap or UX issue]",
+		Required:    false,
+		SkipValue:   "smooth",
+		Prompt:      "Tooling or context friction encountered (or 'smooth' to skip)",
+	},
+}
 
-	// Prompt for outcome (required)
-	fmt.Print("Outcome [success/partial/blocked/failed]: ")
-	var outcome string
-	fmt.Scanln(&outcome)
+// ValidationResult holds the result of validating a session handoff.
+type ValidationResult struct {
+	Unfilled []HandoffSection // Sections that still have placeholders
+	Content  string           // Current handoff content
+}
 
-	// Validate outcome
-	validOutcomes := map[string]bool{
-		"success": true,
-		"partial": true,
-		"blocked": true,
-		"failed":  true,
+// validateHandoff reads SESSION_HANDOFF.md and checks for unfilled sections.
+// Returns the list of sections that still contain placeholder patterns.
+func validateHandoff(activeDir string) (*ValidationResult, error) {
+	handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read handoff: %w", err)
 	}
-	if !validOutcomes[outcome] {
-		return nil, fmt.Errorf("invalid outcome: %q (must be success, partial, blocked, or failed)", outcome)
+
+	contentStr := string(content)
+	var unfilled []HandoffSection
+
+	for _, section := range handoffSections {
+		if strings.Contains(contentStr, section.Placeholder) {
+			unfilled = append(unfilled, section)
+		}
 	}
 
-	// Prompt for optional summary
-	fmt.Print("Brief summary (optional, press Enter to skip): ")
-	var summary string
-	reader := bufio.NewReader(os.Stdin)
-	summary, _ = reader.ReadString('\n')
-	summary = strings.TrimSpace(summary)
-
-	return &sessionSummary{
-		Outcome: outcome,
-		Summary: summary,
+	return &ValidationResult{
+		Unfilled: unfilled,
+		Content:  contentStr,
 	}, nil
 }
 
-// updateHandoffTemplate reads SESSION_HANDOFF.md from active/, replaces placeholders
-// with actual values, and writes it back. This finalizes the handoff before archiving.
-func updateHandoffTemplate(activeDir string, summary *sessionSummary, endTime string) error {
-	handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+// UserResponse holds a user's response to a section prompt.
+type UserResponse struct {
+	Section  HandoffSection
+	Response string
+}
 
-	// Read existing handoff content
-	content, err := os.ReadFile(handoffPath)
+// promptForUnfilledSections prompts the user for each unfilled section.
+// Returns the collected responses.
+func promptForUnfilledSections(unfilled []HandoffSection) ([]UserResponse, error) {
+	if len(unfilled) == 0 {
+		return nil, nil
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	var responses []UserResponse
+
+	fmt.Println("\n📋 Session Handoff Completion")
+	fmt.Printf("   %d section(s) need to be filled before archiving:\n", len(unfilled))
+	fmt.Println()
+
+	for _, section := range unfilled {
+		// Show section name and prompt
+		if section.Required {
+			fmt.Printf("   [REQUIRED] %s\n", section.Name)
+		} else {
+			fmt.Printf("   [Optional] %s\n", section.Name)
+		}
+
+		// Show options if available
+		if len(section.Options) > 0 {
+			fmt.Printf("   Options: %s\n", strings.Join(section.Options, ", "))
+		}
+		if !section.Required && section.SkipValue != "" {
+			fmt.Printf("   (Enter '%s' to skip)\n", section.SkipValue)
+		}
+
+		fmt.Printf("   %s: ", section.Prompt)
+
+		// Read response
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
+		response = strings.TrimSpace(response)
+
+		// Validate choice-based sections
+		if len(section.Options) > 0 && response != "" {
+			valid := false
+			for _, opt := range section.Options {
+				if response == opt {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return nil, fmt.Errorf("invalid value for %s: %q (must be one of: %s)",
+					section.Name, response, strings.Join(section.Options, ", "))
+			}
+		}
+
+		// Check for empty required fields
+		if section.Required && response == "" {
+			return nil, fmt.Errorf("%s is required and cannot be empty", section.Name)
+		}
+
+		responses = append(responses, UserResponse{
+			Section:  section,
+			Response: response,
+		})
+		fmt.Println()
+	}
+
+	return responses, nil
+}
+
+// updateHandoffWithResponses updates the handoff content with user responses.
+// Also updates {end-time} placeholder.
+func updateHandoffWithResponses(content string, responses []UserResponse, endTime string) string {
+	result := content
+
+	// Always update end-time
+	result = strings.ReplaceAll(result, "{end-time}", endTime)
+
+	// Apply each response
+	for _, r := range responses {
+		result = strings.ReplaceAll(result, r.Section.Placeholder, r.Response)
+	}
+
+	return result
+}
+
+// completeAndArchiveHandoff validates the handoff, prompts for unfilled sections,
+// updates the file, and archives it. This is the main entry point for session end.
+// Returns nil if no active handoff exists (legacy sessions).
+func completeAndArchiveHandoff(projectDir, windowName string) error {
+	activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+
+	// Check if active handoff exists
+	if _, err := os.Stat(activeDir); os.IsNotExist(err) {
+		// No active handoff - legacy session, nothing to complete
+		return nil
+	}
+
+	// Validate handoff
+	validation, err := validateHandoff(activeDir)
 	if err != nil {
-		return fmt.Errorf("failed to read handoff: %w", err)
+		return fmt.Errorf("failed to validate handoff: %w", err)
 	}
 
-	updatedContent := string(content)
+	// Show current state
+	if len(validation.Unfilled) == 0 {
+		fmt.Println("\n✅ All handoff sections already filled")
+	} else {
+		// Prompt for unfilled sections
+		responses, err := promptForUnfilledSections(validation.Unfilled)
+		if err != nil {
+			return fmt.Errorf("failed to collect responses: %w", err)
+		}
 
-	// Replace {end-time} with actual end time
-	updatedContent = strings.ReplaceAll(updatedContent, "{end-time}", endTime)
+		// Update handoff with responses
+		endTime := time.Now().Format("2006-01-02 15:04")
+		updatedContent := updateHandoffWithResponses(validation.Content, responses, endTime)
 
-	// Replace outcome placeholder with user's choice
-	// The template has: {success | partial | blocked | failed}
-	outcomePattern := "{success | partial | blocked | failed}"
-	updatedContent = strings.ReplaceAll(updatedContent, outcomePattern, summary.Outcome)
-
-	// If summary provided, add it to TLDR section
-	if summary.Summary != "" {
-		// Replace the placeholder TLDR with actual summary
-		tldrPlaceholder := "[Fill within first 5 tool calls: What is this session trying to accomplish?]"
-		updatedContent = strings.ReplaceAll(updatedContent, tldrPlaceholder, summary.Summary)
+		// Write updated content
+		handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+		if err := os.WriteFile(handoffPath, []byte(updatedContent), 0644); err != nil {
+			return fmt.Errorf("failed to write updated handoff: %w", err)
+		}
 	}
 
-	// Write updated content back
-	if err := os.WriteFile(handoffPath, []byte(updatedContent), 0644); err != nil {
-		return fmt.Errorf("failed to write updated handoff: %w", err)
+	// Archive the handoff
+	if err := archiveActiveSessionHandoff(projectDir, windowName); err != nil {
+		return fmt.Errorf("failed to archive handoff: %w", err)
 	}
 
 	return nil
@@ -348,6 +511,26 @@ const SynthesisWarningThreshold = 10
 // SuggestionFreshnessHours is the maximum age of suggestions to consider fresh.
 // Suggestions older than this are considered stale and won't be shown.
 const SuggestionFreshnessHours = 24
+
+// surfaceFocusGuidance loads ready issues and displays them grouped into thematic threads.
+// This helps orchestrators orient at session start: "Here are your active threads. What's nagging you?"
+// Part of Capture at Context principle.
+func surfaceFocusGuidance() {
+	guidance, err := focus.GenerateFocusGuidance()
+	if err != nil {
+		// Failed to load issues - silently skip (not critical)
+		return
+	}
+
+	if guidance.TotalIssues == 0 {
+		// No ready issues - brief message only
+		fmt.Println("\n📋 No ready issues found")
+		return
+	}
+
+	// Display formatted guidance
+	fmt.Print(focus.FormatFocusGuidance(guidance))
+}
 
 // surfaceReflectSuggestions loads and displays synthesis warnings from reflect-suggestions.json.
 // This proactively surfaces consolidation needs at session start so orchestrators are aware
@@ -660,27 +843,11 @@ func runSessionEnd() error {
 			}
 		}
 
-		// Check if active session handoff exists
-		activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
-		if _, err := os.Stat(activeDir); err == nil {
-			// Active handoff exists - prompt user for summary and update template
-			summary, err := promptForSessionSummary()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to get session summary: %v\n", err)
-			} else {
-				// Update handoff template with user input
-				endTime := time.Now().Format("2006-01-02 15:04")
-				if err := updateHandoffTemplate(activeDir, summary, endTime); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to update handoff template: %v\n", err)
-				}
-			}
-		}
-
-		// Archive active session handoff to timestamped directory
-		// This implements the Active Directory Pattern: move active/ to {timestamp}/ and update latest symlink
-		if err := archiveActiveSessionHandoff(projectDir, windowName); err != nil {
+		// Complete and archive the session handoff
+		// This validates unfilled sections, prompts for completion, then archives
+		if err := completeAndArchiveHandoff(projectDir, windowName); err != nil {
 			// Only warn - not all sessions will have active handoffs (pre-active-pattern sessions)
-			fmt.Fprintf(os.Stderr, "Warning: failed to archive session handoff: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to complete/archive session handoff: %v\n", err)
 		}
 	}
 
