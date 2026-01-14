@@ -680,10 +680,86 @@ func runSessionResume() error {
 	return nil
 }
 
+// scanAllWindowsForMostRecent scans all window-scoped session directories in .orch/session/
+// and returns the most recent SESSION_HANDOFF.md by comparing timestamps.
+// Returns empty string if no handoffs found across all windows.
+func scanAllWindowsForMostRecent(sessionBaseDir string) (string, error) {
+	// Read all entries in .orch/session/
+	entries, err := os.ReadDir(sessionBaseDir)
+	if err != nil {
+		return "", err
+	}
+
+	var mostRecentPath string
+	var mostRecentTimestamp string
+
+	// Scan each window directory
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		windowName := entry.Name()
+
+		// Skip legacy timestamp directories (start with digit) and special directories
+		if len(windowName) > 0 && windowName[0] >= '0' && windowName[0] <= '9' {
+			continue
+		}
+		if windowName == "latest" || windowName == "active" {
+			continue
+		}
+
+		// Check for latest symlink in this window's directory
+		latestPath := filepath.Join(sessionBaseDir, windowName, "latest")
+		stat, err := os.Lstat(latestPath)
+		if err != nil {
+			continue // No latest symlink for this window
+		}
+
+		// Resolve the symlink to get the timestamp directory
+		var sessionDir string
+		if stat.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(latestPath)
+			if err != nil {
+				continue
+			}
+			if !filepath.IsAbs(target) {
+				sessionDir = filepath.Join(sessionBaseDir, windowName, target)
+			} else {
+				sessionDir = target
+			}
+		} else {
+			sessionDir = latestPath
+		}
+
+		// Check if SESSION_HANDOFF.md exists
+		handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+		if _, err := os.Stat(handoffPath); err != nil {
+			continue // No handoff in this session directory
+		}
+
+		// Extract timestamp from directory name for comparison
+		// Format: YYYY-MM-DD-HHMM (e.g., "2026-01-13-0830")
+		timestamp := filepath.Base(sessionDir)
+
+		// Compare timestamps (lexicographic comparison works for YYYY-MM-DD-HHMM format)
+		if timestamp > mostRecentTimestamp {
+			mostRecentTimestamp = timestamp
+			mostRecentPath = handoffPath
+		}
+	}
+
+	return mostRecentPath, nil
+}
+
 // discoverSessionHandoff walks up the directory tree to find .orch/session/{window-name}/latest/SESSION_HANDOFF.md.
 // Returns the full path to the handoff file, or an error if not found.
 // Window-scoping prevents concurrent orchestrator sessions from clobbering each other's context.
-// Fallback: If latest/ doesn't exist, checks active/ (enables mid-session resume).
+// Discovery order:
+// 1. Current window's latest symlink (window isolation)
+// 2. Current window's active directory (mid-session resume)
+// 3. Cross-window scan of all latest symlinks (convenience on window switch)
+// 4. Legacy non-window-scoped structure (backward compatibility)
 func discoverSessionHandoff() (string, error) {
 	// Get current tmux window name (or "default" if not in tmux)
 	windowName, err := tmux.GetCurrentWindowName()
@@ -737,6 +813,17 @@ func discoverSessionHandoff() (string, error) {
 			handoffPath := filepath.Join(activePath, "SESSION_HANDOFF.md")
 			if _, err := os.Stat(handoffPath); err == nil {
 				return handoffPath, nil
+			}
+		}
+
+		// CROSS-WINDOW SCAN: If current window has no history, scan all windows for most recent
+		// This enables convenient window switching while preserving window isolation
+		sessionBaseDir := filepath.Join(dir, ".orch", "session")
+		if _, err := os.Stat(sessionBaseDir); err == nil {
+			// .orch/session/ exists - scan all windows
+			mostRecentPath, err := scanAllWindowsForMostRecent(sessionBaseDir)
+			if err == nil && mostRecentPath != "" {
+				return mostRecentPath, nil
 			}
 		}
 

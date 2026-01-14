@@ -418,3 +418,82 @@ func TestDiscoverSessionHandoff_PreferWindowScoped(t *testing.T) {
 		t.Errorf("got content %q, want %q (should prefer window-scoped)", string(content), "window-scoped content")
 	}
 }
+
+// TestDiscoverSessionHandoff_CrossWindowScan tests cross-window scan when current window has no history
+func TestDiscoverSessionHandoff_CrossWindowScan(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Save and restore working directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Change to test directory
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create multiple window directories with different timestamps
+	// Window 1: older session (2026-01-13-0800)
+	window1Dir := filepath.Join(tmpDir, ".orch", "session", "window1", "2026-01-13-0800")
+	if err := os.MkdirAll(window1Dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	window1Handoff := filepath.Join(window1Dir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(window1Handoff, []byte("window1 content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	window1Latest := filepath.Join(tmpDir, ".orch", "session", "window1", "latest")
+	if err := os.Symlink("2026-01-13-0800", window1Latest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Window 2: most recent session (2026-01-13-1430) - this should be found
+	window2Dir := filepath.Join(tmpDir, ".orch", "session", "window2", "2026-01-13-1430")
+	if err := os.MkdirAll(window2Dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	window2Handoff := filepath.Join(window2Dir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(window2Handoff, []byte("window2 most recent"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	window2Latest := filepath.Join(tmpDir, ".orch", "session", "window2", "latest")
+	if err := os.Symlink("2026-01-13-1430", window2Latest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Window 3: middle timestamp (2026-01-13-1200)
+	window3Dir := filepath.Join(tmpDir, ".orch", "session", "window3", "2026-01-13-1200")
+	if err := os.MkdirAll(window3Dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	window3Handoff := filepath.Join(window3Dir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(window3Handoff, []byte("window3 content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	window3Latest := filepath.Join(tmpDir, ".orch", "session", "window3", "latest")
+	if err := os.Symlink("2026-01-13-1200", window3Latest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Current window has NO history (will trigger cross-window scan)
+	// discoverSessionHandoff will get the current window name, find no history,
+	// then scan all windows and return the most recent (window2)
+
+	// Test discovery - should find window2's handoff (most recent across all windows)
+	got, err := discoverSessionHandoff()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it found the most recent handoff across all windows
+	content, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatalf("failed to read discovered handoff: %v", err)
+	}
+	if string(content) != "window2 most recent" {
+		t.Errorf("got content %q, want %q (should find most recent across all windows)", string(content), "window2 most recent")
+	}
+}
