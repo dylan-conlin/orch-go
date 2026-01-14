@@ -177,37 +177,37 @@ Yes, the worker naming system correctly generates workspace names for spawned ag
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-work-test-worker-naming-13jan-e072/SPAWN_CONTEXT.md - Verified spawn context generation and content structure
+- /Users/dylanconlin/Documents/personal/orch-go/.kb/investigations/2026-01-13-inv-test-worker-naming.md - This investigation file, created via kb CLI
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Verify project directory
+pwd
 
-# [Command description]
-[command]
+# Create investigation file
+kb create investigation test-worker-naming
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- None required for this test
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Workspace:** /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/og-work-test-worker-naming-13jan-e072/ - Test workspace created by spawn system
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-13:** Investigation started
+- Initial question: Does the worker naming system correctly generate workspace names for spawned agents?
+- Context: Test spawn to verify naming system functionality using hello skill
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-13:** Test execution completed
+- Verified workspace name generation (og-work-test-worker-naming-13jan-e072)
+- Verified SPAWN_CONTEXT.md creation and population
+- Verified investigation file creation via kb CLI
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-13:** Investigation completed
+- Status: Complete
+- Key outcome: Worker naming system functions correctly with expected pattern and all components operational
