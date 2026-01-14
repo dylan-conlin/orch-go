@@ -208,41 +208,52 @@ The follow-orchestrator case shows all four failures: empty template archived, "
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Remove "Promote to Decision" field from investigation template**
+- **Pros:** Eliminates performative documentation, reduces template complexity
+- **Cons:** Loses the explicit forcing function - orchestrators might forget to consider promotion entirely
+- **When to use instead:** If we shift to "kb quick decide" during investigation as primary decision capture mechanism
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Document manual promotion workflow in orchestrator skill**
+- **Pros:** No code changes needed, clarifies existing process
+- **Cons:** Relies on orchestrator discipline - easy to skip during busy sessions, same problem as current state
+- **When to use instead:** As a stopgap until kb reflect can be extended
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Option D: Use kb quick decide during investigation instead of post-investigation promotion**
+- **Pros:** Captures decisions in the moment when context is fresh, already has tooling (kb reflect --type promote)
+- **Cons:** Requires changing investigation skill guidance, doesn't help with existing backlog of recommend-yes investigations
+- **When to use instead:** For future investigations - still need to address existing backlog
+
+**Rationale for recommendation:** Option A (kb reflect --type investigation-promotion) addresses the immediate backlog of ~10 investigations flagged for promotion while creating a proactive check for future cases. Options B-D either abandon the field entirely (losing the forcing function) or rely on discipline (proven insufficient). Extending kb reflect is the only approach that makes the field actionable without changing investigation workflow.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Add `kb reflect --type investigation-promotion` to kb-cli (immediate value, surfaces existing backlog)
+- Clean up empty templates from `.kb/investigations/archived/` (reduces noise, one-time cleanup)
+- Create beads issues for the ~10 investigations with "recommend-yes" that need decision promotion (address backlog)
+- Update dashboard-architecture.md Evolution section with Jan 7 follow-orchestrator entry (fix identified gap)
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ "Promote to Decision" field might have variations in wording (recommend-yes vs Recommend-yes vs recommend_yes) - grep needs to be case-insensitive and flexible
+- ⚠️ Investigation template has evolved - older investigations might not have D.E.K.N. summary section, need fallback to extract recommendation reason
+- ⚠️ Some investigations might be archived but still have "recommend-yes" - decide whether to include archived in the search or skip them
+- ⚠️ Root cause of agent death/restart pattern unknown (Finding 3) - cleaning up empty templates is a symptom fix, not root cause fix
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Why do agents die mid-investigation and create new files instead of resuming? (affects 10+ investigations)
+- What criteria should determine "recommend-yes" vs "recommend-no"? (107 recommend-no suggests possible over-use of that flag)
+- Should model Evolution sections be auto-updated from investigation completions? (or remain manual curation)
+- Is there a way to validate "tactical vs architectural" classification automatically?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ `kb reflect --type investigation-promotion` surfaces the ~10 known recommend-yes investigations
+- ✅ Running the command takes <1s (should be simple grep, not complex analysis)
+- ✅ Output includes enough context to decide whether to act (investigation path, date, reason from D.E.K.N.)
+- ✅ Orchestrator skill documents when to run this command (completion workflow, session hygiene)
+- ✅ Empty templates removed from archive directory (reduces from 10+ to 0)
+- ✅ Dashboard model Evolution section updated with follow-orchestrator entry
 
 ---
 
