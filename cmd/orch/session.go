@@ -102,11 +102,12 @@ func runSessionStart(goal string) error {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
 
-	// Create session workspace with SESSION_HANDOFF.md
-	workspacePath, err := createSessionWorkspace(goal)
+	// Create active session handoff in project-specific location
+	// This replaces the global ~/.orch workspace with project/.orch/session/{window}/active/
+	handoffPath, err := createActiveSessionHandoff(goal)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to create session workspace: %v\n", err)
-		// Continue anyway - workspace is nice-to-have for interactive sessions
+		fmt.Fprintf(os.Stderr, "Warning: failed to create active session handoff: %v\n", err)
+		// Continue anyway - handoff is nice-to-have for interactive sessions
 	}
 
 	// Log the session start
@@ -116,8 +117,8 @@ func runSessionStart(goal string) error {
 		"was_active": wasActive,
 		"started_at": time.Now().Format(session.TimeFormat),
 	}
-	if workspacePath != "" {
-		eventData["workspace_path"] = workspacePath
+	if handoffPath != "" {
+		eventData["handoff_path"] = handoffPath
 	}
 	event := events.Event{
 		Type:      "session.started",
@@ -133,8 +134,8 @@ func runSessionStart(goal string) error {
 	}
 	fmt.Printf("Session started: %s\n", goal)
 	fmt.Printf("  Start time: %s\n", time.Now().Format("15:04"))
-	if workspacePath != "" {
-		fmt.Printf("  Workspace:  %s\n", workspacePath)
+	if handoffPath != "" {
+		fmt.Printf("  Handoff:    %s\n", handoffPath)
 	}
 
 	// Surface reflection suggestions for high-count synthesis opportunities
@@ -144,26 +145,33 @@ func runSessionStart(goal string) error {
 	return nil
 }
 
-// createSessionWorkspace creates a workspace directory for interactive orchestrator sessions.
-// This provides parity with spawned orchestrators by pre-creating SESSION_HANDOFF.md.
-// Workspace is created in ~/.orch/session/{date}/ to match existing session directory structure.
-func createSessionWorkspace(goal string) (string, error) {
-	home, err := os.UserHomeDir()
+// createActiveSessionHandoff creates SESSION_HANDOFF.md in {project}/.orch/session/{window}/active/
+// for progressive documentation during the session. This is the Active Directory Pattern:
+// - Session start creates active/ with PreFilledSessionHandoffTemplate
+// - Orchestrators fill sections as they work
+// - Session end archives active/ to timestamped directory
+func createActiveSessionHandoff(goal string) (string, error) {
+	// Get current working directory (project directory)
+	projectDir, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
+		return "", fmt.Errorf("failed to get project directory: %w", err)
 	}
 
-	// Use date-based directory for session workspace (matches existing structure)
-	dateStr := time.Now().Format("2006-01-02")
-	workspacePath := filepath.Join(home, ".orch", "session", dateStr)
+	// Get current tmux window name (or "default" if not in tmux)
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		return "", fmt.Errorf("failed to get tmux window name: %w", err)
+	}
 
-	// Create workspace directory
-	if err := os.MkdirAll(workspacePath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create workspace directory: %w", err)
+	// Create active directory: .orch/session/{window}/active/
+	activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+	if err := os.MkdirAll(activeDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create active directory: %w", err)
 	}
 
 	// Generate workspace name for SESSION_HANDOFF.md
 	// Interactive sessions use "interactive-" prefix + date + time suffix
+	dateStr := time.Now().Format("2006-01-02")
 	timeStr := time.Now().Format("150405")
 	workspaceName := fmt.Sprintf("interactive-%s-%s", dateStr, timeStr)
 	startTime := time.Now().Format("2006-01-02 15:04")
@@ -174,19 +182,62 @@ func createSessionWorkspace(goal string) (string, error) {
 		sessionGoal = "Interactive session"
 	}
 
-	// Generate pre-filled SESSION_HANDOFF.md content
+	// Generate pre-filled SESSION_HANDOFF.md content using comprehensive template
 	content, err := spawn.GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate session handoff: %w", err)
 	}
 
-	// Write SESSION_HANDOFF.md
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	// Write SESSION_HANDOFF.md to active/
+	handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
 	if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
 		return "", fmt.Errorf("failed to write session handoff: %w", err)
 	}
 
-	return workspacePath, nil
+	return handoffPath, nil
+}
+
+// archiveActiveSessionHandoff moves {project}/.orch/session/{window}/active/ to a timestamped directory
+// and updates the latest symlink. This completes the Active Directory Pattern lifecycle.
+// Returns nil if active/ doesn't exist (not an error - session may predate active pattern).
+func archiveActiveSessionHandoff(projectDir string) error {
+	// Get current tmux window name (or "default" if not in tmux)
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		return fmt.Errorf("failed to get tmux window name: %w", err)
+	}
+
+	// Check if active/ directory exists
+	activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+	if _, err := os.Stat(activeDir); os.IsNotExist(err) {
+		// Active directory doesn't exist - this is OK (session may predate active pattern)
+		return nil
+	}
+
+	// Create timestamped directory name (YYYY-MM-DD-HHMM format)
+	timestamp := time.Now().Format("2006-01-02-1504")
+	timestampedDir := filepath.Join(projectDir, ".orch", "session", windowName, timestamp)
+
+	// Rename active/ to timestamped directory (atomic move)
+	if err := os.Rename(activeDir, timestampedDir); err != nil {
+		return fmt.Errorf("failed to rename active to timestamped directory: %w", err)
+	}
+
+	// Update latest symlink to point to new timestamped directory
+	latestSymlink := filepath.Join(projectDir, ".orch", "session", windowName, "latest")
+
+	// Remove existing symlink if present
+	_ = os.Remove(latestSymlink)
+
+	// Create new symlink (relative path to avoid absolute path issues)
+	if err := os.Symlink(timestamp, latestSymlink); err != nil {
+		return fmt.Errorf("failed to create latest symlink: %w", err)
+	}
+
+	fmt.Printf("\n📋 Session handoff archived: %s\n", timestampedDir)
+	fmt.Printf("   Latest symlink updated: .orch/session/%s/latest -> %s\n", windowName, timestamp)
+
+	return nil
 }
 
 // SynthesisWarningThreshold is the minimum count of investigations to show a warning.
@@ -446,16 +497,6 @@ func formatSessionDuration(d time.Duration) string {
 // Session End Command
 // ============================================================================
 
-// SessionReflection holds the reflection content gathered during session end.
-type SessionReflection struct {
-	Summary         string
-	Accomplishments string
-	ActiveWork      string
-	PendingWork     string
-	Recommendations string
-	Context         string
-}
-
 var sessionEndCmd = &cobra.Command{
 	Use:   "end",
 	Short: "End the current session",
@@ -499,20 +540,15 @@ func runSessionEnd() error {
 		}
 	}
 
-	// Prompt for session reflection
-	reflection, err := promptSessionReflection(statuses)
-	if err != nil {
-		return fmt.Errorf("failed to gather reflection: %w", err)
-	}
-
-	// Create project-specific session directory and handoff
-	// This creates .orch/session/{timestamp}/ and updates latest symlink
+	// Archive active session handoff to timestamped directory
+	// This implements the Active Directory Pattern: move active/ to {timestamp}/ and update latest symlink
 	projectDir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to get project directory: %v\n", err)
 	} else {
-		if err := createSessionHandoffDirectory(projectDir, store.Get(), reflection); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to create session handoff directory: %v\n", err)
+		if err := archiveActiveSessionHandoff(projectDir); err != nil {
+			// Only warn - not all sessions will have active handoffs (pre-active-pattern sessions)
+			fmt.Fprintf(os.Stderr, "Warning: failed to archive session handoff: %v\n", err)
 		}
 	}
 
@@ -557,50 +593,6 @@ func runSessionEnd() error {
 	}
 
 	return nil
-}
-
-// promptSessionReflection creates a minimal reflection without prompting.
-// This allows orchestrators running in terminals to end sessions without blocking on stdin.
-func promptSessionReflection(statuses []session.SpawnStatus) (*SessionReflection, error) {
-	reflection := &SessionReflection{
-		Summary:          "[Session ended - no reflection provided]",
-		Accomplishments:  "[Orchestrator completed session]",
-		ActiveWork:       "",
-		PendingWork:      "[Not recorded]",
-		Recommendations:  "[See beads backlog]",
-		Context:          "[See session commits]",
-	}
-
-	// Auto-populate active agents if any
-	activeAgents := []string{}
-	for _, s := range statuses {
-		if s.State == "active" {
-			activeAgents = append(activeAgents, fmt.Sprintf("- %s: %s", s.BeadsID, s.Skill))
-		}
-	}
-	if len(activeAgents) > 0 {
-		reflection.ActiveWork = strings.Join(activeAgents, "\n")
-	} else {
-		reflection.ActiveWork = "[No active agents]"
-	}
-
-	return reflection, nil
-}
-
-// readMultiline reads input until a blank line is encountered.
-func readMultiline() string {
-	var lines []string
-	for {
-		var line string
-		fmt.Scanln(&line)
-		if line == "" && len(lines) > 0 {
-			break
-		}
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 // ============================================================================
@@ -675,6 +667,7 @@ func runSessionResume() error {
 // discoverSessionHandoff walks up the directory tree to find .orch/session/{window-name}/latest/SESSION_HANDOFF.md.
 // Returns the full path to the handoff file, or an error if not found.
 // Window-scoping prevents concurrent orchestrator sessions from clobbering each other's context.
+// Fallback: If latest/ doesn't exist, checks active/ (enables mid-session resume).
 func discoverSessionHandoff() (string, error) {
 	// Get current tmux window name (or "default" if not in tmux)
 	windowName, err := tmux.GetCurrentWindowName()
@@ -691,7 +684,7 @@ func discoverSessionHandoff() (string, error) {
 	// Walk up the directory tree
 	dir := currentDir
 	for {
-		// Check for .orch/session/{window-name}/latest symlink
+		// Check for .orch/session/{window-name}/latest symlink (primary path)
 		latestPath := filepath.Join(dir, ".orch", "session", windowName, "latest")
 		if stat, err := os.Lstat(latestPath); err == nil {
 			// latest exists - check if it's a symlink or directory
@@ -715,6 +708,17 @@ func discoverSessionHandoff() (string, error) {
 
 			// Check for SESSION_HANDOFF.md in the session directory
 			handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+			if _, err := os.Stat(handoffPath); err == nil {
+				return handoffPath, nil
+			}
+		}
+
+		// FALLBACK: Check for .orch/session/{window-name}/active/ (mid-session resume)
+		// This enables session resume even if session end hasn't archived yet
+		activePath := filepath.Join(dir, ".orch", "session", windowName, "active")
+		if _, err := os.Stat(activePath); err == nil {
+			// active/ exists - check for SESSION_HANDOFF.md
+			handoffPath := filepath.Join(activePath, "SESSION_HANDOFF.md")
 			if _, err := os.Stat(handoffPath); err == nil {
 				return handoffPath, nil
 			}
@@ -766,139 +770,6 @@ func discoverSessionHandoff() (string, error) {
 	windowScopedPath := fmt.Sprintf(".orch/session/%s/latest/SESSION_HANDOFF.md", windowName)
 	legacyPath := ".orch/session/latest/SESSION_HANDOFF.md"
 	return "", fmt.Errorf("no session handoff found for window %q\nChecked:\n  - Window-scoped: %s\n  - Legacy: %s", windowName, windowScopedPath, legacyPath)
-}
-
-// createSessionHandoffDirectory creates a timestamped session directory with SESSION_HANDOFF.md
-// and updates the latest symlink to point to it.
-// Session handoffs are scoped by tmux window name to prevent concurrent orchestrators from clobbering each other.
-func createSessionHandoffDirectory(projectDir string, sess *session.Session, reflection *SessionReflection) error {
-	if sess == nil {
-		return fmt.Errorf("no active session")
-	}
-
-	// Get current tmux window name (or "default" if not in tmux)
-	windowName, err := tmux.GetCurrentWindowName()
-	if err != nil {
-		return fmt.Errorf("failed to get tmux window name: %w", err)
-	}
-
-	// Create timestamped directory name (YYYY-MM-DD-HHMM format)
-	timestamp := time.Now().Format("2006-01-02-1504")
-	// Structure: .orch/session/{window-name}/{timestamp}/
-	sessionDir := filepath.Join(projectDir, ".orch", "session", windowName, timestamp)
-
-	// Create the session directory (with parent window-scoped directory)
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
-		return fmt.Errorf("failed to create session directory: %w", err)
-	}
-
-	// Populate handoff content from reflection or use placeholders
-	summary := reflection.Summary
-	if summary == "" {
-		summary = "[No summary provided]"
-	}
-
-	accomplishments := reflection.Accomplishments
-	if accomplishments == "" {
-		accomplishments = "[No accomplishments recorded]"
-	}
-
-	activeWork := reflection.ActiveWork
-	if activeWork == "" {
-		activeWork = "[No active work]"
-	}
-
-	pendingWork := reflection.PendingWork
-	if pendingWork == "" {
-		pendingWork = "[No pending work recorded]"
-	}
-
-	recommendations := reflection.Recommendations
-	if recommendations == "" {
-		recommendations = "[No recommendations]"
-	}
-
-	context := reflection.Context
-	if context == "" {
-		context = "[No additional context]"
-	}
-
-	// Generate SESSION_HANDOFF.md content with populated reflection
-	handoffContent := fmt.Sprintf(`# Session Handoff
-
-**Session Goal:** %s
-**Started:** %s
-**Duration:** %s
-
----
-
-## Summary
-
-%s
-
----
-
-## What Was Accomplished
-
-%s
-
----
-
-## Active Work
-
-%s
-
----
-
-## Pending Work
-
-%s
-
----
-
-## Recommendations
-
-%s
-
----
-
-## Context for Next Session
-
-%s
-`,
-		sess.Goal,
-		sess.StartedAt.Format("2006-01-02 15:04"),
-		time.Since(sess.StartedAt).String(),
-		summary,
-		accomplishments,
-		activeWork,
-		pendingWork,
-		recommendations,
-		context,
-	)
-
-	// Write SESSION_HANDOFF.md
-	handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
-	if err := os.WriteFile(handoffPath, []byte(handoffContent), 0644); err != nil {
-		return fmt.Errorf("failed to write SESSION_HANDOFF.md: %w", err)
-	}
-
-	// Update window-scoped latest symlink
-	// Structure: .orch/session/{window-name}/latest -> {timestamp}
-	latestSymlink := filepath.Join(projectDir, ".orch", "session", windowName, "latest")
-
-	// Remove existing symlink if present
-	_ = os.Remove(latestSymlink)
-
-	// Create new symlink (relative path to avoid absolute path issues)
-	if err := os.Symlink(timestamp, latestSymlink); err != nil {
-		return fmt.Errorf("failed to create latest symlink: %w", err)
-	}
-
-	fmt.Printf("\n📋 Session handoff created: %s\n", handoffPath)
-	fmt.Printf("   Latest symlink updated: .orch/session/%s/latest -> %s\n", windowName, timestamp)
-
-	return nil
 }
 
 // ============================================================================

@@ -4,9 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
@@ -174,30 +172,8 @@ func TestDiscoverSessionHandoff(t *testing.T) {
 	}
 }
 
-func TestCreateSessionHandoffDirectory(t *testing.T) {
+func TestArchiveActiveSessionHandoff(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create a mock session
-	sess := &session.Session{
-		Goal:      "Test goal",
-		StartedAt: time.Now(),
-	}
-
-	// Create a mock reflection
-	reflection := &SessionReflection{
-		Summary:         "Test summary",
-		Accomplishments: "Test accomplishments",
-		ActiveWork:      "Test active work",
-		PendingWork:     "Test pending work",
-		Recommendations: "Test recommendations",
-		Context:         "Test context",
-	}
-
-	// Test creating session handoff directory
-	err := createSessionHandoffDirectory(tmpDir, sess, reflection)
-	if err != nil {
-		t.Fatalf("createSessionHandoffDirectory() failed: %v", err)
-	}
 
 	// Get current window name to construct the window-scoped path
 	windowName, err := tmux.GetCurrentWindowName()
@@ -205,7 +181,31 @@ func TestCreateSessionHandoffDirectory(t *testing.T) {
 		t.Fatalf("failed to get window name: %v", err)
 	}
 
-	// Verify window-scoped latest symlink exists
+	// Create active directory with SESSION_HANDOFF.md
+	activeDir := filepath.Join(tmpDir, ".orch", "session", windowName, "active")
+	if err := os.MkdirAll(activeDir, 0755); err != nil {
+		t.Fatalf("failed to create active directory: %v", err)
+	}
+
+	// Write a test handoff file
+	handoffPath := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+	testContent := "Test session handoff content"
+	if err := os.WriteFile(handoffPath, []byte(testContent), 0644); err != nil {
+		t.Fatalf("failed to write SESSION_HANDOFF.md: %v", err)
+	}
+
+	// Test archiving active directory
+	err = archiveActiveSessionHandoff(tmpDir)
+	if err != nil {
+		t.Fatalf("archiveActiveSessionHandoff() failed: %v", err)
+	}
+
+	// Verify active directory was removed
+	if _, err := os.Stat(activeDir); !os.IsNotExist(err) {
+		t.Error("active directory still exists after archiving")
+	}
+
+	// Verify latest symlink exists
 	latestSymlink := filepath.Join(tmpDir, ".orch", "session", windowName, "latest")
 	stat, err := os.Lstat(latestSymlink)
 	if err != nil {
@@ -221,33 +221,25 @@ func TestCreateSessionHandoffDirectory(t *testing.T) {
 		t.Fatalf("failed to read symlink: %v", err)
 	}
 
-	handoffPath := filepath.Join(tmpDir, ".orch", "session", windowName, target, "SESSION_HANDOFF.md")
-	content, err := os.ReadFile(handoffPath)
+	archivedHandoffPath := filepath.Join(tmpDir, ".orch", "session", windowName, target, "SESSION_HANDOFF.md")
+	content, err := os.ReadFile(archivedHandoffPath)
 	if err != nil {
-		t.Fatalf("SESSION_HANDOFF.md not created: %v", err)
+		t.Fatalf("SESSION_HANDOFF.md not found in archived directory: %v", err)
 	}
 
-	// Verify content contains expected fields
-	contentStr := string(content)
-	if !contains(contentStr, "Test goal") {
-		t.Error("handoff missing session goal")
+	// Verify content matches original
+	if string(content) != testContent {
+		t.Errorf("archived content = %q, want %q", string(content), testContent)
 	}
-	if !contains(contentStr, "Session Handoff") {
-		t.Error("handoff missing title")
-	}
+}
 
-	// Verify reflection content is populated (not placeholders)
-	if !contains(contentStr, "Test summary") {
-		t.Error("handoff missing reflection summary")
-	}
-	if !contains(contentStr, "Test accomplishments") {
-		t.Error("handoff missing reflection accomplishments")
-	}
-	if !contains(contentStr, "Test active work") {
-		t.Error("handoff missing reflection active work")
-	}
-	if contains(contentStr, "[Orchestrator fills this in during session end]") {
-		t.Error("handoff contains old placeholder text - reflection not populated")
+func TestArchiveActiveSessionHandoff_NoActiveDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Test archiving when no active directory exists (should not error)
+	err := archiveActiveSessionHandoff(tmpDir)
+	if err != nil {
+		t.Errorf("archiveActiveSessionHandoff() should not error when active directory doesn't exist, got: %v", err)
 	}
 }
 
