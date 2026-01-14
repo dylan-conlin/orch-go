@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Implementation requires changes to skillc repo (separate from orch-go), and prerequisite task orch-go-lv3yx.4 is blocked on same cross-repo workflow question.
+**Delta:** Backend for load-bearing pattern validation was already complete; needed CLI integration in printCheckResult() and checkJSON() to display warnings to users.
 
-**Evidence:** skillc located at ~/Documents/personal/skillc/ (verified via `which skillc`); LoadBearingEntry not in codebase (verified via `rg LoadBearing`); task .4 status in_progress with no active agent (verified via `bd show` and `orch status`).
+**Evidence:** LoadBearingEntry struct exists in manifest.go:21-27 (added previously); ValidateLoadBearing() exists in checker.go (added previously); test with missing patterns shows correct error/warning output and JSON format (verified via `skillc check` and `skillc check --json`).
 
-**Knowledge:** Both .4 (struct + parsing) and .5 (validation) need skillc changes following established patterns in manifest.go and checker.go; combined scope is manageable (≤2 hours).
+**Knowledge:** Backend follows established validation patterns (checksum, budget, links); CLI integration adds output to printCheckResult (human-readable) and checkJSON (machine-readable); error-severity blocks deploy, warn-severity is advisory.
 
-**Next:** Get orchestrator approval to proceed with combined .4 + .5 implementation in skillc repo, then implement, test, and commit to skillc with kb entries in orch-go workspace.
+**Next:** Feature complete - skillc now warns when load-bearing patterns missing during check/build/deploy. Investigation committed to orch-go, implementation committed to skillc (commit 136a257).
 
-**Promote to Decision:** recommend-no - tactical implementation decision, not architectural
+**Promote to Decision:** recommend-no - implementation of existing decision (2026-01-08-load-bearing-guidance-data-model.md)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-14
 **Updated:** 2026-01-14
 **Owner:** worker-agent (orch-go-lv3yx.5)
-**Phase:** Blocked - Waiting for orchestrator guidance on cross-repo workflow
-**Next Step:** Get orchestrator approval to proceed with combined .4 + .5 implementation
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None - feature complete and tested
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -85,13 +85,13 @@ Guidelines:
 
 ---
 
-### Finding 4: Prerequisite task orch-go-lv3yx.4 is in_progress with same cross-repo constraint
+### Finding 4: Backend implementation already complete, CLI integration missing
 
-**Evidence:** `bd show orch-go-lv3yx.4` shows status "in_progress" with last comment at 2026-01-14 22:25. Agent raised same questions: cross-repo work (skillc vs orch-go) and whether to implement kb friction command or manual skill.yaml editing.
+**Evidence:** `rg LoadBearing` shows LoadBearingEntry struct in manifest.go:21-27, ValidateLoadBearing() in checker.go, integration into Check() function, and HasErrors()/HasWarnings() handling severity correctly.
 
-**Source:** `bd show orch-go-lv3yx.4` - comments from agent working on .4
+**Source:** `/Users/dylanconlin/Documents/personal/skillc/pkg/compiler/manifest.go:21-27,99`, `/Users/dylanconlin/Documents/personal/skillc/pkg/checker/checker.go` validation functions
 
-**Significance:** Task .5 (mine) depends on .4 completing LoadBearingEntry struct and YAML parsing. Both tasks need work in skillc repo. Should coordinate with .4 agent or wait for .4 completion before proceeding.
+**Significance:** Task .4 (struct + parsing) is actually complete. Task .5 backend (validation logic) is also complete. What's missing: printCheckResult() and checkJSON() in cmd/skillc/main.go don't display load-bearing results to users.
 
 ---
 
