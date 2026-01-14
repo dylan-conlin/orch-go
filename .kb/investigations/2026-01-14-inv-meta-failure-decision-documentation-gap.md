@@ -123,9 +123,36 @@ Examples of recommend-yes without corresponding decisions:
 
 3. **Model staleness**: Significant architectural changes (like follow-orchestrator beads support) aren't being documented in model Evolution sections, even when investigations are complete
 
+### Finding 5: "Promote to Decision" field has no tooling support
+
+**Evidence:**
+- Investigation template includes "Promote to Decision: recommend-yes | recommend-no | unclear" field
+- `kb reflect --type promote` exists but only searches kb quick entries, NOT investigation files
+- Ran `kb reflect --type promote` and got "No promote opportunities found" despite having ~10 investigations with "recommend-yes"
+- Orchestrator skill references `kb reflect --type promote` but for kb quick entries only
+
+**Source:**
+- `kb reflect --help` output shows it searches "kn entries worth promoting to kb decisions"
+- `kb reflect --type promote` test run
+- Orchestrator skill at `~/.claude/skills/meta/orchestrator/reference/orch-commands.md:58`
+
+**Significance:** The "Promote to Decision" field in investigation templates is performative - there's no tool that reads it. Orchestrators would need to manually grep for "recommend-yes" flags, which doesn't happen. The field creates the illusion of a process without actual workflow support.
+
+---
+
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The Jan 7 follow-orchestrator case exemplifies a systemic pattern of decision documentation gaps caused by four interconnected process failures:
+
+1. **Empty template accumulation** (Finding 1, 3): Agents create investigation files, die/restart, create new files instead of resuming, and empty templates get archived instead of deleted - creating 10+ unfilled templates as noise.
+
+2. **Missing feedback loop** (Finding 2, 4): The "Promote to Decision" field exists in templates but has no tooling support - even when investigations recommend promotion, no one acts on these flags.
+
+3. **Model staleness** (Finding 2): Significant architectural changes (like cross-project beads support via project_dir parameter) aren't documented in model Evolution sections, even when investigations are complete.
+
+4. **Tooling-process mismatch** (Finding 5): `kb reflect --type promote` only checks kb quick entries, not investigation "Promote to Decision" fields, creating two disconnected promotion paths.
+
+The follow-orchestrator case shows all four failures: empty template archived, "recommend-no" on architectural work, Evolution section incomplete, no decision created despite adding cross-project capability.
 
 ---
 
