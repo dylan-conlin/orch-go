@@ -2,161 +2,119 @@
 
 **Orchestrator:** interactive-2026-01-14-115259
 **Focus:** Session tooling: resume discovery fix + follow-up
-**Duration:** 2026-01-14 11:52 → {end-time}
-**Outcome:** {success | partial | blocked | failed}
+**Duration:** 2026-01-14 11:52 → 12:30 (38m)
+**Outcome:** success
 
 ---
 
-<!--
-## Progressive Documentation (READ THIS FIRST)
-
-**This file has been pre-created with metadata. Fill sections AS YOU WORK.**
-
-**Within first 5 tool calls:**
-1. Fill TLDR (initial framing of what you're trying to accomplish)
-2. Fill "Where We Started" (current state at session start)
-
-**During work:**
-- Add to Spawns table as you spawn/complete agents
-- Add to Evidence as you observe patterns
-- Capture Friction immediately (you'll rationalize it away later)
-
-**Before handoff:**
-- Synthesize Knowledge section
-- Fill Next section with recommendations
-- Update TLDR to reflect what actually happened
-- Update Outcome field
--->
-
 ## TLDR
 
-Fixed session resume discovery bug - was finding stale window-matched handoffs instead of most recent. Discovery now prioritizes recency over window-name matching.
+Fixed session resume bug (stale window-matched handoffs). Then deep-dived into recurring infrastructure failures - identified three root causes (orphan processes, socket fragility, auto-start race). Built `orch-dashboard` script that handles orphan cleanup, updated .zshrc to use it. Infrastructure issues should now be resolved.
 
 ---
 
 ## Spawns (Agents Managed)
 
-### Completed
-| Agent | Issue | Skill | Outcome | Key Finding |
-|-------|-------|-------|---------|-------------|
-| {workspace} | {beads-id} | {skill} | {success/partial/failed} | {1-line insight} |
-
-### Still Running
-| Agent | Issue | Skill | Phase | ETA |
-|-------|-------|-------|-------|-----|
-| {workspace} | {beads-id} | {skill} | {phase} | {estimate} |
-
-### Blocked/Failed
-| Agent | Issue | Blocker | Next Step |
-|-------|-------|---------|-----------|
-| {workspace} | {beads-id} | {what blocked} | {spawn-fresh/escalate/defer} |
+*No agents spawned - orchestrator did direct work (with Dylan's explicit approval)*
 
 ---
 
 ## Evidence (What Was Observed)
 
-### Patterns Across Agents
-- [Pattern 1: e.g., "3 agents hit the same auth issue"]
-
-### Completions
-- **{beads-id}:** {what SYNTHESIS.md revealed}
-
 ### System Behavior
-- [Observation about orch/beads/kb tooling]
+- Session resume was finding `.orch/session/zsh/latest` (Jan 13 test session) instead of orch-go-8 (Jan 14)
+- 25+ overmind sockets in /tmp from one day - evidence of many restart attempts
+- `orch serve` (PID 97042) survived overmind death, blocking port 3348
+- overmind status can return "running" while services are actually dead
+
+### Root Cause Discovery
+After weeks of circular debugging, finally identified THREE distinct failure modes:
+
+1. **Orphan Process Problem** - When overmind dies, child processes survive on their ports
+2. **Socket File Fragility** - Deleting `.overmind.sock` orphans processes
+3. **Auto-Start Race** - Multiple shells starting after reboot can race
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### Decisions Made
-- **{topic}:** {decision} because {rationale}
+- **overmind is correct tool** - Problem was lifecycle management, not the tool itself
+- **Wrapper script approach** - Instead of fixing overmind, wrap it with proper cleanup
 
 ### Constraints Discovered
-- {constraint} - why it matters
-
-### Externalized
-- `kn decide "X" --reason "Y"` - [if applicable]
-- `.kb/decisions/YYYY-MM-DD-*.md` - [if created]
+- Unix process behavior: parent death doesn't kill children
+- overmind socket file is single point of failure for status checks
+- Any process manager would have similar orphan issues
 
 ### Artifacts Created
-- [list any investigations, decisions, or other artifacts]
+- `.kb/investigations/2026-01-14-inv-infrastructure-root-cause-synthesis.md` - Full root cause analysis
+- `~/bin/orch-dashboard` - Wrapper script with orphan cleanup
+- Updated `.zshrc` - Auto-start now uses robust script
+- Updated `.kb/guides/dev-environment-setup.md` - New commands documented
+- Updated `~/.tmuxinator/workers-orch-go.yml` - Shows logs
 
 ---
 
 ## Friction (What Was Harder Than It Should Be)
 
-<!--
-Capture frustrations AS THEY HAPPEN. You'll rationalize them away later.
--->
-
-### Tooling Friction
-- [Tool gap or UX issue]
-
 ### Context Friction
-- [Information that should have been surfaced but wasn't]
+- Artifact trail showed weeks of decisions/investigations but didn't surface the actual root cause
+- Had to re-investigate from scratch to find the three failure modes
+- Dylan expressed exhaustion from circular debugging
 
-### Skill/Spawn Friction
-- [Skill guidance was unclear or wrong]
-
-*(If smooth session: "No significant friction observed")*
+### Key Insight
+Dylan's frustration ("I don't know why this is so hard") was the signal that we were treating symptoms, not causes. Stepping back to synthesize what we actually knew (vs what we'd documented) revealed the real problem.
 
 ---
 
 ## Focus Progress
 
 ### Where We Started
-Dylan provided transcript showing session resume wasn't finding orch-go-8 handoff when starting in new window named "zsh". Root cause: old `.orch/session/zsh/latest` from Jan 13 was being found instead of cross-window scanning for most recent.
+- Session resume bug: new windows finding stale handoffs
+- Dashboard not loading after machine restart
+- Recurring infrastructure frustration
 
 ### Where We Ended
-- {state of focus goal now}
-- {what shifted or became clearer}
+- Session resume fixed (prefers recency over window-match)
+- Infrastructure root-caused (three failure modes identified)
+- `orch-dashboard` script handles orphan cleanup
+- Auto-start in .zshrc now robust
+- Startup ritual: just open a terminal
 
 ### Scope Changes
-- [If focus shifted mid-session, note why]
+Started with session resume bug, expanded to infrastructure root cause when Dylan said "I want to get to the bottom of these infrastructure issues before focusing on anything else."
 
 ---
 
 ## Next (What Should Happen)
 
-**Recommendation:** {continue-focus | shift-focus | escalate | pause}
+**Recommendation:** shift-focus
 
-### If Continue Focus
-**Immediate:** {first thing next orchestrator should do}
-**Then:** {subsequent priorities}
+Infrastructure is stable. Return to normal orchestration work.
+
+**Immediate:** Check `bd ready` for available work
+**Monitor:** If dashboard issues recur, check `orch-dashboard status` for orphans
+
 **Context to reload:**
-- {key file or artifact to read}
-
-### If Shift Focus
-**New focus:** {recommended focus}
-**Why shift:** {rationale}
-
-### If Escalate
-**Question for meta-orchestrator:** {what needs decision}
-**Recommendation:** {which option and why}
-
-### If Pause
-**Why pausing:** {rationale}
-**Resume conditions:** {what needs to happen before resuming}
+- `~/bin/orch-dashboard` - The fix
+- `.kb/investigations/2026-01-14-inv-infrastructure-root-cause-synthesis.md` - Root cause analysis
 
 ---
 
 ## Unexplored Questions
 
-**Questions that emerged during this session that weren't directly in scope:**
-- [Question 1 - why it's interesting]
-
-**System improvement ideas:**
-- [Tooling or process idea]
-
-*(If nothing emerged: "Focused session, no unexplored territory")*
+*Focused session, no unexplored territory*
 
 ---
 
 ## Session Metadata
 
-**Agents spawned:** {count}
-**Agents completed:** {count}
-**Issues closed:** {list}
-**Issues created:** {list}
+**Agents spawned:** 0
+**Agents completed:** 0
+**Issues closed:** orch-go-tmx8n (session resume bug)
+**Issues created:** None
 
-**Workspace:** `.orch/workspace/interactive-2026-01-14-115259/`
+**Commits:**
+- `07e7f60b` - fix: session resume prefers most recent handoff
+- `39c8fc2c` - fix: infrastructure root cause synthesis + orch-dashboard script
