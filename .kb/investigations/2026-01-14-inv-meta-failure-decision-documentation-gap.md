@@ -260,37 +260,57 @@ The follow-orchestrator case shows all four failures: empty template archived, "
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - Complete investigation example (Jan 7 case)
+- `.kb/investigations/archived/2026-01-07-inv-implement-follow-orchestrator-dashboard-filtering.md` - Empty template example
+- `.kb/models/dashboard-architecture.md` - Model Evolution section check (lines 202-260)
+- `~/.claude/skills/meta/orchestrator/reference/orch-commands.md` - kb reflect documentation
+- `~/.claude/skills/meta/orchestrator/reference/skill-selection-guide.md` - Promotion workflow references
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Count Jan 7 archived investigations
+ls -la .kb/investigations/archived/ | grep 2026-01-07 | wc -l
 
-# [Command description]
-[command]
+# Find empty templates by placeholder count
+for f in .kb/investigations/archived/*.md; do
+  placeholders=$(grep -c '\[.*\]' "$f" 2>/dev/null || echo 0)
+  lines=$(wc -l < "$f")
+  if [ "$placeholders" -gt 30 ]; then
+    echo "$f: $lines lines, $placeholders placeholders"
+  fi
+done
+
+# Count promotion flags
+grep -r "Promote to Decision: recommend-no" .kb/investigations/ | grep -v "archived/" | wc -l
+grep -r "Promote to Decision: recommend-yes" .kb/investigations/ | wc -l
+
+# Test kb reflect promotion detection
+kb reflect --type promote
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` - The Jan 7 case analyzed
+- **Model:** `.kb/models/dashboard-architecture.md` - Model with incomplete Evolution section
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-14 (start):** Investigation started
+- Initial question: What is the pattern of decision documentation gaps using Jan 7 follow-orchestrator case?
+- Context: Spawned as meta-failure investigation to analyze systemic process failures
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-14 (finding 1-3):** Discovered systemic pattern
+- Found 10+ empty investigation templates archived
+- Confirmed model Evolution section gaps
+- Established this is systemic, not isolated incident
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-14 (finding 4-5):** Identified tooling gap
+- "Promote to Decision" field has no workflow support
+- kb reflect --type promote only checks kb quick entries, not investigations
+- Field is performative without tooling
+
+**2026-01-14 (recommendations):** Completed analysis
+- Recommended kb reflect --type investigation-promotion extension
+- Documented alternative approaches and trade-offs
+- Status: Complete
