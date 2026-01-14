@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -612,6 +613,10 @@ const SynthesisWarningThreshold = 10
 // Suggestions older than this are considered stale and won't be shown.
 const SuggestionFreshnessHours = 24
 
+// InvestigationPromotionThreshold is the count above which session end will warn.
+// Gates accumulation of promotion candidates that need triage.
+const InvestigationPromotionThreshold = 5
+
 // surfaceFocusGuidance loads ready issues and displays them grouped into thematic threads.
 // This helps orchestrators orient at session start: "Here are your active threads. What's nagging you?"
 // Part of Capture at Context principle.
@@ -677,6 +682,70 @@ func surfaceReflectSuggestions() {
 		fmt.Printf("   ... and %d more topics\n", len(highCount)-maxShow)
 	}
 	fmt.Printf("   Run 'kb reflect --type synthesis' for details.\n")
+}
+
+// InvestigationPromotionItem represents a single investigation promotion candidate.
+type InvestigationPromotionItem struct {
+	File       string `json:"file"`
+	Title      string `json:"title"`
+	AgeDays    int    `json:"age_days"`
+	Suggestion string `json:"suggestion"`
+}
+
+// InvestigationPromotionResult holds the JSON output from kb reflect --type investigation-promotion.
+type InvestigationPromotionResult struct {
+	InvestigationPromotion []InvestigationPromotionItem `json:"investigation_promotion"`
+}
+
+// checkInvestigationPromotions runs kb reflect --type investigation-promotion --format json
+// and returns the count of promotion candidates. Returns 0 and logs warning on error.
+func checkInvestigationPromotions() int {
+	cmd := exec.Command("kb", "reflect", "--type", "investigation-promotion", "--format", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		// kb reflect may not be available or may fail - not critical, just skip
+		return 0
+	}
+
+	var result InvestigationPromotionResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		// Parse error - skip silently
+		return 0
+	}
+
+	return len(result.InvestigationPromotion)
+}
+
+// gateInvestigationPromotions checks for accumulated investigation promotion candidates
+// and prompts user to triage if above threshold. Returns error if user aborts.
+// This is a gate at session end to prevent accumulation of promotion candidates.
+func gateInvestigationPromotions() error {
+	count := checkInvestigationPromotions()
+	if count <= InvestigationPromotionThreshold {
+		return nil // Below threshold, proceed
+	}
+
+	fmt.Println()
+	fmt.Printf("⚠️  INVESTIGATION PROMOTION BACKLOG\n")
+	fmt.Printf("   %d investigations need promotion review (threshold: %d)\n", count, InvestigationPromotionThreshold)
+	fmt.Printf("   Run 'kb reflect --type investigation-promotion' to triage.\n")
+	fmt.Println()
+
+	// Prompt user to confirm proceeding
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("   Continue ending session anyway? (y/N): ")
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+	response = strings.TrimSpace(strings.ToLower(response))
+
+	if response != "y" && response != "yes" {
+		fmt.Println("   Session end aborted. Please triage investigation promotions first.")
+		return fmt.Errorf("session end aborted: investigation promotion backlog needs triage")
+	}
+
+	return nil
 }
 
 // ============================================================================
@@ -909,6 +978,12 @@ func runSessionEnd() error {
 	if !store.IsActive() {
 		fmt.Println("No active session to end")
 		return nil
+	}
+
+	// Gate: Check for accumulated investigation promotion candidates
+	// This prevents backlog accumulation by prompting triage before session end
+	if err := gateInvestigationPromotions(); err != nil {
+		return err
 	}
 
 	// Get session info before ending - IMPORTANT: Get the session object to access WindowName
