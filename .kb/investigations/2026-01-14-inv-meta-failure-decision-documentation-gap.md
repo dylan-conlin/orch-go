@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Meta Failure Decision Documentation Gap
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** What is the pattern of decision documentation gaps using the Jan 7 follow-orchestrator case as an example, and what process failures enabled it?
 
 **Started:** 2026-01-14
 **Updated:** 2026-01-14
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** og-inv-meta-failure-decision-14jan-00a2
+**Phase:** Investigating
+**Next Step:** Document findings and test hypotheses
+**Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,23 +55,29 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Empty investigation template archived instead of cleaned up
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Found empty investigation template at `.kb/investigations/archived/2026-01-07-inv-implement-follow-orchestrator-dashboard-filtering.md` - 225 lines of template with no content filled. This was archived alongside a completed investigation on the same topic.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `.kb/investigations/archived/2026-01-07-inv-implement-follow-orchestrator-dashboard-filtering.md` (empty template)
+- `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` (completed investigation)
+- Found 3 total archived investigations from Jan 7 via `ls -la .kb/investigations/archived/ | grep 2026-01-07 | wc -l`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Empty templates indicate process failure - agent likely died/restarted and created new investigation instead of continuing the original. Archiving instead of deleting preserves noise.
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Significant feature not documented in model Evolution section
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The completed investigation `2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md` implemented "dashboard beads follow orchestrator context via project_dir parameter" - a significant architectural change. However, the `dashboard-architecture.md` model's Evolution section for Jan 7, 2026 only mentions "Two-Mode Design" and doesn't mention the follow-orchestrator beads feature.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `.kb/investigations/2026-01-07-inv-dashboard-beads-follow-orchestrator-tmux.md:1-10` (D.E.K.N. summary shows completed feature)
+- `.kb/models/dashboard-architecture.md:219-223` (Evolution section Jan 7 entry)
+- Investigation says "Promote to Decision: recommend-no" even though it adds project_dir parameter support
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Model Evolution sections should capture significant changes. The follow-orchestrator work added cross-project capability but wasn't documented in the model, making the model incomplete as an understanding artifact.
 
 ---
 
