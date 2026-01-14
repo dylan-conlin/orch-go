@@ -81,13 +81,17 @@ Guidelines:
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Systemic pattern of empty investigation templates in archive
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Found 10+ archived investigations with 36-89 placeholders (mostly unfilled templates) from Dec 19, 2025 through Jan 7, 2026. Examples include:
+- `2025-12-21-inv-implement-failure-report-md-template.md` (233 lines, 89 placeholders)
+- `2025-12-21-inv-implement-orch-init-command-project.md` (233 lines, 89 placeholders)
+- `2025-12-21-inv-implement-session-handoff-md-template.md` (233 lines, 89 placeholders)
+- `2026-01-07-inv-implement-follow-orchestrator-dashboard-filtering.md` (225 lines, 86 placeholders)
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Searched archived investigations for high placeholder counts using `grep -c '\[.*\]'` to identify unfilled templates
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This is not an isolated incident - it's a systemic process failure. Agents are creating investigation files, dying/restarting, creating new files instead of resuming, and the empty templates are being archived instead of deleted. The archive directory is accumulating noise rather than valuable historical context.
 
 ---
 
