@@ -2,8 +2,8 @@
 
 **Agent:** og-feat-identify-orchestrator-value-10jan-22db
 **Issue:** orch-go-4tven.6
-**Abandoned:** 2026-01-13 12:18:49
-**Reason:** Stuck for 84+ hours in Planning phase - exceeded reasonable runtime
+**Abandoned:** 2026-01-14 13:04:47
+**Reason:** stale agent cleanup
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Failure Summary
 
-**Primary Cause:** Stuck for 84+ hours in Planning phase - exceeded reasonable runtime
+**Primary Cause:** stale agent cleanup
 
 **Details:**
 [Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]

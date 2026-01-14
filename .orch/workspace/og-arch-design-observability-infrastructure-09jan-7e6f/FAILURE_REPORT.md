@@ -2,8 +2,8 @@
 
 **Agent:** og-arch-design-observability-infrastructure-09jan-7e6f
 **Issue:** orch-go-pwtrh
-**Abandoned:** 2026-01-09 21:58:04
-**Reason:** Duplicate - observability architecture completed by orch-go-e79ao
+**Abandoned:** 2026-01-14 13:04:29
+**Reason:** stale agent (still in Planning)
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Failure Summary
 
-**Primary Cause:** Duplicate - observability architecture completed by orch-go-e79ao
+**Primary Cause:** stale agent (still in Planning)
 
 **Details:**
 [Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]

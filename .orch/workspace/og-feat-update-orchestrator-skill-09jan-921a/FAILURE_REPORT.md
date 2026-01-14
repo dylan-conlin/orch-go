@@ -2,8 +2,8 @@
 
 **Agent:** og-feat-update-orchestrator-skill-09jan-921a
 **Issue:** orch-go-pfrpz
-**Abandoned:** 2026-01-09 21:57:58
-**Reason:** Work not needed - orchestrator skill already had correct guidance
+**Abandoned:** 2026-01-14 13:04:46
+**Reason:** stale agent cleanup
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Failure Summary
 
-**Primary Cause:** Work not needed - orchestrator skill already had correct guidance
+**Primary Cause:** stale agent cleanup
 
 **Details:**
 [Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]
