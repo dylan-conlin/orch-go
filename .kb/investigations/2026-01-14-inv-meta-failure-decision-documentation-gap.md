@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Decision documentation gaps are systemic, caused by four interconnected failures: empty template accumulation, missing feedback loops, model staleness, and tooling-process mismatch.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Found 10+ empty investigation templates archived (36-89 placeholders unfilled), 107 investigations with "recommend-no" vs ~10 with "recommend-yes", kb reflect --type promote doesn't check investigation files (verified by running command), and dashboard-architecture.md Evolution section missing Jan 7 follow-orchestrator entry despite complete investigation.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The "Promote to Decision" field is performative without tooling - no automated check reads these flags, creating illusion of process without workflow support. Agent death/restart pattern causes template proliferation. Models need explicit Evolution maintenance workflow.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** (1) Add `kb reflect --type investigation-promotion` to kb-cli, (2) Clean up 10+ empty templates from archive, (3) Create beads issues for ~10 investigations flagged recommend-yes, (4) Update dashboard model with Jan 7 entry.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes - Establishes pattern that investigation promotion requires tooling support, not just template fields.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-14
 **Updated:** 2026-01-14
 **Owner:** og-inv-meta-failure-decision-14jan-00a2
-**Phase:** Investigating
-**Next Step:** Document findings and test hypotheses
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
