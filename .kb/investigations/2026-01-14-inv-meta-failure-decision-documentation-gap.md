@@ -95,15 +95,33 @@ Guidelines:
 
 ---
 
+### Finding 4: "Promote to Decision" field rarely triggers actual promotion
+
+**Evidence:** Of all non-archived investigations:
+- 107 with "Promote to Decision: recommend-no"
+- ~10 with "Promote to Decision: recommend-yes"
+- 0 with "Promote to Decision: unclear"
+- Many still have template placeholder text
+
+Examples of recommend-yes without corresponding decisions:
+- `2026-01-08-inv-synthesize-model-investigations-11-synthesis-work.md` recommends decision on "synthesis completion recognition pattern" - no decision file found
+- `2026-01-09-inv-explore-opencode-github-issue-7410.md` recommends decision on "spoofing-based auth pattern" - no decision file found
+
+**Source:** Searched all investigations for "Promote to Decision" field values
+
+**Significance:** The "Promote to Decision" field was added to create a forcing function for decision capture, but it's not working - even when investigations recommend promotion, decisions aren't being created. The field has become performative documentation rather than actionable signal.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Process failure pattern**: Empty investigation templates → death/restart → new file creation → archive instead of delete → noise accumulation
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Missing feedback loop**: "Promote to Decision: recommend-yes" doesn't trigger decision creation - no one is reading these flags or acting on them
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Model staleness**: Significant architectural changes (like follow-orchestrator beads support) aren't being documented in model Evolution sections, even when investigations are complete
 
 **Answer to Investigation Question:**
 
