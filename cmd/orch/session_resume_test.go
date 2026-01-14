@@ -195,7 +195,7 @@ func TestArchiveActiveSessionHandoff(t *testing.T) {
 	}
 
 	// Test archiving active directory
-	err = archiveActiveSessionHandoff(tmpDir)
+	err = archiveActiveSessionHandoff(tmpDir, windowName)
 	if err != nil {
 		t.Fatalf("archiveActiveSessionHandoff() failed: %v", err)
 	}
@@ -237,7 +237,8 @@ func TestArchiveActiveSessionHandoff_NoActiveDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Test archiving when no active directory exists (should not error)
-	err := archiveActiveSessionHandoff(tmpDir)
+	// Use any window name since there's no active directory anyway
+	err := archiveActiveSessionHandoff(tmpDir, "test-window")
 	if err != nil {
 		t.Errorf("archiveActiveSessionHandoff() should not error when active directory doesn't exist, got: %v", err)
 	}

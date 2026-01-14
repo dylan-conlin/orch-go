@@ -99,10 +99,6 @@ func runSessionStart(goal string) error {
 	// Check if session was already active
 	wasActive := store.IsActive()
 
-	if err := store.Start(goal); err != nil {
-		return fmt.Errorf("failed to start session: %w", err)
-	}
-
 	// Get current working directory (project directory)
 	projectDir, err := os.Getwd()
 	if err != nil {
@@ -121,6 +117,20 @@ func runSessionStart(goal string) error {
 	if err := tmux.RenameCurrentWindow(sessionName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to rename tmux window: %v\n", err)
 		// Continue anyway - window renaming is nice-to-have
+	}
+
+	// Capture the window name AFTER renaming - this is the name used for session directories
+	// We store this in the session so that session end can archive to the correct directory
+	// even if called from a different tmux window
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		// Fall back to session name if we can't get window name
+		windowName = sessionName
+	}
+
+	// Start the session with the captured window name
+	if err := store.Start(goal, windowName); err != nil {
+		return fmt.Errorf("failed to start session: %w", err)
 	}
 
 	// Create active session handoff in project-specific location
@@ -294,14 +304,10 @@ func updateHandoffTemplate(activeDir string, summary *sessionSummary, endTime st
 
 // archiveActiveSessionHandoff moves {project}/.orch/session/{window}/active/ to a timestamped directory
 // and updates the latest symlink. This completes the Active Directory Pattern lifecycle.
+// The windowName parameter should be the window name stored in the session at start time,
+// NOT the current window name (which may be different if session end is called from another window).
 // Returns nil if active/ doesn't exist (not an error - session may predate active pattern).
-func archiveActiveSessionHandoff(projectDir string) error {
-	// Get current tmux window name (or "default" if not in tmux)
-	windowName, err := tmux.GetCurrentWindowName()
-	if err != nil {
-		return fmt.Errorf("failed to get tmux window name: %w", err)
-	}
-
+func archiveActiveSessionHandoff(projectDir, windowName string) error {
 	// Check if active/ directory exists
 	activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
 	if _, err := os.Stat(activeDir); os.IsNotExist(err) {
@@ -622,7 +628,9 @@ func runSessionEnd() error {
 		return nil
 	}
 
-	// Get session info before ending
+	// Get session info before ending - IMPORTANT: Get the session object to access WindowName
+	// which was captured at session start. This is used for archiving, NOT GetCurrentWindowName().
+	sess := store.Get()
 	duration := store.Duration()
 	spawnCount := store.SpawnCount()
 
@@ -640,30 +648,37 @@ func runSessionEnd() error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to get project directory: %v\n", err)
 	} else {
+		// Use the stored window name from session start, NOT GetCurrentWindowName()
+		// This ensures we archive to the correct directory even if called from a different window
+		windowName := sess.WindowName
+		if windowName == "" {
+			// Fallback for sessions created before WindowName was added
+			windowName, err = tmux.GetCurrentWindowName()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to get window name: %v\n", err)
+				windowName = "default"
+			}
+		}
+
 		// Check if active session handoff exists
-		windowName, err := tmux.GetCurrentWindowName()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to get window name: %v\n", err)
-		} else {
-			activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
-			if _, err := os.Stat(activeDir); err == nil {
-				// Active handoff exists - prompt user for summary and update template
-				summary, err := promptForSessionSummary()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to get session summary: %v\n", err)
-				} else {
-					// Update handoff template with user input
-					endTime := time.Now().Format("2006-01-02 15:04")
-					if err := updateHandoffTemplate(activeDir, summary, endTime); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to update handoff template: %v\n", err)
-					}
+		activeDir := filepath.Join(projectDir, ".orch", "session", windowName, "active")
+		if _, err := os.Stat(activeDir); err == nil {
+			// Active handoff exists - prompt user for summary and update template
+			summary, err := promptForSessionSummary()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to get session summary: %v\n", err)
+			} else {
+				// Update handoff template with user input
+				endTime := time.Now().Format("2006-01-02 15:04")
+				if err := updateHandoffTemplate(activeDir, summary, endTime); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to update handoff template: %v\n", err)
 				}
 			}
 		}
 
 		// Archive active session handoff to timestamped directory
 		// This implements the Active Directory Pattern: move active/ to {timestamp}/ and update latest symlink
-		if err := archiveActiveSessionHandoff(projectDir); err != nil {
+		if err := archiveActiveSessionHandoff(projectDir, windowName); err != nil {
 			// Only warn - not all sessions will have active handoffs (pre-active-pattern sessions)
 			fmt.Fprintf(os.Stderr, "Warning: failed to archive session handoff: %v\n", err)
 		}

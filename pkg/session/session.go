@@ -98,6 +98,12 @@ type Session struct {
 	// StartedAt is when the session began
 	StartedAt time.Time `json:"started_at"`
 
+	// WindowName is the tmux window where the session was started.
+	// This is captured at session start and used for archiving at session end,
+	// ensuring the correct directory is used even if the user runs session end
+	// from a different window.
+	WindowName string `json:"window_name,omitempty"`
+
 	// Spawns are agents spawned during this session
 	// Note: status is NOT stored here - derived at query time
 	Spawns []SpawnRecord `json:"spawns"`
@@ -226,16 +232,20 @@ func (s *Store) Get() *Session {
 	return &session
 }
 
-// Start begins a new session with the given goal.
+// Start begins a new session with the given goal and window name.
+// The windowName should be the tmux window where the session is being started,
+// captured after renaming the window to the session name. This allows session end
+// to find the correct active directory even if called from a different window.
 // If a session is already active, it is replaced.
-func (s *Store) Start(goal string) error {
+func (s *Store) Start(goal, windowName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.session = &Session{
-		Goal:      goal,
-		StartedAt: time.Now(),
-		Spawns:    []SpawnRecord{},
+		Goal:       goal,
+		StartedAt:  time.Now(),
+		WindowName: windowName,
+		Spawns:     []SpawnRecord{},
 	}
 
 	return s.save()
