@@ -187,21 +187,24 @@ The follow-orchestrator case shows all four failures: empty template archived, "
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Add kb reflect --type investigation-promotion to make "Promote to Decision" field actionable** - Extend kb reflect to search investigation files for "recommend-yes" flags and surface them for orchestrator review.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Closes the feedback loop - the field becomes actionable instead of performative (addresses Finding 4, 5)
+- Reuses existing kb reflect pattern that orchestrators already know (--type synthesis, --type stale work well)
+- Makes promotion a proactive check rather than hoping orchestrators manually grep
+- Surfaces investigations that recommended promotion but were ignored (like the synthesis completion and auth spoofing cases)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Doesn't fix the root cause of empty templates (agent death/restart) - that needs separate investigation
+- Doesn't automatically update model Evolution sections - still requires orchestrator judgment
+- Adds another kb reflect type to check (but that's better than nothing)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Add `kb reflect --type investigation-promotion` that greps `.kb/investigations/**/*.md` for "Promote to Decision: recommend-yes"
+2. Format output to show investigation path, date, and recommendation reason (from D.E.K.N. summary)
+3. Update orchestrator skill to reference this in completion workflow: "After completing investigation agent, run `kb reflect --type investigation-promotion` to check for decisions to create"
+4. Add to SessionStart hook suggestions: if investigation-promotion count > 0, surface as hygiene item
 
 ### Alternative Approaches Considered
 
