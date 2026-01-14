@@ -2,35 +2,14 @@
 
 **Orchestrator:** interactive-2026-01-14-125427
 **Focus:** Session tooling: Capture at Context implementation
-**Duration:** 2026-01-14 12:54 → {end-time}
-**Outcome:** {success | partial | blocked | failed}
+**Duration:** 2026-01-14 12:54 → 2026-01-14 21:30
+**Outcome:** success
 
 ---
 
-<!--
-## Progressive Documentation (READ THIS FIRST)
-
-**This file has been pre-created with metadata. Fill sections AS YOU WORK.**
-
-**Within first 5 tool calls:**
-1. Fill TLDR (initial framing of what you're trying to accomplish)
-2. Fill "Where We Started" (current state at session start)
-
-**During work:**
-- Add to Spawns table as you spawn/complete agents
-- Add to Evidence as you observe patterns
-- Capture Friction immediately (you'll rationalize it away later)
-
-**Before handoff:**
-- Synthesize Knowledge section
-- Fill Next section with recommendations
-- Update TLDR to reflect what actually happened
-- Update Outcome field
--->
-
 ## TLDR
 
-[Fill within first 5 tool calls: What is this session trying to accomplish?]
+Implemented "Capture at Context" principle for session tooling: session end now validates handoff sections for unfilled placeholders and prompts interactively. Also added focus guidance (thread grouping) to session start. Cleaned up ~25 stale/AT-RISK agents and archived 213 old workspaces.
 
 ---
 
@@ -39,124 +18,113 @@
 ### Completed
 | Agent | Issue | Skill | Outcome | Key Finding |
 |-------|-------|-------|---------|-------------|
-| {workspace} | {beads-id} | {skill} | {success/partial/failed} | {1-line insight} |
+| og-feat-implement-session-end-14jan-b303 | orch-go-1c5ov | feature-impl | success | 7 sections validated with pattern detection |
+| og-feat-implement-session-start-14jan-30bf | orch-go-u7jws | feature-impl | success | Thread grouping by keyword patterns works |
 
 ### Still Running
-| Agent | Issue | Skill | Phase | ETA |
-|-------|-------|-------|-------|-----|
-| {workspace} | {beads-id} | {skill} | {phase} | {estimate} |
+None
 
 ### Blocked/Failed
-| Agent | Issue | Blocker | Next Step |
-|-------|-------|---------|-----------|
-| {workspace} | {beads-id} | {what blocked} | {spawn-fresh/escalate/defer} |
+None
 
 ---
 
 ## Evidence (What Was Observed)
 
 ### Patterns Across Agents
-- [Pattern 1: e.g., "3 agents hit the same auth issue"]
+- Both agents completed successfully on first attempt
+- New validation system catches placeholder patterns like `{beads-id}` and `[Fill within first 5 tool calls...]`
 
 ### Completions
-- **{beads-id}:** {what SYNTHESIS.md revealed}
+- **orch-go-1c5ov:** Session end validation with 7 sections (Outcome, TLDR, Where We Ended, Next Recommendation required; Evidence, Knowledge, Friction optional with skip values)
+- **orch-go-u7jws:** Focus guidance groups `bd ready` issues into thematic threads for session start
 
 ### System Behavior
-- [Observation about orch/beads/kb tooling]
+- `bd sync` fails if uncommitted changes exist - need to commit first
+- OpenCode sessions window-scoped, so `orch session status` shows "no active session" in different window
 
 ---
 
 ## Knowledge (What Was Learned)
 
 ### Decisions Made
-- **{topic}:** {decision} because {rationale}
+- **Session validation approach:** Pattern-based placeholder detection per Capture at Context principle
+- **Optional sections:** Can be skipped with explicit acknowledgment values ("smooth", "nothing notable", "none")
 
 ### Constraints Discovered
-- {constraint} - why it matters
+- Placeholder patterns must match template exactly - drift breaks detection
+- Session is window-scoped, so handoffs from different windows need manual handling
 
 ### Externalized
-- `kn decide "X" --reason "Y"` - [if applicable]
-- `.kb/decisions/YYYY-MM-DD-*.md` - [if created]
+- `.kb/decisions/2026-01-14-capture-at-context.md` - Gates fire when context exists, not just at completion
 
 ### Artifacts Created
-- [list any investigations, decisions, or other artifacts]
+- `cmd/orch/session.go` - New validation functions: `validateHandoff()`, `promptForUnfilledSections()`, `updateHandoffWithResponses()`, `completeAndArchiveHandoff()`
+- `pkg/focus/guidance.go` - Thread grouping logic for session start
 
 ---
 
 ## Friction (What Was Harder Than It Should Be)
 
-<!--
-Capture frustrations AS THEY HAPPEN. You'll rationalize them away later.
--->
-
 ### Tooling Friction
-- [Tool gap or UX issue]
+- Session close protocol interrupted by context compaction mid-execution
 
 ### Context Friction
-- [Information that should have been surfaced but wasn't]
+- Compaction lost exact state of git working tree - had to re-check status
 
 ### Skill/Spawn Friction
-- [Skill guidance was unclear or wrong]
+- None - agents completed smoothly
 
-*(If smooth session: "No significant friction observed")*
+*(Mostly smooth session, major friction was external - context compaction)*
 
 ---
 
 ## Focus Progress
 
 ### Where We Started
-[Fill within first 5 tool calls: What is the current state before you begin working?]
+- Previous session (orch-go-9) ended with incomplete handoff
+- Identified that "recall everything at end" approach doesn't work
+- Found `.kb/decisions/2026-01-14-capture-at-context.md` principle
 
 ### Where We Ended
-- {state of focus goal now}
-- {what shifted or became clearer}
+- Session end validation implemented and tested
+- Focus guidance implemented and tested
+- AT-RISK agents cleaned up
+- 213 stale workspaces archived
+- All changes committed and pushed
 
 ### Scope Changes
-- [If focus shifted mid-session, note why]
+- Added AT-RISK cleanup (user requested)
+- Deferred "progressive capture triggers" to future work
 
 ---
 
 ## Next (What Should Happen)
 
-**Recommendation:** {continue-focus | shift-focus | escalate | pause}
-
-### If Continue Focus
-**Immediate:** {first thing next orchestrator should do}
-**Then:** {subsequent priorities}
-**Context to reload:**
-- {key file or artifact to read}
+**Recommendation:** shift-focus
 
 ### If Shift Focus
-**New focus:** {recommended focus}
-**Why shift:** {rationale}
-
-### If Escalate
-**Question for meta-orchestrator:** {what needs decision}
-**Recommendation:** {which option and why}
-
-### If Pause
-**Why pausing:** {rationale}
-**Resume conditions:** {what needs to happen before resuming}
+**New focus:** Normal work from `bd ready`
+**Why shift:** Session tooling implementation complete, ready to use the improved system for real work
 
 ---
 
 ## Unexplored Questions
 
 **Questions that emerged during this session that weren't directly in scope:**
-- [Question 1 - why it's interesting]
+- Should validation fire progressively during session (not just at end)?
+- Could we add `orch session validate` as standalone command?
 
 **System improvement ideas:**
-- [Tooling or process idea]
-
-*(If nothing emerged: "Focused session, no unexplored territory")*
+- Progressive capture triggers at spawn, at complete, at time checkpoints
 
 ---
 
 ## Session Metadata
 
-**Agents spawned:** {count}
-**Agents completed:** {count}
-**Issues closed:** {list}
-**Issues created:** {list}
+**Agents spawned:** 2
+**Agents completed:** 2
+**Issues closed:** orch-go-1c5ov, orch-go-u7jws, orch-go-3q4y3, orch-go-homu7
+**Issues created:** orch-go-1c5ov, orch-go-u7jws
 
 **Workspace:** `.orch/workspace/interactive-2026-01-14-125427/`
