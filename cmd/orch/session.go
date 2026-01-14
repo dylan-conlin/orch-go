@@ -868,14 +868,15 @@ func scanAllWindowsForMostRecent(sessionBaseDir string) (string, error) {
 	return mostRecentPath, nil
 }
 
-// discoverSessionHandoff walks up the directory tree to find .orch/session/{window-name}/latest/SESSION_HANDOFF.md.
+// discoverSessionHandoff walks up the directory tree to find the most relevant SESSION_HANDOFF.md.
 // Returns the full path to the handoff file, or an error if not found.
-// Window-scoping prevents concurrent orchestrator sessions from clobbering each other's context.
-// Discovery order:
-// 1. Current window's latest symlink (window isolation)
-// 2. Current window's active directory (mid-session resume)
-// 3. Cross-window scan of all latest symlinks (convenience on window switch)
-// 4. Legacy non-window-scoped structure (backward compatibility)
+// Discovery order prioritizes recency while respecting active sessions:
+// 1. Current window's active directory (mid-session resume - your in-progress work)
+// 2. Cross-window scan for most recent (includes all windows - user wants latest context)
+// 3. Legacy non-window-scoped structure (backward compatibility)
+//
+// Note: Window-scoping is for WRITING (prevent clobbering), not reading.
+// For resume, users want the most recent context regardless of window name.
 func discoverSessionHandoff() (string, error) {
 	// Get current tmux window name (or "default" if not in tmux)
 	windowName, err := tmux.GetCurrentWindowName()
@@ -892,51 +893,21 @@ func discoverSessionHandoff() (string, error) {
 	// Walk up the directory tree
 	dir := currentDir
 	for {
-		// Check for .orch/session/{window-name}/latest symlink (primary path)
-		latestPath := filepath.Join(dir, ".orch", "session", windowName, "latest")
-		if stat, err := os.Lstat(latestPath); err == nil {
-			// latest exists - check if it's a symlink or directory
-			var sessionDir string
-			if stat.Mode()&os.ModeSymlink != 0 {
-				// It's a symlink - resolve it
-				target, err := os.Readlink(latestPath)
-				if err != nil {
-					return "", fmt.Errorf("failed to read latest symlink: %w", err)
-				}
-				// If target is relative, resolve it relative to .orch/session/{window-name}/
-				if !filepath.IsAbs(target) {
-					sessionDir = filepath.Join(dir, ".orch", "session", windowName, target)
-				} else {
-					sessionDir = target
-				}
-			} else {
-				// It's a directory (not a symlink)
-				sessionDir = latestPath
-			}
-
-			// Check for SESSION_HANDOFF.md in the session directory
-			handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
-			if _, err := os.Stat(handoffPath); err == nil {
-				return handoffPath, nil
-			}
-		}
-
-		// FALLBACK: Check for .orch/session/{window-name}/active/ (mid-session resume)
-		// This enables session resume even if session end hasn't archived yet
+		// PRIORITY 1: Current window's active/ (mid-session resume)
+		// If you're mid-session in this window, that's your in-progress work
 		activePath := filepath.Join(dir, ".orch", "session", windowName, "active")
 		if _, err := os.Stat(activePath); err == nil {
-			// active/ exists - check for SESSION_HANDOFF.md
 			handoffPath := filepath.Join(activePath, "SESSION_HANDOFF.md")
 			if _, err := os.Stat(handoffPath); err == nil {
 				return handoffPath, nil
 			}
 		}
 
-		// CROSS-WINDOW SCAN: If current window has no history, scan all windows for most recent
-		// This enables convenient window switching while preserving window isolation
+		// PRIORITY 2: Cross-window scan for most recent handoff
+		// This finds the most recent archived session across ALL windows (including current)
+		// User starting new session wants latest context, not stale window-matched handoff
 		sessionBaseDir := filepath.Join(dir, ".orch", "session")
 		if _, err := os.Stat(sessionBaseDir); err == nil {
-			// .orch/session/ exists - scan all windows
 			mostRecentPath, err := scanAllWindowsForMostRecent(sessionBaseDir)
 			if err == nil && mostRecentPath != "" {
 				return mostRecentPath, nil
