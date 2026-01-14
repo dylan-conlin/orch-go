@@ -325,3 +325,215 @@ func TestHandoffValidationWithOptions(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDurationFromHandoff(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected int
+	}{
+		{
+			name: "full timestamp format - 8 hours",
+			content: `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Test focus
+**Duration:** 2026-01-14 12:54 → 2026-01-14 20:54
+**Outcome:** success
+`,
+			expected: 480, // 8 hours = 480 minutes
+		},
+		{
+			name: "full timestamp format - 38 minutes",
+			content: `# Session Handoff
+
+**Duration:** 2026-01-14 11:52 → 2026-01-14 12:30
+**Outcome:** success
+`,
+			expected: 38,
+		},
+		{
+			name: "same-day format with time only on end",
+			content: `# Session Handoff
+
+**Duration:** 2026-01-14 11:52 → 12:30 (38m)
+**Outcome:** success
+`,
+			expected: 38,
+		},
+		{
+			name: "incomplete session with placeholder",
+			content: `# Session Handoff
+
+**Duration:** 2026-01-14 07:29 → {end-time}
+**Outcome:** {success | partial | blocked | failed}
+`,
+			expected: -1, // Can't parse placeholder
+		},
+		{
+			name: "legacy format with seconds",
+			content: `# Session Handoff
+
+**Duration:** 3.296167s
+**Outcome:** success
+`,
+			expected: -1, // Legacy format not supported
+		},
+		{
+			name: "no duration line",
+			content: `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Test focus
+**Outcome:** success
+`,
+			expected: -1,
+		},
+		{
+			name: "short session - 2 minutes",
+			content: `# Session Handoff
+
+**Duration:** 2026-01-14 15:00 → 2026-01-14 15:02
+**Outcome:** success
+`,
+			expected: 2,
+		},
+		{
+			name: "exactly 5 minutes",
+			content: `# Session Handoff
+
+**Duration:** 2026-01-14 15:00 → 2026-01-14 15:05
+**Outcome:** success
+`,
+			expected: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp file with content
+			tmpDir := t.TempDir()
+			handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+			if err := os.WriteFile(handoffPath, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("Failed to write test handoff: %v", err)
+			}
+
+			result := parseDurationFromHandoff(handoffPath)
+			if result != tt.expected {
+				t.Errorf("parseDurationFromHandoff() = %d, want %d", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestScanAllWindowsForMostRecent_DurationAware(t *testing.T) {
+	// Create test session directory structure
+	tmpDir := t.TempDir()
+	sessionDir := filepath.Join(tmpDir, ".orch", "session")
+
+	// Create window directories with sessions
+	// Window 1: Substantive session (30 minutes) - older timestamp
+	window1Dir := filepath.Join(sessionDir, "window1", "2026-01-14-1000")
+	if err := os.MkdirAll(window1Dir, 0755); err != nil {
+		t.Fatalf("Failed to create window1 dir: %v", err)
+	}
+	// Create latest symlink
+	if err := os.Symlink("2026-01-14-1000", filepath.Join(sessionDir, "window1", "latest")); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+	substantiveContent := `# Session Handoff
+
+**Duration:** 2026-01-14 10:00 → 2026-01-14 10:30
+**Outcome:** success
+
+## TLDR
+Real work session with substantive content.
+`
+	if err := os.WriteFile(filepath.Join(window1Dir, "SESSION_HANDOFF.md"), []byte(substantiveContent), 0644); err != nil {
+		t.Fatalf("Failed to write substantive handoff: %v", err)
+	}
+
+	// Window 2: Brief test session (2 minutes) - newer timestamp
+	window2Dir := filepath.Join(sessionDir, "window2", "2026-01-14-1100")
+	if err := os.MkdirAll(window2Dir, 0755); err != nil {
+		t.Fatalf("Failed to create window2 dir: %v", err)
+	}
+	if err := os.Symlink("2026-01-14-1100", filepath.Join(sessionDir, "window2", "latest")); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+	briefContent := `# Session Handoff
+
+**Duration:** 2026-01-14 11:00 → 2026-01-14 11:02
+**Outcome:** success
+
+## TLDR
+Quick test session.
+`
+	if err := os.WriteFile(filepath.Join(window2Dir, "SESSION_HANDOFF.md"), []byte(briefContent), 0644); err != nil {
+		t.Fatalf("Failed to write brief handoff: %v", err)
+	}
+
+	// Run the scan
+	result, err := scanAllWindowsForMostRecent(sessionDir)
+	if err != nil {
+		t.Fatalf("scanAllWindowsForMostRecent failed: %v", err)
+	}
+
+	// Should prefer substantive session over brief test session despite older timestamp
+	expectedPath := filepath.Join(window1Dir, "SESSION_HANDOFF.md")
+	if result != expectedPath {
+		t.Errorf("Expected substantive session %q, got %q", expectedPath, result)
+	}
+}
+
+func TestScanAllWindowsForMostRecent_FallbackToAny(t *testing.T) {
+	// Create test session directory with only brief sessions
+	tmpDir := t.TempDir()
+	sessionDir := filepath.Join(tmpDir, ".orch", "session")
+
+	// Window 1: Brief session (2 minutes)
+	window1Dir := filepath.Join(sessionDir, "test1", "2026-01-14-1000")
+	if err := os.MkdirAll(window1Dir, 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+	if err := os.Symlink("2026-01-14-1000", filepath.Join(sessionDir, "test1", "latest")); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+	briefContent1 := `# Session Handoff
+
+**Duration:** 2026-01-14 10:00 → 2026-01-14 10:02
+**Outcome:** success
+`
+	if err := os.WriteFile(filepath.Join(window1Dir, "SESSION_HANDOFF.md"), []byte(briefContent1), 0644); err != nil {
+		t.Fatalf("Failed to write handoff: %v", err)
+	}
+
+	// Window 2: Brief session (3 minutes) - newer timestamp
+	window2Dir := filepath.Join(sessionDir, "test2", "2026-01-14-1100")
+	if err := os.MkdirAll(window2Dir, 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+	if err := os.Symlink("2026-01-14-1100", filepath.Join(sessionDir, "test2", "latest")); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+	briefContent2 := `# Session Handoff
+
+**Duration:** 2026-01-14 11:00 → 2026-01-14 11:03
+**Outcome:** success
+`
+	if err := os.WriteFile(filepath.Join(window2Dir, "SESSION_HANDOFF.md"), []byte(briefContent2), 0644); err != nil {
+		t.Fatalf("Failed to write handoff: %v", err)
+	}
+
+	// Run the scan
+	result, err := scanAllWindowsForMostRecent(sessionDir)
+	if err != nil {
+		t.Fatalf("scanAllWindowsForMostRecent failed: %v", err)
+	}
+
+	// When all sessions are brief, should fall back to most recent any
+	expectedPath := filepath.Join(window2Dir, "SESSION_HANDOFF.md")
+	if result != expectedPath {
+		t.Errorf("Expected most recent brief session %q, got %q", expectedPath, result)
+	}
+}

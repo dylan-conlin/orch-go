@@ -963,8 +963,83 @@ func runSessionResume() error {
 	return nil
 }
 
+// parseDurationFromHandoff reads a SESSION_HANDOFF.md file and extracts the session duration.
+// Parses the Duration line in format: "**Duration:** YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM"
+// Returns duration in minutes, or -1 if duration cannot be parsed (unparseable format or incomplete session).
+func parseDurationFromHandoff(handoffPath string) int {
+	file, err := os.Open(handoffPath)
+	if err != nil {
+		return -1
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	maxLines := 20 // Duration line is always in the header
+
+	for scanner.Scan() && lineCount < maxLines {
+		line := scanner.Text()
+		lineCount++
+
+		// Look for Duration line: **Duration:** YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM
+		if strings.HasPrefix(line, "**Duration:**") {
+			// Extract the content after "**Duration:** "
+			content := strings.TrimPrefix(line, "**Duration:**")
+			content = strings.TrimSpace(content)
+
+			// Split by arrow (→) to get start and end timestamps
+			parts := strings.Split(content, "→")
+			if len(parts) != 2 {
+				return -1 // Not in expected format
+			}
+
+			startStr := strings.TrimSpace(parts[0])
+			endStr := strings.TrimSpace(parts[1])
+
+			// Handle same-day format where end is just HH:MM
+			// e.g., "2026-01-14 11:52 → 12:30 (38m)"
+			// Strip optional duration suffix like "(38m)"
+			if idx := strings.Index(endStr, "("); idx != -1 {
+				endStr = strings.TrimSpace(endStr[:idx])
+			}
+
+			// Parse start timestamp (always has date)
+			startTime, err := time.Parse("2006-01-02 15:04", startStr)
+			if err != nil {
+				return -1
+			}
+
+			// Try parsing end as full timestamp first
+			endTime, err := time.Parse("2006-01-02 15:04", endStr)
+			if err != nil {
+				// Try parsing as time only (same day)
+				endTime, err = time.Parse("15:04", endStr)
+				if err != nil {
+					return -1
+				}
+				// Use start date with end time
+				endTime = time.Date(
+					startTime.Year(), startTime.Month(), startTime.Day(),
+					endTime.Hour(), endTime.Minute(), 0, 0, time.UTC,
+				)
+			}
+
+			// Check for incomplete sessions (end time is a placeholder)
+			if endTime.Before(startTime) || endTime.Equal(startTime) {
+				return -1
+			}
+
+			duration := endTime.Sub(startTime)
+			return int(duration.Minutes())
+		}
+	}
+
+	return -1 // Duration line not found
+}
+
 // scanAllWindowsForMostRecent scans all window-scoped session directories in .orch/session/
 // and returns the most recent SESSION_HANDOFF.md by comparing timestamps.
+// Prefers substantive sessions (≥5 minutes) over brief test sessions.
 // Returns empty string if no handoffs found across all windows.
 func scanAllWindowsForMostRecent(sessionBaseDir string) (string, error) {
 	// Read all entries in .orch/session/
@@ -973,8 +1048,15 @@ func scanAllWindowsForMostRecent(sessionBaseDir string) (string, error) {
 		return "", err
 	}
 
-	var mostRecentPath string
-	var mostRecentTimestamp string
+	// Track two candidates:
+	// - mostRecentSubstantive: sessions ≥5 minutes (real work sessions)
+	// - mostRecentAny: all sessions regardless of duration (fallback)
+	const minSubstantiveMinutes = 5
+
+	var mostRecentSubstantivePath string
+	var mostRecentSubstantiveTimestamp string
+	var mostRecentAnyPath string
+	var mostRecentAnyTimestamp string
 
 	// Scan each window directory
 	for _, entry := range entries {
@@ -1025,14 +1107,28 @@ func scanAllWindowsForMostRecent(sessionBaseDir string) (string, error) {
 		// Format: YYYY-MM-DD-HHMM (e.g., "2026-01-13-0830")
 		timestamp := filepath.Base(sessionDir)
 
-		// Compare timestamps (lexicographic comparison works for YYYY-MM-DD-HHMM format)
-		if timestamp > mostRecentTimestamp {
-			mostRecentTimestamp = timestamp
-			mostRecentPath = handoffPath
+		// Always track mostRecentAny (fallback candidate)
+		if timestamp > mostRecentAnyTimestamp {
+			mostRecentAnyTimestamp = timestamp
+			mostRecentAnyPath = handoffPath
+		}
+
+		// Parse duration to determine if this is a substantive session
+		durationMinutes := parseDurationFromHandoff(handoffPath)
+		if durationMinutes >= minSubstantiveMinutes {
+			// This is a substantive session (≥5 minutes)
+			if timestamp > mostRecentSubstantiveTimestamp {
+				mostRecentSubstantiveTimestamp = timestamp
+				mostRecentSubstantivePath = handoffPath
+			}
 		}
 	}
 
-	return mostRecentPath, nil
+	// Prefer substantive sessions over brief test sessions
+	if mostRecentSubstantivePath != "" {
+		return mostRecentSubstantivePath, nil
+	}
+	return mostRecentAnyPath, nil
 }
 
 // discoverSessionHandoff walks up the directory tree to find the most relevant SESSION_HANDOFF.md.
