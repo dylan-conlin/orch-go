@@ -160,21 +160,24 @@ The follow-orchestrator case shows all four failures: empty template archived, "
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Empty templates exist in archive (verified: counted 10+ files with 36-89 placeholders via grep)
+- ✅ Model Evolution doesn't mention follow-orchestrator beads feature (verified: read dashboard-architecture.md:219-223)
+- ✅ "Promote to Decision: recommend-yes" exists but rare (verified: found ~10 cases vs 107 recommend-no via grep)
+- ✅ kb reflect --type promote doesn't check investigation files (verified: ran command, got "No promote opportunities found")
+- ✅ Follow-orchestrator investigation is complete and filled (verified: read full D.E.K.N. summary with concrete evidence)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether orchestrators are expected to manually grep for "recommend-yes" flags (process documentation doesn't specify)
+- ⚠️ Whether follow-orchestrator work truly warranted a decision (inferred from adding cross-project capability and per-project caching pattern)
+- ⚠️ Root cause of agent death/restart pattern (didn't investigate why agents die mid-investigation)
+- ⚠️ Whether there are other promotion workflows besides kb reflect (didn't search all orchestrator guidance)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If orchestrator skill explicitly documents manual promotion workflow, findings about "missing feedback loop" would be wrong
+- If kb reflect had a separate --type for investigation promotion, the tooling gap claim would be incorrect
+- If follow-orchestrator investigation had clear "tactical only" reasoning, the "recommend-no seems wrong" claim would be invalid
 
 ---
 
