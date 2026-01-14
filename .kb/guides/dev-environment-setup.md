@@ -1,7 +1,19 @@
 # Development Environment Setup
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-01-14
 **Applies To:** Mac development environment
+
+## Critical Rule: ONE Process Manager
+
+**overmind is the ONLY process manager for dev services.** Do not create:
+- ❌ launchd plists for opencode/orch/vite
+- ❌ systemd units (Mac doesn't use systemd anyway)
+- ❌ pm2 or other process managers
+- ❌ Shell scripts that auto-start services outside overmind
+
+**Why:** Multiple process managers race at startup, causing port conflicts. On Jan 14, 2026, launchd auto-started OpenCode on port 4096 before overmind, breaking all services.
+
+**Reference:** `.kb/decisions/2026-01-14-infrastructure-complexity-justified.md`
 
 ## Quick Start
 
@@ -109,6 +121,82 @@ overmind stop api
 
 ## Troubleshooting
 
+### After System Restart (Most Common)
+
+**Symptom:** `overmind start -D` says "it looks like Overmind is already running" but `overmind status` fails with "connection refused"
+
+**Cause:** Stale `.overmind.sock` file from before restart
+
+**Fix:**
+```bash
+cd ~/Documents/personal/orch-go
+rm .overmind.sock
+overmind start -D
+```
+
+**Prevention:** Shell config (`.zshrc`) now auto-cleans stale socket on startup (line 817)
+
+---
+
+**Symptom:** OpenCode fails with "Failed to start server on port 4096" when overmind starts
+
+**Cause:** launchd agent auto-starting OpenCode on port 4096, conflicting with overmind's instance
+
+**Fix:**
+```bash
+# Unload the launchd agent
+launchctl unload ~/Library/LaunchAgents/com.opencode.serve.plist 2>/dev/null
+
+# Remove it permanently
+rm ~/Library/LaunchAgents/com.opencode.serve.plist
+
+# Kill any running OpenCode
+pkill -f opencode
+
+# Start overmind
+overmind start -D
+```
+
+**Prevention:** Don't create launchd agents for dev services - use overmind exclusively. See "Critical Rule: ONE Process Manager" and "Why Overmind (Not launchd)" sections.
+
+---
+
+**Symptom:** Dashboard shows "disconnected" but overmind status shows all services running
+
+**Cause:** OpenCode plugin crash causing internal 500 errors. The dashboard connects but can't fetch agent data.
+
+**Diagnosis:**
+```bash
+# Check if orch status works
+orch status
+# If "Error: failed to list sessions: unexpected status code: 500" → plugin issue
+
+# Check OpenCode logs
+tail -50 ~/.local/share/opencode/log/$(ls -t ~/.local/share/opencode/log/ | head -1)
+# Look for "fn3 is not a function" or similar plugin errors
+```
+
+**Fix:**
+```bash
+# Disable plugins temporarily
+mv ~/.config/opencode/plugin ~/.config/opencode/plugin.backup
+mkdir -p ~/.config/opencode/plugin
+
+# Restart OpenCode
+overmind restart opencode
+
+# Verify dashboard works
+orch status
+
+# Re-enable plugins one by one to find the culprit
+```
+
+**Root cause:** OpenCode plugin API changed (v1 → v2). Plugins using old API crash the server.
+
+**Prevention:** Keep plugins minimal. When adding plugins, test immediately with `orch status`.
+
+**Reference:** `orch-go-p54r4` - Plugin v1→v2 migration fix (Jan 14, 2026)
+
 ### Services Won't Start
 
 **Check for port conflicts:**
@@ -129,6 +217,7 @@ lsof -ti:5188 | xargs kill -9  # Web
 ```bash
 overmind quit  # First try graceful
 # Kill orphans if needed (above)
+rm -f .overmind.sock  # Clean up stale socket
 overmind start -D
 ```
 

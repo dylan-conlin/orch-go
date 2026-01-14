@@ -1,14 +1,18 @@
 # Model: Dashboard Architecture
 
 **Domain:** Dashboard / Web UI
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-01-14
 **Synthesized From:** 62 investigations (Dec 21, 2025 - Jan 8, 2026) into dashboard performance, UX, and architectural issues
 
 ---
 
 ## Summary (30 seconds)
 
-The Swarm Dashboard is a Svelte 5 web UI served by `orch serve` (Go backend) that provides real-time monitoring of agent status, daemon health, and operational metrics. The architecture uses a **two-mode design** (Operational/Historical) to separate daily coordination from deep analysis. SSE connections enable real-time updates but are constrained by HTTP/1.1's 6-connection limit. Progressive disclosure and stable sorting prevent information overload while maintaining scan-ability.
+The Swarm Dashboard is a Svelte 5 web UI served by `orch serve` (Go backend) that provides real-time monitoring of agent status, daemon health, and operational metrics.
+
+**Critical context (Option A+):** The dashboard is Dylan's (meta-orchestrator's) ONLY observability layer. He does not use CLI tools directly. Dashboard failure = Dylan is blind. This makes dashboard reliability tier-0 infrastructure. See orchestrator skill "Observability Architecture (Option A+)" section.
+
+The architecture uses a **two-mode design** (Operational/Historical) to separate daily coordination from deep analysis. SSE connections enable real-time updates but are constrained by HTTP/1.1's 6-connection limit. Progressive disclosure and stable sorting prevent information overload while maintaining scan-ability.
 
 ---
 
@@ -149,6 +153,28 @@ Remaining 4-5 slots for API fetches
 
 **Fix (Jan 7):** Two-mode design - Operational (focused) vs Historical (comprehensive)
 
+### Failure Mode 4: Plugin Cascade (Dashboard "Disconnected" Despite Services Running)
+
+**Symptom:** Dashboard shows "disconnected", `overmind status` shows all 3 services running, but `orch status` returns HTTP 500
+
+**Root cause:** OpenCode plugin error (e.g., v1→v2 API incompatibility) crashes OpenCode's internal request handling
+
+**Why it happens:**
+- OpenCode loads plugins at startup
+- Bad plugin throws error on every request
+- `/api/agents` calls OpenCode → gets 500
+- Dashboard can't fetch agent data → shows "disconnected"
+- overmind sees process running (not crashed) → reports "running"
+
+**Cascade:**
+```
+Plugin error → OpenCode internal 500 → orch status fails → API can't get agents → Dashboard "disconnected"
+```
+
+**Fix (Jan 14):** Disable plugins, restart OpenCode, re-enable one-by-one. Root cause was session-resume.js using v1 API (object export) instead of v2 (function export).
+
+**Key insight:** Dashboard can appear "down" while all processes are technically "running". Health checks must verify data flow, not just port availability.
+
 ---
 
 ## Constraints
@@ -226,6 +252,13 @@ Remaining 4-5 slots for API fetches
 - Common problems documented
 - Architecture stabilized
 
+**Jan 14, 2026: Option A+ and Plugin Cascade**
+- Established Option A+ model: dashboard is Dylan's ONLY observability layer
+- Discovered Failure Mode 4: plugin cascade (services running but dashboard broken)
+- Fixed session-resume.js v1→v2 API migration
+- Documented ONE process manager rule (overmind exclusive)
+- Created infrastructure complexity decision (keep architecture, fix gaps)
+
 ---
 
 ## References
@@ -250,6 +283,11 @@ Remaining 4-5 slots for API fetches
 
 **Related Guides:**
 - `.kb/guides/dashboard.md` - How to use dashboard, troubleshoot issues (procedural)
+- `.kb/guides/dev-environment-setup.md` - Service management, ONE process manager rule
+
+**Related Decisions:**
+- `.kb/decisions/2026-01-14-infrastructure-complexity-justified.md` - Why we keep 3-service architecture
+- `.kb/decisions/2026-01-09-dashboard-reliability-architecture.md` - orch doctor, orch deploy design
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/serve_agents.go` - Agent status calculation and API endpoint (~1400 lines)
