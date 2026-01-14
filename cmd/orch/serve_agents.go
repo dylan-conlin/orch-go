@@ -964,7 +964,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// This late filter catches:
 	// 1. Tmux-only agents (not in OpenCode sessions)
 	// 2. Completed workspaces (timestamps from workspace metadata, not session)
-	if sinceDuration > 0 || projectFilterParam != "" {
+	if sinceDuration > 0 || len(projectFilterParam) > 0 {
 		filtered := make([]AgentAPIResponse, 0, len(agents))
 		for _, agent := range agents {
 			// Time filter: check updated_at or spawned_at
@@ -980,9 +980,29 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Project filter: check project_dir
-			if projectFilterParam != "" && !filterByProject(agent.ProjectDir, projectFilterParam) {
-				continue
+			// Project filter: check project name against all filters
+			// Use Project field (derived from beads or workspace) instead of ProjectDir
+			// because cross-project agents have ProjectDir=orchestrator-cwd, Project=target-project
+			if len(projectFilterParam) > 0 {
+				// Get project name to match
+				projectName := agent.Project
+				if projectName == "" && agent.ProjectDir != "" {
+					// Fallback: extract project name from directory path
+					projectName = extractProjectName(agent.ProjectDir)
+				}
+
+				// Check if project name matches ANY filter
+				matched := false
+				for _, filter := range projectFilterParam {
+					filterName := extractProjectName(filter) // Handle both "orch-go" and "/path/to/orch-go"
+					if projectName == filterName {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
 			}
 
 			filtered = append(filtered, agent)

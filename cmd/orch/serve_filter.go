@@ -46,9 +46,23 @@ func parseSinceParam(r *http.Request) time.Duration {
 }
 
 // parseProjectFilter parses the ?project= query parameter.
-// Returns empty string if not specified (meaning no project filtering).
-func parseProjectFilter(r *http.Request) string {
-	return r.URL.Query().Get("project")
+// Supports comma-separated values for multi-project filtering (e.g., "?project=orch-go,orch-cli,beads").
+// Returns empty slice if not specified (meaning no project filtering).
+func parseProjectFilter(r *http.Request) []string {
+	param := r.URL.Query().Get("project")
+	if param == "" {
+		return nil
+	}
+	// Split on comma and trim whitespace from each project name
+	projects := strings.Split(param, ",")
+	result := make([]string, 0, len(projects))
+	for _, p := range projects {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // filterByTime returns true if the timestamp is within the since duration.
@@ -60,29 +74,36 @@ func filterByTime(timestamp time.Time, sinceDuration time.Duration) bool {
 	return time.Since(timestamp) <= sinceDuration
 }
 
-// filterByProject returns true if the projectDir matches the filter.
-// If filter is empty, returns true (no filtering).
+// filterByProject returns true if the projectDir matches ANY of the filters.
+// If filters is empty, returns true (no filtering).
 // Matches on:
 //   - Full path match
 //   - Project name (last path segment) match
-func filterByProject(projectDir, filter string) bool {
-	if filter == "" {
+func filterByProject(projectDir string, filters []string) bool {
+	if len(filters) == 0 {
 		return true // No filtering
 	}
 	if projectDir == "" {
 		return false // No project_dir to match against
 	}
 
-	// Full path match
-	if projectDir == filter {
-		return true
+	// Check if projectDir matches ANY of the filters
+	for _, filter := range filters {
+		// Full path match
+		if projectDir == filter {
+			return true
+		}
+
+		// Extract project name from path and match
+		// e.g., "/Users/dylan/orch-go" -> "orch-go"
+		projectName := extractProjectName(projectDir)
+		filterName := extractProjectName(filter)
+		if projectName == filterName {
+			return true
+		}
 	}
 
-	// Extract project name from path and match
-	// e.g., "/Users/dylan/orch-go" -> "orch-go"
-	projectName := extractProjectName(projectDir)
-	filterName := extractProjectName(filter)
-	return projectName == filterName
+	return false
 }
 
 // extractProjectName extracts the last path segment from a directory path.

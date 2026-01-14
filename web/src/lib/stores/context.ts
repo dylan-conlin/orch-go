@@ -162,15 +162,20 @@ export const filters = createFilterStore();
 // Build API query string from filter state
 export function buildFilterQueryString(state: FilterState): string {
 	const params = new URLSearchParams();
-	
+
 	if (state.since && state.since !== 'all') {
 		params.set('since', state.since);
 	}
-	
-	if (state.project) {
+
+	// Multi-project support: serialize includedProjects as comma-separated values
+	// This enables "orch-go special case" where orchestrator coordinates across 6 repos
+	if (state.includedProjects && state.includedProjects.length > 0) {
+		params.set('project', state.includedProjects.join(','));
+	} else if (state.project) {
+		// Fallback to single project if no includedProjects
 		params.set('project', state.project);
 	}
-	
+
 	const query = params.toString();
 	return query ? `?${query}` : '';
 }
