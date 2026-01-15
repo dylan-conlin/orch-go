@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1339,11 +1340,95 @@ func formatTokenStatsCompact(tokens *opencode.TokenStats) string {
 		formatTokenCount(tokens.OutputTokens))
 }
 
-// findProjectDirByName looks up a project directory by its name.
-// Searches common project locations and verifies the project has a .beads/ directory.
+// getBeadsIssuePrefix reads the issue_prefix for a project using bd CLI.
+// Returns empty string if the command fails or project doesn't have beads.
+func getBeadsIssuePrefix(projectPath string) string {
+	cmd := exec.Command("bd", "config", "get", "issue_prefix")
+	cmd.Dir = projectPath
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	// Output is just the value (e.g., "pw\n")
+	return strings.TrimSpace(string(output))
+}
+
+// getKBProjectsWithNames fetches registered projects from kb with name and path.
+// Returns empty slice if kb is unavailable or fails (graceful degradation).
+func getKBProjectsWithNames() []kbProject {
+	cmd := exec.Command("kb", "projects", "list", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return []kbProject{}
+	}
+
+	var projects []kbProject
+	if err := json.Unmarshal(output, &projects); err != nil {
+		return []kbProject{}
+	}
+
+	return projects
+}
+
+// findProjectByBeadsPrefix searches for a project with the given beads issue prefix.
+// First checks kb's project registry, then falls back to standard locations.
+// Returns the project directory path, or empty string if not found.
+func findProjectByBeadsPrefix(prefix string) string {
+	// Try kb's project registry first
+	for _, project := range getKBProjectsWithNames() {
+		if projectPrefix := getBeadsIssuePrefix(project.Path); projectPrefix == prefix {
+			return project.Path
+		}
+	}
+
+	// Fall back to checking standard locations
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	candidatePaths := []string{
+		filepath.Join(homeDir, "Documents", "personal", prefix),
+		filepath.Join(homeDir, prefix),
+		filepath.Join(homeDir, "projects", prefix),
+		filepath.Join(homeDir, "src", prefix),
+	}
+
+	for _, path := range candidatePaths {
+		if projectPrefix := getBeadsIssuePrefix(path); projectPrefix == prefix {
+			return path
+		}
+	}
+
+	return ""
+}
+
+// findProjectDirByName looks up a project directory by its name or beads prefix.
+// First checks kb's project registry, then searches common project locations.
+// Verifies the project has a .beads/ directory.
 // Returns empty string if not found.
 func findProjectDirByName(projectName string) string {
-	// Get home directory
+	// Try kb's project registry first (handles non-standard locations)
+	for _, project := range getKBProjectsWithNames() {
+		if project.Name == projectName {
+			// Verify it has a .beads directory
+			beadsPath := filepath.Join(project.Path, ".beads")
+			if info, err := os.Stat(beadsPath); err == nil && info.IsDir() {
+				return project.Path
+			}
+		}
+	}
+
+	// If projectName looks like a beads prefix (short, no hyphens except separators),
+	// try finding by prefix instead
+	if len(projectName) <= 10 && !strings.Contains(projectName, "/") {
+		if path := findProjectByBeadsPrefix(projectName); path != "" {
+			return path
+		}
+	}
+
+	// Fall back to checking standard locations
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ""

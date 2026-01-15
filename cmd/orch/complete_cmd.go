@@ -37,17 +37,17 @@ var (
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
-	completeSkipTestEvidence      bool
-	completeSkipVisual            bool
-	completeSkipGitDiff           bool
-	completeSkipSynthesis         bool
-	completeSkipBuild             bool
-	completeSkipConstraint        bool
-	completeSkipPhaseGate         bool
-	completeSkipSkillOutput       bool
-	completeSkipDecisionPatch     bool
-	completeSkipPhaseComplete     bool
-	completeSkipReason            string // Required for all --skip-* flags (min 10 chars)
+	completeSkipTestEvidence  bool
+	completeSkipVisual        bool
+	completeSkipGitDiff       bool
+	completeSkipSynthesis     bool
+	completeSkipBuild         bool
+	completeSkipConstraint    bool
+	completeSkipPhaseGate     bool
+	completeSkipSkillOutput   bool
+	completeSkipDecisionPatch bool
+	completeSkipPhaseComplete bool
+	completeSkipReason        string // Required for all --skip-* flags (min 10 chars)
 )
 
 var completeCmd = &cobra.Command{
@@ -147,17 +147,17 @@ func init() {
 
 // SkipConfig holds the configuration for which verification gates to skip.
 type SkipConfig struct {
-	TestEvidence      bool
-	Visual            bool
-	GitDiff           bool
-	Synthesis         bool
-	Build             bool
-	Constraint        bool
-	PhaseGate         bool
-	SkillOutput       bool
-	DecisionPatch     bool
-	PhaseComplete     bool
-	Reason            string // Required reason for skips
+	TestEvidence  bool
+	Visual        bool
+	GitDiff       bool
+	Synthesis     bool
+	Build         bool
+	Constraint    bool
+	PhaseGate     bool
+	SkillOutput   bool
+	DecisionPatch bool
+	PhaseComplete bool
+	Reason        string // Required reason for skips
 }
 
 // hasAnySkip returns true if any skip flag is set.
@@ -356,14 +356,38 @@ func runComplete(identifier, workdir string) error {
 	// Step 3: If no workspace match and not an orchestrator session, treat identifier as beads ID
 	// This is the fallback for worker sessions identified by beads ID.
 	if workspacePath == "" && !isOrchestratorSession {
+		// Auto-detect cross-project agents BEFORE resolution
+		// If the identifier looks like a cross-project beads ID (e.g., "pw-ed7h" when in orch-go),
+		// try to find that project's directory and set beads.DefaultDir before resolution.
+		var crossProjectDir string
+		if !strings.Contains(identifier, filepath.Base(currentDir)) {
+			// Identifier might be from a different project - try to extract project name
+			projectName := extractProjectFromBeadsID(identifier)
+			if projectName != "" && projectName != filepath.Base(currentDir) {
+				// Try to find the project directory
+				if foundDir := findProjectDirByName(projectName); foundDir != "" {
+					crossProjectDir = foundDir
+					beads.DefaultDir = crossProjectDir
+					fmt.Printf("Auto-detected cross-project from beads ID: %s\n", filepath.Base(crossProjectDir))
+				}
+			}
+		}
+
 		// Resolve short beads ID to full ID (e.g., "qdaa" -> "orch-go-qdaa")
+		// Now uses correct project's beads database if cross-project detected
 		resolvedID, err := resolveShortBeadsID(identifier)
 		if err != nil {
 			return fmt.Errorf("failed to resolve beads ID: %w", err)
 		}
 		beadsID = resolvedID
+
 		// Find workspace by beads ID
-		workspacePath, agentName = findWorkspaceByBeadsID(currentDir, beadsID)
+		// For cross-project agents, look in the detected project directory
+		searchDir := currentDir
+		if crossProjectDir != "" {
+			searchDir = crossProjectDir
+		}
+		workspacePath, agentName = findWorkspaceByBeadsID(searchDir, beadsID)
 	}
 
 	// Determine beads project directory:
