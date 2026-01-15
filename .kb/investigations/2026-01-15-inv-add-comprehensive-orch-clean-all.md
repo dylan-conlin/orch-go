@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented `orch clean --all` flag that enables all 6 cleanup actions (windows, phantoms, verify-opencode, investigations, stale, sessions) in a single command.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Manual testing with `--all --dry-run` confirmed all 6 cleanup actions execute: workspace scan, OpenCode disk sessions verification, phantom window detection, empty investigation archival, stale workspace archival, and stale session cleanup. Test suite passes with new TestCleanAllFlagLogic test.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The --all flag is a simple boolean that sets all individual cleanup flags to true before calling runClean(). No new cleanup logic was needed since all infrastructure already existed. Works in combination with --preserve-orchestrator and other modifiers like --stale-days.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Commit complete (cab7c3ed). Feature is ready for use. Recommend updating user documentation or workflow guides that reference cleanup procedures.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - This is a straightforward feature addition, not an architectural decision.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-15
 **Updated:** 2026-01-15
 **Owner:** Worker agent (orch-go-u6p99)
-**Phase:** Investigating
-**Next Step:** Design and implement --all flag
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -120,15 +120,15 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ --all flag enables all 6 cleanup flags (verified: TestCleanAllFlagLogic passes)
+- ✅ All cleanup actions execute when --all is used (verified: ran `orch clean --all --dry-run`, saw all 6 actions in output)
+- ✅ Flag appears in help text (verified: `orch clean --help` shows --all with correct description)
+- ✅ --all works with --preserve-orchestrator (verified: can combine both flags)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ --all flag with actual cleanup (not dry-run) - only tested in dry-run mode to avoid affecting real workspaces
+- ⚠️ Interaction with individual flags when --all is specified (e.g., `--all --no-windows`) - current implementation doesn't support negation
 
 **What would change this:**
 
