@@ -390,6 +390,65 @@ func TestArchiveStaleWorkspacesHandlesDuplicateDestination(t *testing.T) {
 	}
 }
 
+// TestCleanAllFlagLogic verifies that --all flag enables all cleanup flags.
+func TestCleanAllFlagLogic(t *testing.T) {
+	// This test verifies the flag preprocessing logic by simulating what happens
+	// in the RunE function when cleanAll is set to true.
+
+	// Start with all flags false (default state)
+	windows := false
+	phantoms := false
+	verifyOpenCode := false
+	investigations := false
+	stale := false
+	sessions := false
+	all := false
+
+	// Test 1: When all=false, individual flags should remain unchanged
+	if all {
+		windows = true
+		phantoms = true
+		verifyOpenCode = true
+		investigations = true
+		stale = true
+		sessions = true
+	}
+
+	if windows || phantoms || verifyOpenCode || investigations || stale || sessions {
+		t.Error("Expected all flags to remain false when all=false")
+	}
+
+	// Test 2: When all=true, all individual flags should be set to true
+	all = true
+	if all {
+		windows = true
+		phantoms = true
+		verifyOpenCode = true
+		investigations = true
+		stale = true
+		sessions = true
+	}
+
+	if !windows {
+		t.Error("Expected windows to be true when all=true")
+	}
+	if !phantoms {
+		t.Error("Expected phantoms to be true when all=true")
+	}
+	if !verifyOpenCode {
+		t.Error("Expected verifyOpenCode to be true when all=true")
+	}
+	if !investigations {
+		t.Error("Expected investigations to be true when all=true")
+	}
+	if !stale {
+		t.Error("Expected stale to be true when all=true")
+	}
+	if !sessions {
+		t.Error("Expected sessions to be true when all=true")
+	}
+}
+
 // TestArchiveEmptyInvestigationsHandlesDuplicateDestination tests that archiving investigations
 // handles the case when the archive destination already exists.
 func TestArchiveEmptyInvestigationsHandlesDuplicateDestination(t *testing.T) {

@@ -30,6 +30,7 @@ var (
 	cleanSessions             bool
 	cleanSessionsDays         int
 	cleanPreserveOrchestrator bool
+	cleanAll                  bool
 )
 
 var cleanCmd = &cobra.Command{
@@ -47,6 +48,9 @@ What counts as "completed":
 Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
+Comprehensive cleanup:
+  --all               Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, sessions)
+
 Optional cleanup actions:
   --windows           Close tmux windows for completed agents
   --phantoms          Close phantom tmux windows (beads ID but no active session)
@@ -63,6 +67,9 @@ investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
 Examples:
   orch-go clean                    # List completed agents (no changes)
   orch-go clean --dry-run          # Preview mode (same as default)
+  orch-go clean --all              # Comprehensive cleanup of all 4 agent status sources
+  orch-go clean --all --dry-run    # Preview comprehensive cleanup
+  orch-go clean --all --preserve-orchestrator  # Clean everything except orchestrator sessions
   orch-go clean --windows          # Close tmux windows for completed agents
   orch-go clean --phantoms         # Close phantom tmux windows
   orch-go clean --verify-opencode  # Delete orphaned OpenCode disk sessions
@@ -73,12 +80,22 @@ Examples:
   orch-go clean --sessions --sessions-days 14  # Delete sessions older than 14 days
   orch-go clean --sessions --preserve-orchestrator  # Clean sessions but protect orchestrators`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// If --all is specified, enable all cleanup flags
+		if cleanAll {
+			cleanWindows = true
+			cleanPhantoms = true
+			cleanVerifyOpenCode = true
+			cleanInvestigations = true
+			cleanStale = true
+			cleanSessions = true
+		}
 		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
 	},
 }
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, sessions)")
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
