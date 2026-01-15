@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -495,6 +496,96 @@ No code changes (investigation only).
 	}
 }
 
+// TestVerifyGitDiff_NoSpawnTime tests the fix for the false positive bug.
+// When spawn_time file is missing (old workspaces), verification should pass
+// with a warning instead of failing with false positives.
+// See: orch-go-fhfhk - "git diff verification false positive"
+func TestVerifyGitDiff_NoSpawnTime(t *testing.T) {
+	// Skip if git is not available
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found in PATH")
+	}
+
+	// Create a temporary git repository with commits
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@test.com")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create and commit files (simulating agent work)
+	mainFile := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(mainFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to write main.go: %v", err)
+	}
+	cmd = exec.Command("git", "add", "main.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "add main.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create workspace WITHOUT spawn_time file (simulating old workspace)
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "old-agent")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	// Create SYNTHESIS.md that claims the committed file
+	synthesisContent := `# Session Synthesis
+
+## TLDR
+Added main.go
+
+## Delta (What Changed)
+
+### Files Created
+- ` + "`main.go`" + ` - New main file
+`
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
+	}
+
+	// Note: We intentionally do NOT write spawn_time file
+
+	// Test: should PASS with warning, not fail
+	// Before the fix, this would fail because:
+	// 1. ReadSpawnTime returns zero time (no file)
+	// 2. GetGitDiffFiles uses "git diff --name-only HEAD" for zero time
+	// 3. That returns empty (changes are committed, not uncommitted)
+	// 4. Verification fails: claimed files not in diff
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass when spawn_time is missing, not fail with false positive")
+		t.Errorf("Errors: %v", result.Errors)
+	}
+
+	// Should have a warning about missing spawn time
+	hasSpawnTimeWarning := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "spawn time unavailable") {
+			hasSpawnTimeWarning = true
+			break
+		}
+	}
+	if !hasSpawnTimeWarning {
+		t.Error("Expected warning about spawn time being unavailable")
+		t.Errorf("Warnings: %v", result.Warnings)
+	}
+}
+
 func TestVerifyGitDiffForCompletion(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -530,5 +621,303 @@ No changes.
 	result = VerifyGitDiffForCompletion(workspaceDir, tmpDir)
 	if result != nil {
 		t.Error("VerifyGitDiffForCompletion() should return nil when no files claimed")
+	}
+}
+
+func TestIsExternalPath(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		// External paths - home directory
+		{"~/external/file.ts", true},
+		{"~/Documents/project/main.go", true},
+		{"~/.config/settings.json", true},
+
+		// External paths - absolute
+		{"/Users/dylan/other-project/file.go", true},
+		{"/etc/config.yaml", true},
+		{"/tmp/test.txt", true},
+
+		// External paths - relative traversal
+		{"../other-project/file.go", true},
+		{"../../parent/file.ts", true},
+		{"path/to/../../../external.go", true},
+
+		// Local paths - should NOT be external
+		{"pkg/verify/check.go", false},
+		{"main.go", false},
+		{".beads/beads.db", false},
+		{"./local/file.go", false},
+		{".kb/investigations/test.md", false},
+		{"web/src/routes/page.svelte", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := IsExternalPath(tt.input)
+			if got != tt.expected {
+				t.Errorf("IsExternalPath(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExpandPath(t *testing.T) {
+	// Test home directory expansion
+	path, err := ExpandPath("~/test.txt")
+	if err != nil {
+		t.Fatalf("ExpandPath() error = %v", err)
+	}
+	if path == "~/test.txt" || path == "" {
+		t.Errorf("ExpandPath() should expand ~/, got %q", path)
+	}
+
+	// Test non-home path is unchanged
+	path, err = ExpandPath("/absolute/path.go")
+	if err != nil {
+		t.Fatalf("ExpandPath() error = %v", err)
+	}
+	if path != "/absolute/path.go" {
+		t.Errorf("ExpandPath() should not change absolute path, got %q", path)
+	}
+
+	// Test relative path is unchanged
+	path, err = ExpandPath("relative/path.go")
+	if err != nil {
+		t.Fatalf("ExpandPath() error = %v", err)
+	}
+	if path != "relative/path.go" {
+		t.Errorf("ExpandPath() should not change relative path, got %q", path)
+	}
+}
+
+func TestVerifyExternalFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a test file with recent modification time
+	testFile := filepath.Join(tmpDir, "test_external.go")
+	if err := os.WriteFile(testFile, []byte("package test"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Test: file exists and was modified after spawn time
+	spawnTime := time.Now().Add(-1 * time.Hour) // 1 hour ago
+	result := VerifyExternalFile(testFile, spawnTime)
+	if !result.Exists {
+		t.Error("VerifyExternalFile() should report file exists")
+	}
+	if !result.Valid {
+		t.Errorf("VerifyExternalFile() should pass for recent file: %s", result.Error)
+	}
+
+	// Test: file exists but was NOT modified after spawn time
+	futureTime := time.Now().Add(1 * time.Hour) // 1 hour in future
+	result = VerifyExternalFile(testFile, futureTime)
+	if !result.Exists {
+		t.Error("VerifyExternalFile() should report file exists")
+	}
+	if result.Valid {
+		t.Error("VerifyExternalFile() should fail for file older than spawn time")
+	}
+
+	// Test: file does not exist
+	result = VerifyExternalFile(filepath.Join(tmpDir, "nonexistent.go"), spawnTime)
+	if result.Exists {
+		t.Error("VerifyExternalFile() should report file does not exist")
+	}
+	if result.Valid {
+		t.Error("VerifyExternalFile() should fail for non-existent file")
+	}
+
+	// Test: zero spawn time (should be valid)
+	result = VerifyExternalFile(testFile, time.Time{})
+	if !result.Valid {
+		t.Error("VerifyExternalFile() should pass with zero spawn time")
+	}
+}
+
+func TestVerifyGitDiff_ExternalFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create workspace
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "test-agent")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	// Write spawn time from 1 hour ago
+	spawnTime := time.Now().Add(-1 * time.Hour)
+	if err := spawn.WriteSpawnTime(workspaceDir, spawnTime); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+
+	// Create a recent external file
+	externalFile := filepath.Join(tmpDir, "external_file.ts")
+	if err := os.WriteFile(externalFile, []byte("// external"), 0644); err != nil {
+		t.Fatalf("failed to create external file: %v", err)
+	}
+
+	// Create SYNTHESIS.md that claims the external file
+	synthesisContent := `# Session Synthesis
+
+## TLDR
+Modified external file
+
+## Delta (What Changed)
+
+### Files Modified
+- ` + "`" + externalFile + "`" + ` - External file
+`
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
+	}
+
+	// Test: should pass - external file exists and was modified after spawn time
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass for valid external file, errors: %v", result.Errors)
+	}
+	if len(result.ExternalFiles) != 1 {
+		t.Errorf("Expected 1 external file, got: %v", result.ExternalFiles)
+	}
+	if len(result.InvalidExternalFiles) > 0 {
+		t.Errorf("Expected no invalid external files, got: %v", result.InvalidExternalFiles)
+	}
+}
+
+func TestVerifyGitDiff_ExternalFileNotExists(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create workspace
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "test-agent")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	// Write spawn time
+	if err := spawn.WriteSpawnTime(workspaceDir, time.Now()); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+
+	// Create SYNTHESIS.md that claims a non-existent external file
+	synthesisContent := `# Session Synthesis
+
+## TLDR
+Modified external file
+
+## Delta (What Changed)
+
+### Files Modified
+- ` + "`/nonexistent/path/file.go`" + ` - Does not exist
+`
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
+	}
+
+	// Test: should fail - external file does not exist
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+	if result.Passed {
+		t.Error("VerifyGitDiff() should fail for non-existent external file")
+	}
+	if len(result.InvalidExternalFiles) != 1 {
+		t.Errorf("Expected 1 invalid external file, got: %v", result.InvalidExternalFiles)
+	}
+}
+
+func TestVerifyGitDiff_MixedLocalAndExternal(t *testing.T) {
+	// Skip if git is not available
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found in PATH")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@test.com")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create initial commit
+	initialFile := filepath.Join(tmpDir, "README.md")
+	if err := os.WriteFile(initialFile, []byte("# Test"), 0644); err != nil {
+		t.Fatalf("failed to write initial file: %v", err)
+	}
+	cmd = exec.Command("git", "add", "README.md")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "initial commit")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create workspace
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "test-agent")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	// Write spawn time
+	spawnTime := time.Now()
+	if err := spawn.WriteSpawnTime(workspaceDir, spawnTime); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+
+	time.Sleep(gitTimestampGranularity) // Required for git timestamps
+
+	// Create and commit a local file
+	localFile := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(localFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to write local file: %v", err)
+	}
+	cmd = exec.Command("git", "add", "main.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "add main.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create an external file (outside the git repo)
+	externalDir := t.TempDir() // Different temp dir
+	externalFile := filepath.Join(externalDir, "external.ts")
+	if err := os.WriteFile(externalFile, []byte("// external"), 0644); err != nil {
+		t.Fatalf("failed to create external file: %v", err)
+	}
+
+	// Create SYNTHESIS.md that claims both local and external files
+	synthesisContent := `# Session Synthesis
+
+## TLDR
+Modified local and external files
+
+## Delta (What Changed)
+
+### Files Modified
+- ` + "`main.go`" + ` - Local file
+- ` + "`" + externalFile + "`" + ` - External file
+`
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
+	}
+
+	// Test: should pass - local file in git diff, external file exists with recent mtime
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass for mixed local/external, errors: %v", result.Errors)
+	}
+	if len(result.ExternalFiles) != 1 {
+		t.Errorf("Expected 1 external file, got: %v", result.ExternalFiles)
+	}
+	if len(result.MissingFromDiff) > 0 {
+		t.Errorf("Expected no missing local files, got: %v", result.MissingFromDiff)
 	}
 }
