@@ -189,7 +189,8 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Workaround:** If you need work tracking for an orchestrator session, create manual beads issue and reference it in workspace metadata.
 
-**Why this is correct:** Orchestrators manage sessions (conversations), not tasks (work items). Beads tracks "what needs doing", session registry tracks "who's managing work".
+**This enables:** Separation between conversation tracking (sessions) and work tracking (beads)
+**This constrains:** Cannot use `bd` commands to track orchestrator progress
 
 ---
 
@@ -201,7 +202,8 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Workaround:** Use `--headless` flag if visibility not needed (rare for orchestrators).
 
-**Why this is correct:** Orchestrators need visibility for interactive work. Watching orchestrator spawn/complete/synthesize provides meta-level feedback.
+**This enables:** Real-time visibility into orchestrator spawn/complete/synthesize cycles
+**This constrains:** Screen space consumed by visible orchestrator windows
 
 ---
 
@@ -213,7 +215,8 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Workaround:** Read SESSION_HANDOFF.md progress sections, or check orchestrator's active agent count.
 
-**Why this is correct:** Orchestrators don't have linear phases. They spawn multiple agents, synthesize in parallel, iterate based on results. Phase model doesn't apply.
+**This enables:** Non-linear orchestrator workflow (parallel spawns, iteration-based progress)
+**This constrains:** Cannot use Phase-based progress tracking for orchestrators
 
 ---
 
@@ -225,7 +228,8 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Workaround:** None needed - this is intentional respect for orchestrator judgment.
 
-**Why this is correct:** Only the orchestrator knows if they're near completion vs mid-synthesis. Hard limits would interrupt productive flow. Visibility + judgment beats enforcement.
+**This enables:** Orchestrator autonomy for productive flow continuation
+**This constrains:** Cannot enforce hard session limits, relies on orchestrator judgment
 
 ---
 

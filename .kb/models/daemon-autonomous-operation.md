@@ -212,11 +212,8 @@ Daemon auto-spawns on next poll
 
 **Workaround:** Manual spawn for urgent work: `orch spawn SKILL "task" --issue <id>`
 
-**Why this is correct:**
-- Beads doesn't emit events (CLI-based, no pub/sub)
-- Polling is simple, reliable, sufficient for batch work
-- 60s latency acceptable for overnight/batch processing
-- Event-driven would require beads architecture change
+**This enables:** Simple, reliable batch processing without beads architecture changes
+**This constrains:** Cannot react to issues in real-time (up to 60s latency)
 
 ---
 
@@ -228,11 +225,8 @@ Daemon auto-spawns on next poll
 
 **Workaround:** Create issue with correct type, or spawn manually with skill override.
 
-**Why this is correct:**
-- Type is required, labels are optional
-- Type reflects work nature (stable), labels reflect workflow (transient)
-- Prevents label proliferation (would need skill:investigation, skill:architect, etc.)
-- Keeps triage simple (one decision: ready or review?)
+**This enables:** Simple triage workflow (one decision: ready or review?)
+**This constrains:** Cannot override skill inference via labels
 
 **Future consideration:** Allow label override for edge cases (`skill:X` label overrides type-based inference).
 
@@ -246,11 +240,8 @@ Daemon auto-spawns on next poll
 
 **Workaround:** Increase MaxAgents in config, or spawn manually outside daemon.
 
-**Why this is correct:**
-- Prevents runaway spawning (100 ready issues → 100 agents → system overload)
-- Claude API rate limits (5 concurrent reasonable for Max subscription)
-- Quality degrades with too many parallel agents (context splitting)
-- Forces prioritization (if >5 ready, which 5 matter most?)
+**This enables:** Controlled resource usage, forces prioritization
+**This constrains:** Cannot spawn more than limit even when system has capacity
 
 ---
 
@@ -262,12 +253,8 @@ Daemon auto-spawns on next poll
 
 **Workaround:** Manual intervention for time-sensitive work.
 
-**Why this is correct:**
-- Balances responsiveness vs API load
-- Beads CLI calls are expensive (RPC or subprocess)
-- Daemon is for batch work, not real-time
-- Lower interval (30s) doubles API load for minimal benefit
-- Higher interval (120s) acceptable but feels slow
+**This enables:** Balanced responsiveness vs API load for batch work
+**This constrains:** Cannot achieve sub-minute response times for state changes
 
 ---
 

@@ -258,11 +258,8 @@ issues := parseJSON(output)
 
 **Workaround:** Ensure daemon running for consistent performance.
 
-**Why this is correct:**
-- Beads daemon can crash/restart
-- User might not have daemon enabled (launchd config missing)
-- CLI fallback ensures commands always work (reliability > performance)
-- Graceful degradation better than hard failure
+**This enables:** Commands always work regardless of daemon state (reliability over performance)
+**This constrains:** Cannot guarantee consistent performance without daemon running
 
 ---
 
@@ -274,11 +271,8 @@ issues := parseJSON(output)
 
 **Workaround:** Use `--no-track` for cross-project spawns, manage issues manually in target project.
 
-**Why this is correct:**
-- Beads is project-based issue tracker (like local git)
-- Issues belong to projects (not global workspace)
-- Prevents pollution (orch-go issues mixed with kb-cli issues)
-- Enables project-specific workflows (different priorities, different teams)
+**This enables:** Project-specific workflows, prevents pollution between projects
+**This constrains:** Cannot query or manage issues across projects from single location
 
 ---
 
@@ -290,11 +284,8 @@ issues := parseJSON(output)
 
 **Workaround:** Use `--no-track` for temporary work.
 
-**Why this is correct:**
-- Prevents "lost work" (agents without tracking)
-- Ensures completion verification has issue to close
-- Backlog visibility (can see all spawned work via `bd list`)
-- Opt-out easier than opt-in (users forget to track, rarely forget to skip)
+**This enables:** Full work visibility, completion verification has issue to close
+**This constrains:** Cannot spawn without creating issues unless explicitly opted out
 
 ---
 
@@ -306,11 +297,8 @@ issues := parseJSON(output)
 
 **Workaround:** Add method to pkg/beads if missing.
 
-**Why this is correct:**
-- Centralizes RPC/CLI decision logic
-- Prevents performance regressions (accidental CLI usage)
-- Enables testing (mock beads client vs subprocess)
-- Future: can add caching, retry logic, error handling in one place
+**This enables:** Centralized RPC/CLI logic, testability, future optimization in one place
+**This constrains:** Must use package methods even for simple operations
 
 ---
 

@@ -262,12 +262,8 @@ func VerifyCompletion(beadsID string) error {
 
 **Workaround:** None needed - this is the design.
 
-**Why this is correct:**
-- Different failure modes need different diagnostics
-- Phase failure = agent didn't finish
-- Evidence failure = agent finished but didn't prove it
-- Approval failure = agent proved it but human didn't verify
-- Collapsing into one gate loses diagnostic signal
+**This enables:** Precise diagnostics for each failure mode (phase/evidence/approval)
+**This constrains:** Cannot simplify to single pass/fail check
 
 ---
 
@@ -279,10 +275,8 @@ func VerifyCompletion(beadsID string) error {
 
 **Workaround:** Manually check if suspicious, or spawn with custom verification requirements.
 
-**Why this is correct:**
-- Backend has test evidence (Evidence gate checks for test output)
-- UI requires subjective judgment ("does it look right?")
-- Approval gate is expensive (requires human), reserve for cases where tests insufficient
+**This enables:** Backend work to complete without human bottleneck
+**This constrains:** Cannot require human approval for non-UI changes without custom config
 
 ---
 
@@ -294,11 +288,8 @@ func VerifyCompletion(beadsID string) error {
 
 **Workaround:** None needed - synthesis is the point.
 
-**Why this is correct:**
-- Knowledge work output is understanding, not code
-- Auto-closing means findings never get integrated into mental model
-- Surfacing forces synthesis (read SYNTHESIS.md, extract insights, create follow-up work)
-- This is by design, not a limitation
+**This enables:** Knowledge synthesis opportunity, findings integration into mental model
+**This constrains:** Cannot batch-close knowledge work without orchestrator review
 
 ---
 
@@ -310,11 +301,8 @@ func VerifyCompletion(beadsID string) error {
 
 **Workaround:** `VerifyCompletionWithTier()` routes to tier-specific verification.
 
-**Why this is correct:**
-- Orchestrators don't track via beads (use session registry)
-- Orchestrators don't report Phase (no linear progression)
-- Orchestrators produce SESSION_HANDOFF.md (not SYNTHESIS.md)
-- One verification flow doesn't fit all work types
+**This enables:** Different verification logic for orchestrator vs worker tiers
+**This constrains:** Cannot use single verification flow for all work types
 
 ---
 

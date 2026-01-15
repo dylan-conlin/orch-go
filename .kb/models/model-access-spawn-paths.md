@@ -198,6 +198,9 @@ Anthropic's auth gate checks multiple fingerprints:
 
 **Strategic question enabled:** "Is Opus quality worth $200/mo flat cost vs pay-per-token Sonnet/Flash?"
 
+**This enables:** Anthropic to differentiate Claude Code from API access (product strategy)
+**This constrains:** Cannot use Opus via API without Max subscription + Claude CLI
+
 ### Constraint 2: Critical Paths Need Independence
 
 **Why escape hatch exists:**
@@ -219,6 +222,9 @@ When building infrastructure the primary path depends on, failure cascades:
 - Dashboard/monitoring infrastructure work
 - Daemon implementation
 
+**This enables:** Infrastructure work to complete even when primary path fails
+**This constrains:** Must maintain two spawn paths (complexity cost)
+
 ### Constraint 3: OpenCode Doesn't Expose Session State
 
 **Why dashboard shows "wrong" status sometimes:**
@@ -238,6 +244,9 @@ OpenCode HTTP API provides:
 
 **Related Model:** `.kb/models/dashboard-agent-status.md` - Status calculation mechanism
 
+**This enables:** Simple OpenCode API without internal state exposure
+**This constrains:** Dashboard must infer status from indirect signals
+
 ### Constraint 4: Cost Model Determines Concurrency
 
 **OpenCode API (pay-per-token):**
@@ -255,6 +264,9 @@ OpenCode HTTP API provides:
 **Strategic question enabled:** "Should we shift more work to escape hatch to optimize cost?"
 
 **Current answer:** No - headless primary path provides better ergonomics for most work. Reserve escape hatch for critical infrastructure.
+
+**This enables:** Cost-effective high-concurrency spawning via API path
+**This constrains:** Escape hatch limited to critical work due to ergonomic overhead
 
 ### Constraint 5: Gemini Flash TPM Limits Block Tool-Heavy Agents
 
@@ -280,6 +292,9 @@ Google imposes 2,000 requests/minute limit on Gemini Flash 3 (Paid Tier 2):
 3. Tolerate retry delays - Status: Unacceptable for production
 
 **Strategic question enabled:** "Should we invest in Tier 3 or accept Sonnet costs?"
+
+**This enables:** Google to manage API load across users
+**This constrains:** Cannot use Gemini Flash for tool-heavy agents without Tier 3
 
 ### Constraint 6: Community Workarounds are Fragile Cat-and-Mouse
 
@@ -310,6 +325,9 @@ Community discovered workarounds for Anthropic's OAuth blocking:
 
 **Strategic decision:** Abandon workarounds, use Sonnet API as fallback, Gemini as primary when Tier 3 available
 
+**This enables:** Stable, maintenance-free spawn system without workaround churn
+**This constrains:** Cannot use Opus via API regardless of community discoveries
+
 ### Constraint 7: Cost Tracking Missing for Sonnet Usage
 
 **Why we don't know current spend:**
@@ -336,6 +354,9 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 3. Hybrid approach (recommended) - Both for strategic + tactical decisions
 
 **Status:** Tracking not implemented, costs unknown since Jan 9
+
+**This enables:** Simple setup without external API integrations
+**This constrains:** Cannot make data-driven model selection decisions
 
 ---
 

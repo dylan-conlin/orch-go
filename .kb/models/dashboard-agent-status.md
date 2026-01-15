@@ -124,13 +124,19 @@ Dashboard shows abandoned (override Phase)
 
 **Workaround:** SSE events for real-time updates, but dashboard refresh is pull-based
 
+**This enables:** Simple API design without exposing internal session state
+**This constrains:** Dashboard must infer status from existence, not actual execution state
+
 ### Why Can't Agents Mark Themselves Complete in Registry?
 
 **Constraint:** Agents don't have write access to `~/.orch/registry.json`
 
 **Implication:** Only `orch complete` (orchestrator tool) can update registry
 
-**Design choice:** Separation of concerns - agents declare (Phase), orchestrator verifies and records (registry)
+**Workaround:** Agent declares Phase, orchestrator verifies and records
+
+**This enables:** Separation of concerns (agents declare, orchestrator verifies)
+**This constrains:** Agents cannot self-terminate or update their own registry state
 
 ### Why Not Single Source of Truth?
 
@@ -141,7 +147,10 @@ Dashboard shows abandoned (override Phase)
 
 **Implication:** Status is computed by combining sources, not stored in one place
 
-**Design choice:** Eventual consistency across systems, dashboard reconciles
+**Workaround:** Dashboard reconciles across systems
+
+**This enables:** Each system optimized for its purpose (declaration, tracking, work management)
+**This constrains:** Cannot query single location for definitive status
 
 ---
 
