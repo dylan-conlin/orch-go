@@ -298,6 +298,24 @@ func LoadTracker(path string) (*Tracker, error) {
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue // Skip malformed lines
 		}
+
+		// Skip entries with incompatible schema (different logging format)
+		// These have empty target AND empty/invalid outcome
+		if event.Target == "" && event.Outcome == "" {
+			continue
+		}
+
+		// Skip entries with empty target for tools that always require a target
+		// These are likely from incompatible logging formats
+		if event.Target == "" {
+			toolLower := strings.ToLower(event.Tool)
+			// Tools that must have a meaningful target
+			switch toolLower {
+			case "scroll", "read", "glob", "edit", "write", "todowrite":
+				continue
+			}
+		}
+
 		tracker.Events = append(tracker.Events, event)
 	}
 
@@ -314,8 +332,94 @@ const PatternThreshold = 3
 // MaxAge is how long to consider events for pattern detection.
 const MaxAge = 7 * 24 * time.Hour // 1 week
 
+// BenignEmptyCommands are shell commands where empty output is normal/expected.
+// These commands returning empty doesn't indicate a problem.
+var BenignEmptyCommands = map[string]bool{
+	// Search commands - empty means "no matches" which is normal
+	"grep": true,
+	"rg":   true,
+	"find": true,
+	"ag":   true,
+
+	// Git commands - empty is often normal
+	"git add":    true, // Success with nothing to stage
+	"git diff":   true, // No changes
+	"git status": true, // Clean working directory
+	"git log":    true, // Empty log (new repo)
+	"git stash":  true, // Nothing to stash
+
+	// Build/compile commands - empty means success
+	"go build":   true,
+	"go":         true, // Various go commands return empty on success
+	"make":       true,
+	"npm":        true,
+	"bun":        true,
+	"tsc":        true,
+	"go test":    true,
+	"go build ./...": true,
+
+	// File listing - empty directory is normal
+	"ls": true,
+
+	// Utility commands that normally produce no output
+	"sleep":  true,
+	"mkdir":  true,
+	"rm":     true,
+	"cp":     true,
+	"mv":     true,
+	"touch":  true,
+	"chmod":  true,
+	"chown":  true,
+	"cat":    true, // When used with heredoc for writing
+	"echo":   true, // Redirected output
+	"printf": true,
+
+	// Process management
+	"kill": true,
+	"pkill": true,
+
+	// Status checking commands
+	"orch status": true, // No active agents is normal
+	"bd show":     true, // Empty issue state
+	"bd list":     true, // No matching issues
+	"ps":          true, // No matching processes
+	"pgrep":       true, // No matching processes
+	"lsof":        true, // No matching files
+}
+
+// isBenignEmptyPattern checks if an "empty" outcome is benign for this tool/target.
+func isBenignEmptyPattern(tool, target string, outcome Outcome) bool {
+	if outcome != OutcomeEmpty {
+		return false
+	}
+
+	// Normalize tool name
+	toolLower := strings.ToLower(tool)
+	if toolLower != "bash" {
+		return false
+	}
+
+	// Extract command name from target
+	normalizedTarget := normalizeTarget(target)
+
+	// Check against known benign commands
+	if BenignEmptyCommands[normalizedTarget] {
+		return true
+	}
+
+	// Check prefixes (e.g., "git add" matches "git add .")
+	for cmd := range BenignEmptyCommands {
+		if strings.HasPrefix(normalizedTarget, cmd) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // FindPatterns identifies repeated action patterns.
 // Only considers events within MaxAge and requires PatternThreshold occurrences.
+// Filters out benign patterns (e.g., grep returning empty is normal).
 func (t *Tracker) FindPatterns() []ActionPattern {
 	cutoff := time.Now().Add(-MaxAge)
 
@@ -327,6 +431,10 @@ func (t *Tracker) FindPatterns() []ActionPattern {
 		}
 		// Only track non-success outcomes (those are the "futile" actions)
 		if e.Outcome == OutcomeSuccess {
+			continue
+		}
+		// Skip benign empty patterns (grep/ls/git returning empty is normal)
+		if isBenignEmptyPattern(e.Tool, e.Target, e.Outcome) {
 			continue
 		}
 		key := e.PatternKey()
