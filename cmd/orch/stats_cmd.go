@@ -101,16 +101,17 @@ type StatsEvent struct {
 
 // StatsReport contains all aggregated statistics
 type StatsReport struct {
-	GeneratedAt      string              `json:"generated_at"`
-	AnalysisPeriod   string              `json:"analysis_period"`
-	DaysAnalyzed     int                 `json:"days_analyzed"`
-	EventsAnalyzed   int                 `json:"events_analyzed"`
-	Summary          StatsSummary        `json:"summary"`
-	SkillStats       []SkillStatsSummary `json:"skill_stats"`
-	DaemonStats      DaemonStatsSummary  `json:"daemon_stats"`
-	WaitStats        WaitStatsSummary    `json:"wait_stats,omitempty"`
-	SessionStats     SessionStatsSummary `json:"session_stats,omitempty"`
-	EscapeHatchStats EscapeHatchStats    `json:"escape_hatch_stats,omitempty"`
+	GeneratedAt       string              `json:"generated_at"`
+	AnalysisPeriod    string              `json:"analysis_period"`
+	DaysAnalyzed      int                 `json:"days_analyzed"`
+	EventsAnalyzed    int                 `json:"events_analyzed"`
+	Summary           StatsSummary        `json:"summary"`
+	SkillStats        []SkillStatsSummary `json:"skill_stats"`
+	DaemonStats       DaemonStatsSummary  `json:"daemon_stats"`
+	WaitStats         WaitStatsSummary    `json:"wait_stats,omitempty"`
+	SessionStats      SessionStatsSummary `json:"session_stats,omitempty"`
+	EscapeHatchStats  EscapeHatchStats    `json:"escape_hatch_stats,omitempty"`
+	VerificationStats VerificationStats   `json:"verification_stats,omitempty"`
 }
 
 // StatsSummary contains core metrics
@@ -175,6 +176,35 @@ type EscapeHatchStats struct {
 	Last30DaySpawns int                     `json:"last_30d_spawns"`  // Last 30 days
 	ByAccount       []AccountSpawnBreakdown `json:"by_account"`       // Breakdown by Claude Max account
 	EscapeHatchRate float64                 `json:"escape_hatch_rate"` // % of spawns using escape hatch (in analysis window)
+}
+
+// VerificationStats tracks completion verification metrics
+// Enables identifying miscalibrated gates (high fail + high force = false positive pattern)
+type VerificationStats struct {
+	TotalAttempts       int                     `json:"total_attempts"`       // Total completion attempts
+	PassedFirstTry      int                     `json:"passed_first_try"`     // Passed verification on first try
+	Bypassed            int                     `json:"bypassed"`             // Used --force to bypass failures
+	PassRate            float64                 `json:"pass_rate"`            // % passed first try
+	BypassRate          float64                 `json:"bypass_rate"`          // % bypassed with --force
+	FailuresByGate      []GateFailureStats      `json:"failures_by_gate"`     // Breakdown by gate type
+	BySkill             []SkillVerificationStats `json:"by_skill,omitempty"` // Optional: breakdown by skill
+}
+
+// GateFailureStats tracks failure count for a specific verification gate
+type GateFailureStats struct {
+	Gate        string  `json:"gate"`         // Gate name (test_evidence, git_diff, visual_verification, phase_complete)
+	FailCount   int     `json:"fail_count"`   // Times this gate failed
+	BypassCount int     `json:"bypass_count"` // Times this gate was bypassed
+	FailRate    float64 `json:"fail_rate"`    // % of attempts that failed this gate
+}
+
+// SkillVerificationStats tracks verification metrics per skill
+type SkillVerificationStats struct {
+	Skill           string  `json:"skill"`
+	TotalAttempts   int     `json:"total_attempts"`
+	PassedFirstTry  int     `json:"passed_first_try"`
+	Bypassed        int     `json:"bypassed"`
+	PassRate        float64 `json:"pass_rate"`
 }
 
 // AccountSpawnBreakdown tracks spawns per Claude Max account
@@ -297,6 +327,12 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	}
 	var escapeHatchSpawns []escapeHatchSpawn
 	escapeHatchInWindow := 0 // count of escape hatch spawns within --days window
+
+	// Track verification stats
+	// gateFailures tracks how many times each gate failed across all verification.failed events
+	gateFailures := make(map[string]int)      // gate -> failure count
+	gatesBypassed := make(map[string]int)     // gate -> bypass count (from agent.completed with forced=true)
+	skillVerification := make(map[string]*SkillVerificationStats) // skill -> verification stats
 
 	// Count events within analysis window for EventsAnalyzed
 	eventsInWindow := 0
@@ -457,6 +493,11 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			var sessionID string
 			var isOrchestrator bool
 			var eventMarkedUntracked bool
+			// Verification metrics
+			var verificationPassed bool
+			var wasForced bool
+			var eventGatesBypassed []string
+			var eventSkill string
 			if data := event.Data; data != nil {
 				if b, ok := data["beads_id"].(string); ok && b != "" {
 					beadsID = b
@@ -485,6 +526,23 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 							sessionID = sid
 						}
 					}
+				}
+				// Extract verification metrics
+				if vp, ok := data["verification_passed"].(bool); ok {
+					verificationPassed = vp
+				}
+				if f, ok := data["forced"].(bool); ok {
+					wasForced = f
+				}
+				if gb, ok := data["gates_bypassed"].([]interface{}); ok {
+					for _, g := range gb {
+						if gate, ok := g.(string); ok {
+							eventGatesBypassed = append(eventGatesBypassed, gate)
+						}
+					}
+				}
+				if s, ok := data["skill"].(string); ok && s != "" {
+					eventSkill = s
 				}
 			}
 
@@ -558,6 +616,39 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 						if !alreadyCounted {
 							durations = append(durations, duration)
 						}
+					}
+				}
+			}
+
+			// Track verification metrics (only for unique completions)
+			if shouldCount && !alreadyCounted {
+				report.VerificationStats.TotalAttempts++
+				if verificationPassed {
+					report.VerificationStats.PassedFirstTry++
+				}
+				if wasForced {
+					report.VerificationStats.Bypassed++
+					// Track gates that were bypassed
+					for _, gate := range eventGatesBypassed {
+						gatesBypassed[gate]++
+					}
+				}
+				// Track per-skill verification stats
+				skill := eventSkill
+				if skill == "" && sessionID != "" {
+					// Fall back to skill from spawn if not in event
+					skill = spawnSkills[sessionID]
+				}
+				if skill != "" {
+					if _, exists := skillVerification[skill]; !exists {
+						skillVerification[skill] = &SkillVerificationStats{Skill: skill}
+					}
+					skillVerification[skill].TotalAttempts++
+					if verificationPassed {
+						skillVerification[skill].PassedFirstTry++
+					}
+					if wasForced {
+						skillVerification[skill].Bypassed++
 					}
 				}
 			}
@@ -646,6 +737,31 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				continue
 			}
 			report.SessionStats.SessionsEnded++
+
+		case "verification.failed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			// Extract gates_failed and skill from event data
+			if data := event.Data; data != nil {
+				// Track failed gates
+				if gatesFailed, ok := data["gates_failed"].([]interface{}); ok {
+					for _, g := range gatesFailed {
+						if gate, ok := g.(string); ok {
+							gateFailures[gate]++
+						}
+					}
+				}
+				// Track by skill for optional breakdown
+				if skill, ok := data["skill"].(string); ok && skill != "" {
+					if _, exists := skillVerification[skill]; !exists {
+						skillVerification[skill] = &SkillVerificationStats{Skill: skill}
+					}
+					// Don't count here - failures don't directly map to attempts
+					// Attempts are counted via agent.completed events
+				}
+			}
 		}
 	}
 
@@ -693,6 +809,49 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	if report.Summary.TotalSpawns > 0 {
 		report.EscapeHatchStats.EscapeHatchRate = float64(escapeHatchInWindow) / float64(report.Summary.TotalSpawns) * 100
 	}
+
+	// Calculate verification stats
+	if report.VerificationStats.TotalAttempts > 0 {
+		report.VerificationStats.PassRate = float64(report.VerificationStats.PassedFirstTry) / float64(report.VerificationStats.TotalAttempts) * 100
+		report.VerificationStats.BypassRate = float64(report.VerificationStats.Bypassed) / float64(report.VerificationStats.TotalAttempts) * 100
+	}
+
+	// Build gate failure stats - combine failures and bypasses
+	// Collect all unique gates from both maps
+	allGates := make(map[string]bool)
+	for gate := range gateFailures {
+		allGates[gate] = true
+	}
+	for gate := range gatesBypassed {
+		allGates[gate] = true
+	}
+	for gate := range allGates {
+		gateStats := GateFailureStats{
+			Gate:        gate,
+			FailCount:   gateFailures[gate],
+			BypassCount: gatesBypassed[gate],
+		}
+		if report.VerificationStats.TotalAttempts > 0 {
+			gateStats.FailRate = float64(gateStats.FailCount) / float64(report.VerificationStats.TotalAttempts) * 100
+		}
+		report.VerificationStats.FailuresByGate = append(report.VerificationStats.FailuresByGate, gateStats)
+	}
+	// Sort gates by fail count descending
+	sort.Slice(report.VerificationStats.FailuresByGate, func(i, j int) bool {
+		return report.VerificationStats.FailuresByGate[i].FailCount > report.VerificationStats.FailuresByGate[j].FailCount
+	})
+
+	// Build skill verification stats
+	for _, sv := range skillVerification {
+		if sv.TotalAttempts > 0 {
+			sv.PassRate = float64(sv.PassedFirstTry) / float64(sv.TotalAttempts) * 100
+		}
+		report.VerificationStats.BySkill = append(report.VerificationStats.BySkill, *sv)
+	}
+	// Sort by total attempts descending
+	sort.Slice(report.VerificationStats.BySkill, func(i, j int) bool {
+		return report.VerificationStats.BySkill[i].TotalAttempts > report.VerificationStats.BySkill[j].TotalAttempts
+	})
 
 	// Calculate rates
 	if report.Summary.TotalSpawns > 0 {
@@ -882,6 +1041,48 @@ func outputStatsText(report *StatsReport) error {
 		}
 	}
 
+	// Verification stats (if any completion attempts exist)
+	if report.VerificationStats.TotalAttempts > 0 {
+		fmt.Println()
+		fmt.Println("✅ VERIFICATION GATES")
+		fmt.Printf("  Total attempts:   %d\n", report.VerificationStats.TotalAttempts)
+		fmt.Printf("  Passed 1st try:   %d (%.1f%%)\n", report.VerificationStats.PassedFirstTry, report.VerificationStats.PassRate)
+		fmt.Printf("  Bypassed (--force): %d (%.1f%%)\n", report.VerificationStats.Bypassed, report.VerificationStats.BypassRate)
+
+		// Gate breakdown (if there are failures)
+		if len(report.VerificationStats.FailuresByGate) > 0 {
+			fmt.Println()
+			fmt.Println("  Gate Breakdown:")
+			fmt.Printf("  %-25s %8s %8s %10s\n", "Gate", "Failed", "Bypassed", "Fail Rate")
+			fmt.Println("  " + strings.Repeat("-", 55))
+			for _, gate := range report.VerificationStats.FailuresByGate {
+				fmt.Printf("  %-25s %8d %8d %9.1f%%\n",
+					gate.Gate,
+					gate.FailCount,
+					gate.BypassCount,
+					gate.FailRate,
+				)
+			}
+		}
+
+		// Skill breakdown (if verbose and there's skill-level data)
+		if statsVerbose && len(report.VerificationStats.BySkill) > 0 {
+			fmt.Println()
+			fmt.Println("  By Skill:")
+			fmt.Printf("  %-25s %8s %8s %8s %10s\n", "Skill", "Attempts", "Passed", "Bypassed", "Pass Rate")
+			fmt.Println("  " + strings.Repeat("-", 62))
+			for _, sv := range report.VerificationStats.BySkill {
+				fmt.Printf("  %-25s %8d %8d %8d %9.1f%%\n",
+					truncateSkill(sv.Skill, 22),
+					sv.TotalAttempts,
+					sv.PassedFirstTry,
+					sv.Bypassed,
+					sv.PassRate,
+				)
+			}
+		}
+	}
+
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 70))
 
@@ -892,6 +1093,11 @@ func outputStatsText(report *StatsReport) error {
 		fmt.Println("⚠️  WARNING: Task skill completion rate below 80% - investigate failure patterns")
 	} else if report.Summary.TaskSpawns > 0 && report.Summary.TaskCompletionRate >= 95 {
 		fmt.Println("✅ HEALTHY: Task skill completion rate at 95%+")
+	}
+
+	// Verification health check
+	if report.VerificationStats.TotalAttempts > 0 && report.VerificationStats.BypassRate > 50 {
+		fmt.Println("⚠️  WARNING: >50% of completions bypassed verification - gates may be miscalibrated")
 	}
 
 	return nil

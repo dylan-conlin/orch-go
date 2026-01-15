@@ -729,3 +729,249 @@ func TestAggregateStatsDeduplicationMixedEventTypes(t *testing.T) {
 		t.Errorf("expected 1 completion (deduplicated across event types), got %d", report.Summary.TotalCompletions)
 	}
 }
+
+func TestAggregateStatsVerification(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawn for 3 agents
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 5200, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "test-3",
+		}},
+		// Verification failures (these don't create attempts, just track gate failures)
+		{Type: "verification.failed", Timestamp: now - 4000, Data: map[string]interface{}{
+			"beads_id":     "test-1",
+			"gates_failed": []interface{}{"test_evidence", "git_diff"},
+			"skill":        "feature-impl",
+		}},
+		{Type: "verification.failed", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id":     "test-2",
+			"gates_failed": []interface{}{"test_evidence"},
+			"skill":        "feature-impl",
+		}},
+		// Completions - test-1 passed first try, test-2 was forced, test-3 passed
+		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
+			"beads_id":            "test-1",
+			"verification_passed": true,
+			"forced":              false,
+			"skill":               "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 1500, Data: map[string]interface{}{
+			"beads_id":            "test-2",
+			"verification_passed": false,
+			"forced":              true,
+			"gates_bypassed":      []interface{}{"test_evidence"},
+			"skill":               "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
+			"beads_id":            "test-3",
+			"verification_passed": true,
+			"forced":              false,
+			"skill":               "investigation",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Test verification stats
+	if report.VerificationStats.TotalAttempts != 3 {
+		t.Errorf("expected 3 verification attempts, got %d", report.VerificationStats.TotalAttempts)
+	}
+
+	if report.VerificationStats.PassedFirstTry != 2 {
+		t.Errorf("expected 2 passed first try, got %d", report.VerificationStats.PassedFirstTry)
+	}
+
+	if report.VerificationStats.Bypassed != 1 {
+		t.Errorf("expected 1 bypassed, got %d", report.VerificationStats.Bypassed)
+	}
+
+	// Check pass rate (2/3 = 66.67%)
+	expectedPassRate := (2.0 / 3.0) * 100
+	if report.VerificationStats.PassRate < expectedPassRate-0.1 || report.VerificationStats.PassRate > expectedPassRate+0.1 {
+		t.Errorf("expected pass rate ~%.1f%%, got %.1f%%", expectedPassRate, report.VerificationStats.PassRate)
+	}
+
+	// Check bypass rate (1/3 = 33.33%)
+	expectedBypassRate := (1.0 / 3.0) * 100
+	if report.VerificationStats.BypassRate < expectedBypassRate-0.1 || report.VerificationStats.BypassRate > expectedBypassRate+0.1 {
+		t.Errorf("expected bypass rate ~%.1f%%, got %.1f%%", expectedBypassRate, report.VerificationStats.BypassRate)
+	}
+}
+
+func TestAggregateStatsVerificationGateBreakdown(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawns
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		// Verification failures - test_evidence fails twice, git_diff once, visual_verification once
+		{Type: "verification.failed", Timestamp: now - 4000, Data: map[string]interface{}{
+			"beads_id":     "test-1",
+			"gates_failed": []interface{}{"test_evidence", "git_diff"},
+			"skill":        "feature-impl",
+		}},
+		{Type: "verification.failed", Timestamp: now - 3500, Data: map[string]interface{}{
+			"beads_id":     "test-2",
+			"gates_failed": []interface{}{"test_evidence", "visual_verification"},
+			"skill":        "feature-impl",
+		}},
+		// Completions - both bypassed with different gates
+		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
+			"beads_id":            "test-1",
+			"verification_passed": false,
+			"forced":              true,
+			"gates_bypassed":      []interface{}{"test_evidence", "git_diff"},
+			"skill":               "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
+			"beads_id":            "test-2",
+			"verification_passed": false,
+			"forced":              true,
+			"gates_bypassed":      []interface{}{"test_evidence"},
+			"skill":               "feature-impl",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Check gate breakdown
+	if len(report.VerificationStats.FailuresByGate) == 0 {
+		t.Fatal("expected gate breakdown, got none")
+	}
+
+	// Find test_evidence gate stats
+	var testEvidenceStats *GateFailureStats
+	var gitDiffStats *GateFailureStats
+	for i := range report.VerificationStats.FailuresByGate {
+		gate := &report.VerificationStats.FailuresByGate[i]
+		if gate.Gate == "test_evidence" {
+			testEvidenceStats = gate
+		}
+		if gate.Gate == "git_diff" {
+			gitDiffStats = gate
+		}
+	}
+
+	if testEvidenceStats == nil {
+		t.Fatal("test_evidence gate not found in breakdown")
+	}
+
+	// test_evidence: failed 2 times, bypassed 2 times (both completions bypassed it)
+	if testEvidenceStats.FailCount != 2 {
+		t.Errorf("expected test_evidence to have 2 failures, got %d", testEvidenceStats.FailCount)
+	}
+	if testEvidenceStats.BypassCount != 2 {
+		t.Errorf("expected test_evidence to have 2 bypasses, got %d", testEvidenceStats.BypassCount)
+	}
+
+	if gitDiffStats == nil {
+		t.Fatal("git_diff gate not found in breakdown")
+	}
+
+	// git_diff: failed 1 time, bypassed 1 time
+	if gitDiffStats.FailCount != 1 {
+		t.Errorf("expected git_diff to have 1 failure, got %d", gitDiffStats.FailCount)
+	}
+	if gitDiffStats.BypassCount != 1 {
+		t.Errorf("expected git_diff to have 1 bypass, got %d", gitDiffStats.BypassCount)
+	}
+}
+
+func TestAggregateStatsVerificationBySkill(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Spawns for different skills
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: now - 5200, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "test-3",
+		}},
+		// Completions
+		{Type: "agent.completed", Timestamp: now - 2000, Data: map[string]interface{}{
+			"beads_id":            "test-1",
+			"verification_passed": true,
+			"forced":              false,
+			"skill":               "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 1500, Data: map[string]interface{}{
+			"beads_id":            "test-2",
+			"verification_passed": false,
+			"forced":              true,
+			"skill":               "feature-impl",
+		}},
+		{Type: "agent.completed", Timestamp: now - 1000, Data: map[string]interface{}{
+			"beads_id":            "test-3",
+			"verification_passed": true,
+			"forced":              false,
+			"skill":               "investigation",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Check skill breakdown
+	if len(report.VerificationStats.BySkill) != 2 {
+		t.Errorf("expected 2 skills in verification breakdown, got %d", len(report.VerificationStats.BySkill))
+	}
+
+	// Find feature-impl stats
+	var featureImplStats *SkillVerificationStats
+	var invStats *SkillVerificationStats
+	for i := range report.VerificationStats.BySkill {
+		sv := &report.VerificationStats.BySkill[i]
+		if sv.Skill == "feature-impl" {
+			featureImplStats = sv
+		}
+		if sv.Skill == "investigation" {
+			invStats = sv
+		}
+	}
+
+	if featureImplStats == nil {
+		t.Fatal("feature-impl not found in skill breakdown")
+	}
+	if featureImplStats.TotalAttempts != 2 {
+		t.Errorf("expected feature-impl to have 2 attempts, got %d", featureImplStats.TotalAttempts)
+	}
+	if featureImplStats.PassedFirstTry != 1 {
+		t.Errorf("expected feature-impl to have 1 passed first try, got %d", featureImplStats.PassedFirstTry)
+	}
+	if featureImplStats.Bypassed != 1 {
+		t.Errorf("expected feature-impl to have 1 bypassed, got %d", featureImplStats.Bypassed)
+	}
+	// Pass rate should be 50%
+	if featureImplStats.PassRate < 49.9 || featureImplStats.PassRate > 50.1 {
+		t.Errorf("expected feature-impl pass rate 50%%, got %.1f%%", featureImplStats.PassRate)
+	}
+
+	if invStats == nil {
+		t.Fatal("investigation not found in skill breakdown")
+	}
+	if invStats.TotalAttempts != 1 {
+		t.Errorf("expected investigation to have 1 attempt, got %d", invStats.TotalAttempts)
+	}
+	if invStats.PassedFirstTry != 1 {
+		t.Errorf("expected investigation to have 1 passed first try, got %d", invStats.PassedFirstTry)
+	}
+	// Pass rate should be 100%
+	if invStats.PassRate < 99.9 {
+		t.Errorf("expected investigation pass rate 100%%, got %.1f%%", invStats.PassRate)
+	}
+}
