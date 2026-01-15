@@ -90,6 +90,7 @@ type AgentInfo struct {
 	Task         string                        `json:"task,omitempty"`          // Task description (truncated)
 	Project      string                        `json:"project,omitempty"`       // Project name derived from beads ID or workspace
 	ProjectDir   string                        `json:"project_dir,omitempty"`   // Full path to project directory (for cross-project agents)
+	Source       string                        `json:"source,omitempty"`        // Source where agent originated: T=tmux, O=opencode, B=beads, W=workspace
 	IsPhantom    bool                          `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
 	IsProcessing bool                          `json:"is_processing,omitempty"` // True if session is actively generating a response
 	IsCompleted  bool                          `json:"is_completed,omitempty"`  // True if beads issue is closed
@@ -457,6 +458,9 @@ func runStatus(serverURL string) error {
 		} else {
 			agent.IsPhantom = true
 		}
+
+		// Determine source indicator
+		agent.Source = determineAgentSource(*agent, projectDir)
 
 		// If it's claude mode and we matched a session, get runtime
 		if agent.Mode == "claude" && agent.SessionID != "" {
@@ -973,7 +977,7 @@ func printOrchestratorSessions(sessions []OrchestratorSessionInfo, termWidth int
 }
 
 // printAgentsWideFormat prints agents in full table format (>120 chars).
-// Columns: BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS, RISK
+// Columns: SOURCE, BEADS ID, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS, RISK
 func printAgentsWideFormat(agents []AgentInfo) {
 	// Check if any agent has risk to show RISK column
 	hasRisk := false
@@ -985,14 +989,18 @@ func printAgentsWideFormat(agents []AgentInfo) {
 	}
 
 	if hasRisk {
-		fmt.Printf("  %-18s %-8s %-8s %-12s %-20s %-25s %-12s %-7s %-16s %s\n", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
-		fmt.Printf("  %s\n", strings.Repeat("-", 145))
+		fmt.Printf("  %-3s %-18s %-8s %-8s %-12s %-20s %-25s %-12s %-7s %-16s %s\n", "SRC", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS", "RISK")
+		fmt.Printf("  %s\n", strings.Repeat("-", 150))
 	} else {
-		fmt.Printf("  %-18s %-8s %-20s %-8s %-12s %-23s %-12s %-8s %s\n", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
-		fmt.Printf("  %s\n", strings.Repeat("-", 135))
+		fmt.Printf("  %-3s %-18s %-8s %-20s %-8s %-12s %-23s %-12s %-8s %s\n", "SRC", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "TASK", "SKILL", "RUNTIME", "TOKENS")
+		fmt.Printf("  %s\n", strings.Repeat("-", 140))
 	}
 
 	for _, agent := range agents {
+		source := agent.Source
+		if source == "" {
+			source = "-"
+		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
 			beadsID = "-"
@@ -1019,7 +1027,8 @@ func printAgentsWideFormat(agents []AgentInfo) {
 
 		if hasRisk {
 			risk := formatContextRisk(agent.ContextRisk)
-			fmt.Printf("  %-18s %-8s %-20s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
+			fmt.Printf("  %-3s %-18s %-8s %-20s %-8s %-12s %-25s %-12s %-7s %-16s %s\n",
+				source,
 				beadsID,
 				mode,
 				modelDisplay,
@@ -1031,7 +1040,8 @@ func printAgentsWideFormat(agents []AgentInfo) {
 				tokens,
 				risk)
 		} else {
-			fmt.Printf("  %-18s %-8s %-20s %-8s %-12s %-23s %-12s %-8s %s\n",
+			fmt.Printf("  %-3s %-18s %-8s %-20s %-8s %-12s %-23s %-12s %-8s %s\n",
+				source,
 				beadsID,
 				mode,
 				modelDisplay,
@@ -1060,12 +1070,16 @@ func formatContextRisk(risk *verify.ContextExhaustionRisk) string {
 
 // printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
 // Drops TASK column, abbreviates SKILL and MODEL.
-// Columns: BEADS ID, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS
+// Columns: SOURCE, BEADS ID, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS
 func printAgentsNarrowFormat(agents []AgentInfo) {
-	fmt.Printf("  %-18s %-10s %-8s %-10s %-8s %-8s %s\n", "BEADS ID", "MODEL", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
-	fmt.Printf("  %s\n", strings.Repeat("-", 85))
+	fmt.Printf("  %-3s %-18s %-10s %-8s %-10s %-8s %-8s %s\n", "SRC", "BEADS ID", "MODEL", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 90))
 
 	for _, agent := range agents {
+		source := agent.Source
+		if source == "" {
+			source = "-"
+		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
 			beadsID = "-"
@@ -1082,7 +1096,8 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		status := getAgentStatus(agent)
 		tokens := formatTokenStatsCompact(agent.Tokens)
 
-		fmt.Printf("  %-18s %-10s %-8s %-10s %-8s %-8s %s\n",
+		fmt.Printf("  %-3s %-18s %-10s %-8s %-10s %-8s %-8s %s\n",
+			source,
 			beadsID,
 			truncate(modelDisplay, 9),
 			status,
@@ -1099,6 +1114,10 @@ func printAgentsCardFormat(agents []AgentInfo) {
 	for i, agent := range agents {
 		if i > 0 {
 			fmt.Println()
+		}
+		source := agent.Source
+		if source == "" {
+			source = "-"
 		}
 		beadsID := agent.BeadsID
 		if beadsID == "" {
@@ -1121,9 +1140,9 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		riskStr := formatContextRisk(agent.ContextRisk)
 
 		if riskStr != "" {
-			fmt.Printf("  %s [%s] %s\n", beadsID, status, riskStr)
+			fmt.Printf("  [%s] %s [%s] %s\n", source, beadsID, status, riskStr)
 		} else {
-			fmt.Printf("  %s [%s]\n", beadsID, status)
+			fmt.Printf("  [%s] %s [%s]\n", source, beadsID, status)
 		}
 		fmt.Printf("    Model: %s | Phase: %s | Skill: %s\n", modelDisplay, phase, skill)
 		fmt.Printf("    Task: %s\n", truncate(task, 50))
@@ -1146,6 +1165,36 @@ func getAgentStatus(agent AgentInfo) string {
 		return "running"
 	}
 	return "idle"
+}
+
+// determineAgentSource returns the primary source indicator for an agent.
+// Priority: T (tmux) > O (OpenCode) > B (beads phantom) > W (workspace).
+// Returns: T=tmux, O=opencode, B=beads phantom, W=workspace, or empty string if unknown.
+func determineAgentSource(agent AgentInfo, projectDir string) string {
+	// Tmux has highest priority (visible TUI)
+	if agent.Window != "" {
+		return "T"
+	}
+
+	// OpenCode session (headless or API mode)
+	if agent.SessionID != "" && agent.SessionID != "tmux-stalled" && agent.SessionID != "api-stalled" {
+		return "O"
+	}
+
+	// Beads phantom (issue exists but no active runtime)
+	if agent.BeadsID != "" && agent.IsPhantom {
+		return "B"
+	}
+
+	// Workspace (has workspace directory)
+	if agent.BeadsID != "" && projectDir != "" {
+		workspacePath, _ := findWorkspaceByBeadsID(projectDir, agent.BeadsID)
+		if workspacePath != "" {
+			return "W"
+		}
+	}
+
+	return ""
 }
 
 // printSynthesisOpportunities prints the synthesis opportunities section.
