@@ -727,7 +727,7 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}, nil
 	}
 
-	skill, err := InferSkill(issue.IssueType)
+	skill, err := InferSkillFromIssue(issue)
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
@@ -815,7 +815,7 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		}, nil, nil
 	}
 
-	skill, err := InferSkill(issue.IssueType)
+	skill, err := InferSkillFromIssue(issue)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
