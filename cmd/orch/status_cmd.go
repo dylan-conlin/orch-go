@@ -1119,7 +1119,7 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		if source == "" {
 			source = "-"
 		}
-		beadsID := agent.BeadsID
+		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
 			beadsID = "-"
 		}
