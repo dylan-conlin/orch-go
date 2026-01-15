@@ -1782,6 +1782,9 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	// Register orchestrator session in registry if needed
 	registerOrchestratorSession(cfg, "", task)
 
+	// Register agent in the agent registry (for orch status tracking)
+	registerAgent(cfg, "", result.Window, registry.ModeTmux, cfg.Model)
+
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
