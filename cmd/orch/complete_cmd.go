@@ -34,6 +34,20 @@ var (
 	completeNoChangelogCheck bool
 	completeSkipReproCheck   bool
 	completeSkipReproReason  string
+
+	// Targeted skip flags (replace blanket --force)
+	// Each requires completeSkipReason to be set (min 10 chars)
+	completeSkipTestEvidence      bool
+	completeSkipVisual            bool
+	completeSkipGitDiff           bool
+	completeSkipSynthesis         bool
+	completeSkipBuild             bool
+	completeSkipConstraint        bool
+	completeSkipPhaseGate         bool
+	completeSkipSkillOutput       bool
+	completeSkipDecisionPatch     bool
+	completeSkipPhaseComplete     bool
+	completeSkipReason            string // Required for all --skip-* flags (min 10 chars)
 )
 
 var completeCmd = &cobra.Command{
@@ -42,7 +56,39 @@ var completeCmd = &cobra.Command{
 	Long: `Complete an agent's work by verifying Phase: Complete and closing the beads issue.
 
 Checks that the agent has reported "Phase: Complete" via beads comments before
-closing the issue. Use --force to skip phase and liveness verification.
+closing the issue.
+
+VERIFICATION GATES:
+The following gates are checked before completion:
+  - phase_complete:       Agent reported "Phase: Complete"
+  - synthesis:            SYNTHESIS.md exists (full tier only)
+  - test_evidence:        Test execution evidence in beads comments
+  - visual_verification:  Visual verification for web/ changes
+  - git_diff:             Git changes match SYNTHESIS.md claims
+  - build:                Project builds successfully
+  - constraint:           Skill constraints satisfied
+  - phase_gate:           Required skill phases completed
+  - skill_output:         Required skill outputs exist
+  - decision_patch_limit: Decision patch count not exceeded
+
+TARGETED SKIP FLAGS:
+Use --skip-{gate} with --skip-reason to bypass specific gates:
+  --skip-test-evidence    Skip test evidence gate
+  --skip-visual           Skip visual verification gate
+  --skip-git-diff         Skip git diff verification gate
+  --skip-synthesis        Skip SYNTHESIS.md gate
+  --skip-build            Skip build verification gate
+  --skip-constraint       Skip constraint verification gate
+  --skip-phase-gate       Skip phase gate verification
+  --skip-skill-output     Skip skill output verification gate
+  --skip-decision-patch   Skip decision patch count gate
+  --skip-phase-complete   Skip Phase: Complete gate
+
+Each --skip-* flag requires --skip-reason with a minimum of 10 characters
+explaining why the gate is being bypassed. Bypasses are logged for audit.
+
+DEPRECATION: --force is deprecated. Use targeted --skip-* flags instead.
+Using --force will show a deprecation warning.
 
 For orchestrator sessions (spawned with orchestrator or meta-orchestrator skill),
 the argument is the workspace name instead of beads ID. Orchestrators use
@@ -56,20 +102,19 @@ For cross-project completion (agents spawned with --workdir in another project),
 the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
 Use --workdir as explicit override when auto-detection fails.
 
-For bug-type issues, prompts the orchestrator to verify that the original
-reproduction no longer occurs. This repro verification runs even with --force.
-Use --skip-repro-check with --skip-repro-reason to bypass.
-
 Examples:
   orch-go complete proj-123
   orch-go complete proj-123 --reason "All tests passing"
   orch-go complete proj-123 --approve       # Approve UI changes after visual review
-  orch-go complete proj-123 --force         # Skip phase/liveness verification (not repro)
+  orch-go complete proj-123 --skip-test-evidence --skip-reason "Tests run in CI"
+  orch-go complete proj-123 --skip-git-diff --skip-synthesis --skip-reason "Docs-only change"
   orch-go complete kb-cli-123 --workdir ~/projects/kb-cli  # Cross-project completion
-  orch-go complete proj-123 --skip-repro-check --skip-repro-reason "Repro verified via automated test"
-  
+
   # Orchestrator session completion (by workspace name)
-  orch-go complete og-orch-goal-04jan       # Complete orchestrator session`,
+  orch-go complete og-orch-goal-04jan       # Complete orchestrator session
+
+  # Deprecated (shows warning):
+  orch-go complete proj-123 --force         # Use targeted --skip-* flags instead`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		identifier := args[0]
@@ -78,16 +123,179 @@ Examples:
 }
 
 func init() {
-	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "Skip phase and liveness verification (repro still runs)")
+	completeCmd.Flags().BoolVarP(&completeForce, "force", "f", false, "DEPRECATED: Skip all verification (use targeted --skip-* flags instead)")
 	completeCmd.Flags().StringVarP(&completeReason, "reason", "r", "", "Reason for closing (default: uses phase summary)")
 	completeCmd.Flags().BoolVar(&completeApprove, "approve", false, "Approve visual changes for UI tasks (adds approval comment)")
 	completeCmd.Flags().StringVar(&completeWorkdir, "workdir", "", "Target project directory (for cross-project completion)")
 	completeCmd.Flags().BoolVar(&completeNoChangelogCheck, "no-changelog-check", false, "Skip changelog detection for notable changes")
 	completeCmd.Flags().BoolVar(&completeSkipReproCheck, "skip-repro-check", false, "Skip reproduction verification for bug issues (requires --reason)")
 	completeCmd.Flags().StringVar(&completeSkipReproReason, "skip-repro-reason", "", "Reason for skipping reproduction verification")
+
+	// Targeted skip flags - each bypasses a specific verification gate
+	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipVisual, "skip-visual", false, "Skip visual verification gate for web/ changes (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipGitDiff, "skip-git-diff", false, "Skip git diff verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipSynthesis, "skip-synthesis", false, "Skip SYNTHESIS.md verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipBuild, "skip-build", false, "Skip project build verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipConstraint, "skip-constraint", false, "Skip constraint verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipPhaseGate, "skip-phase-gate", false, "Skip phase gate verification (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipSkillOutput, "skip-skill-output", false, "Skip skill output verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipDecisionPatch, "skip-decision-patch", false, "Skip decision patch count verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
+	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
+}
+
+// SkipConfig holds the configuration for which verification gates to skip.
+type SkipConfig struct {
+	TestEvidence      bool
+	Visual            bool
+	GitDiff           bool
+	Synthesis         bool
+	Build             bool
+	Constraint        bool
+	PhaseGate         bool
+	SkillOutput       bool
+	DecisionPatch     bool
+	PhaseComplete     bool
+	Reason            string // Required reason for skips
+}
+
+// hasAnySkip returns true if any skip flag is set.
+func (c SkipConfig) hasAnySkip() bool {
+	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
+		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
+		c.DecisionPatch || c.PhaseComplete
+}
+
+// skippedGates returns a list of gate names that are being skipped.
+func (c SkipConfig) skippedGates() []string {
+	var gates []string
+	if c.TestEvidence {
+		gates = append(gates, verify.GateTestEvidence)
+	}
+	if c.Visual {
+		gates = append(gates, verify.GateVisualVerify)
+	}
+	if c.GitDiff {
+		gates = append(gates, verify.GateGitDiff)
+	}
+	if c.Synthesis {
+		gates = append(gates, verify.GateSynthesis)
+	}
+	if c.Build {
+		gates = append(gates, verify.GateBuild)
+	}
+	if c.Constraint {
+		gates = append(gates, verify.GateConstraint)
+	}
+	if c.PhaseGate {
+		gates = append(gates, verify.GatePhaseGate)
+	}
+	if c.SkillOutput {
+		gates = append(gates, verify.GateSkillOutput)
+	}
+	if c.DecisionPatch {
+		gates = append(gates, verify.GateDecisionPatchLimit)
+	}
+	if c.PhaseComplete {
+		gates = append(gates, verify.GatePhaseComplete)
+	}
+	return gates
+}
+
+// shouldSkipGate returns true if the given gate should be skipped.
+func (c SkipConfig) shouldSkipGate(gate string) bool {
+	switch gate {
+	case verify.GateTestEvidence:
+		return c.TestEvidence
+	case verify.GateVisualVerify:
+		return c.Visual
+	case verify.GateGitDiff:
+		return c.GitDiff
+	case verify.GateSynthesis:
+		return c.Synthesis
+	case verify.GateBuild:
+		return c.Build
+	case verify.GateConstraint:
+		return c.Constraint
+	case verify.GatePhaseGate:
+		return c.PhaseGate
+	case verify.GateSkillOutput:
+		return c.SkillOutput
+	case verify.GateDecisionPatchLimit:
+		return c.DecisionPatch
+	case verify.GatePhaseComplete:
+		return c.PhaseComplete
+	default:
+		return false
+	}
+}
+
+// getSkipConfig builds the skip configuration from command-line flags.
+func getSkipConfig() SkipConfig {
+	return SkipConfig{
+		TestEvidence:  completeSkipTestEvidence,
+		Visual:        completeSkipVisual,
+		GitDiff:       completeSkipGitDiff,
+		Synthesis:     completeSkipSynthesis,
+		Build:         completeSkipBuild,
+		Constraint:    completeSkipConstraint,
+		PhaseGate:     completeSkipPhaseGate,
+		SkillOutput:   completeSkipSkillOutput,
+		DecisionPatch: completeSkipDecisionPatch,
+		PhaseComplete: completeSkipPhaseComplete,
+		Reason:        completeSkipReason,
+	}
+}
+
+// validateSkipFlags validates that --skip-reason is provided when --skip-* flags are used.
+func validateSkipFlags(skipConfig SkipConfig) error {
+	if !skipConfig.hasAnySkip() {
+		return nil
+	}
+
+	if skipConfig.Reason == "" {
+		return fmt.Errorf("--skip-reason is required when using --skip-* flags")
+	}
+
+	if len(skipConfig.Reason) < 10 {
+		return fmt.Errorf("--skip-reason must be at least 10 characters (got %d)", len(skipConfig.Reason))
+	}
+
+	return nil
+}
+
+// logSkipEvents logs verification.bypassed events for all skipped gates.
+func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
+	logger := events.NewLogger(events.DefaultLogPath())
+	for _, gate := range skipConfig.skippedGates() {
+		if err := logger.LogVerificationBypassed(events.VerificationBypassedData{
+			BeadsID:   beadsID,
+			Workspace: workspace,
+			Gate:      gate,
+			Reason:    skipConfig.Reason,
+			Skill:     skill,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log bypass event for %s: %v\n", gate, err)
+		}
+	}
 }
 
 func runComplete(identifier, workdir string) error {
+	// Validate skip flags before doing anything else
+	skipConfig := getSkipConfig()
+	if err := validateSkipFlags(skipConfig); err != nil {
+		return err
+	}
+
+	// Show deprecation warning for --force
+	if completeForce {
+		fmt.Fprintln(os.Stderr, "⚠️  DEPRECATED: --force is deprecated. Use targeted --skip-* flags instead.")
+		fmt.Fprintln(os.Stderr, "   Example: --skip-test-evidence --skip-reason \"Tests run in CI\"")
+		fmt.Fprintln(os.Stderr, "   This flag will be removed in a future version.")
+		fmt.Fprintln(os.Stderr)
+	}
+
 	// Get current directory as base project dir
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -255,6 +463,7 @@ func runComplete(identifier, workdir string) error {
 	// Verify completion status
 	// - For orchestrator sessions: check SESSION_HANDOFF.md exists
 	// - For regular agents: check Phase: Complete via beads comments
+	// - Skip flags allow targeted bypass of specific gates
 	if !completeForce {
 		if isOrchestratorSession {
 			// Orchestrator sessions use SESSION_HANDOFF.md as completion signal
@@ -299,6 +508,48 @@ func runComplete(identifier, workdir string) error {
 			// Track skill name for event
 			skillName = result.Skill
 
+			// If skip flags are set, filter out the skipped gates from failures
+			if skipConfig.hasAnySkip() && !result.Passed {
+				var filteredErrors []string
+				var filteredGates []string
+				var skippedGatesFound []string
+
+				for _, gate := range result.GatesFailed {
+					if skipConfig.shouldSkipGate(gate) {
+						skippedGatesFound = append(skippedGatesFound, gate)
+						fmt.Printf("⚠️  Bypassing gate: %s (reason: %s)\n", gate, skipConfig.Reason)
+					} else {
+						filteredGates = append(filteredGates, gate)
+					}
+				}
+
+				// Filter errors - keep only those not related to skipped gates
+				for _, e := range result.Errors {
+					isSkippedError := false
+					for _, gate := range skippedGatesFound {
+						// Match error messages to gates (crude but effective)
+						if strings.Contains(strings.ToLower(e), strings.ReplaceAll(gate, "_", " ")) ||
+							strings.Contains(strings.ToLower(e), strings.ReplaceAll(gate, "_", "-")) {
+							isSkippedError = true
+							break
+						}
+					}
+					if !isSkippedError {
+						filteredErrors = append(filteredErrors, e)
+					}
+				}
+
+				// Log bypass events for skipped gates
+				if len(skippedGatesFound) > 0 {
+					logSkipEvents(skipConfig, beadsID, agentName, skillName)
+				}
+
+				// Update result with filtered data
+				result.GatesFailed = filteredGates
+				result.Errors = filteredErrors
+				result.Passed = len(filteredGates) == 0
+			}
+
 			if !result.Passed {
 				verificationPassed = false
 				gatesFailed = result.GatesFailed
@@ -320,7 +571,7 @@ func runComplete(identifier, workdir string) error {
 					fmt.Fprintf(os.Stderr, "  - %s\n", e)
 				}
 				fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
-				fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
+				fmt.Fprintf(os.Stderr, "Or use --skip-<gate> --skip-reason to bypass specific gates\n")
 				return fmt.Errorf("verification failed")
 			}
 
@@ -354,7 +605,7 @@ func runComplete(identifier, workdir string) error {
 			verificationPassed = false
 			gatesFailed = append(gatesFailed, verify.GateSessionHandoff)
 		}
-		fmt.Println("Skipping phase verification (--force)")
+		fmt.Println("Skipping all verification (--force) - DEPRECATED: use targeted --skip-* flags")
 	}
 
 	// Check liveness before closing - warn if agent appears still running

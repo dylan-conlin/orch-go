@@ -367,3 +367,110 @@ func TestLogStatusChange(t *testing.T) {
 		t.Error("LogStatusChange() should include status in data")
 	}
 }
+
+// Test LogVerificationBypassed helper
+func TestLogVerificationBypassed(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogVerificationBypassed(VerificationBypassedData{
+		BeadsID:   "orch-go-abc1",
+		Workspace: "og-feat-test-14jan",
+		Gate:      "test_evidence",
+		Reason:    "Tests run in CI pipeline",
+		Skill:     "feature-impl",
+	})
+	if err != nil {
+		t.Fatalf("LogVerificationBypassed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Verify event type
+	if !strings.Contains(string(data), EventTypeVerificationBypassed) {
+		t.Error("LogVerificationBypassed() should log verification.bypassed event type")
+	}
+	// Verify gate
+	if !strings.Contains(string(data), "test_evidence") {
+		t.Error("LogVerificationBypassed() should include gate in data")
+	}
+	// Verify reason
+	if !strings.Contains(string(data), "Tests run in CI pipeline") {
+		t.Error("LogVerificationBypassed() should include reason in data")
+	}
+	// Verify beads_id
+	if !strings.Contains(string(data), "orch-go-abc1") {
+		t.Error("LogVerificationBypassed() should include beads_id in data")
+	}
+	// Verify workspace
+	if !strings.Contains(string(data), "og-feat-test-14jan") {
+		t.Error("LogVerificationBypassed() should include workspace in data")
+	}
+	// Verify skill
+	if !strings.Contains(string(data), "feature-impl") {
+		t.Error("LogVerificationBypassed() should include skill in data")
+	}
+}
+
+// Test LogVerificationBypassed with minimal data
+func TestLogVerificationBypassed_Minimal(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogVerificationBypassed(VerificationBypassedData{
+		Gate:   "git_diff",
+		Reason: "Docs-only change",
+	})
+	if err != nil {
+		t.Fatalf("LogVerificationBypassed() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Verify required fields
+	if !strings.Contains(string(data), "git_diff") {
+		t.Error("LogVerificationBypassed() should include gate")
+	}
+	if !strings.Contains(string(data), "Docs-only change") {
+		t.Error("LogVerificationBypassed() should include reason")
+	}
+}
+
+// Test VerificationBypassedData serialization
+func TestVerificationBypassedDataSerialization(t *testing.T) {
+	data := VerificationBypassedData{
+		BeadsID:   "orch-go-abc1",
+		Workspace: "og-feat-test",
+		Gate:      "test_evidence",
+		Reason:    "Test reason",
+		Skill:     "feature-impl",
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	var parsed VerificationBypassedData
+	if err := json.Unmarshal(jsonData, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if parsed.Gate != data.Gate {
+		t.Errorf("Gate = %v, want %v", parsed.Gate, data.Gate)
+	}
+	if parsed.Reason != data.Reason {
+		t.Errorf("Reason = %v, want %v", parsed.Reason, data.Reason)
+	}
+	if parsed.BeadsID != data.BeadsID {
+		t.Errorf("BeadsID = %v, want %v", parsed.BeadsID, data.BeadsID)
+	}
+}

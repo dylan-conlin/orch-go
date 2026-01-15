@@ -32,6 +32,8 @@ const (
 	EventTypeServiceRestarted = "service.restarted"
 	// EventTypeServiceStarted indicates a service started (first time seen).
 	EventTypeServiceStarted = "service.started"
+	// EventTypeVerificationBypassed indicates a verification gate was bypassed via --skip-* flag.
+	EventTypeVerificationBypassed = "verification.bypassed"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -303,6 +305,40 @@ func (l *Logger) LogServiceStarted(data ServiceEventData) error {
 	return l.Log(Event{
 		Type:      EventTypeServiceStarted,
 		SessionID: data.ServiceName,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// VerificationBypassedData contains the data for a verification.bypassed event.
+type VerificationBypassedData struct {
+	BeadsID   string `json:"beads_id,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	Gate      string `json:"gate"`   // Which gate was bypassed (e.g., "test_evidence", "git_diff")
+	Reason    string `json:"reason"` // User-provided reason for bypass
+	Skill     string `json:"skill,omitempty"`
+}
+
+// LogVerificationBypassed logs a verification gate bypass event.
+// This is emitted when a user explicitly bypasses a gate via --skip-* flags.
+func (l *Logger) LogVerificationBypassed(data VerificationBypassedData) error {
+	eventData := map[string]interface{}{
+		"gate":   data.Gate,
+		"reason": data.Reason,
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeVerificationBypassed,
+		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	})
