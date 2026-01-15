@@ -67,23 +67,30 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Workflow step numbering has duplicate "4"
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** In the source file `~/orch-knowledge/skills/src/worker/investigation/.skillc/workflow.md`, step 4 appears twice:
+- Line 17: "4. **TEST-FIRST GATE (before writing hypotheses):**"
+- Line 24: "4. Try things, observe what happens (add findings progressively)"
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+The second "4" should be "5", and subsequent steps should be renumbered accordingly.
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** `~/orch-knowledge/skills/src/worker/investigation/.skillc/workflow.md:17,24`
+
+**Significance:** While the gate is functionally present, the numbering error creates confusion in the workflow. Steps should be: 1-Create, 2-Checkpoint, 3-Tool Check, 4-Test Gate, 5-Try things, 6-Run test, 7-Fill conclusion, 8-Commit.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Numbering bug fixed and skill redeployed
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Updated workflow.md to renumber steps after TEST-FIRST GATE from "4,5,6,7" to "5,6,7,8". Rebuilt skill with skillc, copied to ~/.claude/skills/worker/investigation/SKILL.md. Verification shows line 70 now reads "5. Try things, observe what happens" instead of duplicate "4."
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- Fixed: `~/orch-knowledge/skills/src/worker/investigation/.skillc/workflow.md:24-27`
+- Verified: `grep -n "^5\. Try things" ~/.claude/skills/worker/investigation/SKILL.md` returns line 70
+- Committed: orch-knowledge repo commit 3a367f3
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The test-first gate was already present and functional, but the numbering issue has now been corrected for clarity.
 
 ---
 
@@ -91,37 +98,66 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Work was already completed in prior investigation** - The test-first gate was implemented on 2026-01-09 (investigation file: 2026-01-09-inv-add-test-first-gate-investigation.md), compiled, and deployed. The current task was a duplicate.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Minor quality issue discovered during verification** - While the gate existed, there was a numbering bug where step 4 appeared twice in the workflow. This has been corrected.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Skill compilation and deployment verified** - The investigation skill now has correct step numbering (1-8) and the TEST-FIRST GATE is positioned correctly between TOOL EXPERIENCE CHECK and "Try things".
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Yes, the test-first gate is already implemented in the investigation skill and correctly integrated. The gate prompts agents with "What's the simplest test I can run right now? Can I test this in 60 seconds?" and is positioned as step 4 in the workflow, after the checkpoint and tool experience check, but before agents begin exploration. A minor numbering bug (duplicate step 4) was found and corrected during verification.
 
 ---
+
+## Test Performed
+
+**Test:** Verified test-first gate exists in deployed skill and fixed numbering bug
+
+**Commands run:**
+```bash
+# Verify gate exists
+grep -n "TEST-FIRST\|simplest test\|60 seconds" ~/.claude/skills/worker/investigation/SKILL.md
+
+# Check for numbering bug
+grep -n "^[0-9]\. " ~/.claude/skills/worker/investigation/SKILL.md | head -10
+
+# Fix numbering in source
+# Edited workflow.md to change steps 4,5,6,7 to 5,6,7,8 after TEST-FIRST GATE
+
+# Rebuild and redeploy
+cd ~/orch-knowledge/skills/src/worker/investigation && skillc build
+cp ~/orch-knowledge/skills/src/worker/investigation/SKILL.md ~/.claude/skills/worker/investigation/SKILL.md
+
+# Verify fix
+grep -n "^5\. Try things" ~/.claude/skills/worker/investigation/SKILL.md
+```
+
+**Result:** 
+- Test-first gate confirmed at lines 64-70 of deployed SKILL.md
+- Numbering bug found (duplicate step 4) and fixed
+- Redeployed skill shows correct sequence: 1-Create, 2-Checkpoint, 3-Tool Check, 4-Test Gate, 5-Try things, 6-Run test, 7-Conclusion, 8-Commit
 
 ## Structured Uncertainty
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Test-first gate exists in deployed skill (verified via grep)
+- ✅ Gate contains correct prompt text (verified via grep showing exact match)
+- ✅ Numbering bug fixed (verified line 70 shows "5. Try things")
+- ✅ Skill compiles after fix (verified via skillc build output)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether agents actually follow the gate in practice (requires observing agent behavior)
+- ⚠️ Whether 60-second threshold is optimal (not empirically validated)
+- ⚠️ Whether the gate prevents all investigation theater or just reduces it
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if grep returned no results for "TEST-FIRST GATE" in deployed skill
+- Finding would be wrong if deployed SKILL.md still showed duplicate step 4 after redeployment
+- Finding would be wrong if skillc build failed
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
@@ -94,6 +95,7 @@ type AgentInfo struct {
 	IsCompleted  bool                          `json:"is_completed,omitempty"`  // True if beads issue is closed
 	Tokens       *opencode.TokenStats          `json:"tokens,omitempty"`        // Token usage for the session
 	ContextRisk  *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`  // Context exhaustion risk assessment
+	LastActivity time.Time                     `json:"last_activity,omitempty"` // Timestamp of last activity (for ghost filtering)
 }
 
 // OrchestratorSessionInfo represents an active orchestrator session for display.
@@ -275,7 +277,9 @@ func runStatus(serverURL string) error {
 				if a.SessionID != "" {
 					if s, ok := sessionMap[a.SessionID]; ok {
 						createdAt := time.Unix(s.Time.Created/1000, 0)
+						updatedAt := time.Unix(s.Time.Updated/1000, 0)
 						info.Runtime = formatDuration(now.Sub(createdAt))
+						info.LastActivity = updatedAt
 						info.IsProcessing = client.IsSessionProcessing(s.ID)
 						if info.Title == "" || info.Title == a.TmuxWindow {
 							info.Title = s.Title
@@ -285,7 +289,9 @@ func runStatus(serverURL string) error {
 			} else if a.Mode == "opencode" || a.Mode == "headless" {
 				if s, ok := sessionMap[a.SessionID]; ok {
 					createdAt := time.Unix(s.Time.Created/1000, 0)
+					updatedAt := time.Unix(s.Time.Updated/1000, 0)
 					info.Runtime = formatDuration(now.Sub(createdAt))
+					info.LastActivity = updatedAt
 					info.Title = s.Title
 					info.IsProcessing = client.IsSessionProcessing(s.ID)
 				} else {
@@ -362,12 +368,14 @@ func runStatus(serverURL string) error {
 		}
 
 		createdAt := time.Unix(s.Time.Created/1000, 0)
+		// updatedAt already declared in loop, so just use existing value
 		agents = append(agents, AgentInfo{
 			SessionID:    s.ID,
 			BeadsID:      beadsID,
 			Mode:         "opencode", // Untracked OpenCode sessions are opencode mode
 			Title:        s.Title,
 			Runtime:      formatDuration(now.Sub(createdAt)),
+			LastActivity: updatedAt,
 			Skill:        extractSkillFromTitle(s.Title),
 			Project:      extractProjectFromBeadsID(beadsID),
 			IsProcessing: client.IsSessionProcessing(s.ID),
@@ -470,20 +478,33 @@ func runStatus(serverURL string) error {
 
 	// Phase 3: Filter agents based on flags
 	filteredAgents := make([]AgentInfo, 0)
-	for _, agent := range agents {
+	for _, agentItem := range agents {
 		// Filter by project if specified
-		if statusProject != "" && agent.Project != statusProject {
+		if statusProject != "" && agentItem.Project != statusProject {
 			continue
 		}
-		// Filter phantoms unless --all is set
-		if agent.IsPhantom && !statusAll {
-			continue
+
+		// Determine status for filtering
+		status := "idle"
+		if agentItem.IsProcessing {
+			status = "running"
 		}
+
+		// Apply two-threshold ghost filtering unless --all is set
+		if !statusAll {
+			// Use IsVisibleByDefault to determine if agent should be shown
+			if !agent.IsVisibleByDefault(status, agentItem.LastActivity, agentItem.Phase) {
+				continue // Ghost agent - hide by default
+			}
+		}
+
 		// Filter completed agents (beads issue closed) unless --all is set
-		if agent.IsCompleted && !statusAll {
+		// Note: Phase: Complete agents are handled by IsVisibleByDefault
+		if agentItem.IsCompleted && !statusAll {
 			continue
 		}
-		filteredAgents = append(filteredAgents, agent)
+
+		filteredAgents = append(filteredAgents, agentItem)
 	}
 
 	// Phase 4: Build swarm status (counts before filtering)
@@ -972,7 +993,7 @@ func printAgentsWideFormat(agents []AgentInfo) {
 	}
 
 	for _, agent := range agents {
-		beadsID := agent.BeadsID
+		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
 			beadsID = "-"
 		}
@@ -1045,7 +1066,7 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 	fmt.Printf("  %s\n", strings.Repeat("-", 85))
 
 	for _, agent := range agents {
-		beadsID := agent.BeadsID
+		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
 			beadsID = "-"
 		}
@@ -1199,7 +1220,7 @@ func formatModelForDisplay(model string) string {
 	if model == "" {
 		return "-"
 	}
-	
+
 	// Map full model IDs to short display names
 	modelAbbreviations := map[string]string{
 		"gemini-3-flash-preview":     "flash3",
@@ -1216,11 +1237,11 @@ func formatModelForDisplay(model string) string {
 		"deepseek-chat":              "deepseek",
 		"deepseek-reasoner":          "deepseek-r1",
 	}
-	
+
 	if abbr, ok := modelAbbreviations[model]; ok {
 		return abbr
 	}
-	
+
 	// For unknown models, truncate to 18 chars
 	return truncate(model, 18)
 }

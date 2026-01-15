@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -90,6 +92,37 @@ func extractSkillFromWindowName(name string) string {
 // Untracked agents have IDs like "orch-go-untracked-1766695797".
 func isUntrackedBeadsID(beadsID string) bool {
 	return strings.Contains(beadsID, "-untracked-")
+}
+
+// formatBeadsIDForDisplay formats untracked beads IDs to be human-readable.
+// Converts "orch-go-untracked-1768090360" to "untracked-Jan15-1823".
+// Regular beads IDs are returned unchanged.
+func formatBeadsIDForDisplay(beadsID string) string {
+	if !isUntrackedBeadsID(beadsID) {
+		return beadsID
+	}
+
+	// Extract timestamp from ID (format: project-untracked-TIMESTAMP)
+	parts := strings.Split(beadsID, "-")
+	if len(parts) < 3 {
+		return beadsID // Malformed ID, return as-is
+	}
+
+	// Last part should be the Unix timestamp
+	timestampStr := parts[len(parts)-1]
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		return beadsID // Not a valid timestamp, return as-is
+	}
+
+	// Convert to human-readable format: MonDD-HHMM (e.g., Jan15-1823)
+	t := time.Unix(timestamp, 0)
+	month := t.Format("Jan")
+	day := t.Format("02")
+	hour := t.Format("15")
+	minute := t.Format("04")
+
+	return fmt.Sprintf("untracked-%s%s-%s%s", month, day, hour, minute)
 }
 
 // extractProjectFromBeadsID extracts the project name from a beads ID.

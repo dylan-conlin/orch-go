@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
@@ -401,10 +402,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	// Add active sessions from OpenCode
 	// Filter: only show sessions updated in the last 10 minutes as "active"
-	// Sessions idle > 30 min are filtered out AFTER checking beads Phase status
-	// (completed agents should still be shown regardless of activity time)
+	// Two-threshold ghost filtering:
+	// - Active threshold (10min): determines "running" vs "idle" status
+	// - Display threshold (4h): filters ghosts from default view (unless Phase: Complete)
 	activeThreshold := 10 * time.Minute
-	displayThreshold := 30 * time.Minute
+	displayThreshold := 4 * time.Hour
 
 	// Dead threshold: if no activity for 3 minutes, session is dead.
 	// Agents are constantly reading, editing, running commands - 3 min silence = dead.
@@ -497,9 +499,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			agent.Status = "idle" // Stale agents are not actively running
 		}
 
-		// Track if this agent should be filtered after Phase check
+		// Track if this agent should be filtered after Phase check using two-threshold logic
 		// Don't filter yet - we need to check beads Phase: Complete first
 		// Don't filter stale agents - they're already marked with is_stale=true
+		// Use aggressive threshold for marking (agents idle > 4h are candidates for filtering)
 		if status == "idle" && timeSinceUpdate > displayThreshold && !isStale {
 			pendingFilterByBeadsID[agent.BeadsID] = true
 		}
@@ -874,16 +877,34 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Post-Phase filtering: remove agents that were idle > displayThreshold
-		// and are NOT Phase: Complete. This deferred filtering ensures completed
-		// agents are shown regardless of activity time.
+		// Post-Phase filtering: remove agents using two-threshold ghost filtering
+		// Uses IsVisibleByDefault to determine if agent should be shown
+		// This ensures Phase: Complete agents are always visible
 		filtered := make([]AgentAPIResponse, 0, len(agents))
-		for _, agent := range agents {
-			if pendingFilterByBeadsID[agent.BeadsID] && agent.Status != "completed" {
-				// Skip idle agents that are not completed
-				continue
+		for _, agentItem := range agents {
+			// Determine status for filtering ("running" vs "idle")
+			status := agentItem.Status
+			if status != "active" && status != "idle" && status != "completed" {
+				// Map other statuses to idle for filtering purposes
+				status = "idle"
+			} else if status == "active" {
+				status = "running"
 			}
-			filtered = append(filtered, agent)
+
+			// Get last activity time
+			lastActivity := time.Time{}
+			if agentItem.LastActivityAt != "" {
+				lastActivity, _ = time.Parse(time.RFC3339, agentItem.LastActivityAt)
+			}
+
+			// Apply IsVisibleByDefault filter only if agent was marked as pending
+			if pendingFilterByBeadsID[agentItem.BeadsID] {
+				if !agent.IsVisibleByDefault(status, lastActivity, agentItem.Phase) {
+					continue // Ghost agent - filter out
+				}
+			}
+
+			filtered = append(filtered, agentItem)
 		}
 		agents = filtered
 	}

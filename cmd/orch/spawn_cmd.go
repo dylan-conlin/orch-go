@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/events"
@@ -439,29 +440,36 @@ func checkConcurrencyLimit() error {
 		return nil
 	}
 
-	// Filter to only count active ORCH-SPAWNED sessions:
-	// 1. Updated within last 30 minutes (not stale)
-	// 2. Has parseable beadsID (is orch-spawned, not manual OpenCode session)
-	// 3. Has not reported Phase: Complete (completed agents are idle)
+	// Filter to only count active ORCH-SPAWNED sessions using two-threshold logic:
+	// Uses agent.IsActiveForConcurrency with aggressive 1h threshold
+	// This prevents ghost agents from blocking new spawns
 	now := time.Now()
-	staleThreshold := 30 * time.Minute
+	activeThreshold := 10 * time.Minute // Threshold for determining "running" vs "idle"
 	activeCount := 0
 	for _, s := range sessions {
-		updatedAt := time.Unix(s.Time.Updated/1000, 0)
-		idleTime := now.Sub(updatedAt)
-		if idleTime >= staleThreshold {
-			continue // stale session
-		}
 		// Only count sessions with parseable beadsID (orch-spawned agents)
 		beadsID := extractBeadsIDFromTitle(s.Title)
 		if beadsID == "" {
 			continue // not an orch-spawned agent
 		}
-		// Exclude completed agents (Phase: Complete) - they're idle and not consuming resources
-		if isComplete, _ := verify.IsPhaseComplete(beadsID); isComplete {
-			continue // completed agent, don't count against limit
+
+		// Determine status based on recent activity
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		status := "idle"
+		if now.Sub(updatedAt) < activeThreshold {
+			status = "running"
 		}
-		activeCount++
+
+		// Get phase from beads comments
+		phase := ""
+		if isComplete, _ := verify.IsPhaseComplete(beadsID); isComplete {
+			phase = "Complete"
+		}
+
+		// Use IsActiveForConcurrency to determine if this agent counts
+		if agent.IsActiveForConcurrency(status, updatedAt, phase) {
+			activeCount++
+		}
 	}
 
 	if activeCount >= maxAgents {
