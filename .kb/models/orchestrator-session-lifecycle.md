@@ -28,7 +28,7 @@ Orchestration operates across three distinct levels:
              ▼
 ┌─────────────────────────┐
 │    Orchestrator         │  ← Claude agent (policy skill)
-│    Tactical execution   │     - Decides HOW to execute
+│    Strategic comprehension │  - COMPREHEND → TRIAGE → SYNTHESIZE
 │    SESSION_HANDOFF.md   │     - Spawns workers
 └────────────┬────────────┘     - Synthesizes results
              │ spawns/completes
@@ -270,6 +270,63 @@ Meta frame:          "What is the orchestrator struggling with?"
 **Investigations:** 4 investigations on workspace structure differences, lightweight vs full workspaces.
 
 **Key insight:** Interactive sessions serve legitimate functions: goal refinement through conversation, real-time frame correction, synthesis of worker results. NOT compensation for daemon gaps.
+
+### Phase 6: Strategic Comprehension Model (Jan 7, 2026)
+
+**What changed:** Redefined orchestrator role from "tactical execution / coordination" to "strategic comprehension / understanding". Orchestrators no longer coordinate (daemon's job) - they comprehend.
+
+**Model shift:**
+- Old: "What should we spawn next?" (tactical dispatch)
+- New: "What do we need to understand?" (strategic comprehension)
+
+**Impact on hierarchy:** Three-tier hierarchy description updated - orchestrators now do strategic comprehension (COMPREHEND → TRIAGE → SYNTHESIZE), not tactical execution. The line at :31 previously read "Tactical execution" - this is incorrect per Strategic Orchestrator Model.
+
+**Reference:** `.kb/decisions/2026-01-07-strategic-orchestrator-model.md`
+
+### Clarification: Token Usage Constraints (Jan 13, 2026)
+
+**Context added:** Agents cannot observe their own token usage through available APIs. Duration-based thresholds (2h/3h/4h) serve as a practical proxy for context consumption.
+
+**Why this matters:** Checkpoint discipline (Phase 4) uses duration thresholds because direct token observation isn't available to agents. Duration correlates with token usage and is easily measurable.
+
+**Reference:** `.kb/investigations/2026-01-06-inv-orchestrator-sessions-checkpoint-discipline-max.md:75` - "Duration-based thresholds are a practical proxy"
+
+### Clarification: Skill-Type Policy Meaning (Jan 13, 2026)
+
+**Expanded explanation:** Skills with `skill-type: policy` trigger orchestrator context generation, which sets behavioral mode through **framing**, not instructions.
+
+**Key distinction - Framing vs Instructions:**
+
+| Context Type | Example | Mechanism |
+|--------------|---------|-----------|
+| Worker instructions | "TASK: Implement user authentication" | Directive guidance - what to do |
+| Orchestrator framing | "You are an orchestrator. COMPREHEND → TRIAGE → SYNTHESIZE" | Behavioral mode - how to think |
+
+**Why framing is stronger:** Framing shapes perception and available actions. Instructions can be overridden by situational reasoning, but framing defines what's visible. This is why "ABSOLUTE DELEGATION RULE" warnings don't prevent frame collapse - the frame already determines what looks appropriate.
+
+**Reference:** Line 75 of this document explains skill-type:policy detection; this clarifies the mechanism.
+
+### Status: Resume Protocol Implementation (Jan 13, 2026)
+
+**Current implementation status:** Resume protocol is partially implemented with two distinct commands:
+
+| Command | Purpose | Status |
+|---------|---------|--------|
+| `orch session resume` | Display SESSION_HANDOFF.md for NEW session context | ✅ Implemented (Jan 13) |
+| `orch resume <id>` | Resume PAUSED agent by sending continuation prompt | ✅ Implemented (Dec 2025) |
+
+**What exists:**
+- Session registry supports workspace/session lookups
+- ORCHESTRATOR_CONTEXT.md template includes resume guidance
+- `orch session resume` discovers and displays handoffs (with --for-injection mode for hooks)
+- `orch resume` can resume workers (beads ID) or orchestrators (--workspace flag)
+
+**What's pending:**
+- Auto-resume on session start (Dylan says "let's resume" without specifying which)
+- Smart discovery across multiple potential resume candidates
+- Tracked in backlog (specific issue TBD)
+
+**Reference:** `.kb/guides/session-resume-protocol.md` - Complete protocol documentation
 
 ---
 
