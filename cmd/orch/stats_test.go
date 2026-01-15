@@ -32,8 +32,8 @@ func TestParseEvents(t *testing.T) {
 		t.Fatalf("failed to write test events: %v", err)
 	}
 
-	// Parse events
-	parsed, err := parseEvents(eventsPath, 7)
+	// Parse events (parseEvents now returns all events, filtering happens in aggregateStats)
+	parsed, err := parseEvents(eventsPath)
 	if err != nil {
 		t.Fatalf("parseEvents failed: %v", err)
 	}
@@ -51,8 +51,8 @@ func TestParseEventsTimeFiltering(t *testing.T) {
 	oldTimestamp := now - (10 * 24 * 60 * 60) // 10 days ago
 
 	events := []string{
-		`{"type":"session.spawned","session_id":"ses_1","timestamp":` + itoa(now-3600) + `,"data":{"skill":"feature-impl"}}`,
-		`{"type":"session.spawned","session_id":"ses_2","timestamp":` + itoa(oldTimestamp) + `,"data":{"skill":"investigation"}}`,
+		`{"type":"session.spawned","session_id":"ses_1","timestamp":` + itoa(now-3600) + `,"data":{"skill":"feature-impl","beads_id":"test-1"}}`,
+		`{"type":"session.spawned","session_id":"ses_2","timestamp":` + itoa(oldTimestamp) + `,"data":{"skill":"investigation","beads_id":"test-2"}}`,
 	}
 
 	content := ""
@@ -64,14 +64,21 @@ func TestParseEventsTimeFiltering(t *testing.T) {
 		t.Fatalf("failed to write test events: %v", err)
 	}
 
-	// Parse with 7 day window - should only get 1 event
-	parsed, err := parseEvents(eventsPath, 7)
+	// parseEvents now returns all events (time filtering happens in aggregateStats)
+	parsed, err := parseEvents(eventsPath)
 	if err != nil {
 		t.Fatalf("parseEvents failed: %v", err)
 	}
 
-	if len(parsed) != 1 {
-		t.Errorf("expected 1 event (recent only), got %d", len(parsed))
+	// parseEvents returns ALL events now
+	if len(parsed) != 2 {
+		t.Errorf("expected 2 events (all events), got %d", len(parsed))
+	}
+
+	// Time filtering happens in aggregateStats - verify that only recent events are counted
+	report := aggregateStats(parsed, 7, true)
+	if report.Summary.TotalSpawns != 1 {
+		t.Errorf("expected 1 spawn in 7-day window, got %d", report.Summary.TotalSpawns)
 	}
 }
 
@@ -165,6 +172,82 @@ func TestAggregateStatsEmptyEvents(t *testing.T) {
 	}
 }
 
+func TestAggregateStatsEscapeHatch(t *testing.T) {
+	now := time.Now().Unix()
+	sevenDaysAgo := now - (7 * 24 * 60 * 60) + 3600   // 7 days ago + 1 hour (within 7d window)
+	thirtyDaysAgo := now - (25 * 24 * 60 * 60)        // 25 days ago (within 30d, outside 7d)
+	veryOld := now - (60 * 24 * 60 * 60)              // 60 days ago (outside 30d)
+
+	events := []StatsEvent{
+		// Recent escape hatch spawn with account (within 7d)
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 3600, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1", "spawn_mode": "claude", "usage_account": "account1@example.com",
+		}},
+		// Older escape hatch spawn with different account (within 30d, outside 7d)
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: thirtyDaysAgo, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2", "spawn_mode": "claude", "usage_account": "account2@example.com",
+		}},
+		// Very old escape hatch spawn (outside 30d)
+		{Type: "session.spawned", SessionID: "ses_3", Timestamp: veryOld, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-3", "spawn_mode": "claude", "usage_account": "account1@example.com",
+		}},
+		// Recent regular spawn (not escape hatch)
+		{Type: "session.spawned", SessionID: "ses_4", Timestamp: now - 1800, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-4", "spawn_mode": "headless",
+		}},
+		// Escape hatch without account info
+		{Type: "session.spawned", SessionID: "ses_5", Timestamp: sevenDaysAgo, Data: map[string]interface{}{
+			"skill": "investigation", "beads_id": "test-5", "spawn_mode": "claude",
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Test escape hatch totals
+	if report.EscapeHatchStats.TotalSpawns != 4 { // All 4 escape hatch spawns
+		t.Errorf("expected 4 total escape hatch spawns, got %d", report.EscapeHatchStats.TotalSpawns)
+	}
+
+	if report.EscapeHatchStats.Last7DaySpawns != 2 { // ses_1 and ses_5
+		t.Errorf("expected 2 escape hatch spawns in last 7d, got %d", report.EscapeHatchStats.Last7DaySpawns)
+	}
+
+	if report.EscapeHatchStats.Last30DaySpawns != 3 { // ses_1, ses_2, ses_5
+		t.Errorf("expected 3 escape hatch spawns in last 30d, got %d", report.EscapeHatchStats.Last30DaySpawns)
+	}
+
+	// Test escape hatch rate (in 7-day window: 2 escape hatch out of 3 spawns)
+	// Note: ses_2, ses_3, ses_5 are outside the 7d window but escape hatch still counts them for rate
+	// Actually: within 7d window we have ses_1, ses_4, ses_5 (3 total), with ses_1 and ses_5 being escape hatch
+	// So rate should be 2/3 = 66.67%
+	expectedRate := (2.0 / 3.0) * 100
+	if report.EscapeHatchStats.EscapeHatchRate < expectedRate-1 || report.EscapeHatchStats.EscapeHatchRate > expectedRate+1 {
+		t.Errorf("expected escape hatch rate ~%.1f%%, got %.1f%%", expectedRate, report.EscapeHatchStats.EscapeHatchRate)
+	}
+
+	// Test account breakdown
+	if len(report.EscapeHatchStats.ByAccount) < 2 {
+		t.Errorf("expected at least 2 accounts in breakdown, got %d", len(report.EscapeHatchStats.ByAccount))
+	}
+
+	// Verify account1 has 2 spawns total (ses_1 in 7d, ses_3 outside 30d)
+	var account1Found bool
+	for _, acct := range report.EscapeHatchStats.ByAccount {
+		if acct.Account == "account1@example.com" {
+			account1Found = true
+			if acct.TotalSpawns != 2 {
+				t.Errorf("expected account1 to have 2 total spawns, got %d", acct.TotalSpawns)
+			}
+			if acct.Last7Days != 1 {
+				t.Errorf("expected account1 to have 1 spawn in last 7d, got %d", acct.Last7Days)
+			}
+		}
+	}
+	if !account1Found {
+		t.Error("account1@example.com not found in breakdown")
+	}
+}
+
 func TestTruncateSkill(t *testing.T) {
 	tests := []struct {
 		skill  string
@@ -185,7 +268,7 @@ func TestTruncateSkill(t *testing.T) {
 }
 
 func TestParseEventsFileNotFound(t *testing.T) {
-	_, err := parseEvents("/nonexistent/path/events.jsonl", 7)
+	_, err := parseEvents("/nonexistent/path/events.jsonl")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}

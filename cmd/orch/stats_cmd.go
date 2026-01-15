@@ -101,15 +101,16 @@ type StatsEvent struct {
 
 // StatsReport contains all aggregated statistics
 type StatsReport struct {
-	GeneratedAt    string              `json:"generated_at"`
-	AnalysisPeriod string              `json:"analysis_period"`
-	DaysAnalyzed   int                 `json:"days_analyzed"`
-	EventsAnalyzed int                 `json:"events_analyzed"`
-	Summary        StatsSummary        `json:"summary"`
-	SkillStats     []SkillStatsSummary `json:"skill_stats"`
-	DaemonStats    DaemonStatsSummary  `json:"daemon_stats"`
-	WaitStats      WaitStatsSummary    `json:"wait_stats,omitempty"`
-	SessionStats   SessionStatsSummary `json:"session_stats,omitempty"`
+	GeneratedAt      string              `json:"generated_at"`
+	AnalysisPeriod   string              `json:"analysis_period"`
+	DaysAnalyzed     int                 `json:"days_analyzed"`
+	EventsAnalyzed   int                 `json:"events_analyzed"`
+	Summary          StatsSummary        `json:"summary"`
+	SkillStats       []SkillStatsSummary `json:"skill_stats"`
+	DaemonStats      DaemonStatsSummary  `json:"daemon_stats"`
+	WaitStats        WaitStatsSummary    `json:"wait_stats,omitempty"`
+	SessionStats     SessionStatsSummary `json:"session_stats,omitempty"`
+	EscapeHatchStats EscapeHatchStats    `json:"escape_hatch_stats,omitempty"`
 }
 
 // StatsSummary contains core metrics
@@ -166,12 +167,30 @@ type SessionStatsSummary struct {
 	ActiveSessions  int `json:"active_sessions"`
 }
 
+// EscapeHatchStats tracks escape hatch spawn usage (--backend claude)
+// Escape hatch provides resilience when OpenCode server is unstable
+type EscapeHatchStats struct {
+	TotalSpawns    int                      `json:"total_spawns"`     // All-time escape hatch spawns
+	Last7DaySpawns int                      `json:"last_7d_spawns"`   // Last 7 days
+	Last30DaySpawns int                     `json:"last_30d_spawns"`  // Last 30 days
+	ByAccount       []AccountSpawnBreakdown `json:"by_account"`       // Breakdown by Claude Max account
+	EscapeHatchRate float64                 `json:"escape_hatch_rate"` // % of spawns using escape hatch (in analysis window)
+}
+
+// AccountSpawnBreakdown tracks spawns per Claude Max account
+type AccountSpawnBreakdown struct {
+	Account     string `json:"account"`
+	TotalSpawns int    `json:"total_spawns"`
+	Last7Days   int    `json:"last_7d"`
+	Last30Days  int    `json:"last_30d"`
+}
+
 func runStats() error {
 	// Get events file path
 	eventsPath := getEventsPath()
 
-	// Parse events
-	events, err := parseEvents(eventsPath, statsDays)
+	// Parse all events (time filtering happens in aggregateStats)
+	events, err := parseEvents(eventsPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse events: %w", err)
 	}
@@ -194,7 +213,9 @@ func getEventsPath() string {
 	return filepath.Join(home, ".orch", "events.jsonl")
 }
 
-func parseEvents(path string, days int) ([]StatsEvent, error) {
+// parseEvents reads events from events.jsonl, returning all events.
+// Time window filtering is done in aggregateStats to support multi-window metrics.
+func parseEvents(path string) ([]StatsEvent, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -203,8 +224,6 @@ func parseEvents(path string, days int) ([]StatsEvent, error) {
 		return nil, fmt.Errorf("failed to open events file: %w", err)
 	}
 	defer file.Close()
-
-	cutoff := time.Now().AddDate(0, 0, -days).Unix()
 
 	var events []StatsEvent
 	scanner := bufio.NewScanner(file)
@@ -224,10 +243,7 @@ func parseEvents(path string, days int) ([]StatsEvent, error) {
 			continue
 		}
 
-		// Filter by time window
-		if event.Timestamp >= cutoff {
-			events = append(events, event)
-		}
+		events = append(events, event)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -242,10 +258,15 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 		GeneratedAt:    time.Now().Format(time.RFC3339),
 		AnalysisPeriod: fmt.Sprintf("Last %d days", days),
 		DaysAnalyzed:   days,
-		EventsAnalyzed: len(events),
 		SkillStats:     []SkillStatsSummary{},
 	}
 	report.Summary.IncludesUntracked = includeUntracked
+
+	// Time window cutoffs
+	now := time.Now().Unix()
+	cutoffDays := now - int64(days*86400)    // --days window for main stats
+	cutoff7d := now - int64(7*86400)         // 7 days for escape hatch
+	cutoff30d := now - int64(30*86400)       // 30 days for escape hatch
 
 	// Track spawn times for duration calculation
 	spawnTimes := make(map[string]int64)       // session_id -> timestamp
@@ -268,13 +289,32 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 	// (orchestrators don't have beads_id, they use workspace for correlation)
 	workspaceToSession := make(map[string]string) // workspace -> session_id (pseudo)
 
+	// Track escape hatch spawns (spawn_mode = "claude")
+	// This is tracked separately to support multi-window analysis (total, 7d, 30d)
+	type escapeHatchSpawn struct {
+		timestamp int64
+		account   string
+	}
+	var escapeHatchSpawns []escapeHatchSpawn
+	escapeHatchInWindow := 0 // count of escape hatch spawns within --days window
+
+	// Count events within analysis window for EventsAnalyzed
+	eventsInWindow := 0
+
 	for _, event := range events {
+		// Track events in analysis window
+		if event.Timestamp >= cutoffDays {
+			eventsInWindow++
+		}
+
 		switch event.Type {
 		case "session.spawned":
-			// Extract skill, beads_id, and workspace from data
+			// Extract skill, beads_id, workspace, spawn_mode, and account from data
 			var beadsID string
 			var skill string
 			var workspace string
+			var spawnMode string
+			var account string
 			if data := event.Data; data != nil {
 				if s, ok := data["skill"].(string); ok && s != "" {
 					skill = s
@@ -284,6 +324,25 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 				}
 				if w, ok := data["workspace"].(string); ok && w != "" {
 					workspace = w
+				}
+				if m, ok := data["spawn_mode"].(string); ok && m != "" {
+					spawnMode = m
+				}
+				if a, ok := data["usage_account"].(string); ok && a != "" {
+					account = a
+				}
+			}
+
+			// Track escape hatch spawns (spawn_mode = "claude")
+			// This is tracked across all time windows for comprehensive metrics
+			if spawnMode == "claude" {
+				escapeHatchSpawns = append(escapeHatchSpawns, escapeHatchSpawn{
+					timestamp: event.Timestamp,
+					account:   account,
+				})
+				// Track if within --days window for escape hatch rate calculation
+				if event.Timestamp >= cutoffDays {
+					escapeHatchInWindow++
 				}
 			}
 
@@ -309,7 +368,15 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			isUntracked := isUntrackedSpawn(beadsID)
 			if isUntracked {
 				untrackedSessions[effectiveSessionID] = true
-				report.Summary.UntrackedSpawns++
+				// Only count untracked in window
+				if event.Timestamp >= cutoffDays {
+					report.Summary.UntrackedSpawns++
+				}
+			}
+
+			// Skip events outside the --days window for main stats
+			if event.Timestamp < cutoffDays {
+				continue
 			}
 
 			// Coordination skills (orchestrator, meta-orchestrator) are always counted
@@ -332,6 +399,11 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 
 		case "session.completed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+
 			// Extract beads_id for deduplication
 			var sessionBeadsID string
 			if data := event.Data; data != nil {
@@ -374,6 +446,11 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 
 		case "agent.completed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+
 			// Extract beads_id, workspace, and flags for correlation
 			var beadsID string
 			var workspace string
@@ -486,6 +563,11 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 
 		case "agent.abandoned":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+
 			// Extract beads_id and check if untracked
 			var beadsID string
 			var sessionID string
@@ -517,26 +599,99 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 			}
 
 		case "daemon.spawn":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.DaemonStats.DaemonSpawns++
 
 		case "session.auto_completed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.DaemonStats.AutoCompletions++
 
 		case "spawn.triage_bypassed":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.DaemonStats.TriageBypassed++
 
 		case "agent.wait.complete":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.WaitStats.WaitCompleted++
 
 		case "agent.wait.timeout":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.WaitStats.WaitTimeouts++
 
 		case "session.orchestrator.started", "session.started":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.SessionStats.SessionsStarted++
 
 		case "session.orchestrator.ended", "session.ended":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
 			report.SessionStats.SessionsEnded++
 		}
+	}
+
+	// Set EventsAnalyzed to events within the analysis window
+	report.EventsAnalyzed = eventsInWindow
+
+	// Calculate escape hatch stats (multi-window: total, 7d, 30d)
+	// Also calculate breakdown by account
+	accountTotals := make(map[string]*AccountSpawnBreakdown)
+	for _, eh := range escapeHatchSpawns {
+		report.EscapeHatchStats.TotalSpawns++
+		if eh.timestamp >= cutoff7d {
+			report.EscapeHatchStats.Last7DaySpawns++
+		}
+		if eh.timestamp >= cutoff30d {
+			report.EscapeHatchStats.Last30DaySpawns++
+		}
+
+		// Track by account (use "unknown" for spawns without account info)
+		acct := eh.account
+		if acct == "" {
+			acct = "unknown"
+		}
+		if _, exists := accountTotals[acct]; !exists {
+			accountTotals[acct] = &AccountSpawnBreakdown{Account: acct}
+		}
+		accountTotals[acct].TotalSpawns++
+		if eh.timestamp >= cutoff7d {
+			accountTotals[acct].Last7Days++
+		}
+		if eh.timestamp >= cutoff30d {
+			accountTotals[acct].Last30Days++
+		}
+	}
+
+	// Convert account map to slice and sort by total spawns descending
+	for _, breakdown := range accountTotals {
+		report.EscapeHatchStats.ByAccount = append(report.EscapeHatchStats.ByAccount, *breakdown)
+	}
+	sort.Slice(report.EscapeHatchStats.ByAccount, func(i, j int) bool {
+		return report.EscapeHatchStats.ByAccount[i].TotalSpawns > report.EscapeHatchStats.ByAccount[j].TotalSpawns
+	})
+
+	// Calculate escape hatch rate (% of spawns within --days window using escape hatch)
+	if report.Summary.TotalSpawns > 0 {
+		report.EscapeHatchStats.EscapeHatchRate = float64(escapeHatchInWindow) / float64(report.Summary.TotalSpawns) * 100
 	}
 
 	// Calculate rates
@@ -660,6 +815,36 @@ func outputStatsText(report *StatsReport) error {
 		fmt.Printf("  Started:  %d\n", report.SessionStats.SessionsStarted)
 		fmt.Printf("  Ended:    %d\n", report.SessionStats.SessionsEnded)
 		fmt.Printf("  Active:   %d\n", report.SessionStats.ActiveSessions)
+	}
+
+	// Escape hatch metrics (if any escape hatch spawns exist)
+	if report.EscapeHatchStats.TotalSpawns > 0 {
+		fmt.Println()
+		fmt.Println("🚪 ESCAPE HATCH (--backend claude)")
+		fmt.Printf("  Total:     %d spawns (all time)\n", report.EscapeHatchStats.TotalSpawns)
+		fmt.Printf("  Last 7d:   %d spawns\n", report.EscapeHatchStats.Last7DaySpawns)
+		fmt.Printf("  Last 30d:  %d spawns\n", report.EscapeHatchStats.Last30DaySpawns)
+		if report.EscapeHatchStats.EscapeHatchRate > 0 {
+			fmt.Printf("  Rate:      %.1f%% of spawns (in analysis window)\n", report.EscapeHatchStats.EscapeHatchRate)
+		}
+
+		// Show account breakdown (if more than one account or verbose)
+		if len(report.EscapeHatchStats.ByAccount) > 1 || statsVerbose {
+			fmt.Println()
+			fmt.Println("  By Account:")
+			for _, acct := range report.EscapeHatchStats.ByAccount {
+				if acct.Account == "unknown" {
+					fmt.Printf("    %-35s %4d total (%d 7d, %d 30d)\n", "(no account info)", acct.TotalSpawns, acct.Last7Days, acct.Last30Days)
+				} else {
+					// Truncate long email addresses
+					displayAcct := acct.Account
+					if len(displayAcct) > 35 {
+						displayAcct = displayAcct[:32] + "..."
+					}
+					fmt.Printf("    %-35s %4d total (%d 7d, %d 30d)\n", displayAcct, acct.TotalSpawns, acct.Last7Days, acct.Last30Days)
+				}
+			}
+		}
 	}
 
 	// Skill breakdown
