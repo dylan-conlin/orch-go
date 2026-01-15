@@ -1,15 +1,15 @@
 # Failure Report
 
-**Agent:** og-feat-add-test-first-09jan-ba92
-**Issue:** orch-go-jrhqe
-**Abandoned:** 2026-01-14 13:04:46
-**Reason:** stale agent cleanup
+**Agent:** og-feat-identify-orchestrator-value-10jan-22db
+**Issue:** orch-go-4tven.6
+**Abandoned:** 2026-01-14 22:36:55
+**Reason:** Epic subtask stuck at Planning phase, no progress
 
 ---
 
 ## Context
 
-**Task:** Add test-first gate to investigation skill
+**Task:** Identify orchestrator value-add vs routing overhead
 
 **What was attempted:**
 [Brief description of what the agent was trying to do]
@@ -18,7 +18,7 @@
 
 ## Failure Summary
 
-**Primary Cause:** stale agent cleanup
+**Primary Cause:** Epic subtask stuck at Planning phase, no progress
 
 **Details:**
 [Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]
@@ -62,7 +62,7 @@
 
 **If spawning a new agent:**
 ```
-orch spawn {skill} "{adjusted-task}" --issue orch-go-jrhqe
+orch spawn {skill} "{adjusted-task}" --issue orch-go-4tven.6
 ```
 
 **Context to provide:**
@@ -74,5 +74,5 @@ orch spawn {skill} "{adjusted-task}" --issue orch-go-jrhqe
 
 ## Session Metadata
 
-**Workspace:** `.orch/workspace/og-feat-add-test-first-09jan-ba92/`
-**Beads:** `bd show orch-go-jrhqe`
+**Workspace:** `.orch/workspace/og-feat-identify-orchestrator-value-10jan-22db/`
+**Beads:** `bd show orch-go-4tven.6`

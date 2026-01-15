@@ -1,15 +1,15 @@
 # Failure Report
 
-**Agent:** og-feat-identify-orchestrator-value-10jan-22db
-**Issue:** orch-go-4tven.6
-**Abandoned:** 2026-01-14 13:04:47
-**Reason:** stale agent cleanup
+**Agent:** og-inv-trace-verification-bottleneck-10jan-d152
+**Issue:** orch-go-33sju
+**Abandoned:** 2026-01-14 22:36:34
+**Reason:** Stuck at Planning phase since Jan 10, no progress
 
 ---
 
 ## Context
 
-**Task:** Identify orchestrator value-add vs routing overhead
+**Task:** [orch-go] investigation: Trace Verification Bottleneck story from system...
 
 **What was attempted:**
 [Brief description of what the agent was trying to do]
@@ -18,7 +18,7 @@
 
 ## Failure Summary
 
-**Primary Cause:** stale agent cleanup
+**Primary Cause:** Stuck at Planning phase since Jan 10, no progress
 
 **Details:**
 [Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]
@@ -62,7 +62,7 @@
 
 **If spawning a new agent:**
 ```
-orch spawn {skill} "{adjusted-task}" --issue orch-go-4tven.6
+orch spawn {skill} "{adjusted-task}" --issue orch-go-33sju
 ```
 
 **Context to provide:**
@@ -74,5 +74,5 @@ orch spawn {skill} "{adjusted-task}" --issue orch-go-4tven.6
 
 ## Session Metadata
 
-**Workspace:** `.orch/workspace/og-feat-identify-orchestrator-value-10jan-22db/`
-**Beads:** `bd show orch-go-4tven.6`
+**Workspace:** `.orch/workspace/og-inv-trace-verification-bottleneck-10jan-d152/`
+**Beads:** `bd show orch-go-33sju`
