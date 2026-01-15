@@ -120,18 +120,16 @@ Guidelines:
 - ✅ Cross-project detection logic works (verified: TestCrossProjectBeadsIDDetection correctly identifies pw-ed7h as cross-project when in orch-go)
 - ✅ Auto-detection code exists in complete_cmd.go (verified: lines 359-374 implement the solution)
 - ✅ Codebase compiles successfully (verified: go build ./cmd/orch completes without errors)
+- ✅ End-to-end completion works (verified: orch complete pw-51mq from orch-go directory successfully auto-detected price-watch project, found workspace, and accessed beads issue)
+- ✅ findProjectDirByName works for price-watch project (verified: auto-detection found ~/Documents/work/SendCutSend/scs-special-projects/price-watch)
 
 **What's untested:**
 
-- ⚠️ End-to-end completion of actual pw-ed7h agent (not tested - would require running orch complete pw-ed7h from orch-go directory)
-- ⚠️ findProjectDirByName works for price-watch project (assumes standard location at ~/Documents/work/SendCutSend/scs-special-projects/price-watch)
 - ⚠️ Behavior when project directory doesn't exist or isn't in standard locations (fallback to --workdir would be needed)
 
 **What would change this:**
 
-- Finding would be wrong if orch complete pw-ed7h from orch-go directory still fails with "beads issue 'pw-ed7h' not found"
-- Finding would be wrong if extractProjectFromBeadsID returns incorrect project names for real beads IDs
-- Finding would be wrong if auto-detection code path isn't actually executed (would need execution trace or debugging)
+- Finding would be wrong if behavior changes when project directory doesn't exist or isn't in standard locations (currently untested)
 
 ---
 
