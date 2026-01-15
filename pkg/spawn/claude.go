@@ -10,10 +10,18 @@ import (
 // SpawnClaude launches a Claude Code agent in a tmux window.
 // It uses the SPAWN_CONTEXT.md file approach: claude --file SPAWN_CONTEXT.md
 func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
-	// 1. Ensure workers session exists for the project
-	sessionName, err := tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	// 1. Ensure appropriate tmux session exists
+	// Meta-orchestrators and orchestrators go into 'orchestrator' session
+	// Workers go into 'workers-{project}' session
+	var sessionName string
+	var err error
+	if cfg.IsMetaOrchestrator || cfg.IsOrchestrator {
+		sessionName, err = tmux.EnsureOrchestratorSession()
+	} else {
+		sessionName, err = tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to ensure workers session: %w", err)
+		return nil, fmt.Errorf("failed to ensure tmux session: %w", err)
 	}
 
 	// 2. Build window name with emoji and beads ID

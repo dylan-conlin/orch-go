@@ -1631,12 +1631,9 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 	var sessionName string
 	var err error
 
-	// Meta-orchestrators go into 'meta-orchestrator' tmux session
-	// Orchestrator skills go into the 'orchestrator' tmux session
+	// Meta-orchestrators and orchestrators go into 'orchestrator' tmux session
 	// Workers go into 'workers-{project}' session
-	if cfg.IsMetaOrchestrator {
-		sessionName, err = tmux.EnsureMetaOrchestratorSession()
-	} else if cfg.IsOrchestrator {
+	if cfg.IsMetaOrchestrator || cfg.IsOrchestrator {
 		sessionName, err = tmux.EnsureOrchestratorSession()
 	} else {
 		sessionName, err = tmux.EnsureWorkersSession(cfg.Project, cfg.ProjectDir)

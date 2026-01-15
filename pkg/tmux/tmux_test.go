@@ -46,14 +46,8 @@ func TestSessionNameConstants(t *testing.T) {
 	if OrchestratorSessionName != "orchestrator" {
 		t.Errorf("OrchestratorSessionName = %q, want %q", OrchestratorSessionName, "orchestrator")
 	}
-	if MetaOrchestratorSessionName != "meta-orchestrator" {
-		t.Errorf("MetaOrchestratorSessionName = %q, want %q", MetaOrchestratorSessionName, "meta-orchestrator")
-	}
-
-	// Verify they are different (for clarity)
-	if OrchestratorSessionName == MetaOrchestratorSessionName {
-		t.Error("OrchestratorSessionName and MetaOrchestratorSessionName should be different")
-	}
+	// Note: MetaOrchestratorSessionName exists for backwards compatibility but
+	// both meta-orchestrators and orchestrators now spawn into OrchestratorSessionName
 }
 
 func TestBuildWindowName(t *testing.T) {
