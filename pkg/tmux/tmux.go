@@ -5,22 +5,66 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
 // tmuxPath caches the resolved path to the tmux binary.
+// mainSocket caches the main tmux socket path when running inside overmind.
 // This is set once by findTmux() and reused for all subsequent calls.
 var (
 	tmuxPath     string
+	mainSocket   string
 	tmuxPathOnce sync.Once
 	tmuxPathErr  error
 )
 
+// detectMainSocket determines the main tmux socket path.
+// When running inside overmind's tmux, we need to explicitly target the main tmux socket
+// because the default behavior connects to overmind's tmux server instead.
+// Returns empty string if not running inside tmux, or if running in main tmux already.
+func detectMainSocket() string {
+	// Check if we're in a tmux session
+	tmuxEnv := os.Getenv("TMUX")
+	if tmuxEnv == "" {
+		// Not in tmux - no socket override needed
+		return ""
+	}
+
+	// Check if we're inside overmind's tmux (socket path contains "overmind")
+	if !strings.Contains(tmuxEnv, "overmind") {
+		// Inside regular tmux - no socket override needed
+		return ""
+	}
+
+	// Inside overmind's tmux - need to target main socket
+	// Extract socket path from $TMUX (format: socket_path,server_pid,session_id)
+	parts := strings.Split(tmuxEnv, ",")
+	if len(parts) < 1 {
+		return ""
+	}
+	overmindSocket := parts[0]
+
+	// Construct main socket path based on socket directory
+	// Example: /private/tmp/tmux-501/overmind-orch-go-xyz -> /tmp/tmux-501/default
+	socketDir := filepath.Dir(overmindSocket)
+	mainSocketPath := filepath.Join(socketDir, "default")
+
+	// Verify main socket exists
+	if _, err := os.Stat(mainSocketPath); err != nil {
+		// Main socket doesn't exist - can't override
+		return ""
+	}
+
+	return mainSocketPath
+}
+
 // findTmux locates the tmux binary, checking common locations first.
 // This handles cases where PATH doesn't include tmux (e.g., launchd-spawned processes).
-// The result is cached for subsequent calls.
+// Also detects the main tmux socket when running inside overmind.
+// The results are cached for subsequent calls.
 func findTmux() (string, error) {
 	tmuxPathOnce.Do(func() {
 		// Common tmux locations in order of preference
@@ -34,6 +78,8 @@ func findTmux() (string, error) {
 		for _, path := range commonPaths {
 			if _, err := os.Stat(path); err == nil {
 				tmuxPath = path
+				// Also detect main socket when inside overmind
+				mainSocket = detectMainSocket()
 				return
 			}
 		}
@@ -45,6 +91,8 @@ func findTmux() (string, error) {
 			return
 		}
 		tmuxPath = path
+		// Also detect main socket when inside overmind
+		mainSocket = detectMainSocket()
 	})
 
 	return tmuxPath, tmuxPathErr
@@ -52,17 +100,37 @@ func findTmux() (string, error) {
 
 // tmuxCommand creates an exec.Cmd for tmux with the given arguments.
 // Uses the cached tmux path from findTmux().
+// When running inside overmind's tmux, automatically adds -S flag to target main socket.
 func tmuxCommand(args ...string) (*exec.Cmd, error) {
 	path, err := findTmux()
 	if err != nil {
 		return nil, err
 	}
+
+	// If we detected a main socket (running inside overmind), prepend -S flag
+	if mainSocket != "" {
+		args = append([]string{"-S", mainSocket}, args...)
+	}
+
+	return exec.Command(path, args...), nil
+}
+
+// tmuxCommandCurrent creates an exec.Cmd for tmux targeting the current tmux context.
+// This explicitly does NOT add the -S flag, even when inside overmind.
+// Use this for operations on the current window (GetCurrentWindowName, RenameCurrentWindow).
+func tmuxCommandCurrent(args ...string) (*exec.Cmd, error) {
+	path, err := findTmux()
+	if err != nil {
+		return nil, err
+	}
+	// No socket override - use current tmux context
 	return exec.Command(path, args...), nil
 }
 
 // GetCurrentWindowName returns the name of the current tmux window, or an error if not in tmux.
 // Returns "default" as fallback if not in a tmux session.
 // Window names are sanitized to be filesystem-safe (removes emojis, special chars, and spaces).
+// Note: This uses tmuxCommandCurrent() to target the current tmux context (not main socket).
 func GetCurrentWindowName() (string, error) {
 	// Check if we're in a tmux session
 	if os.Getenv("TMUX") == "" {
@@ -70,7 +138,8 @@ func GetCurrentWindowName() (string, error) {
 	}
 
 	// Get the current window name using tmux display-message
-	cmd, err := tmuxCommand("display-message", "-p", "#{window_name}")
+	// Use tmuxCommandCurrent() because we want the window name where THIS process is running
+	cmd, err := tmuxCommandCurrent("display-message", "-p", "#{window_name}")
 	if err != nil {
 		return "", fmt.Errorf("failed to create tmux command: %w", err)
 	}
@@ -97,6 +166,7 @@ func GetCurrentWindowName() (string, error) {
 
 // RenameCurrentWindow renames the current tmux window.
 // Returns nil if not in a tmux session (no-op).
+// Note: This uses tmuxCommandCurrent() to target the current tmux context (not main socket).
 func RenameCurrentWindow(newName string) error {
 	// Check if we're in a tmux session
 	if os.Getenv("TMUX") == "" {
@@ -104,7 +174,8 @@ func RenameCurrentWindow(newName string) error {
 	}
 
 	// Get current window index to target the rename
-	cmd, err := tmuxCommand("display-message", "-p", "#{window_index}")
+	// Use tmuxCommandCurrent() because we want to rename the window where THIS process is running
+	cmd, err := tmuxCommandCurrent("display-message", "-p", "#{window_index}")
 	if err != nil {
 		return fmt.Errorf("failed to create tmux command: %w", err)
 	}
@@ -120,7 +191,7 @@ func RenameCurrentWindow(newName string) error {
 	}
 
 	// Rename the window using tmux rename-window
-	renameCmd, err := tmuxCommand("rename-window", "-t", windowIndex, newName)
+	renameCmd, err := tmuxCommandCurrent("rename-window", "-t", windowIndex, newName)
 	if err != nil {
 		return fmt.Errorf("failed to create rename command: %w", err)
 	}
