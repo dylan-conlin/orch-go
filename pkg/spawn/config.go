@@ -382,7 +382,19 @@ func (c *Config) WorkspacePath() string {
 	return filepath.Join(c.ProjectDir, ".orch", "workspace", c.WorkspaceName)
 }
 
-// ContextFilePath returns the path to SPAWN_CONTEXT.md.
+// ContextFilePath returns the path to the context file.
+// For meta-orchestrator skills, it points to META_ORCHESTRATOR_CONTEXT.md.
+// For orchestrator skills, it points to ORCHESTRATOR_CONTEXT.md.
+// For all other skills, it points to SPAWN_CONTEXT.md.
 func (c *Config) ContextFilePath() string {
-	return filepath.Join(c.WorkspacePath(), "SPAWN_CONTEXT.md")
+	var filename string
+	switch {
+	case c.IsMetaOrchestrator:
+		filename = "META_ORCHESTRATOR_CONTEXT.md"
+	case c.IsOrchestrator:
+		filename = "ORCHESTRATOR_CONTEXT.md"
+	default:
+		filename = "SPAWN_CONTEXT.md"
+	}
+	return filepath.Join(c.WorkspacePath(), filename)
 }
