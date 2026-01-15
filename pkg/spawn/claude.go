@@ -33,12 +33,26 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 		return nil, fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
-	// 4. Launch claude using the SPAWN_CONTEXT.md file
+	// 4. Launch claude using the context file
 	contextPath := cfg.ContextFilePath()
-	// Command: cat SPAWN_CONTEXT.md | claude --dangerously-skip-permissions
-	// Pipe the file content to claude (no --file flag exists)
-	// Use --dangerously-skip-permissions to avoid blocking on edit prompts
-	launchCmd := fmt.Sprintf("cat %q | claude --dangerously-skip-permissions", contextPath)
+
+	// Determine CLAUDE_CONTEXT env var to signal hooks to skip duplicate injection
+	var claudeContext string
+	switch {
+	case cfg.IsMetaOrchestrator:
+		claudeContext = "meta-orchestrator"
+	case cfg.IsOrchestrator:
+		claudeContext = "orchestrator"
+	default:
+		claudeContext = "worker"
+	}
+
+	// Command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
+	// - Export env var so SessionStart hooks skip duplicate context injection
+	//   (must export, not inline, so claude inherits it through the pipe)
+	// - Pipe the file content to claude (no --file flag exists)
+	// - Use --dangerously-skip-permissions to avoid blocking on edit prompts
+	launchCmd := fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)
