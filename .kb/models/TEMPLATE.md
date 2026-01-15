@@ -40,8 +40,14 @@
 
 {What limits exist? Why can't we "just do X"? Make implicit constraints explicit.}
 
-**Why {constraint}:**
-{Explanation - this is where you create surface area for strategic questions}
+### Why {Constraint Question}?
+
+**Constraint:** {What's the limitation}
+
+**Implication:** {What this means in practice}
+
+**This enables:** {What becomes possible}
+**This constrains:** {What's no longer allowed/possible}
 
 ---
 
