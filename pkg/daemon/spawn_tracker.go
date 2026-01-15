@@ -26,15 +26,19 @@ type SpawnedIssueTracker struct {
 	spawned map[string]time.Time
 
 	// TTL is how long to keep entries before considering them stale.
-	// Default is 5 minutes - enough time for spawn to complete and status to update.
+	// Default is 6 hours - matching typical agent work duration.
+	// This provides backup protection when session-level dedup fails.
 	TTL time.Duration
 }
 
-// NewSpawnedIssueTracker creates a new tracker with the default 5 minute TTL.
+// NewSpawnedIssueTracker creates a new tracker with the default 6 hour TTL.
+// The TTL was increased from 5 minutes to 6 hours to provide backup protection
+// for long-running agents when session-level dedup fails (e.g., OpenCode API down).
+// Primary dedup is done via session-level checking in daemon.Once().
 func NewSpawnedIssueTracker() *SpawnedIssueTracker {
 	return &SpawnedIssueTracker{
 		spawned: make(map[string]time.Time),
-		TTL:     5 * time.Minute,
+		TTL:     6 * time.Hour,
 	}
 }
 

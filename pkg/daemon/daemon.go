@@ -732,6 +732,23 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		return nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
+	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
+	// This prevents duplicate spawns when:
+	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
+	// 2. Status update to "in_progress" failed silently
+	// 3. Multiple daemon instances try to spawn the same issue
+	if HasExistingSessionForBeadsID(issue.ID) {
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
+		}, nil
+	}
+
 	// If pool is configured, acquire a slot first
 	var slot *Slot
 	if d.Pool != nil {
@@ -818,6 +835,23 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	skill, err := InferSkillFromIssue(issue)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to infer skill: %w", err)
+	}
+
+	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
+	// This prevents duplicate spawns when:
+	// 1. SpawnedIssueTracker TTL expires but agent is still running
+	// 2. Status update to "in_progress" failed silently
+	// 3. Multiple daemon instances try to spawn the same issue
+	if HasExistingSessionForBeadsID(issue.ID) {
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
+		}, nil, nil
 	}
 
 	// If pool is configured, acquire a slot first
