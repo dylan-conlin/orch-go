@@ -33,7 +33,7 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
                     ┌─────────────────────────┐
                     │    Orchestrator         │
                     │    (Claude agent)       │
-                    │    Tactical execution   │
+                    │    Strategic comprehension │
                     │    SESSION_HANDOFF.md   │
                     └────────────┬────────────┘
                                  │ spawns/completes
