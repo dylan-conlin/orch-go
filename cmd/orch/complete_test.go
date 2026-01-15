@@ -503,7 +503,7 @@ func TestSkipConfigSkippedGates(t *testing.T) {
 			want:   []string{"test_evidence", "git_diff", "synthesis"},
 		},
 		{
-			name:   "all skips",
+			name: "all skips",
 			config: SkipConfig{
 				TestEvidence:  true,
 				Visual:        true,
@@ -641,6 +641,149 @@ func TestValidateSkipFlags(t *testing.T) {
 				} else if err.Error() != tt.wantErr {
 					t.Errorf("validateSkipFlags() error = %q, want %q", err.Error(), tt.wantErr)
 				}
+			}
+		})
+	}
+}
+
+// TestExtractProjectFromBeadsID tests the project name extraction from beads IDs.
+// This is critical for cross-project completion - we need to correctly parse the
+// project name to locate the correct beads database.
+func TestExtractProjectFromBeadsID(t *testing.T) {
+	tests := []struct {
+		name    string
+		beadsID string
+		want    string
+	}{
+		{
+			name:    "simple two-part ID",
+			beadsID: "orch-go-abc1",
+			want:    "orch-go",
+		},
+		{
+			name:    "three-part project name",
+			beadsID: "kb-cli-xyz9",
+			want:    "kb-cli",
+		},
+		{
+			name:    "single-word project",
+			beadsID: "beads-12ab",
+			want:    "beads",
+		},
+		{
+			name:    "price-watch project",
+			beadsID: "pw-ed7h",
+			want:    "pw",
+		},
+		{
+			name:    "multi-hyphen project name",
+			beadsID: "some-long-project-name-a1b2",
+			want:    "some-long-project-name",
+		},
+		{
+			name:    "empty beads ID",
+			beadsID: "",
+			want:    "",
+		},
+		{
+			name:    "single part (no hyphen)",
+			beadsID: "abc1",
+			want:    "abc1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractProjectFromBeadsID(tt.beadsID)
+			if got != tt.want {
+				t.Errorf("extractProjectFromBeadsID(%q) = %q, want %q", tt.beadsID, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCrossProjectCompletion tests the cross-project completion workflow.
+// This verifies that agents from other projects can be completed by:
+// 1. Extracting project name from beads ID
+// 2. Finding the project directory
+// 3. Setting beads.DefaultDir before resolution
+func TestCrossProjectCompletion(t *testing.T) {
+	// Create a fake "other project" directory structure
+	tmpDir := t.TempDir()
+
+	// Create "orch-go" project (current)
+	orchGoDir := filepath.Join(tmpDir, "orch-go")
+	orchGoBeadsDir := filepath.Join(orchGoDir, ".beads")
+	if err := os.MkdirAll(orchGoBeadsDir, 0755); err != nil {
+		t.Fatalf("Failed to create orch-go beads dir: %v", err)
+	}
+
+	// Create "price-watch" project (cross-project)
+	priceWatchDir := filepath.Join(tmpDir, "price-watch")
+	priceWatchBeadsDir := filepath.Join(priceWatchDir, ".beads")
+	if err := os.MkdirAll(priceWatchBeadsDir, 0755); err != nil {
+		t.Fatalf("Failed to create price-watch beads dir: %v", err)
+	}
+
+	// Test project extraction from beads ID
+	beadsID := "pw-ed7h"
+	projectName := extractProjectFromBeadsID(beadsID)
+	if projectName != "pw" {
+		t.Errorf("Expected project name 'pw', got '%s'", projectName)
+	}
+
+	// Note: We can't fully test findProjectDirByName here because it searches
+	// specific system paths (~/Documents/personal, etc.). This would require
+	// mocking or dependency injection, which is out of scope for this fix.
+	// The manual testing will verify the end-to-end behavior.
+}
+
+// TestCrossProjectBeadsIDDetection tests that cross-project beads IDs are
+// correctly identified (when the ID prefix doesn't match current directory).
+func TestCrossProjectBeadsIDDetection(t *testing.T) {
+	tests := []struct {
+		name           string
+		beadsID        string
+		currentDir     string
+		isCrossProject bool
+	}{
+		{
+			name:           "same project - orch-go",
+			beadsID:        "orch-go-abc1",
+			currentDir:     "/path/to/orch-go",
+			isCrossProject: false,
+		},
+		{
+			name:           "cross project - pw in orch-go",
+			beadsID:        "pw-ed7h",
+			currentDir:     "/path/to/orch-go",
+			isCrossProject: true,
+		},
+		{
+			name:           "cross project - kb-cli in orch-go",
+			beadsID:        "kb-cli-xyz9",
+			currentDir:     "/path/to/orch-go",
+			isCrossProject: true,
+		},
+		{
+			name:           "same project - kb-cli",
+			beadsID:        "kb-cli-xyz9",
+			currentDir:     "/path/to/kb-cli",
+			isCrossProject: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projectName := extractProjectFromBeadsID(tt.beadsID)
+			currentBaseName := filepath.Base(tt.currentDir)
+
+			// Cross-project if project name doesn't match current directory basename
+			isCrossProject := projectName != currentBaseName
+
+			if isCrossProject != tt.isCrossProject {
+				t.Errorf("Cross-project detection for %s in %s: got %v, want %v",
+					tt.beadsID, tt.currentDir, isCrossProject, tt.isCrossProject)
 			}
 		})
 	}
