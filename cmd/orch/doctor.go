@@ -298,8 +298,9 @@ func checkOpenCode() ServiceStatus {
 	return status
 }
 
-// checkOrchServe checks if the orch serve API is running.
-// Uses a simple TCP connect check for reliability (server uses HTTPS).
+// checkOrchServe checks if the orch serve API is running and dashboard endpoints work.
+// Uses a simple TCP connect check first, then verifies /health and /api/agents endpoints.
+// The /api/agents check is critical because the dashboard depends on it for functionality.
 func checkOrchServe() ServiceStatus {
 	status := ServiceStatus{
 		Name:      "orch serve",
@@ -325,7 +326,7 @@ func checkOrchServe() ServiceStatus {
 	// TCP connect succeeded, try HTTPS health check for more details
 	healthURL := fmt.Sprintf("https://localhost:%d/health", DefaultServePort)
 	httpClient := &http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: 5 * time.Second, // Increased timeout for /api/agents which may be slower
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, //nolint:gosec // Self-signed localhost cert
@@ -343,25 +344,49 @@ func checkOrchServe() ServiceStatus {
 		}
 		return status
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		status.Running = true
-
-		// Try to parse health response
-		var health struct {
-			Status string `json:"status"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&health); err == nil && health.Status != "" {
-			status.Details = fmt.Sprintf("Status: %s", health.Status)
-		} else {
-			status.Details = "Health endpoint responding"
-		}
-	} else {
+	if resp.StatusCode != http.StatusOK {
 		// TCP works, HTTPS works, but health endpoint returns non-200
 		status.Running = true
 		status.Details = fmt.Sprintf("Running (health status %d)", resp.StatusCode)
+		return status
 	}
+
+	// Health endpoint OK, now verify /api/agents endpoint (critical for dashboard)
+	// The dashboard fetches agent data from this endpoint - if it fails, dashboard is non-functional
+	agentsURL := fmt.Sprintf("https://localhost:%d/api/agents?since=1h", DefaultServePort)
+	agentsResp, err := httpClient.Get(agentsURL)
+	if err != nil {
+		status.Running = true
+		status.Details = "Health OK, /api/agents unreachable"
+		if doctorVerbose {
+			status.Details = fmt.Sprintf("Health OK, /api/agents failed: %v", err)
+		}
+		return status
+	}
+	defer agentsResp.Body.Close()
+
+	if agentsResp.StatusCode != http.StatusOK {
+		status.Running = true
+		status.Details = fmt.Sprintf("Health OK, /api/agents status %d", agentsResp.StatusCode)
+		return status
+	}
+
+	// Verify response is valid JSON array (agents endpoint returns [])
+	var agents []interface{}
+	if err := json.NewDecoder(agentsResp.Body).Decode(&agents); err != nil {
+		status.Running = true
+		status.Details = "Health OK, /api/agents invalid JSON"
+		if doctorVerbose {
+			status.Details = fmt.Sprintf("Health OK, /api/agents invalid JSON: %v", err)
+		}
+		return status
+	}
+
+	// All checks passed - server is fully functional for dashboard
+	status.Running = true
+	status.Details = fmt.Sprintf("Dashboard ready (%d agents)", len(agents))
 
 	return status
 }
