@@ -793,11 +793,12 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	if preCheckDir != "" {
 		if hotspotResult, err := RunHotspotCheckForSpawn(preCheckDir, task); err == nil && hotspotResult != nil {
 			// Strategic-first gate: block tactical spawns to hotspot areas unless:
-			// 1. --force flag provided (user explicitly overrides with justification), OR
-			// 2. Skill is architect (strategic approach, not tactical)
+			// 1. Daemon-driven (triage already happened when issue was labeled triage:ready), OR
+			// 2. --force flag provided (user explicitly overrides with justification), OR
+			// 3. Skill is architect (strategic approach, not tactical)
 			isStrategicSkill := skillName == "architect"
 
-			if !spawnForce && !isStrategicSkill {
+			if !daemonDriven && !spawnForce && !isStrategicSkill {
 				// BLOCKING: Strategic approach required in hotspot area
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
 				fmt.Fprintln(os.Stderr, "")
@@ -813,8 +814,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 				return fmt.Errorf("strategic-first gate: architect required in hotspot area (use --force to override)")
 			}
 
-			// Strategic skill or --force used: print warning but allow
-			if spawnForce {
+			// Strategic skill, --force, or daemon-driven: print warning but allow
+			if daemonDriven {
+				// Daemon-driven: triage already happened, silent bypass
+				// (issue was labeled triage:ready by orchestrator)
+			} else if spawnForce {
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
 				fmt.Fprintln(os.Stderr, "⚠️  --force used: bypassing strategic-first gate")
 				fmt.Fprintln(os.Stderr, "")
