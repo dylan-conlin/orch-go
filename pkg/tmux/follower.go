@@ -7,6 +7,7 @@ package tmux
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -266,7 +267,51 @@ func GetTmuxCwd(sessionName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get pane cwd: %w", err)
 	}
-	return strings.TrimSpace(string(cwdOutput)), nil
+	cwd := strings.TrimSpace(string(cwdOutput))
+
+	// Fallback: if pane_current_path is empty (e.g., running Claude Code),
+	// use lsof to get the process's actual working directory
+	if cwd == "" {
+		cwd, _ = getPaneCwdViaLsof(sessionName, windowIndex)
+	}
+
+	return cwd, nil
+}
+
+// getPaneCwdViaLsof gets the pane's working directory by querying the process directly.
+// This is a fallback for when #{pane_current_path} is empty (e.g., running Claude Code).
+func getPaneCwdViaLsof(sessionName, windowIndex string) (string, error) {
+	target := fmt.Sprintf("%s:%s", sessionName, windowIndex)
+	pidCmd, err := tmuxCommand("display-message", "-t", target, "-p", "#{pane_pid}")
+	if err != nil {
+		return "", err
+	}
+	pidOutput, err := pidCmd.Output()
+	if err != nil {
+		return "", err
+	}
+	pid := strings.TrimSpace(string(pidOutput))
+	if pid == "" {
+		return "", fmt.Errorf("no pane pid")
+	}
+
+	// Use lsof to get the cwd of the process
+	lsofCmd := exec.Command("lsof", "-p", pid)
+	lsofOutput, err := lsofCmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	// Parse lsof output for cwd line
+	for _, line := range strings.Split(string(lsofOutput), "\n") {
+		if strings.Contains(line, "cwd") {
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				return fields[len(fields)-1], nil
+			}
+		}
+	}
+	return "", fmt.Errorf("cwd not found in lsof output")
 }
 
 // findProjectDir walks up from cwd to find a directory containing .beads/ or .orch/.
