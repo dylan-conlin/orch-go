@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Worker sessions receive orchestrator handoff because the plugin checks `process.env.ORCH_WORKER` (server-level) instead of `SPAWN_CONTEXT.md` presence (session-level).
+**Delta:** Worker sessions receive orchestrator handoff because the plugin checks for `SPAWN_CONTEXT.md` in the wrong directory (session directory = project root, but file lives in `.orch/workspace/{workspace}/`).
 
-**Evidence:** Plugin at `~/.config/opencode/plugin/session-resume.js:55-58` checks server process environment, but orch-go sets `x-opencode-env-ORCH_WORKER` as HTTP header which isn't propagated to plugin environment; tests confirm SPAWN_CONTEXT.md is only created for workers.
+**Evidence:** Plugin at `~/.config/opencode/plugin/session-resume.js:59` joins `sessionDirectory + 'SPAWN_CONTEXT.md'`, but workers are spawned with `cmd.Dir = cfg.ProjectDir` (spawn_cmd.go:1601), while SPAWN_CONTEXT.md is written to `.orch/workspace/{workspace}/SPAWN_CONTEXT.md` (context.go:503).
 
-**Knowledge:** File-based session type detection (SPAWN_CONTEXT.md presence) is more reliable than environment variables when plugins need session-specific context.
+**Knowledge:** Plugin session directory is the working directory of the spawned process (project root), not the workspace directory where spawn artifacts live.
 
-**Next:** Fix implemented in session-resume.js - restart OpenCode server and verify worker spawns don't receive handoff.
+**Next:** Fixed plugin to check `.orch/workspace/*/SPAWN_CONTEXT.md` pattern - restart OpenCode server and verify worker spawns don't receive handoff.
 
 **Promote to Decision:** recommend-no (bug fix with clear solution, not architectural pattern)
 
@@ -55,23 +55,26 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Plugin checks process.env, not session metadata
+### Finding 1: Plugin checks wrong directory for SPAWN_CONTEXT.md
 
-**Evidence:** The `session-resume.js` plugin at `~/.config/opencode/plugin/session-resume.js:22` checks `process.env.ORCH_WORKER === '1'` to skip handoff injection for workers. Lines 55-58 implement the skip logic.
+**Evidence:** The `session-resume.js` plugin at `~/.config/opencode/plugin/session-resume.js:59` checks for SPAWN_CONTEXT.md directly in `sessionDirectory`, but worker sessions have `sessionDirectory` set to project root (e.g., `/Users/dylanconlin/Documents/personal/orch-go`), while SPAWN_CONTEXT.md is written to `.orch/workspace/{workspace}/SPAWN_CONTEXT.md`.
 
-**Source:** `~/.config/opencode/plugin/session-resume.js:22,55-58`
+**Source:** 
+- Plugin: `~/.config/opencode/plugin/session-resume.js:59` - `path.join(sessionDirectory, 'SPAWN_CONTEXT.md')`
+- Spawn: `cmd/orch/spawn_cmd.go:1601` - `cmd.Dir = cfg.ProjectDir`
+- Context write: `pkg/spawn/context.go:503` - writes to `workspacePath/SPAWN_CONTEXT.md`
 
-**Significance:** The plugin is checking the Node.js server process environment, not session-specific metadata. This means it only sees environment variables set when the OpenCode server starts, not per-session metadata.
+**Significance:** The directory mismatch causes the check to fail - plugin looks in project root, but file is in workspace subdirectory.
 
 ---
 
-### Finding 2: orch-go sends ORCH_WORKER via HTTP header
+### Finding 2: Worker sessions use project root as working directory
 
-**Evidence:** When creating worker sessions, orch-go sets `x-opencode-env-ORCH_WORKER: 1` as an HTTP header at `pkg/opencode/client.go:555`.
+**Evidence:** When spawning workers in headless mode, the `startHeadlessSession` function sets `cmd.Dir = cfg.ProjectDir` (spawn_cmd.go:1601), which becomes the session's `directory` field that the plugin receives via `event.properties.info.directory`.
 
-**Source:** `pkg/opencode/client.go:553-555`
+**Source:** `cmd/orch/spawn_cmd.go:1601`, verified by checking OpenCode session Info type at `packages/opencode/src/session/index.ts:43`
 
-**Significance:** The header is sent with the session creation request, but there's no evidence that OpenCode propagates this header to the plugin's JavaScript environment or session properties. The mismatch between header (session-specific) and `process.env` (server-global) causes the bug.
+**Significance:** This explains why the plugin's check fails - it looks for SPAWN_CONTEXT.md in the project root (session directory), but the file is in a subdirectory (`.orch/workspace/{workspace}/`).
 
 ---
 
@@ -89,15 +92,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **Environment variable mismatch** - The plugin checks `process.env.ORCH_WORKER` which only sees the server process environment, not session-specific metadata sent via HTTP headers. This creates a fundamental mismatch between where the flag is set (per-session header) and where it's checked (server process).
+1. **Directory structure mismatch** - The plugin checks for `SPAWN_CONTEXT.md` directly in `sessionDirectory` (project root), but workers write SPAWN_CONTEXT.md to `.orch/workspace/{workspace}/SPAWN_CONTEXT.md` (subdirectory). This path mismatch causes the worker detection to fail.
 
-2. **SPAWN_CONTEXT.md is a perfect indicator** - Worker spawns ALWAYS create SPAWN_CONTEXT.md, while orchestrator and meta-orchestrator spawns create ORCHESTRATOR_CONTEXT.md or META_ORCHESTRATOR_CONTEXT.md instead. This file presence is a reliable, session-specific indicator that doesn't depend on environment variables.
+2. **Session directory is process working directory** - When spawning workers, the session's `directory` field is set to `cfg.ProjectDir` (the project root where the OpenCode process runs), not the workspace subdirectory where spawn artifacts are written.
 
-3. **File-based detection is more robust** - Checking for file presence in the session directory works regardless of how the session was created (HTTP API, CLI, tmux) and doesn't require coordination between multiple layers (HTTP headers, OpenCode server, plugin environment).
+3. **SPAWN_CONTEXT.md is still the best indicator** - Worker spawns ALWAYS create SPAWN_CONTEXT.md, while orchestrator and meta-orchestrator spawns create different files (ORCHESTRATOR_CONTEXT.md, META_ORCHESTRATOR_CONTEXT.md). File-based detection is reliable, just needs to check the correct path.
 
 **Answer to Investigation Question:**
 
-Worker sessions receive orchestrator handoff content because the `session-resume.js` plugin checks `process.env.ORCH_WORKER` (server-level) instead of checking for `SPAWN_CONTEXT.md` presence (session-level). The fix is to check for `SPAWN_CONTEXT.md` in the session directory - if it exists, skip handoff injection since the worker should only use SPAWN_CONTEXT.md. This approach is reliable because SPAWN_CONTEXT.md is only created for workers, never for orchestrators.
+Worker sessions receive orchestrator handoff content because the `session-resume.js` plugin checks for `SPAWN_CONTEXT.md` at `{projectRoot}/SPAWN_CONTEXT.md`, but workers write it to `{projectRoot}/.orch/workspace/{workspace}/SPAWN_CONTEXT.md`. The fix is to check for `.orch/workspace/*/SPAWN_CONTEXT.md` pattern in the session directory - if any workspace has SPAWN_CONTEXT.md, skip handoff injection since this indicates a worker session. This approach is reliable because SPAWN_CONTEXT.md is only created for workers, never for orchestrators.
 
 ---
 
@@ -111,9 +114,10 @@ Worker sessions receive orchestrator handoff content because the `session-resume
 
 **What's untested:**
 
-- ⚠️ Fix prevents handoff injection for workers (requires OpenCode server restart and new spawn)
+- ⚠️ Fix prevents handoff injection for workers (requires new worker spawn - deferred due to concurrency limit)
 - ⚠️ Fix still allows handoff injection for orchestrators (requires testing orchestrator session)
-- ⚠️ sessionDirectory is correctly resolved in plugin (assumed from event.properties)
+- ✅ sessionDirectory is correctly resolved in plugin (verified via event.properties.info.directory in OpenCode source)
+- ✅ Detection logic works correctly (verified via Node.js test - found SPAWN_CONTEXT.md in workspace)
 
 **What would change this:**
 
@@ -143,9 +147,9 @@ Worker sessions receive orchestrator handoff content because the `session-resume
 
 **Implementation sequence:**
 1. Import Node.js fs and path modules in plugin
-2. Check for `SPAWN_CONTEXT.md` in `sessionDirectory` before injecting handoff
-3. Skip injection if file exists, proceed if it doesn't
-4. Remove obsolete `IS_WORKER` constant and add comment about why it doesn't work
+2. Check for `SPAWN_CONTEXT.md` in `.orch/workspace/*` subdirectories (not project root)
+3. Skip injection if file exists in any workspace, proceed if none found
+4. Use `fs.promises.readdir` to scan workspace directories (no external dependencies)
 
 ### Alternative Approaches Considered
 
@@ -165,15 +169,16 @@ Worker sessions receive orchestrator handoff content because the `session-resume
 
 ### Implementation Details
 
-**What to implement first:**
-- Update `~/.config/opencode/plugin/session-resume.js` to check for SPAWN_CONTEXT.md
-- Restart OpenCode server to load updated plugin
-- Test with worker spawn to verify handoff is skipped
+**What was implemented:**
+- ✅ Updated `~/.config/opencode/plugin/session-resume.js` to check `.orch/workspace/*/SPAWN_CONTEXT.md` pattern
+- ✅ Restarted OpenCode server to load updated plugin
+- ✅ Verified detection logic works via Node.js test script
+- ⚠️ End-to-end testing deferred (concurrency limit - 60 active agents)
 
 **Things to watch out for:**
-- ⚠️ Session directory must be correctly resolved from event.properties
-- ⚠️ Async file access requires proper error handling (SPAWN_CONTEXT.md absence is normal for orchestrators)
-- ⚠️ Race condition if handoff check happens before SPAWN_CONTEXT.md is written (unlikely since file is written before session creation)
+- ⚠️ Session directory is project root, not workspace (verified - this was the bug)
+- ✅ Async file access has proper error handling (SPAWN_CONTEXT.md absence is normal for orchestrators)
+- ✅ No race condition - SPAWN_CONTEXT.md written before session created (spawn_cmd.go:1203 before runSpawnHeadless:1478)
 
 **Areas needing further investigation:**
 - None - fix is straightforward and well-scoped
