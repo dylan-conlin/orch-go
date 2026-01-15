@@ -1,14 +1,14 @@
 # Model: Completion Verification Architecture
 
 **Domain:** Completion / Verification / Quality Gates
-**Last Updated:** 2026-01-12
-**Synthesized From:** 26 investigations + completion.md guide (synthesized from 10 investigations, Dec 2025 - Jan 2026) on verification layers, UI approval gates, cross-project detection, escalation model
+**Last Updated:** 2026-01-14
+**Synthesized From:** 31 investigations + completion.md guide on verification layers, UI approval gates, cross-project detection, escalation model, targeted bypasses
 
 ---
 
 ## Summary (30 seconds)
 
-Completion verification operates through **three independent gates** (Phase, Evidence, Approval) that check different aspects of "done". Phase gate verifies agent claims completion, Evidence gate requires visual/test proof in beads comments, Approval gate (UI changes only) requires human sign-off. Verification is **tier-aware**: light tier checks Phase + commits, full tier adds SYNTHESIS.md, orchestrator tier checks SESSION_HANDOFF.md instead. The **5-tier escalation model** surfaces knowledge-producing work (investigation/architect/research) for mandatory orchestrator review before auto-closing. Cross-project detection uses SPAWN_CONTEXT.md to determine which directory to verify in.
+Completion verification operates through **three independent gates** (Phase, Evidence, Approval) that check different aspects of "done". Phase gate verifies agent claims completion, Evidence gate requires visual/test proof in beads comments, Approval gate (UI changes only) requires human sign-off. Verification is **tier-aware**: light tier checks Phase + commits, full tier adds SYNTHESIS.md, orchestrator tier checks SESSION_HANDOFF.md instead. The **5-tier escalation model** surfaces knowledge-producing work (investigation/architect/research) for mandatory orchestrator review before auto-closing. Cross-project detection uses SPAWN_CONTEXT.md to determine which directory to verify in. **Targeted bypasses** (`--skip-{gate} "reason"`) replace blanket `--force`, allowing specific gates to be skipped while others still run.
 
 ---
 
@@ -359,6 +359,29 @@ func VerifyCompletion(beadsID string) error {
 **Investigations:** 4 investigations on verification failures, wrong directory detection, test path issues.
 
 **Key insight:** Workspace location != work location. Must read spawn context to know where work happened.
+
+### Phase 6: Targeted Bypasses (Jan 14, 2026)
+
+**What changed:** Replaced blanket `--force` with targeted `--skip-{gate}` flags. Each gate can be bypassed individually with a required reason.
+
+**New flags:**
+- `--skip-phase "reason"` - Skip phase completion check
+- `--skip-commits "reason"` - Skip git commits check
+- `--skip-test-evidence "reason"` - Skip test evidence requirement
+- `--skip-visual "reason"` - Skip visual verification
+- `--skip-synthesis "reason"` - Skip SYNTHESIS.md check
+- `--skip-decision-patch "reason"` - Skip decision impact check
+
+**Constraint:** Reason must be ≥10 characters. Bypass events logged for observability.
+
+**Key insight:** 55% of completions used `--force` to bypass ALL gates due to false positives. Targeted bypasses let agents skip specific failing gates while still running others.
+
+**Verification metrics:** `orch stats` now shows pass/fail/bypass rates per gate, enabling data-driven improvement.
+
+**Additional fixes in this phase:**
+- Cross-repo file detection via mtime (files outside project verified by modification time)
+- Markdown-only work exempted from test_evidence gate
+- Zero spawn_time handled gracefully (skip with warning for legacy workspaces)
 
 ---
 
