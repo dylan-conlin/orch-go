@@ -37,17 +37,18 @@ var (
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
-	completeSkipTestEvidence  bool
-	completeSkipVisual        bool
-	completeSkipGitDiff       bool
-	completeSkipSynthesis     bool
-	completeSkipBuild         bool
-	completeSkipConstraint    bool
-	completeSkipPhaseGate     bool
-	completeSkipSkillOutput   bool
-	completeSkipDecisionPatch bool
-	completeSkipPhaseComplete bool
-	completeSkipReason        string // Required for all --skip-* flags (min 10 chars)
+	completeSkipTestEvidence   bool
+	completeSkipVisual         bool
+	completeSkipGitDiff        bool
+	completeSkipSynthesis      bool
+	completeSkipBuild          bool
+	completeSkipConstraint     bool
+	completeSkipPhaseGate      bool
+	completeSkipSkillOutput    bool
+	completeSkipDecisionPatch  bool
+	completeSkipPhaseComplete  bool
+	completeSkipHandoffContent bool
+	completeSkipReason         string // Required for all --skip-* flags (min 10 chars)
 )
 
 var completeCmd = &cobra.Command{
@@ -70,6 +71,7 @@ The following gates are checked before completion:
   - phase_gate:           Required skill phases completed
   - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
+  - handoff_content:      SESSION_HANDOFF.md has actual content (orchestrator only)
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
@@ -83,6 +85,7 @@ Use --skip-{gate} with --skip-reason to bypass specific gates:
   --skip-skill-output     Skip skill output verification gate
   --skip-decision-patch   Skip decision patch count gate
   --skip-phase-complete   Skip Phase: Complete gate
+  --skip-handoff-content  Skip handoff content validation (orchestrator only)
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -142,29 +145,31 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipSkillOutput, "skip-skill-output", false, "Skip skill output verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipDecisionPatch, "skip-decision-patch", false, "Skip decision patch count verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 }
 
 // SkipConfig holds the configuration for which verification gates to skip.
 type SkipConfig struct {
-	TestEvidence  bool
-	Visual        bool
-	GitDiff       bool
-	Synthesis     bool
-	Build         bool
-	Constraint    bool
-	PhaseGate     bool
-	SkillOutput   bool
-	DecisionPatch bool
-	PhaseComplete bool
-	Reason        string // Required reason for skips
+	TestEvidence   bool
+	Visual         bool
+	GitDiff        bool
+	Synthesis      bool
+	Build          bool
+	Constraint     bool
+	PhaseGate      bool
+	SkillOutput    bool
+	DecisionPatch  bool
+	PhaseComplete  bool
+	HandoffContent bool
+	Reason         string // Required reason for skips
 }
 
 // hasAnySkip returns true if any skip flag is set.
 func (c SkipConfig) hasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete
+		c.DecisionPatch || c.PhaseComplete || c.HandoffContent
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -200,6 +205,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.PhaseComplete {
 		gates = append(gates, verify.GatePhaseComplete)
 	}
+	if c.HandoffContent {
+		gates = append(gates, verify.GateHandoffContent)
+	}
 	return gates
 }
 
@@ -226,6 +234,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.DecisionPatch
 	case verify.GatePhaseComplete:
 		return c.PhaseComplete
+	case verify.GateHandoffContent:
+		return c.HandoffContent
 	default:
 		return false
 	}
@@ -234,17 +244,18 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 // getSkipConfig builds the skip configuration from command-line flags.
 func getSkipConfig() SkipConfig {
 	return SkipConfig{
-		TestEvidence:  completeSkipTestEvidence,
-		Visual:        completeSkipVisual,
-		GitDiff:       completeSkipGitDiff,
-		Synthesis:     completeSkipSynthesis,
-		Build:         completeSkipBuild,
-		Constraint:    completeSkipConstraint,
-		PhaseGate:     completeSkipPhaseGate,
-		SkillOutput:   completeSkipSkillOutput,
-		DecisionPatch: completeSkipDecisionPatch,
-		PhaseComplete: completeSkipPhaseComplete,
-		Reason:        completeSkipReason,
+		TestEvidence:   completeSkipTestEvidence,
+		Visual:         completeSkipVisual,
+		GitDiff:        completeSkipGitDiff,
+		Synthesis:      completeSkipSynthesis,
+		Build:          completeSkipBuild,
+		Constraint:     completeSkipConstraint,
+		PhaseGate:      completeSkipPhaseGate,
+		SkillOutput:    completeSkipSkillOutput,
+		DecisionPatch:  completeSkipDecisionPatch,
+		PhaseComplete:  completeSkipPhaseComplete,
+		HandoffContent: completeSkipHandoffContent,
+		Reason:         completeSkipReason,
 	}
 }
 
@@ -485,37 +496,89 @@ func runComplete(identifier, workdir string) error {
 	var skillName string
 
 	// Verify completion status
-	// - For orchestrator sessions: check SESSION_HANDOFF.md exists
+	// - For orchestrator sessions: check SESSION_HANDOFF.md exists AND has content
 	// - For regular agents: check Phase: Complete via beads comments
 	// - Skip flags allow targeted bypass of specific gates
 	if !completeForce {
 		if isOrchestratorSession {
 			// Orchestrator sessions use SESSION_HANDOFF.md as completion signal
+			// Use full verification which includes content validation
 			if workspacePath != "" {
 				fmt.Printf("Workspace: %s\n", agentName)
 			}
 
-			if !hasSessionHandoff(workspacePath) {
+			result := verify.VerifyOrchestratorCompletion(workspacePath)
+			skillName = result.Skill
+
+			// Apply skip config to filter out bypassed gates
+			if skipConfig.hasAnySkip() && !result.Passed {
+				var filteredErrors []string
+				var filteredGates []string
+				var skippedGatesFound []string
+
+				for _, gate := range result.GatesFailed {
+					if skipConfig.shouldSkipGate(gate) {
+						skippedGatesFound = append(skippedGatesFound, gate)
+						fmt.Printf("⚠️  Bypassing gate: %s (reason: %s)\n", gate, skipConfig.Reason)
+					} else {
+						filteredGates = append(filteredGates, gate)
+					}
+				}
+
+				// Filter errors - keep only those not related to skipped gates
+				for _, e := range result.Errors {
+					isSkippedError := false
+					for _, gate := range skippedGatesFound {
+						// Match error messages to gates
+						if strings.Contains(strings.ToLower(e), strings.ReplaceAll(gate, "_", " ")) ||
+							strings.Contains(strings.ToLower(e), strings.ReplaceAll(gate, "_", "-")) ||
+							(gate == verify.GateHandoffContent && (strings.Contains(e, "TLDR") || strings.Contains(e, "Outcome"))) {
+							isSkippedError = true
+							break
+						}
+					}
+					if !isSkippedError {
+						filteredErrors = append(filteredErrors, e)
+					}
+				}
+
+				// Log bypass events for skipped gates
+				if len(skippedGatesFound) > 0 {
+					logSkipEvents(skipConfig, "", agentName, skillName)
+				}
+
+				// Update result with filtered data
+				result.GatesFailed = filteredGates
+				result.Errors = filteredErrors
+				result.Passed = len(filteredGates) == 0
+			}
+
+			if !result.Passed {
 				verificationPassed = false
-				gatesFailed = append(gatesFailed, verify.GateSessionHandoff)
+				gatesFailed = result.GatesFailed
 
 				// Emit verification.failed event
 				logger := events.NewLogger(events.DefaultLogPath())
 				if err := logger.LogVerificationFailed(events.VerificationFailedData{
 					Workspace:   agentName,
 					GatesFailed: gatesFailed,
-					Errors:      []string{"SESSION_HANDOFF.md not found"},
-					Skill:       "orchestrator",
+					Errors:      result.Errors,
+					Skill:       skillName,
 				}); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
 
-				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - SESSION_HANDOFF.md not found\n")
-				fmt.Fprintf(os.Stderr, "\nOrchestrator must run: orch session end\n")
-				fmt.Fprintf(os.Stderr, "Or use --force to skip verification\n")
-				return fmt.Errorf("verification failed: SESSION_HANDOFF.md not found")
+				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - verification failed:\n")
+				for _, e := range result.Errors {
+					fmt.Fprintf(os.Stderr, "  - %s\n", e)
+				}
+				fmt.Fprintf(os.Stderr, "\nOrchestrator must fill SESSION_HANDOFF.md with:\n")
+				fmt.Fprintf(os.Stderr, "  - TLDR section (actual content, not placeholder)\n")
+				fmt.Fprintf(os.Stderr, "  - Outcome field (success, partial, blocked, or failed)\n")
+				fmt.Fprintf(os.Stderr, "Or use --skip-handoff-content --skip-reason \"...\" to bypass\n")
+				return fmt.Errorf("verification failed")
 			}
-			fmt.Println("Completion signal: SESSION_HANDOFF.md found")
+			fmt.Println("Completion signal: SESSION_HANDOFF.md verified (content validated)")
 		} else if !isUntracked {
 			// Regular agents use beads phase verification
 			// Workspace already found at top of function
@@ -625,9 +688,14 @@ func runComplete(identifier, workdir string) error {
 					gatesFailed = result.GatesFailed
 				}
 			}
-		} else if isOrchestratorSession && !hasSessionHandoff(workspacePath) {
-			verificationPassed = false
-			gatesFailed = append(gatesFailed, verify.GateSessionHandoff)
+		} else if isOrchestratorSession {
+			// Run verification to capture what would have failed
+			result := verify.VerifyOrchestratorCompletion(workspacePath)
+			skillName = result.Skill
+			if !result.Passed {
+				verificationPassed = false
+				gatesFailed = result.GatesFailed
+			}
 		}
 		fmt.Println("Skipping all verification (--force) - DEPRECATED: use targeted --skip-* flags")
 	}

@@ -14,6 +14,7 @@ const (
 	GatePhaseComplete      = "phase_complete"       // Phase: Complete not reported
 	GateSynthesis          = "synthesis"            // SYNTHESIS.md missing
 	GateSessionHandoff     = "session_handoff"      // SESSION_HANDOFF.md missing (orchestrator)
+	GateHandoffContent     = "handoff_content"      // SESSION_HANDOFF.md has empty/placeholder content
 	GateConstraint         = "constraint"           // Constraint verification failed
 	GatePhaseGate          = "phase_gate"           // Required phase gate not passed
 	GateSkillOutput        = "skill_output"         // Required skill outputs missing
@@ -72,6 +73,144 @@ func VerifySessionHandoff(workspacePath string) (bool, error) {
 		return false, err
 	}
 	return info.Size() > 0, nil
+}
+
+// HandoffContentValidation contains the results of validating handoff content.
+type HandoffContentValidation struct {
+	Valid    bool     // Whether the handoff has actual content
+	Errors   []string // Specific validation failures
+	TLDRFilled    bool // Whether TLDR section has actual content
+	OutcomeFilled bool // Whether Outcome field has a valid value
+}
+
+// ValidateHandoffContent checks if SESSION_HANDOFF.md has actual content,
+// not just the empty template. It validates:
+// - TLDR section is filled (not placeholder text)
+// - Outcome field is set to a valid value (success, partial, blocked, failed)
+//
+// This prevents orchestrators from completing with empty handoffs that waste
+// context for the next session.
+func ValidateHandoffContent(workspacePath string) (HandoffContentValidation, error) {
+	result := HandoffContentValidation{
+		Valid: true,
+	}
+
+	if workspacePath == "" {
+		result.Valid = false
+		result.Errors = append(result.Errors, "workspace path is required")
+		return result, nil
+	}
+
+	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	content, err := os.ReadFile(handoffPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			result.Valid = false
+			result.Errors = append(result.Errors, "SESSION_HANDOFF.md not found")
+			return result, nil
+		}
+		return result, err
+	}
+
+	contentStr := string(content)
+
+	// Validate TLDR section has actual content
+	result.TLDRFilled = validateTLDRContent(contentStr)
+	if !result.TLDRFilled {
+		result.Valid = false
+		result.Errors = append(result.Errors, "TLDR section is empty or contains only placeholder text")
+	}
+
+	// Validate Outcome field has a valid value
+	result.OutcomeFilled = validateOutcomeField(contentStr)
+	if !result.OutcomeFilled {
+		result.Valid = false
+		result.Errors = append(result.Errors, "Outcome field is not filled (must be: success, partial, blocked, or failed)")
+	}
+
+	return result, nil
+}
+
+// validateTLDRContent checks if the TLDR section contains actual content.
+// Returns false if:
+// - TLDR section is missing
+// - TLDR section contains only placeholder text like "[1-2 sentence summary..."
+// - TLDR section contains only template instructions like "[Fill within first 5 tool calls..."
+func validateTLDRContent(content string) bool {
+	// Find the TLDR section
+	tldrIdx := strings.Index(content, "## TLDR")
+	if tldrIdx == -1 {
+		return false
+	}
+
+	// Find the end of TLDR section (next ## header or ---)
+	afterTLDR := content[tldrIdx+len("## TLDR"):]
+	endIdx := strings.Index(afterTLDR, "\n---")
+	if endIdx == -1 {
+		endIdx = strings.Index(afterTLDR, "\n## ")
+	}
+
+	var tldrContent string
+	if endIdx == -1 {
+		tldrContent = afterTLDR
+	} else {
+		tldrContent = afterTLDR[:endIdx]
+	}
+
+	// Clean and check content
+	tldrContent = strings.TrimSpace(tldrContent)
+
+	// Check for placeholder patterns
+	placeholderPatterns := []string{
+		"[1-2 sentence summary",
+		"[Fill within first 5 tool calls",
+		"[What is this session trying to accomplish",
+		"{session-goal}",
+		"{describe what happened}",
+	}
+
+	for _, pattern := range placeholderPatterns {
+		if strings.Contains(strings.ToLower(tldrContent), strings.ToLower(pattern)) {
+			return false
+		}
+	}
+
+	// Content should have meaningful length after removing whitespace
+	// A real TLDR should have at least 20 characters
+	return len(tldrContent) >= 20
+}
+
+// validateOutcomeField checks if the Outcome field has a valid value.
+// Valid values are: success, partial, blocked, failed
+// Returns false if:
+// - Outcome field is missing
+// - Outcome field contains placeholder like "{success | partial | blocked | failed}"
+func validateOutcomeField(content string) bool {
+	// Look for the Outcome line in the header section
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "**Outcome:**") {
+			// Extract the value after "**Outcome:**"
+			value := strings.TrimPrefix(line, "**Outcome:**")
+			value = strings.TrimSpace(value)
+
+			// Check for placeholder pattern
+			if strings.Contains(value, "{") || strings.Contains(value, "|") {
+				return false
+			}
+
+			// Check for valid outcome values
+			validOutcomes := []string{"success", "partial", "blocked", "failed"}
+			valueLower := strings.ToLower(value)
+			for _, valid := range validOutcomes {
+				if strings.Contains(valueLower, valid) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	return false
 }
 
 // VerifyCompletion checks if an agent is ready for completion.
@@ -330,7 +469,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 
 	// Orchestrator tier: skip beads-dependent checks, verify SESSION_HANDOFF.md instead
 	if tier == TierOrchestrator {
-		return verifyOrchestratorCompletion(workspacePath)
+		return VerifyOrchestratorCompletion(workspacePath), nil
 	}
 
 	// Standard worker verification: beads-based phase tracking
@@ -384,12 +523,13 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 	return result, nil
 }
 
-// verifyOrchestratorCompletion checks if an orchestrator session is ready for completion.
+// VerifyOrchestratorCompletion checks if an orchestrator session is ready for completion.
 // Orchestrators have different verification requirements than workers:
 //   - No beads-dependent phase checks (orchestrators manage sessions, not issues)
 //   - SESSION_HANDOFF.md instead of SYNTHESIS.md
 //   - Session end verification instead of Phase: Complete
-func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, error) {
+//   - Content validation (TLDR and Outcome must be filled, not placeholders)
+func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 	result := VerificationResult{
 		Passed: true,
 	}
@@ -403,7 +543,7 @@ func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, err
 		result.Passed = false
 		result.Errors = append(result.Errors, "workspace path is required for orchestrator verification")
 		result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
-		return result, nil
+		return result
 	}
 
 	// Check for SESSION_HANDOFF.md
@@ -430,7 +570,22 @@ func verifyOrchestratorCompletion(workspacePath string) (VerificationResult, err
 		}
 	}
 
-	return result, nil
+	// Validate handoff content (TLDR and Outcome must be filled, not placeholders)
+	// This gate ensures orchestrators don't complete with empty template handoffs
+	if ok {
+		contentValidation, err := ValidateHandoffContent(workspacePath)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to validate handoff content: %v", err))
+		} else if !contentValidation.Valid {
+			result.Passed = false
+			for _, e := range contentValidation.Errors {
+				result.Errors = append(result.Errors, e)
+			}
+			result.GatesFailed = append(result.GatesFailed, GateHandoffContent)
+		}
+	}
+
+	return result
 }
 
 // verifySessionEndedProperly checks if SESSION_HANDOFF.md contains proper session end markers.

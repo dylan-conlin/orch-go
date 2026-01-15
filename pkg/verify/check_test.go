@@ -965,6 +965,16 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
 		content := `# Session Handoff
 
+**Outcome:** success
+
+---
+
+## TLDR
+
+Completed orchestrator session for feature X. Made significant progress on the implementation.
+
+---
+
 ## Session Summary
 Completed orchestrator session for feature X.
 Made significant progress on the implementation.
@@ -992,8 +1002,15 @@ Made significant progress on the implementation.
 		content := `# Session Handoff
 
 **Status:** Complete
+**Outcome:** success
 
-Brief session summary.
+---
+
+## TLDR
+
+Brief session summary that completed all required work.
+
+---
 `
 		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
 			t.Fatalf("failed to write handoff file: %v", err)
@@ -1012,6 +1029,16 @@ Brief session summary.
 		tmpDir := t.TempDir()
 		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
 		content := `# Session
+
+**Outcome:** partial
+
+---
+
+## TLDR
+
+Session completed with partial results. Some work remains for next session.
+
+---
 
 ## Handoff
 
@@ -1039,6 +1066,16 @@ func TestOrchestratorTierSkipsBeadsChecks(t *testing.T) {
 		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
 		content := `# Session Handoff
 
+**Outcome:** success
+
+---
+
+## TLDR
+
+Completed session without needing beads tracking.
+
+---
+
 ## Session Summary
 Completed session.
 `
@@ -1061,4 +1098,420 @@ func TestTierOrchestratorConstant(t *testing.T) {
 	if TierOrchestrator != "orchestrator" {
 		t.Errorf("TierOrchestrator = %q, want %q", TierOrchestrator, "orchestrator")
 	}
+}
+
+func TestValidateHandoffContent(t *testing.T) {
+	t.Run("valid handoff with filled TLDR and Outcome", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+		content := `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Implement feature X
+**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
+**Outcome:** success
+
+---
+
+## TLDR
+
+Implemented feature X successfully. All tests passing and documentation updated.
+
+---
+
+## Session Summary
+Done.
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := ValidateHandoffContent(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.Valid {
+			t.Errorf("expected valid handoff, got errors: %v", result.Errors)
+		}
+		if !result.TLDRFilled {
+			t.Error("expected TLDRFilled to be true")
+		}
+		if !result.OutcomeFilled {
+			t.Error("expected OutcomeFilled to be true")
+		}
+	})
+
+	t.Run("invalid handoff with placeholder TLDR", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+		content := `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Implement feature X
+**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
+**Outcome:** success
+
+---
+
+## TLDR
+
+[1-2 sentence summary. What was the focus? What was achieved?]
+
+---
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := ValidateHandoffContent(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Valid {
+			t.Error("expected invalid handoff due to placeholder TLDR")
+		}
+		if result.TLDRFilled {
+			t.Error("expected TLDRFilled to be false for placeholder")
+		}
+	})
+
+	t.Run("invalid handoff with placeholder Outcome", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+		content := `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Implement feature X
+**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
+**Outcome:** {success | partial | blocked | failed}
+
+---
+
+## TLDR
+
+Did something useful this session that should be captured.
+
+---
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := ValidateHandoffContent(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Valid {
+			t.Error("expected invalid handoff due to placeholder Outcome")
+		}
+		if result.OutcomeFilled {
+			t.Error("expected OutcomeFilled to be false for placeholder")
+		}
+		if !result.TLDRFilled {
+			t.Error("expected TLDRFilled to be true")
+		}
+	})
+
+	t.Run("invalid handoff with empty TLDR", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+		content := `# Session Handoff
+
+**Outcome:** success
+
+---
+
+## TLDR
+
+---
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result, err := ValidateHandoffContent(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Valid {
+			t.Error("expected invalid handoff due to empty TLDR")
+		}
+		if result.TLDRFilled {
+			t.Error("expected TLDRFilled to be false for empty section")
+		}
+	})
+
+	t.Run("valid outcomes", func(t *testing.T) {
+		validOutcomes := []string{"success", "partial", "blocked", "failed"}
+		for _, outcome := range validOutcomes {
+			t.Run(outcome, func(t *testing.T) {
+				tmpDir := t.TempDir()
+				handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+				content := `# Session Handoff
+
+**Outcome:** ` + outcome + `
+
+---
+
+## TLDR
+
+Completed some meaningful work in this session.
+
+---
+`
+				if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+					t.Fatalf("failed to write handoff file: %v", err)
+				}
+
+				result, err := ValidateHandoffContent(tmpDir)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if !result.OutcomeFilled {
+					t.Errorf("expected OutcomeFilled to be true for %q", outcome)
+				}
+			})
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		result, err := ValidateHandoffContent(tmpDir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Valid {
+			t.Error("expected invalid result for missing file")
+		}
+		if len(result.Errors) == 0 {
+			t.Error("expected error message for missing file")
+		}
+	})
+
+	t.Run("empty workspace path", func(t *testing.T) {
+		result, err := ValidateHandoffContent("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Valid {
+			t.Error("expected invalid result for empty path")
+		}
+	})
+}
+
+func TestValidateTLDRContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name: "valid TLDR with content",
+			content: `## TLDR
+
+Implemented the handoff enforcement gate successfully.
+
+---`,
+			want: true,
+		},
+		{
+			name: "placeholder TLDR",
+			content: `## TLDR
+
+[1-2 sentence summary. What was the focus? What was achieved?]
+
+---`,
+			want: false,
+		},
+		{
+			name: "fill instruction placeholder",
+			content: `## TLDR
+
+[Fill within first 5 tool calls: What is this session trying to accomplish?]
+
+---`,
+			want: false,
+		},
+		{
+			name: "TLDR too short",
+			content: `## TLDR
+
+Short.
+
+---`,
+			want: false,
+		},
+		{
+			name: "missing TLDR section",
+			content: `## Summary
+
+Some content here.`,
+			want: false,
+		},
+		{
+			name: "TLDR with session-goal placeholder",
+			content: `## TLDR
+
+{session-goal}
+
+---`,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validateTLDRContent(tt.content)
+			if got != tt.want {
+				t.Errorf("validateTLDRContent() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateOutcomeField(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name:    "success outcome",
+			content: "**Outcome:** success",
+			want:    true,
+		},
+		{
+			name:    "partial outcome",
+			content: "**Outcome:** partial",
+			want:    true,
+		},
+		{
+			name:    "blocked outcome",
+			content: "**Outcome:** blocked",
+			want:    true,
+		},
+		{
+			name:    "failed outcome",
+			content: "**Outcome:** failed",
+			want:    true,
+		},
+		{
+			name:    "outcome with extra text",
+			content: "**Outcome:** success - all tests passing",
+			want:    true,
+		},
+		{
+			name:    "placeholder outcome",
+			content: "**Outcome:** {success | partial | blocked | failed}",
+			want:    false,
+		},
+		{
+			name:    "missing outcome",
+			content: "**Focus:** something\n**Duration:** 1h",
+			want:    false,
+		},
+		{
+			name:    "invalid outcome value",
+			content: "**Outcome:** done",
+			want:    false,
+		},
+		{
+			name:    "empty outcome",
+			content: "**Outcome:**",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validateOutcomeField(tt.content)
+			if got != tt.want {
+				t.Errorf("validateOutcomeField() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVerifyOrchestratorCompletion_ContentValidation(t *testing.T) {
+	t.Run("fails with placeholder TLDR and Outcome", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+		// Write handoff with placeholders (simulating empty template)
+		content := `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Something
+**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
+**Outcome:** {success | partial | blocked | failed}
+
+---
+
+## TLDR
+
+[1-2 sentence summary. What was the focus? What was achieved?]
+
+---
+
+## Session Summary
+Done.
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result := VerifyOrchestratorCompletion(tmpDir)
+		if result.Passed {
+			t.Error("expected verification to fail with placeholder content")
+		}
+		// Should have handoff_content gate failed
+		found := false
+		for _, gate := range result.GatesFailed {
+			if gate == GateHandoffContent {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected GateHandoffContent in failed gates, got: %v", result.GatesFailed)
+		}
+	})
+
+	t.Run("passes with filled content", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+
+		content := `# Session Handoff
+
+**Orchestrator:** test-session
+**Focus:** Implement handoff enforcement
+**Duration:** 2026-01-15 10:00 → 2026-01-15 14:00
+**Outcome:** success
+
+---
+
+## TLDR
+
+Implemented handoff enforcement gate in orch complete. Now validates that TLDR and Outcome are filled before allowing orchestrator completion.
+
+---
+
+## Session Summary
+Done.
+`
+		if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write handoff file: %v", err)
+		}
+
+		result := VerifyOrchestratorCompletion(tmpDir)
+		if !result.Passed {
+			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
+		}
+	})
 }
