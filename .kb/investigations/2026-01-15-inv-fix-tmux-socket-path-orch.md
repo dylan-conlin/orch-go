@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-15
 **Updated:** 2026-01-15
 **Owner:** architect agent
-**Phase:** Synthesizing
-**Next Step:** Implement socket detection in tmuxCommand()
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -288,15 +288,58 @@ tmux list-sessions
 
 ---
 
+## Test Verification
+
+**Before fix:**
+```bash
+# From overmind tmux context
+$ tmux display-message -t orchestrator -p '#{window_index}'
+(empty - FAILED)
+```
+
+**After fix:**
+```bash
+# From overmind tmux context  
+$ curl -k https://localhost:3348/api/context | jq .
+{
+  "cwd": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch",
+  "project_dir": "/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch",
+  "project": "price-watch",
+  "included_projects": ["price-watch"]
+}
+(SUCCESS - returns orchestrator cwd)
+
+# Verify orchestrator session cwd matches
+$ tmux -S /tmp/tmux-501/default display-message -t orchestrator -p '#{pane_current_path}'
+/Users/dylanconlin/Documents/work/SendCutSend/scs-special-projects/price-watch
+(MATCHES)
+```
+
+**Test suite:**
+```bash
+$ go test ./pkg/tmux/...
+PASS (all tests passing)
+```
+
+---
+
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-15 13:25:** Investigation started
+- Initial question: How should orch-go detect and use correct tmux socket when running inside overmind?
+- Context: Dashboard /api/context failing when orch serve runs in overmind tmux
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-15 13:40:** Identified root cause
+- Confirmed two tmux servers running (main + overmind)
+- Verified tmux commands without -S flag target overmind's server
+- Determined 7/9 tmuxCommand() call sites need main socket
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-15 13:50:** Implemented solution
+- Added detectMainSocket() function
+- Modified tmuxCommand() to auto-add -S flag
+- Created tmuxCommandCurrent() for exceptions
+- Updated GetCurrentWindowName/RenameCurrentWindow
+
+**2026-01-15 13:55:** Investigation completed
+- Status: Complete
+- Key outcome: Socket detection implemented and verified working, Dashboard API now functions correctly from overmind context
