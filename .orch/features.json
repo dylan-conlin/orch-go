@@ -547,13 +547,24 @@
       "created": "2026-01-13",
       "source": ".kb/investigations/2026-01-13-design-session-resume-discovery-failure.md",
       "notes": "Recommendation to promote to decision: establishes pattern for schema migrations in orch-go (backward-compatible discovery + optional migration tooling)."
+    },
+    {
+      "id": "feat-047",
+      "title": "Auto-include domain models in SPAWN_CONTEXT.md",
+      "description": "Enhance spawn context generation to auto-include relevant domain model sections so agents work FROM models. Implementation: 1) Add model discovery via keyword matching on task description (use kb context --format json or glob .kb/models/*.md), 2) Extract Summary + Constraints + Why This Fails sections from matching models, 3) Add DomainModels field to contextData struct and template conditional ## DOMAIN MODELS section, 4) Include max 2-3 models to respect token limits, 5) Silent omission if no models match. File targets: pkg/spawn/context.go (model discovery, section extraction, template update), pkg/spawn/models.go (new - extraction helpers). Out of scope: Skill-to-model registry, full model content inclusion. Acceptance: Spawned agents receive relevant model Summary+Constraints+WhyThisFails sections without navigation, token usage stays within limits, section appears after KBContext before DELIVERABLES.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-14",
+      "source": ".kb/investigations/2026-01-14-design-spawn-context-model-inclusion.md",
+      "notes": "Design navigated 4 decision forks: keyword discovery, selective sections, separate section, silent empty. Respects Surfacing Over Browsing and Progressive Disclosure principles."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-13",
-    "total_features": 45,
+    "last_updated": "2026-01-14",
+    "total_features": 46,
     "by_status": {
-      "todo": 43,
+      "todo": 44,
       "in_progress": 0,
       "done": 2
     }
