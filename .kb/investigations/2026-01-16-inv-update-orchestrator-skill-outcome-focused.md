@@ -44,7 +44,7 @@ Guidelines:
 **Owner:** Worker agent (og-feat-update-orchestrator-skill-16jan-49dd)
 **Phase:** Implementing
 **Next Step:** Add goal framing section to orchestrator skill template
-**Status:** In Progress
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
