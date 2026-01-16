@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** CLI integration required replacing weak "if available" language with explicit step-by-step workflow including iteration naming (v1/v2/v3) and cost/time feedback requirements.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** CLI exists at ~/.claude/tools/nano-banana/ and works; original skill guidance was ambiguous (lines 206-217); no iteration structure defined in template.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Explicit guidance enables autonomous agent behavior; version naming prevents overwrites; cost feedback creates transparency; CLI itself needed no changes.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Skill deployed and committed; manual smoke test recommended via orchestrator spawning ui-design-session agent to verify workflow.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (tactical integration improvement, not architectural)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-16
 **Updated:** 2026-01-16
 **Owner:** Worker agent (orch-go-gy1o4.3.2)
-**Phase:** Investigating
-**Next Step:** Document findings and create implementation plan
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
