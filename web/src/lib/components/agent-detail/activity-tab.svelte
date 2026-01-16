@@ -268,6 +268,46 @@
 		}
 	}
 
+	// Expand/collapse state for tool results - keyed by event ID
+	let expandedResults = $state<Map<string, boolean>>(new Map());
+	
+	// Track currently focused/hovered event ID for keyboard shortcuts
+	let focusedEventId = $state<string | null>(null);
+	
+	// Toggle expand/collapse for a specific tool result
+	function toggleExpand(eventId: string) {
+		const newMap = new Map(expandedResults);
+		newMap.set(eventId, !newMap.get(eventId));
+		expandedResults = newMap;
+	}
+	
+	// Truncate tool output to first N lines
+	function truncateOutput(output: string, maxLines: number = 3): { preview: string; hasMore: boolean; totalLines: number } {
+		if (!output) return { preview: '', hasMore: false, totalLines: 0 };
+		const lines = output.split('\n');
+		const totalLines = lines.length;
+		const hasMore = totalLines > maxLines;
+		const preview = lines.slice(0, maxLines).join('\n');
+		return { preview, hasMore, totalLines };
+	}
+	
+	// Handle keyboard shortcuts
+	function handleActivityKeydown(event: KeyboardEvent) {
+		// Ctrl+O: Toggle expand/collapse for focused tool result
+		if (event.ctrlKey && event.key === 'o' && focusedEventId) {
+			event.preventDefault();
+			toggleExpand(focusedEventId);
+		}
+	}
+	
+	// Set up keyboard event listener on mount
+	onMount(() => {
+		window.addEventListener('keydown', handleActivityKeydown);
+		return () => {
+			window.removeEventListener('keydown', handleActivityKeydown);
+		};
+	});
+	
 	// Message input state
 	let messageInput = $state('');
 	let isSending = $state(false);
@@ -402,20 +442,46 @@
 			{#each agentEvents as event (event.id)}
 				{@const part = event.properties?.part}
 				{#if part}
-					<div class="flex items-start gap-2 py-0.5 text-muted-foreground hover:text-foreground transition-colors">
-						<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
-						{#if part.type === 'tool' || part.type === 'tool-invocation'}
-							{@const toolDisplay = formatToolCall(part)}
-							<span 
-								class="flex-1 break-words leading-relaxed font-mono"
-								title={toolDisplay.full || undefined}
-							>
-								<span class="text-blue-400">{formatToolName(part.tool || 'tool')}</span>{#if toolDisplay.full}<span class="text-muted-foreground/70">({truncate(extractToolArg(part.state?.input), 60)})</span>{/if}
-							</span>
-						{:else}
-							<span class="flex-1 break-words leading-relaxed">
-								{part.text || part.state?.title || part.type}
-							</span>
+					<div class="flex flex-col gap-1 py-0.5">
+						<div class="flex items-start gap-2 text-muted-foreground hover:text-foreground transition-colors">
+							<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
+							{#if part.type === 'tool' || part.type === 'tool-invocation'}
+								{@const toolDisplay = formatToolCall(part)}
+								<span 
+									class="flex-1 break-words leading-relaxed font-mono"
+									title={toolDisplay.full || undefined}
+								>
+									<span class="text-blue-400">{formatToolName(part.tool || 'tool')}</span>{#if toolDisplay.full}<span class="text-muted-foreground/70">({truncate(extractToolArg(part.state?.input), 60)})</span>{/if}
+								</span>
+							{:else}
+								<span class="flex-1 break-words leading-relaxed">
+									{part.text || part.state?.title || part.type}
+								</span>
+							{/if}
+						</div>
+						
+						<!-- Tool result output -->
+						{#if (part.type === 'tool' || part.type === 'tool-invocation') && part.state?.output}
+							{@const isExpanded = expandedResults.get(event.id) || false}
+							{@const truncated = truncateOutput(part.state.output, 3)}
+							<div class="ml-6 text-xs">
+								<button
+									type="button"
+									onclick={() => toggleExpand(event.id)}
+									onfocus={() => focusedEventId = event.id}
+									onmouseenter={() => focusedEventId = event.id}
+									onmouseleave={() => focusedEventId = null}
+									class="w-full text-left hover:bg-muted/20 rounded p-1 transition-colors focus:ring-1 focus:ring-primary"
+									title="Click to expand/collapse (or Ctrl+O)"
+								>
+									<pre class="font-mono text-muted-foreground/80 whitespace-pre-wrap break-words">{isExpanded ? part.state.output : truncated.preview}</pre>
+									{#if truncated.hasMore}
+										<div class="text-muted-foreground/50 mt-1">
+											{isExpanded ? '▲ Click to collapse' : `▼ ... +${truncated.totalLines - 3} lines (click to expand)`}
+										</div>
+									{/if}
+								</button>
+							</div>
 						{/if}
 					</div>
 				{/if}

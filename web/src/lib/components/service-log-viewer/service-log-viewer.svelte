@@ -57,8 +57,8 @@
 <!-- Modal overlay -->
 <div
 	class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-	on:click={onClose}
-	on:keydown={(e) => e.key === 'Escape' && onClose()}
+	onclick={onClose}
+	onkeydown={(e) => e.key === 'Escape' && onClose()}
 	role="button"
 	tabindex="0"
 >
@@ -79,13 +79,13 @@
 					{filteredEvents.length} event{filteredEvents.length === 1 ? '' : 's'}
 				</Badge>
 			</div>
-			<button
-				on:click={onClose}
-				class="rounded-lg p-1 hover:bg-accent transition-colors text-xl leading-none"
-				aria-label="Close"
-			>
-				×
-			</button>
+		<button
+			onclick={onClose}
+			class="rounded-lg p-1 hover:bg-accent transition-colors text-xl leading-none"
+			aria-label="Close"
+		>
+			×
+		</button>
 		</div>
 
 		<!-- Events list -->
