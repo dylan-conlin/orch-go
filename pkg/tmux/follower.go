@@ -358,6 +358,7 @@ type MultiProjectConfig struct {
 
 // DefaultMultiProjectConfigs returns the default multi-project configurations.
 // These define which orchestration project sees agents from multiple repos.
+// Also includes aliases for projects where the directory name differs from the beads ID prefix.
 func DefaultMultiProjectConfigs() []MultiProjectConfig {
 	return []MultiProjectConfig{
 		{
@@ -369,7 +370,15 @@ func DefaultMultiProjectConfigs() []MultiProjectConfig {
 				"kb-cli",
 				"orch-knowledge",
 				"opencode",
+				"price-watch", // Include price-watch agents when viewing from orch-go
+				"pw",          // Alias: price-watch directory uses "pw" beads ID prefix
 			},
+		},
+		{
+			// price-watch directory uses "pw" as beads ID prefix
+			// Include "pw" so agents with beads IDs like "pw-xxxx" are visible
+			Project:         "price-watch",
+			IncludeProjects: []string{"pw"},
 		},
 	}
 }
