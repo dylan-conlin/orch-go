@@ -1583,6 +1583,72 @@ func TestGenerateContext_BugReproduction(t *testing.T) {
 	})
 }
 
+func TestGenerateContext_NoPushGuidance(t *testing.T) {
+	t.Run("includes no-push guidance in worker spawn context", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "implement feature",
+			SkillName:     "feature-impl",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-feat-test-16jan",
+			BeadsID:       "test-123",
+			Tier:          TierLight,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should contain explicit no-push guidance
+		if !strings.Contains(content, "NEVER run `git push`") {
+			t.Error("expected content to contain 'NEVER run `git push`' guidance")
+		}
+
+		// Should contain rationale about production systems
+		if !strings.Contains(content, "trigger deploys that disrupt production systems") {
+			t.Error("expected content to explain why pushing is prohibited")
+		}
+
+		// Should contain the worker rule
+		if !strings.Contains(content, "Worker rule: Commit your work, call `/exit`. Don't push") {
+			t.Error("expected content to contain worker rule statement")
+		}
+
+		// Should mention orchestrator handles pushing
+		if !strings.Contains(content, "orchestrator will handle pushing to remote") {
+			t.Error("expected content to explain orchestrator role in pushing")
+		}
+	})
+
+	t.Run("includes no-push guidance in no-track spawn", func(t *testing.T) {
+		cfg := &Config{
+			Task:          "quick investigation",
+			SkillName:     "investigation",
+			Project:       "test-project",
+			ProjectDir:    "/tmp/test",
+			WorkspaceName: "og-inv-test-16jan",
+			NoTrack:       true,
+			Tier:          TierFull,
+		}
+
+		content, err := GenerateContext(cfg)
+		if err != nil {
+			t.Fatalf("GenerateContext failed: %v", err)
+		}
+
+		// Should still contain no-push guidance even for no-track spawns
+		if !strings.Contains(content, "NEVER run `git push`") {
+			t.Error("expected content to contain no-push guidance for no-track spawn")
+		}
+
+		// Should contain worker rule
+		if !strings.Contains(content, "Worker rule:") {
+			t.Error("expected content to contain worker rule for no-track spawn")
+		}
+	})
+}
+
 func TestGenerateContext_NoTrack(t *testing.T) {
 	t.Run("excludes beads instructions when NoTrack is true", func(t *testing.T) {
 		cfg := &Config{

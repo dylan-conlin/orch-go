@@ -74,6 +74,12 @@ Progress tracking via bd comment is NOT available.
 
 🚨 SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE typing anything else:
+
+⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
+   - Your orchestrator will handle pushing to remote after review
+   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
+   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+
 {{if eq .Tier "light"}}
 1. Run: ` + "`/exit`" + ` to close the agent session
 
@@ -94,6 +100,12 @@ Do NOT skip this - the orchestrator monitors via beads comments.
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
 After your final commit, BEFORE typing anything else:
+
+⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
+   - Your orchestrator will handle pushing to remote after review
+   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
+   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+
 {{if eq .Tier "light"}}
 1. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + `
 2. Run: ` + "`/exit`" + ` to close the agent session
@@ -261,6 +273,12 @@ CONTEXT AVAILABLE:
 {{end}}
 🚨 FINAL STEP - SESSION COMPLETE PROTOCOL:
 After your final commit, BEFORE doing anything else:
+
+⛔ **NEVER run ` + "`git push`" + `** - Workers commit locally only.
+   - Your orchestrator will handle pushing to remote after review
+   - Running ` + "`git push`" + ` can trigger deploys that disrupt production systems
+   - Worker rule: Commit your work, call ` + "`/exit`" + `. Don't push.
+
 {{if .NoTrack}}
 {{if eq .Tier "light"}}
 1. ` + "`/exit`" + `
