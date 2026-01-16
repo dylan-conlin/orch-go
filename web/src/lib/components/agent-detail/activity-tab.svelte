@@ -267,6 +267,65 @@
 			autoScroll = true;
 		}
 	}
+
+	// Message input state
+	let messageInput = $state('');
+	let isSending = $state(false);
+	let sendError = $state<string | null>(null);
+
+	// Determine if input should be disabled
+	let isInputDisabled = $derived(
+		agent.status !== 'active' || !agent.session_id || isSending
+	);
+
+	// Send message to agent
+	async function sendMessage() {
+		if (!messageInput.trim() || !agent.session_id || isInputDisabled) {
+			return;
+		}
+
+		const message = messageInput.trim();
+		messageInput = ''; // Clear input immediately
+		sendError = null;
+		isSending = true;
+
+		try {
+			// Get OpenCode server URL from agents store (API_BASE)
+			const serverURL = 'http://localhost:4096';
+			
+			// POST to OpenCode prompt_async endpoint
+			const response = await fetch(`${serverURL}/session/${agent.session_id}/prompt_async`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					parts: [{ type: 'text', text: message }],
+					agent: 'build',
+				}),
+			});
+
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+			}
+
+			// Message sent successfully - SSE will update feed with response
+		} catch (error) {
+			sendError = error instanceof Error ? error.message : 'Failed to send message';
+			messageInput = message; // Restore message on error
+		} finally {
+			isSending = false;
+		}
+	}
+
+	// Handle keyboard events for Enter to send, Shift+Enter for newline
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			sendMessage();
+		}
+	}
 </script>
 
 <div class="flex flex-col h-full">
@@ -364,5 +423,36 @@
 				<p class="py-4 text-center text-muted-foreground/50">Waiting for activity...</p>
 			{/each}
 		{/if}
+	</div>
+
+	<!-- Message Input -->
+	<div class="p-3 border-t shrink-0">
+		{#if sendError}
+			<div class="mb-2 text-xs text-red-500">
+				{sendError}
+			</div>
+		{/if}
+		<div class="flex gap-2 items-end">
+			<textarea
+				bind:value={messageInput}
+				onkeydown={handleKeydown}
+				disabled={isInputDisabled}
+				placeholder={isInputDisabled ? 'Agent not active' : 'Send a message... (Enter to send, Shift+Enter for newline)'}
+				class="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 text-sm rounded border bg-background resize-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+				rows="1"
+			></textarea>
+			<button
+				type="button"
+				onclick={sendMessage}
+				disabled={isInputDisabled || !messageInput.trim()}
+				class="px-4 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+				title="Send message"
+			>
+				{isSending ? 'Sending...' : 'Send'}
+			</button>
+		</div>
+		<p class="mt-1 text-xs text-muted-foreground">
+			Enter to send, Shift+Enter for newline
+		</p>
 	</div>
 </div>
