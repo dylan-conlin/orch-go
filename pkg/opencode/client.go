@@ -1103,10 +1103,67 @@ func formatMessageToMarkdown(msg *Message) string {
 	if len(toolParts) > 0 {
 		lines = append(lines, "**Tools:**")
 		for _, tool := range toolParts {
-			lines = append(lines, fmt.Sprintf("  - %s", tool.Type))
+			// Format tool details for better debugging
+			toolDesc := formatToolDescription(&tool)
+			lines = append(lines, fmt.Sprintf("  - %s", toolDesc))
 		}
 		lines = append(lines, "")
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// formatToolDescription formats a tool part into a human-readable string.
+// Shows tool name, title/description, and key parameters for debugging.
+func formatToolDescription(tool *MessagePart) string {
+	// If no tool details available, fall back to type
+	if tool.Tool == "" {
+		return tool.Type
+	}
+
+	// Start with tool name
+	result := tool.Tool
+
+	// Add title/description if available (most useful for bash commands)
+	if tool.State != nil && tool.State.Title != "" {
+		result = fmt.Sprintf("%s: %s", result, tool.State.Title)
+	} else if tool.State != nil && len(tool.State.Input) > 0 {
+		// If no title, try to extract a useful parameter
+		// For common tools, show the most relevant parameter
+		switch tool.Tool {
+		case "read":
+			if filePath, ok := tool.State.Input["filePath"].(string); ok {
+				// Show just filename, not full path, to keep it concise
+				filename := filePath
+				if idx := strings.LastIndex(filePath, "/"); idx >= 0 && idx < len(filePath)-1 {
+					filename = filePath[idx+1:]
+				}
+				result = fmt.Sprintf("%s: %s", result, filename)
+			}
+		case "edit", "write":
+			if filePath, ok := tool.State.Input["filePath"].(string); ok {
+				filename := filePath
+				if idx := strings.LastIndex(filePath, "/"); idx >= 0 && idx < len(filePath)-1 {
+					filename = filePath[idx+1:]
+				}
+				result = fmt.Sprintf("%s: %s", result, filename)
+			}
+		case "bash":
+			if command, ok := tool.State.Input["command"].(string); ok {
+				// Truncate long commands to 60 chars
+				if len(command) > 60 {
+					command = command[:57] + "..."
+				}
+				result = fmt.Sprintf("%s: %s", result, command)
+			}
+		case "grep", "glob":
+			if pattern, ok := tool.State.Input["pattern"].(string); ok {
+				result = fmt.Sprintf("%s: %s", result, pattern)
+			}
+		default:
+			// For other tools, just show the tool name
+		}
+	}
+
+	return result
 }
