@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Message input added to dashboard activity feed using OpenCode's existing SendMessageAsync API pattern.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Component implemented in activity-tab.svelte with textarea, Enter/Shift+Enter handling, disabled state management, and error display; visually verified in dashboard showing disabled input when agent inactive.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Backend API reuse (no new endpoints), chat-style UX fits feed context, agent state provides all needed flags (session_id, status), messages appear via SSE without additional feed logic.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Feature complete and committed - ready for orchestrator review.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (implementation detail, not architectural decision)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-16
 **Updated:** 2026-01-16
 **Owner:** Dashboard Agent
-**Phase:** Investigating
-**Next Step:** Document findings and design implementation
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -91,15 +91,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Backend API reuse eliminates new endpoint need** - The OpenCode SendMessageAsync pattern (POST to /session/{id}/prompt_async) is already proven and can be called directly from the dashboard, eliminating backend development.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Chat-style UX fits activity feed context** - Positioning input at bottom of activity feed creates familiar messaging UX and keeps message context visible in the feed above.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Agent state already provides all needed flags** - The Agent interface includes session_id (for API calls) and status (for disabled state), making implementation straightforward without new state management.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Add a textarea input at the bottom of the activity-tab component that POSTs directly to OpenCode's /session/{session_id}/prompt_async endpoint. Disable when agent.status !== 'active' or !agent.session_id. Implement Enter to send, Shift+Enter for newline via textarea onkeydown handler. Sent messages will appear in the feed via existing SSE event stream, requiring no additional feed management.
 
 ---
 
