@@ -254,7 +254,7 @@
     {
       "id": "feat-023",
       "title": "Simplify dashboard agent status with Priority Cascade model",
-      "description": "Replace ~10 scattered status conditions in serve_agents.go with single determineAgentStatus() function using priority cascade: 1) Beads closed → completed, 2) Phase: Complete → completed, 3) SYNTHESIS.md exists → completed, 4) Session activity → active/idle. Remove line 609 optimization that skips idle agents from beads fetching. Remove duplicate SYNTHESIS.md checks (lines 862-868 and 909-930). File targets: cmd/orch/serve_agents.go (new determineAgentStatus function, refactor handleAgents). Acceptance: Idle agent with Phase: Complete shows as 'completed', all status logic in one function, no duplicate checks.",
+      "description": "Replace ~10 scattered status conditions in serve_agents.go with single determineAgentStatus() function using priority cascade: 1) Beads closed \u2192 completed, 2) Phase: Complete \u2192 completed, 3) SYNTHESIS.md exists \u2192 completed, 4) Session activity \u2192 active/idle. Remove line 609 optimization that skips idle agents from beads fetching. Remove duplicate SYNTHESIS.md checks (lines 862-868 and 909-930). File targets: cmd/orch/serve_agents.go (new determineAgentStatus function, refactor handleAgents). Acceptance: Idle agent with Phase: Complete shows as 'completed', all status logic in one function, no duplicate checks.",
       "status": "todo",
       "skill": "feature-impl",
       "priority": "high",
@@ -329,7 +329,7 @@
     {
       "id": "feat-029",
       "title": "Extract SSE Connection Manager from dashboard stores (Phase 1)",
-      "description": "Create shared SSE connection manager at web/src/lib/services/sse-connection.ts. Extract from agents.ts and agentlog.ts: generation counters, reconnect timeout logic, abort controllers, connection status management. API: createSSEConnection(url, options) → { connect, disconnect, status, onEvent }. Keep domain-specific event handlers in original files. File targets: web/src/lib/services/sse-connection.ts (new), web/src/lib/stores/agents.ts, web/src/lib/stores/agentlog.ts. Acceptance: Both stores use shared SSE service, reconnect logic works, no duplicate connection management code.",
+      "description": "Create shared SSE connection manager at web/src/lib/services/sse-connection.ts. Extract from agents.ts and agentlog.ts: generation counters, reconnect timeout logic, abort controllers, connection status management. API: createSSEConnection(url, options) \u2192 { connect, disconnect, status, onEvent }. Keep domain-specific event handlers in original files. File targets: web/src/lib/services/sse-connection.ts (new), web/src/lib/stores/agents.ts, web/src/lib/stores/agentlog.ts. Acceptance: Both stores use shared SSE service, reconnect logic works, no duplicate connection management code.",
       "status": "todo",
       "skill": "feature-impl",
       "priority": "high",
@@ -558,13 +558,24 @@
       "created": "2026-01-14",
       "source": ".kb/investigations/2026-01-14-design-spawn-context-model-inclusion.md",
       "notes": "Design navigated 4 decision forks: keyword discovery, selective sections, separate section, silent empty. Respects Surfacing Over Browsing and Progressive Disclosure principles."
+    },
+    {
+      "id": "feat-048",
+      "title": "Add observability layer to daemon session deduplication",
+      "description": "Add event emission and metrics to session_dedup.go and daemon.go to monitor dedup effectiveness and API availability. Emit events: dedup.api_unavailable (API error during check), dedup.duplicate_found (blocked spawn), dedup.check_passed (no duplicate). Add metrics: dedup.hit_rate, dedup.api_failures, agent.duration_histogram. Log using existing events.Logger pattern. Emit on significant events only (API failures, duplicates found) - not on every successful check. Non-blocking fire-and-forget pattern. File targets: pkg/daemon/session_dedup.go (event emission in HasExistingSession), pkg/daemon/daemon.go (event emission in Once paths). Acceptance: Events logged when API unavailable or duplicates found, metrics enable validation of 6-hour window assumption, no spawn latency increase.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-16",
+      "source": ".kb/investigations/2026-01-16-inv-add-dedup-check-before-spawn.md",
+      "notes": "Addresses observability gap identified in architect review. Enables data-driven validation of dedup thresholds."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-14",
-    "total_features": 46,
+    "last_updated": "2026-01-16",
+    "total_features": 48,
     "by_status": {
-      "todo": 44,
+      "todo": 46,
       "in_progress": 0,
       "done": 2
     }
