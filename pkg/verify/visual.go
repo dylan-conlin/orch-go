@@ -142,6 +142,16 @@ var visualEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)playwright`),
 	regexp.MustCompile(`(?i)browser_take_screenshot`),
 	regexp.MustCompile(`(?i)browser_navigate`),
+	// Glass browser automation tool mentions
+	regexp.MustCompile(`(?i)glass_page_state`),
+	regexp.MustCompile(`(?i)glass_elements`),
+	regexp.MustCompile(`(?i)glass_click`),
+	regexp.MustCompile(`(?i)glass_type`),
+	regexp.MustCompile(`(?i)glass_navigate`),
+	regexp.MustCompile(`(?i)glass_screenshot`),
+	regexp.MustCompile(`(?i)glass_scroll`),
+	regexp.MustCompile(`(?i)glass assert`),
+	regexp.MustCompile(`(?i)glass\s+tool`),
 	// Smoke test with UI context
 	regexp.MustCompile(`(?i)smoke\s*test.*ui`),
 	regexp.MustCompile(`(?i)ui.*smoke\s*test`),
