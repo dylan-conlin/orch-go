@@ -65,8 +65,8 @@
 	<!-- Modal content -->
 	<div
 		class="relative w-full max-w-3xl max-h-[80vh] m-4 rounded-lg border-2 border-blue-500/50 bg-card shadow-xl overflow-hidden"
-		on:click|stopPropagation
-		on:keydown|stopPropagation
+		onclick={(e) => e.stopPropagation()}
+		onkeydown={(e) => e.stopPropagation()}
 		role="dialog"
 		tabindex="-1"
 	>
