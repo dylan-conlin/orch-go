@@ -788,3 +788,166 @@ func TestCrossProjectBeadsIDDetection(t *testing.T) {
 		})
 	}
 }
+
+// TestArchiveWorkspace tests the archiveWorkspace function.
+func TestArchiveWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a workspace to archive
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	wsPath := filepath.Join(workspaceDir, "og-feat-test-17jan-abc1")
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+
+	// Create some files in the workspace
+	if err := os.WriteFile(filepath.Join(wsPath, "SPAWN_CONTEXT.md"), []byte("Test context"), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "SYNTHESIS.md"), []byte("Test synthesis"), 0644); err != nil {
+		t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
+	}
+
+	// Archive the workspace
+	archivedPath, err := archiveWorkspace(wsPath, tmpDir)
+	if err != nil {
+		t.Fatalf("archiveWorkspace failed: %v", err)
+	}
+
+	// Verify workspace was moved
+	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
+		t.Error("Original workspace should not exist after archival")
+	}
+
+	// Verify archived path is correct
+	expectedArchivedPath := filepath.Join(tmpDir, ".orch", "workspace", "archived", "og-feat-test-17jan-abc1")
+	if archivedPath != expectedArchivedPath {
+		t.Errorf("Expected archived path %s, got %s", expectedArchivedPath, archivedPath)
+	}
+
+	// Verify archived workspace exists
+	if _, err := os.Stat(archivedPath); os.IsNotExist(err) {
+		t.Error("Archived workspace should exist")
+	}
+
+	// Verify files were preserved
+	if _, err := os.Stat(filepath.Join(archivedPath, "SPAWN_CONTEXT.md")); os.IsNotExist(err) {
+		t.Error("SPAWN_CONTEXT.md should exist in archived workspace")
+	}
+	if _, err := os.Stat(filepath.Join(archivedPath, "SYNTHESIS.md")); os.IsNotExist(err) {
+		t.Error("SYNTHESIS.md should exist in archived workspace")
+	}
+}
+
+// TestArchiveWorkspaceEmptyPath tests archiveWorkspace with empty path.
+func TestArchiveWorkspaceEmptyPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	_, err := archiveWorkspace("", tmpDir)
+	if err == nil {
+		t.Error("Expected error for empty workspace path")
+	}
+	if err.Error() != "workspace path is empty" {
+		t.Errorf("Expected 'workspace path is empty' error, got: %v", err)
+	}
+}
+
+// TestArchiveWorkspaceNonExistent tests archiveWorkspace with non-existent workspace.
+func TestArchiveWorkspaceNonExistent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	_, err := archiveWorkspace(filepath.Join(tmpDir, "nonexistent"), tmpDir)
+	if err == nil {
+		t.Error("Expected error for non-existent workspace")
+	}
+}
+
+// TestArchiveWorkspaceNameCollision tests archiveWorkspace handles name collisions.
+func TestArchiveWorkspaceNameCollision(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	archivedDir := filepath.Join(workspaceDir, "archived")
+
+	// Create workspace to archive
+	wsName := "og-feat-collision-17jan"
+	wsPath := filepath.Join(workspaceDir, wsName)
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		t.Fatalf("Failed to create workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsPath, "content.txt"), []byte("original"), 0644); err != nil {
+		t.Fatalf("Failed to create content file: %v", err)
+	}
+
+	// Pre-create an archived workspace with the same name (simulating collision)
+	existingArchivedPath := filepath.Join(archivedDir, wsName)
+	if err := os.MkdirAll(existingArchivedPath, 0755); err != nil {
+		t.Fatalf("Failed to create existing archived workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(existingArchivedPath, "existing.txt"), []byte("existing"), 0644); err != nil {
+		t.Fatalf("Failed to create existing content: %v", err)
+	}
+
+	// Archive the workspace - should handle collision
+	archivedPath, err := archiveWorkspace(wsPath, tmpDir)
+	if err != nil {
+		t.Fatalf("archiveWorkspace failed: %v", err)
+	}
+
+	// Verify the new archive has a timestamp suffix
+	if archivedPath == existingArchivedPath {
+		t.Error("Archived path should have timestamp suffix to avoid collision")
+	}
+
+	// Verify both archived workspaces exist
+	if _, err := os.Stat(existingArchivedPath); os.IsNotExist(err) {
+		t.Error("Existing archived workspace should still exist")
+	}
+	if _, err := os.Stat(archivedPath); os.IsNotExist(err) {
+		t.Error("New archived workspace should exist")
+	}
+
+	// Verify original workspace was moved
+	if _, err := os.Stat(wsPath); !os.IsNotExist(err) {
+		t.Error("Original workspace should not exist after archival")
+	}
+}
+
+// TestRegistryArchivedPathUpdate tests that orchestrator sessions get their
+// ArchivedPath field updated after archival.
+func TestRegistryArchivedPathUpdate(t *testing.T) {
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "sessions.json")
+
+	// Create a registry with a test orchestrator session
+	registry := session.NewRegistry(registryPath)
+	testSession := session.OrchestratorSession{
+		WorkspaceName: "og-orch-archive-test-17jan",
+		SessionID:     "ses_test456",
+		ProjectDir:    tmpDir,
+		SpawnTime:     time.Now(),
+		Goal:          "Test archival",
+		Status:        "completed",
+	}
+
+	if err := registry.Register(testSession); err != nil {
+		t.Fatalf("Failed to register session: %v", err)
+	}
+
+	// Update the archived path (simulating what complete does after archival)
+	archivedPath := filepath.Join(tmpDir, ".orch", "workspace", "archived", "og-orch-archive-test-17jan")
+	if err := registry.Update("og-orch-archive-test-17jan", func(s *session.OrchestratorSession) {
+		s.ArchivedPath = archivedPath
+	}); err != nil {
+		t.Fatalf("Failed to update archived path: %v", err)
+	}
+
+	// Verify the archived path was saved
+	retrieved, err := registry.Get("og-orch-archive-test-17jan")
+	if err != nil {
+		t.Fatalf("Failed to retrieve session: %v", err)
+	}
+
+	if retrieved.ArchivedPath != archivedPath {
+		t.Errorf("Expected ArchivedPath %s, got %s", archivedPath, retrieved.ArchivedPath)
+	}
+}

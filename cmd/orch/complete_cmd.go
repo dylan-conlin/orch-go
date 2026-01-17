@@ -34,6 +34,7 @@ var (
 	completeNoChangelogCheck bool
 	completeSkipReproCheck   bool
 	completeSkipReproReason  string
+	completeNoArchive        bool
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
@@ -57,7 +58,8 @@ var completeCmd = &cobra.Command{
 	Long: `Complete an agent's work by verifying Phase: Complete and closing the beads issue.
 
 Checks that the agent has reported "Phase: Complete" via beads comments before
-closing the issue.
+closing the issue. After successful completion, the workspace is automatically
+archived to .orch/workspace/archived/ for cleanup. Use --no-archive to opt out.
 
 VERIFICATION GATES:
 The following gates are checked before completion:
@@ -133,6 +135,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeNoChangelogCheck, "no-changelog-check", false, "Skip changelog detection for notable changes")
 	completeCmd.Flags().BoolVar(&completeSkipReproCheck, "skip-repro-check", false, "Skip reproduction verification for bug issues (requires --reason)")
 	completeCmd.Flags().StringVar(&completeSkipReproReason, "skip-repro-reason", "", "Reason for skipping reproduction verification")
+	completeCmd.Flags().BoolVar(&completeNoArchive, "no-archive", false, "Skip automatic workspace archival after completion")
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
@@ -943,6 +946,35 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Archive workspace after successful completion (unless --no-archive is set)
+	// This happens after all workspace reads (session deletion, transcript export)
+	// but before tmux cleanup. The workspace is moved to .orch/workspace/archived/
+	var archivedPath string
+	if workspacePath != "" && !completeNoArchive {
+		var err error
+		archivedPath, err = archiveWorkspace(workspacePath, beadsProjectDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to archive workspace: %v\n", err)
+		} else {
+			fmt.Printf("Archived workspace: %s\n", filepath.Base(archivedPath))
+
+			// Update session registry with archived path (orchestrator sessions only)
+			if isOrchestratorSession && archivedPath != "" {
+				registry := session.NewRegistry("")
+				if err := registry.Update(agentName, func(s *session.OrchestratorSession) {
+					s.ArchivedPath = archivedPath
+				}); err != nil {
+					// Non-critical - session may not be in registry
+					if err != session.ErrSessionNotFound {
+						fmt.Fprintf(os.Stderr, "Warning: failed to update archived path in registry: %v\n", err)
+					}
+				}
+			}
+		}
+	} else if completeNoArchive && workspacePath != "" {
+		fmt.Println("Skipped workspace archival (--no-archive)")
+	}
+
 	// Clean up tmux window if it exists (prevents phantom accumulation)
 	// For orchestrators, search by workspace name; for regular agents, search by beads ID
 	var windowSearchID string
@@ -1481,4 +1513,44 @@ func exportOrchestratorTranscript(workspacePath, projectDir, beadsID string) err
 
 	fmt.Printf("Saved transcript: %s\n", destPath)
 	return nil
+}
+
+// archiveWorkspace moves a completed workspace to the archived directory.
+// Returns the new archived path on success, or an error if archival fails.
+// The function handles name collisions by adding a timestamp suffix.
+func archiveWorkspace(workspacePath, projectDir string) (string, error) {
+	if workspacePath == "" {
+		return "", fmt.Errorf("workspace path is empty")
+	}
+
+	// Verify workspace exists
+	if _, err := os.Stat(workspacePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("workspace does not exist: %s", workspacePath)
+	}
+
+	// Determine workspace name and archived directory
+	workspaceName := filepath.Base(workspacePath)
+	archivedDir := filepath.Join(projectDir, ".orch", "workspace", "archived")
+
+	// Create archived directory if needed
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create archived directory: %w", err)
+	}
+
+	// Determine destination path
+	destPath := filepath.Join(archivedDir, workspaceName)
+
+	// Handle name collision (if archive already exists, add timestamp suffix)
+	if _, err := os.Stat(destPath); err == nil {
+		suffix := time.Now().Format("150405") // HHMMSS format
+		destPath = filepath.Join(archivedDir, workspaceName+"-"+suffix)
+		fmt.Printf("Note: Archive destination exists, using: %s-%s\n", workspaceName, suffix)
+	}
+
+	// Move workspace to archived
+	if err := os.Rename(workspacePath, destPath); err != nil {
+		return "", fmt.Errorf("failed to archive workspace: %w", err)
+	}
+
+	return destPath, nil
 }
