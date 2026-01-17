@@ -2,15 +2,20 @@
  * Plugin: Orchestrator Session Management
  *
  * This plugin consolidates two responsibilities for orchestrator sessions:
- * 1. Config hook: Inject orchestrator skill (~/.claude/skills/meta/orchestrator/SKILL.md)
- * 2. Event hook: Auto-start orchestrator session on session.created
+ * 1. Lazy-load orchestrator skill via system.transform hook (only for non-workers)
+ * 2. Auto-start orchestrator session on session.created event
  *
- * Worker detection (shared logic):
- * - ORCH_WORKER env var is set (explicit marker from orch spawn)
- * - SPAWN_CONTEXT.md exists in working directory
- * - Path contains .orch/workspace/ (worker workspace)
+ * Worker detection (progressive, per-session):
+ * - tool.execute.before hook detects workers by examining tool arguments
+ * - SPAWN_CONTEXT.md read (workers always read this file early)
+ * - .orch/workspace/ path (workers operate in workspace directories)
+ * - Results cached in Map<sessionID, boolean> for performance
  *
- * Both hooks skip processing for worker agents.
+ * Lazy-loading implementation:
+ * - Orchestrator skill content (52KB) cached in memory at plugin init
+ * - experimental.chat.system.transform hook injects skill per-session
+ * - Worker sessions detected progressively skip skill injection
+ * - Non-worker sessions receive full orchestrator skill in system prompt
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
@@ -122,34 +127,113 @@ export const OrchestratorSessionPlugin: Plugin = async ({
 
   // Worker session tracking (per-session detection, not plugin-level)
   // Plugin runs in server process, can't see ORCH_WORKER env from spawned agents
-  const workerSessions = new Set<string>() // sessionID set
+  const workerSessions = new Map<string, boolean>() // sessionID -> isWorker
 
-  // Check if orchestrator skill exists
+  // Check if orchestrator skill exists and cache content
   const skillPath = join(homedir(), ".claude", "skills", "meta", "orchestrator", "SKILL.md")
   const skillExists = await exists(skillPath)
   log("Skill path:", skillPath, "exists:", skillExists)
+  
+  // Cache skill content in memory to avoid reading on every system prompt
+  let skillContent: string | null = null
+  if (skillExists) {
+    try {
+      const { readFile } = await import("fs/promises")
+      skillContent = await readFile(skillPath, "utf-8")
+      log("Cached orchestrator skill content:", skillContent.length, "bytes")
+    } catch (err) {
+      if (DEBUG) console.error(`${LOG_PREFIX} Failed to read orchestrator skill:`, err)
+    }
+  }
+  
+  /**
+   * Detect if a session is a worker by examining tool args.
+   * Returns true if worker detected, false otherwise.
+   * IMPORTANT: Only caches positive results (isWorker=true) to avoid
+   * permanently misclassifying workers based on their first tool call.
+   */
+  function detectWorkerSession(sessionId: string, tool: string, args: any): boolean {
+    // Check cache first - only returns early if we've confirmed this IS a worker
+    const cached = workerSessions.get(sessionId)
+    if (cached === true) {
+      return true
+    }
+
+    let isWorker = false
+
+    // Detection signal 1: read tool accessing SPAWN_CONTEXT.md
+    // Workers ALWAYS read this file early in their session.
+    if (tool === "read" && args?.filePath) {
+      if (args.filePath.endsWith("SPAWN_CONTEXT.md")) {
+        log(`Worker detected (SPAWN_CONTEXT.md read): session ${sessionId}, file: ${args.filePath}`)
+        isWorker = true
+      }
+    }
+
+    // Detection signal 2: any tool accessing files in .orch/workspace/
+    // Workers operate on files within their workspace directory.
+    if (args?.filePath && typeof args.filePath === "string") {
+      if (args.filePath.includes(".orch/workspace/")) {
+        log(`Worker detected (filePath in workspace): session ${sessionId}, file: ${args.filePath}`)
+        isWorker = true
+      }
+    }
+    if (args?.file_path && typeof args.file_path === "string") {
+      if (args.file_path.includes(".orch/workspace/")) {
+        log(`Worker detected (file_path in workspace): session ${sessionId}, file: ${args.file_path}`)
+        isWorker = true
+      }
+    }
+
+    // Only cache positive results - don't cache false
+    // This allows detection to succeed on later tool calls if first tools don't match
+    if (isWorker) {
+      workerSessions.set(sessionId, true)
+      log(`Session ${sessionId} marked as worker (will NOT load orchestrator skill)`)
+    }
+
+    return isWorker
+  }
 
   return {
     /**
-     * Config hook: Inject orchestrator skill into instructions.
-     * Worker detection already handled at plugin init.
+     * Tool hook: Detect worker sessions by examining tool arguments.
+     * Populates workerSessions cache for use by system.transform hook.
      */
-    config: async (config) => {
-      log("Config hook called")
-
-      // Skip if skill doesn't exist
-      if (!skillExists) {
-        log("Config: Orchestrator skill not found")
+    "tool.execute.before": async (input, output) => {
+      const { tool, sessionID } = input
+      const { args } = output
+      
+      // Run worker detection on this tool call
+      detectWorkerSession(sessionID, tool, args)
+    },
+    
+    /**
+     * System transform hook: Conditionally inject orchestrator skill for non-worker sessions.
+     * This implements lazy-loading: skill content only added when needed.
+     */
+    "experimental.chat.system.transform": async (input, output) => {
+      const { sessionID } = input
+      const { system } = output
+      
+      // Check if this session is a known worker
+      const isWorker = workerSessions.get(sessionID) === true
+      
+      if (isWorker) {
+        log(`System transform: Skipping orchestrator skill for worker session ${sessionID}`)
         return
       }
-
-      // Inject orchestrator skill into instructions
-      if (!config.instructions) {
-        config.instructions = []
+      
+      // Not a worker - inject orchestrator skill content
+      if (!skillContent) {
+        log(`System transform: Skill content not available for session ${sessionID}`)
+        return
       }
-      if (!config.instructions.includes(skillPath)) {
-        config.instructions.push(skillPath)
-        log("Config: Added orchestrator skill to instructions")
+      
+      // Add orchestrator skill to system prompt
+      if (!system.includes(skillContent)) {
+        system.push(skillContent)
+        log(`System transform: Injected orchestrator skill for session ${sessionID} (${skillContent.length} bytes)`)
       }
     },
 
