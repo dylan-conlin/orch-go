@@ -34,6 +34,8 @@ const (
 	EventTypeServiceStarted = "service.started"
 	// EventTypeVerificationBypassed indicates a verification gate was bypassed via --skip-* flag.
 	EventTypeVerificationBypassed = "verification.bypassed"
+	// EventTypeAgentAbandoned indicates an agent was abandoned via orch abandon.
+	EventTypeAgentAbandoned = "agent.abandoned"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -251,6 +253,51 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 
 	return l.Log(Event{
 		Type:      EventTypeAgentCompleted,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// AgentAbandonedData contains the data for an agent.abandoned event.
+type AgentAbandonedData struct {
+	BeadsID         string `json:"beads_id,omitempty"`
+	Workspace       string `json:"workspace,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+	Skill           string `json:"skill,omitempty"`
+	DurationSeconds int    `json:"duration_seconds,omitempty"` // Spawn to abandonment duration
+	TokensInput     int    `json:"tokens_input,omitempty"`     // Total input tokens
+	TokensOutput    int    `json:"tokens_output,omitempty"`    // Total output tokens
+	Outcome         string `json:"outcome,omitempty"`          // Always "abandoned"
+}
+
+// LogAgentAbandoned logs an agent abandonment event with telemetry.
+func (l *Logger) LogAgentAbandoned(data AgentAbandonedData) error {
+	eventData := map[string]interface{}{
+		"reason":  data.Reason,
+		"outcome": "abandoned", // Always abandoned for this event type
+	}
+	if data.BeadsID != "" {
+		eventData["beads_id"] = data.BeadsID
+	}
+	if data.Workspace != "" {
+		eventData["workspace"] = data.Workspace
+	}
+	if data.Skill != "" {
+		eventData["skill"] = data.Skill
+	}
+	if data.DurationSeconds > 0 {
+		eventData["duration_seconds"] = data.DurationSeconds
+	}
+	if data.TokensInput > 0 {
+		eventData["tokens_input"] = data.TokensInput
+	}
+	if data.TokensOutput > 0 {
+		eventData["tokens_output"] = data.TokensOutput
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeAgentAbandoned,
 		SessionID: data.BeadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
