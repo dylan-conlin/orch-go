@@ -1224,27 +1224,21 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   /**
    * Detect if a session is a worker by examining tool args.
    * Returns true if worker detected, false otherwise.
-   * Caches result in workerSessions Map to avoid repeated checks.
+   * IMPORTANT: Only caches positive results (isWorker=true) to avoid
+   * permanently misclassifying workers based on their first tool call.
+   * See investigation: 2026-01-17-inv-design-review-coaching-plugin-failures.md
    */
   function detectWorkerSession(sessionId: string, tool: string, args: any): boolean {
-    // Check cache first
+    // Check cache first - only returns early if we've confirmed this IS a worker
     const cached = workerSessions.get(sessionId)
-    if (cached !== undefined) {
-      return cached
+    if (cached === true) {
+      return true
     }
 
     let isWorker = false
 
-    // Detection signal 1: bash tool with workdir in .orch/workspace/
-    if (tool === "bash" && args?.workdir) {
-      if (args.workdir.includes(".orch/workspace/")) {
-        log(`Worker detected (bash workdir): session ${sessionId}, workdir: ${args.workdir}`)
-        isWorker = true
-      }
-    }
-
-    // Detection signal 2: read tool accessing SPAWN_CONTEXT.md
-    // Note: Orchestrator might read this for monitoring, but workers ALWAYS read it first.
+    // Detection signal 1: read tool accessing SPAWN_CONTEXT.md
+    // Workers ALWAYS read this file early in their session.
     if (tool === "read" && args?.filePath) {
       if (args.filePath.endsWith("SPAWN_CONTEXT.md")) {
         log(`Worker detected (SPAWN_CONTEXT.md read): session ${sessionId}, file: ${args.filePath}`)
@@ -1252,10 +1246,25 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       }
     }
 
-    // Cache the result
-    workerSessions.set(sessionId, isWorker)
+    // Detection signal 2: any tool accessing files in .orch/workspace/
+    // Workers operate on files within their workspace directory.
+    if (args?.filePath && typeof args.filePath === "string") {
+      if (args.filePath.includes(".orch/workspace/")) {
+        log(`Worker detected (filePath in workspace): session ${sessionId}, file: ${args.filePath}`)
+        isWorker = true
+      }
+    }
+    if (args?.file_path && typeof args.file_path === "string") {
+      if (args.file_path.includes(".orch/workspace/")) {
+        log(`Worker detected (file_path in workspace): session ${sessionId}, file: ${args.file_path}`)
+        isWorker = true
+      }
+    }
 
+    // Only cache positive results - don't cache false
+    // This allows detection to succeed on later tool calls if first tools don't match
     if (isWorker) {
+      workerSessions.set(sessionId, true)
       log(`Session ${sessionId} marked as worker (will track worker health metrics)`)
     }
 
