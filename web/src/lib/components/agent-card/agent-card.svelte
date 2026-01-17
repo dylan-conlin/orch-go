@@ -5,8 +5,61 @@
 	import type { Agent } from '$lib/stores/agents';
 	import { selectedAgentId, computeDisplayState, type DisplayState } from '$lib/stores/agents';
 	import { hotspots, getHotspotForAgent, type Hotspot } from '$lib/stores/hotspot';
+	import { coaching, type WorkerHealthMetrics } from '$lib/stores/coaching';
 
 	export let agent: Agent;
+
+	// Worker health metrics for this agent (derived from session_id)
+	$: workerHealth = agent.session_id && $coaching.worker_health ? $coaching.worker_health[agent.session_id] : null;
+
+	// Health indicator for the agent card
+	$: healthIndicator = getHealthIndicator(workerHealth);
+
+	/**
+	 * Get health indicator based on worker health metrics
+	 */
+	function getHealthIndicator(health: WorkerHealthMetrics | null): { emoji: string; colorClass: string; label: string; details: string[] } | null {
+		if (!health || health.health_status === 'good') return null;
+
+		const details: string[] = [];
+		let emoji = '⚠️';
+		let colorClass = 'text-yellow-500';
+
+		// Collect all issues
+		if (health.tool_failure_rate >= 5) {
+			details.push(`${health.tool_failure_rate} consecutive tool failures`);
+		} else if (health.tool_failure_rate >= 3) {
+			details.push(`${health.tool_failure_rate} tool failures`);
+		}
+
+		if (health.context_usage >= 90) {
+			details.push(`${health.context_usage}% context used`);
+		} else if (health.context_usage >= 80) {
+			details.push(`${health.context_usage}% context`);
+		}
+
+		if (health.time_in_phase >= 30) {
+			details.push(`${health.time_in_phase}m in current phase`);
+		} else if (health.time_in_phase >= 15) {
+			details.push(`${health.time_in_phase}m in phase`);
+		}
+
+		if (health.commit_gap >= 60) {
+			details.push(`${health.commit_gap}m since last commit`);
+		} else if (health.commit_gap >= 30) {
+			details.push(`${health.commit_gap}m since commit`);
+		}
+
+		// Set severity indicators
+		if (health.health_status === 'critical') {
+			emoji = '🚨';
+			colorClass = 'text-red-500';
+		}
+
+		const label = health.health_status === 'critical' ? 'Critical health issues' : 'Health warnings';
+
+		return details.length > 0 ? { emoji, colorClass, label, details } : null;
+	}
 
 	// Track beads ID copy state
 	let copiedBeadsId = false;
@@ -315,6 +368,19 @@
 			{/if}
 		</div>
 		<span class="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+			{#if healthIndicator}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						<span class={healthIndicator.colorClass}>{healthIndicator.emoji}</span>
+					</Tooltip.Trigger>
+					<Tooltip.Content>
+						<p class={`font-medium ${healthIndicator.colorClass}`}>{healthIndicator.label}</p>
+						{#each healthIndicator.details as detail}
+							<p class="text-xs text-muted-foreground">{detail}</p>
+						{/each}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 			{#if agentHotspot}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
@@ -324,8 +390,8 @@
 						<p class="font-medium text-orange-500">Hotspot Area</p>
 						<p class="text-xs">{agentHotspot.path}</p>
 						<p class="text-xs text-muted-foreground mt-1">
-							{agentHotspot.type === 'fix-density' 
-								? `${agentHotspot.score} fix commits` 
+							{agentHotspot.type === 'fix-density'
+								? `${agentHotspot.score} fix commits`
 								: `${agentHotspot.score} investigations`}
 						</p>
 						<p class="text-xs text-orange-400 mt-1">{agentHotspot.recommendation}</p>

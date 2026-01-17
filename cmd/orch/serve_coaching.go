@@ -20,6 +20,24 @@ type CoachingMetric struct {
 	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
+// WorkerHealthMetrics represents health signals for a worker session.
+// These are different from orchestrator metrics (action_ratio, analysis_paralysis).
+type WorkerHealthMetrics struct {
+	SessionID string `json:"session_id"`
+	// tool_failure_rate: consecutive tool failures (>=3 is warning)
+	ToolFailureRate int `json:"tool_failure_rate"`
+	// context_usage: estimated token usage percentage (>=80 is warning)
+	ContextUsage int `json:"context_usage"`
+	// time_in_phase: minutes since last phase change (>=15 is warning)
+	TimeInPhase int `json:"time_in_phase"`
+	// commit_gap: minutes since last commit (>=30 is warning)
+	CommitGap int `json:"commit_gap"`
+	// Derived health status: good/warning/critical
+	HealthStatus string `json:"health_status"`
+	// Last update timestamp
+	LastUpdated string `json:"last_updated"`
+}
+
 // CoachingResponse is the API response format (simplified for Frame 2).
 type CoachingResponse struct {
 	OverallStatus    string `json:"overall_status"` // good/warning/poor
@@ -30,6 +48,8 @@ type CoachingResponse struct {
 		Started         string `json:"started"`
 		DurationMinutes int    `json:"duration_minutes"`
 	} `json:"session"`
+	// Worker health metrics keyed by session ID
+	WorkerHealth map[string]WorkerHealthMetrics `json:"worker_health,omitempty"`
 }
 
 // readCoachingMetrics reads the last N lines from coaching-metrics.jsonl.
@@ -75,6 +95,111 @@ func readCoachingMetrics(limit int) ([]CoachingMetric, error) {
 	return metrics, nil
 }
 
+// Worker health metric types
+var workerHealthMetricTypes = map[string]bool{
+	"tool_failure_rate": true,
+	"context_usage":     true,
+	"time_in_phase":     true,
+	"commit_gap":        true,
+}
+
+// isWorkerHealthMetric checks if a metric type is a worker health metric
+func isWorkerHealthMetric(metricType string) bool {
+	return workerHealthMetricTypes[metricType]
+}
+
+// calculateWorkerHealthStatus derives overall health status from metrics
+func calculateWorkerHealthStatus(health WorkerHealthMetrics) string {
+	criticalCount := 0
+	warningCount := 0
+
+	// tool_failure_rate: >=5 is critical, >=3 is warning
+	if health.ToolFailureRate >= 5 {
+		criticalCount++
+	} else if health.ToolFailureRate >= 3 {
+		warningCount++
+	}
+
+	// context_usage: >=90 is critical, >=80 is warning
+	if health.ContextUsage >= 90 {
+		criticalCount++
+	} else if health.ContextUsage >= 80 {
+		warningCount++
+	}
+
+	// time_in_phase: >=30 is critical, >=15 is warning
+	if health.TimeInPhase >= 30 {
+		criticalCount++
+	} else if health.TimeInPhase >= 15 {
+		warningCount++
+	}
+
+	// commit_gap: >=60 is critical, >=30 is warning
+	if health.CommitGap >= 60 {
+		criticalCount++
+	} else if health.CommitGap >= 30 {
+		warningCount++
+	}
+
+	if criticalCount > 0 {
+		return "critical"
+	} else if warningCount > 0 {
+		return "warning"
+	}
+	return "good"
+}
+
+// aggregateWorkerHealthMetrics aggregates worker health metrics by session
+func aggregateWorkerHealthMetrics(metrics []CoachingMetric) map[string]WorkerHealthMetrics {
+	result := make(map[string]WorkerHealthMetrics)
+
+	for _, m := range metrics {
+		if !isWorkerHealthMetric(m.Type) {
+			continue
+		}
+
+		sessionID := m.SessionID
+		if sessionID == "" {
+			continue
+		}
+
+		// Get or create worker health entry
+		health, exists := result[sessionID]
+		if !exists {
+			health = WorkerHealthMetrics{
+				SessionID: sessionID,
+			}
+		}
+
+		// Update the appropriate metric (use latest value)
+		switch m.Type {
+		case "tool_failure_rate":
+			health.ToolFailureRate = int(m.Value)
+		case "context_usage":
+			health.ContextUsage = int(m.Value)
+		case "time_in_phase":
+			health.TimeInPhase = int(m.Value)
+		case "commit_gap":
+			health.CommitGap = int(m.Value)
+		}
+
+		// Track last update timestamp
+		if health.LastUpdated == "" || m.Timestamp > health.LastUpdated {
+			health.LastUpdated = m.Timestamp
+		}
+
+		result[sessionID] = health
+	}
+
+	// Calculate derived health status for each session
+	for sessionID, health := range result {
+		health.HealthStatus = calculateWorkerHealthStatus(health)
+		result[sessionID] = health
+	}
+
+	return result
+}
+
 // aggregateMetrics aggregates metrics by session and calculates overall health status (Frame 2).
 func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 	resp := CoachingResponse{
@@ -91,19 +216,26 @@ func aggregateMetrics(metrics []CoachingMetric) CoachingResponse {
 		return metrics[i].Timestamp < metrics[j].Timestamp
 	})
 
-	// Get latest session ID
+	// Aggregate worker health metrics (for all sessions)
+	resp.WorkerHealth = aggregateWorkerHealthMetrics(metrics)
+
+	// Get latest session ID (for orchestrator metrics)
 	latestSessionID := metrics[len(metrics)-1].SessionID
 	resp.Session.SessionID = latestSessionID
 
-	// Filter metrics for latest session
+	// Filter metrics for latest session (orchestrator metrics only)
 	var sessionMetrics []CoachingMetric
 	for _, m := range metrics {
-		if m.SessionID == latestSessionID {
+		if m.SessionID == latestSessionID && !isWorkerHealthMetric(m.Type) {
 			sessionMetrics = append(sessionMetrics, m)
 		}
 	}
 
 	if len(sessionMetrics) == 0 {
+		// Check if there are worker health metrics even without orchestrator metrics
+		if len(resp.WorkerHealth) > 0 {
+			resp.StatusMessage = "Worker health metrics active"
+		}
 		return resp
 	}
 
