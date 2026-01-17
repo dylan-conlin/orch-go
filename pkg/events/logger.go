@@ -209,6 +209,10 @@ type AgentCompletedData struct {
 	VerificationPassed bool     `json:"verification_passed"`      // Did verification pass on first try?
 	GatesBypassed      []string `json:"gates_bypassed,omitempty"` // Which gates were skipped (if forced)
 	Skill              string   `json:"skill,omitempty"`
+	DurationSeconds    int      `json:"duration_seconds,omitempty"` // Spawn to completion duration
+	TokensInput        int      `json:"tokens_input,omitempty"`     // Total input tokens
+	TokensOutput       int      `json:"tokens_output,omitempty"`    // Total output tokens
+	Outcome            string   `json:"outcome,omitempty"`          // success|forced|failed
 }
 
 // LogAgentCompleted logs an agent completion event with verification metadata.
@@ -231,6 +235,18 @@ func (l *Logger) LogAgentCompleted(data AgentCompletedData) error {
 	}
 	if data.Skill != "" {
 		eventData["skill"] = data.Skill
+	}
+	if data.DurationSeconds > 0 {
+		eventData["duration_seconds"] = data.DurationSeconds
+	}
+	if data.TokensInput > 0 {
+		eventData["tokens_input"] = data.TokensInput
+	}
+	if data.TokensOutput > 0 {
+		eventData["tokens_output"] = data.TokensOutput
+	}
+	if data.Outcome != "" {
+		eventData["outcome"] = data.Outcome
 	}
 
 	return l.Log(Event{
