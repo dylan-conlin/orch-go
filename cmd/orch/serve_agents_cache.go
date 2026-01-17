@@ -198,7 +198,7 @@ func (c *beadsCache) getAllIssues(beadsIDs []string) (map[string]*verify.Issue, 
 	c.mu.RUnlock()
 
 	// Fetch fresh data
-	issues, err := verify.GetIssuesBatch(beadsIDs)
+	issues, err := verify.GetIssuesBatch(beadsIDs, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -209,7 +209,7 @@ func collectRetryPatterns() ([]DetectedPattern, error) {
 
 	// Batch-fetch issue statuses from beads
 	// This filters out closed issues that shouldn't be flagged as failures
-	issueMap, _ := verify.GetIssuesBatch(beadsIDs)
+	issueMap, _ := verify.GetIssuesBatch(beadsIDs, nil)
 	// Ignore error - if beads is unavailable, we'll show all patterns
 	// (better to show potential false positives than hide real issues)
 

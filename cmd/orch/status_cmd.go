@@ -37,6 +37,8 @@ const (
 	compactOrchestratorSessionsMaxAge = 6 * time.Hour
 	// Maximum orchestrator sessions to show in compact mode
 	compactOrchestratorSessionsLimit = 5
+	// Only show Phase: Complete agents from the last N hours in compact mode
+	compactCompletedAgentsMaxAge = 6 * time.Hour
 	// Only fetch processing status for sessions updated within this window
 	processingCheckMaxAge = 5 * time.Minute
 )
@@ -89,26 +91,27 @@ type AccountUsage struct {
 
 // AgentInfo represents information about an active agent.
 type AgentInfo struct {
-	SessionID    string                        `json:"session_id"`
-	BeadsID      string                        `json:"beads_id,omitempty"`
-	Mode         string                        `json:"mode,omitempty"`  // Agent mode: "claude" or "opencode"
-	Model        string                        `json:"model,omitempty"` // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
-	Skill        string                        `json:"skill,omitempty"`
-	Account      string                        `json:"account,omitempty"`
-	Runtime      string                        `json:"runtime"`
-	Title        string                        `json:"title,omitempty"`
-	Window       string                        `json:"window,omitempty"`
-	Phase        string                        `json:"phase,omitempty"`         // Current phase from beads comments
-	Task         string                        `json:"task,omitempty"`          // Task description (truncated)
-	Project      string                        `json:"project,omitempty"`       // Project name derived from beads ID or workspace
-	ProjectDir   string                        `json:"project_dir,omitempty"`   // Full path to project directory (for cross-project agents)
-	Source       string                        `json:"source,omitempty"`        // Source where agent originated: T=tmux, O=opencode, B=beads, W=workspace
-	IsPhantom    bool                          `json:"is_phantom,omitempty"`    // True if beads issue open but agent not running
-	IsProcessing bool                          `json:"is_processing,omitempty"` // True if session is actively generating a response
-	IsCompleted  bool                          `json:"is_completed,omitempty"`  // True if beads issue is closed
-	Tokens       *opencode.TokenStats          `json:"tokens,omitempty"`        // Token usage for the session
-	ContextRisk  *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`  // Context exhaustion risk assessment
-	LastActivity time.Time                     `json:"last_activity,omitempty"` // Timestamp of last activity (for ghost filtering)
+	SessionID       string                        `json:"session_id"`
+	BeadsID         string                        `json:"beads_id,omitempty"`
+	Mode            string                        `json:"mode,omitempty"`  // Agent mode: "claude" or "opencode"
+	Model           string                        `json:"model,omitempty"` // Model spec (e.g., "gemini-3-flash-preview", "claude-opus-4-5-20251101")
+	Skill           string                        `json:"skill,omitempty"`
+	Account         string                        `json:"account,omitempty"`
+	Runtime         string                        `json:"runtime"`
+	Title           string                        `json:"title,omitempty"`
+	Window          string                        `json:"window,omitempty"`
+	Phase           string                        `json:"phase,omitempty"`             // Current phase from beads comments
+	Task            string                        `json:"task,omitempty"`              // Task description (truncated)
+	Project         string                        `json:"project,omitempty"`           // Project name derived from beads ID or workspace
+	ProjectDir      string                        `json:"project_dir,omitempty"`       // Full path to project directory (for cross-project agents)
+	Source          string                        `json:"source,omitempty"`            // Source where agent originated: T=tmux, O=opencode, B=beads, W=workspace
+	IsPhantom       bool                          `json:"is_phantom,omitempty"`        // True if beads issue open but agent not running
+	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
+	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
+	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
+	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
+	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
+	LastActivity    time.Time                     `json:"last_activity,omitempty"`     // Timestamp of last activity (for ghost filtering)
 }
 
 // OrchestratorSessionInfo represents an active orchestrator session for display.
@@ -452,7 +455,7 @@ func runStatus(serverURL string) error {
 
 	// 5. Batch fetch issue details to check closed status
 	// This also provides task info for closed issues (not returned by ListOpenIssues)
-	allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch)
+	allIssues, _ := verify.GetIssuesBatch(beadsIDsToFetch, beadsProjectDirs)
 
 	// === Now enrich and filter agents ===
 
@@ -464,6 +467,7 @@ func runStatus(serverURL string) error {
 			phaseStatus := verify.ParsePhaseFromComments(comments)
 			if phaseStatus.Found {
 				agent.Phase = phaseStatus.Phase
+				agent.PhaseReportedAt = phaseStatus.PhaseReportedAt
 			}
 		}
 
@@ -517,16 +521,25 @@ func runStatus(serverURL string) error {
 
 		// In compact mode, only show:
 		// 1. Running (processing) agents
-		// 2. Agents with Phase: Complete (need review)
+		// 2. RECENT agents with Phase: Complete (need review)
 		// 3. Agents with Phase: BLOCKED or QUESTION (need attention)
 		if !statusAll {
 			isRunning := agentItem.IsProcessing
-			needsAttention := strings.EqualFold(agentItem.Phase, "Complete") ||
+
+			isComplete := strings.EqualFold(agentItem.Phase, "Complete")
+			isRecent := true
+			if isComplete && agentItem.PhaseReportedAt != nil {
+				if time.Since(*agentItem.PhaseReportedAt) > compactCompletedAgentsMaxAge {
+					isRecent = false
+				}
+			}
+
+			needsAttention := (isComplete && isRecent) ||
 				strings.EqualFold(agentItem.Phase, "BLOCKED") ||
 				strings.EqualFold(agentItem.Phase, "QUESTION")
 
 			if !isRunning && !needsAttention {
-				continue // Skip idle agents in compact mode
+				continue // Skip idle or stale complete agents in compact mode
 			}
 		}
 
@@ -1127,10 +1140,10 @@ func formatContextRisk(risk *verify.ContextExhaustionRisk) string {
 
 // printAgentsNarrowFormat prints agents in narrow format (80-100 chars).
 // Drops TASK column, abbreviates SKILL and MODEL.
-// Columns: SOURCE, BEADS ID, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS
+// Columns: SOURCE, BEADS ID, MODE, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS
 func printAgentsNarrowFormat(agents []AgentInfo) {
-	fmt.Printf("  %-3s %-18s %-10s %-8s %-10s %-8s %-8s %s\n", "SRC", "BEADS ID", "MODEL", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
-	fmt.Printf("  %s\n", strings.Repeat("-", 90))
+	fmt.Printf("  %-3s %-18s %-8s %-8s %-8s %-10s %-8s %-8s %s\n", "SRC", "BEADS ID", "MODE", "MODEL", "STATUS", "PHASE", "SKILL", "RUNTIME", "TOKENS")
+	fmt.Printf("  %s\n", strings.Repeat("-", 98))
 
 	for _, agent := range agents {
 		source := agent.Source
@@ -1140,6 +1153,10 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
 			beadsID = "-"
+		}
+		mode := agent.Mode
+		if mode == "" {
+			mode = "-"
 		}
 		modelDisplay := formatModelForDisplay(agent.Model)
 		phase := agent.Phase
@@ -1153,10 +1170,11 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		status := getAgentStatus(agent)
 		tokens := formatTokenStatsCompact(agent.Tokens)
 
-		fmt.Printf("  %-3s %-18s %-10s %-8s %-10s %-8s %-8s %s\n",
+		fmt.Printf("  %-3s %-18s %-8s %-8s %-8s %-10s %-8s %-8s %s\n",
 			source,
 			beadsID,
-			truncate(modelDisplay, 9),
+			truncate(mode, 7),
+			truncate(modelDisplay, 7),
 			status,
 			truncate(phase, 9),
 			truncate(skill, 7),

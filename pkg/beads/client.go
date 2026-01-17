@@ -776,6 +776,40 @@ func FallbackShow(id string) (*Issue, error) {
 	return &issues[0], nil
 }
 
+// FallbackShowWithDir retrieves an issue via bd CLI from a specific directory.
+// This is used for cross-project agent visibility where the beads issue is in a different
+// project than the current working directory.
+// If dir is empty, uses DefaultDir if set, otherwise the current working directory.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackShowWithDir(id, dir string) (*Issue, error) {
+	cmd := exec.Command(getBdPath(), "show", id, "--json")
+	setupFallbackEnv(cmd)
+	if dir != "" {
+		cmd.Dir = dir
+	} else if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("bd show failed: %w: %s", err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("bd show failed: %w", err)
+	}
+
+	// bd show returns an array even for a single issue
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse bd show output: %w", err)
+	}
+
+	if len(issues) == 0 {
+		return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
+	}
+
+	return &issues[0], nil
+}
+
 // FallbackList retrieves issues via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
