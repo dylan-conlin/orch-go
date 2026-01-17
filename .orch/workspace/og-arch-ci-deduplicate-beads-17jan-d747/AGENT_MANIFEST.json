@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-arch-ci-deduplicate-beads-17jan-d747",
+  "skill": "architect",
+  "beads_id": "orch-go-8dhhg",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "1f4e5fc61f541222697acd728562b72236650866",
+  "spawn_time": "2026-01-17T12:09:43-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode"
+}
