@@ -211,15 +211,36 @@ Redundancy between sources:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **SKILL sections dominate context overhead** - In SPAWN_CONTEXT.md files, the embedded skill content represents 63-72% of total size (~18-20K tokens out of ~27KB files). This is by design for amnesia-resilience but creates massive startup overhead.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Reference vs. operational content imbalance** - 70% of skill content (templates, examples, checklists) is reference material that supports correctness but isn't needed during execution. Only 30% is operational guidance that directs behavior.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Triple-redundant beads guidance** - Worker sessions receive beads workflow instructions from 3 sources: bd prime hook (~3KB), SPAWN_CONTEXT.md beads section (~33 lines), and skill references. This wastes ~1.5K tokens per spawn.
+
+4. **Manual vs spawned session overhead is vastly different** - Manual orchestrator sessions: ~125KB (~31K tokens) from SessionStart hooks + overhead. Spawned worker sessions: ~34KB (~8.5K tokens) from SPAWN_CONTEXT.md + minimal hooks. The orchestrator skill (86KB) is the single largest contributor.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Which parts are USED (essential at runtime):**
+- TASK description (9 lines, 1%)
+- Core skill operational guidance (~100 lines, 30% of skill, ~20% of total)
+- Relevant kb context matches (Constraints: 4-16 lines, Decisions: 22-27 lines)
+- Phase reporting instructions (BEADS section: 33 lines, 5%)
+- Session complete protocol (~40 lines, included in completion section)
+
+**Which parts are UNUSED or REDUNDANT (reference material):**
+- Full skill templates and examples (~236 lines, 70% of skill)
+- Investigation references that don't apply to current task (~50-100 lines)
+- Triple-redundant beads guidance (~2 of 3 instances)
+- Session resume context for spawned agents (4KB from session-start.sh hook)
+
+**Optimization potential:**
+- **High impact:** Progressive disclosure for skills - load core guidance inline (~100 lines), reference material on-demand
+- **Medium impact:** Deduplicate beads guidance - remove from bd prime hook for spawned workers
+- **Medium impact:** Filter kb context results - only include constraints/decisions that match task keywords
+- **Low impact:** Skip session-start.sh hook for spawned agents (CLAUDE_CONTEXT check)
+
+**Total potential reduction:** From ~27KB SPAWN_CONTEXT to ~15-18KB (~33-40% reduction) by externalizing reference material and removing redundancy.
 
 ---
 
