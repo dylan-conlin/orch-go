@@ -65,13 +65,21 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Models and guides ARE included in kb context output
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** 
+- `.kb/models/` contains 16 model files (agent-lifecycle-state-model.md, beads-integration-architecture.md, completion-verification.md, dashboard-agent-status.md, model-access-spawn-paths.md, etc.)
+- `.kb/guides/` contains 28 guide files (model-selection.md, understanding-artifact-lifecycle.md, headless.md, decision-authority.md, opencode-plugins.md, etc.)
+- `kb context "test models guides"` output includes dedicated sections:
+  - "GUIDES (consolidated knowledge)" - lists 10 guides with paths
+  - "MODELS (synthesized understanding)" - lists 10 models with paths
+- Both sections provide clear titles and file paths for each artifact
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- Commands run: `ls -la .kb/models/`, `ls -la .kb/guides/`, `kb context "test models guides"`
+- Output inspected from kb context command
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The basic functionality is confirmed working - both models and guides are being discovered and included in kb context output as separate, labeled sections. This means the knowledge system is properly treating them as distinct artifact types (understanding artifacts).
 
 ---
 

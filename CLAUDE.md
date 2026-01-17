@@ -100,6 +100,12 @@ orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task"
 2. **Provide visibility** (tmux vs headless)
 3. **Can complete the work** (opus for quality)
 
+### Architectural Principle: Pain as Signal
+
+**Pattern discovered Jan 17, 2026:** Autonomous error correction requires agents to "feel" the friction of their own failure in real-time. Passive logs/metrics are insufficient for agent self-healing.
+1. **Infrastructure Injection:** System-level sensors (coaching plugins) inject detections (loops, thrashing) directly into the agent's sensory stream.
+2. **Pressure over Compensation:** Friction is injected as tool-layer messages, forcing the agent to confront its own degradation rather than relying on human babysitting.
+
 **See:** `.kb/guides/resilient-infrastructure-patterns.md` for implementation patterns
 
 ## Key References

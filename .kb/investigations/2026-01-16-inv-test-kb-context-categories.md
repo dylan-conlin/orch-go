@@ -65,23 +65,36 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: kb context returns 6 distinct categories
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Running `kb context "test context categories"` returns results grouped into 6 categories:
+1. CONSTRAINTS (from kn) - 5 constraints shown
+2. DECISIONS (from kn) - 10 decisions shown
+3. OPEN QUESTIONS (from kn) - 1 question shown
+4. GUIDES (consolidated knowledge) - 10 guides with paths
+5. MODELS (synthesized understanding) - 10 models with paths
+6. INVESTIGATIONS (raw findings) - 10 investigations with paths
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Command run: `kb context "test context categories"`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The kb context command is successfully categorizing knowledge artifacts into distinct types. Constraints and decisions are shown first (most actionable), followed by questions, then reference materials (guides, models, investigations).
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Categories are transformed from kb output to SPAWN_CONTEXT.md format
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The code in pkg/spawn/kbcontext.go:formatKBContextContent shows that kb context categories are transformed for SPAWN_CONTEXT.md:
+- "constraint" → "### Constraints (MUST respect)"
+- "decision" → "### Prior Decisions"
+- "model" → "### Models (synthesized understanding)"
+- "guide" → "### Guides (procedural knowledge)"
+- "investigation" → "### Related Investigations"
+- "failed-attempt" → "### Failed Attempts (DO NOT repeat)"
+- "open-question" → "### Open Questions"
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** pkg/spawn/kbcontext.go lines 568-666, specifically the formatKBContextContent function
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The 7 categories from kb context are being properly formatted for agent consumption with clear semantic labels. SPAWN_CONTEXT.md may show fewer than 7 categories if the query doesn't match all types.
 
 ---
 

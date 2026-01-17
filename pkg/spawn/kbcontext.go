@@ -278,12 +278,15 @@ func formatMatchesForDisplay(matches []KBContextMatch, query string) string {
 	}
 
 	// Output in consistent order
-	typeOrder := []string{"constraint", "decision", "investigation", "guide"}
+	typeOrder := []string{"constraint", "decision", "model", "guide", "investigation", "failed-attempt", "open-question"}
 	typeHeaders := map[string]string{
-		"constraint":    "## CONSTRAINTS",
-		"decision":      "## DECISIONS",
-		"investigation": "## INVESTIGATIONS",
-		"guide":         "## GUIDES",
+		"constraint":     "## CONSTRAINTS",
+		"decision":       "## DECISIONS",
+		"model":          "## MODELS",
+		"guide":          "## GUIDES",
+		"investigation":  "## INVESTIGATIONS",
+		"failed-attempt": "## FAILED ATTEMPTS",
+		"open-question":  "## OPEN QUESTIONS",
 	}
 
 	for _, t := range typeOrder {
@@ -335,8 +338,8 @@ func parseKBContextOutput(output string) []KBContextMatch {
 			currentSource = extractSource(line)
 			continue
 		}
-		if strings.HasPrefix(line, "## INVESTIGATIONS") {
-			currentSection = "investigation"
+		if strings.HasPrefix(line, "## MODELS") {
+			currentSection = "model"
 			currentSource = "kb"
 			continue
 		}
@@ -345,6 +348,53 @@ func parseKBContextOutput(output string) []KBContextMatch {
 			currentSource = "kb"
 			continue
 		}
+		if strings.HasPrefix(line, "## FAILED ATTEMPTS") {
+			currentSection = "failed-attempt"
+			currentSource = extractSource(line)
+			continue
+		}
+		if strings.HasPrefix(line, "## OPEN QUESTIONS") {
+			currentSection = "open-question"
+			currentSource = "kn"
+			continue
+		}
+		if strings.HasPrefix(line, "## INVESTIGATIONS") {
+			currentSection = "investigation"
+			currentSource = "kb"
+			continue
+		}
+
+		if strings.HasPrefix(line, "## DECISIONS") {
+			currentSection = "decision"
+			currentSource = extractSource(line)
+			continue
+		}
+		if strings.HasPrefix(line, "## FAILED ATTEMPTS") {
+			currentSection = "failed-attempt"
+			currentSource = extractSource(line)
+			continue
+		}
+		if strings.HasPrefix(line, "## OPEN QUESTIONS") {
+			currentSection = "open-question"
+			currentSource = "kn"
+			continue
+		}
+		if strings.HasPrefix(line, "## INVESTIGATIONS") {
+			currentSection = "investigation"
+			currentSource = extractSource(line)
+			continue
+		}
+		if strings.HasPrefix(line, "## MODELS") {
+			currentSection = "model"
+			currentSource = extractSource(line)
+			continue
+		}
+		if strings.HasPrefix(line, "## GUIDES") {
+			currentSection = "guide"
+			currentSource = extractSource(line)
+			continue
+		}
+
 		if strings.HasPrefix(line, "Context for") {
 			continue // Skip the header line
 		}
@@ -432,10 +482,14 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	// Group by type for prioritized truncation
 	constraints := filterByType(result.Matches, "constraint")
 	decisions := filterByType(result.Matches, "decision")
+	models := filterByType(result.Matches, "model")
+	guides := filterByType(result.Matches, "guide")
 	investigations := filterByType(result.Matches, "investigation")
+	failedAttempts := filterByType(result.Matches, "failed-attempt")
+	openQuestions := filterByType(result.Matches, "open-question")
 
 	// Try to format with all matches first
-	content := formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+	content := formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
 
 	// Check if we need to truncate
 	if len(content) <= maxChars {
@@ -449,25 +503,65 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	}
 
 	// Need to truncate - apply priority-based reduction
-	// Priority: constraints (keep most) > decisions > investigations (drop first)
+	// Priority: constraints (keep most) > decisions > models > guides > investigations > failed attempts > open questions (drop first)
 	var omittedCategories []string
 	truncatedMatches := originalMatchCount
 
-	// First, try removing investigations one at a time
+	// First, try removing open questions one at a time
+	for len(content) > maxChars && len(openQuestions) > 0 {
+		openQuestions = openQuestions[:len(openQuestions)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+	}
+	if len(filterByType(result.Matches, "open-question")) > len(openQuestions) {
+		omittedCategories = append(omittedCategories, "open-question")
+	}
+
+	// If still too large, remove failed attempts one at a time
+	for len(content) > maxChars && len(failedAttempts) > 0 {
+		failedAttempts = failedAttempts[:len(failedAttempts)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+	}
+	if len(filterByType(result.Matches, "failed-attempt")) > len(failedAttempts) {
+		omittedCategories = append(omittedCategories, "failed-attempt")
+	}
+
+	// If still too large, remove investigations one at a time
 	for len(content) > maxChars && len(investigations) > 0 {
 		investigations = investigations[:len(investigations)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
 	}
 	if len(filterByType(result.Matches, "investigation")) > len(investigations) {
 		omittedCategories = append(omittedCategories, "investigation")
+	}
+
+	// If still too large, remove guides one at a time
+	for len(content) > maxChars && len(guides) > 0 {
+		guides = guides[:len(guides)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+	}
+	if len(filterByType(result.Matches, "guide")) > len(guides) {
+		omittedCategories = append(omittedCategories, "guide")
+	}
+
+	// If still too large, remove models one at a time
+	for len(content) > maxChars && len(models) > 0 {
+		models = models[:len(models)-1]
+		truncatedMatches--
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
+	}
+	if len(filterByType(result.Matches, "model")) > len(models) {
+		omittedCategories = append(omittedCategories, "model")
 	}
 
 	// If still too large, remove decisions one at a time
 	for len(content) > maxChars && len(decisions) > 0 {
 		decisions = decisions[:len(decisions)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
 	}
 	if len(filterByType(result.Matches, "decision")) > len(decisions) {
 		omittedCategories = append(omittedCategories, "decision")
@@ -477,7 +571,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 	for len(content) > maxChars && len(constraints) > 0 {
 		constraints = constraints[:len(constraints)-1]
 		truncatedMatches--
-		content = formatKBContextContent(result.Query, constraints, decisions, investigations, nil)
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, nil)
 	}
 	if len(filterByType(result.Matches, "constraint")) > len(constraints) {
 		omittedCategories = append(omittedCategories, "constraint")
@@ -489,7 +583,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 		estimatedMaxTokens := EstimateTokens(maxChars)
 		truncationNote := fmt.Sprintf("⚠️ **KB context truncated:** %d of %d matches omitted to stay within token budget (~%dk tokens).\n\n",
 			omittedCount, originalMatchCount, estimatedMaxTokens/1000)
-		content = formatKBContextContent(result.Query, constraints, decisions, investigations, &truncationNote)
+		content = formatKBContextContent(result.Query, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions, &truncationNote)
 	}
 
 	return &KBContextFormatResult{
@@ -504,7 +598,7 @@ func FormatContextForSpawnWithLimit(result *KBContextResult, maxChars int) *KBCo
 
 // formatKBContextContent generates the formatted KB context markdown.
 // If truncationNote is provided, it's inserted after the query line.
-func formatKBContextContent(query string, constraints, decisions, investigations []KBContextMatch, truncationNote *string) string {
+func formatKBContextContent(query string, constraints, decisions, models, guides, investigations, failedAttempts, openQuestions []KBContextMatch, truncationNote *string) string {
 	var sb strings.Builder
 	sb.WriteString("## PRIOR KNOWLEDGE (from kb context)\n\n")
 	sb.WriteString(fmt.Sprintf("**Query:** %q\n\n", query))
@@ -540,6 +634,30 @@ func formatKBContextContent(query string, constraints, decisions, investigations
 		sb.WriteString("\n")
 	}
 
+	if len(models) > 0 {
+		sb.WriteString("### Models (synthesized understanding)\n")
+		for _, m := range models {
+			sb.WriteString(fmt.Sprintf("- %s", m.Title))
+			if m.Path != "" {
+				sb.WriteString(fmt.Sprintf("\n  - See: %s", m.Path))
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(guides) > 0 {
+		sb.WriteString("### Guides (procedural knowledge)\n")
+		for _, m := range guides {
+			sb.WriteString(fmt.Sprintf("- %s", m.Title))
+			if m.Path != "" {
+				sb.WriteString(fmt.Sprintf("\n  - See: %s", m.Path))
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
 	if len(investigations) > 0 {
 		sb.WriteString("### Related Investigations\n")
 		for _, m := range investigations {
@@ -552,7 +670,28 @@ func formatKBContextContent(query string, constraints, decisions, investigations
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("**IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference investigations for prior findings.\n\n")
+	if len(failedAttempts) > 0 {
+		sb.WriteString("### Failed Attempts (DO NOT repeat)\n")
+		for _, m := range failedAttempts {
+			sb.WriteString(fmt.Sprintf("- %s", m.Title))
+			if m.Reason != "" {
+				sb.WriteString(fmt.Sprintf("\n  - Result: %s", m.Reason))
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(openQuestions) > 0 {
+		sb.WriteString("### Open Questions\n")
+		for _, m := range openQuestions {
+			sb.WriteString(fmt.Sprintf("- %s", m.Title))
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("**IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference models and guides for established patterns. Reference investigations for prior findings.\n\n")
 
 	return sb.String()
 }

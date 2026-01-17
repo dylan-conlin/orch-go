@@ -124,11 +124,11 @@ return ErrRequiresApproval  // Gate fails
 
 Different workspace tiers have different requirements:
 
-| Tier | Artifact Required | Beads Checks | Phase Reporting |
-|------|-------------------|--------------|-----------------|
-| **light** | None | Yes (status, comments) | Yes |
-| **full** | SYNTHESIS.md | Yes | Yes |
-| **orchestrator** | SESSION_HANDOFF.md | No | No |
+| Tier | Artifact Required | Beads Checks | Phase Reporting | Handoff Update |
+|------|-------------------|--------------|-----------------|----------------|
+| **light** | None | Yes (status, comments) | Yes | Optional prompt |
+| **full** | SYNTHESIS.md | Yes | Yes | Optional prompt |
+| **orchestrator** | SESSION_HANDOFF.md | No | No | N/A |
 
 **Implementation:**
 ```go
@@ -155,66 +155,33 @@ func VerifyCompletionWithTier(workspace string) error {
 
 **Source:** `pkg/verify/check.go:VerifyCompletionWithTier()`
 
-### 5-Tier Escalation Model
+### Activity Feed Persistence
 
-Knowledge-producing work surfaces for orchestrator review:
+The activity feed for completed agents remains viewable after completion via a hybrid persistent layer:
+*   **Storage:** Proxied from OpenCode's `/session/:sessionID/messages` API.
+*   **Reconciliation:** Historical messages are transformed into SSE-compatible events and merged with any real-time events stored in the frontend cache.
+*   **Caching:** The dashboard uses a per-session Map cache for historical events to reduce redundant API calls during a browser session.
 
-| Tier | Skill Types | Auto-Close? | Why |
-|------|-------------|-------------|-----|
-| **Tier 1: Auto** | feature-impl, systematic-debugging (code-only) | Yes | Code changes have test evidence |
-| **Tier 2: Auto** | Refactors (no behavior change) | Yes | Tests prove no regression |
-| **Tier 3: Surface** | investigation, architect, research | No | Knowledge needs synthesis |
-| **Tier 4: Surface** | feature-impl (UI changes) | No (pending approval) | Requires visual verification |
-| **Tier 5: Manual** | orchestrator, meta-orchestrator | N/A | Interactive sessions |
+**Source:** `cmd/orch/serve_agents.go:handleSessionMessages()`
 
-**Surface vs Auto:**
-- **Surface:** `orch complete` succeeds but surfaces in `orch review` for orchestrator attention
-- **Auto:** `orch complete` closes immediately if all gates pass
+### Progressive Handoff Updates
 
-**Why knowledge work surfaces:** Investigation findings need integration into mental model. Auto-closing loses the synthesis opportunity.
+To prevent knowledge loss at session end (**Capture at Context**), `orch complete` triggers interactive prompts for active orchestrator sessions.
 
-**Source:** `pkg/verify/escalation.go`
+**The Flow:**
+1.  **Verify:** standard verification gates run for the worker agent.
+2.  **Prompt:** Orchestrator is prompted for the worker's outcome and a 1-line key finding.
+3.  **Inject:** The outcome is automatically inserted into the active session's `SESSION_HANDOFF.md` Spawns table.
+4.  **Close:** Beads issue is closed only after handoff update (or skip).
 
-### Cross-Project Detection
-
-**What:** Verification must run in the correct project directory (where code/tests live).
-
-**How:**
-```go
-func detectProjectDir(workspace string) string {
-    // Read SPAWN_CONTEXT.md
-    ctx := readSpawnContext(workspace)
-
-    // Extract PROJECT_DIR from context
-    if ctx.ProjectDir != "" {
-        return ctx.ProjectDir
-    }
-
-    // Fallback: workspace parent directory
-    return filepath.Dir(workspace)
-}
-
-func VerifyCompletion(beadsID string) error {
-    workspace := findWorkspace(beadsID)
-    projectDir := detectProjectDir(workspace)
-
-    // cd into project before verification
-    os.Chdir(projectDir)
-
-    // Run verification (tests, git commits, etc.)
-    return verify(workspace)
-}
-```
-
-**Why it matters:** Agents spawned from orch-go might work in orch-cli. Verification must check orch-cli's tests, not orch-go's.
-
-**Source:** `pkg/verify/cross_project.go`
+**Source:** `cmd/orch/session.go:UpdateHandoffAfterComplete()`
 
 ---
 
 ## Why This Fails
 
 ### 1. Evidence Gate False Positive
+
 
 **What happens:** Agent passes Evidence gate without actual visual verification.
 

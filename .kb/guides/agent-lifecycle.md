@@ -226,6 +226,18 @@ function computeDisplayState(agent: Agent): DisplayState {
 
 ---
 
+## Health & Self-Healing
+
+Agents are equipped with a "digital nervous system" (Coaching Plugin) that monitors for behavioral degradation.
+
+### Pain as Signal
+Autonomous error correction requires that agents *feel* the friction of their own failure in real-time.
+- **Signal:** Detections (Analysis Paralysis, Frame Collapse) are injected as tool-layer messages.
+- **Action:** Agents must treat these signals as authoritative feedback from the hierarchy.
+- **Pivot:** Upon receiving a signal, the agent should stop the current loop, reason about the failure, and pivot (e.g., change tool, escalate, or request context reset).
+
+---
+
 ## Cross-Project Visibility
 
 ### The Problem

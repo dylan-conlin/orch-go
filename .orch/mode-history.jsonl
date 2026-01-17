@@ -102,3 +102,6 @@
 {"time":"2026-01-10T11:54:49-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-10T13:50:36-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
 {"time":"2026-01-10T15:13:48-08:00","action":"keyword_auto_continue","keyword":"Jim Belosic","files":" .orch/mode-history.jsonl"}
+{"time":"2026-01-16T14:17:35-08:00","action":"bypass","reason":"Adding optional fields to MessagePart for tool details - backward compatible, no behavior changes"}
+{"time":"2026-01-16T22:21:28-08:00","action":"bypass","reason":"session close - agents already committed these changes"}
+{"time":"2026-01-17T02:08:16-08:00","action":"bypass","reason":"Worker health metrics feature spawned by orchestrator (orch-go-yirj1)"}

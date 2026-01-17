@@ -2,8 +2,8 @@
 
 **Agent:** og-feat-human-readable-timestamps-15jan-6091
 **Issue:** orch-go-ni18f
-**Abandoned:** 2026-01-15 08:11:51
-**Reason:** Killed by OpenCode restart during orch complete rebuild
+**Abandoned:** 2026-01-15 09:00:37
+**Reason:** Stuck opencode session, duplicate entries
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## Failure Summary
 
-**Primary Cause:** Killed by OpenCode restart during orch complete rebuild
+**Primary Cause:** Stuck opencode session, duplicate entries
 
 **Details:**
 [Describe what went wrong - symptoms observed, errors encountered, or why the agent was stuck]

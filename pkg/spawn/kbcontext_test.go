@@ -106,16 +106,49 @@ func TestParseKBContextOutput(t *testing.T) {
 			wantSources: []string{"kn", "kb"},
 		},
 		{
-			name: "parses investigations",
+			name: "parses investigations and guides",
 			output: `Context for "auth":
 
 ## INVESTIGATIONS (from kb)
 
 - Authentication Flow Analysis
-  Path: /path/to/investigation.md`,
+  Path: /path/to/investigation.md
+
+## GUIDES (from kb)
+
+- Auth Implementation Guide
+  Path: /path/to/guide.md`,
+			wantCount:   2,
+			wantTypes:   []string{"investigation", "guide"},
+			wantSources: []string{"kb", "kb"},
+		},
+		{
+			name: "parses models",
+			output: `Context for "model":
+
+## MODELS (from kb)
+
+- Session Lifecycle Model
+  Path: /path/to/model.md`,
 			wantCount:   1,
-			wantTypes:   []string{"investigation"},
+			wantTypes:   []string{"model"},
 			wantSources: []string{"kb"},
+		},
+		{
+			name: "parses failed attempts and open questions",
+			output: `Context for "failed":
+
+## FAILED ATTEMPTS (from kn)
+
+- Tried using Redis
+  Reason: Too complex for this scale
+
+## OPEN QUESTIONS (from kn)
+
+- Should we use SQLite?`,
+			wantCount:   2,
+			wantTypes:   []string{"failed-attempt", "open-question"},
+			wantSources: []string{"kn", "kn"},
 		},
 		{
 			name:      "handles empty output",
@@ -225,6 +258,43 @@ func TestFormatContextForSpawn(t *testing.T) {
 				"### Prior Decisions",
 				"Use JWT",
 				"See: /path/to/decision.md",
+			},
+		},
+		{
+			name: "formats models and guides",
+			result: &KBContextResult{
+				Query:      "model",
+				HasMatches: true,
+				Matches: []KBContextMatch{
+					{Type: "model", Source: "kb", Title: "State Model", Path: "/path/to/model.md"},
+					{Type: "guide", Source: "kb", Title: "Step Guide", Path: "/path/to/guide.md"},
+				},
+			},
+			wantEmpty: false,
+			wantContains: []string{
+				"### Models",
+				"State Model",
+				"### Guides",
+				"Step Guide",
+			},
+		},
+		{
+			name: "formats failed attempts and open questions",
+			result: &KBContextResult{
+				Query:      "retry",
+				HasMatches: true,
+				Matches: []KBContextMatch{
+					{Type: "failed-attempt", Source: "kn", Title: "Manual retry", Reason: "Timed out"},
+					{Type: "open-question", Source: "kn", Title: "Auto retry?"},
+				},
+			},
+			wantEmpty: false,
+			wantContains: []string{
+				"### Failed Attempts",
+				"Manual retry",
+				"Result: Timed out",
+				"### Open Questions",
+				"Auto retry?",
 			},
 		},
 	}
