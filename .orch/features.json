@@ -569,13 +569,24 @@
       "created": "2026-01-16",
       "source": ".kb/investigations/2026-01-16-inv-add-dedup-check-before-spawn.md",
       "notes": "Addresses observability gap identified in architect review. Enables data-driven validation of dedup thresholds."
+    },
+    {
+      "id": "feat-049",
+      "title": "Add bloat-size hotspot type to orch hotspot for 800-line gate",
+      "description": "Extend orch hotspot with bloat-size detection. Scan source files (using existing shouldCountFile exclusions), flag files exceeding --bloat-threshold (default: 800 lines), generate severity-based recommendations. 800-1500 lines: recommend extraction with guide reference. >1500 lines: recommend architect session for structural redesign. Include in CLI output and /api/hotspot endpoint.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-17",
+      "source": ".kb/investigations/2026-01-17-inv-design-800-line-bloat-gate.md",
+      "notes": "Bloat is a coherence signal (like fix-density), not a context gap (like learning.go tracks). Estimated: ~2 hours (100-150 lines new code). References .kb/guides/code-extraction-patterns.md for remediation."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-16",
-    "total_features": 48,
+    "last_updated": "2026-01-17",
+    "total_features": 49,
     "by_status": {
-      "todo": 46,
+      "todo": 47,
       "in_progress": 0,
       "done": 2
     }
