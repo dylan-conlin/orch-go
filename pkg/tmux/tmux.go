@@ -305,7 +305,7 @@ func BuildStandaloneCommand(cfg *StandaloneConfig) string {
 // This is the preferred approach for TUI spawning - it connects to a shared
 // server, making sessions visible via API while still showing the TUI.
 type OpencodeAttachConfig struct {
-	ServerURL  string // http://localhost:4096
+	ServerURL  string // http://127.0.0.1:4096
 	ProjectDir string
 	Model      string
 	SessionID  string // optional: continue existing session

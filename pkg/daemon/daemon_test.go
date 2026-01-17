@@ -1612,14 +1612,14 @@ func TestIsUntrackedBeadsID(t *testing.T) {
 
 func TestGetClosedIssuesBatch_EmptyInput(t *testing.T) {
 	// Empty input should return empty map
-	result := getClosedIssuesBatch(nil)
+	result := GetClosedIssuesBatch(nil)
 	if len(result) != 0 {
-		t.Errorf("getClosedIssuesBatch(nil) = %v, want empty map", result)
+		t.Errorf("GetClosedIssuesBatch(nil) = %v, want empty map", result)
 	}
 
-	result = getClosedIssuesBatch([]string{})
+	result = GetClosedIssuesBatch([]string{})
 	if len(result) != 0 {
-		t.Errorf("getClosedIssuesBatch([]) = %v, want empty map", result)
+		t.Errorf("GetClosedIssuesBatch([]) = %v, want empty map", result)
 	}
 }
 
@@ -1641,10 +1641,10 @@ func TestGetClosedIssuesBatch_Integration(t *testing.T) {
 
 	// This test just verifies the function doesn't panic with valid input
 	// The actual result depends on the state of the beads database
-	result := getClosedIssuesBatch([]string{"nonexistent-id-xyz"})
+	result := GetClosedIssuesBatch([]string{"nonexistent-id-xyz"})
 	// Should return empty or error gracefully
 	if result == nil {
-		t.Error("getClosedIssuesBatch() returned nil, want non-nil map")
+		t.Error("GetClosedIssuesBatch() returned nil, want non-nil map")
 	}
 }
 

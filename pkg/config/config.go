@@ -105,7 +105,7 @@ func (c *Config) ApplyDefaults() {
 		c.OpenCode.Model = "flash"
 	}
 	if c.OpenCode.Server == "" {
-		c.OpenCode.Server = "http://localhost:4096"
+		c.OpenCode.Server = "http://127.0.0.1:4096"
 	}
 
 	// Initialize servers map if nil

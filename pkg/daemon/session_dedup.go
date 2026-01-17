@@ -26,7 +26,7 @@ type SessionDedupConfig struct {
 func DefaultSessionDedupConfig() SessionDedupConfig {
 	serverURL := os.Getenv("OPENCODE_URL")
 	if serverURL == "" {
-		serverURL = "http://localhost:4096"
+		serverURL = "http://127.0.0.1:4096"
 	}
 	return SessionDedupConfig{
 		ServerURL: serverURL,

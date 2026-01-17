@@ -1599,7 +1599,7 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 		sessionID := strings.TrimSpace(string(sessionIDBytes))
 		if sessionID != "" {
 			// Get token usage from OpenCode API
-			client := opencode.NewClient("http://localhost:4096")
+			client := opencode.NewClient("http://127.0.0.1:4096")
 			if tokenStats, err := client.GetSessionTokens(sessionID); err == nil && tokenStats != nil {
 				tokensInput = tokenStats.InputTokens
 				tokensOutput = tokenStats.OutputTokens

@@ -338,7 +338,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 		if readErr == nil {
 			sessionIDStr := strings.TrimSpace(string(sessionIDBytes))
 			if sessionIDStr != "" {
-				client := opencode.NewClient("http://localhost:4096")
+				client := opencode.NewClient("http://127.0.0.1:4096")
 				tokenStats, tokErr := client.GetSessionTokens(sessionIDStr)
 				if tokErr == nil && tokenStats != nil {
 					abandonedData.TokensInput = tokenStats.InputTokens

@@ -45,7 +45,7 @@ sessions, and monitoring session events via SSE.`,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://localhost:4096", "OpenCode server URL")
+	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://127.0.0.1:4096", "OpenCode server URL")
 
 	rootCmd.AddCommand(spawnCmd)
 	rootCmd.AddCommand(sendCmd)

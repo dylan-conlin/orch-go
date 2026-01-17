@@ -14,7 +14,7 @@ import (
 )
 
 // handleEvents proxies the OpenCode SSE stream to the client.
-// It connects to http://localhost:4096/event and forwards events.
+// It connects to http://127.0.0.1:4096/event and forwards events.
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

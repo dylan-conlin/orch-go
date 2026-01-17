@@ -266,7 +266,7 @@ func getActiveIssues() []string {
 	}
 
 	// Use default OpenCode server URL
-	client := opencode.NewClient("http://localhost:4096")
+	client := opencode.NewClient("http://127.0.0.1:4096")
 	sessions, err := client.ListSessions(projectDir)
 	if err != nil {
 		return nil

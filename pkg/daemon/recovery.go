@@ -106,7 +106,7 @@ func ResumeAgentByBeadsID(beadsID string) error {
 	// If workspace file doesn't have session_id, try to find via OpenCode API
 	serverURL := os.Getenv("OPENCODE_SERVER_URL")
 	if serverURL == "" {
-		serverURL = "http://localhost:4096"
+		serverURL = "http://127.0.0.1:4096"
 	}
 
 	if sessionID == "" {

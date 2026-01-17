@@ -22,7 +22,7 @@ func DefaultActiveCount() int {
 	// on the same machine as OpenCode server.
 	serverURL := os.Getenv("OPENCODE_URL")
 	if serverURL == "" {
-		serverURL = "http://localhost:4096"
+		serverURL = "http://127.0.0.1:4096"
 	}
 
 	// Make HTTP request to list sessions
@@ -78,7 +78,7 @@ func DefaultActiveCount() int {
 
 	// Batch fetch issue status to check if closed
 	// This prevents counting completed agents (beads issue closed but session still exists)
-	closedIssues := getClosedIssuesBatch(recentBeadsIDs)
+	closedIssues := GetClosedIssuesBatch(recentBeadsIDs)
 
 	// Count sessions with open issues only
 	activeCount := 0
@@ -93,10 +93,11 @@ func DefaultActiveCount() int {
 	return activeCount
 }
 
-// getClosedIssuesBatch checks which beads IDs have closed issues.
+// GetClosedIssuesBatch checks which beads IDs have closed issues.
 // Returns a map of beadsID -> true for closed issues.
 // Uses beads RPC daemon for efficiency, falls back to CLI if needed.
-func getClosedIssuesBatch(beadsIDs []string) map[string]bool {
+// Exported for use by checkConcurrencyLimit in spawn_cmd.go.
+func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 	closed := make(map[string]bool)
 	if len(beadsIDs) == 0 {
 		return closed

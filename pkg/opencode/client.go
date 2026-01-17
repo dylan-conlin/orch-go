@@ -13,6 +13,12 @@ import (
 	"time"
 )
 
+// DefaultServerURL is the default OpenCode server URL.
+// Uses 127.0.0.1 instead of localhost to avoid IPv6 resolution issues on macOS.
+// On macOS, localhost can resolve to IPv6 ::1 while the server binds to IPv4,
+// causing "connection refused" errors.
+const DefaultServerURL = "http://127.0.0.1:4096"
+
 // DefaultHTTPTimeout is the default timeout for HTTP requests to the OpenCode API.
 // This prevents hangs when OpenCode is in a bad state (e.g., redirect loop).
 const DefaultHTTPTimeout = 10 * time.Second

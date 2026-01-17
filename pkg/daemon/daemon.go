@@ -63,7 +63,7 @@ type Config struct {
 	CleanupPreserveOrchestrator bool
 
 	// CleanupServerURL is the OpenCode server URL for cleanup operations.
-	// Defaults to http://localhost:4096.
+	// Defaults to http://127.0.0.1:4096.
 	CleanupServerURL string
 
 	// RecoveryEnabled controls whether stuck agent recovery is enabled.
@@ -100,7 +100,7 @@ func DefaultConfig() Config {
 		CleanupInterval:             6 * time.Hour, // Every 6 hours by default
 		CleanupAgeDays:              7,             // 7 days threshold
 		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
-		CleanupServerURL:            "http://localhost:4096",
+		CleanupServerURL:            "http://127.0.0.1:4096",
 		RecoveryEnabled:             true,
 		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
