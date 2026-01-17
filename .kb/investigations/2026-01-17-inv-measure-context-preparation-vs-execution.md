@@ -248,24 +248,27 @@ The breakdown is:
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+1. **Verify current state:** Check if `pkg/spawn/` or `cmd/orch/spawn.go` already sets ORCH_WORKER=1 (may already be fixed)
+2. **Add enforcement:** Set ORCH_WORKER=1 in spawn execution path (where OpenCode client creates session)
+3. **Test validation:** Spawn a worker, check token usage in first message to confirm orchestrator skill not loaded
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ OpenCode session-context plugin must respect ORCH_WORKER=1 environment variable (verify plugin behavior)
+- ⚠️ Some worker types might legitimately need orchestrator skill (unlikely, but check if policy/orchestrator skills ever spawn as workers)
+- ⚠️ Environment variable scope - ensure it's set in OpenCode process environment, not just shell
+- ⚠️ Spawns via `--mode claude` (escape hatch) may bypass OpenCode and need separate handling
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- How does OpenCode's session-context plugin detect and respect ORCH_WORKER=1?
+- Are there any worker skills that legitimately need orchestrator context?
+- What's the actual token usage distribution during execution phase (after preparation)?
+- Can SPAWN_CONTEXT.md generation be optimized to skip unnecessary sections for specific skill types?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Worker spawns consume ~14k tokens for preparation (not ~27k)
+- ✅ Token usage in worker sessions shows no orchestrator skill content
+- ✅ No regression in worker functionality (all phases still work properly)
+- ✅ kb constraint about ORCH_WORKER=1 can be updated to "automatically enforced"
 
 ---
 
