@@ -248,59 +248,66 @@ Redundancy between sources:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ SPAWN_CONTEXT.md section sizes measured across 3 samples (awk script line counting)
+- ✅ SessionStart hook output sizes from prior investigation (pipe + wc tests)
+- ✅ Skill file sizes verified (wc -l, wc -c on actual files)
+- ✅ Investigation skill structure analyzed (grep section headers, manual review)
+- ✅ Redundancy between bd prime, orchestrator skill, SPAWN_CONTEXT confirmed (file comparison)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Actual runtime usage patterns (which sections agents reference during execution)
+- ⚠️ Token count accuracy (estimated ~4 chars/token, not measured with actual tokenizer)
+- ⚠️ Impact of progressive disclosure on agent effectiveness (would agents break without reference material?)
+- ⚠️ Whether kb context filtering by keywords would reduce false negatives
+- ⚠️ Session transcript analysis (couldn't locate OpenCode session storage for message-level usage data)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if skills use dynamic inclusion (actually they're fully embedded at spawn time)
+- Optimization estimates would be wrong if tokenizer produces significantly different counts than 4 chars/token
+- Recommendations would be wrong if agents frequently reference "unused" material mid-session (need session transcript evidence)
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** Reduce 25K token startup overhead while preserving agent effectiveness and amnesia-resilience.
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Progressive Skill Disclosure** - Split skills into core (inline) and reference (external docs loaded on-demand)
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Addresses largest overhead source: 68% of SPAWN_CONTEXT is skill content
+- Preserves amnesia-resilience: core operational guidance still inline
+- Enables lazy loading: agents can request reference material when needed
+- Backward compatible: doesn't break existing spawns
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Agents might not know reference material exists (discoverability challenge)
+- Requires agents to explicitly request docs (slight friction increase)
+- Implementation complexity for conditional skill loading
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Audit skills for core vs. reference split** - Identify operational guidance (must-have) vs. examples/templates (nice-to-have)
+2. **Design on-demand doc retrieval** - Add skill reference command or auto-suggest when agent hits relevant section
+3. **Pilot with investigation skill** - Largest skill, clear core/reference split (Finding 4)
+4. **Measure impact** - Compare agent success rates and context usage before/after
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Filter kb context results by task keywords**
+- **Pros:** Reduces INVESTIGATIONS section (19% of SPAWN_CONTEXT) to only relevant items
+- **Cons:** Risk of false negatives (filtering out relevant constraints/decisions)
+- **When to use instead:** When kb context returns 100+ matches (currently 4-27 constraints, 22-27 decisions)
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Remove redundant beads guidance**
+- **Pros:** Quick win, 1.5K token savings per spawn, low risk
+- **Cons:** Smaller impact (5% reduction vs. 33-40% from progressive disclosure)
+- **When to use instead:** As a complementary quick win, not primary strategy
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Progressive disclosure addresses the root cause (skills designed for completeness not efficiency) and offers the largest optimization potential (33-40% reduction). Other options are incremental improvements.
 
 ---
 
