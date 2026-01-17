@@ -73,6 +73,47 @@ Guidelines:
 
 ---
 
+### Finding 2: SPAWN_CONTEXT section breakdown shows skill dominates
+
+**Evidence:**
+Analyzed 3 recent SPAWN_CONTEXT.md files (Jan 15-16, 2026):
+- File 1 (audit-sessionstart-hooks): 588 lines, 27KB
+  - SKILL: 370 lines (62.9%)
+  - INVESTIGATIONS refs: 133 lines (22.6%)
+  - BEADS: 33 lines (5.6%)
+  - DECISIONS: 22 lines (3.7%)
+  - CONSTRAINTS: 16 lines (2.7%)
+  - TASK: 9 lines (1.5%)
+  - KB_CONTEXT header: 4 lines (0.7%)
+
+- File 2 (set-up-daemon): 702 lines, 27KB
+  - SKILL: 505 lines (71.9%)
+  - INVESTIGATIONS refs: 124 lines (17.7%)
+  - BEADS: 33 lines (4.7%)
+  - DECISIONS: 22 lines (3.1%)
+  - CONSTRAINTS: 4 lines (0.6%)
+  - TASK: 9 lines (1.3%)
+  - KB_CONTEXT header: 4 lines (0.6%)
+
+- File 3 (update-models-kb): 707 lines, 27KB
+  - SKILL: 505 lines (71.4%)
+  - INVESTIGATIONS refs: 118 lines (16.7%)
+  - BEADS: 33 lines (4.7%)
+  - DECISIONS: 27 lines (3.8%)
+  - CONSTRAINTS: 10 lines (1.4%)
+  - TASK: 9 lines (1.3%)
+  - KB_CONTEXT header: 4 lines (0.6%)
+
+**Source:**
+- .orch/workspace/og-inv-audit-sessionstart-hooks-16jan-b4a3/SPAWN_CONTEXT.md
+- .orch/workspace/og-feat-set-up-daemon-15jan-666c/SPAWN_CONTEXT.md
+- .orch/workspace/og-feat-update-models-kb-15jan-1b2e/SPAWN_CONTEXT.md
+- Custom awk script to count lines per section
+
+**Significance:** The SKILL section (full skill markdown) accounts for 63-72% of SPAWN_CONTEXT size. INVESTIGATIONS references from kb context are the second largest at 17-23%. The actual task description, constraints, and decisions are only 6-10% combined. This suggests huge optimization potential if skill content can be trimmed or made conditional.
+
+---
+
 ### Finding 2: [Brief, descriptive title]
 
 **Evidence:** [Concrete observations, data, examples]
