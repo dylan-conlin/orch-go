@@ -150,6 +150,11 @@ var visualEvidencePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)glass_navigate`),
 	regexp.MustCompile(`(?i)glass_screenshot`),
 	regexp.MustCompile(`(?i)glass_scroll`),
+	regexp.MustCompile(`(?i)glass_hover`),
+	regexp.MustCompile(`(?i)glass_tabs`),
+	regexp.MustCompile(`(?i)glass_focus`),
+	regexp.MustCompile(`(?i)glass_enable_user_tracking`),
+	regexp.MustCompile(`(?i)glass_recent_actions`),
 	regexp.MustCompile(`(?i)glass assert`),
 	regexp.MustCompile(`(?i)glass\s+tool`),
 	// Smoke test with UI context
