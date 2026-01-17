@@ -1156,6 +1156,19 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		fmt.Fprintf(os.Stderr, "⚠️  %v\n", err)
 	}
 
+	// Read design artifacts if --design-workspace is provided
+	var designMockupPath, designPromptPath, designNotes string
+	if spawnDesignWorkspace != "" {
+		designMockupPath, designPromptPath, designNotes = readDesignArtifacts(projectDir, spawnDesignWorkspace)
+		if designMockupPath != "" {
+			fmt.Printf("📐 Design handoff from workspace: %s\n", spawnDesignWorkspace)
+			fmt.Printf("   Mockup: %s\n", designMockupPath)
+			if designPromptPath != "" {
+				fmt.Printf("   Prompt: %s\n", designPromptPath)
+			}
+		}
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:               task,
@@ -1182,6 +1195,10 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		IsMetaOrchestrator: isMetaOrchestrator,
 		UsageInfo:          usageInfo,
 		SpawnMode:          spawnBackend,
+		DesignWorkspace:    spawnDesignWorkspace,
+		DesignMockupPath:   designMockupPath,
+		DesignPromptPath:   designPromptPath,
+		DesignNotes:        designNotes,
 	}
 
 	// Pre-spawn token estimation and validation
@@ -2271,4 +2288,93 @@ func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode, modelSpec str
 	if err := agentReg.Save(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save agent registry: %v\n", err)
 	}
+}
+
+// readDesignArtifacts reads design artifacts from a ui-design-session workspace.
+// Returns mockup path, prompt path, and design notes from SYNTHESIS.md.
+// If the workspace doesn't exist or artifacts are missing, returns empty strings.
+func readDesignArtifacts(projectDir, designWorkspace string) (mockupPath, promptPath, designNotes string) {
+	workspacePath := filepath.Join(projectDir, ".orch", "workspace", designWorkspace)
+
+	// Check if workspace exists
+	if _, err := os.Stat(workspacePath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: design workspace not found: %s\n", workspacePath)
+		return "", "", ""
+	}
+
+	// Look for mockup in screenshots/ directory
+	// Convention: approved.png or any .png file
+	screenshotsPath := filepath.Join(workspacePath, "screenshots")
+	if entries, err := os.ReadDir(screenshotsPath); err == nil {
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".png") {
+				mockupPath = filepath.Join(screenshotsPath, entry.Name())
+				// Check for corresponding .prompt.md file
+				promptName := strings.TrimSuffix(entry.Name(), ".png") + ".prompt.md"
+				promptPath = filepath.Join(screenshotsPath, promptName)
+				if _, err := os.Stat(promptPath); err != nil {
+					promptPath = "" // Prompt file doesn't exist
+				}
+				break // Use first .png found
+			}
+		}
+	}
+
+	// Read design notes from SYNTHESIS.md
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	if content, err := os.ReadFile(synthesisPath); err == nil {
+		// Extract relevant sections from SYNTHESIS.md
+		// For now, just include the TLDR and Knowledge sections
+		designNotes = extractDesignNotes(string(content))
+	}
+
+	return mockupPath, promptPath, designNotes
+}
+
+// extractDesignNotes extracts relevant sections from SYNTHESIS.md for design handoff.
+// Returns TLDR and Knowledge sections which contain key design insights.
+func extractDesignNotes(content string) string {
+	var notes strings.Builder
+
+	// Extract TLDR section
+	if tldr := extractSection(content, "## TLDR"); tldr != "" {
+		notes.WriteString("**Design TLDR:**\n")
+		notes.WriteString(tldr)
+		notes.WriteString("\n\n")
+	}
+
+	// Extract Knowledge section
+	if knowledge := extractSection(content, "## Knowledge"); knowledge != "" {
+		notes.WriteString("**Design Knowledge:**\n")
+		notes.WriteString(knowledge)
+	}
+
+	return notes.String()
+}
+
+// extractSection extracts content between a section header and the next ## header.
+// Returns empty string if section not found.
+func extractSection(content, sectionHeader string) string {
+	lines := strings.Split(content, "\n")
+	var sectionLines []string
+	inSection := false
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, sectionHeader) {
+			inSection = true
+			continue
+		}
+		if inSection && strings.HasPrefix(line, "##") {
+			break // Reached next section
+		}
+		if inSection {
+			sectionLines = append(sectionLines, line)
+		}
+	}
+
+	if len(sectionLines) == 0 {
+		return ""
+	}
+
+	return strings.TrimSpace(strings.Join(sectionLines, "\n"))
 }

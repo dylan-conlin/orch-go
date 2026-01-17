@@ -52,6 +52,24 @@ func CreateScreenshotsDir(workspacePath string) error {
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
+{{if .DesignWorkspace}}
+## DESIGN REFERENCE
+
+This feature implementation is based on an approved design from: **{{.DesignWorkspace}}**
+{{if .DesignMockupPath}}
+**Mockup:** {{.DesignMockupPath}}
+{{end}}
+{{if .DesignPromptPath}}
+**Design Prompt:** {{.DesignPromptPath}}
+{{end}}
+{{if .DesignNotes}}
+**Design Notes:**
+{{.DesignNotes}}
+{{end}}
+
+Use these design artifacts as the source of truth for UI layout, styling, and user experience.
+
+{{end}}
 {{if .Tier}}
 SPAWN TIER: {{.Tier}}
 {{if eq .Tier "light"}}
@@ -439,6 +457,10 @@ type contextData struct {
 	NoTrack           bool   // When true, omit beads instructions from spawn context
 	IsBug             bool   // When true, this is a bug issue with reproduction info
 	ReproSteps        string // Reproduction steps from bug issue
+	DesignWorkspace   string // Design workspace name for ui-design-session handoff
+	DesignMockupPath  string // Path to approved mockup
+	DesignPromptPath  string // Path to design prompt
+	DesignNotes       string // Notes from design session
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -482,6 +504,10 @@ func GenerateContext(cfg *Config) (string, error) {
 		NoTrack:           cfg.NoTrack,
 		IsBug:             cfg.IsBug,
 		ReproSteps:        cfg.ReproSteps,
+		DesignWorkspace:   cfg.DesignWorkspace,
+		DesignMockupPath:  cfg.DesignMockupPath,
+		DesignPromptPath:  cfg.DesignPromptPath,
+		DesignNotes:       cfg.DesignNotes,
 	}
 
 	var buf bytes.Buffer
