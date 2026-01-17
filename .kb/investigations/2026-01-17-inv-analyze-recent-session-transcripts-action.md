@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Context injection overhead is 25K tokens with 68% from embedded skills; 33-40% reduction possible via progressive disclosure of reference material.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Analyzed 3 SPAWN_CONTEXT.md samples (27KB each, 700 lines), prior SessionStart hooks audit (25K tokens from hooks), investigation skill structure (336 lines, 70% reference material).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Skills are designed for amnesia-resilient completeness (all guidance inline) rather than runtime efficiency; this creates massive but largely unused reference content in every spawn.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Implement progressive skill disclosure: split skills into core operational guidance (inline, ~100 lines) and reference material (external docs, loaded on-demand).
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes - Establishes baseline for Context Injection Architecture epic; findings justify progressive disclosure pattern as primary optimization strategy.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-17
 **Updated:** 2026-01-17
 **Owner:** og-inv-analyze-recent-session-17jan-35d1
-**Phase:** Investigating
-**Next Step:** Analyze recent SPAWN_CONTEXT.md files and identify session transcript sources
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
