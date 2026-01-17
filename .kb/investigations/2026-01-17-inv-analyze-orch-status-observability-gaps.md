@@ -55,37 +55,75 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Starting investigation into escape hatch observability
+### Finding 1: Mode field exists and is displayed in orch status
 
-**Evidence:** Reading prior knowledge and models:
-- Escape Hatch Visibility Architecture model (`.kb/models/escape-hatch-visibility-architecture.md`)
-- Agent Lifecycle State Model (`.kb/models/agent-lifecycle-state-model.md`)
-- Dashboard Agent Status Calculation (`.kb/models/dashboard-agent-status.md`)
-- Orch Status Command guide (`.kb/guides/status.md`)
+**Evidence:** 
+- Registry stores `Mode` field: "claude" (escape hatch/tmux) or "opencode" (headless API) (`pkg/registry/registry.go:47`)
+- `orch status` includes MODE column in wide format output (`cmd/orch/status_cmd.go:1049, 1052`)
+- MODE displayed alongside MODEL, STATUS, PHASE for each agent
+- JSON output includes `"mode"` field in AgentInfo struct (`status_cmd.go:94`)
 
-**Source:** SPAWN_CONTEXT.md prior knowledge section, initial model reads
+**Source:** 
+- `pkg/registry/registry.go:33-36, 47` - Mode constants and Agent struct
+- `cmd/orch/status_cmd.go:1049-1110` - Wide format display with MODE column
+- Terminal test: `orch status` shows column headers including MODE
 
-**Significance:** Understanding existing models before exploring code will help identify what's documented vs what gaps exist in tracking and observability for escape hatch spawns
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Basic tracking infrastructure exists - mode is captured at spawn time and displayed in status output. This provides visibility into which backend was used for each agent.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Escape hatch statistics are tracked and displayed
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `orch stats` includes dedicated "ESCAPE HATCH" section showing:
+  - Total spawns: 165 (all time)
+  - Last 7 days: 147 spawns
+  - Last 30 days: 165 spawns
+  - Escape hatch rate: 50.0% of spawns
+- Stats identify escape hatch by checking `spawn_mode = "claude"` in spawn events
+- Infrastructure detection events logged: `spawn.infrastructure_detected` type
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `cmd/orch/stats_cmd.go:171-179` - EscapeHatchStats struct definition
+- `cmd/orch/stats_cmd.go:322-379` - Escape hatch tracking logic
+- Terminal test: `orch stats` output shows escape hatch metrics
+- Event log: `~/.orch/events.jsonl` contains `spawn.infrastructure_detected` events
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Aggregate visibility exists - users can see escape hatch usage patterns over time. This helps track when the escape hatch is being used frequently (potential signal of infrastructure instability).
+
+---
+
+### Finding 3: Infrastructure work auto-detection applies escape hatch
+
+**Evidence:**
+- Auto-detection logic at spawn time checks if task/beads ID indicates infrastructure work
+- When detected, automatically applies `--backend claude --tmux` flags
+- User sees message: "🔧 Infrastructure work detected - auto-applying escape hatch"
+- Infrastructure detection event logged with task, beads_id, skill metadata
+
+**Source:**
+- `cmd/orch/spawn_cmd.go:1115-1136` - `isInfrastructureWork()` check and escape hatch application
+- Logged event type: `spawn.infrastructure_detected` with structured metadata
+- Auto-application happens after explicit flags but before config defaults
+
+**Significance:** System proactively applies escape hatch for critical work, reducing the chance of agents killing themselves while fixing infrastructure. This automation increases resilience without requiring users to remember the flags.
+
+---
+
+### Finding 4: Narrow format omits MODE column (observability gap)
+
+**Evidence:**
+- Wide format (>120 chars): Shows SOURCE, BEADS ID, MODE, MODEL, STATUS, PHASE, TASK, SKILL, RUNTIME, TOKENS
+- Narrow format (80-100 chars): Shows SOURCE, BEADS ID, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS
+- MODE column dropped in narrow format to fit smaller terminals
+- No explicit filter for `--mode` or `--backend` in status command
+
+**Source:**
+- `cmd/orch/status_cmd.go:1049` - Wide format header with MODE
+- `cmd/orch/status_cmd.go:1132` - Narrow format header WITHOUT MODE
+- `orch status --help` - No mode/backend filter flag documented
+
+**Significance:** Users on smaller terminals or when condensed output is needed cannot see which spawn backend was used. This reduces visibility into escape hatch usage at the individual agent level. There's also no way to filter `orch status` to show only escape hatch spawns.
 
 ---
 

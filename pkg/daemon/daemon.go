@@ -65,6 +65,22 @@ type Config struct {
 	// CleanupServerURL is the OpenCode server URL for cleanup operations.
 	// Defaults to http://localhost:4096.
 	CleanupServerURL string
+
+	// RecoveryEnabled controls whether stuck agent recovery is enabled.
+	// When enabled, the daemon will detect idle agents and attempt auto-resume.
+	RecoveryEnabled bool
+
+	// RecoveryInterval is how often to check for stuck agents (0 = disabled).
+	// Default is 5 minutes.
+	RecoveryInterval time.Duration
+
+	// RecoveryIdleThreshold is how long an agent must be idle before recovery.
+	// Default is 10 minutes.
+	RecoveryIdleThreshold time.Duration
+
+	// RecoveryRateLimit is minimum time between resume attempts per agent.
+	// Default is 1 hour to prevent infinite loops.
+	RecoveryRateLimit time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -85,6 +101,10 @@ func DefaultConfig() Config {
 		CleanupAgeDays:              7,             // 7 days threshold
 		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
 		CleanupServerURL:            "http://localhost:4096",
+		RecoveryEnabled:             true,
+		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
+		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
+		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
 	}
 }
 
@@ -157,6 +177,13 @@ type Daemon struct {
 	// lastCleanup tracks when session cleanup was last run for periodic cleanup.
 	lastCleanup time.Time
 
+	// lastRecovery tracks when recovery was last run for periodic recovery.
+	lastRecovery time.Time
+
+	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
+	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
+	resumeAttempts map[string]time.Time
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
@@ -182,6 +209,7 @@ func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
 		Config:               config,
 		SpawnedIssues:        NewSpawnedIssueTracker(),
+		resumeAttempts:       make(map[string]time.Time),
 		listIssuesFunc:       ListReadyIssues,
 		spawnFunc:            SpawnWork,
 		activeCountFunc:      DefaultActiveCount,
@@ -1030,6 +1058,137 @@ func (d *Daemon) NextCleanupTime() time.Time {
 		return time.Now() // Due immediately
 	}
 	return d.lastCleanup.Add(d.Config.CleanupInterval)
+}
+
+// ShouldRunRecovery returns true if periodic recovery should run.
+// This checks if recovery is enabled and enough time has elapsed since the last run.
+func (d *Daemon) ShouldRunRecovery() bool {
+	if !d.Config.RecoveryEnabled || d.Config.RecoveryInterval <= 0 {
+		return false
+	}
+	// Run immediately if we've never run before
+	if d.lastRecovery.IsZero() {
+		return true
+	}
+	return time.Since(d.lastRecovery) >= d.Config.RecoveryInterval
+}
+
+// RecoveryResult contains the result of a recovery operation.
+type RecoveryResult struct {
+	ResumedCount int
+	SkippedCount int
+	Error        error
+	Message      string
+}
+
+// RunPeriodicRecovery runs the periodic stuck agent recovery if due.
+// Returns the result if recovery was run, or nil if it wasn't due.
+func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
+	if !d.ShouldRunRecovery() {
+		return nil
+	}
+
+	// Get list of active agents via registry
+	agents, err := GetActiveAgents()
+	if err != nil {
+		return &RecoveryResult{
+			ResumedCount: 0,
+			SkippedCount: 0,
+			Error:        err,
+			Message:      fmt.Sprintf("Recovery failed to list agents: %v", err),
+		}
+	}
+
+	resumed := 0
+	skipped := 0
+	now := time.Now()
+
+	for _, agent := range agents {
+		// Skip agents without beads ID (can't resume without ID)
+		if agent.BeadsID == "" {
+			skipped++
+			continue
+		}
+
+		// Skip agents that already reported Phase: Complete
+		// (they're waiting for orchestrator review, not stuck)
+		if strings.EqualFold(agent.Phase, "complete") {
+			skipped++
+			continue
+		}
+
+		// Check if agent is idle long enough to trigger recovery
+		idleTime := now.Sub(agent.UpdatedAt)
+		if idleTime < d.Config.RecoveryIdleThreshold {
+			skipped++
+			continue
+		}
+
+		// Check if we've attempted resume recently (rate limiting)
+		if lastAttempt, exists := d.resumeAttempts[agent.BeadsID]; exists {
+			timeSinceLastAttempt := now.Sub(lastAttempt)
+			if timeSinceLastAttempt < d.Config.RecoveryRateLimit {
+				skipped++
+				if d.Config.Verbose {
+					fmt.Printf("  Skipping %s: resumed %v ago (rate limit: %v)\n",
+						agent.BeadsID, timeSinceLastAttempt.Round(time.Minute), d.Config.RecoveryRateLimit)
+				}
+				continue
+			}
+		}
+
+		// Attempt to resume the agent
+		if d.Config.Verbose {
+			fmt.Printf("  Attempting recovery for %s (idle for %v)\n",
+				agent.BeadsID, idleTime.Round(time.Minute))
+		}
+
+		if err := ResumeAgentByBeadsID(agent.BeadsID); err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Failed to resume %s: %v\n", agent.BeadsID, err)
+			}
+			// Don't count failures toward resumed count, but don't retry immediately
+			d.resumeAttempts[agent.BeadsID] = now
+			skipped++
+			continue
+		}
+
+		// Record successful resume attempt
+		d.resumeAttempts[agent.BeadsID] = now
+		resumed++
+
+		if d.Config.Verbose {
+			fmt.Printf("  Resumed %s successfully\n", agent.BeadsID)
+		}
+	}
+
+	// Update last recovery time on success
+	d.lastRecovery = time.Now()
+
+	return &RecoveryResult{
+		ResumedCount: resumed,
+		SkippedCount: skipped,
+		Error:        nil,
+		Message:      fmt.Sprintf("Recovery attempted: %d resumed, %d skipped", resumed, skipped),
+	}
+}
+
+// LastRecoveryTime returns when recovery was last run.
+// Returns zero time if recovery has never run.
+func (d *Daemon) LastRecoveryTime() time.Time {
+	return d.lastRecovery
+}
+
+// NextRecoveryTime returns when the next recovery is scheduled.
+// Returns zero time if recovery is disabled.
+func (d *Daemon) NextRecoveryTime() time.Time {
+	if !d.Config.RecoveryEnabled || d.Config.RecoveryInterval <= 0 {
+		return time.Time{}
+	}
+	if d.lastRecovery.IsZero() {
+		return time.Now() // Due immediately
+	}
+	return d.lastRecovery.Add(d.Config.RecoveryInterval)
 }
 
 // Run processes issues in a loop until the queue is empty or maxIterations is reached.

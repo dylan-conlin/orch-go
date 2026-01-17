@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-debug-fix-build-error-17jan-7ed5",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-gl7wf",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "63fa8bc9565653b6bf31ff0fc704fcc4f1b83d48",
+  "spawn_time": "2026-01-17T13:51:21-08:00",
+  "tier": "light",
+  "spawn_mode": "claude"
+}
