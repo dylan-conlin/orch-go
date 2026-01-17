@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented lazy-loading for orchestrator skill by replacing eager config hook with progressive worker detection (tool.execute.before) and conditional system.transform hook injection, reducing worker session context usage from 52KB to 0KB.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Plugin hook architecture analysis revealed config hook runs too early (no session context); coaching.ts proves tool.execute.before + system.transform pattern works; implementation committed as 4b5d2b5a with full progressive detection and caching.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Config hooks cannot detect workers per-session (timing constraint); experimental hooks provide lazy evaluation point; progressive detection via Map cache prevents misclassification; memory-caching 52KB skill content avoids repeated file reads.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Orchestrator should manually test with ORCH_PLUGIN_DEBUG=1 for both worker and orchestrator sessions to verify lazy-loading behavior, then close issue.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes - Establishes lazy-loading pattern for large skills using progressive detection + system.transform hooks; architectural choice worth preserving.
 
 <!--
 Example D.E.K.N.:
