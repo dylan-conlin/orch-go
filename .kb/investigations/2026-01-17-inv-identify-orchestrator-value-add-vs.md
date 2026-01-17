@@ -76,13 +76,26 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: High-Value Activities Require Strategic Judgment, Not Routing
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Investigation "Interactive Orchestrators Compensation Pattern" (2026-01-06) identified three legitimate orchestrator functions that daemon cannot replicate:
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+1. **Goal refinement** - Converting vague strategic intent ("improve performance") to actionable orchestrator goals ("reduce orch status latency from 1.2s to <100ms")
+2. **Real-time frame correction** - Catching when orchestrator drops into tactical mode (doing spawnable work) and shifting perspective
+3. **Synthesis** - Combining worker results into decisions/knowledge (can't spawn "understand this topic")
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+Additional high-value activities from orchestrator skill:
+- **Hotspot detection** - Recognizing when 5+ bug fixes to same area signals systemic issue requiring architect, not more debugging
+- **Issue type correction** - When daemon skill inference would be wrong (issue labeled "task" but actually needs feature-impl)
+- **Follow-up extraction** - Reading SYNTHESIS.md recommendations from completed agents and deciding what to pursue
+- **Epic readiness evaluation** - Determining if understanding is complete enough to spawn work ("can you explain the problem, constraints, and risks?")
+
+**Source:** 
+- `.kb/investigations/2026-01-06-inv-investigate-interactive-orchestrators-compensation-pattern.md` lines 118-130
+- Orchestrator skill "Strategic-First Orchestration" section
+- Orchestrator skill "Orchestrator Core Responsibilities" section
+
+**Significance:** These are categorically different from queue processing. They require reasoning, judgment, and cross-agent context that daemon cannot replicate. This is the 20% that requires orchestrator engagement.
 
 ---
 

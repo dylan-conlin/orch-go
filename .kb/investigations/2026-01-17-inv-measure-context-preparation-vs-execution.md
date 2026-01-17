@@ -205,35 +205,43 @@ The breakdown is:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Enforce ORCH_WORKER=1 for all worker spawns via spawn command** - Add automatic environment variable setting to the spawn command implementation to ensure orchestrator skill is never loaded for worker sessions.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Saves 13,354 tokens (48% waste reduction) per worker spawn
+- Prevents configuration drift (no reliance on manual environment setting)
+- Addresses the primary optimization opportunity identified in Finding 3
+- Makes the constraint (already documented in kb) automatically enforced
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Requires code change to spawn command (not just documentation)
+- Workers will never have orchestrator skill loaded (acceptable - they shouldn't need it)
+- Adds hardcoded environment variable to spawn flow (coupling, but intentional)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Verify current spawn command doesn't already set ORCH_WORKER=1 (check `pkg/spawn/` or `cmd/orch/spawn.go`)
+2. Add environment variable setting to spawn execution path (where OpenCode session is created)
+3. Test worker spawn to confirm orchestrator skill is not loaded (check token usage before/after)
+4. Document the automatic enforcement in spawn documentation
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Add ORCH_WORKER=1 to SPAWN_CONTEXT.md instructions**
+- **Pros:** No code change required, documentation-only fix
+- **Cons:** Relies on agents reading and following instructions (error-prone), doesn't prevent misconfiguration
+- **When to use instead:** If spawn command modification is blocked or risky
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Compress kb context and CLAUDE.md content**
+- **Pros:** Reduces overall context preparation cost
+- **Cons:** Saves only ~6-12k tokens (vs 13k from orchestrator), reduces readability, unclear if compression is needed given 93% execution budget
+- **When to use instead:** If context preparation becomes >20% despite orchestrator fix
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Option D: Cache CLAUDE.md content across spawns**
+- **Pros:** Saves ~6,071 tokens on subsequent spawns in same session
+- **Cons:** Complex caching implementation, unclear benefit (200k budget is ample), assumes CLAUDE.md stability
+- **When to use instead:** If spawn frequency is very high (>10/session) and context budget is tight
+
+**Rationale for recommendation:** Option A (automatic ORCH_WORKER=1) provides the largest single optimization (13,354 tokens) with minimal complexity and no user-facing changes. It addresses the primary waste identified in the investigation. Options B-D provide smaller gains with higher complexity or lower reliability.
 
 ---
 
