@@ -106,19 +106,19 @@ Examples:
 
 var (
 	// Daemon flags
-	daemonDelay                     int    // Delay between spawns in seconds
-	daemonDryRun                    bool   // Preview mode - show what would be processed without spawning
-	daemonPollInterval              int    // Poll interval in seconds (0 = run once)
-	daemonMaxAgents                 int    // Maximum concurrent agents (0 = no limit)
-	daemonLabel                     string // Filter issues by label
-	daemonVerbose                   bool   // Enable verbose output
-	daemonReflect                   bool   // Run reflection analysis after processing (on exit)
-	daemonReflectInterval           int    // Periodic reflection interval in minutes (0 = disabled)
-	daemonReflectIssues             bool   // Create beads issues for synthesis opportunities
-	daemonCleanupEnabled            bool   // Enable periodic session cleanup
-	daemonCleanupInterval           int    // Session cleanup interval in minutes (0 = disabled)
-	daemonCleanupAge                int    // Session age threshold in days for cleanup
-	daemonCleanupPreserveOrch       bool   // Preserve orchestrator sessions during cleanup
+	daemonDelay               int    // Delay between spawns in seconds
+	daemonDryRun              bool   // Preview mode - show what would be processed without spawning
+	daemonPollInterval        int    // Poll interval in seconds (0 = run once)
+	daemonMaxAgents           int    // Maximum concurrent agents (0 = no limit)
+	daemonLabel               string // Filter issues by label
+	daemonVerbose             bool   // Enable verbose output
+	daemonReflect             bool   // Run reflection analysis after processing (on exit)
+	daemonReflectInterval     int    // Periodic reflection interval in minutes (0 = disabled)
+	daemonReflectIssues       bool   // Create beads issues for synthesis opportunities
+	daemonCleanupEnabled      bool   // Enable periodic session cleanup
+	daemonCleanupInterval     int    // Session cleanup interval in minutes (0 = disabled)
+	daemonCleanupAge          int    // Session age threshold in days for cleanup
+	daemonCleanupPreserveOrch bool   // Preserve orchestrator sessions during cleanup
 )
 
 func init() {
@@ -230,6 +230,13 @@ func runDaemonLoop() error {
 	} else {
 		fmt.Println("  Cleanup interval:  disabled")
 	}
+	if config.RecoveryEnabled {
+		fmt.Printf("  Recovery interval: %s\n", formatDaemonDuration(config.RecoveryInterval))
+		fmt.Printf("  Recovery idle:     %s\n", formatDaemonDuration(config.RecoveryIdleThreshold))
+		fmt.Printf("  Recovery rate:     %s (per agent)\n", formatDaemonDuration(config.RecoveryRateLimit))
+	} else {
+		fmt.Println("  Recovery interval: disabled")
+	}
 	fmt.Println()
 
 	// Main polling loop
@@ -297,6 +304,44 @@ func runDaemonLoop() error {
 				}
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Cleanup: no stale sessions found\n", timestamp)
+			}
+		}
+
+		// Run periodic stuck agent recovery if due
+		if result := d.RunPeriodicRecovery(); result != nil {
+			if result.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Recovery error: %v\n", timestamp, result.Error)
+				// Log the recovery error
+				event := events.Event{
+					Type:      "daemon.recovery",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"resumed": 0,
+						"skipped": result.SkippedCount,
+						"error":   result.Error.Error(),
+						"message": result.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log recovery error event: %v\n", err)
+				}
+			} else if result.ResumedCount > 0 {
+				fmt.Printf("[%s] Recovery: %s\n", timestamp, result.Message)
+				// Log the successful recovery
+				event := events.Event{
+					Type:      "daemon.recovery",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"resumed": result.ResumedCount,
+						"skipped": result.SkippedCount,
+						"message": result.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log recovery event: %v\n", err)
+				}
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Recovery: no stuck agents found\n", timestamp)
 			}
 		}
 

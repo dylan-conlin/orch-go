@@ -85,19 +85,29 @@ Guidelines:
 
 ---
 
+### Finding 4: Recovery Infrastructure 95% Complete
+
+**Evidence:** Code review shows `RunPeriodicRecovery()` (lines 1086-1173), `ShouldRunRecovery()` (lines 1063-1074), config fields (lines 69-83), and helper functions (recovery.go) all exist. The `resumeAttempts` map is initialized in `NewWithConfig()` (line 212) for rate limiting. Missing: (1) Call to `RunPeriodicRecovery()` in daemon loop, (2) `resumeAttempts` init in `NewWithPool()`, (3) Recovery status output.
+
+**Source:** `pkg/daemon/daemon.go:69-83, 104-107, 212, 1063-1173`, `pkg/daemon/recovery.go:28-176`
+
+**Significance:** The tiered recovery is already built - we just need to wire it into the main daemon loop. This is a ~10 line addition vs. implementing from scratch.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Recovery Infrastructure Already Exists** - Previous agent implemented the full recovery mechanism (detection, rate limiting, resume attempts) but didn't integrate it into the daemon loop. This reduces implementation to 3 small changes: (1) call RunPeriodicRecovery in loop, (2) fix NewWithPool init, (3) add status output.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Stalled Detection is Independent** - The dashboard already has 15-minute stalled detection (serve_agents.go:332-341) that surfaces in Needs Attention. Recovery tries to prevent agents from hitting the stalled threshold by auto-resuming at 10 minutes. The two systems complement each other: recovery catches recoverable agents early, stalled detection catches unrecoverable ones.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Rate Limiting Prevents Infinite Loops** - The `resumeAttempts` map tracks last resume time per agent (daemon.go:183-185). RunPeriodicRecovery checks this before resuming (lines 1127-1138) to prevent spamming stuck agents. This implements the "1 resume per hour per agent" requirement from the design.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The tiered stuck agent recovery is implemented by adding RunPeriodicRecovery to the daemon loop (alongside reflection and cleanup). The recovery loop runs every 5 minutes, detects agents idle >10 minutes without Phase: Complete, attempts resume with 1-hour rate limiting, and relies on existing stalled detection (15min threshold) to surface agents that don't recover. Changes needed: (1) Call RunPeriodicRecovery in cmd/orch/daemon.go around line 302, (2) Initialize resumeAttempts in NewWithPool, (3) Add recovery config output to startup message.
 
 ---
 

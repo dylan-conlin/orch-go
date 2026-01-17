@@ -234,6 +234,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Config:          config,
 		Pool:            pool,
 		SpawnedIssues:   NewSpawnedIssueTracker(),
+		resumeAttempts:  make(map[string]time.Time),
 		listIssuesFunc:  ListReadyIssues,
 		spawnFunc:       SpawnWork,
 		activeCountFunc: DefaultActiveCount,
