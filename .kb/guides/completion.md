@@ -2,7 +2,9 @@
 
 **Purpose:** Single authoritative reference for the agent completion system.
 
-**Synthesized from:** 10 investigations (Dec 19, 2025 - Jan 7, 2026)
+**Synthesized from:** 28 investigations (Dec 19, 2025 - Jan 17, 2026)
+
+**Last updated:** Jan 17, 2026
 
 ---
 
@@ -192,21 +194,79 @@ When analyzing completion rates:
 
 ---
 
+## Resource Cleanup (Four-Layer Model)
+
+Agent state exists in four layers that must be cleaned up on completion:
+
+| Layer | What to Clean | When | Command/Action |
+|-------|---------------|------|----------------|
+| **Beads** | Close issue | `orch complete` | `bd close <id>` |
+| **OpenCode Session** | Delete session | `orch complete` | `client.DeleteSession()` |
+| **Tmux Window** | Close window | `orch complete` | `tmux kill-window` |
+| **Workspace** | Archive to archived/ | `orch complete` | `os.Rename()` |
+
+### Cleanup Order (Critical)
+
+```
+1. Verify completion (all gates pass)
+2. Close beads issue
+3. Delete OpenCode session
+4. Export transcript (if orchestrator)
+5. Archive workspace to archived/
+6. Close tmux window
+7. Invalidate serve cache
+```
+
+**Why order matters:**
+- Beads closure is the authoritative signal for "done"
+- OpenCode session must be deleted BEFORE status checks (prevents "ghost agents")
+- Transcript export reads from workspace, so archive must come after
+- Tmux cleanup last (window may be needed for debugging)
+
+### Ghost Agent Prevention
+
+**Symptom:** `orch status --all` shows completed agents as "running"
+
+**Root cause:** `orch complete` closed beads issue but didn't delete OpenCode session. Status filters by session age (30 min), so recently-completed agents persist.
+
+**Fix:** `orch complete` now calls `client.DeleteSession(sessionID)` after closing beads issue.
+
+**Code reference:** `cmd/orch/complete_cmd.go:565-580`
+
+---
+
 ## Workspace Lifecycle
 
-### Completion vs Archival
+### Completion Operations
 
 `orch complete` performs:
-- Phase verification
+- Phase verification (all gates)
 - Beads issue closure
+- OpenCode session deletion (prevents ghost agents)
 - Tmux window cleanup
+- Workspace archival (moved to `archived/`)
 - Auto-rebuild if Go changes
+- Serve cache invalidation
 
-`orch complete` does NOT:
-- Archive workspace directory
-- Clean up OpenCode disk sessions
+### Automated Archival
 
-### Stale Workspace Cleanup
+As of Jan 17, 2026, `orch complete` automatically archives workspaces:
+
+```bash
+# After completion:
+.orch/workspace/og-feat-xyz/  →  .orch/workspace/archived/og-feat-xyz/
+```
+
+**Name collision handling:** If archived/ already contains that workspace name, appends timestamp suffix:
+```
+archived/og-feat-xyz/  →  archived/og-feat-xyz-1737123456/
+```
+
+**Opt-out:** `orch complete <id> --no-archive`
+
+**Registry update:** `ArchivedPath` field tracks where workspace was archived.
+
+### Manual Stale Cleanup
 
 ```bash
 # Preview what would be archived
@@ -222,9 +282,86 @@ A workspace is stale if:
 - `.spawn_time` file is older than 7 days
 - Has completion indicators (SYNTHESIS.md, light tier, .beads_id)
 
-**Recommendation:** Add auto-archive to `orch complete` workflow or integrate into daemon poll cycle.
+---
 
-**Reference:** `.kb/investigations/2026-01-07-inv-address-340-active-workspaces-completion.md`
+## Session Handoff Updates
+
+When completing worker agents, `orch complete` triggers session handoff updates for the orchestrator:
+
+### What Gets Captured
+
+| Section | Source | Prompt |
+|---------|--------|--------|
+| **Spawns Table** | Agent metadata | Outcome, key finding |
+| **Evidence** | Agent observation | Pattern observation (optional) |
+| **Knowledge** | Agent learning | Decision/constraint (optional) |
+
+### Capture Flow
+
+```
+orch complete <id>
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ Prompt: "Outcome? (success/partial)" │
+│ Prompt: "Key finding (1 line)?"      │
+└──────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│ Prompt: "Pattern observation?"       │  ← Optional (Enter to skip)
+│ Prompt: "Decision/constraint?"       │  ← Optional (Enter to skip)
+└──────────────────────────────────────┘
+       │
+       ▼
+   Updates SESSION_HANDOFF.md
+```
+
+### Why Capture at Completion
+
+**Principle:** Capture knowledge at the moment of context, not later when context is lost.
+
+- Agent just finished → orchestrator has fresh context
+- Synthesis recommendations are visible → easy to extract
+- Session handoff is open → natural place to record
+
+**Code reference:** `cmd/orch/session.go:1736-2002`
+
+---
+
+## Daemon Auto-Completion
+
+The daemon can auto-complete agents that report Phase: Complete, governed by the escalation model.
+
+### When Daemon Auto-Completes
+
+| Escalation Level | Action | Example |
+|------------------|--------|---------|
+| `None` | Auto-complete silently | Clean code-only work |
+| `Info` | Auto-complete, log for review | Has minor recommendations |
+| `Review` | Auto-complete, queue mandatory review | Knowledge-producing skills |
+| `Block` | Do NOT auto-complete | Needs visual approval |
+| `Failed` | Do NOT auto-complete | Verification failed |
+
+### Expected Distribution
+
+- ~60% auto-complete silently (None/Info levels)
+- ~30% auto-complete with review flag (Review level)
+- ~10% require human decision (Block/Failed levels)
+
+### Integration with Run Loop
+
+```
+Daemon Poll Cycle:
+1. Reconcile with OpenCode (free stale slots)
+2. Process completions (CompletionOnce)  ← NEW
+3. Run periodic reflection
+4. Write daemon status
+5. Check capacity
+6. Spawn new agents
+```
+
+**Code reference:** `pkg/daemon/completion.go`
 
 ---
 
@@ -298,27 +435,55 @@ When completion fails:
 
 ---
 
-## Investigations (Archived)
+## Investigations Synthesized (28 total)
 
-The following investigations were synthesized into this guide:
+This guide synthesizes 28 investigations on agent completion from Dec 2025 - Jan 2026:
 
-| Date | Investigation | Status |
-|------|---------------|--------|
-| 2025-12-19 | Desktop Notifications Completion | Archived |
-| 2025-12-26 | UI Completion Gate - Require Screenshot | Archived |
-| 2025-12-27 | Implement Cross-Project Completion | Archived |
-| 2026-01-04 | Phase Completion Verification Orchestrator Spawns | Archived |
-| 2026-01-04 | Test Completion Works 04jan | Archived |
-| 2026-01-04 | Test Completion Works Say Hello | Archived |
+### Core Implementation
+- CLI orch complete command (2025-12-19)
+- Orch complete closes beads issue (2025-12-21)
+- Agents being marked completed registry (2025-12-21)
+- Reconciliation should check completed work (2025-12-21)
+- Implement orch complete preview update (2025-12-21)
 
-### Investigations (Active Reference)
+### Verification & Gates
+- Add liveness warning orch complete (2025-12-22)
+- Pre-spawn phase complete check (2025-12-25)
+- Orch complete prompt follow-up (2025-12-25)
+- Debug orch complete force sets close (2025-12-26)
+- Improve orch complete cross-project (2025-12-26)
 
-| Date | Investigation | Why Kept |
-|------|---------------|----------|
-| 2025-12-27 | Completion Escalation Model | Design reference, implementation status unclear |
-| 2025-12-27 | Cross-Project Completion UX Design | Design options reference |
-| 2026-01-06 | Diagnose Overall 66% Completion Rate | Recent diagnostic, pending actions |
-| 2026-01-07 | Address 340 Active Workspaces | Recent, auto-archive recommendation pending |
+### Escalation Model
+- Completion escalation model completed agents (2025-12-27)
+
+### Daemon Integration
+- Daemon capacity stale after complete (2026-01-02)
+- Test spawned agents complete work (2026-01-03)
+- Agents report phase complete via (2026-01-03)
+- Debug orch complete fails orchestrator sessions (2026-01-05)
+- Daemon auto complete agents report (2026-01-06)
+
+### Dashboard/Status
+- Dashboard distinguish completed agents active (2026-01-06)
+- Orch status shows completed agents (2026-01-06)
+
+### Event Tracking
+- Add agent completed event emission (2026-01-08)
+
+### Session Cleanup
+- Bug orch complete doesn set (2026-01-09) - Ghost agents fix
+
+### Progressive Capture
+- Orch complete triggers handoff updates (2026-01-14)
+
+### Archival
+- Persist activity feed completed agents (2026-01-16, 2026-01-17)
+- Implement automated archival orch complete (2026-01-17)
+
+### Knowledge Preservation
+- What knowledge context lives completed (2025-12-22)
+- Fix archive section sort completed (2025-12-24)
+- Orchestrator skill says complete agents (2025-12-24)
 
 ---
 

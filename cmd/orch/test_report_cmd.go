@@ -107,17 +107,26 @@ func runTestReport(beadsID string) error {
 	var testCmd string
 	var projectType ProjectType
 
+	// Always detect project type for parsing purposes
+	projectType, autoCmd := detectProjectType(projectDir)
+
 	if testReportCommand != "" {
-		// Use custom command
+		// Use custom command but keep detected project type for parsing
 		testCmd = testReportCommand
-		projectType = ProjectTypeUnknown
+		// If project type unknown, try to infer from command
+		if projectType == ProjectTypeUnknown {
+			projectType = inferProjectTypeFromCommand(testReportCommand)
+		}
 		fmt.Printf("Using custom test command: %s\n", testCmd)
+		if projectType != ProjectTypeUnknown {
+			fmt.Printf("Parsing as %s project\n", projectType)
+		}
 	} else {
-		// Auto-detect project type and command
-		projectType, testCmd = detectProjectType(projectDir)
+		// Use auto-detected command
 		if projectType == ProjectTypeUnknown {
 			return fmt.Errorf("could not detect project type. Use --command to specify a test command")
 		}
+		testCmd = autoCmd
 		fmt.Printf("Detected %s project, running: %s\n", projectType, testCmd)
 	}
 
@@ -203,6 +212,37 @@ func detectProjectType(projectDir string) (ProjectType, string) {
 	}
 
 	return ProjectTypeUnknown, ""
+}
+
+// inferProjectTypeFromCommand tries to infer the project type from the test command.
+// This is used when --command is provided to ensure proper output parsing.
+func inferProjectTypeFromCommand(cmd string) ProjectType {
+	cmd = strings.ToLower(cmd)
+
+	// Go
+	if strings.Contains(cmd, "go test") {
+		return ProjectTypeGo
+	}
+
+	// Node
+	if strings.Contains(cmd, "npm ") || strings.Contains(cmd, "yarn ") ||
+		strings.Contains(cmd, "bun ") || strings.Contains(cmd, "jest") ||
+		strings.Contains(cmd, "mocha") || strings.Contains(cmd, "vitest") {
+		return ProjectTypeNode
+	}
+
+	// Python
+	if strings.Contains(cmd, "pytest") || strings.Contains(cmd, "python -m pytest") ||
+		strings.Contains(cmd, "python -m unittest") || strings.Contains(cmd, "unittest") {
+		return ProjectTypePython
+	}
+
+	// Rust
+	if strings.Contains(cmd, "cargo test") {
+		return ProjectTypeRust
+	}
+
+	return ProjectTypeUnknown
 }
 
 // runTests executes the test command and captures output.

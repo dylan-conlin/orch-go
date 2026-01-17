@@ -2,9 +2,9 @@
 
 **Purpose:** Single authoritative reference for agent state management, display, and coordination in the orch-go system.
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Jan 17, 2026
 
-**Synthesized from:** 17 investigations (Dec 20, 2025 - Jan 6, 2026)
+**Synthesized from:** 45+ investigations (Dec 20, 2025 - Jan 17, 2026)
 
 ---
 
@@ -73,6 +73,46 @@ Agent state exists across four independent layers:
 | Is agent processing? | SSE session.status = busy | Session exists |
 
 **Beads is the source of truth for agent status.** OpenCode sessions persist to disk indefinitely. An OpenCode session existing means nothing about whether the agent is done. Only beads matters.
+
+### Layer Cleanup on Completion
+
+When `orch complete` runs, it must clean up all four layers in the correct order:
+
+```
+1. Close beads issue (authoritative "done" signal)
+2. Delete OpenCode session (prevents ghost agents)
+3. Export transcript if needed
+4. Archive workspace to archived/
+5. Close tmux window
+6. Invalidate serve cache
+```
+
+**Critical:** Delete OpenCode session BEFORE status checks. Sessions persist to disk and appear as "running" agents in `orch status` if not deleted.
+
+**Reference:** `.kb/guides/completion.md` for full cleanup details.
+
+---
+
+## Pre-Spawn Duplicate Prevention
+
+Before spawning, check if work is already done:
+
+```go
+// Check for Phase: Complete before spawning
+comments := bd.GetComments(beadsID)
+for _, c := range comments {
+    if strings.Contains(c, "Phase: Complete") {
+        return errors.New("work already complete, not respawning")
+    }
+}
+```
+
+**Why:** Prevents duplicate spawns when:
+- Agent finished but `orch complete` wasn't run
+- Daemon retry triggers spawn for closed issue
+- Manual respawn of already-done work
+
+**Code reference:** `pkg/spawn/pre_spawn_check.go`
 
 ---
 
