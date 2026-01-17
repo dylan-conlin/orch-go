@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-17
 **Updated:** 2026-01-17
 **Owner:** feature-impl agent
-**Phase:** Synthesizing
-**Next Step:** Implement isTaskNoise() function
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -105,21 +105,21 @@ Task noise filtering should be implemented in FindRecurringGaps() using an isTas
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ isTaskNoise() filters phase announcements (verified: TestIsTaskNoise with 5 phase test cases all pass)
+- ✅ isTaskNoise() filters issue IDs (verified: TestIsTaskNoise with 4 issue ID test cases all pass)
+- ✅ isTaskNoise() does not filter legitimate queries (verified: TestIsTaskNoise with 7 legitimate query test cases all pass)
+- ✅ FindRecurringGaps() excludes task noise from suggestions (verified: TestFindRecurringGapsFiltersTaskNoise passes)
+- ✅ No false positives on legitimate queries (verified: TestFindRecurringGapsTaskNoiseDoesNotAffectLegitimateQueries with 5 query types passes)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Regex performance impact on large gap event sets (assumed negligible for typical usage < 1000 events)
+- ⚠️ Edge cases with unusual issue ID formats not in current codebase
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if legitimate queries like "real-time updates" or "server-side rendering" get filtered as noise
+- Pattern would need revision if beads issue ID format changes to not match `^[a-z]+-[a-z]+-\w+`
 
 ---
 
