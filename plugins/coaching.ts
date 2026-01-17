@@ -712,21 +712,17 @@ You've now made **${details.count} code file edits** in this session.
 **Why this matters:** Frame collapse wastes orchestrator capacity and bypasses quality gates (worker verification, beads tracking).`
     }
 
-    // Inject using noReply:true pattern (from agentlog-inject.ts)
-    await client.session.prompt({
-      path: { id: sessionId },
-      body: {
+    // Inject using noReply:true pattern
+    if (client?.session?.prompt) {
+      await client.session.prompt({
+        sessionID: sessionId,
+        prompt: message,
         noReply: true,
-        parts: [
-          {
-            type: "text",
-            text: message,
-          },
-        ],
-      },
-    })
-
-    log(`✅ Injected ${patternType} coaching into session ${sessionId}`)
+      })
+      log(`✅ Injected ${patternType} coaching into session ${sessionId}`)
+    } else {
+      log(`⚠️ Cannot inject coaching: client.session.prompt unavailable`)
+    }
   } catch (err) {
     if (DEBUG) console.error(LOG_PREFIX, "Failed to inject coaching:", err)
   }
