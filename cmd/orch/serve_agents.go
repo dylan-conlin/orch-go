@@ -1377,8 +1377,10 @@ type PartDetails struct {
 
 // ToolState contains tool invocation state for tool parts.
 type ToolState struct {
-	Title  string `json:"title,omitempty"`
-	Status string `json:"status,omitempty"`
+	Title  string                 `json:"title,omitempty"`
+	Status string                 `json:"status,omitempty"`
+	Input  map[string]interface{} `json:"input,omitempty"`
+	Output string                 `json:"output,omitempty"`
 }
 
 // handleSessionMessages proxies OpenCode's /session/:sessionID/message API.
@@ -1434,6 +1436,17 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
+			// Transform tool state if present
+			var state *ToolState
+			if part.State != nil {
+				state = &ToolState{
+					Title:  part.State.Title,
+					Status: part.State.Status,
+					Input:  part.State.Input,
+					Output: part.State.Output,
+				}
+			}
+
 			response := MessagePartResponse{
 				ID:   part.ID,
 				Type: "message.part", // Match SSE event type
@@ -1445,6 +1458,8 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 						Type:      partType,
 						Text:      part.Text,
 						SessionID: sessionID,
+						Tool:      part.Tool, // Add tool name for tool invocations
+						State:     state,     // Add tool state (input/output)
 					},
 				},
 				Timestamp: msg.Info.Time.Created,

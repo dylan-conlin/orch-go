@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-stress-test-breaks-17jan-ce78",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-4tven.7",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "c29ef438cfc6285204c1ae611842febf8743de2b",
+  "spawn_time": "2026-01-17T12:29:09-08:00",
+  "tier": "full",
+  "spawn_mode": "claude"
+}
