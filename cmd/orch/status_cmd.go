@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
-	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
@@ -28,8 +27,18 @@ import (
 var (
 	// Status command flags
 	statusJSON    bool
-	statusAll     bool   // Include phantom agents (default: hide)
+	statusAll     bool   // Include all agents (default: compact mode showing running/recent only)
 	statusProject string // Filter by project
+)
+
+// Compact mode thresholds
+const (
+	// Only show orchestrator sessions from the last N hours in compact mode
+	compactOrchestratorSessionsMaxAge = 6 * time.Hour
+	// Maximum orchestrator sessions to show in compact mode
+	compactOrchestratorSessionsLimit = 5
+	// Only fetch processing status for sessions updated within this window
+	processingCheckMaxAge = 5 * time.Minute
 )
 
 var statusCmd = &cobra.Command{
@@ -38,14 +47,16 @@ var statusCmd = &cobra.Command{
 	Long: `Show swarm status including active/queued/completed agent counts,
 per-account usage percentages, and individual agent details.
 
-By default, phantom agents (beads issue open but no running agent) are hidden.
-Use --all to include them.
+By default, uses compact mode showing only running agents and recent sessions.
+This provides faster execution (<2s) with essential information.
+
+Use --all to include all agents (idle, phantom, completed) and full session list.
 
 Examples:
-  orch-go status              # Show active agents only
-  orch-go status --all        # Include phantom agents
-  orch-go status --project snap  # Filter by project
-  orch-go status --json       # Output as JSON for scripting`,
+  orch status              # Compact: running agents only, fast
+  orch status --all        # Full: all agents and sessions
+  orch status --project snap  # Filter by project
+  orch status --json       # Output as JSON for scripting`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStatus(serverURL)
 	},
@@ -53,7 +64,7 @@ Examples:
 
 func init() {
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON for scripting")
-	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Include phantom agents")
+	statusCmd.Flags().BoolVar(&statusAll, "all", false, "Show all agents and sessions (default: compact mode)")
 	statusCmd.Flags().StringVar(&statusProject, "project", "", "Filter by project")
 }
 
@@ -174,6 +185,18 @@ type StatusOutput struct {
 	SynthesisOpportunities *verify.SynthesisOpportunities `json:"synthesis_opportunities,omitempty"`
 }
 
+// isSessionLikelyProcessing checks if a session might be processing based on its last update time.
+// Only makes the expensive IsSessionProcessing HTTP call for recently updated sessions.
+// For sessions not updated recently, assumes they are idle (saves ~100ms per call).
+func isSessionLikelyProcessing(client *opencode.Client, sessionID string, lastUpdated time.Time, now time.Time) bool {
+	// If the session hasn't been updated in the last 5 minutes, it's definitely not processing
+	if now.Sub(lastUpdated) > processingCheckMaxAge {
+		return false
+	}
+	// For recently active sessions, make the HTTP call to check processing status
+	return client.IsSessionProcessing(sessionID)
+}
+
 func runStatus(serverURL string) error {
 	client := opencode.NewClient(serverURL)
 	now := time.Now()
@@ -282,7 +305,7 @@ func runStatus(serverURL string) error {
 						updatedAt := time.Unix(s.Time.Updated/1000, 0)
 						info.Runtime = formatDuration(now.Sub(createdAt))
 						info.LastActivity = updatedAt
-						info.IsProcessing = client.IsSessionProcessing(s.ID)
+						info.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
 						if info.Title == "" || info.Title == a.TmuxWindow {
 							info.Title = s.Title
 						}
@@ -295,7 +318,7 @@ func runStatus(serverURL string) error {
 					info.Runtime = formatDuration(now.Sub(createdAt))
 					info.LastActivity = updatedAt
 					info.Title = s.Title
-					info.IsProcessing = client.IsSessionProcessing(s.ID)
+					info.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
 				} else {
 					info.SessionID = "api-stalled"
 				}
@@ -380,7 +403,7 @@ func runStatus(serverURL string) error {
 			LastActivity: updatedAt,
 			Skill:        extractSkillFromTitle(s.Title),
 			Project:      extractProjectFromBeadsID(beadsID),
-			IsProcessing: client.IsSessionProcessing(s.ID),
+			IsProcessing: isSessionLikelyProcessing(client, s.ID, updatedAt, now),
 		})
 
 		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
@@ -467,11 +490,12 @@ func runStatus(serverURL string) error {
 		if agent.Mode == "claude" && agent.SessionID != "" {
 			if s, ok := sessionMap[agent.SessionID]; ok {
 				createdAt := time.Unix(s.Time.Created/1000, 0)
+				updatedAt := time.Unix(s.Time.Updated/1000, 0)
 				agent.Runtime = formatDuration(now.Sub(createdAt))
 				if agent.Title == "" {
 					agent.Title = s.Title
 				}
-				agent.IsProcessing = client.IsSessionProcessing(s.ID)
+				agent.IsProcessing = isSessionLikelyProcessing(client, s.ID, updatedAt, now)
 			}
 		}
 
@@ -482,6 +506,8 @@ func runStatus(serverURL string) error {
 	}
 
 	// Phase 3: Filter agents based on flags
+	// Compact mode (default): Only show running agents + recently completed (Phase: Complete)
+	// Full mode (--all): Show all agents including idle, phantom, completed
 	filteredAgents := make([]AgentInfo, 0)
 	for _, agentItem := range agents {
 		// Filter by project if specified
@@ -489,23 +515,28 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
-		// Determine status for filtering
-		status := "idle"
-		if agentItem.IsProcessing {
-			status = "running"
-		}
-
-		// Apply two-threshold ghost filtering unless --all is set
+		// In compact mode, only show:
+		// 1. Running (processing) agents
+		// 2. Agents with Phase: Complete (need review)
+		// 3. Agents with Phase: BLOCKED or QUESTION (need attention)
 		if !statusAll {
-			// Use IsVisibleByDefault to determine if agent should be shown
-			if !agent.IsVisibleByDefault(status, agentItem.LastActivity, agentItem.Phase) {
-				continue // Ghost agent - hide by default
+			isRunning := agentItem.IsProcessing
+			needsAttention := strings.EqualFold(agentItem.Phase, "Complete") ||
+				strings.EqualFold(agentItem.Phase, "BLOCKED") ||
+				strings.EqualFold(agentItem.Phase, "QUESTION")
+
+			if !isRunning && !needsAttention {
+				continue // Skip idle agents in compact mode
 			}
 		}
 
 		// Filter completed agents (beads issue closed) unless --all is set
-		// Note: Phase: Complete agents are handled by IsVisibleByDefault
 		if agentItem.IsCompleted && !statusAll {
+			continue
+		}
+
+		// Filter phantom agents unless --all is set
+		if agentItem.IsPhantom && !statusAll {
 			continue
 		}
 
@@ -546,21 +577,32 @@ func runStatus(serverURL string) error {
 	// Fetch account usage information
 	accounts := getAccountUsage()
 
-	// Fetch token usage for each agent with a valid session ID
+	// Fetch token usage - in compact mode, only for running agents (expensive operation)
 	for i := range filteredAgents {
-		if filteredAgents[i].SessionID != "" && filteredAgents[i].SessionID != "tmux-stalled" {
-			tokens, err := client.GetSessionTokens(filteredAgents[i].SessionID)
-			if err == nil && tokens != nil {
-				filteredAgents[i].Tokens = tokens
-			}
+		agent := &filteredAgents[i]
+		// Skip if no valid session ID
+		if agent.SessionID == "" || agent.SessionID == "tmux-stalled" {
+			continue
+		}
+		// In compact mode, only fetch tokens for running agents (saves ~100ms per idle agent)
+		if !statusAll && !agent.IsProcessing {
+			continue
+		}
+		tokens, err := client.GetSessionTokens(agent.SessionID)
+		if err == nil && tokens != nil {
+			agent.Tokens = tokens
 		}
 	}
 
-	// Assess context exhaustion risk for each agent
+	// Assess context exhaustion risk - in compact mode, only for running agents
 	for i := range filteredAgents {
 		agent := &filteredAgents[i]
 		// Skip phantom or completed agents
 		if agent.IsPhantom || agent.IsCompleted {
+			continue
+		}
+		// In compact mode, only assess risk for running agents
+		if !statusAll && !agent.IsProcessing {
 			continue
 		}
 		// Get total tokens for risk assessment
@@ -580,12 +622,19 @@ func runStatus(serverURL string) error {
 
 	// Fetch orchestrator sessions from registry
 	orchestratorSessions := getOrchestratorSessions(statusProject)
+	// In compact mode, limit to recent sessions
+	if !statusAll && len(orchestratorSessions) > compactOrchestratorSessionsLimit {
+		orchestratorSessions = orchestratorSessions[:compactOrchestratorSessionsLimit]
+	}
 
 	// Check infrastructure health
 	infraHealth := checkInfrastructureHealth()
 
-	// Detect synthesis opportunities
-	synthesisOpps, _ := verify.DetectSynthesisOpportunities(projectDir)
+	// Detect synthesis opportunities - skip in compact mode (expensive filesystem scan)
+	var synthesisOpps *verify.SynthesisOpportunities
+	if statusAll {
+		synthesisOpps, _ = verify.DetectSynthesisOpportunities(projectDir)
+	}
 
 	// Get session metrics for drift detection (surfaces to Dylan)
 	sessionMetrics := getSessionMetrics()
@@ -878,6 +927,13 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 		}
 	}
 	fmt.Println()
+	// In compact mode, add hint about hidden idle agents
+	if !showAll && output.Swarm.Idle > 0 && output.Swarm.Idle > len(output.Agents) {
+		hiddenIdle := output.Swarm.Idle - countIdleInList(output.Agents)
+		if hiddenIdle > 0 {
+			fmt.Printf("  (compact mode: %d idle agents hidden, use --all for full list)\n", hiddenIdle)
+		}
+	}
 	fmt.Println()
 
 	// Print account usage
@@ -1152,6 +1208,18 @@ func printAgentsCardFormat(agents []AgentInfo) {
 			fmt.Printf("    Risk: %s\n", agent.ContextRisk.Reason)
 		}
 	}
+}
+
+// countIdleInList counts the number of idle agents in a list.
+// Used to calculate how many idle agents are hidden in compact mode.
+func countIdleInList(agents []AgentInfo) int {
+	count := 0
+	for _, agent := range agents {
+		if !agent.IsProcessing && !agent.IsPhantom && !agent.IsCompleted {
+			count++
+		}
+	}
+	return count
 }
 
 // getAgentStatus returns a status string based on agent state.
