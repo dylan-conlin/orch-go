@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Implemented design handoff via --design-workspace flag that reads mockups, prompts, and notes from prior ui-design-session workspaces and includes them in SPAWN_CONTEXT.md.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Build succeeded, help text shows new flag, spawn context template includes design reference section when DesignWorkspace is populated.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Spawn context is generated via Config struct + template; design artifacts live in workspace/screenshots/; SYNTHESIS.md TLDR+Knowledge sections provide sufficient handoff context.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - feature complete and tested.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - tactical implementation, not architectural pattern
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-17
 **Updated:** 2026-01-17
 **Owner:** feature-impl agent
-**Phase:** Investigating
-**Next Step:** Implement Config struct changes and spawn command flag
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
