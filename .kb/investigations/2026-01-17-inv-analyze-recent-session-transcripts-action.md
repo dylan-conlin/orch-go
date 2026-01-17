@@ -114,6 +114,40 @@ Analyzed 3 recent SPAWN_CONTEXT.md files (Jan 15-16, 2026):
 
 ---
 
+### Finding 3: SessionStart hooks inject 25K tokens, 93% from orchestrator skill
+
+**Evidence:**
+From prior investigation (og-inv-audit-sessionstart-hooks-16jan-b4a3 at .kb/investigations/2026-01-16-inv-audit-sessionstart-hooks-claude-code.md):
+
+Total worst-case injection from all 7 SessionStart hooks: ~101KB (~25K tokens)
+
+Breakdown:
+- load-orchestration-context.py: 93,631 bytes (93% of total)
+  - Orchestrator skill: 86,451 bytes (~21.6K tokens, 86% of hook output)
+  - Beads workflow: ~3,000 bytes
+  - Active agents: ~500 bytes
+  - Recent knowledge, README, ROADMAP, etc: variable
+- session-start.sh: 4,246 bytes (session resume context)
+- bd prime: 2,961 bytes (beads guidance - always runs)
+- inject-orch-patterns.sh: 0 bytes (patterns file empty)
+- agentlog-inject.sh: 0 bytes (no .agentlog typically)
+- usage-warning.sh: 0 bytes (usage usually <80%)
+- reflect-suggestions-hook.py: 538 bytes (when suggestions exist)
+
+**Spawn detection:**
+- CLAUDE_CONTEXT env var is set for spawned agents (worker/orchestrator/meta-orchestrator)
+- Only load-orchestration-context.py checks this var and skips for spawned agents
+- Other hooks (session-start.sh, bd prime) run for ALL sessions regardless
+
+**Source:**
+- .kb/investigations/2026-01-16-inv-audit-sessionstart-hooks-claude-code.md (lines 59-80)
+- Tests run: echo '{"cwd":"..."}' | ~/.orch/hooks/load-orchestration-context.py | wc -c
+- Orchestrator skill at ~/.claude/skills/meta/orchestrator/SKILL.md: 1192 lines, 53KB
+
+**Significance:** For **manual orchestrator sessions**, total context injection is ~125KB (~31K tokens): 25K from SessionStart hooks + ~7K from manual session overhead. For **spawned worker sessions**, only ~7KB (~1.8K tokens) from hooks: bd prime (3KB) + session-start.sh (4KB) + SPAWN_CONTEXT.md (~27KB). The orchestrator skill dominates manual session startup overhead.
+
+---
+
 ### Finding 2: [Brief, descriptive title]
 
 **Evidence:** [Concrete observations, data, examples]
