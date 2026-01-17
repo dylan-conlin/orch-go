@@ -306,11 +306,12 @@ func GetIssue(beadsID string) (*Issue, error) {
 }
 
 // GetIssuesBatch retrieves multiple issues efficiently.
+// projectDirs should contain beadsID -> projectDir mappings for cross-project lookups.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
 // Uses individual Show() calls which handle short ID resolution (e.g., '51jz' -> 'orch-go-51jz').
 // This includes closed issues, unlike List(nil) which only returns open issues.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
-func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
+func GetIssuesBatch(beadsIDs []string, projectDirs map[string]string) (map[string]*Issue, error) {
 	if len(beadsIDs) == 0 {
 		return make(map[string]*Issue), nil
 	}
@@ -319,76 +320,86 @@ func GetIssuesBatch(beadsIDs []string) (map[string]*Issue, error) {
 	var mu sync.Mutex
 	result := make(map[string]*Issue, len(beadsIDs))
 
+	// Group beads IDs by project directory for efficient RPC client reuse
+	byProjectDir := make(map[string][]string)
+	for _, beadsID := range beadsIDs {
+		dir := projectDirs[beadsID]
+		byProjectDir[dir] = append(byProjectDir[dir], beadsID)
+	}
+
 	// Limit concurrent RPC calls to avoid overwhelming the server
 	const maxConcurrent = 20
 	sem := make(chan struct{}, maxConcurrent)
 
 	var wg sync.WaitGroup
 
-	// Try RPC client first with auto-reconnect
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		opts := []beads.Option{beads.WithAutoReconnect(3)}
-		if beads.DefaultDir != "" {
-			opts = append(opts, beads.WithCwd(beads.DefaultDir))
-		}
-		client := beads.NewClient(socketPath, opts...)
-
-		// Fetch each issue via Show() which handles short ID resolution
-		for _, beadsID := range beadsIDs {
-			wg.Add(1)
-			go func(id string, c *beads.Client) {
-				defer wg.Done()
-				sem <- struct{}{}        // Acquire semaphore
-				defer func() { <-sem }() // Release semaphore
-
-				issue, err := c.Show(id)
-				if err == nil && issue != nil {
-					mu.Lock()
-					// Store by the original ID passed in, so callers can find their result
-					result[id] = &Issue{
-						ID:          issue.ID,
-						Title:       issue.Title,
-						Description: issue.Description,
-						Status:      issue.Status,
-						IssueType:   issue.IssueType,
-						CloseReason: issue.CloseReason,
-					}
-					mu.Unlock()
-				}
-			}(beadsID, client)
+	// Process each project directory group in parallel
+	for projectDir, ids := range byProjectDir {
+		// Determine effective directory (use DefaultDir if projectDir is empty)
+		effectiveDir := projectDir
+		if effectiveDir == "" && beads.DefaultDir != "" {
+			effectiveDir = beads.DefaultDir
 		}
 
-		wg.Wait()
-		if len(result) > 0 {
-			return result, nil
-		}
-		// Fall through to CLI if RPC returned no results
-	}
-
-	// Fallback to CLI - fetch each issue via bd show which handles short ID resolution
-	for _, beadsID := range beadsIDs {
-		wg.Add(1)
-		go func(id string) {
-			defer wg.Done()
-			sem <- struct{}{}        // Acquire semaphore
-			defer func() { <-sem }() // Release semaphore
-
-			issue, err := beads.FallbackShow(id)
-			if err == nil && issue != nil {
-				mu.Lock()
-				// Store by the original ID passed in, so callers can find their result
-				result[id] = &Issue{
-					ID:          issue.ID,
-					Title:       issue.Title,
-					Description: issue.Description,
-					Status:      issue.Status,
-					IssueType:   issue.IssueType,
-					CloseReason: issue.CloseReason,
-				}
-				mu.Unlock()
+		// Try RPC client first with auto-reconnect
+		socketPath, err := beads.FindSocketPath(effectiveDir)
+		if err == nil {
+			opts := []beads.Option{beads.WithAutoReconnect(3)}
+			if effectiveDir != "" {
+				opts = append(opts, beads.WithCwd(effectiveDir))
 			}
-		}(beadsID)
+			client := beads.NewClient(socketPath, opts...)
+
+			// Fetch each issue via Show() which handles short ID resolution
+			for _, id := range ids {
+				wg.Add(1)
+				go func(beadsID string, c *beads.Client) {
+					defer wg.Done()
+					sem <- struct{}{}        // Acquire semaphore
+					defer func() { <-sem }() // Release semaphore
+
+					issue, err := c.Show(beadsID)
+					if err == nil && issue != nil {
+						mu.Lock()
+						// Store by the original ID passed in, so callers can find their result
+						result[beadsID] = &Issue{
+							ID:          issue.ID,
+							Title:       issue.Title,
+							Description: issue.Description,
+							Status:      issue.Status,
+							IssueType:   issue.IssueType,
+							CloseReason: issue.CloseReason,
+						}
+						mu.Unlock()
+					}
+				}(id, client)
+			}
+		} else {
+			// Fallback to CLI for this project dir in parallel
+			for _, id := range ids {
+				wg.Add(1)
+				go func(beadsID string, dir string) {
+					defer wg.Done()
+					sem <- struct{}{}        // Acquire semaphore
+					defer func() { <-sem }() // Release semaphore
+
+					issue, err := beads.FallbackShowWithDir(beadsID, dir)
+					if err == nil && issue != nil {
+						mu.Lock()
+						// Store by the original ID passed in, so callers can find their result
+						result[beadsID] = &Issue{
+							ID:          issue.ID,
+							Title:       issue.Title,
+							Description: issue.Description,
+							Status:      issue.Status,
+							IssueType:   issue.IssueType,
+							CloseReason: issue.CloseReason,
+						}
+						mu.Unlock()
+					}
+				}(id, effectiveDir)
+			}
+		}
 	}
 
 	wg.Wait()
