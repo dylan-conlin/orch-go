@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Tiered stuck agent recovery was 95% implemented but not integrated - added RunPeriodicRecovery to daemon loop and fixed NewWithPool initialization.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Code review found all recovery infrastructure (ShouldRunRecovery, RunPeriodicRecovery, GetActiveAgents, ResumeAgentByBeadsID) existed but wasn't called in daemon loop. Changes: (1) Added recovery call in cmd/orch/daemon.go:310-345, (2) Initialize resumeAttempts in NewWithPool, (3) Add recovery status to startup output.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Recovery infrastructure can be complete but unused if not integrated into execution loop. The daemon loop pattern (reflection, cleanup, recovery, completion) requires explicit integration at each periodic operation.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close - recovery is integrated, committed, and will run in daemon. Monitor daemon logs for "Recovery:" messages to verify it works in production.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - Implementation detail, not architectural choice.
 
 <!--
 Example D.E.K.N.:
@@ -41,10 +41,10 @@ Guidelines:
 
 **Started:** 2026-01-17
 **Updated:** 2026-01-17
-**Owner:** Agent og-feat-implement-tiered-stuck-17jan-9296
-**Phase:** Implementing
-**Next Step:** Add recovery tracking infrastructure to daemon
-**Status:** In Progress
+**Owner:** Agent og-feat-implement-tiered-stuck-17jan-41c0
+**Phase:** Complete
+**Next Step:** None - recovery is integrated and committed
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
