@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** The spawn-to-value ratio is 86.7% at completion level and 81.2% for artifact production, contradicting the "spawn 50, get 10" hypothesis; however, abandonment jumped from 4.4% to 21.0% in January 2026 (4.8x increase), signaling a system health concern.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Analyzed 2,150 spawns via events.jsonl (86.7% completion rate), 947 investigation files (81.2% have synthesis), 2,098 beads issues (98.1% closed), and 2,187 git commits (22.3% reference beads); temporal analysis shows Dec 2025 had 4.4% abandonment vs Jan 2026 at 21.0%.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** "Lasting value" has three levels - completion (86.7%), artifact production (81.2%), and code changes (23.7%); most value is knowledge work rather than implementation; sharp abandonment increases indicate system degradation requiring investigation, not just higher difficulty.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Investigate January abandonment spike (spawn context quality, model changes, or prompt degradation); add telemetry dashboard for real-time spawn health monitoring; improve daemon adoption from 30% through better triage labeling.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (operational analysis informing system improvements, not architectural constraint)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-17
 **Updated:** 2026-01-17
 **Owner:** Agent og-feat-analyze-spawn-value-17jan-2be7
-**Phase:** Synthesizing
-**Next Step:** Complete analysis and produce recommendations
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** Close investigation and create follow-up issue for January abandonment spike investigation
+**Status:** Complete
 
 ---
 
@@ -209,21 +209,27 @@ The system is healthy for knowledge work but shows lower execution-to-code ratio
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Completion rate of 86.7% verified via events.jsonl analysis (jq queries on 2,150 spawn events and 1,865 completion events)
+- ✅ Artifact production rate of 81.2% verified via filesystem search (grep -l "## Synthesis" across 947 investigation files)
+- ✅ Beads closure rate of 98.1% verified via bd stats command (2,059 closed / 2,098 total)
+- ✅ Git commit linkage of 22.3% verified via git log analysis (488 commits with "orch-go-" pattern / 2,187 total since Dec 1)
+- ✅ Abandonment increase verified via temporal jq analysis (53 Dec abandonments / 1,194 Dec spawns vs 201 Jan abandonments / 956 Jan spawns)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Root cause of January abandonment spike (hypothesized as context quality, model changes, or prompt degradation - not verified)
+- ⚠️ Whether archived investigations (11.8%) correlate with abandoned agents (causation not tested, only rates match)
+- ⚠️ Impact of daemon vs manual spawning on completion rate (not stratified by spawn source)
+- ⚠️ Definition of "lasting value" beyond quantitative metrics (qualitative assessment not performed)
+- ⚠️ Whether the 23.7% code commit ratio is appropriate for this system's purpose (no baseline comparison)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- January abandonment hypothesis would be falsified if analysis of abandoned agent logs shows different failure patterns (e.g., all timeout-related)
+- Archive-abandonment correlation would be disproven if timestamps show archives precede abandonment tracking (Dec 20 start date)
+- Daemon spawn performance would be proven different if stratified analysis shows significant completion rate variance by spawn source
+- "Lasting value" definition would shift if orchestrator feedback indicates knowledge artifacts have low reuse rate
+- Code commit ratio would be concerning if similar systems show 50%+ commit rates (need external benchmarks)
 
 ---
 
@@ -233,96 +239,158 @@ The system is healthy for knowledge work but shows lower execution-to-code ratio
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Abandonment Spike Investigation First** - Create investigation to diagnose January abandonment spike before implementing systemic changes.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- January abandonment jumped 4.8x (4.4% → 21.0%), indicating acute degradation not baseline inefficiency (Finding 5)
+- High baseline completion rate (86.7%) proves system fundamentals work; recent change broke something specific
+- Root cause analysis prevents implementing wrong solution (e.g., improving triage won't fix model degradation)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Defers broader system improvements (daemon adoption, telemetry dashboard) until root cause known
+- Why acceptable: Fixing acute problem first prevents masking symptoms with dashboard improvements
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Investigate abandonment spike** - Analyze abandoned agent logs from Jan 2026, compare to Dec 2025 baseline; identify common failure patterns (context gaps, model errors, timeout patterns)
+2. **Fix root cause** - Implement targeted fix based on investigation (e.g., improve spawn context quality, adjust model selection, fix prompt degradation)
+3. **Add telemetry dashboard** - Build real-time spawn health monitoring to catch future degradation early (abandonment rate, completion time trends, artifact production)
+4. **Improve daemon adoption** - Focus on triage labeling discipline and skill inference quality to increase from 30% daemon spawns
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Build telemetry dashboard first**
+- **Pros:** Provides observability for all future work, catches degradation early
+- **Cons:** Doesn't fix the acute January abandonment spike; dashboard shows problem but doesn't solve it (Finding 5)
+- **When to use instead:** If abandonment spike investigation shows no actionable root cause (i.e., it's just harder problems)
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Focus on daemon adoption immediately**
+- **Pros:** Could increase throughput from 30% to higher autonomous operation
+- **Cons:** Doesn't address quality issue (abandonment spike); automating broken spawning process just produces more abandonments (Finding 7)
+- **When to use instead:** After abandonment spike is resolved and spawn quality is stable
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** The 4.8x abandonment increase is an acute system health issue requiring immediate diagnosis, not a chronic optimization opportunity. The high baseline completion rate (86.7%) proves the system works; something specific broke in January. Fix that first, then optimize.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Abandonment log analysis tool: Parse abandoned agent workspace artifacts to extract failure patterns (context gaps, errors, blocks)
+- Temporal comparison: Compare Dec 2025 vs Jan 2026 abandoned agent characteristics (skill type, spawn source, duration before abandonment)
+- Context quality metrics: Measure SPAWN_CONTEXT.md completeness, kb context depth, prior knowledge availability for abandoned vs completed agents
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Telemetry gaps: events.jsonl doesn't capture *why* agents were abandoned, only *that* they were (need workspace artifact analysis)
+- ⚠️ Confounding variables: January might have harder problems, not worse spawns (need qualitative assessment of issue difficulty)
+- ⚠️ Selection bias: Archived investigations (11.8%) might not correlate with abandonments if archiving happens for other reasons
+- ⚠️ Definition drift: "Lasting value" means different things at different levels (completion, artifacts, commits); choose metric based on system purpose
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Why does daemon adoption remain low at 30%? (triage labeling discipline, trust issues, skill inference quality)
+- What's the reuse rate of knowledge artifacts (investigations, decisions)? Are 81.2% synthesis sections actually referenced later?
+- Does spawn source (daemon vs manual) correlate with completion rate? Could inform automation strategy.
+- What's the optimal code-to-knowledge ratio for this system? 23.7% commits seems low, but is that appropriate for orchestration-focused system?
+- Model performance stratification: Do certain models have higher abandonment rates? (requires orch-go-x67lc telemetry data)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Abandonment rate returns to ≤5% baseline (Dec 2025 level)
+- ✅ Root cause identified and validated (can reproduce abandonment pattern in controlled test)
+- ✅ Telemetry dashboard shows real-time spawn health metrics (completion rate, abandonment rate, artifact production over time)
+- ✅ Daemon adoption increases to ≥50% without increasing abandonment rate (proves triage quality improved)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `~/.orch/events.jsonl` - Event telemetry log with 7,442 lines covering spawn/complete/abandon events
+- `.beads/` database - Issue tracking data via bd stats command
+- `.kb/investigations/` directory - 947 investigation files analyzed for completion and synthesis rates
+- `.kb/investigations/archived/` directory - 112 archived investigations analyzed for archive patterns
+- `.orch/workspace/` directory - 322 SYNTHESIS.md artifacts counted for full-tier completion verification
+- Git history - 2,187 commits since Dec 1, 2025 analyzed for beads issue linkage
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Count spawn events
+jq -r '.type' ~/.orch/events.jsonl | grep "session.spawned" | wc -l
+# Result: 2,150
 
-# [Command description]
-[command]
+# Count completion events
+jq -r '.type' ~/.orch/events.jsonl | grep "agent.completed" | wc -l
+# Result: 1,865
+
+# Count abandonment events
+jq -r '.type' ~/.orch/events.jsonl | grep "agent.abandoned" | wc -l
+# Result: 254
+
+# Event type frequency
+jq -r '.type' ~/.orch/events.jsonl | sort | uniq -c | sort -rn
+
+# Beads statistics
+bd stats
+# Result: 2,098 total, 2,059 closed, 36 open, 3 in progress
+
+# Investigation file counts
+find .kb/investigations -name "*.md" | wc -l
+# Result: 947
+
+# Investigations with synthesis
+grep -l "## Synthesis" .kb/investigations/*.md | wc -l
+# Result: 769
+
+# Investigations with Status: Complete
+grep -l "Status: Complete" .kb/investigations/*.md | wc -l
+# Result: 601
+
+# SYNTHESIS.md artifacts in workspaces
+find .orch/workspace -name "SYNTHESIS.md" | wc -l
+# Result: 322
+
+# Git commits since Dec 1
+git log --all --oneline --since="2025-12-01" | wc -l
+# Result: 2,187
+
+# Commits referencing beads
+git log --all --grep="orch-go-" --oneline | wc -l
+# Result: 488
+
+# Archived investigations
+find .kb/investigations/archived -name "*.md" -type f | wc -l
+# Result: 112
+
+# Daemon spawn events
+jq -r '.type' ~/.orch/events.jsonl | grep "daemon.spawn" | wc -l
+# Result: 646
+
+# Manual (triage-bypassed) spawn events
+jq -r '.type' ~/.orch/events.jsonl | grep "spawn.triage_bypassed" | wc -l
+# Result: 586
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- N/A (internal telemetry analysis)
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-17-inv-add-spawn-telemetry-model-performance.md` - Telemetry system design feeding this analysis
+- **Issue:** `orch-go-x67lc` - Completed telemetry implementation providing events.jsonl data source
+- **Issue:** `orch-go-4tven.4` - This investigation's tracking issue
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-17 (earlier agent):** Investigation started
+- Initial question: What's the ratio of spawns to actual lasting value?
+- Context: Hypothesis that system might spawn 50 agents/week but only 10 produce lasting value, indicating wrong granularity, premature spawning, or model mismatch
+- Previous agent collected findings 1-7 and synthesized key insights
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-17 (current agent):** Investigation synthesis phase
+- Completed D.E.K.N. summary: Spawn-to-value ratio is 86.7% at completion, 81.2% for artifacts, contradicting "spawn 50, get 10" hypothesis
+- Completed structured uncertainty section: Separated tested claims from untested hypotheses
+- Completed implementation recommendations: Prioritized abandonment spike investigation over broader improvements
+- Added detailed references and commands run
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-17 (current):** Investigation completed
+- Status: Complete
+- Key outcome: System shows healthy spawn-to-value ratios (86.7% completion, 81.2% artifacts) but January abandonment spike (4.4% → 21.0%) indicates acute system degradation requiring immediate investigation
