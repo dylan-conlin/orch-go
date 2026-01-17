@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-debug-fix-detectworkersession-caching-17jan-cb26",
+  "skill": "systematic-debugging",
+  "beads_id": "orch-go-hflo3",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f39928d5550165e3307db04b9ffe25a6833342b1",
+  "spawn_time": "2026-01-17T10:39:07-08:00",
+  "tier": "full",
+  "spawn_mode": "claude"
+}

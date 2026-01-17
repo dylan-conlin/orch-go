@@ -175,6 +175,16 @@ type Config struct {
 
 	// SpawnMode specifies the spawn backend: "opencode" or "claude"
 	SpawnMode string
+
+	// Design handoff fields (for ui-design-session → feature-impl handoff)
+	// DesignWorkspace is the workspace name from a prior ui-design-session spawn
+	DesignWorkspace string
+	// DesignMockupPath is the path to the approved mockup screenshot
+	DesignMockupPath string
+	// DesignPromptPath is the path to the prompt that generated the mockup
+	DesignPromptPath string
+	// DesignNotes are notes from the design session SYNTHESIS.md
+	DesignNotes string
 }
 
 // UsageInfo contains account usage data at spawn time.

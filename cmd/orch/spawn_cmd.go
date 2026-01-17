@@ -65,6 +65,7 @@ var (
 	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
 	spawnForce             bool   // Force spawn even if issue has blocking dependencies
 	spawnBypassTriage      bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
+	spawnDesignWorkspace   string // Design workspace name for ui-design-session → feature-impl handoff
 )
 
 var spawnCmd = &cobra.Command{
@@ -190,6 +191,7 @@ func init() {
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
+	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
 }
 
 var (
