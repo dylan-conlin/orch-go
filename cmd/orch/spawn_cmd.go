@@ -24,6 +24,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/agent"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
+	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -449,7 +450,16 @@ func checkConcurrencyLimit() error {
 	// This prevents ghost agents from blocking new spawns
 	now := time.Now()
 	activeThreshold := 10 * time.Minute // Threshold for determining "running" vs "idle"
-	activeCount := 0
+
+	// Phase 1: Collect all beads IDs and session data for batch processing
+	type sessionData struct {
+		beadsID   string
+		updatedAt time.Time
+		status    string
+	}
+	var sessionList []sessionData
+	var beadsIDs []string
+
 	for _, s := range sessions {
 		// Only count sessions with parseable beadsID (orch-spawned agents)
 		beadsID := extractBeadsIDFromTitle(s.Title)
@@ -464,14 +474,35 @@ func checkConcurrencyLimit() error {
 			status = "running"
 		}
 
+		sessionList = append(sessionList, sessionData{
+			beadsID:   beadsID,
+			updatedAt: updatedAt,
+			status:    status,
+		})
+		beadsIDs = append(beadsIDs, beadsID)
+	}
+
+	// Phase 2: Batch check which beads issues are closed
+	// This prevents counting agents whose work is already complete
+	// (issue closed) but whose OpenCode session is still lingering
+	closedIssues := daemon.GetClosedIssuesBatch(beadsIDs)
+
+	// Phase 3: Count active agents, excluding closed issues
+	activeCount := 0
+	for _, sd := range sessionList {
+		// Skip sessions whose beads issues are closed
+		if closedIssues[sd.beadsID] {
+			continue
+		}
+
 		// Get phase from beads comments
 		phase := ""
-		if isComplete, _ := verify.IsPhaseComplete(beadsID); isComplete {
+		if isComplete, _ := verify.IsPhaseComplete(sd.beadsID); isComplete {
 			phase = "Complete"
 		}
 
 		// Use IsActiveForConcurrency to determine if this agent counts
-		if agent.IsActiveForConcurrency(status, updatedAt, phase) {
+		if agent.IsActiveForConcurrency(sd.status, sd.updatedAt, phase) {
 			activeCount++
 		}
 	}
