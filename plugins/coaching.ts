@@ -429,11 +429,15 @@ interface VariationState {
 }
 
 /**
- * Dylan pattern tracking state for Phase 3.5.
+ * Phase 3.5: Dylan pattern tracking state for Phase 3.5.
  */
 interface DylanPatternState {
   priorityUncertaintyCount: number // Count of "what's next?" type questions
   compensationKeywords: string[] // Keywords from Dylan's provided context
+  premiseSkippingCount: number // Count of "how to X" questions that skip premise validation
+  premiseSkippingWarningInjected: boolean // Have we warned about premise-skipping yet?
+  premiseSkippingStrongWarningInjected: boolean // Have we warned strongly (2nd+ occurrence)?
+  recentQuestions: string[] // Last 5 user questions for pattern tracking
 }
 
 /**
@@ -663,7 +667,7 @@ async function flushMetrics(state: SessionState, client: any): Promise<void> {
 async function injectCoachingMessage(
   client: any,
   sessionId: string,
-  patternType: "action_ratio" | "analysis_paralysis" | "frame_collapse" | "frame_collapse_strong",
+  patternType: "action_ratio" | "analysis_paralysis" | "frame_collapse" | "frame_collapse_strong" | "premise_skipping" | "premise_skipping_strong",
   details: any
 ): Promise<void> {
   try {
@@ -710,6 +714,34 @@ You've now made **${details.count} code file edits** in this session.
 3. If struggling with spawn strategy, consider \`--mcp playwright\` for UI work
 
 **Why this matters:** Frame collapse wastes orchestrator capacity and bypasses quality gates (worker verification, beads tracking).`
+    } else if (patternType === "premise_skipping") {
+      message = `## 💭 Premise Validation Reminder
+
+Your question: "${details.question.substring(0, 150)}${details.question.length > 150 ? "..." : ""}"
+
+**Observation:** This question assumes a strategic direction ("${details.verb}") without first validating the premise.
+
+**Consider:** Before asking "How do we ${details.verb}?", ask "**Should** we ${details.verb}?"
+
+**Why this matters:** Strategic questions benefit from premise validation first. The Dec 2025 "evolve skills" epic was created from an unvalidated premise and had to be paused when architect review found the premise was wrong. Validating direction before designing solutions avoids wasted work.
+
+**Suggested next step:** Spawn an investigation or architect session to validate the premise first.`
+    } else if (patternType === "premise_skipping_strong") {
+      message = `## ⚠️ Repeated Premise-Skipping Pattern
+
+You've now asked **${details.count} "how to" questions** without premise validation.
+
+**Recent questions:**
+${details.recentQuestions.slice(-3).map((q: string) => `- "${q.substring(0, 100)}..."`).join("\n")}
+
+**Pattern:** Jumping to implementation ("how to ${details.verb}") before validating strategic direction ("should we?").
+
+**Required Action:**
+1. **PAUSE** - Before proceeding with implementation questions
+2. **VALIDATE** - Ask "Should we do this?" or spawn architect/investigation
+3. **THEN PROCEED** - After premise is validated, ask "how to" questions
+
+**Why this matters:** From CLAUDE.md constraint: "Ask 'should we' before 'how do we' for strategic direction changes." The orch-go-erdw epic failure demonstrates the cost of skipping this step.`
     }
 
     // Inject using noReply:true pattern
@@ -926,6 +958,62 @@ function detectPriorityUncertainty(text: string): boolean {
   ]
 
   return patterns.some((pattern) => lowerText.includes(pattern))
+}
+
+/**
+ * Detect premise-skipping question patterns.
+ * Returns {matched: true, verb, extracted} if question assumes strategic direction without premise validation.
+ * Example: "How do we migrate to X?" → suggests asking "Should we migrate to X?" first
+ */
+function detectPremiseSkipping(text: string): { matched: boolean; verb?: string; extracted?: string } | null {
+  const lowerText = text.toLowerCase()
+
+  // Red-flag strategic verbs that indicate direction changes
+  const strategicVerbs = [
+    "migrate",
+    "evolve",
+    "fix",
+    "centralize",
+    "transition",
+    "implement",
+    "solve",
+    "change",
+    "shift",
+    "move",
+    "refactor",
+    "rewrite",
+    "rebuild",
+  ]
+
+  // Implementation-focused phrasing patterns
+  // Match "how to X", "how do we X", "how should we X", "how can we X"
+  const howPatterns = [
+    /how\s+(?:to|do\s+we|should\s+we|can\s+we)\s+(\w+)/gi,
+  ]
+
+  for (const pattern of howPatterns) {
+    const matches = lowerText.matchAll(pattern)
+    for (const match of matches) {
+      const verb = match[1]
+      
+      // Check if verb is a strategic direction verb
+      if (strategicVerbs.includes(verb)) {
+        // Additional check: Skip if this is a tactical "I" question (personal pronoun)
+        // "How do I migrate this database?" (tactical) vs "How do we migrate to microservices?" (strategic)
+        if (lowerText.includes(" i ") || lowerText.includes("my ")) {
+          continue // Skip tactical questions
+        }
+
+        return {
+          matched: true,
+          verb,
+          extracted: match[0],
+        }
+      }
+    }
+  }
+
+  return null
 }
 
 /**
@@ -1321,6 +1409,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           dylan: {
             priorityUncertaintyCount: 0,
             compensationKeywords: [],
+            premiseSkippingCount: 0,
+            premiseSkippingWarningInjected: false,
+            premiseSkippingStrongWarningInjected: false,
+            recentQuestions: [],
           },
           frameCollapse: {
             codeEditCount: 0,
@@ -1419,6 +1511,62 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           state.dylan.compensationKeywords = state.dylan.compensationKeywords.slice(-100)
         }
       }
+
+      // Pattern 4: Premise-Skipping Detection
+      // Track recent questions for pattern analysis
+      state.dylan.recentQuestions.push(text)
+      if (state.dylan.recentQuestions.length > 5) {
+        state.dylan.recentQuestions.shift() // Keep last 5
+      }
+
+      const premiseSkipResult = detectPremiseSkipping(text)
+      if (premiseSkipResult?.matched) {
+        state.dylan.premiseSkippingCount++
+
+        const metric = {
+          timestamp: new Date().toISOString(),
+          session_id: sessionId,
+          metric_type: "premise_skipping",
+          value: state.dylan.premiseSkippingCount,
+          details: {
+            question: text.substring(0, 500),
+            verb: premiseSkipResult.verb,
+            extracted_pattern: premiseSkipResult.extracted,
+            recent_questions: state.dylan.recentQuestions,
+          },
+        }
+
+        writeMetric(metric)
+        log(`⚠️ PREMISE-SKIPPING DETECTED: "${premiseSkipResult.extracted}" (verb: ${premiseSkipResult.verb})`)
+
+        // Graduated coaching: first detection → suggestion, 2nd+ → stronger reminder
+        if (!state.dylan.premiseSkippingWarningInjected) {
+          // First detection - gentle suggestion
+          await injectCoachingMessage(client, sessionId, "premise_skipping", {
+            question: text.substring(0, 200),
+            verb: premiseSkipResult.verb,
+            extracted: premiseSkipResult.extracted,
+          })
+          state.dylan.premiseSkippingWarningInjected = true
+        } else if (
+          state.dylan.premiseSkippingCount >= 2 &&
+          !state.dylan.premiseSkippingStrongWarningInjected
+        ) {
+          // 2nd+ detection - stronger reminder
+          await injectCoachingMessage(client, sessionId, "premise_skipping_strong", {
+            question: text.substring(0, 200),
+            verb: premiseSkipResult.verb,
+            count: state.dylan.premiseSkippingCount,
+            recentQuestions: state.dylan.recentQuestions,
+          })
+          state.dylan.premiseSkippingStrongWarningInjected = true
+        }
+
+        // Stream to coach
+        streamToCoach(client, sessionId, metric, {
+          recentCommands: state.dylan.recentQuestions,
+        })
+      }
     },
 
     /**
@@ -1481,6 +1629,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
           dylan: {
             priorityUncertaintyCount: 0,
             compensationKeywords: [],
+            premiseSkippingCount: 0,
+            premiseSkippingWarningInjected: false,
+            premiseSkippingStrongWarningInjected: false,
+            recentQuestions: [],
           },
           frameCollapse: {
             codeEditCount: 0,
