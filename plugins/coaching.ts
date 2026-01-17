@@ -437,6 +437,80 @@ interface DylanPatternState {
 }
 
 /**
+ * Frame collapse tracking state for orchestrator code edit detection.
+ * Frame collapse = orchestrator editing code files instead of delegating to workers.
+ */
+interface FrameCollapseState {
+  codeEditCount: number // Cumulative code file edits
+  lastCodeEditPath: string | null // Most recent code file edited
+  warningInjected: boolean // Have we warned yet?
+  strongWarningInjected: boolean // Have we strongly warned yet?
+}
+
+/**
+ * Determine if a file path represents code (vs orchestration artifact).
+ * Returns true if editing this file indicates frame collapse.
+ */
+function isCodeFile(filePath: string): boolean {
+  if (!filePath) return false
+
+  const lowerPath = filePath.toLowerCase()
+
+  // Orchestration directories - ALLOWED for orchestrators
+  const orchestrationPaths = [
+    "/.orch/",
+    "/.kb/",
+    "/.beads/",
+    "/skills/",
+    "/plugins/",
+    "claude.md",
+    "skill.md",
+    "readme.md",
+    "spawn_context.md",
+    "synthesis.md",
+    "session_handoff.md",
+    "workspace.md",
+  ]
+
+  for (const orchPath of orchestrationPaths) {
+    if (lowerPath.includes(orchPath)) {
+      return false // Orchestration artifact, not code
+    }
+  }
+
+  // Code file extensions - frame collapse indicators
+  const codeExtensions = [
+    ".go",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".css",
+    ".scss",
+    ".less",
+    ".sass",
+    ".py",
+    ".rb",
+    ".java",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".h",
+    ".html",
+    ".vue",
+    ".svelte",
+  ]
+
+  for (const ext of codeExtensions) {
+    if (lowerPath.endsWith(ext)) {
+      return true // Code file
+    }
+  }
+
+  return false // Unknown file type, not flagged
+}
+
+/**
  * Session state tracker.
  */
 interface SessionState {
@@ -451,6 +525,8 @@ interface SessionState {
   variation: VariationState
   // Phase 3.5: Dylan pattern detection
   dylan: DylanPatternState
+  // Frame collapse detection: orchestrator editing code files
+  frameCollapse: FrameCollapseState
 }
 
 /**
@@ -569,7 +645,7 @@ async function flushMetrics(state: SessionState, client: any): Promise<void> {
 async function injectCoachingMessage(
   client: any,
   sessionId: string,
-  patternType: "action_ratio" | "analysis_paralysis",
+  patternType: "action_ratio" | "analysis_paralysis" | "frame_collapse" | "frame_collapse_strong",
   details: any
 ): Promise<void> {
   try {
@@ -591,6 +667,31 @@ Tool repetition sequence detected: **${details.sequence} consecutive uses** of t
 **Observation:** Repeated tool use without progress suggests stuck pattern.
 
 **Consider:** Stepping back to reassess approach, or spawning an agent to handle the investigation.`
+    } else if (patternType === "frame_collapse") {
+      message = `## ⚠️ Frame Collapse Warning
+
+You've edited a code file: \`${details.filePath}\`
+
+**Observation:** Orchestrators delegate implementation to workers. Editing code files directly indicates potential frame collapse.
+
+**Consider:**
+1. Is this work you should have spawned to a worker?
+2. If an agent already failed, try different parameters (skill, model, --mcp)`
+    } else if (patternType === "frame_collapse_strong") {
+      message = `## 🚨 Frame Collapse - Multiple Code Edits
+
+You've now made **${details.count} code file edits** in this session.
+
+**Last edited:** \`${details.filePath}\`
+
+**This is a clear frame collapse pattern.** Orchestrators should delegate, not implement.
+
+**Required Action:**
+1. **STOP** editing code files
+2. Spawn a worker with \`orch spawn feature-impl "your task" --issue BEADS-ID\`
+3. If struggling with spawn strategy, consider \`--mcp playwright\` for UI work
+
+**Why this matters:** Frame collapse wastes orchestrator capacity and bypasses quality gates (worker verification, beads tracking).`
     }
 
     // Inject using noReply:true pattern (from agentlog-inject.ts)
@@ -997,6 +1098,12 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             priorityUncertaintyCount: 0,
             compensationKeywords: [],
           },
+          frameCollapse: {
+            codeEditCount: 0,
+            lastCodeEditPath: null,
+            warningInjected: false,
+            strongWarningInjected: false,
+          },
         }
         sessions.set(sessionId, state)
         log("Created session state for Dylan patterns:", sessionId)
@@ -1126,6 +1233,12 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
             priorityUncertaintyCount: 0,
             compensationKeywords: [],
           },
+          frameCollapse: {
+            codeEditCount: 0,
+            lastCodeEditPath: null,
+            warningInjected: false,
+            strongWarningInjected: false,
+          },
         }
         sessions.set(sessionId, state)
         log("Created session state:", sessionId)
@@ -1144,6 +1257,54 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       if (TOOL_CATEGORIES.action.includes(tool)) {
         state.actions++
+      }
+
+      // Frame Collapse Detection: Track edit/write on code files
+      // Only triggers for orchestrator sessions (NOT worker sessions - already filtered above)
+      if (tool === "edit" || tool === "write") {
+        const filePath = (input as any).args?.file_path || (input as any).args?.filePath || ""
+
+        if (isCodeFile(filePath)) {
+          state.frameCollapse.codeEditCount++
+          state.frameCollapse.lastCodeEditPath = filePath
+
+          log(`⚠️ FRAME COLLAPSE: Code file edit detected: ${filePath} (count: ${state.frameCollapse.codeEditCount})`)
+
+          // Write metric for tracking
+          const metric = {
+            timestamp: new Date().toISOString(),
+            session_id: state.sessionId,
+            metric_type: "frame_collapse",
+            value: state.frameCollapse.codeEditCount,
+            details: {
+              filePath,
+              totalEdits: state.frameCollapse.codeEditCount,
+            },
+          }
+          writeMetric(metric)
+
+          // Tiered injection: first warning, then strong warning at 3+
+          if (state.frameCollapse.codeEditCount === 1 && !state.frameCollapse.warningInjected) {
+            // First code edit - warning
+            injectCoachingMessage(client, state.sessionId, "frame_collapse", { filePath })
+            state.frameCollapse.warningInjected = true
+          } else if (
+            state.frameCollapse.codeEditCount >= 3 &&
+            !state.frameCollapse.strongWarningInjected
+          ) {
+            // 3+ code edits - strong warning
+            injectCoachingMessage(client, state.sessionId, "frame_collapse_strong", {
+              filePath,
+              count: state.frameCollapse.codeEditCount,
+            })
+            state.frameCollapse.strongWarningInjected = true
+          }
+
+          // Stream to coach session for investigation
+          streamToCoach(client, sessionId, metric, {
+            recentCommands: state.toolWindow.slice(-5),
+          })
+        }
       }
 
       // Special handling for bash commands
