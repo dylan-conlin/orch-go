@@ -1063,6 +1063,103 @@ type FileAPIResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// ScreenshotsAPIResponse is the JSON structure returned by /api/screenshots.
+type ScreenshotsAPIResponse struct {
+	AgentID     string   `json:"agent_id"`
+	Screenshots []string `json:"screenshots"` // Filenames only (not full paths)
+	Error       string   `json:"error,omitempty"`
+}
+
+// handleScreenshots returns a list of screenshot filenames for a given agent.
+// Query parameters:
+//   - agent_id: Agent ID to fetch screenshots for (required)
+//   - project_dir: Project directory (required)
+//
+// Security: Only lists files in {project_dir}/.orch/workspace/{agent_id}/screenshots/
+// Returns filenames only (not full paths) to prevent path traversal.
+func handleScreenshots(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID := r.URL.Query().Get("agent_id")
+	projectDir := r.URL.Query().Get("project_dir")
+
+	if agentID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ScreenshotsAPIResponse{
+			Error: "agent_id query parameter is required",
+		})
+		return
+	}
+
+	if projectDir == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ScreenshotsAPIResponse{
+			AgentID: agentID,
+			Error:   "project_dir query parameter is required",
+		})
+		return
+	}
+
+	// Construct workspace path: {project_dir}/.orch/workspace/{agent_id}
+	workspacePath := filepath.Join(projectDir, ".orch", "workspace", agentID)
+
+	// Build screenshots directory path
+	screenshotsDir := filepath.Join(workspacePath, "screenshots")
+
+	// Check if screenshots directory exists
+	info, err := os.Stat(screenshotsDir)
+	if err != nil || !info.IsDir() {
+		// Directory doesn't exist - return empty list (not an error)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ScreenshotsAPIResponse{
+			AgentID:     agentID,
+			Screenshots: []string{},
+		})
+		return
+	}
+
+	// Read directory contents
+	entries, err := os.ReadDir(screenshotsDir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ScreenshotsAPIResponse{
+			AgentID: agentID,
+			Error:   fmt.Sprintf("failed to read screenshots directory: %v", err),
+		})
+		return
+	}
+
+	// Filter to image files only and collect filenames
+	screenshots := make([]string, 0)
+	imageExtensions := map[string]bool{
+		".png":  true,
+		".jpg":  true,
+		".jpeg": true,
+		".gif":  true,
+		".webp": true,
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if imageExtensions[ext] {
+			screenshots = append(screenshots, entry.Name())
+		}
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ScreenshotsAPIResponse{
+		AgentID:     agentID,
+		Screenshots: screenshots,
+	})
+}
+
 // handleFile returns the contents of a file at the specified path.
 // Query parameters:
 //   - path: Absolute path to the file (required)

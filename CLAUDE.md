@@ -120,11 +120,21 @@ These guides synthesize 280+ investigations into authoritative references. Creat
 
 ## Dashboard Server Management
 
-**Dev environment (Mac):** Use overmind for service management. Start with `overmind start -D`, check status with `overmind status`.
+**Always use `orch-dashboard` script** - handles orphan cleanup, stale sockets, and proper startup:
+
+```bash
+orch-dashboard start    # Start all services (kills orphans first)
+orch-dashboard stop     # Stop all services
+orch-dashboard restart  # Full restart with cleanup
+orch-dashboard status   # Check service status
+orch-dashboard logs     # View service logs (overmind echo)
+```
 
 **Service ports:** OpenCode (4096), orch serve (3348), Web UI (5188)
 
-**Troubleshooting:** See `.kb/guides/dev-environment-setup.md` for detailed commands and troubleshooting.
+**Dashboard URL:** http://localhost:5188
+
+**Why not raw overmind?** Direct `overmind start` can fail silently when orphan processes hold ports or stale sockets exist. The `orch-dashboard` script handles these edge cases.
 
 **Production:** Future VPS deployment will use systemd. See `.kb/decisions/2026-01-10-dev-vs-prod-architecture.md`.
 

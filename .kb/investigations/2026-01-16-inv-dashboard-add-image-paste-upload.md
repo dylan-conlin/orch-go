@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Implemented tool result preview with expand/collapse (first 3 lines + click/ctrl+o to expand) in activity tab.
+**Delta:** [What was discovered/answered - the key finding in one sentence]
 
-**Evidence:** SSE events contain tool output at part.state.output; build succeeded; keyboard shortcut and truncation logic working.
+**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
 
-**Knowledge:** Per-event expand/collapse state requires Map keyed by event.id; Svelte 5 requires consistent onclick syntax.
+**Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** Close after orchestrator visual verification with real agent activity showing tool results.
+**Next:** [Recommended action - close, implement, investigate further, or escalate]
 
-**Promote to Decision:** recommend-no (tactical UI feature, not architectural pattern)
+**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
 
 <!--
 Example D.E.K.N.:
@@ -35,16 +35,16 @@ Guidelines:
 
 ---
 
-# Investigation: Show Tool Result Preview Expand
+# Investigation: Dashboard Add Image Paste Upload
 
-**Question:** How to display tool result previews with expand/collapse in activity tab?
+**Question:** How should the dashboard support image paste/upload for sending images to agents?
 
 **Started:** 2026-01-16
 **Updated:** 2026-01-16
-**Owner:** Dylan (agent)
-**Phase:** Complete
-**Next Step:** None
-**Status:** Complete
+**Owner:** Worker Agent
+**Phase:** Investigating
+**Next Step:** Complete codebase exploration and move to design phase
+**Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,45 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Tool results available in SSE events but not displayed
+### Finding 1: Dashboard activity tab displays events but has no message input UI
 
-**Evidence:** SSEEvent interface has `part.state?.output` field (string) containing tool results
+**Evidence:** Activity tab (activity-tab.svelte) shows SSE events in a terminal-style feed with filters and auto-scroll, but contains no input field or send functionality. The component is read-only, focused on displaying agent activity.
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/stores/agents.ts:135`
+**Source:** web/src/lib/components/agent-detail/activity-tab.svelte:1-369
 
-**Significance:** Data is available, just needs UI to display it
-
----
-
-### Finding 2: Current activity tab only shows tool name and arguments
-
-**Evidence:** Activity tab displays tool name and arguments using `formatToolCall()` but does not display output
-
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/components/agent-detail/activity-tab.svelte:408-414`
-
-**Significance:** Need to add output display logic to existing tool rendering
+**Significance:** Need to add a message input component to the activity tab UI, likely at the bottom of the panel, to support sending messages (text and images) to active agents.
 
 ---
 
-### Finding 3: Need per-event expand/collapse state
+### Finding 2: OpenCode send API already exists with text-only support
 
-**Evidence:** Multiple tool calls can have results, each needs independent expand/collapse state
+**Evidence:** OpenCode client (pkg/opencode/client.go) has SendMessageAsync() that POSTs to `/session/{sessionID}/prompt_async` with payload structure: `{"parts": [{"type": "text", "text": "..."}], "agent": "build"}`. The orch send command (cmd/orch/send_cmd.go) uses this API to send text messages to sessions.
 
-**Source:** Activity tab renders events in a loop with unique event IDs
+**Source:** 
+- pkg/opencode/client.go:229-263 (SendMessageAsync function)
+- cmd/orch/send_cmd.go:78-114 (sendViaOpenCodeAPI function)
 
-**Significance:** Use Map keyed by event.id to track expanded state per tool call
+**Significance:** The API already supports a "parts" array structure, which is extensible for adding image parts. We'll need to extend both the client library and the dashboard to support `{"type": "image", "data": "base64..."}` parts alongside text parts.
+
+---
+
+### Finding 3: No /api/send endpoint exists in orch serve yet
+
+**Evidence:** Searched serve.go for all API endpoints - found /api/agents, /api/events, /api/approve, /api/issues, etc., but no /api/send or message-sending endpoint. Current send functionality only exists in the CLI command (orch send).
+
+**Source:** cmd/orch/serve.go:259-363 (API endpoint registration)
+
+**Significance:** Need to create a new POST /api/send endpoint in serve.go that accepts session_id and parts (text + images), then calls the OpenCode client's SendMessageAsync with the parts payload.
+
+---
+
+### Finding 4: Dashboard already has image loading pattern via /api/file endpoint
+
+**Evidence:** Screenshots tab loads images from workspace by fetching via /api/file?path=... endpoint, which returns file content (base64-encoded for binary files). Images are displayed using this endpoint as the img src.
+
+**Source:** web/src/lib/components/agent-detail/screenshots-tab.svelte:48-66
+
+**Significance:** For displaying pasted/uploaded images in the activity feed, we can either use data URLs (base64-encoded inline) or save to workspace and use /api/file. Data URLs are simpler for paste/upload preview but increase payload size.
 
 ---
 

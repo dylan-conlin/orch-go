@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Implemented tool result preview with expand/collapse (first 3 lines + click/ctrl+o to expand) in activity tab.
+**Delta:** [What was discovered/answered - the key finding in one sentence]
 
-**Evidence:** SSE events contain tool output at part.state.output; build succeeded; keyboard shortcut and truncation logic working.
+**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
 
-**Knowledge:** Per-event expand/collapse state requires Map keyed by event.id; Svelte 5 requires consistent onclick syntax.
+**Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** Close after orchestrator visual verification with real agent activity showing tool results.
+**Next:** [Recommended action - close, implement, investigate further, or escalate]
 
-**Promote to Decision:** recommend-no (tactical UI feature, not architectural pattern)
+**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
 
 <!--
 Example D.E.K.N.:
@@ -35,16 +35,16 @@ Guidelines:
 
 ---
 
-# Investigation: Show Tool Result Preview Expand
+# Investigation: Persist Activity Feed Completed Agents
 
-**Question:** How to display tool result previews with expand/collapse in activity tab?
+**Question:** How can we persist activity feed events for completed agents so they remain viewable after completion?
 
 **Started:** 2026-01-16
 **Updated:** 2026-01-16
-**Owner:** Dylan (agent)
-**Phase:** Complete
-**Next Step:** None
-**Status:** Complete
+**Owner:** Worker Agent (og-feat-persist-activity-feed-16jan-e582)
+**Phase:** Investigating
+**Next Step:** Explore session-transcript.json usage and test persistence mechanism
+**Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,68 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Tool results available in SSE events but not displayed
+### Finding 1: Activity feed uses hybrid SSE + API architecture
 
-**Evidence:** SSEEvent interface has `part.state?.output` field (string) containing tool results
+**Evidence:** 
+- Real-time events stored in `sseEvents` store (last 1000 events globally across all agents)
+- Historical events fetched via `/api/session/:sessionID/messages` endpoint on-demand
+- `sessionHistory` store caches historical events per session to avoid refetching
+- activity-tab.svelte merges historical + real-time events with deduplication by ID
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/stores/agents.ts:135`
+**Source:** 
+- web/src/lib/components/agent-detail/activity-tab.svelte:42-75
+- web/src/lib/stores/agents.ts:429-518
+- cmd/orch/serve_agents.go:1384-1461
 
-**Significance:** Data is available, just needs UI to display it
-
----
-
-### Finding 2: Current activity tab only shows tool name and arguments
-
-**Evidence:** Activity tab displays tool name and arguments using `formatToolCall()` but does not display output
-
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/components/agent-detail/activity-tab.svelte:408-414`
-
-**Significance:** Need to add output display logic to existing tool rendering
+**Significance:** Activity feed already supports viewing historical events for completed agents IF the session_id exists and the API can fetch messages from OpenCode. The problem is likely data retention, not architecture.
 
 ---
 
-### Finding 3: Need per-event expand/collapse state
+### Finding 2: API endpoint proxies OpenCode session messages
 
-**Evidence:** Multiple tool calls can have results, each needs independent expand/collapse state
+**Evidence:**
+- `handleSessionMessages` function in serve_agents.go proxies OpenCode's `/session/:sessionID/message` API
+- Transforms OpenCode message format to SSE-compatible format for seamless merging with real-time events
+- Returns array of MessagePartResponse (type, properties, timestamp)
 
-**Source:** Activity tab renders events in a loop with unique event IDs
+**Source:** cmd/orch/serve_agents.go:1384-1461
 
-**Significance:** Use Map keyed by event.id to track expanded state per tool call
+**Significance:** The backend already fetches historical messages from OpenCode, so persistence is handled by OpenCode's session message storage, not by orch-go.
+
+---
+
+### Finding 3: Session history store provides per-session caching
+
+**Evidence:**
+- `sessionHistory` store maintains Map<sessionID, SessionHistory>
+- Each SessionHistory has: events[], loading, loaded, error
+- fetchHistory() checks cache first, only fetches if not loaded
+- activity-tab.svelte calls fetchHistory when session changes
+
+**Source:** 
+- web/src/lib/stores/agents.ts:430-518
+- web/src/lib/components/agent-detail/activity-tab.svelte:50-75
+
+**Significance:** Caching prevents redundant API calls, but cache is in-memory only (lost on page refresh). This means completed agents SHOULD show history IF their session_id is valid and OpenCode still has the session data.
+
+---
+
+### Finding 4: Completed agents retain session_ids
+
+**Evidence:**
+- Queried API for completed agents: all have valid session_ids
+- Example: `ses_436eb37f8ffeKiFKydG5O31D9u` (completed agent)
+- API endpoint `/api/session/{sessionID}/messages` returns 106 messages for this completed agent
+- OpenCode API `/session/{sessionID}/message` returns 20 raw messages
+
+**Source:**
+```bash
+curl "https://localhost:3348/api/agents?since=7d" | jq '[.[] | select(.status == "completed")]'
+curl "https://localhost:3348/api/session/ses_436eb37f8ffeKiFKydG5O31D9u/messages" | jq 'length'
+# Returns: 106
+```
+
+**Significance:** The backend can fetch historical messages for completed agents. The issue is not data persistence - it's likely a frontend condition preventing the fetch or display.
 
 ---
 

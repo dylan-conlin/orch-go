@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Implemented tool result preview with expand/collapse (first 3 lines + click/ctrl+o to expand) in activity tab.
+**Delta:** [What was discovered/answered - the key finding in one sentence]
 
-**Evidence:** SSE events contain tool output at part.state.output; build succeeded; keyboard shortcut and truncation logic working.
+**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
 
-**Knowledge:** Per-event expand/collapse state requires Map keyed by event.id; Svelte 5 requires consistent onclick syntax.
+**Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** Close after orchestrator visual verification with real agent activity showing tool results.
+**Next:** [Recommended action - close, implement, investigate further, or escalate]
 
-**Promote to Decision:** recommend-no (tactical UI feature, not architectural pattern)
+**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
 
 <!--
 Example D.E.K.N.:
@@ -35,16 +35,16 @@ Guidelines:
 
 ---
 
-# Investigation: Show Tool Result Preview Expand
+# Investigation: Orch Dashboard Handle Already Running
 
-**Question:** How to display tool result previews with expand/collapse in activity tab?
+**Question:** How should orch-dashboard start handle the case when opencode is already running on port 4096?
 
 **Started:** 2026-01-16
 **Updated:** 2026-01-16
-**Owner:** Dylan (agent)
-**Phase:** Complete
-**Next Step:** None
-**Status:** Complete
+**Owner:** Worker Agent
+**Phase:** Investigating
+**Next Step:** Test reproduction scenario and implement fix
+**Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,43 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Tool results available in SSE events but not displayed
+### Finding 1: orch-dashboard script exists and manages overmind lifecycle
 
-**Evidence:** SSEEvent interface has `part.state?.output` field (string) containing tool results
+**Evidence:** 
+- Script located at `~/bin/orch-dashboard`
+- Current behavior: kills all processes on ports 3348, 5188, 4096 before starting overmind
+- Uses overmind to start services defined in Procfile: api, web, opencode
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/stores/agents.ts:135`
+**Source:** ~/bin/orch-dashboard lines 26-33 (kill_orphans function)
 
-**Significance:** Data is available, just needs UI to display it
-
----
-
-### Finding 2: Current activity tab only shows tool name and arguments
-
-**Evidence:** Activity tab displays tool name and arguments using `formatToolCall()` but does not display output
-
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/components/agent-detail/activity-tab.svelte:408-414`
-
-**Significance:** Need to add output display logic to existing tool rendering
+**Significance:** The current kill_orphans() approach doesn't distinguish between intentional running processes and stale orphans. This causes issues when opencode is deliberately running.
 
 ---
 
-### Finding 3: Need per-event expand/collapse state
+### Finding 2: Procfile defines three services including opencode
 
-**Evidence:** Multiple tool calls can have results, each needs independent expand/collapse state
+**Evidence:**
+```
+api: orch serve
+web: cd web && bun run dev
+opencode: ~/.bun/bin/opencode serve --port 4096
+```
 
-**Source:** Activity tab renders events in a loop with unique event IDs
+**Source:** /Users/dylanconlin/Documents/personal/orch-go/Procfile
 
-**Significance:** Use Map keyed by event.id to track expanded state per tool call
+**Significance:** Overmind will attempt to start all three services. If opencode is already running on 4096, the opencode service will fail to bind, potentially causing overmind to fail.
+
+---
+
+### Finding 3: OpenCode is currently running on port 4096
+
+**Evidence:**
+- Process found: `opencode serve --port 4096` (PID 11294)
+- Port 4096 is actively bound
+
+**Source:** Commands `lsof -ti:4096` and `ps aux | grep opencode`
+
+**Significance:** This provides a real scenario to test the reproduction case and verify the fix.
 
 ---
 

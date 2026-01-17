@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { TabButton, InvestigationTab, ActivityTab, SynthesisTab } from '$lib/components/agent-detail';
+	import { TabButton, InvestigationTab, ActivityTab, SynthesisTab, ScreenshotsTab } from '$lib/components/agent-detail';
 	import { selectedAgent, selectedAgentId } from '$lib/stores/agents';
 	import type { Agent } from '$lib/stores/agents';
 	import { onMount } from 'svelte';
@@ -9,7 +9,7 @@
 	import { browser } from '$app/environment';
 	
 	// Tab types based on agent state
-	type TabType = 'activity' | 'investigation' | 'synthesis';
+	type TabType = 'activity' | 'investigation' | 'synthesis' | 'screenshots';
 	
 	// Active tab state - will be determined by agent status
 	let activeTab: TabType = $state('activity');
@@ -19,13 +19,13 @@
 		if (!agent) return [];
 		switch (agent.status) {
 			case 'active':
-				return ['activity'];
+				return ['activity', 'screenshots'];
 			case 'completed':
-				return ['synthesis', 'investigation'];
+				return ['synthesis', 'investigation', 'screenshots'];
 			case 'abandoned':
-				return ['investigation'];
+				return ['investigation', 'screenshots'];
 			default:
-				return ['activity'];
+				return ['activity', 'screenshots'];
 		}
 	}
 	
@@ -335,6 +335,11 @@
 						Investigation
 					</TabButton>
 				{/if}
+				{#if getVisibleTabs($selectedAgent).includes('screenshots')}
+					<TabButton active={activeTab === 'screenshots'} onclick={() => activeTab = 'screenshots'}>
+						Screenshots
+					</TabButton>
+				{/if}
 			</div>
 		</div>
 
@@ -356,6 +361,13 @@
 			{#if activeTab === 'investigation'}
 				<div class="flex-1 overflow-y-auto p-4">
 					<InvestigationTab agent={$selectedAgent} />
+				</div>
+			{/if}
+
+			<!-- Screenshots Tab (for all agents) -->
+			{#if activeTab === 'screenshots'}
+				<div class="flex-1 overflow-y-auto">
+					<ScreenshotsTab agent={$selectedAgent} />
 				</div>
 			{/if}
 		</div>

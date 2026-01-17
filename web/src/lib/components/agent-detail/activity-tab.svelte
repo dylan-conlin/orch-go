@@ -246,9 +246,76 @@
 	// Use the merged events for display
 	let agentEvents = $derived(mergedEvents());
 
+	// Group related events (tool + step-finish) for nested display
+	// Returns array of groups where each group has:
+	// - primary: The main event to display (tool, text, reasoning, etc.)
+	// - related: Array of related events (step-finish, step-start) to nest under primary
+	type EventGroup = {
+		primary: SSEEvent;
+		related: SSEEvent[];
+	};
+	
+	function groupToolEvents(events: SSEEvent[]): EventGroup[] {
+		const groups: EventGroup[] = [];
+		let i = 0;
+		
+		while (i < events.length) {
+			const event = events[i];
+			const part = event.properties?.part;
+			
+			if (!part) {
+				i++;
+				continue;
+			}
+			
+			// Check if this is a tool event
+			if (part.type === 'tool' || part.type === 'tool-invocation') {
+				const group: EventGroup = {
+					primary: event,
+					related: []
+				};
+				
+				// Look ahead for related step events
+				let j = i + 1;
+				while (j < events.length) {
+					const nextEvent = events[j];
+					const nextPart = nextEvent.properties?.part;
+					
+					// Stop if we hit another tool or text event (start of new group)
+					if (nextPart?.type === 'tool' || nextPart?.type === 'tool-invocation' || nextPart?.type === 'text') {
+						break;
+					}
+					
+					// Include step-start and step-finish as related events
+					if (nextPart?.type === 'step-start' || nextPart?.type === 'step-finish') {
+						group.related.push(nextEvent);
+						j++;
+					} else {
+						break;
+					}
+				}
+				
+				groups.push(group);
+				i = j; // Skip past related events
+			} else {
+				// Non-tool events get their own group (no related events)
+				groups.push({
+					primary: event,
+					related: []
+				});
+				i++;
+			}
+		}
+		
+		return groups;
+	}
+	
+	// Grouped events for rendering
+	let groupedEvents = $derived(groupToolEvents(agentEvents));
+
 	// Auto-scroll to bottom when new events arrive
 	$effect(() => {
-		if (autoScroll && scrollContainer && agentEvents.length > 0) {
+		if (autoScroll && scrollContainer && groupedEvents.length > 0) {
 			tick().then(() => {
 				if (scrollContainer) {
 					scrollContainer.scrollTop = scrollContainer.scrollHeight;
@@ -439,51 +506,72 @@
 		{#if historyLoading && agentEvents.length === 0}
 			<p class="py-4 text-center text-muted-foreground/50">Loading activity history...</p>
 		{:else}
-			{#each agentEvents as event (event.id)}
-				{@const part = event.properties?.part}
+			{#each groupedEvents as group (group.primary.id)}
+				{@const part = group.primary.properties?.part}
 				{#if part}
-					<div class="flex flex-col gap-1 py-0.5">
-						<div class="flex items-start gap-2 text-muted-foreground hover:text-foreground transition-colors">
-							<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
-							{#if part.type === 'tool' || part.type === 'tool-invocation'}
-								{@const toolDisplay = formatToolCall(part)}
+					<!-- Tool events: collapsible group with primary tool call and related step events -->
+					{#if part.type === 'tool' || part.type === 'tool-invocation'}
+						{@const toolDisplay = formatToolCall(part)}
+						{@const isExpanded = expandedResults.get(group.primary.id) || false}
+						{@const hasOutput = part.state?.output}
+						{@const truncated = hasOutput ? truncateOutput(part.state.output, 3) : null}
+						
+						<div class="flex flex-col gap-0.5 py-0.5">
+							<!-- Tool header - clickable to expand/collapse -->
+							<button
+								type="button"
+								onclick={() => toggleExpand(group.primary.id)}
+								onfocus={() => focusedEventId = group.primary.id}
+								onmouseenter={() => focusedEventId = group.primary.id}
+								onmouseleave={() => focusedEventId = null}
+								class="flex items-start gap-2 text-muted-foreground hover:text-foreground transition-colors text-left w-full hover:bg-muted/10 rounded px-1 py-0.5"
+								title="{isExpanded ? 'Click to collapse' : 'Click to expand'} (or Ctrl+O)"
+							>
+								<span class="shrink-0 opacity-60">{isExpanded ? '▼' : '▶'}</span>
 								<span 
 									class="flex-1 break-words leading-relaxed font-mono"
 									title={toolDisplay.full || undefined}
 								>
 									<span class="text-blue-400">{formatToolName(part.tool || 'tool')}</span>{#if toolDisplay.full}<span class="text-muted-foreground/70">({truncate(extractToolArg(part.state?.input), 60)})</span>{/if}
 								</span>
-							{:else}
+							</button>
+							
+							<!-- Expanded content: tool output and related step events -->
+							{#if isExpanded}
+								<div class="ml-6 flex flex-col gap-1">
+									<!-- Tool output -->
+									{#if hasOutput && truncated}
+										<div class="text-xs">
+											<pre class="font-mono text-muted-foreground/80 whitespace-pre-wrap break-words bg-black/10 rounded p-2">{part.state.output}</pre>
+										</div>
+									{/if}
+									
+									<!-- Related step events (step-start, step-finish) -->
+									{#each group.related as relatedEvent}
+										{@const relatedPart = relatedEvent.properties?.part}
+										{#if relatedPart}
+											<div class="flex items-start gap-2 text-muted-foreground/60 text-xs">
+												<span class="shrink-0">{getActivityIcon(relatedPart.type)}</span>
+												<span class="flex-1">
+													{relatedPart.text || relatedPart.state?.title || relatedPart.type}
+												</span>
+											</div>
+										{/if}
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{:else}
+						<!-- Non-tool events: render normally -->
+						<div class="flex flex-col gap-1 py-0.5">
+							<div class="flex items-start gap-2 text-muted-foreground hover:text-foreground transition-colors">
+								<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
 								<span class="flex-1 break-words leading-relaxed">
 									{part.text || part.state?.title || part.type}
 								</span>
-							{/if}
-						</div>
-						
-						<!-- Tool result output -->
-						{#if (part.type === 'tool' || part.type === 'tool-invocation') && part.state?.output}
-							{@const isExpanded = expandedResults.get(event.id) || false}
-							{@const truncated = truncateOutput(part.state.output, 3)}
-							<div class="ml-6 text-xs">
-								<button
-									type="button"
-									onclick={() => toggleExpand(event.id)}
-									onfocus={() => focusedEventId = event.id}
-									onmouseenter={() => focusedEventId = event.id}
-									onmouseleave={() => focusedEventId = null}
-									class="w-full text-left hover:bg-muted/20 rounded p-1 transition-colors focus:ring-1 focus:ring-primary"
-									title="Click to expand/collapse (or Ctrl+O)"
-								>
-									<pre class="font-mono text-muted-foreground/80 whitespace-pre-wrap break-words">{isExpanded ? part.state.output : truncated.preview}</pre>
-									{#if truncated.hasMore}
-										<div class="text-muted-foreground/50 mt-1">
-											{isExpanded ? '▲ Click to collapse' : `▼ ... +${truncated.totalLines - 3} lines (click to expand)`}
-										</div>
-									{/if}
-								</button>
 							</div>
-						{/if}
-					</div>
+						</div>
+					{/if}
 				{/if}
 			{:else}
 				<p class="py-4 text-center text-muted-foreground/50">Waiting for activity...</p>

@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Implemented tool result preview with expand/collapse (first 3 lines + click/ctrl+o to expand) in activity tab.
+**Delta:** [What was discovered/answered - the key finding in one sentence]
 
-**Evidence:** SSE events contain tool output at part.state.output; build succeeded; keyboard shortcut and truncation logic working.
+**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
 
-**Knowledge:** Per-event expand/collapse state requires Map keyed by event.id; Svelte 5 requires consistent onclick syntax.
+**Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** Close after orchestrator visual verification with real agent activity showing tool results.
+**Next:** [Recommended action - close, implement, investigate further, or escalate]
 
-**Promote to Decision:** recommend-no (tactical UI feature, not architectural pattern)
+**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
 
 <!--
 Example D.E.K.N.:
@@ -35,16 +35,16 @@ Guidelines:
 
 ---
 
-# Investigation: Show Tool Result Preview Expand
+# Investigation: Create Dylan Context Section Global
 
-**Question:** How to display tool result previews with expand/collapse in activity tab?
+**Question:** [Clear, specific question this investigation answers]
 
 **Started:** 2026-01-16
 **Updated:** 2026-01-16
-**Owner:** Dylan (agent)
-**Phase:** Complete
-**Next Step:** None
-**Status:** Complete
+**Owner:** [Owner name or team]
+**Phase:** [Investigating/Synthesizing/Complete]
+**Next Step:** [Very next action when Active, or "None" when Complete]
+**Status:** [In Progress/Complete/Paused]
 
 <!-- Lineage (fill only when applicable) -->
 **Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
@@ -55,33 +55,33 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Tool results available in SSE events but not displayed
+### Finding 1: [Brief, descriptive title]
 
-**Evidence:** SSEEvent interface has `part.state?.output` field (string) containing tool results
+**Evidence:** [Concrete observations, data, examples]
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/stores/agents.ts:135`
+**Source:** [File paths with line numbers, commands run, specific artifacts examined]
 
-**Significance:** Data is available, just needs UI to display it
-
----
-
-### Finding 2: Current activity tab only shows tool name and arguments
-
-**Evidence:** Activity tab displays tool name and arguments using `formatToolCall()` but does not display output
-
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/components/agent-detail/activity-tab.svelte:408-414`
-
-**Significance:** Need to add output display logic to existing tool rendering
+**Significance:** [Why this matters, what it tells us, implications for the investigation question]
 
 ---
 
-### Finding 3: Need per-event expand/collapse state
+### Finding 2: [Brief, descriptive title]
 
-**Evidence:** Multiple tool calls can have results, each needs independent expand/collapse state
+**Evidence:** [Concrete observations, data, examples]
 
-**Source:** Activity tab renders events in a loop with unique event IDs
+**Source:** [File paths with line numbers, commands run, specific artifacts examined]
 
-**Significance:** Use Map keyed by event.id to track expanded state per tool call
+**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+
+---
+
+### Finding 3: [Brief, descriptive title]
+
+**Evidence:** [Concrete observations, data, examples]
+
+**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+
+**Significance:** [Why this matters, what it tells us, implications for the investigation question]
 
 ---
 
