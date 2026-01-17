@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -349,14 +350,40 @@ type DaemonAPIResponse struct {
 	CapacityUsed  int    `json:"capacity_used"`             // Currently active agents
 	CapacityFree  int    `json:"capacity_free"`             // Available slots for spawning
 	IssuesPerHour int    `json:"issues_per_hour,omitempty"` // Approximate processing rate (future)
+
+	// Utilization metrics - tracks daemon vs manual spawn ratio to surface triage discipline
+	Utilization *DaemonUtilizationMetrics `json:"utilization,omitempty"`
+}
+
+// DaemonUtilizationMetrics tracks the ratio of daemon-spawned vs manual-spawned agents.
+// This surfaces where triage discipline is slipping (manual spawns bypassing daemon workflow).
+type DaemonUtilizationMetrics struct {
+	TotalSpawns     int     `json:"total_spawns"`      // Total spawns in analysis window
+	DaemonSpawns    int     `json:"daemon_spawns"`     // Spawns triggered by daemon
+	ManualSpawns    int     `json:"manual_spawns"`     // Spawns triggered manually (not by daemon)
+	DaemonSpawnRate float64 `json:"daemon_spawn_rate"` // % of spawns from daemon (higher is better)
+	TriageBypassed  int     `json:"triage_bypassed"`   // Count of spawns that bypassed triage
+	TriageSlipRate  float64 `json:"triage_slip_rate"`  // % of spawns that bypassed triage (lower is better)
+	AutoCompletions int     `json:"auto_completions"`  // Count of daemon auto-completions
+	AnalysisPeriod  string  `json:"analysis_period"`   // Time window description (e.g., "Last 7 days")
+	DaysAnalyzed    int     `json:"days_analyzed"`     // Number of days in analysis window
 }
 
 // handleDaemon returns the daemon status from ~/.orch/daemon-status.json.
 // If the daemon is not running (file doesn't exist), returns running: false.
+// Also includes utilization metrics computed from events.jsonl.
 func handleDaemon(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Parse optional days parameter (default: 7)
+	days := 7
+	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 90 {
+			days = d
+		}
 	}
 
 	resp := DaemonAPIResponse{
@@ -381,6 +408,22 @@ func handleDaemon(w http.ResponseWriter, r *http.Request) {
 		if !status.LastSpawn.IsZero() {
 			resp.LastSpawn = status.LastSpawn.Format(time.RFC3339)
 			resp.LastSpawnAgo = formatDurationAgo(time.Since(status.LastSpawn))
+		}
+	}
+
+	// Get utilization metrics from events.jsonl
+	utilization, err := daemon.GetUtilizationMetrics(days)
+	if err == nil && utilization != nil {
+		resp.Utilization = &DaemonUtilizationMetrics{
+			TotalSpawns:     utilization.TotalSpawns,
+			DaemonSpawns:    utilization.DaemonSpawns,
+			ManualSpawns:    utilization.ManualSpawns,
+			DaemonSpawnRate: utilization.DaemonSpawnRate,
+			TriageBypassed:  utilization.TriageBypassed,
+			TriageSlipRate:  utilization.TriageSlipRate,
+			AutoCompletions: utilization.AutoCompletions,
+			AnalysisPeriod:  utilization.AnalysisPeriod,
+			DaysAnalyzed:    utilization.DaysAnalyzed,
 		}
 	}
 
