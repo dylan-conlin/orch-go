@@ -16,6 +16,20 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
+// getGitBaseline returns the current git commit SHA for the project directory.
+// Returns empty string if not in a git repository or if git command fails.
+// This is used as the baseline for git-based change detection during verification.
+func getGitBaseline(projectDir string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// Not in a git repo or git command failed - return empty
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
 // Pre-compiled regex patterns for context.go
 var (
 	regexBeadsSectionHeader    = regexp.MustCompile(`(?i)^#+\s*(report\s+(via|to)\s+beads|beads\s+(progress\s+)?tracking)`)
@@ -548,6 +562,23 @@ func WriteContext(cfg *Config) error {
 		if err := os.WriteFile(spawnModePath, []byte(cfg.SpawnMode), 0644); err != nil {
 			return fmt.Errorf("failed to write spawn mode file: %w", err)
 		}
+	}
+
+	// Write agent manifest JSON for canonical agent identity and spawn-time metadata
+	// This provides a single source of truth for git-based scoping and verification gates
+	spawnTime := time.Now()
+	manifest := AgentManifest{
+		WorkspaceName: cfg.WorkspaceName,
+		Skill:         cfg.SkillName,
+		BeadsID:       cfg.BeadsID,
+		ProjectDir:    cfg.ProjectDir,
+		GitBaseline:   getGitBaseline(cfg.ProjectDir),
+		SpawnTime:     spawnTime.Format(time.RFC3339),
+		Tier:          cfg.Tier,
+		SpawnMode:     cfg.SpawnMode,
+	}
+	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
+		return fmt.Errorf("failed to write agent manifest: %w", err)
 	}
 
 	return nil

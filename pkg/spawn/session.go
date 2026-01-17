@@ -2,6 +2,7 @@
 package spawn
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -152,4 +153,94 @@ func ReadSpawnTime(workspacePath string) time.Time {
 // SpawnTimePath returns the path to the spawn time file for a workspace.
 func SpawnTimePath(workspacePath string) string {
 	return filepath.Join(workspacePath, SpawnTimeFilename)
+}
+
+// AgentManifestFilename is the name of the file storing the agent manifest in the workspace.
+const AgentManifestFilename = "AGENT_MANIFEST.json"
+
+// AgentManifest contains canonical agent identity and spawn-time metadata.
+// This provides a single source of truth for "what did this agent do" to enable
+// reliable git-based scoping for verification gates.
+//
+// See .kb/investigations/2026-01-17-inv-design-synthesize-26-completion-investigations.md
+// for the architectural rationale.
+type AgentManifest struct {
+	// WorkspaceName is the canonical agent identifier (e.g., "og-feat-add-manifest-17jan-abc1")
+	WorkspaceName string `json:"workspace_name"`
+
+	// Skill is the skill used to spawn this agent (e.g., "feature-impl", "investigation")
+	Skill string `json:"skill"`
+
+	// BeadsID is the beads issue ID for tracking (empty for --no-track spawns)
+	BeadsID string `json:"beads_id,omitempty"`
+
+	// ProjectDir is the absolute path to the project directory
+	ProjectDir string `json:"project_dir"`
+
+	// GitBaseline is the git commit SHA at spawn time
+	// Used for git-based change detection: git diff <baseline>..HEAD
+	// Empty if not in a git repository or git command fails
+	GitBaseline string `json:"git_baseline,omitempty"`
+
+	// SpawnTime is the ISO 8601 timestamp when the agent was spawned
+	SpawnTime string `json:"spawn_time"`
+
+	// Tier is the spawn tier: "light" or "full"
+	Tier string `json:"tier"`
+
+	// SpawnMode is the spawn backend: "opencode" or "claude"
+	SpawnMode string `json:"spawn_mode,omitempty"`
+}
+
+// WriteAgentManifest writes the agent manifest JSON to the workspace directory.
+// The manifest provides a canonical source of agent identity and spawn-time context.
+// Uses atomic write (temp file + rename) to prevent partial reads.
+// The workspace directory must already exist.
+func WriteAgentManifest(workspacePath string, manifest AgentManifest) error {
+	manifestFile := filepath.Join(workspacePath, AgentManifestFilename)
+	tmpFile := manifestFile + ".tmp"
+
+	// Marshal to JSON with indentation for human readability
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	// Add trailing newline for POSIX compliance
+	data = append(data, '\n')
+
+	// Write to temp file first
+	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write manifest temp file: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpFile, manifestFile); err != nil {
+		os.Remove(tmpFile) // Clean up temp file on error
+		return fmt.Errorf("failed to rename manifest file: %w", err)
+	}
+
+	return nil
+}
+
+// ReadAgentManifest reads the agent manifest from the workspace directory.
+// Returns an error if the file doesn't exist or is malformed.
+func ReadAgentManifest(workspacePath string) (*AgentManifest, error) {
+	manifestFile := filepath.Join(workspacePath, AgentManifestFilename)
+	data, err := os.ReadFile(manifestFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read manifest: %w", err)
+	}
+
+	var manifest AgentManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal manifest: %w", err)
+	}
+
+	return &manifest, nil
+}
+
+// AgentManifestPath returns the path to the agent manifest file for a workspace.
+func AgentManifestPath(workspacePath string) string {
+	return filepath.Join(workspacePath, AgentManifestFilename)
 }

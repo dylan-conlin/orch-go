@@ -218,3 +218,175 @@ func TestSpawnTimePath(t *testing.T) {
 		t.Errorf("SpawnTimePath returned %q, want %q", got, expected)
 	}
 }
+
+func TestWriteReadAgentManifest(t *testing.T) {
+	// Create temp directory as workspace
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	manifest := AgentManifest{
+		WorkspaceName: "og-feat-test-17jan-abc1",
+		Skill:         "feature-impl",
+		BeadsID:       "orch-go-xyz1",
+		ProjectDir:    "/Users/test/orch-go",
+		GitBaseline:   "abc123def456",
+		SpawnTime:     "2026-01-17T10:30:00Z",
+		Tier:          TierFull,
+		SpawnMode:     "opencode",
+	}
+
+	// Write manifest
+	if err := WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	// Verify file exists
+	manifestFile := filepath.Join(tmpDir, AgentManifestFilename)
+	if _, err := os.Stat(manifestFile); os.IsNotExist(err) {
+		t.Fatalf("manifest file not created")
+	}
+
+	// Read manifest
+	readManifest, err := ReadAgentManifest(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadAgentManifest failed: %v", err)
+	}
+
+	// Verify all fields
+	if readManifest.WorkspaceName != manifest.WorkspaceName {
+		t.Errorf("WorkspaceName: got %q, want %q", readManifest.WorkspaceName, manifest.WorkspaceName)
+	}
+	if readManifest.Skill != manifest.Skill {
+		t.Errorf("Skill: got %q, want %q", readManifest.Skill, manifest.Skill)
+	}
+	if readManifest.BeadsID != manifest.BeadsID {
+		t.Errorf("BeadsID: got %q, want %q", readManifest.BeadsID, manifest.BeadsID)
+	}
+	if readManifest.ProjectDir != manifest.ProjectDir {
+		t.Errorf("ProjectDir: got %q, want %q", readManifest.ProjectDir, manifest.ProjectDir)
+	}
+	if readManifest.GitBaseline != manifest.GitBaseline {
+		t.Errorf("GitBaseline: got %q, want %q", readManifest.GitBaseline, manifest.GitBaseline)
+	}
+	if readManifest.SpawnTime != manifest.SpawnTime {
+		t.Errorf("SpawnTime: got %q, want %q", readManifest.SpawnTime, manifest.SpawnTime)
+	}
+	if readManifest.Tier != manifest.Tier {
+		t.Errorf("Tier: got %q, want %q", readManifest.Tier, manifest.Tier)
+	}
+	if readManifest.SpawnMode != manifest.SpawnMode {
+		t.Errorf("SpawnMode: got %q, want %q", readManifest.SpawnMode, manifest.SpawnMode)
+	}
+}
+
+func TestWriteAgentManifest_NoBeadsID(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Manifest without BeadsID (--no-track spawn)
+	manifest := AgentManifest{
+		WorkspaceName: "og-feat-test-17jan-abc1",
+		Skill:         "investigation",
+		BeadsID:       "", // Empty for --no-track
+		ProjectDir:    "/Users/test/orch-go",
+		GitBaseline:   "abc123",
+		SpawnTime:     "2026-01-17T10:30:00Z",
+		Tier:          TierLight,
+	}
+
+	if err := WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	readManifest, err := ReadAgentManifest(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadAgentManifest failed: %v", err)
+	}
+
+	// BeadsID should be empty
+	if readManifest.BeadsID != "" {
+		t.Errorf("BeadsID: got %q, want empty string", readManifest.BeadsID)
+	}
+}
+
+func TestWriteAgentManifest_NoGitBaseline(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Manifest without git baseline (not in git repo)
+	manifest := AgentManifest{
+		WorkspaceName: "og-feat-test-17jan-abc1",
+		Skill:         "feature-impl",
+		BeadsID:       "orch-go-xyz1",
+		ProjectDir:    "/Users/test/orch-go",
+		GitBaseline:   "", // Empty when not in git repo
+		SpawnTime:     "2026-01-17T10:30:00Z",
+		Tier:          TierFull,
+	}
+
+	if err := WriteAgentManifest(tmpDir, manifest); err != nil {
+		t.Fatalf("WriteAgentManifest failed: %v", err)
+	}
+
+	readManifest, err := ReadAgentManifest(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadAgentManifest failed: %v", err)
+	}
+
+	// GitBaseline should be empty
+	if readManifest.GitBaseline != "" {
+		t.Errorf("GitBaseline: got %q, want empty string", readManifest.GitBaseline)
+	}
+}
+
+func TestReadAgentManifest_NoFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Reading from non-existent file should return error
+	_, err = ReadAgentManifest(tmpDir)
+	if err == nil {
+		t.Error("ReadAgentManifest should return error for non-existent file")
+	}
+}
+
+func TestReadAgentManifest_InvalidJSON(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write invalid JSON
+	manifestFile := filepath.Join(tmpDir, AgentManifestFilename)
+	if err := os.WriteFile(manifestFile, []byte("not valid json"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	// Reading invalid JSON should return error
+	_, err = ReadAgentManifest(tmpDir)
+	if err == nil {
+		t.Error("ReadAgentManifest should return error for invalid JSON")
+	}
+}
+
+func TestAgentManifestPath(t *testing.T) {
+	workspace := "/some/workspace/path"
+	expected := filepath.Join(workspace, AgentManifestFilename)
+	got := AgentManifestPath(workspace)
+	if got != expected {
+		t.Errorf("AgentManifestPath returned %q, want %q", got, expected)
+	}
+}
