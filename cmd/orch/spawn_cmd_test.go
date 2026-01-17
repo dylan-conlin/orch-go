@@ -233,3 +233,46 @@ func TestIsInfrastructureWork(t *testing.T) {
 		})
 	}
 }
+
+func TestStripANSI(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "no ANSI codes",
+			input: "Error: Session not found",
+			want:  "Error: Session not found",
+		},
+		{
+			name:  "red bold error from opencode",
+			input: "\x1b[91m\x1b[1mError: \x1b[0mSession not found",
+			want:  "Error: Session not found",
+		},
+		{
+			name:  "various colors",
+			input: "\x1b[32mGreen\x1b[0m \x1b[33mYellow\x1b[0m",
+			want:  "Green Yellow",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "only ANSI codes",
+			input: "\x1b[0m\x1b[1m\x1b[91m",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripANSI(tt.input)
+			if got != tt.want {
+				t.Errorf("stripANSI(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

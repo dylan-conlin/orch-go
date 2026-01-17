@@ -8,12 +8,14 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1610,6 +1612,14 @@ func (r *headlessSpawnResult) StartBackgroundCleanup() {
 	}()
 }
 
+// ansiRegex matches ANSI escape sequences (colors, formatting, etc.)
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// stripANSI removes ANSI escape codes from a string for cleaner error messages.
+func stripANSI(s string) string {
+	return ansiRegex.ReplaceAllString(s, "")
+}
+
 // startHeadlessSession starts an opencode session and extracts the session ID.
 // Returns the result with session ID and resources for cleanup.
 // Note: Uses CLI mode instead of HTTP API because OpenCode's HTTP API ignores the model parameter.
@@ -1627,8 +1637,11 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 		return nil, spawnErr
 	}
 
-	// Discard stderr in headless mode (no TUI to display it)
-	cmd.Stderr = nil
+	// Capture stderr to include in error messages when session ID extraction fails.
+	// Previously stderr was discarded (nil), losing valuable error context like
+	// "Error: Session not found" or model-specific errors.
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	if err := cmd.Start(); err != nil {
 		spawnErr := spawn.WrapSpawnError(err, "Failed to start opencode process")
@@ -1641,7 +1654,15 @@ func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, mini
 	if err != nil {
 		// Try to kill the process if we couldn't get session ID
 		cmd.Process.Kill()
-		spawnErr := spawn.WrapSpawnError(err, "Failed to extract session ID")
+		// Include stderr content for better error context
+		stderrContent := strings.TrimSpace(stderrBuf.String())
+		// Strip ANSI escape codes for cleaner error messages
+		stderrContent = stripANSI(stderrContent)
+		errMsg := "Failed to extract session ID"
+		if stderrContent != "" {
+			errMsg = fmt.Sprintf("Failed to extract session ID: %s", stderrContent)
+		}
+		spawnErr := spawn.WrapSpawnError(err, errMsg)
 		return nil, spawnErr
 	}
 
