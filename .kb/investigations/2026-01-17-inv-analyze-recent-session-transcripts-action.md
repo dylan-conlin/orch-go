@@ -148,6 +148,45 @@ Breakdown:
 
 ---
 
+### Finding 4: Redundancy and reference content in skills
+
+**Evidence:**
+
+Investigation skill structure (336 lines at ~/.claude/skills/worker/investigation/SKILL.md):
+- Core operational guidance: ~100 lines (30%)
+  - The One Rule, Evidence Hierarchy, Workflow (lines 28-76)
+  - Completion steps (lines 311-336)
+- Reference/template material: ~236 lines (70%)
+  - Full template with examples (lines 119-148)
+  - Common Failures with wrong/right examples (lines 150-182)
+  - Self-Review with 4 sub-sections and checklists (lines 189-277)
+  - Leave it Better examples (lines 292-310)
+
+Redundancy between sources:
+1. **Beads guidance**: Appears in 3 places
+   - bd prime hook output: ~3KB (always runs)
+   - Orchestrator skill: embedded in orchestrator guidance
+   - SPAWN_CONTEXT.md: BEADS PROGRESS TRACKING section (~33 lines)
+   
+2. **Session completion protocol**: Appears in 2 places
+   - Orchestrator skill (for orchestrators)
+   - SPAWN_CONTEXT.md (for workers, ~40 lines)
+
+3. **Investigation template**: Full template embedded in skill (25 lines) when agents can just run `kb create investigation`
+
+**Source:**
+- ~/.claude/skills/worker/investigation/SKILL.md (336 lines total)
+- SPAWN_CONTEXT.md BEADS section analysis (33 lines across 3 samples)
+- Prior investigation finding: "Beads guidance is triple-redundant"
+
+**Significance:** 
+- 70% of skill content is reference material (templates, examples, checklists) rather than executable guidance
+- Reference material is valuable but doesn't need to be in active context - could be externalized to docs and loaded on-demand
+- Triple redundancy in beads guidance wastes ~6KB (~1.5K tokens) per spawned worker
+- Skills designed for "amnesia-resilient" completeness rather than runtime efficiency
+
+---
+
 ### Finding 2: [Brief, descriptive title]
 
 **Evidence:** [Concrete observations, data, examples]
