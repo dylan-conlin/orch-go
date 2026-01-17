@@ -460,7 +460,10 @@ interface WorkerHealthState {
   lastCommitTime: number            // Timestamp of last git commit
   totalToolCalls: number            // For token estimation
   totalReadBytes: number            // For token estimation
+  lastWarningType?: string          // Type of last health signal injected
+  lastWarningValue?: number         // Value of last health signal injected
 }
+
 
 /**
  * Determine if a file path represents code (vs orchestration artifact).
@@ -1001,10 +1004,74 @@ function estimateWorkerTokenUsage(state: WorkerHealthState): number {
 }
 
 /**
+ * Inject a health signal (warning) into the agent's context using noReply: true.
+ * This provides immediate feedback ("Pain") to the agent when metrics cross thresholds.
+ *
+ * @param client OpenCode client
+ * @param state Worker health state
+ * @param metricType Type of metric triggering the signal
+ * @param value Current value of the metric
+ */
+async function injectHealthSignal(
+  client: any,
+  state: WorkerHealthState,
+  metricType: string,
+  value: number
+): Promise<void> {
+  if (!client?.session?.prompt) {
+    log("Cannot inject health signal: client.session.prompt unavailable")
+    return
+  }
+
+  // Avoid duplicate warnings for same type/value
+  if (state.lastWarningType === metricType && state.lastWarningValue === value) {
+    return
+  }
+
+  let prompt = ""
+  switch (metricType) {
+    case "tool_failure_rate":
+      if (value >= 5) {
+        prompt = `CRITICAL: You have had ${value} consecutive tool failures. Please STOP and analyze why your tool calls are failing. Check parameters, file paths, and environment state before continuing.`
+      } else if (value >= 3) {
+        prompt = `Warning: You have had ${value} consecutive tool failures. Consider verifying your assumptions or searching for more context.`
+      }
+      break
+    case "context_usage":
+      prompt = `Warning: Your context usage is at ${value}%. You are approaching the token limit. Consider summarizing your findings and focusing on the most relevant files to avoid context exhaustion.`
+      break
+    case "time_in_phase":
+      prompt = `Notice: You have been in the current phase for ${value} minutes. If you are stuck or experiencing analysis paralysis, consider taking a strategic pause or breaking the task into smaller steps.`
+      break
+    case "commit_gap":
+      prompt = `Notice: It has been ${value} minutes since your last commit. If you have made stable changes, consider committing them now to provide a safety net.`
+      break
+  }
+
+  if (prompt) {
+    try {
+      await client.session.prompt({
+        sessionID: state.sessionId,
+        prompt,
+        noReply: true,
+      })
+      log(`Injected health signal for ${metricType}: ${value}`)
+
+      // Update state to prevent repeat
+      state.lastWarningType = metricType
+      state.lastWarningValue = value
+    } catch (err) {
+      log(`Failed to inject health signal for ${metricType}:`, err)
+    }
+  }
+}
+
+/**
  * Track worker health metrics and record to coaching-metrics.jsonl.
  * This is called for worker sessions instead of orchestrator metrics.
  */
 async function trackWorkerHealth(
+  client: any,
   state: WorkerHealthState,
   tool: string,
   success: boolean,
@@ -1037,6 +1104,9 @@ async function trackWorkerHealth(
         },
       })
       log(`Worker metric: tool_failure_rate = ${state.consecutiveToolFailures}`)
+
+      // Inject "Pain" signal into agent context
+      await injectHealthSignal(client, state, "tool_failure_rate", state.consecutiveToolFailures)
     }
   } else {
     // Reset on success
@@ -1062,6 +1132,11 @@ async function trackWorkerHealth(
       },
     })
     log(`Worker metric: context_usage = ${percentUsed}% (~${Math.round(state.estimatedTokensUsed / 1000)}k tokens)`)
+
+    // Inject signal if over threshold
+    if (percentUsed >= 80) {
+      await injectHealthSignal(client, state, "context_usage", percentUsed)
+    }
   }
 
   // 3. time_in_phase: Track time since last phase change
@@ -1082,6 +1157,11 @@ async function trackWorkerHealth(
       },
     })
     log(`Worker metric: time_in_phase = ${minutesInPhase} minutes`)
+
+    // Inject signal if over threshold
+    if (minutesInPhase >= TIME_IN_PHASE_WARNING_MINUTES) {
+      await injectHealthSignal(client, state, "time_in_phase", minutesInPhase)
+    }
   }
 
   // 4. commit_gap: Track time since last commit (detect via git commands in bash)
@@ -1116,6 +1196,11 @@ async function trackWorkerHealth(
       },
     })
     log(`Worker metric: commit_gap = ${minutesSinceCommit} minutes`)
+
+    // Inject signal if over threshold
+    if (minutesSinceCommit >= COMMIT_GAP_WARNING_MINUTES) {
+      await injectHealthSignal(client, state, "commit_gap", minutesSinceCommit)
+    }
   }
 }
 
@@ -1384,7 +1469,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         const success = !output?.error && !output?.isError
 
         // Track worker health metrics
-        await trackWorkerHealth(workerState, tool, success, input.args, output)
+        await trackWorkerHealth(client, workerState, tool, success, input.args, output)
 
         // Skip orchestrator metrics for workers
         return

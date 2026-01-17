@@ -267,7 +267,7 @@ func TestGetGitDiffFiles(t *testing.T) {
 	cmd.Run()
 
 	// Test: should find main.go in diff since beforeCommits
-	files, err := GetGitDiffFiles(tmpDir, beforeCommits)
+	files, err := GetGitDiffFiles(tmpDir, beforeCommits, "")
 	if err != nil {
 		t.Fatalf("GetGitDiffFiles() error = %v", err)
 	}
@@ -572,10 +572,10 @@ Added main.go
 		t.Errorf("Errors: %v", result.Errors)
 	}
 
-	// Should have a warning about missing spawn time
+	// Should have a warning about missing spawn time or baseline
 	hasSpawnTimeWarning := false
 	for _, w := range result.Warnings {
-		if strings.Contains(w, "spawn time unavailable") {
+		if strings.Contains(w, "spawn time and git baseline unavailable") {
 			hasSpawnTimeWarning = true
 			break
 		}
@@ -919,5 +919,73 @@ Modified local and external files
 	}
 	if len(result.MissingFromDiff) > 0 {
 		t.Errorf("Expected no missing local files, got: %v", result.MissingFromDiff)
+	}
+}
+
+func TestVerifyGitDiff_WithAgentManifest(t *testing.T) {
+	// Skip if git is not available
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found in PATH")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Configure git user
+	exec.Command("git", "config", "user.email", "test@test.com").Run()
+	exec.Command("git", "config", "user.name", "Test User").Run()
+
+	// Create initial commit and get SHA
+	initialFile := filepath.Join(tmpDir, "README.md")
+	os.WriteFile(initialFile, []byte("# Initial"), 0644)
+	cmd = exec.Command("git", "add", "README.md")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "initial")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	cmd = exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = tmpDir
+	output, _ := cmd.Output()
+	baselineSHA := strings.TrimSpace(string(output))
+
+	// Create workspace
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", "test-agent")
+	os.MkdirAll(workspaceDir, 0755)
+
+	// Write AGENT_MANIFEST.json with baseline
+	manifest := spawn.AgentManifest{
+		WorkspaceName: "test-agent",
+		GitBaseline:   baselineSHA,
+		ProjectDir:    tmpDir,
+	}
+	spawn.WriteAgentManifest(workspaceDir, manifest)
+
+	// Create and commit a file AFTER baseline
+	mainFile := filepath.Join(tmpDir, "main.go")
+	os.WriteFile(mainFile, []byte("package main"), 0644)
+	cmd = exec.Command("git", "add", "main.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "add main.go")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create SYNTHESIS.md claiming main.go
+	synthesisContent := `# Session Synthesis
+## Delta
+- ` + "`main.go`" + `
+`
+	os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644)
+
+	// Test: should pass using baseline SHA even if spawnTime is zero
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass using baseline SHA, errors: %v", result.Errors)
 	}
 }

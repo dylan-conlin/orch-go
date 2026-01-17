@@ -209,21 +209,22 @@ func isVersionNumber(s string) bool {
 	return numericSegments >= len(parts)-1
 }
 
-// GetGitDiffFiles returns the list of files changed since the given time.
-// Uses `git diff --name-only` to get modified files.
-// If since is zero, returns files changed vs HEAD (uncommitted changes).
-func GetGitDiffFiles(projectDir string, since time.Time) ([]string, error) {
+// GetGitDiffFiles returns the list of files changed since the given time or baseline commit.
+// If baseline is provided, it uses `git diff --name-only baseline` to get all changes (staged and unstaged) since that commit.
+// If baseline is empty and since is provided, it uses `git log --since` to get modified files.
+// If both are zero/empty, it returns files changed vs HEAD (uncommitted changes).
+func GetGitDiffFiles(projectDir string, since time.Time, baseline string) ([]string, error) {
 	var cmd *exec.Cmd
 
-	if since.IsZero() {
-		// Get uncommitted changes
+	if baseline != "" {
+		// Get all changes (staged and unstaged) since the baseline commit
+		cmd = exec.Command("git", "diff", "--name-only", baseline)
+	} else if since.IsZero() {
+		// Get uncommitted changes vs HEAD
 		cmd = exec.Command("git", "diff", "--name-only", "HEAD")
 	} else {
-		// Get all files changed since the spawn time
-		// We need to find commits since spawn time and get their changed files
+		// Get all files changed since the spawn time using git log
 		sinceStr := since.Format(time.RFC3339)
-
-		// Use git log to find all changed files since spawn time
 		cmd = exec.Command("git", "log", "--name-only", "--pretty=format:", "--since="+sinceStr)
 	}
 
@@ -387,12 +388,19 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 	// Get spawn time from workspace
 	spawnTime := spawn.ReadSpawnTime(workspacePath)
 
-	// If spawn time is unavailable (zero), we cannot reliably determine what files
-	// were changed by this agent. Skip verification with a warning rather than
-	// failing - this handles old workspaces created before spawn time tracking.
-	if spawnTime.IsZero() {
+	// Try to load AGENT_MANIFEST.json for git baseline
+	var baseline string
+	if manifest, err := spawn.ReadAgentManifest(workspacePath); err == nil {
+		baseline = manifest.GitBaseline
+	}
+
+	// If spawn time is unavailable (zero) and we have no baseline, we cannot
+	// reliably determine what files were changed by this agent.
+	// Skip verification with a warning rather than failing - this handles
+	// old workspaces created before baseline/spawn time tracking.
+	if spawnTime.IsZero() && baseline == "" {
 		result.Warnings = append(result.Warnings,
-			"spawn time unavailable (workspace may predate spawn time tracking) - skipping git diff verification")
+			"spawn time and git baseline unavailable - skipping git diff verification")
 		return result
 	}
 
@@ -420,8 +428,8 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 
 	// Only check git diff for local files
 	if len(localFiles) > 0 {
-		// Get actual git diff files
-		actualFiles, err := GetGitDiffFiles(projectDir, spawnTime)
+		// Get actual git diff files using baseline if available, else spawnTime
+		actualFiles, err := GetGitDiffFiles(projectDir, spawnTime, baseline)
 		if err != nil {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("failed to get git diff: %v - skipping local file verification", err))
