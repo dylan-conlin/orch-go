@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,14 +223,92 @@ func TestIsRebuildInProgress(t *testing.T) {
 		t.Error("Expected no rebuild in progress initially")
 	}
 
-	// Create lock file
-	if err := os.WriteFile(lockPath, []byte("test"), 0644); err != nil {
+	// Create lock file with current process PID (valid live process)
+	pid := os.Getpid()
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d\n", pid)), 0644); err != nil {
 		t.Fatalf("Failed to create lock file: %v", err)
 	}
 
-	// Now should detect rebuild in progress
+	// Now should detect rebuild in progress (our PID is still running)
 	if !isRebuildInProgress(lockPath) {
-		t.Error("Expected rebuild in progress with lock file")
+		t.Error("Expected rebuild in progress with lock file containing live PID")
+	}
+}
+
+// TestIsRebuildInProgressStaleLock tests that stale locks (dead PIDs) are detected and cleaned up.
+func TestIsRebuildInProgressStaleLock(t *testing.T) {
+	// Create temp directory
+	tempDir, err := os.MkdirTemp("", "test-autorebuild-stale-lock-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	lockPath := filepath.Join(tempDir, ".autorebuild.lock")
+
+	// Create lock file with a very high PID that doesn't exist
+	// PID 999999 is very unlikely to be running
+	deadPID := 999999
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d\n", deadPID)), 0644); err != nil {
+		t.Fatalf("Failed to create lock file: %v", err)
+	}
+
+	// Verify lock file was created
+	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
+		t.Fatal("Lock file should exist before test")
+	}
+
+	// isRebuildInProgress should return false and clean up the stale lock
+	if isRebuildInProgress(lockPath) {
+		t.Error("Expected no rebuild in progress with dead PID")
+	}
+
+	// Lock file should be removed
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Error("Stale lock file should be removed automatically")
+	}
+}
+
+// TestIsRebuildInProgressInvalidPID tests that invalid PID formats are handled.
+func TestIsRebuildInProgressInvalidPID(t *testing.T) {
+	// Create temp directory
+	tempDir, err := os.MkdirTemp("", "test-autorebuild-invalid-pid-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	lockPath := filepath.Join(tempDir, ".autorebuild.lock")
+
+	tests := []struct {
+		name     string
+		content  string
+		expected bool
+	}{
+		{"empty content", "", false},
+		{"text instead of number", "test", false},
+		{"negative PID", "-1", false},
+		{"zero PID", "0", false},
+		{"whitespace only", "   \n", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := os.WriteFile(lockPath, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("Failed to create lock file: %v", err)
+			}
+
+			result := isRebuildInProgress(lockPath)
+			if result != tt.expected {
+				t.Errorf("isRebuildInProgress() with %q = %v, want %v", tt.content, result, tt.expected)
+			}
+
+			// Invalid PID should result in lock file being cleaned up
+			if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+				t.Error("Lock file with invalid PID should be removed")
+				os.Remove(lockPath) // Clean up for next iteration
+			}
+		})
 	}
 }
 
