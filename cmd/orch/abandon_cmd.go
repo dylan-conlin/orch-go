@@ -64,7 +64,7 @@ func init() {
 func runAbandon(beadsID, reason, workdir string) error {
 	// Strategy: Use registry to determine mode and route abandonment
 	// Fall back to direct discovery if not in registry
-	
+
 	// Determine project directory - use --workdir if provided, otherwise current directory
 	var projectDir string
 	var err error
@@ -308,6 +308,72 @@ func runAbandon(beadsID, reason, workdir string) error {
 		} else {
 			fmt.Printf("Reset beads status: in_progress → open\n")
 		}
+	}
+
+	// Log abandonment with telemetry for model performance tracking
+	logger = events.NewLogger(events.DefaultLogPath())
+	abandonedData := events.AgentAbandonedData{
+		BeadsID:   beadsID,
+		Workspace: agentName,
+		Reason:    reason,
+		Outcome:   "abandoned",
+	}
+
+	// Collect telemetry (duration and tokens) if workspace is available
+	if workspacePath != "" {
+		// Read spawn time
+		spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
+		spawnTimeBytes, readErr := os.ReadFile(spawnTimeFile)
+		if readErr == nil {
+			spawnTimeStr := strings.TrimSpace(string(spawnTimeBytes))
+			spawnTime, parseErr := time.Parse(time.RFC3339, spawnTimeStr)
+			if parseErr == nil {
+				abandonedData.DurationSeconds = int(time.Since(spawnTime).Seconds())
+			}
+		}
+
+		// Read session ID and get token usage
+		sessionIDFile := filepath.Join(workspacePath, ".session_id")
+		sessionIDBytes, readErr := os.ReadFile(sessionIDFile)
+		if readErr == nil {
+			sessionIDStr := strings.TrimSpace(string(sessionIDBytes))
+			if sessionIDStr != "" {
+				client := opencode.NewClient("http://localhost:4096")
+				tokenStats, tokErr := client.GetSessionTokens(sessionIDStr)
+				if tokErr == nil && tokenStats != nil {
+					abandonedData.TokensInput = tokenStats.InputTokens
+					abandonedData.TokensOutput = tokenStats.OutputTokens
+				}
+			}
+		}
+
+		// Try to read skill from SPAWN_CONTEXT.md
+		spawnContextFile := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+		contextBytes, readErr := os.ReadFile(spawnContextFile)
+		if readErr == nil {
+			// Simple extraction of skill from "SKILL GUIDANCE (skill-name)"
+			contextStr := string(contextBytes)
+			if strings.Contains(contextStr, "## SKILL GUIDANCE") {
+				// Try to extract skill name from the section header
+				lines := strings.Split(contextStr, "\n")
+				for _, line := range lines {
+					if strings.Contains(line, "## SKILL GUIDANCE") {
+						// Format: "## SKILL GUIDANCE (feature-impl)"
+						if start := strings.Index(line, "("); start != -1 {
+							if end := strings.Index(line[start:], ")"); end != -1 {
+								abandonedData.Skill = line[start+1 : start+end]
+							}
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	logErr := logger.LogAgentAbandoned(abandonedData)
+	if logErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log abandonment event: %v\n", logErr)
 	}
 
 	fmt.Printf("Abandoned agent: %s\n", agentName)
