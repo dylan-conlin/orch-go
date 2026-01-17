@@ -448,6 +448,21 @@ interface FrameCollapseState {
 }
 
 /**
+ * Worker health state for worker-specific metric tracking.
+ * Workers need different signals than orchestrators (context budget, tool failures, etc.)
+ */
+interface WorkerHealthState {
+  sessionId: string
+  sessionStartTime: number          // When session started (for time_in_phase)
+  consecutiveToolFailures: number   // For tool_failure_rate
+  estimatedTokensUsed: number       // For context_usage
+  lastPhaseUpdate: number           // Timestamp of last "Phase:" comment
+  lastCommitTime: number            // Timestamp of last git commit
+  totalToolCalls: number            // For token estimation
+  totalReadBytes: number            // For token estimation
+}
+
+/**
  * Determine if a file path represents code (vs orchestration artifact).
  * Returns true if editing this file indicates frame collapse.
  */
@@ -970,6 +985,141 @@ function detectCompensation(
 }
 
 /**
+ * Estimate token usage for a worker session.
+ * Rough approximation: 1 token ≈ 4 chars average
+ * Based on: tool calls (~500 tokens each) + read bytes (~1 token / 4 chars)
+ * This is intentionally approximate - see architect investigation for rationale.
+ */
+function estimateWorkerTokenUsage(state: WorkerHealthState): number {
+  const TOKENS_PER_TOOL_CALL = 500   // Average tool call overhead
+  const CHARS_PER_TOKEN = 4          // Average chars per token
+
+  const toolCallTokens = state.totalToolCalls * TOKENS_PER_TOOL_CALL
+  const readTokens = Math.round(state.totalReadBytes / CHARS_PER_TOKEN)
+
+  return toolCallTokens + readTokens
+}
+
+/**
+ * Track worker health metrics and record to coaching-metrics.jsonl.
+ * This is called for worker sessions instead of orchestrator metrics.
+ */
+async function trackWorkerHealth(
+  state: WorkerHealthState,
+  tool: string,
+  success: boolean,
+  args: any,
+  output: any
+): Promise<void> {
+  const now = Date.now()
+  const timestamp = new Date().toISOString()
+
+  // Update tool call count (for token estimation)
+  state.totalToolCalls++
+
+  // Track read bytes for token estimation
+  if (tool === "read" && output?.text) {
+    state.totalReadBytes += output.text.length
+  }
+
+  // 1. tool_failure_rate: Track consecutive failures
+  if (!success) {
+    state.consecutiveToolFailures++
+    if (state.consecutiveToolFailures >= 3) {
+      writeMetric({
+        timestamp,
+        session_id: state.sessionId,
+        metric_type: "tool_failure_rate",
+        value: state.consecutiveToolFailures,
+        details: {
+          last_tool: tool,
+          consecutive_failures: state.consecutiveToolFailures,
+        },
+      })
+      log(`Worker metric: tool_failure_rate = ${state.consecutiveToolFailures}`)
+    }
+  } else {
+    // Reset on success
+    state.consecutiveToolFailures = 0
+  }
+
+  // 2. context_usage: Estimate tokens and emit metric periodically
+  state.estimatedTokensUsed = estimateWorkerTokenUsage(state)
+  // Emit every 50 tool calls or when over threshold
+  const CONTEXT_WARNING_THRESHOLD = 80000 // ~80% of 100k typical limit
+  if (state.totalToolCalls % 50 === 0 || state.estimatedTokensUsed > CONTEXT_WARNING_THRESHOLD) {
+    const percentUsed = Math.round((state.estimatedTokensUsed / 100000) * 100)
+    writeMetric({
+      timestamp,
+      session_id: state.sessionId,
+      metric_type: "context_usage",
+      value: percentUsed,
+      details: {
+        estimated_tokens: state.estimatedTokensUsed,
+        total_tool_calls: state.totalToolCalls,
+        total_read_bytes: state.totalReadBytes,
+        threshold_percent: 80,
+      },
+    })
+    log(`Worker metric: context_usage = ${percentUsed}% (~${Math.round(state.estimatedTokensUsed / 1000)}k tokens)`)
+  }
+
+  // 3. time_in_phase: Track time since last phase change
+  const minutesInPhase = Math.round((now - state.lastPhaseUpdate) / 60000)
+  // Emit every 5 minutes or when over threshold
+  const TIME_IN_PHASE_WARNING_MINUTES = 15
+  if (state.totalToolCalls % 30 === 0 && minutesInPhase > 5) {
+    writeMetric({
+      timestamp,
+      session_id: state.sessionId,
+      metric_type: "time_in_phase",
+      value: minutesInPhase,
+      details: {
+        minutes_in_phase: minutesInPhase,
+        threshold_minutes: TIME_IN_PHASE_WARNING_MINUTES,
+        session_start: new Date(state.sessionStartTime).toISOString(),
+        last_phase_update: new Date(state.lastPhaseUpdate).toISOString(),
+      },
+    })
+    log(`Worker metric: time_in_phase = ${minutesInPhase} minutes`)
+  }
+
+  // 4. commit_gap: Track time since last commit (detect via git commands in bash)
+  if (tool === "bash" && args?.command) {
+    const command = args.command as string
+    // Detect successful git commit
+    if (command.includes("git commit") && success) {
+      state.lastCommitTime = now
+      log(`Worker: git commit detected, updating lastCommitTime`)
+    }
+  }
+
+  // Emit commit_gap metric periodically if there have been changes
+  const minutesSinceCommit = state.lastCommitTime > 0
+    ? Math.round((now - state.lastCommitTime) / 60000)
+    : Math.round((now - state.sessionStartTime) / 60000)
+  const COMMIT_GAP_WARNING_MINUTES = 30
+
+  if (state.totalToolCalls % 30 === 0 && minutesSinceCommit > 10) {
+    writeMetric({
+      timestamp,
+      session_id: state.sessionId,
+      metric_type: "commit_gap",
+      value: minutesSinceCommit,
+      details: {
+        minutes_since_commit: minutesSinceCommit,
+        threshold_minutes: COMMIT_GAP_WARNING_MINUTES,
+        last_commit_time: state.lastCommitTime > 0
+          ? new Date(state.lastCommitTime).toISOString()
+          : "never",
+        session_start: new Date(state.sessionStartTime).toISOString(),
+      },
+    })
+    log(`Worker metric: commit_gap = ${minutesSinceCommit} minutes`)
+  }
+}
+
+/**
  * OpenCode plugin that tracks orchestrator behavioral patterns.
  */
 export const CoachingPlugin: Plugin = async ({ directory, client }) => {
@@ -986,6 +1136,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   // Worker session tracking (per-session detection, not plugin-level)
   // Plugin runs in server process, can't see ORCH_WORKER env from spawned agents
   const workerSessions = new Map<string, boolean>() // sessionID -> isWorker
+
+  // Worker health state tracking (for worker-specific metrics)
+  const workerHealthStates = new Map<string, WorkerHealthState>()
 
   /**
    * Detect if a session is a worker by examining tool args.
@@ -1029,7 +1182,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
     workerSessions.set(sessionId, isWorker)
 
     if (isWorker) {
-      log(`Session ${sessionId} marked as worker (will skip metrics)`)
+      log(`Session ${sessionId} marked as worker (will track worker health metrics)`)
     }
 
     return isWorker
@@ -1207,8 +1360,33 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (!tool || !sessionId) return
 
       // Check if this is a worker session (per-session detection)
-      if (detectWorkerSession(sessionId, tool, input.args)) {
-        // Skip all metrics tracking for worker sessions
+      const isWorker = detectWorkerSession(sessionId, tool, input.args)
+      if (isWorker) {
+        // Track worker-specific health metrics instead of orchestrator metrics
+        let workerState = workerHealthStates.get(sessionId)
+        if (!workerState) {
+          const now = Date.now()
+          workerState = {
+            sessionId,
+            sessionStartTime: now,
+            consecutiveToolFailures: 0,
+            estimatedTokensUsed: 0,
+            lastPhaseUpdate: now,        // Assume phase started at session start
+            lastCommitTime: 0,           // 0 means no commit yet
+            totalToolCalls: 0,
+            totalReadBytes: 0,
+          }
+          workerHealthStates.set(sessionId, workerState)
+          log(`Created worker health state for session ${sessionId}`)
+        }
+
+        // Determine if tool succeeded (check for error in output)
+        const success = !output?.error && !output?.isError
+
+        // Track worker health metrics
+        await trackWorkerHealth(workerState, tool, success, input.args, output)
+
+        // Skip orchestrator metrics for workers
         return
       }
 
