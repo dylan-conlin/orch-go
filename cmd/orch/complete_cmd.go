@@ -1064,6 +1064,13 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Collect telemetry (duration and tokens) for model performance tracking
+	var durationSecs, tokensIn, tokensOut int
+	var outcome string
+	if workspacePath != "" {
+		durationSecs, tokensIn, tokensOut, outcome = collectCompletionTelemetry(workspacePath, completeForce, verificationPassed)
+	}
+
 	// Log the completion with verification metadata
 	logger := events.NewLogger(events.DefaultLogPath())
 	completedData := events.AgentCompletedData{
@@ -1073,6 +1080,10 @@ func runComplete(identifier, workdir string) error {
 		Orchestrator:       isOrchestratorSession,
 		VerificationPassed: verificationPassed,
 		Skill:              skillName,
+		DurationSeconds:    durationSecs,
+		TokensInput:        tokensIn,
+		TokensOutput:       tokensOut,
+		Outcome:            outcome,
 	}
 	if beadsID != "" {
 		completedData.BeadsID = beadsID
@@ -1553,4 +1564,48 @@ func archiveWorkspace(workspacePath, projectDir string) (string, error) {
 	}
 
 	return destPath, nil
+}
+
+// collectCompletionTelemetry collects duration and token usage for telemetry.
+// Returns (durationSeconds, tokensInput, tokensOutput, outcome).
+// Returns zeros if telemetry collection fails (non-blocking).
+func collectCompletionTelemetry(workspacePath string, forced bool, verificationPassed bool) (int, int, int, string) {
+	var durationSeconds int
+	var tokensInput int
+	var tokensOutput int
+	var outcome string
+
+	// Determine outcome
+	if forced {
+		outcome = "forced"
+	} else if verificationPassed {
+		outcome = "success"
+	} else {
+		outcome = "failed"
+	}
+
+	// Read spawn time from workspace
+	spawnTimeFile := filepath.Join(workspacePath, ".spawn_time")
+	if spawnTimeBytes, err := os.ReadFile(spawnTimeFile); err == nil {
+		spawnTimeStr := strings.TrimSpace(string(spawnTimeBytes))
+		if spawnTime, err := time.Parse(time.RFC3339, spawnTimeStr); err == nil {
+			durationSeconds = int(time.Since(spawnTime).Seconds())
+		}
+	}
+
+	// Read session ID from workspace
+	sessionIDFile := filepath.Join(workspacePath, ".session_id")
+	if sessionIDBytes, err := os.ReadFile(sessionIDFile); err == nil {
+		sessionID := strings.TrimSpace(string(sessionIDBytes))
+		if sessionID != "" {
+			// Get token usage from OpenCode API
+			client := opencode.NewClient("http://localhost:4096")
+			if tokenStats, err := client.GetSessionTokens(sessionID); err == nil && tokenStats != nil {
+				tokensInput = tokenStats.InputTokens
+				tokensOutput = tokenStats.OutputTokens
+			}
+		}
+	}
+
+	return durationSeconds, tokensInput, tokensOutput, outcome
 }
