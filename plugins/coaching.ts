@@ -1310,53 +1310,23 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   const workerHealthStates = new Map<string, WorkerHealthState>()
 
   /**
-   * Detect if a session is a worker by examining tool args.
-   * Returns true if worker detected, false otherwise.
-   * IMPORTANT: Only caches positive results (isWorker=true) to avoid
-   * permanently misclassifying workers based on their first tool call.
-   * See investigation: 2026-01-17-inv-design-review-coaching-plugin-failures.md
+   * Detect if a session is a worker by checking session.metadata.role.
+   * OpenCode sets session.metadata.role = 'worker' when the session is created
+   * with the x-opencode-env-ORCH_WORKER=1 header (set by orch spawn).
    */
-  function detectWorkerSession(sessionId: string, tool: string, args: any): boolean {
-    // Check cache first - only returns early if we've confirmed this IS a worker
+  function detectWorkerSession(sessionId: string, session?: { metadata?: { role?: string } }): boolean {
+    // Check cache first
     const cached = workerSessions.get(sessionId)
-    if (cached === true) {
+    if (cached === true) return true
+
+    // Use session metadata role (set by OpenCode from x-opencode-env-ORCH_WORKER header)
+    if (session?.metadata?.role === 'worker') {
+      workerSessions.set(sessionId, true)
+      log(`Worker detected (session.metadata.role): session ${sessionId}`)
       return true
     }
 
-    let isWorker = false
-
-    // Detection signal 1: read tool accessing SPAWN_CONTEXT.md
-    // Workers ALWAYS read this file early in their session.
-    if (tool === "read" && args?.filePath) {
-      if (args.filePath.endsWith("SPAWN_CONTEXT.md")) {
-        log(`Worker detected (SPAWN_CONTEXT.md read): session ${sessionId}, file: ${args.filePath}`)
-        isWorker = true
-      }
-    }
-
-    // Detection signal 2: any tool accessing files in .orch/workspace/
-    // Workers operate on files within their workspace directory.
-    if (args?.filePath && typeof args.filePath === "string") {
-      if (args.filePath.includes(".orch/workspace/")) {
-        log(`Worker detected (filePath in workspace): session ${sessionId}, file: ${args.filePath}`)
-        isWorker = true
-      }
-    }
-    if (args?.file_path && typeof args.file_path === "string") {
-      if (args.file_path.includes(".orch/workspace/")) {
-        log(`Worker detected (file_path in workspace): session ${sessionId}, file: ${args.file_path}`)
-        isWorker = true
-      }
-    }
-
-    // Only cache positive results - don't cache false
-    // This allows detection to succeed on later tool calls if first tools don't match
-    if (isWorker) {
-      workerSessions.set(sessionId, true)
-      log(`Session ${sessionId} marked as worker (will track worker health metrics)`)
-    }
-
-    return isWorker
+    return false
   }
 
   // Session state (Map<sessionID, SessionState>)
@@ -1578,8 +1548,8 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       if (!tool || !sessionId) return
 
-      // Check if this is a worker session (per-session detection)
-      const isWorker = detectWorkerSession(sessionId, tool, input.args)
+      // Check if this is a worker session (uses session.metadata.role set by OpenCode)
+      const isWorker = detectWorkerSession(sessionId, input.session)
       if (isWorker) {
         // Track worker-specific health metrics instead of orchestrator metrics
         let workerState = workerHealthStates.get(sessionId)
