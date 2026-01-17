@@ -1244,17 +1244,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
     }
 
     // Detection signal 2: read tool accessing SPAWN_CONTEXT.md
+    // Note: Orchestrator might read this for monitoring, but workers ALWAYS read it first.
     if (tool === "read" && args?.filePath) {
       if (args.filePath.endsWith("SPAWN_CONTEXT.md")) {
         log(`Worker detected (SPAWN_CONTEXT.md read): session ${sessionId}, file: ${args.filePath}`)
-        isWorker = true
-      }
-    }
-
-    // Detection signal 3: any tool with filePath in .orch/workspace/
-    if (args?.filePath && typeof args.filePath === "string") {
-      if (args.filePath.includes(".orch/workspace/")) {
-        log(`Worker detected (filePath in workspace): session ${sessionId}, file: ${args.filePath}`)
         isWorker = true
       }
     }
@@ -1297,18 +1290,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (cachedWorkerStatus === true) {
         // Skip Dylan pattern detection for worker sessions
         return
-      }
-
-      // Early detection: check if any message contains .orch/workspace/ path
-      // This catches workers before they make tool calls
-      if (cachedWorkerStatus === undefined) {
-        for (const msg of userMessages) {
-          if (msg.text.includes(".orch/workspace/") || msg.text.includes("SPAWN_CONTEXT.md")) {
-            log(`Worker detected (message content): session ${sessionId}`)
-            workerSessions.set(sessionId, true)
-            return
-          }
-        }
       }
 
       // Get or create session state
