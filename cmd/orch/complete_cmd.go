@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/activity"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -917,6 +918,24 @@ func runComplete(identifier, workdir string) error {
 		fmt.Printf("Cleaned up untracked agent: %s\n", identifier)
 	}
 	fmt.Printf("Reason: %s\n", reason)
+
+	// Export activity to ACTIVITY.json for archival (Tier 2 persistence)
+	// This is done BEFORE deleting the session (needs API access) and BEFORE archiving.
+	// Only for non-orchestrator sessions - orchestrators export transcript separately.
+	if workspacePath != "" && !isOrchestratorSession {
+		sessionFile := filepath.Join(workspacePath, ".session_id")
+		if data, err := os.ReadFile(sessionFile); err == nil {
+			sessionID := strings.TrimSpace(string(data))
+			if sessionID != "" {
+				if activityPath, err := activity.ExportToWorkspace(sessionID, workspacePath, serverURL); err != nil {
+					// Non-fatal - activity export is for archival only
+					fmt.Fprintf(os.Stderr, "Warning: failed to export activity: %v\n", err)
+				} else if activityPath != "" {
+					fmt.Printf("Exported activity: %s\n", filepath.Base(activityPath))
+				}
+			}
+		}
+	}
 
 	// Delete OpenCode session to prevent ghost agents in orch status
 	// This is done after closing the beads issue but before cleanup, so if

@@ -1383,6 +1383,75 @@ type ToolState struct {
 	Output string                 `json:"output,omitempty"`
 }
 
+// ActivityJSONFile is the structure of ACTIVITY.json exported on agent completion.
+// This file serves as archival storage for session activity, loaded when
+// the OpenCode session no longer exists (deleted/cleaned up).
+type ActivityJSONFile struct {
+	Version    int                    `json:"version"`
+	SessionID  string                 `json:"session_id"`
+	ExportedAt string                 `json:"exported_at"`
+	Events     []MessagePartResponse  `json:"events"`
+}
+
+// findWorkspaceBySessionID searches for a workspace directory with a matching .session_id file.
+// This is used to find archived activity when the OpenCode session has been deleted.
+// Returns the workspace path if found, or empty string if not found.
+func findWorkspaceBySessionID(projectDir, sessionID string) string {
+	workspaceDir := filepath.Join(projectDir, ".orch", "workspace")
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return ""
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		workspacePath := filepath.Join(workspaceDir, entry.Name())
+		storedSessionID := spawn.ReadSessionID(workspacePath)
+		if storedSessionID == sessionID {
+			return workspacePath
+		}
+	}
+
+	// Also check archived workspaces
+	archivedDir := filepath.Join(workspaceDir, "archived")
+	archivedEntries, err := os.ReadDir(archivedDir)
+	if err != nil {
+		return ""
+	}
+
+	for _, entry := range archivedEntries {
+		if !entry.IsDir() {
+			continue
+		}
+		workspacePath := filepath.Join(archivedDir, entry.Name())
+		storedSessionID := spawn.ReadSessionID(workspacePath)
+		if storedSessionID == sessionID {
+			return workspacePath
+		}
+	}
+
+	return ""
+}
+
+// loadActivityFromWorkspace loads activity events from ACTIVITY.json in a workspace.
+// Returns the events if found and valid, or nil if not available.
+func loadActivityFromWorkspace(workspacePath string) []MessagePartResponse {
+	activityPath := filepath.Join(workspacePath, "ACTIVITY.json")
+	data, err := os.ReadFile(activityPath)
+	if err != nil {
+		return nil
+	}
+
+	var activityFile ActivityJSONFile
+	if err := json.Unmarshal(data, &activityFile); err != nil {
+		return nil
+	}
+
+	return activityFile.Events
+}
+
 // handleSessionMessages proxies OpenCode's /session/:sessionID/message API.
 // This endpoint enables the dashboard to fetch historical session messages
 // for the activity feed, complementing real-time SSE updates.
@@ -1414,6 +1483,21 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 	client := opencode.NewClient(serverURL)
 	messages, err := client.GetMessages(sessionID)
 	if err != nil {
+		// OpenCode API failed (session may be deleted/cleaned up).
+		// Fall back to ACTIVITY.json if available in the workspace.
+		projectDir, _ := os.Getwd()
+		workspacePath := findWorkspaceBySessionID(projectDir, sessionID)
+		if workspacePath != "" {
+			if events := loadActivityFromWorkspace(workspacePath); events != nil {
+				// Successfully loaded from ACTIVITY.json
+				w.Header().Set("Content-Type", "application/json")
+				if encErr := json.NewEncoder(w).Encode(events); encErr != nil {
+					http.Error(w, fmt.Sprintf("Failed to encode events: %v", encErr), http.StatusInternalServerError)
+				}
+				return
+			}
+		}
+		// No fallback available, return original error
 		http.Error(w, fmt.Sprintf("Failed to fetch messages: %v", err), http.StatusInternalServerError)
 		return
 	}

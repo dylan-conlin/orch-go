@@ -75,13 +75,33 @@ Guidelines:
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Parent container uses monospace font, requiring explicit font-sans for reasoning
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Activity feed container (line 504) applies `font-mono text-xs` to all children. Reasoning text needs explicit `font-sans` class to override inheritance and display in standard font as per design requirements.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** web/src/lib/components/agent-detail/activity-tab.svelte:504
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Without explicit font override, reasoning text will render in monospace (JetBrains Mono) instead of standard font (Inter), reducing visual differentiation from tool calls.
+
+---
+
+### Finding 4: Tailwind spacing classes follow 4px grid system
+
+**Evidence:** Current spacing uses gap-1 (4px), gap-2 (8px), py-1 (4px vertical), etc. Tailwind's default spacing scale is 4px-based (1 unit = 0.25rem = 4px), matching design-principles requirement.
+
+**Source:** web/src/lib/components/agent-detail/activity-tab.svelte (multiple lines), tailwind.config.js
+
+**Significance:** Existing spacing implementation already complies with 4px grid requirement; no changes needed to spacing.
+
+---
+
+### Finding 5: Text events and reasoning events have insufficient differentiation
+
+**Evidence:** Both text events (line 577) and reasoning events (line 569) use muted-foreground color. Text events use opacity-60 for icon, reasoning uses /70 opacity for text. The only visual difference is icon type (emoji vs bullet).
+
+**Source:** web/src/lib/components/agent-detail/activity-tab.svelte:569, 577
+
+**Significance:** Users cannot quickly distinguish between agent text output and internal reasoning without reading content or relying solely on small icon differences.
 
 ---
 
@@ -89,15 +109,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Most requirements already met** - Tool calls already use monospace font, colored labels, and bold styling (Finding 1, 3). Tool results already nested, muted, and monospace (Finding 1). Spacing follows 4px grid (Finding 4). Only reasoning text needs font adjustment.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Font inheritance is the blocker** - Parent container's font-mono (Finding 3) causes all children to inherit monospace unless explicitly overridden. Reasoning text needs font-sans to achieve standard font requirement.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Contrast hierarchy underutilized** - Design system provides four levels (foreground → secondary → muted → faint) but current implementation only uses muted variants (Finding 2, 5). Text events should use higher contrast than reasoning to establish visual hierarchy.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Apply visual hierarchy by: (1) Add font-sans to reasoning text to override parent's monospace inheritance, (2) Differentiate text events from reasoning by using foreground color instead of muted, (3) Verify tool calls and results maintain current styling (already correct). Spacing already complies with 4px grid. No changes needed to tool styling which already meets all requirements.
 
 ---
 
@@ -105,21 +125,23 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Parent container uses font-mono (verified: read activity-tab.svelte:504)
+- ✅ Tool calls already use monospace and colored labels (verified: read lines 521-537)
+- ✅ Tool results already nested and muted (verified: read lines 543-547)
+- ✅ Tailwind spacing uses 4px grid (verified: Tailwind default scale is 4px-based)
+- ✅ Design system has four-level contrast hierarchy (verified: read app.css:19, tailwind.config.js)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Reasoning text will be readable in both themes with font-sans (will verify in visual test)
+- ⚠️ Text events with foreground color won't be too bright (will verify in visual test)
+- ⚠️ Bullet prefix still visible with font-sans (will verify in visual test)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if parent container already used font-sans (but verified it uses font-mono)
+- Finding would be wrong if reasoning already had font-sans override (but verified it doesn't)
+- Finding would be wrong if text events already differentiated from reasoning (but verified they use same muted color)
 
 ---
 
@@ -129,21 +151,23 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Minimal font-family override with contrast adjustment** - Add font-sans to reasoning text and increase text event contrast to foreground color.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Leverages existing correct implementation for tool calls and results (no changes needed)
+- Minimal code changes - only two class modifications required
+- Uses design system's existing contrast hierarchy (Finding 2)
+- Directly addresses font inheritance issue (Finding 3) and differentiation gap (Finding 5)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Not creating new design tokens - using existing Tailwind classes
+- Not changing parent container's font (keeps monospace default for terminal-style feed)
+- Text events will be more prominent than reasoning (acceptable hierarchy: text output > reasoning thoughts)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Add `font-sans` to reasoning text element (line 569) - establishes standard font vs monospace distinction
+2. Change text events from `text-muted-foreground` to `text-foreground` (line 577) - creates visual hierarchy between output and reasoning
+3. Visual verification via Playwright screenshot - confirm hierarchy visible in actual rendering
 
 ### Alternative Approaches Considered
 
@@ -164,24 +188,27 @@ Guidelines:
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Add `font-sans` class to reasoning text div (line 569) - highest impact for meeting core requirement
+- Change text events to use `text-foreground` (line 577) - establishes proper hierarchy
+- Visual verification via Playwright screenshot - mandatory gate for web/ changes
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Don't change tool call styling (lines 521-537) - already meets all requirements
+- ⚠️ Don't change tool result styling (lines 543-547) - already correct
+- ⚠️ Verify reasoning text is readable in both light and dark themes
+- ⚠️ Check that bullet prefix (opacity-60) still visible with new font
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- None - requirements are clear and implementation is straightforward
+- Future consideration: Should step events (related events in tool groups) have different hierarchy?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Reasoning text renders in Inter font (not JetBrains Mono monospace)
+- ✅ Text events are more prominent than reasoning (visual hierarchy established)
+- ✅ Tool calls remain monospace with colored labels
+- ✅ Tool results remain nested, muted, monospace
+- ✅ Spacing remains on 4px grid (no changes needed)
+- ✅ Screenshot evidence shows clear visual differentiation between all three types
 
 ---
 
