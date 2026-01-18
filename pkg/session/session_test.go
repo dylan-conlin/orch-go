@@ -28,7 +28,7 @@ func TestSessionLifecycle(t *testing.T) {
 
 	// Test session start
 	goal := "Ship feature X"
-	if err := store.Start(goal, "test-window"); err != nil {
+	if err := store.Start(goal, "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -88,7 +88,7 @@ func TestRecordSpawn(t *testing.T) {
 	}
 
 	// Start session
-	if err := store.Start("Test session", "test-window"); err != nil {
+	if err := store.Start("Test session", "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -141,7 +141,7 @@ func TestPersistence(t *testing.T) {
 	}
 
 	goal := "Persistent goal"
-	if err := store1.Start(goal, "test-window"); err != nil {
+	if err := store1.Start(goal, "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 	if err := store1.RecordSpawn("persist-123", "feature-impl", "test", "/tmp"); err != nil {
@@ -186,7 +186,7 @@ func TestSessionReplace(t *testing.T) {
 	}
 
 	// Start first session
-	if err := store.Start("First goal", "test-window"); err != nil {
+	if err := store.Start("First goal", "test-window", ""); err != nil {
 		t.Fatalf("Start() first error = %v", err)
 	}
 	if err := store.RecordSpawn("first-123", "inv", "first task", "/tmp"); err != nil {
@@ -194,7 +194,7 @@ func TestSessionReplace(t *testing.T) {
 	}
 
 	// Start second session (should replace)
-	if err := store.Start("Second goal", "test-window"); err != nil {
+	if err := store.Start("Second goal", "test-window", ""); err != nil {
 		t.Fatalf("Start() second error = %v", err)
 	}
 
@@ -238,7 +238,7 @@ func TestGetReturnsCopy(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if err := store.Start("Test goal", "test-window"); err != nil {
+	if err := store.Start("Test goal", "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 	if err := store.RecordSpawn("test-123", "inv", "task", "/tmp"); err != nil {
@@ -277,7 +277,7 @@ func TestMissingFile(t *testing.T) {
 	}
 
 	// Start session should create the file and parent directories
-	if err := store.Start("Test", "test-window"); err != nil {
+	if err := store.Start("Test", "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -303,7 +303,7 @@ func TestGetCheckpointStatus(t *testing.T) {
 	}
 
 	// Start session
-	if err := store.Start("Test checkpoint", "test-window"); err != nil {
+	if err := store.Start("Test checkpoint", "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -433,7 +433,7 @@ func TestGetCheckpointStatusWithType(t *testing.T) {
 	}
 
 	// Start session
-	if err := store.Start("Test type-aware checkpoints", "test-window"); err != nil {
+	if err := store.Start("Test type-aware checkpoints", "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -506,7 +506,7 @@ func TestGetCheckpointStatusWithThresholds(t *testing.T) {
 	}
 
 	// Start session
-	if err := store.Start("Test custom thresholds", "test-window"); err != nil {
+	if err := store.Start("Test custom thresholds", "test-window", ""); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -530,7 +530,7 @@ func TestGetCheckpointStatusWithThresholds(t *testing.T) {
 func TestGenerateSessionName(t *testing.T) {
 	// Create temp project directory
 	tmpDir := t.TempDir()
-	
+
 	// Create a subdirectory to simulate a real project name
 	projectDir := filepath.Join(tmpDir, "test-project")
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
@@ -538,39 +538,39 @@ func TestGenerateSessionName(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
+		name             string
 		existingSessions []string
-		wantName       string
+		wantName         string
 	}{
 		{
-			name:           "no existing sessions",
+			name:             "no existing sessions",
 			existingSessions: nil,
-			wantName:       "test-project-1",
+			wantName:         "test-project-1",
 		},
 		{
-			name:           "one existing session",
+			name:             "one existing session",
 			existingSessions: []string{"test-project-1"},
-			wantName:       "test-project-2",
+			wantName:         "test-project-2",
 		},
 		{
-			name:           "multiple existing sessions",
+			name:             "multiple existing sessions",
 			existingSessions: []string{"test-project-1", "test-project-2", "test-project-3"},
-			wantName:       "test-project-4",
+			wantName:         "test-project-4",
 		},
 		{
-			name:           "non-sequential numbers",
+			name:             "non-sequential numbers",
 			existingSessions: []string{"test-project-1", "test-project-5", "test-project-3"},
-			wantName:       "test-project-6",
+			wantName:         "test-project-6",
 		},
 		{
-			name:           "mixed with other projects",
+			name:             "mixed with other projects",
 			existingSessions: []string{"test-project-1", "other-project-1", "test-project-2"},
-			wantName:       "test-project-3",
+			wantName:         "test-project-3",
 		},
 		{
-			name:           "non-matching directories ignored",
+			name:             "non-matching directories ignored",
 			existingSessions: []string{"test-project-1", "random-name", "2026-01-13-1000"},
-			wantName:       "test-project-2",
+			wantName:         "test-project-2",
 		},
 	}
 

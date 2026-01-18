@@ -135,17 +135,24 @@ func runSessionStart(goal string) error {
 		windowName = sessionName
 	}
 
-	// Start the session with the captured window name
-	if err := store.Start(goal, windowName); err != nil {
-		return fmt.Errorf("failed to start session: %w", err)
-	}
-
 	// Create active session handoff in project-specific location
 	// This replaces the global ~/.orch workspace with project/.orch/session/{sessionName}/active/
 	handoffPath, err := createActiveSessionHandoff(goal, sessionName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to create active session handoff: %v\n", err)
 		// Continue anyway - handoff is nice-to-have for interactive sessions
+	}
+
+	// Derive workspace path from handoff path (handoff is in the workspace directory)
+	// If handoff creation failed, workspace path will be empty string
+	workspacePath := ""
+	if handoffPath != "" {
+		workspacePath = filepath.Dir(handoffPath)
+	}
+
+	// Start the session with the captured window name and workspace path
+	if err := store.Start(goal, windowName, workspacePath); err != nil {
+		return fmt.Errorf("failed to start session: %w", err)
 	}
 
 	// Progressive Session Capture: Prompt for TLDR and Where We Started
@@ -779,13 +786,14 @@ Examples:
 
 // SessionStatusOutput is the JSON output format for session status.
 type SessionStatusOutput struct {
-	Active     bool                      `json:"active"`
-	Goal       string                    `json:"goal,omitempty"`
-	StartedAt  string                    `json:"started_at,omitempty"`
-	Duration   string                    `json:"duration,omitempty"`
-	Spawns     []session.SpawnStatus     `json:"spawns,omitempty"`
-	Counts     *SpawnCounts              `json:"counts,omitempty"`
-	Checkpoint *session.CheckpointStatus `json:"checkpoint,omitempty"`
+	Active        bool                      `json:"active"`
+	Goal          string                    `json:"goal,omitempty"`
+	StartedAt     string                    `json:"started_at,omitempty"`
+	Duration      string                    `json:"duration,omitempty"`
+	WorkspacePath string                    `json:"workspace_path,omitempty"`
+	Spawns        []session.SpawnStatus     `json:"spawns,omitempty"`
+	Counts        *SpawnCounts              `json:"counts,omitempty"`
+	Checkpoint    *session.CheckpointStatus `json:"checkpoint,omitempty"`
 }
 
 // SpawnCounts summarizes spawn states.
@@ -813,6 +821,7 @@ func runSessionStatus() error {
 		output.Goal = sess.Goal
 		output.StartedAt = sess.StartedAt.Format(session.TimeFormat)
 		output.Duration = formatSessionDuration(store.Duration())
+		output.WorkspacePath = sess.WorkspacePath
 
 		// Get spawn statuses with reconciliation
 		statuses := store.GetSpawnStatuses(serverURL)
@@ -855,8 +864,8 @@ func runSessionStatus() error {
 	}
 
 	fmt.Printf("Session active:\n")
-	fmt.Printf("  Goal:     %s\n", output.Goal)
-	fmt.Printf("  Duration: %s", output.Duration)
+	fmt.Printf("  Goal:      %s\n", output.Goal)
+	fmt.Printf("  Duration:  %s", output.Duration)
 
 	// Show checkpoint status inline with duration
 	if output.Checkpoint != nil {
@@ -871,7 +880,11 @@ func runSessionStatus() error {
 	}
 	fmt.Println()
 
-	fmt.Printf("  Spawns:   %d total", output.Counts.Total)
+	if output.WorkspacePath != "" {
+		fmt.Printf("  Workspace: %s\n", output.WorkspacePath)
+	}
+
+	fmt.Printf("  Spawns:    %d total", output.Counts.Total)
 	if output.Counts.Active > 0 {
 		fmt.Printf(" (%d active", output.Counts.Active)
 		if output.Counts.Completed > 0 {

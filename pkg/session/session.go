@@ -104,6 +104,13 @@ type Session struct {
 	// from a different window.
 	WindowName string `json:"window_name,omitempty"`
 
+	// WorkspacePath is the absolute path to the session workspace directory.
+	// This is the active workspace directory created at session start:
+	// {project}/.orch/session/{sessionName}/active/
+	// Storing this improves discoverability and enables 'orch session end'
+	// to easily find and validate the workspace.
+	WorkspacePath string `json:"workspace_path,omitempty"`
+
 	// Spawns are agents spawned during this session
 	// Note: status is NOT stored here - derived at query time
 	Spawns []SpawnRecord `json:"spawns"`
@@ -232,20 +239,22 @@ func (s *Store) Get() *Session {
 	return &session
 }
 
-// Start begins a new session with the given goal and window name.
+// Start begins a new session with the given goal, window name, and workspace path.
 // The windowName should be the tmux window where the session is being started,
 // captured after renaming the window to the session name. This allows session end
 // to find the correct active directory even if called from a different window.
+// The workspacePath is the absolute path to the active workspace directory.
 // If a session is already active, it is replaced.
-func (s *Store) Start(goal, windowName string) error {
+func (s *Store) Start(goal, windowName, workspacePath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.session = &Session{
-		Goal:       goal,
-		StartedAt:  time.Now(),
-		WindowName: windowName,
-		Spawns:     []SpawnRecord{},
+		Goal:          goal,
+		StartedAt:     time.Now(),
+		WindowName:    windowName,
+		WorkspacePath: workspacePath,
+		Spawns:        []SpawnRecord{},
 	}
 
 	return s.save()
