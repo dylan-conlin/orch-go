@@ -566,14 +566,44 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if !alreadyIn {
-				agents = append(agents, AgentAPIResponse{
+				agent := AgentAPIResponse{
 					ID:      win.Name,
 					BeadsID: beadsID,
 					Skill:   skill,
 					Project: project,
 					Status:  "active",
 					Window:  win.Target,
-				})
+				}
+
+				// Look up workspace path for spawn time and activity detection
+				// Tmux-only agents (Claude CLI escape hatch) need this for visibility parity
+				if beadsID != "" {
+					if workspacePath := wsCache.lookupWorkspace(beadsID); workspacePath != "" {
+						// Read spawn time for runtime calculation
+						if spawnTime := spawn.ReadSpawnTime(workspacePath); !spawnTime.IsZero() {
+							agent.SpawnedAt = spawnTime.Format(time.RFC3339)
+							agent.Runtime = formatDuration(now.Sub(spawnTime))
+						}
+
+						// Look up project dir for agent
+						if agentProjectDir := wsCache.lookupProjectDir(beadsID); agentProjectDir != "" {
+							agent.ProjectDir = agentProjectDir
+						}
+
+						// Activity detection: check workspace file modification times
+						// Tmux agents are "dead" if no workspace activity for 3+ minutes
+						lastActivity := getWorkspaceLastActivity(workspacePath)
+						if !lastActivity.IsZero() {
+							agent.LastActivityAt = lastActivity.Format(time.RFC3339)
+							timeSinceActivity := now.Sub(lastActivity)
+							if timeSinceActivity > deadThreshold {
+								agent.Status = "dead"
+							}
+						}
+					}
+				}
+
+				agents = append(agents, agent)
 
 				// Collect beads ID for batch fetch
 				if beadsID != "" && !seenBeadsIDs[beadsID] {
@@ -1557,4 +1587,61 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode messages: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// getWorkspaceLastActivity returns the most recent file modification time in a workspace.
+// This is used for activity detection in tmux agents (Claude CLI escape hatch) where
+// we don't have session timestamps from OpenCode API.
+// Returns zero time if workspace doesn't exist or has no activity files.
+func getWorkspaceLastActivity(workspacePath string) time.Time {
+	if workspacePath == "" {
+		return time.Time{}
+	}
+
+	// Files that indicate agent activity (ordered by relevance)
+	// Investigation files and SYNTHESIS.md are the most relevant indicators
+	activityFiles := []string{
+		"SYNTHESIS.md",
+		"SPAWN_CONTEXT.md",
+		".session_id",
+		".spawn_time",
+	}
+
+	var lastMod time.Time
+
+	// Check known activity files first
+	for _, filename := range activityFiles {
+		filePath := filepath.Join(workspacePath, filename)
+		info, err := os.Stat(filePath)
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(lastMod) {
+			lastMod = info.ModTime()
+		}
+	}
+
+	// Also check for any .md files in the workspace (investigation files)
+	entries, err := os.ReadDir(workspacePath)
+	if err != nil {
+		return lastMod
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		// Check markdown files (investigation files, notes, etc.)
+		if strings.HasSuffix(entry.Name(), ".md") {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().After(lastMod) {
+				lastMod = info.ModTime()
+			}
+		}
+	}
+
+	return lastMod
 }
