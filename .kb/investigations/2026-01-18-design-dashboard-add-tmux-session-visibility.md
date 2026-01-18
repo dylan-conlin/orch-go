@@ -203,19 +203,41 @@ Tmux agents don't have equivalent metadata - the window existing says nothing ab
 - B: Track last pane content hash, detect change
 - C: Check if Claude TUI shows "processing" state
 - D: Use workspace file modification times as proxy
+- E: **NEW** Tail transcript file (`~/.claude/projects/.../[session_id].jsonl`)
 
 **Substrate says:**
 - Existing function: `tmux.IsOpenCodeReady()` already parses pane content for TUI indicators
 - Constraint: "Observation gaps are P1 bugs"
+- **Claude Code docs:** Transcript files are undocumented but stable, contain full conversation in JSONL format
 
-**RECOMMENDATION:** Option A (pane content analysis) with Option D as fallback because:
-- IsOpenCodeReady() proves pane content parsing works
-- Claude TUI shows different states (prompt box, processing indicator)
-- Workspace file mtime is a good fallback for non-TUI agents
-- Matches existing pattern from tmux package
+**RECOMMENDATION:** Option E (transcript file monitoring) as primary, Option D as fallback because:
+- Transcript files are structured JSONL (easier to parse than TUI output)
+- File mtime gives immediate activity signal without parsing content
+- More stable than pane parsing which is fragile to TUI format changes
+- SessionStart/SessionEnd hooks can emit session_id for transcript path resolution
 
-**Trade-off accepted:** Pane parsing is fragile to TUI format changes
-**When this would change:** If Claude CLI provides state API
+**Trade-off accepted:** Transcript format is undocumented, may change
+**When this would change:** If Claude CLI adds official session state API
+
+**Alternative:** If transcript monitoring is too complex, pane content (Option A) remains viable but is more fragile.
+
+---
+
+### Finding 5: Claude Code provides lifecycle hooks but no session API
+
+**Evidence:** From Claude Code documentation:
+- **SessionStart hook** - fires on session start/resume, provides `session_id`, `transcript_path`
+- **SessionEnd hook** - fires on session end, provides `session_id`, `reason`
+- **Transcript files** - JSONL files at `~/.claude/projects/.../[session_id].jsonl` contain full conversation
+- **No REST API** - Claude Code does not expose session state queries
+
+**Source:** Official Claude Code hooks documentation
+
+**Significance:**
+- SessionStart/SessionEnd hooks can emit events for tracking agent lifecycle
+- Transcript files offer a more stable activity detection mechanism than pane parsing
+- `--output-format json` on CLI spawn can capture session_id for later reference
+- Multi-source liveness checking (tmux + beads + workspace + transcript) is necessary because no single source is authoritative
 
 ---
 
@@ -235,7 +257,7 @@ The dashboard should integrate tmux data by:
 
 1. **Leveraging existing beads Phase lookup** (already partially implemented) - tmux agents with beads IDs already get Phase from beads batch fetch. Status should derive from this.
 
-2. **Adding pane activity detection** for dead vs active status - A new function `tmux.GetPaneActivityAge()` that captures pane content and compares to previous capture (or checks for Claude TUI "waiting" state).
+2. **Adding activity detection** for dead vs active status - Monitor transcript file mtime (`~/.claude/projects/.../[session_id].jsonl`) for activity, with workspace file mtime as fallback. More stable than pane content parsing.
 
 3. **Reading .spawn_time for runtime** - Workspace already contains spawn metadata.
 
@@ -255,7 +277,8 @@ The dashboard should integrate tmux data by:
 **What's untested:**
 
 - ⚠️ Status derivation from Phase for tmux agents (not implemented)
-- ⚠️ Pane activity age detection (function doesn't exist yet)
+- ⚠️ Transcript file activity detection (new approach from Claude Code docs)
+- ⚠️ Session ID capture from `--output-format json` or SessionStart hook
 - ⚠️ Runtime display for tmux agents from .spawn_time (not connected)
 - ⚠️ Dashboard UI correctly renders partial data (needs frontend verification)
 
@@ -291,9 +314,10 @@ The dashboard should integrate tmux data by:
    - Files: cmd/orch/serve_agents.go
    - Estimated: 50 lines changed
 
-2. **Phase 2: Pane Activity Detection** - Add GetPaneActivityAge() to tmux package, use 3-minute threshold for dead detection
-   - Files: pkg/tmux/tmux.go, cmd/orch/serve_agents.go
-   - Estimated: 100 lines new, 30 lines changed
+2. **Phase 2: Activity Detection via Transcript** - Resolve transcript path from session_id (captured via SessionStart hook or `--output-format json`), check file mtime for activity. Use 3-minute threshold for dead detection.
+   - Files: pkg/claude/transcript.go (new), cmd/orch/serve_agents.go
+   - Estimated: 80 lines new, 30 lines changed
+   - **Alternative:** If transcript approach too complex, fall back to pane content parsing (pkg/tmux/tmux.go)
 
 3. **Phase 3: Runtime from .spawn_time** - Read spawn_time from workspace, calculate runtime for tmux agents
    - Files: cmd/orch/serve_agents.go
