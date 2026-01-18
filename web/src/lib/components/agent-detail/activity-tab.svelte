@@ -380,6 +380,17 @@
 	let isSending = $state(false);
 	let sendError = $state<string | null>(null);
 
+	// Image attachment state
+	type PendingImage = {
+		id: string;
+		file: File;
+		dataUrl: string;
+		base64: string;
+		mediaType: string;
+	};
+	let pendingImages = $state<PendingImage[]>([]);
+	let isDragging = $state(false);
+
 	// Determine if input should be disabled
 	let isInputDisabled = $derived(
 		agent.status !== 'active' || !agent.session_id || isSending
@@ -387,18 +398,40 @@
 
 	// Send message to agent
 	async function sendMessage() {
-		if (!messageInput.trim() || !agent.session_id || isInputDisabled) {
+		if ((!messageInput.trim() && pendingImages.length === 0) || !agent.session_id || isInputDisabled) {
 			return;
 		}
 
 		const message = messageInput.trim();
+		const imagesToSend = [...pendingImages];
 		messageInput = ''; // Clear input immediately
+		pendingImages = []; // Clear images immediately
 		sendError = null;
 		isSending = true;
 
 		try {
 			// Get OpenCode server URL from agents store (API_BASE)
 			const serverURL = 'http://localhost:4096';
+			
+			// Build parts array with text and images
+			const parts: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
+			
+			// Add text part if present
+			if (message) {
+				parts.push({ type: 'text', text: message });
+			}
+			
+			// Add image parts
+			for (const img of imagesToSend) {
+				parts.push({
+					type: 'image',
+					source: {
+						type: 'base64',
+						media_type: img.mediaType,
+						data: img.base64
+					}
+				});
+			}
 			
 			// POST to OpenCode prompt_async endpoint
 			const response = await fetch(`${serverURL}/session/${agent.session_id}/prompt_async`, {
@@ -407,7 +440,7 @@
 					'Content-Type': 'application/json',
 				},
 				body: JSON.stringify({
-					parts: [{ type: 'text', text: message }],
+					parts,
 					agent: 'build',
 				}),
 			});
@@ -421,6 +454,7 @@
 		} catch (error) {
 			sendError = error instanceof Error ? error.message : 'Failed to send message';
 			messageInput = message; // Restore message on error
+			pendingImages = imagesToSend; // Restore images on error
 		} finally {
 			isSending = false;
 		}
@@ -431,6 +465,96 @@
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
 			sendMessage();
+		}
+	}
+
+	// Convert image file to base64 and create pending image
+	async function processImageFile(file: File): Promise<void> {
+		if (!file.type.startsWith('image/')) {
+			sendError = 'Only image files are supported';
+			return;
+		}
+
+		// Check file size (limit to 5MB)
+		if (file.size > 5 * 1024 * 1024) {
+			sendError = 'Image too large (max 5MB)';
+			return;
+		}
+
+		try {
+			const dataUrl = await readFileAsDataURL(file);
+			const base64 = dataUrl.split(',')[1];
+			
+			const pendingImage: PendingImage = {
+				id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+				file,
+				dataUrl,
+				base64,
+				mediaType: file.type
+			};
+			
+			pendingImages = [...pendingImages, pendingImage];
+			sendError = null;
+		} catch (error) {
+			sendError = error instanceof Error ? error.message : 'Failed to process image';
+		}
+	}
+
+	// Read file as data URL
+	function readFileAsDataURL(file: File): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result as string);
+			reader.onerror = () => reject(new Error('Failed to read file'));
+			reader.readAsDataURL(file);
+		});
+	}
+
+	// Remove pending image
+	function removePendingImage(id: string) {
+		pendingImages = pendingImages.filter(img => img.id !== id);
+	}
+
+	// Handle clipboard paste
+	async function handlePaste(event: ClipboardEvent) {
+		const items = event.clipboardData?.items;
+		if (!items) return;
+
+		for (const item of Array.from(items)) {
+			if (item.type.startsWith('image/')) {
+				event.preventDefault();
+				const file = item.getAsFile();
+				if (file) {
+					await processImageFile(file);
+				}
+			}
+		}
+	}
+
+	// Handle drag over
+	function handleDragOver(event: DragEvent) {
+		event.preventDefault();
+		isDragging = true;
+	}
+
+	// Handle drag leave
+	function handleDragLeave(event: DragEvent) {
+		event.preventDefault();
+		isDragging = false;
+	}
+
+	// Handle file drop
+	async function handleDrop(event: DragEvent) {
+		event.preventDefault();
+		isDragging = false;
+
+		const files = event.dataTransfer?.files;
+		if (!files || files.length === 0) return;
+
+		for (const file of Array.from(files)) {
+			if (file.type.startsWith('image/')) {
+				await processImageFile(file);
+			}
 		}
 	}
 </script>
@@ -514,7 +638,7 @@
 						{@const toolDisplay = formatToolCall(part)}
 						{@const isExpanded = expandedResults.get(group.primary.id) || false}
 						{@const hasOutput = part.state?.output}
-						{@const truncated = hasOutput ? truncateOutput(part.state.output, 3) : null}
+						{@const truncated = hasOutput && part.state?.output ? truncateOutput(part.state.output, 3) : null}
 						
 						<div class="flex flex-col gap-1 py-1">
 							<!-- Tool header - clickable to expand/collapse -->
@@ -548,7 +672,7 @@
 							{#if isExpanded}
 								<div class="ml-6 flex flex-col gap-1">
 									<!-- Tool output -->
-									{#if hasOutput && truncated}
+									{#if hasOutput && truncated && part.state}
 										<div class="text-xs">
 											<pre class="font-mono text-muted-foreground/80 whitespace-pre-wrap break-words bg-black/10 rounded p-2">{part.state.output}</pre>
 										</div>
@@ -566,6 +690,22 @@
 											</div>
 										{/if}
 									{/each}
+								</div>
+							{/if}
+						</div>
+					{:else if part.type === 'image'}
+						<!-- Image events: display inline -->
+						<div class="flex flex-col gap-1 py-1">
+							{#if part.source && part.source.type === 'base64'}
+								<div class="flex items-start gap-2">
+									<span class="shrink-0 opacity-60">📷</span>
+									<div class="flex-1">
+										<img 
+											src="data:{part.source.media_type};base64,{part.source.data}" 
+											alt="User uploaded"
+											class="max-w-md max-h-64 rounded border"
+										/>
+									</div>
 								</div>
 							{/if}
 						</div>
@@ -599,25 +739,67 @@
 	</div>
 
 	<!-- Message Input -->
-	<div class="p-3 border-t shrink-0">
+	<div 
+		class="p-3 border-t shrink-0 relative"
+		role="region"
+		aria-label="Message input with image upload"
+		ondragover={handleDragOver}
+		ondragleave={handleDragLeave}
+		ondrop={handleDrop}
+	>
+		<!-- Drag overlay -->
+		{#if isDragging}
+			<div class="absolute inset-0 z-50 bg-primary/10 border-2 border-dashed border-primary rounded flex items-center justify-center">
+				<div class="text-center">
+					<p class="text-lg mb-1">📷</p>
+					<p class="text-sm text-primary font-medium">Drop image here</p>
+				</div>
+			</div>
+		{/if}
+
 		{#if sendError}
 			<div class="mb-2 text-xs text-red-500">
 				{sendError}
 			</div>
 		{/if}
+
+		<!-- Image previews -->
+		{#if pendingImages.length > 0}
+			<div class="mb-2 flex flex-wrap gap-2">
+				{#each pendingImages as img (img.id)}
+					<div class="relative group">
+						<img 
+							src={img.dataUrl} 
+							alt="Pending upload"
+							class="h-20 w-20 object-cover rounded border"
+						/>
+						<button
+							type="button"
+							onclick={() => removePendingImage(img.id)}
+							class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+							title="Remove image"
+						>
+							×
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="flex gap-2 items-end">
 			<textarea
 				bind:value={messageInput}
 				onkeydown={handleKeydown}
+				onpaste={handlePaste}
 				disabled={isInputDisabled}
-				placeholder={isInputDisabled ? 'Agent not active' : 'Send a message... (Enter to send, Shift+Enter for newline)'}
+				placeholder={isInputDisabled ? 'Agent not active' : 'Send a message... (Enter to send, Shift+Enter for newline, Cmd+V to paste image)'}
 				class="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 text-sm rounded border bg-background resize-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
 				rows="1"
 			></textarea>
 			<button
 				type="button"
 				onclick={sendMessage}
-				disabled={isInputDisabled || !messageInput.trim()}
+				disabled={isInputDisabled || (!messageInput.trim() && pendingImages.length === 0)}
 				class="px-4 py-2 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 				title="Send message"
 			>
@@ -625,7 +807,7 @@
 			</button>
 		</div>
 		<p class="mt-1 text-xs text-muted-foreground">
-			Enter to send, Shift+Enter for newline
+			Enter to send, Shift+Enter for newline, Cmd+V to paste images, or drag & drop
 		</p>
 	</div>
 </div>

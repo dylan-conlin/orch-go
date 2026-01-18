@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Dashboard Add Image Paste Upload
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How do I add image paste/upload support to the dashboard's agent message input?
 
 **Started:** 2026-01-17
 **Updated:** 2026-01-17
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** OpenCode Agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -56,33 +56,33 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Message sending currently uses OpenCode's prompt_async API
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The activity-tab.svelte component sends messages to `http://localhost:4096/session/{sessionId}/prompt_async` with a JSON body containing a `parts` array. Current implementation only sends text parts: `{ type: 'text', text: message }`
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** web/src/lib/components/agent-detail/activity-tab.svelte:404-413
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** To add image support, I need to extend the parts array to include image parts with base64 data, following the Claude API format
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Dashboard architecture follows API -> Store -> Component pattern
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Dashboard integrations follow the pattern: "API endpoint in serve.go -> Svelte store -> page.svelte integration" (from prior knowledge). The orch serve backend is at cmd/orch/serve.go, which sets up HTTP endpoints that the Svelte frontend consumes.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Prior knowledge from SPAWN_CONTEXT.md line 54, cmd/orch/serve.go:1-450
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** For image support, I don't need backend API changes - the OpenCode prompt_async endpoint should already support image parts. I only need frontend changes to capture and display images
+
+---
+
+### Finding 3: Claude API image format uses base64 source
+
+**Evidence:** Claude API expects image parts in format: `{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: '<base64-string>' } }`. Images can be displayed using data URLs: `data:image/png;base64,{data}`.
+
+**Source:** Claude API documentation (standard format), web/src/lib/components/agent-detail/screenshots-tab.svelte shows image handling patterns
+
+**Significance:** I can extend the parts array to include image parts with base64 data, and display them inline using data URLs. No backend API changes needed.
 
 ---
 
@@ -90,15 +90,22 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Frontend-only implementation** - All changes can be made in the Svelte frontend. The message sending already uses a flexible parts array that can contain both text and image parts.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Standard base64 encoding** - Using the Clipboard API and FileReader API, I can capture images from paste/drop events, convert to base64, and include in the parts array following the Claude API format.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Inline display pattern** - The activity feed already displays various message types. I can extend it to render image parts using data URLs, following the pattern established in screenshots-tab.svelte.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+To add image paste/upload support to the dashboard, I need to:
+1. Add event handlers for clipboard paste and drag-drop to the message input area
+2. Convert captured images to base64 using FileReader API
+3. Show image previews before sending (with remove option)
+4. Include image parts in the parts array when calling OpenCode's prompt_async endpoint
+5. Extend the activity feed rendering to display image parts inline
+
+No backend changes are required - OpenCode's prompt_async endpoint should already support image parts per the Claude API specification.
 
 ---
 
@@ -130,21 +137,25 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Extend activity-tab.svelte with image capture and rendering** - Add clipboard/drag-drop handlers to capture images, convert to base64, preview before send, and include in parts array.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Leverages existing message sending infrastructure (prompt_async already supports parts array)
+- Follows established patterns (screenshots-tab.svelte for image display)
+- Frontend-only changes minimize implementation risk and testing scope
+- Clipboard API and FileReader API are well-supported browser standards
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Images stored as base64 in message history (not uploaded to separate storage)
+- No image editing/annotation capabilities (keep initial implementation simple)
+- No support for multiple images per message initially (can extend later)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Add clipboard paste handler - captures Cmd/Ctrl+V events, foundational for paste workflow
+2. Add drag-drop handlers - captures file drop events, parallel to paste workflow
+3. Add image preview component - shows pending images before send, user feedback
+4. Modify sendMessage to include image parts - integrates with OpenCode API
+5. Extend activity feed rendering - displays images inline in message history
 
 ### Alternative Approaches Considered
 
@@ -165,24 +176,27 @@ Guidelines:
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Clipboard paste handler (Cmd/Ctrl+V) - highest user value, enables primary workflow
+- Image state management (pendingImages array) - foundational for all features
+- Image preview component - immediate visual feedback for user
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Base64 size limits - large images can exceed message size limits (consider compression or size warnings)
+- ⚠️ MIME type validation - only accept image/* types (png, jpg, gif, webp)
+- ⚠️ Drag-drop z-index conflicts - overlay must appear above other dashboard elements
+- ⚠️ Memory cleanup - ensure removed images don't leak memory (revoke object URLs)
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Image size optimization (client-side compression before base64 encoding)
+- Workspace upload option (store images in .orch/workspace/{id}/images/ instead of base64)
+- Multi-image support (allow multiple images in one message)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Can paste image from clipboard with Cmd+V
+- ✅ Can drag-drop image file onto input area
+- ✅ Image preview appears before send with remove button
+- ✅ Images display inline in activity feed after sending
+- ✅ Images appear in agent's message history across refreshes
 
 ---
 

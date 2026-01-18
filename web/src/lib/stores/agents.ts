@@ -134,6 +134,11 @@ export interface SSEEvent {
 				input?: unknown;
 				output?: string;
 			};
+			source?: {
+				type: string;
+				media_type: string;
+				data: string;
+			};
 		};
 	};
 	timestamp?: number;
