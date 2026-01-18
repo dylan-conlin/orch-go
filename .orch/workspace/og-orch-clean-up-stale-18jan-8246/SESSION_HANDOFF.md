@@ -2,19 +2,20 @@
 
 **Orchestrator:** og-orch-clean-up-stale-18jan-8246
 **Focus:** Clean up stale orchestrator work: 1) Review and complete the 118 idle agents (especially the 5 at Phase:Complete for orch-go-vzo9u), 2) Review the 3 stale orchestrator sessions (72h sp-orch-ship-spec-extractors, 49h og-orch-triage-orch-go, 48h pw-orch-continue-observability) - abandon or complete as appropriate
-**Duration:** 2026-01-18 12:12 → 12:22
+**Duration:** 2026-01-18 12:12 → 12:41
 **Outcome:** success
 
 ---
 
 ## TLDR
 
-Cleanup session accomplished all goals:
-1. **Completed 2 duplicate-spawn issues** (orch-go-vzo9u with 5 agents, orch-go-68afq with 5 agents) - both had reached Phase:Complete across multiple spawn attempts
-2. **Closed 3 stale orchestrator sessions** (72h sp-orch-ship, 49h og-orch-triage, 49h pw-orch-observability) - all had complete SESSION_HANDOFF.md files indicating successful work
-3. **Ran comprehensive cleanup** - deleted 55 orphaned OpenCode sessions, closed 7 phantom tmux windows, archived 6 empty investigations
+Extended cleanup session accomplished all initial goals plus expanded scope:
+1. **Completed 4 duplicate-spawn orch-go issues** (vzo9u, 68afq, gy1o4.1.3, y4vsb) - all had multiple agents reaching Phase:Complete
+2. **Closed 3 stale orchestrator sessions** (72h sp-orch-ship, 49h og-orch-triage, 49h pw-orch-observability)
+3. **Comprehensive cleanup** - deleted 55+238=293 orphaned OpenCode sessions, closed 7 phantom tmux windows, archived 6 empty investigations
+4. **Price-watch cleanup** - completed 10 price-watch agents at Phase:Complete, abandoned 2 stuck agents
 
-Idle agents reduced from 117 to 111. Remaining are mostly price-watch agents (different repo) and orch-go agents stuck at Implementation phase (need separate review).
+Idle agents reduced from 117 to 94 (23 cleaned up). Remaining are mostly stuck at Implementation phase (need individual review to determine resume vs abandon).
 
 ---
 
@@ -27,6 +28,17 @@ Idle agents reduced from 117 to 111. Remaining are mostly price-watch agents (di
 |-------|--------|---------|-------------|
 | orch-go-vzo9u | 5 duplicate | success | Work verified complete Jan 17, agents kept re-discovering done work |
 | orch-go-68afq | 5 duplicate | success | 16 tests pass, feature already implemented |
+| orch-go-gy1o4.1.3 | 6 duplicate | success | UI dashboard subtask complete |
+| orch-go-y4vsb | 1 | success | Expressive agent status display implemented |
+| pw-wpen, pw-koe0, pw-3pm7, pw-xsz6 | 4 | success | Price-watch features complete |
+| pw-54af.2, pw-54af.3, pw-urpb | 3 | success | Price-watch features complete |
+| pw-05ep, pw-js2g, pw-p9hs | 3 | success | Price-watch features complete |
+
+### Abandonments via `orch abandon`
+| Issue | Reason |
+|-------|--------|
+| pw-jfxr.2 | Stuck at Planning phase - stale cleanup |
+| pw-2dr5 | Stuck at Implementation phase - stale cleanup |
 
 ---
 
@@ -88,32 +100,35 @@ Idle agents reduced from 117 to 111. Remaining are mostly price-watch agents (di
 - System health: Dashboard, OpenCode, Daemon all running
 
 ### Where We Ended
-- **111 idle agents** (6 fewer from completions)
+- **94 idle agents** (23 fewer - from 117)
 - **0 stale orchestrator sessions** (all 3 closed)
-- **2 duplicate-spawn issues closed** (orch-go-vzo9u, orch-go-68afq)
-- **55 orphaned OpenCode sessions deleted**
+- **4 duplicate-spawn orch-go issues closed** (vzo9u, 68afq, gy1o4.1.3, y4vsb)
+- **10 price-watch issues completed** (wpen, koe0, 3pm7, xsz6, 54af.2, 54af.3, urpb, 05ep, js2g, p9hs)
+- **2 price-watch issues abandoned** (jfxr.2, 2dr5 - stuck, not Phase:Complete)
+- **293 orphaned OpenCode sessions deleted** (55 orch-go + 238 price-watch)
 - **7 phantom tmux windows closed**
 - **6 empty investigation files archived**
 - System health unchanged - all services running
 
 ### Scope Changes
-- None - executed cleanup as planned
+- User expanded scope mid-session to include ALL remaining idle agents (orch-go + price-watch)
 
 ---
 
 ## Next (What Should Happen)
 
-**Recommendation:** shift-focus
+**Recommendation:** close-session
 
-### If Shift Focus
-**New focus:** Address remaining idle agents
+All cleanup goals (initial + expanded scope) have been achieved:
+- All Phase:Complete agents closed
+- All stale orchestrator sessions closed
+- Comprehensive cleanup of orphaned sessions
 
-**Remaining work:**
-1. **price-watch agents:** ~86 idle agents need cleanup from price-watch repo
-2. **Stuck orch-go agents:** ~25 at Implementation/Validation phase - need review to determine resume vs abandon
-3. **Spawn duplicate prevention:** Issue orch-go-wq3mz tracks this systemic problem
+**Remaining work for future sessions:**
+1. **94 remaining idle agents** - mostly stuck at Implementation/Validation phase, need individual review to determine resume vs abandon (not Phase:Complete so can't batch close)
+2. **Spawn duplicate prevention:** Issue orch-go-wq3mz tracks this systemic problem - prevents future duplicate spawn issues
 
-**Why shift:** Primary cleanup goals achieved. Remaining idle agents are either cross-repo (price-watch) or need individual review (stuck at non-Complete phases).
+**Why close:** Achieved 23 agent reduction (117→94). Remaining agents are stuck at non-Complete phases requiring individual investigation (not cleanup work).
 
 ---
 
@@ -132,8 +147,10 @@ Idle agents reduced from 117 to 111. Remaining are mostly price-watch agents (di
 ## Session Metadata
 
 **Agents spawned:** 0
-**Agents completed:** 10 (5 for vzo9u + 5 for 68afq)
-**Issues closed:** orch-go-vzo9u, orch-go-68afq
+**Agents completed:** 27 (17 orch-go + 10 price-watch via orch complete)
+**Agents abandoned:** 2 (price-watch stuck agents)
+**Issues closed:** orch-go-vzo9u, orch-go-68afq, orch-go-gy1o4.1.3, orch-go-y4vsb, pw-wpen, pw-koe0, pw-3pm7, pw-xsz6, pw-54af.2, pw-54af.3, pw-urpb, pw-05ep, pw-js2g, pw-p9hs
+**Issues reopened:** pw-jfxr.2, pw-2dr5 (abandoned → open)
 **Issues created:** None
 **Sessions closed:** 3 (sp-orch-ship-spec-extractors, og-orch-triage-orch-go, pw-orch-continue-observability)
 
