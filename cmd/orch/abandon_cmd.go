@@ -147,13 +147,23 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	// Discovery fallback if registry didn't give us everything
 	if windowInfo == nil {
-		// Check for tmux window
+		// Try searching by beads ID first (for worker sessions)
 		sessions, _ := tmux.ListWorkersSessions()
 		for _, session := range sessions {
 			window, err := tmux.FindWindowByBeadsID(session, beadsID)
 			if err == nil && window != nil {
 				windowInfo = window
 				break
+			}
+		}
+
+		// If beads ID search failed and we have a workspace, check if it's an orchestrator
+		// Orchestrator windows only contain workspace names, not beads IDs
+		if windowInfo == nil && workspacePath != "" && isOrchestratorWorkspace(workspacePath) {
+			// Search by workspace name for orchestrator sessions
+			window, _, err := tmux.FindWindowByWorkspaceNameAllSessions(agentName)
+			if err == nil && window != nil {
+				windowInfo = window
 			}
 		}
 	}

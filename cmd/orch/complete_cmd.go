@@ -996,19 +996,29 @@ func runComplete(identifier, workdir string) error {
 
 	// Clean up tmux window if it exists (prevents phantom accumulation)
 	// For orchestrators, search by workspace name; for regular agents, search by beads ID
-	var windowSearchID string
+	var window *tmux.WindowInfo
+	var tmuxSessionName string
+	var findErr error
+
 	if isOrchestratorSession {
-		windowSearchID = agentName
-	} else if beadsID != "" {
-		windowSearchID = beadsID
+		// Orchestrator windows only contain workspace names, not beads IDs
+		window, tmuxSessionName, findErr = tmux.FindWindowByWorkspaceNameAllSessions(agentName)
 	} else {
-		windowSearchID = identifier
+		// Worker windows contain beads IDs in format [beadsID]
+		var windowSearchID string
+		if beadsID != "" {
+			windowSearchID = beadsID
+		} else {
+			windowSearchID = identifier
+		}
+		window, tmuxSessionName, findErr = tmux.FindWindowByBeadsIDAllSessions(windowSearchID)
 	}
-	if window, sessionName, err := tmux.FindWindowByBeadsIDAllSessions(windowSearchID); err == nil && window != nil {
+
+	if findErr == nil && window != nil {
 		if err := tmux.KillWindow(window.Target); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to close tmux window %s: %v\n", window.Target, err)
 		} else {
-			fmt.Printf("Closed tmux window: %s:%s\n", sessionName, window.Name)
+			fmt.Printf("Closed tmux window: %s:%s\n", tmuxSessionName, window.Name)
 		}
 	}
 
