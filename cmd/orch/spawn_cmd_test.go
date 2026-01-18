@@ -113,10 +113,10 @@ func TestModelAutoSelection(t *testing.T) {
 			expectedBackend: "opencode",
 		},
 		{
-			name:            "no flags defaults to opencode",
+			name:            "no flags defaults to claude",
 			modelFlag:       "",
 			opusFlag:        false,
-			expectedBackend: "opencode",
+			expectedBackend: "claude",
 		},
 		{
 			name:            "opus-4.5 alias auto-selects claude",
@@ -129,7 +129,7 @@ func TestModelAutoSelection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Simulate the auto-selection logic from runSpawnWithSkillInternal
-			backend := "opencode"
+			backend := "claude"
 
 			if tt.opusFlag {
 				backend = "claude"

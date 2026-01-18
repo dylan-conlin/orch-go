@@ -84,8 +84,8 @@ To proceed with manual spawn, you must acknowledge this with --bypass-triage.
 This creates friction to encourage the preferred daemon-driven workflow.
 
 Backend Modes (--backend):
-  claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus)
-  opencode: Uses OpenCode HTTP API (default)
+  claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus) (default)
+  opencode: Uses OpenCode HTTP API
   
   Config can set default mode (orch config set spawn_mode claude|opencode).
   The --backend flag overrides the config setting for this spawn only.
@@ -1132,8 +1132,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	//   2.5. Infrastructure work detection (auto-apply escape hatch)
 	//   3. Auto-selection based on --model flag (opus → claude, sonnet → opencode)
 	//   4. Config default (spawn_mode in project config)
-	//   5. Default to opencode
-	spawnBackend := "opencode"
+	//   5. Default to claude (Max subscription covers Claude CLI usage)
+	spawnBackend := "claude"
 
 	if spawnBackendFlag != "" {
 		// Explicit --backend flag: highest priority
@@ -1178,7 +1178,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			// Sonnet model: use opencode (pay-per-token API)
 			spawnBackend = "opencode"
 		}
-		// Other models default to opencode (handled by default value above)
+		// Other models keep the default backend (claude)
 	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
 		// Config default: respect project spawn_mode setting
 		spawnBackend = "claude"
