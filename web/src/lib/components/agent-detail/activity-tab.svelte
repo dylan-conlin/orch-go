@@ -648,15 +648,15 @@
 								onfocus={() => focusedEventId = group.primary.id}
 								onmouseenter={() => focusedEventId = group.primary.id}
 								onmouseleave={() => focusedEventId = null}
-								class="flex items-start gap-2 text-muted-foreground hover:text-foreground transition-colors text-left w-full hover:bg-muted/10 rounded px-1 py-0.5"
+								class="flex items-start gap-2 hover:bg-muted/10 rounded px-1 py-0.5 text-left w-full transition-colors"
 								title="{isExpanded ? 'Click to collapse' : 'Click to expand'} (or Ctrl+O)"
 							>
-								<span class="shrink-0 opacity-60">{isExpanded ? '▼' : '▶'}</span>
+								<span class="shrink-0 text-muted-foreground/50">{isExpanded ? '▼' : '▶'}</span>
 								<span
-									class="flex-1 break-words leading-relaxed font-mono font-semibold"
+									class="flex-1 break-words leading-relaxed font-mono"
 									title={toolDisplay.full || undefined}
 								>
-									<span class="text-blue-400">{formatToolName(part.tool || 'tool')}</span><!--
+									<span class="text-blue-400 font-semibold">{formatToolName(part.tool || 'tool')}</span><!--
 									-->{#if part.state?.status === 'pending' || part.state?.status === 'running'}<!--
 										--><span class="text-yellow-400/80 ml-1 animate-pulse">…</span><!--
 									-->{:else if part.state?.status === 'error'}<!--
@@ -664,17 +664,17 @@
 									-->{:else if part.state?.status === 'completed'}<!--
 										--><span class="text-green-400/60 ml-1">✓</span><!--
 									-->{/if}<!--
-									-->{#if toolDisplay.full}<span class="text-muted-foreground/70 font-normal">({truncate(extractToolArg(part.state?.input), 60)})</span>{/if}
+									-->{#if toolDisplay.full}<span class="text-muted-foreground/60 font-normal">({truncate(extractToolArg(part.state?.input), 60)})</span>{/if}
 								</span>
 							</button>
 							
 							<!-- Expanded content: tool output and related step events -->
 							{#if isExpanded}
-								<div class="ml-6 flex flex-col gap-1">
+								<div class="ml-8 flex flex-col gap-1">
 									<!-- Tool output -->
 									{#if hasOutput && truncated && part.state}
 										<div class="text-xs">
-											<pre class="font-mono text-muted-foreground/80 whitespace-pre-wrap break-words bg-black/10 rounded p-2">{part.state.output}</pre>
+											<pre class="font-mono text-muted-foreground/50 whitespace-pre-wrap break-words bg-black/10 rounded p-2">{part.state.output}</pre>
 										</div>
 									{/if}
 									
@@ -682,9 +682,9 @@
 									{#each group.related as relatedEvent}
 										{@const relatedPart = relatedEvent.properties?.part}
 										{#if relatedPart}
-											<div class="flex items-start gap-2 text-muted-foreground/60 text-xs">
-												<span class="shrink-0">{getActivityIcon(relatedPart.type)}</span>
-												<span class="flex-1">
+											<div class="flex items-start gap-2 text-muted-foreground/50 text-xs">
+												<span class="shrink-0 opacity-50">{getActivityIcon(relatedPart.type)}</span>
+												<span class="flex-1 font-mono">
 													{relatedPart.text || relatedPart.state?.title || relatedPart.type}
 												</span>
 											</div>
@@ -713,18 +713,18 @@
 						<!-- Non-tool events: render with hierarchy based on type -->
 						<div class="flex flex-col gap-1 py-1">
 							{#if part.type === 'reasoning'}
-								<!-- Reasoning: more muted, bullet prefix, standard font (not monospace) -->
-								<div class="flex items-start gap-2 text-muted-foreground/60 hover:text-muted-foreground/80 transition-colors">
-									<span class="shrink-0 opacity-50">•</span>
-									<span class="flex-1 break-words leading-relaxed font-sans">
+								<!-- Reasoning: muted color, bullet prefix, standard font (not monospace) -->
+								<div class="flex items-start gap-2 text-muted-foreground/50">
+									<span class="shrink-0">•</span>
+									<span class="flex-1 break-words leading-relaxed font-sans text-sm">
 										{part.text || part.state?.title || part.type}
 									</span>
 								</div>
 							{:else}
-								<!-- Text and other events: standard styling with higher contrast -->
-								<div class="flex items-start gap-2 text-foreground transition-colors">
-									<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
-									<span class="flex-1 break-words leading-relaxed">
+								<!-- Text and other events: highest contrast, standard font -->
+								<div class="flex items-start gap-2 text-foreground">
+									<span class="shrink-0 opacity-50">{getActivityIcon(part.type)}</span>
+									<span class="flex-1 break-words leading-relaxed font-sans">
 										{part.text || part.state?.title || part.type}
 									</span>
 								</div>
