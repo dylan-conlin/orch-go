@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Dashboard now supports image paste (Cmd+V) and drag-drop with preview and inline display in activity feed.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Built successfully, TypeScript checks pass, Claude API format confirmed compatible, OpenCode endpoint supports image parts.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Frontend-only implementation is sufficient - OpenCode API already supports multi-part messages with images. Base64 encoding keeps implementation simple but adds 33% payload overhead.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Manual visual verification needed - orchestrator should test clipboard paste, drag-drop, and inline display in running dashboard.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - tactical feature implementation, not architectural
 
 <!--
 Example D.E.K.N.:
