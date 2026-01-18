@@ -242,10 +242,13 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 - Stable sort to maintain scan-ability
 - Agentlog SSE made opt-in
 
-**Jan 7, 2026: Two-Mode Design**
+**Jan 7, 2026: Two-Mode Design + Follow-Orchestrator**
 - Operational vs Historical modes
 - Mode toggle with localStorage persistence
 - Conditional rendering based on mode
+- Dashboard beads follow orchestrator's tmux context via project_dir parameter
+- Per-project caching for multi-project orchestration support
+- Reactive frontend updates when orchestrator switches projects
 
 **Jan 8, 2026: Synthesis and Cleanup**
 - 62 investigations synthesized into guide
