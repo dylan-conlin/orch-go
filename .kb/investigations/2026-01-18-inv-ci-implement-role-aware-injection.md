@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** This issue was already completed by prior agent on Jan 17; implementation exists, decision record created, verification performed - this is duplicate spawn.
+**Delta:** This is the 4th+ duplicate spawn of completed work; implementation exists since Jan 17, has been verified and documented multiple times, yet issue remains open triggering repeated spawns.
 
-**Evidence:** Commit 0554a8c4 "architect: verify role-aware injection", SYNTHESIS.md exists in workspace og-arch-ci-implement-role-17jan-dacc, decision record at .kb/decisions/2026-01-17-role-aware-hook-filtering.md, beads comments show "Phase: Complete" on Jan 17 20:32.
+**Evidence:** 5+ workspace directories (og-arch-ci-implement-role-17jan-dacc, -17jan-1f0b, -18jan-e1a2, -18jan-3d7d, -18jan-2086), commits 8204ec50 (implementation) and 0554a8c4 (verification), decision record created, beads shows 15+ "Phase: Complete" comments across multiple agents.
 
-**Knowledge:** Issue remained open because prior agent reported "Phase: Complete" but orchestrator never ran `orch complete` to close the issue; spawning system doesn't detect this condition.
+**Knowledge:** This reveals systemic spawn loop: (1) orchestrator not running `orch complete` workflow, (2) spawn system has no duplicate detection for recently-completed work, (3) status field is only gating mechanism.
 
-**Next:** Close this spawn by creating SYNTHESIS.md acknowledging duplicate work; recommend orchestrator investigate why prior completion wasn't processed.
+**Next:** Architect recommendation - spawn system should detect recent "Phase: Complete" comments + workspace artifacts + related commits to prevent duplicate spawns; immediate action: orchestrator closes this issue.
 
-**Promote to Decision:** recommend-no - This is process observation, not design decision
+**Promote to Decision:** recommend-yes - This exposes design gap in spawn gating logic worth documenting as constraint.
 
 <!--
 Example D.E.K.N.:
@@ -35,13 +35,13 @@ Guidelines:
 
 ---
 
-# Investigation: CI Implement Role Aware Injection (Duplicate Spawn)
+# Investigation: CI Implement Role Aware Injection (4th+ Duplicate Spawn - Systemic Issue)
 
-**Question:** Why was this issue spawned again when prior agent completed it on Jan 17?
+**Question:** Why has this issue been spawned 4+ times despite multiple successful completions, and what design gap enables this loop?
 
 **Started:** 2026-01-18
 **Updated:** 2026-01-18
-**Owner:** og-arch-ci-implement-role-18jan-e1a2
+**Owner:** og-arch-ci-implement-role-18jan-2086 (current spawn)
 **Phase:** Complete
 **Next Step:** None
 **Status:** Complete
@@ -107,23 +107,53 @@ Guidelines:
 
 ---
 
+### Finding 4: Architectural - Spawn System Lacks Duplicate Detection
+
+**Evidence:**
+- Spawn gating only checks issue status field (in_progress vs closed)
+- No detection of recent "Phase: Complete" comments (15+ across 5 spawns)
+- No detection of workspace artifacts in `.orch/workspace/` with matching issue ID
+- No detection of recent commits referencing issue ID (git log shows 8204ec50, 0554a8c4, 9fc8d662)
+- Pattern observed: Issue creates spawn → Agent completes → Reports "Phase: Complete" → Orchestrator doesn't close → Next spawn triggers
+
+**Source:** Behavioral analysis across 5 spawn cycles, examination of spawn gating logic, beads comment timeline
+
+**Significance:** This is a design gap in the spawn system architecture. The status field is a binary gate (open/closed) but doesn't capture intermediate states like "reported complete, awaiting orchestrator review." The lack of duplicate detection allows wasteful retry loops when the completion workflow breaks down.
+
+**Architectural Recommendation:**
+- **Gate on completion signals:** Before spawning, check for recent "Phase: Complete" beads comments (within last 48h)
+- **Gate on workspace artifacts:** Check for workspace directories matching issue ID with SYNTHESIS.md present
+- **Gate on recent commits:** Check for commits mentioning issue ID in last 7 days
+- **Surface to orchestrator:** If gates detect recent completion, notify orchestrator rather than auto-spawning
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **Completion reporting ≠ Issue closure** - Agent reporting "Phase: Complete" via beads comment doesn't automatically close the issue. The orchestrator must run `orch complete` to transition status and prevent re-spawning.
+1. **Spawn loop pattern exposed** - This 4th+ duplicate spawn reveals a design gap: spawn gating relies solely on status field, with no detection of completion signals (beads comments, workspace artifacts, recent commits). When orchestrator doesn't run `orch complete`, issue remains open indefinitely triggering wasteful re-spawns.
 
-2. **No duplicate detection in spawn logic** - When daemon or orchestrator spawns work from `triage:ready` issues, there's no check for recent "Phase: Complete" comments or existing workspace artifacts. The system trusts issue status field only.
+2. **Technical vs process failure** - The technical work was completed correctly on Jan 17 (Finding 1-2). The failure mode is process: orchestrator didn't close the loop. However, the spawn system's lack of duplicate detection amplifies the impact of this human error into a resource waste loop.
 
-3. **Technical work was correct** - The actual implementation requirement was satisfied. The session-start.sh hook correctly exits early for worker/orchestrator/meta-orchestrator contexts. Verification testing passed. Documentation artifacts created.
+3. **Binary gate limitation** - The status field is binary (open/closed) but workflow has three states: "not started", "reported complete awaiting review", "verified closed". The "awaiting review" state is invisible to spawn gating, causing the system to treat completed work as unstarted work.
+
+4. **Coherence Over Patches principle applies** - This is the 4th+ identical spawn. Per `~/.kb/principles.md` Coherence Over Patches: "If 5+ fixes hit the same area, recommend redesign not another patch." The pattern here is repetitive failure of the same workflow step. Solution isn't better orchestrator discipline (patch), it's spawn gating that detects completion signals (redesign).
 
 **Answer to Investigation Question:**
 
-This issue was spawned again because the beads status remained "in_progress" after the prior agent reported "Phase: Complete" on Jan 17. The completion workflow requires the orchestrator to run `orch complete <id>` which transitions the status to closed. Without this step, the issue appears as unfinished work and triggers re-spawning. 
+This issue was spawned 4+ times because:
+1. **Immediate cause:** Orchestrator didn't run `orch complete` after each "Phase: Complete" report
+2. **Root cause:** Spawn system has no duplicate detection - can't see completion signals (comments, artifacts, commits)
+3. **Architectural gap:** Status field inadequate for gating - needs richer completion detection
 
-The prior agent completed all technical deliverables (Finding 1), the implementation is functionally correct (Finding 2), but the process gap (orchestrator not running completion workflow) caused duplicate spawn (Finding 3).
+The technical work (session-start.sh role-aware logic) was correct from day 1. This investigation documents the process failure pattern and recommends architectural improvement to prevent future waste.
 
-No further technical work is needed. The implementation exists, works correctly, and is documented.
+**Architectural Recommendation:** Add completion signal detection to spawn gating:
+- Check beads comments for recent "Phase: Complete" (within 48h)
+- Check for workspace artifacts (SYNTHESIS.md present in matching workspace)
+- Check git log for commits mentioning issue ID (within 7 days)
+- If signals present, notify orchestrator rather than auto-spawn
 
 ---
 
@@ -157,7 +187,7 @@ No further technical work is needed. The implementation exists, works correctly,
 
 ### Recommended Approach ⭐
 
-**Close this issue and improve completion workflow** - Orchestrator should run `orch complete orch-go-vzo9u` to close the issue based on prior agent's work.
+**Close this issue + Create design issue for spawn duplicate detection** - Orchestrator should run `orch complete orch-go-vzo9u` to close the technical issue, then create new issue to address the architectural gap in spawn gating logic.
 
 **Why this approach:**
 - Prior agent completed all technical deliverables (Finding 1)
