@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Agent activity infrastructure already exists via SSE events; only needed to enhance tooltip display to show expressive status.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Found current_activity field already captures tool names and reasoning (agents.ts:62-67, 754-778); "Processing" tooltip was generic (agent-card.svelte:458-467).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Backend sends expressive data (tool names, reasoning) that frontend wasn't displaying; tooltip is perfect location for showing "Hatching...", "Running Bash...", etc.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Implemented getExpressiveStatus() function to format activity into expressive text with thinking duration; visual verification needed.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (UI enhancement, not architectural pattern)
 
 <!--
 Example D.E.K.N.:
@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Expressive Agent Status Display Status
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** How can we make agent status display more expressive (show "Hatching...", "Running Bash...", "Reading files..." instead of generic "Processing")?
 
 **Started:** 2026-01-18
 **Updated:** 2026-01-18
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** feature-impl agent
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -56,33 +56,38 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: Current Activity Infrastructure Already Exists
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The `current_activity` field on Agent already captures type, text, and timestamp (web/src/lib/stores/agents.ts:62-67). SSE events from OpenCode populate this with tool names like "Using bash", "Reading files", etc. (agents.ts:754-778). The agent card displays this activity text at line 690-691.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- web/src/lib/stores/agents.ts:62-67 (current_activity interface)
+- web/src/lib/stores/agents.ts:648-778 (SSE event handlers)
+- web/src/lib/components/agent-card/agent-card.svelte:687-696 (activity display)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** We don't need to build new infrastructure - the backend already sends activity data via SSE. We just need to enhance the display to be more expressive.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: "Processing" Tooltip is Generic
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** When `displayState === 'running'`, the tooltip shows "Processing" with subtext "Agent is actively generating a response" (agent-card.svelte:458-467). This doesn't leverage the `current_activity` data that's already available.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- web/src/lib/components/agent-card/agent-card.svelte:458-467
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The tooltip area is the perfect place to show expressive status. We should show the current activity instead of generic "Processing".
+
+---
+
+### Finding 3: Thinking Duration Not Captured
+
+**Evidence:** While we track `current_activity.timestamp`, we don't specifically identify "thinking" vs "tool execution" phases. OpenCode sends `reasoning` type for thinking (agents.ts:772-774) but we don't calculate duration.
+
+**Source:** 
+- web/src/lib/stores/agents.ts:772-774 (reasoning type handling)
+
+**Significance:** To show "Hatching... (thought for 8s)", we need to detect reasoning activity and calculate elapsed time since it started.
 
 ---
 
@@ -90,15 +95,20 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Infrastructure is ready** - Backend already sends expressive activity data via SSE (tool names, reasoning, etc.). We don't need backend changes, only frontend display improvements.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Tooltip is the natural place** - The processing indicator tooltip (agent-card.svelte:458-467) currently shows generic "Processing". This is where we should show "Running Bash...", "Reading files...", etc.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Activity display already works** - The activity section below the title (lines 687-696) shows current activity. We need to make the tooltip consistent with this, and add thinking duration calculation.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+We can make agent status more expressive by:
+1. Showing current activity in the "Processing" tooltip (currently shows generic text)
+2. Detecting "reasoning" activity type and calculating thinking duration
+3. Using expressive verbs like "Hatching..." for thinking, "Running..." for tools, "Reading..." for file operations
+
+The infrastructure already exists - we just need to enhance the display logic.
 
 ---
 

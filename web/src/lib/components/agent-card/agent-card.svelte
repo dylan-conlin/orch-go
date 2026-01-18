@@ -194,6 +194,50 @@
 	}
 
 	/**
+	 * Get expressive status text based on current activity
+	 * Returns text like "Hatching... (thought for 8s)" or "Running Bash..." or "Reading files..."
+	 */
+	function getExpressiveStatus(activity?: Agent['current_activity']): string {
+		if (!activity) return 'Starting up';
+		
+		const elapsedSeconds = activity.timestamp ? Math.floor((Date.now() - activity.timestamp) / 1000) : 0;
+		
+		switch (activity.type) {
+			case 'reasoning':
+				// "Hatching..." with thinking duration
+				return `Hatching... (thought for ${elapsedSeconds}s)`;
+			case 'tool':
+			case 'tool-invocation':
+				// Extract tool name from text like "Using bash" -> "Running Bash..."
+				if (activity.text?.toLowerCase().includes('bash')) {
+					return 'Running Bash...';
+				}
+				if (activity.text?.toLowerCase().includes('read') || activity.text?.toLowerCase().includes('reading')) {
+					return 'Reading files...';
+				}
+				if (activity.text?.toLowerCase().includes('edit') || activity.text?.toLowerCase().includes('editing')) {
+					return 'Editing files...';
+				}
+				if (activity.text?.toLowerCase().includes('write') || activity.text?.toLowerCase().includes('writing')) {
+					return 'Writing files...';
+				}
+				if (activity.text?.toLowerCase().includes('grep') || activity.text?.toLowerCase().includes('search')) {
+					return 'Searching code...';
+				}
+				// Fallback: use the activity text as-is or generic tool message
+				return activity.text || 'Using tool...';
+			case 'text':
+				return 'Responding...';
+			case 'step-start':
+				return 'Starting step...';
+			case 'step-finish':
+				return 'Finishing step...';
+			default:
+				return activity.text || 'Processing...';
+		}
+	}
+
+	/**
 	 * Format time since a date for elapsed display
 	 */
 	function formatElapsedTime(isoDate: string | undefined): string {
@@ -461,7 +505,7 @@
 					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-500"></span>
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p class="font-medium text-yellow-500">Processing</p>
+					<p class="font-medium text-yellow-500">{getExpressiveStatus(agent.current_activity)}</p>
 					<p class="text-xs text-muted-foreground">Agent is actively generating a response</p>
 				</Tooltip.Content>
 			</Tooltip.Root>
