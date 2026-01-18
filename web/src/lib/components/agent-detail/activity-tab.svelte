@@ -568,13 +568,13 @@
 								<!-- Reasoning: muted, bullet prefix, standard font -->
 								<div class="flex items-start gap-2 text-muted-foreground/70 hover:text-muted-foreground transition-colors">
 									<span class="shrink-0 opacity-60">•</span>
-									<span class="flex-1 break-words leading-relaxed">
+									<span class="flex-1 break-words leading-relaxed font-sans">
 										{part.text || part.state?.title || part.type}
 									</span>
 								</div>
 							{:else}
-								<!-- Text and other events: standard styling -->
-								<div class="flex items-start gap-2 text-muted-foreground hover:text-foreground transition-colors">
+								<!-- Text and other events: standard styling with higher contrast -->
+								<div class="flex items-start gap-2 text-foreground transition-colors">
 									<span class="shrink-0 opacity-60">{getActivityIcon(part.type)}</span>
 									<span class="flex-1 break-words leading-relaxed">
 										{part.text || part.state?.title || part.type}
