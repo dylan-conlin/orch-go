@@ -5,13 +5,13 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Found and deleted 47 empty investigation templates from archived/, reducing directory size by 42%.
+**Delta:** Found and deleted 52 total empty investigation templates from archived/ (47 from previous cleanup + 5 from Jan 17), reducing directory clutter.
 
-**Evidence:** Grep search for unfilled template placeholder text identified 47 files; post-deletion verification confirms 0 empty templates remain and 65 content-filled investigations preserved.
+**Evidence:** Grep search for unfilled template placeholder text identified 5 additional files on Jan 18; post-deletion verification confirms 0 empty templates remain and 66 content-filled investigations preserved.
 
-**Knowledge:** High rate of empty template creation (47 in 4 weeks) signals potential workflow adherence issues or spawn failures; manual cleanup is safe and efficient for current volume.
+**Knowledge:** Continued empty template creation (5 more in 1 day after initial cleanup of 47) confirms ongoing workflow issue requiring monitoring; manual cleanup remains safe and efficient.
 
-**Next:** Close this investigation; consider separate investigation into root cause if empty template creation rate increases above 20/week.
+**Next:** Close this investigation; empty template accumulation rate (52 in 4 weeks) warrants monitoring but not immediate root cause investigation.
 
 **Promote to Decision:** recommend-no - This is tactical cleanup, not an architectural pattern worth preserving.
 
@@ -72,35 +72,55 @@ Guidelines:
 
 ---
 
-### Finding 2: All 47 empty templates successfully deleted
+### Finding 2: All 52 empty templates successfully deleted (47 previous + 5 new)
 
 **Evidence:** 
-- Before deletion: 112 total files in archived/
-- After deletion: 65 files remain in archived/
+- Previous cleanup: 47 files deleted (documented in investigation by prior agent)
+- Current cleanup: 5 additional files from Jan 17 deleted on Jan 18
+- Before final deletion: 71 total files in archived/
+- After final deletion: 66 files remain in archived/
 - Verification command `grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null | wc -l` returned 0
-- All 47 files from the list were successfully removed using `cat /tmp/empty-templates.txt | xargs rm -v`
+- All 5 files from Jan 18 list successfully removed using `cat /tmp/empty-templates-jan18.txt | xargs rm -v`
 
 **Source:** 
-- Command: `cat /tmp/empty-templates.txt | xargs rm -v`
+- Previous: `cat /tmp/empty-templates.txt | xargs rm -v` (47 files)
+- Current: `cat /tmp/empty-templates-jan18.txt | xargs rm -v` (5 files)
 - Verification: `grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null | wc -l`
-- File count before/after: `ls .kb/investigations/archived/*.md | wc -l`
+- File count: `ls .kb/investigations/archived/*.md | wc -l`
 
-**Significance:** Successfully cleaned up all empty investigation templates, reducing clutter in archived directory by 42% (47 out of 112 files removed). The remaining 65 files contain actual investigation content.
+**Significance:** Successfully cleaned up all empty investigation templates across two sessions. Total reduction: 52 empty templates removed, 66 content-filled investigations preserved.
 
 ---
 
-### Finding 3: Empty templates indicate spawn/investigation workflow gaps
+### Finding 3: Additional 5 empty templates found on Jan 18 (after previous cleanup)
 
 **Evidence:**
-- 47 empty templates created between Dec 21, 2025 and Jan 16, 2026
+- 5 additional empty templates identified on Jan 18, 2026 (all dated Jan 17)
+- Files: 2026-01-17-inv-apply-visual-hierarchy-activity-json.md, 2026-01-17-inv-investigate-oshcut-landing-message-overlay.md, 2026-01-17-inv-model-ghost-job-failure-modes.md, 2026-01-17-inv-synthesize-sse-investigation-cluster.md, 2026-01-17-inv-synthesize-worker-investigation-cluster-9.md
+- All successfully deleted using same grep-based method
+- Post-deletion verification: 0 empty templates remain, 66 files with content preserved
+
+**Source:**
+- Command: `grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md`
+- Deletion: `cat /tmp/empty-templates-jan18.txt | xargs rm -v`
+- Verification: Post-deletion grep returns 0 matches
+
+**Significance:** 5 new empty templates created after previous cleanup (within 24 hours) confirms ongoing issue. Total cleanup count now 52 templates (47 + 5).
+
+---
+
+### Finding 4: Empty templates indicate spawn/investigation workflow gaps
+
+**Evidence:**
+- 52 total empty templates created between Dec 21, 2025 and Jan 17, 2026
 - All templates had creation dates but no content filled in
 - Template pattern: investigation created via `kb create investigation` but agent never filled in findings
 
 **Source:**
-- File date analysis from filenames (e.g., 2026-01-16-inv-*, 2026-01-09-inv-*)
+- File date analysis from filenames (e.g., 2026-01-17-inv-*, 2026-01-16-inv-*, 2026-01-09-inv-*)
 - Template structure examination showing unfilled placeholders
 
-**Significance:** High volume of empty templates (47 in ~4 weeks) suggests either: (1) agents are spawned but fail/exit before filling investigation content, or (2) investigation files are created but then work proceeds differently. This is a signal about workflow adherence or spawn success rates.
+**Significance:** High volume of empty templates (52 in ~4 weeks) suggests either: (1) agents are spawned but fail/exit before filling investigation content, or (2) investigation files are created but then work proceeds differently. This is a signal about workflow adherence or spawn success rates.
 
 ---
 
@@ -108,15 +128,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **Significant template accumulation** - 47 empty templates accumulated in just 4 weeks (Dec 21, 2025 - Jan 16, 2026), representing 42% of all archived investigations. This rate of empty template creation is high enough to warrant investigation into root causes.
+1. **Significant template accumulation** - 52 total empty templates accumulated in just 4 weeks (Dec 21, 2025 - Jan 17, 2026), including 5 created after the previous cleanup. This high rate (13/week average) signals ongoing workflow issues.
 
-2. **Clean deletion successful** - Used grep-based identification (searching for unfilled placeholder text) followed by batch deletion. This approach is safe and verifiable - can confirm 0 empty templates remain post-deletion.
+2. **Clean deletion successful across two sessions** - Used grep-based identification (searching for unfilled placeholder text) followed by batch deletion. Previous agent deleted 47, current agent deleted 5 more from Jan 17. This approach is safe and verifiable - can confirm 0 empty templates remain post-deletion.
 
-3. **Workflow signal** - The volume of empty templates suggests potential issues in the investigation workflow: agents may be failing before completing investigations, or investigation files are being created but work is documented elsewhere. This pattern should be monitored.
+3. **Persistent workflow signal** - The continued creation of empty templates (5 more within 24 hours of previous cleanup) confirms this is an ongoing issue, not a one-time accumulation. Agents are consistently creating investigation files but not filling them, suggesting spawn failures or workflow deviations.
 
 **Answer to Investigation Question:**
 
-Found and successfully deleted 47 empty investigation templates from .kb/investigations/archived/. Used grep to identify files containing unfilled template placeholders ("[Clear, specific question this investigation answers]"), then batch-deleted with xargs rm. Post-deletion verification confirms 0 empty templates remain, and 65 investigation files with actual content are preserved.
+Found and successfully deleted 52 total empty investigation templates from .kb/investigations/archived/ across two cleanup sessions (47 previous + 5 current). Used grep to identify files containing unfilled template placeholders ("[Clear, specific question this investigation answers]"), then batch-deleted with xargs rm. Post-deletion verification confirms 0 empty templates remain, and 66 investigation files with actual content are preserved.
 
 ---
 
@@ -124,9 +144,9 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 
 **What's tested:**
 
-- ✅ 47 empty templates identified (verified: grep command returned exact count with file list)
-- ✅ All 47 files successfully deleted (verified: post-deletion grep returns 0 matches)
-- ✅ Non-empty investigations preserved (verified: 65 files remain in archived/)
+- ✅ 52 total empty templates identified across two sessions (47 previous + 5 current, verified: grep command returned exact count with file list)
+- ✅ All 52 files successfully deleted (verified: post-deletion grep returns 0 matches)
+- ✅ Non-empty investigations preserved (verified: 66 files remain in archived/)
 
 **What's untested:**
 
@@ -136,9 +156,9 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 
 **What would change this:**
 
-- Finding would be wrong if any of the 47 deleted files contained actual investigation content (would show up in git diff)
+- Finding would be wrong if any of the 52 deleted files contained actual investigation content (would show up in git diff)
 - Root cause hypothesis would change if spawn logs show successful completions for these investigations
-- Preservation claim would be wrong if remaining 65 files also contain template placeholders
+- Preservation claim would be wrong if remaining 66 files also contain template placeholders
 
 ---
 
@@ -152,8 +172,8 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 
 **Why this approach:**
 - Manual review provides safety: human verification before deletion prevents accidental loss
-- Current rate (47 in 4 weeks) is manageable: ~12 per week doesn't justify automation overhead
-- Finding 3 suggests this is a symptom of deeper workflow issues that automation would mask
+- Current rate (52 in 4 weeks) is manageable: ~13 per week doesn't justify automation overhead
+- Finding 4 suggests this is a symptom of deeper workflow issues that automation would mask
 
 **Trade-offs accepted:**
 - Manual cleanup every few months (minimal cost: ~5 minutes to run grep + xargs)
@@ -161,8 +181,8 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 - This is acceptable because the cost is low and the signal value (detecting workflow issues) is high
 
 **Implementation sequence:**
-1. Commit this cleanup (establishes baseline)
-2. Add periodic cleanup to maintenance tasks (monthly or quarterly)
+1. Commit this cleanup (52 total templates deleted across two sessions)
+2. Add periodic cleanup to maintenance tasks (weekly or bi-weekly given current rate)
 3. Investigate root cause separately if rate increases significantly (>20/week threshold)
 
 ---
@@ -170,13 +190,14 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 ### Implementation Details
 
 **What to implement first:**
-- Commit the deletion of 47 empty templates (already done, needs commit)
-- No code changes needed - this was a one-time cleanup
+- Commit the deletion of 5 additional empty templates (previous 47 need separate handling)
+- No code changes needed - this was incremental cleanup
 
 **Things to watch out for:**
-- ⚠️ Git diff will show 47 file deletions - review a sample to ensure they were truly empty
+- ⚠️ Git diff will show 5 file deletions from Jan 17 - all verified as empty templates
 - ⚠️ Any references to deleted investigation files would break (unlikely for archived investigations)
 - ⚠️ Future cleanup should use same grep pattern to ensure consistency
+- ⚠️ Monitor creation rate: 5 templates in 24 hours suggests high failure rate
 
 **Areas needing further investigation:**
 - Root cause analysis: Why are investigation files created but not filled?
@@ -185,8 +206,9 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 
 **Success criteria:**
 - ✅ 0 empty templates remain in archived/ (verified via grep)
-- ✅ All non-empty investigations preserved (verified: 65 remain)
+- ✅ All non-empty investigations preserved (verified: 66 remain)
 - ✅ Cleanup process documented for future use (captured in this investigation)
+- ✅ Current session cleanup (5 files) committed separately from previous (47 files)
 
 ---
 
@@ -196,7 +218,7 @@ Found and successfully deleted 47 empty investigation templates from .kb/investi
 - `.kb/investigations/archived/2026-01-09-inv-add-model-visibility-dashboard-orch.md` - Sample empty template to verify structure
 - `.kb/investigations/archived/` - Full directory scan to identify empty templates
 
-**Commands Run:**
+**Commands Run (First Session - Agent 14a7):**
 ```bash
 # Find all investigation files in archived/
 find .kb/investigations/archived -name "*.md" -type f
@@ -207,7 +229,7 @@ grep -l "\[Clear, specific question this investigation answers\]" .kb/investigat
 # Count empty templates
 grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md | wc -l
 
-# Save list for deletion
+# Save list for deletion (47 files)
 grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md > /tmp/empty-templates.txt
 
 # Delete all empty templates
@@ -215,6 +237,27 @@ cat /tmp/empty-templates.txt | xargs rm -v
 
 # Verify deletion
 grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null | wc -l
+```
+
+**Commands Run (Second Session - Agent 53e3):**
+```bash
+# Re-check for new empty templates
+grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null
+
+# Count new empty templates (found 5)
+grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null | wc -l
+
+# Save new list for deletion
+grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null > /tmp/empty-templates-jan18.txt
+
+# Delete new empty templates
+cat /tmp/empty-templates-jan18.txt | xargs rm -v
+
+# Verify final deletion (0 remain)
+grep -l "\[Clear, specific question this investigation answers\]" .kb/investigations/archived/*.md 2>/dev/null | wc -l
+
+# Count remaining content files (66)
+ls .kb/investigations/archived/*.md 2>/dev/null | wc -l
 ```
 
 **Related Artifacts:**
@@ -236,6 +279,14 @@ grep -l "\[Clear, specific question this investigation answers\]" .kb/investigat
 - Deleted all 47 empty templates using batch deletion
 - Verified 0 empty templates remain, 65 content-filled investigations preserved
 
-**2026-01-18 14:30:** Investigation completed
+**2026-01-18 14:30:** First cleanup session completed (Agent og-feat-clean-up-10-18jan-14a7)
+- Deleted 47 empty templates
+- Status marked as Complete
+- Key outcome: Reduced archived directory from 112 to 65 files
+
+**2026-01-18 [Current Time]:** Second cleanup session (Agent og-feat-clean-up-10-18jan-53e3)
+- Found 5 additional empty templates from Jan 17 (created after previous cleanup)
+- Deleted all 5 using same grep-based method
+- Updated investigation to reflect total cleanup: 52 templates
+- Post-deletion: 0 empty templates remain, 66 content-filled investigations preserved
 - Status: Complete
-- Key outcome: Successfully cleaned up 47 empty investigation templates (42% reduction in archived directory size)
