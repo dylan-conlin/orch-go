@@ -110,21 +110,21 @@ Tmux windows remain open for orchestrator sessions because `orch complete` and `
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Code compiles without errors (verified: ran `go build ./cmd/orch`)
+- ✅ Window search functions exist with correct signatures (verified: read tmux.go source)
+- ✅ Orchestrator detection logic exists (verified: found `isOrchestratorWorkspace` usage)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Fix works for live orchestrator sessions (not manually tested with running orchestrator)
+- ⚠️ Fix works for workers spawned with --tmux flag (assumed pattern matches)
+- ⚠️ Edge cases like orchestrator windows with non-standard names
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if orchestrator windows actually do contain beads IDs in their names
+- Finding would be wrong if `FindWindowByWorkspaceNameAllSessions` doesn't search orchestrator/meta-orchestrator sessions
+- Fix would fail if window naming pattern changes in the future
 
 ---
 
@@ -165,49 +165,48 @@ Tmux windows remain open for orchestrator sessions because `orch complete` and `
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Modify complete_cmd.go to use conditional window search (workspace name for orchestrators)
+- Add orchestrator workspace name search fallback to abandon_cmd.go
+- Test compilation to ensure no syntax errors
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Variable shadowing with `err` variable (use separate name like `findErr` or `tmuxSessionName`)
+- ⚠️ Orchestrator detection must happen before window search in abandon command
+- ⚠️ Both complete and abandon need the fix (different code structures)
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Should we add automated tests for tmux cleanup?
+- Are there other commands with similar orchestrator vs worker handling issues?
+- Should window naming patterns be documented more explicitly?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Code compiles without errors (DONE)
+- ✅ Complete command uses workspace name search for orchestrators (DONE)
+- ✅ Abandon command has workspace name search fallback (DONE)
+- ✅ Manual testing with live orchestrator session would confirm full fix
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `cmd/orch/complete_cmd.go:997-1013` - Existing tmux cleanup code that was failing for orchestrators
+- `cmd/orch/abandon_cmd.go:148-207` - Window discovery and cleanup in abandon command
+- `pkg/tmux/tmux.go:802-869` - Window search functions (by beads ID and workspace name)
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test compilation after changes
+go build ./cmd/orch
+# PASS: code compiles without errors
 
-# [Command description]
-[command]
+# Check git status
+git status
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Workspace:** `.orch/workspace/og-arch-orch-complete-clean-18jan-e191/` - This session's workspace
+- **Issue:** `orch-go-gdcp9` - Bug report for tmux cleanup failure
 
 ---
 
