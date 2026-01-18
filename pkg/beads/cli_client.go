@@ -129,6 +129,9 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		if args.Status != "" {
 			cmdArgs = append(cmdArgs, "--status", args.Status)
 		}
+		if args.IssueType != "" {
+			cmdArgs = append(cmdArgs, "--type", args.IssueType)
+		}
 		if args.Parent != "" {
 			cmdArgs = append(cmdArgs, "--parent", args.Parent)
 		}

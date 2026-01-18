@@ -63,6 +63,7 @@ Endpoints:
   GET /api/focus     - Current focus and drift status
   GET /api/beads     - Beads stats (ready, blocked, open)
   GET /api/beads/ready - List of ready issues for queue visibility
+  GET /api/questions - Questions grouped by status (open, investigating, answered)
   GET /api/servers   - Servers status across projects
   GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)
   GET /api/daemon    - Daemon status (running, capacity, last poll)
@@ -156,6 +157,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/focus     - Focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats")
 	fmt.Println("  GET /api/beads/ready - Ready issues list")
+	fmt.Println("  GET /api/questions   - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Project servers status")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
 	fmt.Println("  GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)")
@@ -277,6 +279,9 @@ func runServe(portNum int) error {
 	// GET /api/beads/ready - returns list of ready issues for dashboard queue visibility
 	mux.HandleFunc("/api/beads/ready", corsHandler(handleBeadsReady))
 
+	// GET /api/questions - returns questions grouped by status for dashboard
+	mux.HandleFunc("/api/questions", corsHandler(handleQuestions))
+
 	// GET /api/servers - returns servers status across projects
 	mux.HandleFunc("/api/servers", corsHandler(handleServers))
 
@@ -387,6 +392,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/focus     - Current focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
+	fmt.Println("  GET /api/questions - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
 	fmt.Println("  GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)")

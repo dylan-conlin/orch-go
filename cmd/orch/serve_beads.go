@@ -457,3 +457,136 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
 }
+
+// QuestionResponse represents a question for the dashboard.
+type QuestionResponse struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Status      string   `json:"status"`
+	Priority    int      `json:"priority"`
+	Labels      []string `json:"labels,omitempty"`
+	CreatedAt   string   `json:"created_at,omitempty"`
+	ClosedAt    string   `json:"closed_at,omitempty"`
+	CloseReason string   `json:"close_reason,omitempty"`
+	Blocking    []string `json:"blocking,omitempty"` // IDs of issues this question blocks
+}
+
+// QuestionsAPIResponse is the JSON structure returned by /api/questions.
+type QuestionsAPIResponse struct {
+	Open          []QuestionResponse `json:"open"`
+	Investigating []QuestionResponse `json:"investigating"`
+	Answered      []QuestionResponse `json:"answered"`
+	TotalCount    int                `json:"total_count"`
+	Error         string             `json:"error,omitempty"`
+}
+
+// handleQuestions returns questions grouped by status for the dashboard.
+// Questions are issues with type=question.
+// Groups:
+//   - open: Questions needing answers (status=open)
+//   - investigating: Questions with active investigation (status=in_progress)
+//   - answered: Recently closed questions (status=closed, last 7 days)
+func handleQuestions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Fetch questions using CLI client (type=question)
+	cliClient := beads.NewCLIClient()
+
+	// Get all questions including closed (recent)
+	allQuestions, err := cliClient.List(&beads.ListArgs{
+		IssueType: "question",
+		Limit:     100, // Reasonable limit for dashboard
+	})
+	if err != nil {
+		resp := QuestionsAPIResponse{
+			Open:          []QuestionResponse{},
+			Investigating: []QuestionResponse{},
+			Answered:      []QuestionResponse{},
+			Error:         fmt.Sprintf("Failed to list questions: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Group questions by status
+	var open, investigating, answered []QuestionResponse
+
+	// For calculating "recent" answered (last 7 days)
+	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
+
+	for _, q := range allQuestions {
+		qr := QuestionResponse{
+			ID:          q.ID,
+			Title:       q.Title,
+			Status:      q.Status,
+			Priority:    q.Priority,
+			Labels:      q.Labels,
+			CreatedAt:   q.CreatedAt,
+			ClosedAt:    q.ClosedAt,
+			CloseReason: q.CloseReason,
+		}
+
+		// Get blocking info (what issues this question blocks)
+		// Use bd show to get dependents
+		if fullIssue, err := cliClient.Show(q.ID); err == nil {
+			// Parse dependents from the raw dependencies field
+			// bd show returns dependents in the response
+			var dependents []struct {
+				ID string `json:"id"`
+			}
+			if fullIssue.Dependencies != nil {
+				// Note: bd show puts dependents in the dependencies field for questions
+				json.Unmarshal(fullIssue.Dependencies, &dependents)
+				for _, dep := range dependents {
+					qr.Blocking = append(qr.Blocking, dep.ID)
+				}
+			}
+		}
+
+		switch q.Status {
+		case "open":
+			open = append(open, qr)
+		case "in_progress", "investigating":
+			investigating = append(investigating, qr)
+		case "closed", "answered":
+			// Only include if closed within last 7 days
+			if q.ClosedAt != "" {
+				closedTime, err := time.Parse(time.RFC3339, q.ClosedAt)
+				if err == nil && closedTime.After(sevenDaysAgo) {
+					answered = append(answered, qr)
+				}
+			} else {
+				// No closed_at but status is closed - include anyway
+				answered = append(answered, qr)
+			}
+		}
+	}
+
+	// Return empty slices instead of nil for cleaner JSON
+	if open == nil {
+		open = []QuestionResponse{}
+	}
+	if investigating == nil {
+		investigating = []QuestionResponse{}
+	}
+	if answered == nil {
+		answered = []QuestionResponse{}
+	}
+
+	resp := QuestionsAPIResponse{
+		Open:          open,
+		Investigating: investigating,
+		Answered:      answered,
+		TotalCount:    len(open) + len(investigating) + len(answered),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode questions: %v", err), http.StatusInternalServerError)
+		return
+	}
+}

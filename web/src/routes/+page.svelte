@@ -56,6 +56,8 @@
 	import { ServicesSection } from '$lib/components/services-section';
 	import { filters, orchestratorContext, buildFilterQueryString } from '$lib/stores/context';
 	import { coaching, startCoachingPolling, stopCoachingPolling } from '$lib/stores/coaching';
+	import { questions } from '$lib/stores/questions';
+	import { QuestionsSection } from '$lib/components/questions-section';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -73,6 +75,7 @@
 		archive: false, // Archive collapsed by default
 		upNext: false,  // Up Next collapsed by default (auto-expands on P0/P1)
 		readyQueue: false, // Ready queue collapsed by default
+		questions: true, // Questions expanded by default (important for blocking visibility)
 		// pendingReviews removed - not actively used
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
 		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
@@ -164,6 +167,7 @@
 			hotspots.fetch();
 			orchestratorSessions.fetch();
 			services.fetch();
+			questions.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -193,7 +197,8 @@
 				daemon.fetch(),
 				hotspots.fetch(),
 				orchestratorSessions.fetch(),
-				services.fetch()
+				services.fetch(),
+				questions.fetch()
 			]).catch(console.error);
 		}, 60000);
 
@@ -452,7 +457,12 @@
 		<UpNextSection
 			bind:expanded={sectionState.upNext}
 		/>
-		
+
+		<!-- Questions (blocking questions for visibility) -->
+		<QuestionsSection
+			bind:expanded={sectionState.questions}
+		/>
+
 		<!-- Active Agents (truly running, excludes needs-review) -->
 		<div class="rounded-lg border bg-card border-green-500/30" data-testid="active-agents-section">
 			<div class="flex items-center gap-2 px-3 py-2 border-b">
