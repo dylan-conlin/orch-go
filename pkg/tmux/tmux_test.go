@@ -345,19 +345,30 @@ func TestBuildAttachCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
+			cmd, err := BuildAttachCommand(tt.windowTarget, tt.insideTmux)
+			if err != nil {
+				t.Fatalf("BuildAttachCommand failed: %v", err)
+			}
 			if cmd.Path == "" {
 				t.Error("Expected command path to be set")
 			}
-			// Check args
-			for i, arg := range tt.wantArgs {
-				if i >= len(cmd.Args) {
-					t.Errorf("Missing arg at index %d: want %s", i, arg)
-					continue
+			// Check that args contain the expected subcommand and target
+			// Note: args may include -S flag when inside overmind
+			foundSubcmd := false
+			foundTarget := false
+			for i, arg := range cmd.Args {
+				if arg == tt.wantArgs[1] { // "switch-client" or "attach-session"
+					foundSubcmd = true
 				}
-				if cmd.Args[i] != arg {
-					t.Errorf("Arg at index %d = %q, want %q", i, cmd.Args[i], arg)
+				if i > 0 && cmd.Args[i-1] == "-t" && arg == tt.windowTarget {
+					foundTarget = true
 				}
+			}
+			if !foundSubcmd {
+				t.Errorf("Expected subcommand %q in args %v", tt.wantArgs[1], cmd.Args)
+			}
+			if !foundTarget {
+				t.Errorf("Expected target %q in args %v", tt.windowTarget, cmd.Args)
 			}
 		})
 	}
