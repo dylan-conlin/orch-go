@@ -108,10 +108,27 @@ func ListEpicChildren(epicID string) ([]Issue, error) {
 
 // SpawnWork spawns work on a beads issue using orch work command.
 // This is the default implementation that shells out to orch.
+//
+// IMPORTANT: Sets status to in_progress BEFORE spawning to prevent duplicate
+// spawns. This is critical because:
+// 1. The in-memory SpawnedIssueTracker doesn't survive daemon restarts
+// 2. SessionDedupChecker only works for OpenCode sessions, not Claude CLI
+// 3. Without this, daemon restart + Claude CLI backend = respawn loop
 func SpawnWork(beadsID string) error {
+	// Set status to in_progress BEFORE spawning to prevent duplicate spawns.
+	// This is the authoritative dedup mechanism that survives daemon restarts.
+	updateCmd := exec.Command("bd", "update", beadsID, "--status=in_progress")
+	updateCmd.Env = os.Environ()
+	if output, err := updateCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set status to in_progress: %w: %s", err, string(output))
+	}
+
 	cmd := exec.Command("orch", "work", beadsID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// Note: We don't revert status on spawn failure. The issue stays
+		// in_progress which is correct - it indicates a spawn was attempted.
+		// Manual intervention may be needed to retry.
 		return fmt.Errorf("failed to spawn work: %w: %s", err, string(output))
 	}
 	return nil
