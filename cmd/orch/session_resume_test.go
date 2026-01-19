@@ -249,6 +249,8 @@ func contains(s, substr string) bool {
 }
 
 // TestDiscoverSessionHandoff_WindowScoped tests the new window-scoped discovery
+// Note: Cross-window scan requires an active/ directory somewhere to work,
+// so this test creates an active directory to simulate mid-session crash recovery.
 func TestDiscoverSessionHandoff_WindowScoped(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -270,13 +272,13 @@ func TestDiscoverSessionHandoff_WindowScoped(t *testing.T) {
 		t.Fatalf("failed to get window name: %v", err)
 	}
 
-	// Create window-scoped session directory structure
+	// Create window-scoped session directory structure with ARCHIVED session
 	sessionDir := filepath.Join(tmpDir, ".orch", "session", windowName, "2026-01-13-1400")
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create SESSION_HANDOFF.md
+	// Create SESSION_HANDOFF.md in archived session
 	handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
 	if err := os.WriteFile(handoffPath, []byte("window-scoped content"), 0644); err != nil {
 		t.Fatal(err)
@@ -288,19 +290,30 @@ func TestDiscoverSessionHandoff_WindowScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test discovery
+	// IMPORTANT: Create an active/ directory to simulate crash recovery scenario.
+	// Without this, cross-window scan is skipped (explicit session end behavior).
+	activeDir := filepath.Join(tmpDir, ".orch", "session", windowName, "active")
+	if err := os.MkdirAll(activeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	activeHandoff := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(activeHandoff, []byte("active session content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test discovery - should find active/ first (Priority 1)
 	got, err := discoverSessionHandoff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify it found the window-scoped handoff
+	// Verify it found the active handoff (not the archived one)
 	content, err := os.ReadFile(got)
 	if err != nil {
 		t.Fatalf("failed to read discovered handoff: %v", err)
 	}
-	if string(content) != "window-scoped content" {
-		t.Errorf("got content %q, want %q", string(content), "window-scoped content")
+	if string(content) != "active session content" {
+		t.Errorf("got content %q, want %q", string(content), "active session content")
 	}
 }
 
@@ -354,8 +367,8 @@ func TestDiscoverSessionHandoff_BackwardCompatibility(t *testing.T) {
 	}
 }
 
-// TestDiscoverSessionHandoff_PreferWindowScoped tests that window-scoped is preferred over legacy
-func TestDiscoverSessionHandoff_PreferWindowScoped(t *testing.T) {
+// TestDiscoverSessionHandoff_PreferActiveOverArchived tests that active/ is preferred over archived
+func TestDiscoverSessionHandoff_PreferActiveOverArchived(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Save and restore working directory
@@ -376,13 +389,13 @@ func TestDiscoverSessionHandoff_PreferWindowScoped(t *testing.T) {
 		t.Fatalf("failed to get window name: %v", err)
 	}
 
-	// Window-scoped structure
-	windowScopedDir := filepath.Join(tmpDir, ".orch", "session", windowName, "2026-01-13-1600")
-	if err := os.MkdirAll(windowScopedDir, 0755); err != nil {
+	// Archived window-scoped structure
+	archivedDir := filepath.Join(tmpDir, ".orch", "session", windowName, "2026-01-13-1600")
+	if err := os.MkdirAll(archivedDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	windowScopedHandoff := filepath.Join(windowScopedDir, "SESSION_HANDOFF.md")
-	if err := os.WriteFile(windowScopedHandoff, []byte("window-scoped content"), 0644); err != nil {
+	archivedHandoff := filepath.Join(archivedDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(archivedHandoff, []byte("archived content"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	windowScopedLatest := filepath.Join(tmpDir, ".orch", "session", windowName, "latest")
@@ -390,7 +403,17 @@ func TestDiscoverSessionHandoff_PreferWindowScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Legacy structure
+	// Active directory (should be found first - Priority 1)
+	activeDir := filepath.Join(tmpDir, ".orch", "session", windowName, "active")
+	if err := os.MkdirAll(activeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	activeHandoff := filepath.Join(activeDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(activeHandoff, []byte("active content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy structure (should be ignored when active exists)
 	legacyDir := filepath.Join(tmpDir, ".orch", "session", "2026-01-13-1500")
 	if err := os.MkdirAll(legacyDir, 0755); err != nil {
 		t.Fatal(err)
@@ -404,23 +427,25 @@ func TestDiscoverSessionHandoff_PreferWindowScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test discovery - should prefer window-scoped over legacy
+	// Test discovery - should prefer active/ over archived
 	got, err := discoverSessionHandoff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify it found the window-scoped handoff (not legacy)
+	// Verify it found the active handoff (not archived or legacy)
 	content, err := os.ReadFile(got)
 	if err != nil {
 		t.Fatalf("failed to read discovered handoff: %v", err)
 	}
-	if string(content) != "window-scoped content" {
-		t.Errorf("got content %q, want %q (should prefer window-scoped)", string(content), "window-scoped content")
+	if string(content) != "active content" {
+		t.Errorf("got content %q, want %q (should prefer active/)", string(content), "active content")
 	}
 }
 
 // TestDiscoverSessionHandoff_CrossWindowScan tests cross-window scan when current window has no history
+// Note: Cross-window scan only works when there's an active/ directory somewhere,
+// indicating a session is in progress (crash recovery scenario).
 func TestDiscoverSessionHandoff_CrossWindowScan(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -437,7 +462,7 @@ func TestDiscoverSessionHandoff_CrossWindowScan(t *testing.T) {
 	}
 
 	// Create multiple window directories with different timestamps
-	// Window 1: older session (2026-01-13-0800)
+	// Window 1: older session (2026-01-13-0800) with active/ to enable cross-window scan
 	window1Dir := filepath.Join(tmpDir, ".orch", "session", "window1", "2026-01-13-0800")
 	if err := os.MkdirAll(window1Dir, 0755); err != nil {
 		t.Fatal(err)
@@ -450,8 +475,17 @@ func TestDiscoverSessionHandoff_CrossWindowScan(t *testing.T) {
 	if err := os.Symlink("2026-01-13-0800", window1Latest); err != nil {
 		t.Fatal(err)
 	}
+	// IMPORTANT: Create active/ in window1 to simulate crash recovery (enables cross-window scan)
+	window1Active := filepath.Join(tmpDir, ".orch", "session", "window1", "active")
+	if err := os.MkdirAll(window1Active, 0755); err != nil {
+		t.Fatal(err)
+	}
+	window1ActiveHandoff := filepath.Join(window1Active, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(window1ActiveHandoff, []byte("window1 active"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
-	// Window 2: most recent session (2026-01-13-1430) - this should be found
+	// Window 2: most recent ARCHIVED session (2026-01-13-1430) - this should be found
 	window2Dir := filepath.Join(tmpDir, ".orch", "session", "window2", "2026-01-13-1430")
 	if err := os.MkdirAll(window2Dir, 0755); err != nil {
 		t.Fatal(err)
@@ -481,20 +515,87 @@ func TestDiscoverSessionHandoff_CrossWindowScan(t *testing.T) {
 
 	// Current window has NO history (will trigger cross-window scan)
 	// discoverSessionHandoff will get the current window name, find no history,
-	// then scan all windows and return the most recent (window2)
+	// then scan all windows and return the most recent archived (window2)
+	// Note: window1's active/ enables the cross-window scan, but the scan returns
+	// the most recent ARCHIVED session which is window2.
 
-	// Test discovery - should find window2's handoff (most recent across all windows)
+	// Test discovery - should find window2's handoff (most recent archived across all windows)
 	got, err := discoverSessionHandoff()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify it found the most recent handoff across all windows
+	// Verify it found the most recent archived handoff across all windows
 	content, err := os.ReadFile(got)
 	if err != nil {
 		t.Fatalf("failed to read discovered handoff: %v", err)
 	}
 	if string(content) != "window2 most recent" {
-		t.Errorf("got content %q, want %q (should find most recent across all windows)", string(content), "window2 most recent")
+		t.Errorf("got content %q, want %q (should find most recent archived across all windows)", string(content), "window2 most recent")
+	}
+}
+
+// TestDiscoverSessionHandoff_NoHandoffAfterExplicitEnd tests that no handoff is returned
+// after explicit session end (no active/ directory exists anywhere).
+// This is the key fix for the "stale handoff injection" bug.
+func TestDiscoverSessionHandoff_NoHandoffAfterExplicitEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Save and restore working directory
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(originalDir)
+
+	// Change to test directory
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the actual window name that will be used in discovery
+	windowName, err := tmux.GetCurrentWindowName()
+	if err != nil {
+		t.Fatalf("failed to get window name: %v", err)
+	}
+
+	// Create ONLY archived sessions (simulating state after "orch session end")
+	// NO active/ directory anywhere
+	sessionDir := filepath.Join(tmpDir, ".orch", "session", windowName, "2026-01-13-1600")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(handoffPath, []byte("archived session content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	latestSymlink := filepath.Join(tmpDir, ".orch", "session", windowName, "latest")
+	if err := os.Symlink("2026-01-13-1600", latestSymlink); err != nil {
+		t.Fatal(err)
+	}
+
+	// Also create another window's archived session (to test cross-window scan is skipped)
+	otherWindowDir := filepath.Join(tmpDir, ".orch", "session", "other-window", "2026-01-13-1700")
+	if err := os.MkdirAll(otherWindowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	otherHandoff := filepath.Join(otherWindowDir, "SESSION_HANDOFF.md")
+	if err := os.WriteFile(otherHandoff, []byte("other window content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	otherLatest := filepath.Join(tmpDir, ".orch", "session", "other-window", "latest")
+	if err := os.Symlink("2026-01-13-1700", otherLatest); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test discovery - should return error (no handoff) because no active/ exists
+	// This is the expected behavior after explicit "orch session end"
+	_, err = discoverSessionHandoff()
+	if err == nil {
+		t.Error("expected error (no handoff) after explicit session end, but got nil")
+	}
+	// Verify the error mentions "no session handoff found"
+	if err != nil && !stringContains(err.Error(), "no session handoff found") {
+		t.Errorf("expected error about 'no session handoff found', got: %v", err)
 	}
 }

@@ -1319,15 +1319,85 @@ func scanAllWindowsForMostRecent(sessionBaseDir string) (string, error) {
 	return mostRecentAnyPath, nil
 }
 
+// hasActiveSessionAnywhere checks if any window has an active/ directory with a SESSION_HANDOFF.md.
+// This indicates a session is in progress (either in this window or another).
+// Used to distinguish "crashed mid-session" (should resume) from "explicitly ended" (should not resume).
+func hasActiveSessionAnywhere(sessionBaseDir string) bool {
+	entries, err := os.ReadDir(sessionBaseDir)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		windowName := entry.Name()
+
+		// Skip legacy timestamp directories (start with digit) and special directories
+		if len(windowName) > 0 && windowName[0] >= '0' && windowName[0] <= '9' {
+			continue
+		}
+		if windowName == "latest" || windowName == "active" {
+			continue
+		}
+
+		// Check for active/ directory in this window
+		activePath := filepath.Join(sessionBaseDir, windowName, "active")
+		if _, err := os.Stat(activePath); err == nil {
+			// Found an active/ directory - check if it has a handoff
+			handoffPath := filepath.Join(activePath, "SESSION_HANDOFF.md")
+			if _, err := os.Stat(handoffPath); err == nil {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// hasWindowScopedDirectories checks if there are any window-scoped session directories.
+// Returns true if any non-legacy directories exist (not starting with digit, not "latest"/"active").
+// Used to determine if the project has migrated to window-scoped sessions.
+func hasWindowScopedDirectories(sessionBaseDir string) bool {
+	entries, err := os.ReadDir(sessionBaseDir)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		windowName := entry.Name()
+
+		// Skip legacy timestamp directories (start with digit) and special directories
+		if len(windowName) > 0 && windowName[0] >= '0' && windowName[0] <= '9' {
+			continue
+		}
+		if windowName == "latest" || windowName == "active" {
+			continue
+		}
+
+		// Found a window-scoped directory
+		return true
+	}
+
+	return false
+}
+
 // discoverSessionHandoff walks up the directory tree to find the most relevant SESSION_HANDOFF.md.
 // Returns the full path to the handoff file, or an error if not found.
 // Discovery order prioritizes recency while respecting active sessions:
 // 1. Current window's active directory (mid-session resume - your in-progress work)
-// 2. Cross-window scan for most recent (includes all windows - user wants latest context)
+// 2. Cross-window scan for most recent IF there's an active session somewhere (crash recovery)
 // 3. Legacy non-window-scoped structure (backward compatibility)
 //
-// Note: Window-scoping is for WRITING (prevent clobbering), not reading.
-// For resume, users want the most recent context regardless of window name.
+// Note: After explicit `orch session end`, no active/ exists anywhere, so archived handoffs
+// are NOT returned for auto-injection. This prevents stale handoffs from being injected.
+// Users who want to manually review an old handoff can still run `orch session resume` directly.
 func discoverSessionHandoff() (string, error) {
 	// Get current tmux window name (or "default" if not in tmux)
 	windowName, err := tmux.GetCurrentWindowName()
@@ -1355,46 +1425,64 @@ func discoverSessionHandoff() (string, error) {
 		}
 
 		// PRIORITY 2: Cross-window scan for most recent handoff
-		// This finds the most recent archived session across ALL windows (including current)
-		// User starting new session wants latest context, not stale window-matched handoff
+		// BUT only if there's an active session somewhere (crash recovery scenario).
+		// If no active/ exists anywhere, the user explicitly ended all sessions
+		// and doesn't want stale handoffs injected.
 		sessionBaseDir := filepath.Join(dir, ".orch", "session")
 		if _, err := os.Stat(sessionBaseDir); err == nil {
-			mostRecentPath, err := scanAllWindowsForMostRecent(sessionBaseDir)
-			if err == nil && mostRecentPath != "" {
-				return mostRecentPath, nil
+			// Gate: Only scan for archived handoffs if there's an active session somewhere
+			// This distinguishes "crashed mid-session" from "explicitly ended session"
+			if hasActiveSessionAnywhere(sessionBaseDir) {
+				mostRecentPath, err := scanAllWindowsForMostRecent(sessionBaseDir)
+				if err == nil && mostRecentPath != "" {
+					return mostRecentPath, nil
+				}
 			}
 		}
 
 		// BACKWARD COMPATIBILITY: Check for old non-window-scoped structure
-		// This fallback enables session resume for handoffs created before window-scoping was added
+		// This fallback enables session resume for handoffs created before window-scoping was added.
+		// IMPORTANT: Like the cross-window scan, this is gated on active sessions to prevent
+		// stale handoffs from being injected after explicit session end.
 		legacyLatestPath := filepath.Join(dir, ".orch", "session", "latest")
 		if stat, err := os.Lstat(legacyLatestPath); err == nil {
-			var sessionDir string
-			if stat.Mode()&os.ModeSymlink != 0 {
-				// It's a symlink - resolve it
-				target, err := os.Readlink(legacyLatestPath)
-				if err != nil {
-					return "", fmt.Errorf("failed to read legacy latest symlink: %w", err)
-				}
-				// If target is relative, resolve it relative to .orch/session/
-				if !filepath.IsAbs(target) {
-					sessionDir = filepath.Join(dir, ".orch", "session", target)
-				} else {
-					sessionDir = target
-				}
-			} else {
-				// It's a directory (not a symlink)
-				sessionDir = legacyLatestPath
-			}
+			// Only proceed if there's an active session somewhere (crash recovery)
+			// OR if there are no window-scoped directories at all (pure legacy setup)
+			sessionBaseDirForLegacy := filepath.Join(dir, ".orch", "session")
+			hasWindowDirs := hasWindowScopedDirectories(sessionBaseDirForLegacy)
+			hasActive := hasActiveSessionAnywhere(sessionBaseDirForLegacy)
 
-			// Check for SESSION_HANDOFF.md in the legacy session directory
-			handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
-			if _, err := os.Stat(handoffPath); err == nil {
-				// Found legacy handoff - emit warning about migration
-				fmt.Fprintf(os.Stderr, "⚠️  Using legacy session handoff structure.\n")
-				fmt.Fprintf(os.Stderr, "   Run 'orch session migrate' to update to window-scoped structure.\n")
-				fmt.Fprintf(os.Stderr, "   (This prevents concurrent orchestrators from clobbering each other's context)\n\n")
-				return handoffPath, nil
+			// Gate: Only use legacy fallback if:
+			// 1. There's an active session somewhere (crash recovery), OR
+			// 2. There are no window-scoped directories (pure legacy setup, no way to check active)
+			if hasActive || !hasWindowDirs {
+				var sessionDir string
+				if stat.Mode()&os.ModeSymlink != 0 {
+					// It's a symlink - resolve it
+					target, err := os.Readlink(legacyLatestPath)
+					if err != nil {
+						return "", fmt.Errorf("failed to read legacy latest symlink: %w", err)
+					}
+					// If target is relative, resolve it relative to .orch/session/
+					if !filepath.IsAbs(target) {
+						sessionDir = filepath.Join(dir, ".orch", "session", target)
+					} else {
+						sessionDir = target
+					}
+				} else {
+					// It's a directory (not a symlink)
+					sessionDir = legacyLatestPath
+				}
+
+				// Check for SESSION_HANDOFF.md in the legacy session directory
+				handoffPath := filepath.Join(sessionDir, "SESSION_HANDOFF.md")
+				if _, err := os.Stat(handoffPath); err == nil {
+					// Found legacy handoff - emit warning about migration
+					fmt.Fprintf(os.Stderr, "⚠️  Using legacy session handoff structure.\n")
+					fmt.Fprintf(os.Stderr, "   Run 'orch session migrate' to update to window-scoped structure.\n")
+					fmt.Fprintf(os.Stderr, "   (This prevents concurrent orchestrators from clobbering each other's context)\n\n")
+					return handoffPath, nil
+				}
 			}
 		}
 
