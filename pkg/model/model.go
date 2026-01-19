@@ -15,10 +15,11 @@ func (m ModelSpec) Format() string {
 }
 
 // DefaultModel is used when no model is specified.
-// Sonnet is the default (Flash has TPM limits that make it unusable for real work).
+// Opus is the default (Max subscription covers unlimited Claude CLI usage).
+// Sonnet requires pay-per-token API which needs explicit opt-in.
 var DefaultModel = ModelSpec{
 	Provider: "anthropic",
-	ModelID:  "claude-sonnet-4-5-20250929",
+	ModelID:  "claude-opus-4-5-20251101",
 }
 
 // Aliases maps short names to full model specs.

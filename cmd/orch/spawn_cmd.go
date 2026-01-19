@@ -780,7 +780,7 @@ func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error
 	// Opus requires Claude Code CLI auth, opencode backend creates zombie agents
 	if backend == "opencode" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "opus") {
 		return fmt.Errorf(`Warning: opencode backend with opus model may fail (auth blocked).
-  Recommendation: Use --model sonnet (default) or let auto-selection use claude backend`)
+  Recommendation: Remove --backend opencode to use claude backend (default)`)
 	}
 
 	// Note: Flash model is blocked earlier in the flow (hard error, not warning)
@@ -1031,11 +1031,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 │  🚫 Flash model not supported                                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Gemini Flash has TPM (tokens per minute) rate limits that make it           │
-│  unsuitable for agent work. Use sonnet (default) or opus instead.            │
+│  unsuitable for agent work. Use opus (default) or sonnet instead.            │
 │                                                                             │
 │  Available options:                                                         │
-│    • --model sonnet  (default, pay-per-token via OpenCode)                  │
-│    • --model opus    (Max subscription via claude CLI)                      │
+│    • --model opus    (default, Max subscription via claude CLI)             │
+│    • --model sonnet  (pay-per-token, requires --backend opencode)           │
 └─────────────────────────────────────────────────────────────────────────────┘
 `)
 	}
@@ -1169,16 +1169,15 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	} else if spawnModel != "" {
 		// Auto-select backend based on model
+		// Default is claude backend (Max subscription covers Claude CLI)
+		// Only switch to opencode if explicitly using --backend opencode
 		modelLower := strings.ToLower(spawnModel)
 		if modelLower == "opus" || strings.Contains(modelLower, "opus") {
 			// Opus model: use claude CLI (Max subscription)
 			spawnBackend = "claude"
-			fmt.Println("Auto-selected claude backend for opus model")
-		} else if modelLower == "sonnet" || strings.Contains(modelLower, "sonnet") {
-			// Sonnet model: use opencode (pay-per-token API)
-			spawnBackend = "opencode"
 		}
-		// Other models keep the default backend (claude)
+		// Sonnet and other models also use claude backend by default
+		// Pay-per-token API requires explicit --backend opencode
 	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
 		// Config default: respect project spawn_mode setting
 		spawnBackend = "claude"
