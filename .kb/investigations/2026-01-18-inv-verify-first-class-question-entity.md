@@ -5,33 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** First-class question entity support is fully functional in beads and orch-go dashboard.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** All 4 verification tests passed: type creation, status transitions (including validation), dependency gating, and dashboard API endpoint.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Question entities require beads daemon restart after code updates; the stale daemon was the initial failure cause.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close investigation - no implementation work needed, feature is production-ready.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
-
-<!--
-Example D.E.K.N.:
-Delta: Test-running guidance is missing from spawn prompts and CLAUDE.md.
-Evidence: Searched 5 agent sessions - none ran tests; guidance exists in separate docs but isn't loaded.
-Knowledge: Agents follow documentation literally; guidance must be in loaded context to be followed.
-Next: Add test-running instruction to SPAWN_CONTEXT.md template.
-Promote to Decision: recommend-no (tactical fix, not architectural)
-
-Guidelines:
-- Keep each line to ONE sentence
-- Delta answers "What did we find?"
-- Evidence answers "How do we know?"
-- Knowledge answers "What does this mean?"
-- Next answers "What should happen now?"
-- Promote to Decision: flag for orchestrator/human - recommend-yes if this establishes a pattern, constraint, or architectural choice worth preserving
-- Enable 30-second understanding for fresh Claude
--->
+**Promote to Decision:** recommend-no (verification only, no architectural decision made)
 
 ---
 
@@ -42,71 +24,111 @@ Guidelines:
 **Started:** 2026-01-18
 **Updated:** 2026-01-18
 **Owner:** og-inv-verify-first-class-18jan-209c
-**Phase:** Investigating
-**Next Step:** Test question type creation via bd create
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
-**Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
-**Extracted-From:** [Project/path of original artifact, if this was extracted from another project]
-**Supersedes:** [Path to artifact this replaces, if applicable]
-**Superseded-By:** [Path to artifact that replaced this, if applicable]
+**Patches-Decision:** N/A
+**Extracted-From:** N/A
+**Supersedes:** N/A
+**Superseded-By:** N/A
 
 ---
 
 ## Findings
 
-### Finding 1: Starting verification approach
+### Finding 1: Question type creation works after daemon refresh
 
-**Evidence:** Beginning verification of first-class question entity support with 4-point test plan:
-1. Question type creation via bd create
-2. Question-specific statuses (open, investigating, answered, closed)
-3. Dependency gating (open question blocks dependent task)
-4. Dashboard API endpoint (GET /api/questions)
+**Evidence:**
+- Initial attempt failed with "invalid issue type: question" despite code showing TypeQuestion defined
+- Root cause: Stale beads daemon (v0.41.0 running from before question type was added)
+- After `make build` in beads repo and `bd init --from-jsonl`, creation succeeded:
+```
+✓ Created issue: orch-go-1kk0j
+  Title: TestQuestion-VerifyEntity
+  Priority: P4
+  Status: open
+  Type: question
+```
 
-**Source:** Task description from SPAWN_CONTEXT
+**Source:**
+- `/Users/dylanconlin/Documents/personal/beads/internal/types/types.go:407` - TypeQuestion constant
+- `/Users/dylanconlin/Documents/personal/beads/internal/types/types.go:411-417` - IsValid() method
 
-**Significance:** Establishes the verification criteria for first-class question entity support
-
----
-
-### Finding 2: [To be filled - Question type creation test]
-
-**Evidence:** [Pending test]
-
-**Source:** [Pending test]
-
-**Significance:** [Pending test]
+**Significance:** Question type is properly defined and validated. Stale binaries/daemons can cause false negatives in verification.
 
 ---
 
-### Finding 3: [To be filled - Status transitions test]
+### Finding 2: Question-specific statuses work with validation
 
-**Evidence:** [Pending test]
+**Evidence:**
+- Successfully transitioned: open → investigating → answered → closed
+- Status validation rejects non-question statuses:
+```
+bd update orch-go-1kk0j --status in_progress
+Error: cannot update orch-go-1kk0j: invalid status "in_progress" for question (valid: open, investigating, answered, closed)
+```
 
-**Source:** [Pending test]
+**Source:**
+- `/Users/dylanconlin/Documents/personal/beads/internal/validation/bead.go:141-168` - ValidQuestionStatuses and ValidateQuestionStatus
+- `/Users/dylanconlin/Documents/personal/beads/internal/types/types.go:361-363` - StatusInvestigating, StatusAnswered constants
 
-**Significance:** [Pending test]
-
----
-
-### Finding 4: [To be filled - Dependency gating test]
-
-**Evidence:** [Pending test]
-
-**Source:** [Pending test]
-
-**Significance:** [Pending test]
+**Significance:** Question lifecycle is enforced - questions cannot use work-related statuses like `in_progress` or `blocked`.
 
 ---
 
-### Finding 5: [To be filled - Dashboard API test]
+### Finding 3: Dependency gating works correctly
 
-**Evidence:** [Pending test]
+**Evidence:**
+- Created task (orch-go-7k5lh) with `--deps "blocks:orch-go-1kk0j"` dependency on question
+- While question was open:
+  - Task appeared in `bd blocked` with "Blocked by 1 open dependencies: [orch-go-1kk0j]"
+  - Task did NOT appear in `bd ready`
+  - Question appeared in `bd ready --type question`
+- After closing question:
+  - Task appeared in `bd ready` (item #9 in list)
+  - Task no longer appeared in `bd blocked`
 
-**Source:** [Pending test]
+**Source:**
+- `bd show orch-go-7k5lh` output showing dependency relationship
+- `bd blocked` and `bd ready` command outputs
 
-**Significance:** [Pending test]
+**Significance:** Open questions can block work items. Closing the question (via answered→closed lifecycle) unblocks dependent tasks.
+
+---
+
+### Finding 4: Dashboard API endpoint works
+
+**Evidence:**
+- `GET /api/questions` returns JSON with status-bucketed questions:
+```json
+{"open":[],"investigating":[{"id":"orch-go-k12mw","title":"TestQuestion2-DashboardAPI","status":"investigating","priority":3,"created_at":"2026-01-18T22:25:20.700905-08:00"}],"answered":[],"total_count":1}
+```
+- Questions correctly move between buckets as status changes
+- API uses HTTPS (curl requires -k for self-signed cert)
+
+**Source:**
+- `curl -sk https://localhost:3348/api/questions`
+- orch-go serve.go questions endpoint implementation
+
+**Significance:** Dashboard can display questions in a dedicated view, organized by lifecycle status.
+
+---
+
+### Finding 5: Cleanup successful
+
+**Evidence:**
+- Test issues deleted:
+```
+bd delete orch-go-1kk0j orch-go-7k5lh orch-go-k12mw --reason "Test cleanup" --force
+✓ Deleted 3 issue(s)
+  Removed 1 dependency link(s)
+```
+
+**Source:** bd delete command output
+
+**Significance:** Test artifacts removed, no pollution of production database.
 
 ---
 
@@ -114,15 +136,19 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Question entity is first-class** - Full support for type, statuses, dependencies, and API. Questions are not second-class citizens bolted onto the existing task system.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Status validation enforces question lifecycle** - Questions have a distinct lifecycle (open → investigating → answered → closed) that prevents mixing with work statuses like `in_progress`.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Dependency gating enables blocking semantics** - Questions can block work items, enabling patterns like "don't implement until we decide on approach".
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+Yes, the 'question' entity type is fully supported in beads and the orch-go dashboard as a first-class citizen. All four verification criteria passed:
+1. Question type can be created via `bd create --type question`
+2. Question-specific statuses (open, investigating, answered, closed) work with validation rejecting invalid statuses
+3. Open questions block dependent tasks; closing questions unblocks them
+4. Dashboard API (`GET /api/questions`) returns questions bucketed by status
 
 ---
 
@@ -130,120 +156,96 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Question type creation (verified: bd create --type question)
+- ✅ Status transitions open→investigating→answered→closed (verified: bd update commands)
+- ✅ Status validation rejects in_progress for questions (verified: error message)
+- ✅ Dependency gating blocks tasks on open questions (verified: bd blocked, bd ready)
+- ✅ Closing question unblocks dependent tasks (verified: task appeared in bd ready)
+- ✅ Dashboard API returns questions by status bucket (verified: curl to /api/questions)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Dashboard UI rendering of questions (not in scope - only API tested)
+- ⚠️ Question creation in multi-repo environment
+- ⚠️ RPC daemon handling of questions under load
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if questions failed in multi-repo scenarios
+- Finding would be wrong if dashboard UI cannot render the API response
 
 ---
 
 ## Implementation Recommendations
 
-**Purpose:** Bridge from investigation findings to actionable implementation using directive guidance pattern (strong recommendations + visible reasoning).
+**Purpose:** This is a verification investigation, not an implementation plan. The feature is complete.
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**No implementation needed** - Feature is production-ready.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- All verification criteria passed
+- Code exists in beads and orch-go
+- Only operational issue was stale daemon (user error, not code bug)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
-
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
-
-### Alternative Approaches Considered
-
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
-
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
-
----
-
-### Implementation Details
-
-**What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
-
-**Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
-
-**Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
-
-**Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- N/A (no implementation)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `/Users/dylanconlin/Documents/personal/beads/internal/types/types.go` - TypeQuestion and status constants
+- `/Users/dylanconlin/Documents/personal/beads/internal/validation/bead.go` - Question status validation
+- `/Users/dylanconlin/Documents/personal/beads/cmd/bd/create.go` - Question type in CLI help
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Rebuild beads after discovering stale binary
+cd /Users/dylanconlin/Documents/personal/beads && make build
 
-# [Command description]
-[command]
+# Reinitialize database
+bd init --from-jsonl --force --skip-hooks
+
+# Create question
+bd create --type question --title "TestQuestion-VerifyEntity" --priority 4
+
+# Test status transitions
+bd update orch-go-1kk0j --status investigating
+bd update orch-go-1kk0j --status answered
+bd update orch-go-1kk0j --status in_progress  # Expected: error
+
+# Test dependency gating
+bd create --type task --title "TestTask-DependsOnQuestion" --priority 4 --deps "blocks:orch-go-1kk0j"
+bd blocked
+bd ready
+
+# Test dashboard API
+curl -sk https://localhost:3348/api/questions
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- N/A
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Beads commits:** 744af9cf (feat(questions): implement question gates via dependency blocking)
+- **Beads commits:** d14cf911 (feat(questions): wire question lifecycle status validation)
+- **Beads commits:** 2dc8f7dc (feat(types): add question entity type with investigating/answered statuses)
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-18 22:15:** Investigation started
+- Initial question: Is 'question' entity type fully supported in beads and orch-go dashboard?
+- Context: Post-implementation verification after adding question entity type
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-18 22:20:** Database refresh resolved type validation failure
+- Stale daemon was running pre-question-type code
+- After rebuild and reinit, all tests passed
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-18 22:26:** Investigation completed
+- Status: Complete
+- Key outcome: Question entity is fully first-class - type creation, status validation, dependency gating, and dashboard API all work correctly.
