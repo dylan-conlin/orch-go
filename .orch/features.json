@@ -591,13 +591,24 @@
       "created": "2026-01-18",
       "source": ".kb/investigations/2026-01-18-design-opencode-binary-resolution.md",
       "notes": "Design complete with 3 decision forks navigated. Establishes architectural constraint: never rely on PATH alone in orchestration contexts. Search order: OPENCODE_BIN/BD_BIN env var → PATH → known locations ($HOME/bin, $HOME/go/bin, ~/.bun/bin, ~/.local/bin, /usr/local/bin, /opt/homebrew/bin)."
+    },
+    {
+      "id": "feat-051",
+      "title": "Redesign backend selection logic into single-responsibility function",
+      "description": "Extract current backend selection logic (spawn_cmd.go:1148-1230) into resolveBackend() function with clean priority chain: 1) explicit flags (--backend, --opus), 2) project config, 3) global config, 4) default opencode (for cost optimization). Infrastructure detection warns but never overrides user intent. Returns backend string and warnings slice. Includes global config fallback support.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-20",
+      "source": ".kb/investigations/2026-01-20-inv-backend-selection-logic-spawn-cmd.md",
+      "notes": "Addresses 7+ overlapping decision factors causing repeated bugs. Follows architect recommendations from investigation."
     }
   ],
   "meta": {
     "last_updated": "2026-01-17",
-    "total_features": 49,
+    "total_features": 50,
     "by_status": {
-      "todo": 47,
+      "todo": 48,
       "in_progress": 0,
       "done": 2
     }
