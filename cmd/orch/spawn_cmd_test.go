@@ -149,72 +149,95 @@ func TestModelAutoSelection(t *testing.T) {
 	}
 }
 
-func TestIsInfrastructureWork(t *testing.T) {
+// TestIsCriticalInfrastructureWork tests the narrowed infrastructure detection.
+// Only CRITICAL infrastructure (server lifecycle) should trigger, not general orch work.
+func TestIsCriticalInfrastructureWork(t *testing.T) {
 	tests := []struct {
 		name    string
 		task    string
 		beadsID string
 		want    bool
 	}{
+		// CRITICAL infrastructure - should trigger
 		{
-			name:    "opencode keyword in task",
+			name:    "opencode server keyword",
 			task:    "fix opencode server crash",
 			beadsID: "",
-			want:    true,
+			want:    true, // matches "opencode server"
 		},
 		{
-			name:    "spawn keyword in task",
-			task:    "update spawn logic to handle errors",
-			beadsID: "",
-			want:    true,
-		},
-		{
-			name:    "dashboard keyword in task",
-			task:    "fix dashboard agent count",
-			beadsID: "",
-			want:    true,
-		},
-		{
-			name:    "pkg/spawn path in task",
-			task:    "refactor pkg/spawn/context.go",
-			beadsID: "",
-			want:    true,
-		},
-		{
-			name:    "cmd/orch path in task",
+			name:    "serve.go in task",
 			task:    "update cmd/orch/serve.go logging",
 			beadsID: "",
-			want:    true,
+			want:    true, // matches "serve.go"
 		},
 		{
-			name:    "skillc keyword in task",
+			name:    "pkg/opencode path",
+			task:    "refactor pkg/opencode/client.go",
+			beadsID: "",
+			want:    true, // matches "pkg/opencode"
+		},
+		{
+			name:    "case insensitive opencode server",
+			task:    "Fix OpenCode Server Bug",
+			beadsID: "",
+			want:    true, // matches "opencode server"
+		},
+		{
+			name:    "server restart",
+			task:    "implement server restart handling",
+			beadsID: "",
+			want:    true, // matches "server restart"
+		},
+		{
+			name:    "opencode api work",
+			task:    "update opencode api endpoints",
+			beadsID: "",
+			want:    true, // matches "opencode api"
+		},
+
+		// NON-CRITICAL - should NOT trigger (narrowed scope)
+		{
+			name:    "spawn logic (not critical)",
+			task:    "update spawn logic to handle errors",
+			beadsID: "",
+			want:    false, // spawn logic doesn't restart server
+		},
+		{
+			name:    "dashboard (not critical)",
+			task:    "fix dashboard agent count",
+			beadsID: "",
+			want:    false, // dashboard is frontend, not server
+		},
+		{
+			name:    "pkg/spawn (not critical)",
+			task:    "refactor pkg/spawn/context.go",
+			beadsID: "",
+			want:    false, // spawn context doesn't restart server
+		},
+		{
+			name:    "skillc (not critical)",
 			task:    "fix skillc compilation issue",
 			beadsID: "",
-			want:    true,
+			want:    false, // skill compiler is separate tool
 		},
 		{
-			name:    "orchestration infrastructure phrase",
+			name:    "orchestration infrastructure phrase (not critical)",
 			task:    "improve orchestration infrastructure",
 			beadsID: "",
-			want:    true,
+			want:    false, // too generic to be critical
+		},
+		{
+			name:    "agents.ts (not critical)",
+			task:    "update agents.ts store logic",
+			beadsID: "",
+			want:    false, // frontend component
 		},
 		{
 			name:    "non-infrastructure task",
 			task:    "add user authentication feature",
 			beadsID: "",
 			want:    false,
-		},
-		{
-			name:    "case insensitive detection",
-			task:    "Fix OpenCode Server Bug",
-			beadsID: "",
-			want:    true,
-		},
-		{
-			name:    "agent stores infrastructure",
-			task:    "update agents.ts store logic",
-			beadsID: "",
-			want:    true,
 		},
 		{
 			name:    "regular feature work",
@@ -226,9 +249,9 @@ func TestIsInfrastructureWork(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isInfrastructureWork(tt.task, tt.beadsID)
+			got := isCriticalInfrastructureWork(tt.task, tt.beadsID)
 			if got != tt.want {
-				t.Errorf("isInfrastructureWork(%q, %q) = %v, want %v", tt.task, tt.beadsID, got, tt.want)
+				t.Errorf("isCriticalInfrastructureWork(%q, %q) = %v, want %v", tt.task, tt.beadsID, got, tt.want)
 			}
 		})
 	}

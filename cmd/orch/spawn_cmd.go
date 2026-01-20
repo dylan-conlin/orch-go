@@ -85,10 +85,13 @@ This creates friction to encourage the preferred daemon-driven workflow.
 
 Backend Modes (--backend):
   claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus) (default)
-  opencode: Uses OpenCode HTTP API
-  
-  Config can set default mode (orch config set spawn_mode claude|opencode).
-  The --backend flag overrides the config setting for this spawn only.
+  opencode: Uses OpenCode HTTP API (DeepSeek, etc.)
+
+  Priority: --backend flag > --opus flag > config (spawn_mode) > --model auto > default
+  Config can set default mode: spawn_mode: opencode in .orch/config.yaml
+
+  Critical infrastructure work (serve.go, pkg/opencode) triggers an advisory warning
+  but respects your config. Use --backend claude --tmux for escape hatch when needed.
 
 Spawn Modes:
   Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
@@ -1136,11 +1139,14 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Priority:
 	//   1. Explicit --backend flag (highest priority)
 	//   2. Explicit --opus flag (forces claude mode)
-	//   2.5. Infrastructure work detection (auto-apply escape hatch)
-	//   3. Auto-selection based on --model flag (opus → claude, sonnet → opencode)
-	//   4. Config default (spawn_mode in project config)
+	//   3. Config default (spawn_mode in project config) - respects user intent
+	//   4. Auto-selection based on --model flag (opus → claude)
 	//   5. Default to claude (Max subscription covers Claude CLI usage)
+	//
+	// Infrastructure detection is now ADVISORY: warns but respects config.
+	// Use --backend claude to force escape hatch when needed.
 	spawnBackend := "claude"
+	configSetBackend := false // Track if config explicitly set the backend
 
 	if spawnBackendFlag != "" {
 		// Explicit --backend flag: highest priority
@@ -1152,28 +1158,14 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	} else if spawnOpus {
 		// Explicit --opus flag: use claude CLI
 		spawnBackend = "claude"
-	} else if isInfrastructureWork(task, beadsID) {
-		// Infrastructure work detection: auto-apply escape hatch
-		// Agents working on OpenCode/orch infrastructure need claude backend + tmux
-		// to survive server restarts (prevent agents from killing themselves)
+	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
+		// Config default: respect project spawn_mode setting
 		spawnBackend = "claude"
-		fmt.Println("🔧 Infrastructure work detected - auto-applying escape hatch (--backend claude --tmux)")
-		fmt.Println("   This ensures the agent survives OpenCode server restarts.")
-
-		// Log the infrastructure work detection for pattern analysis
-		logger := events.NewLogger(events.DefaultLogPath())
-		event := events.Event{
-			Type:      "spawn.infrastructure_detected",
-			Timestamp: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"task":     task,
-				"beads_id": beadsID,
-				"skill":    skillName,
-			},
-		}
-		if err := logger.Log(event); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
-		}
+		configSetBackend = true
+	} else if projCfg != nil && projCfg.SpawnMode == "opencode" {
+		// Config default: respect project spawn_mode setting (for DeepSeek/pay-per-token)
+		spawnBackend = "opencode"
+		configSetBackend = true
 	} else if spawnModel != "" {
 		// Auto-select backend based on model
 		// Default is claude backend (Max subscription covers Claude CLI)
@@ -1185,12 +1177,55 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 		// Sonnet and other models also use claude backend by default
 		// Pay-per-token API requires explicit --backend opencode
-	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
-		// Config default: respect project spawn_mode setting
-		spawnBackend = "claude"
-	} else if projCfg != nil && projCfg.SpawnMode == "opencode" {
-		// Config default: respect project spawn_mode setting (for DeepSeek/pay-per-token)
-		spawnBackend = "opencode"
+	}
+
+	// Infrastructure detection is now ADVISORY when config explicitly sets backend
+	// Only auto-apply escape hatch when no explicit config is set
+	if isCriticalInfrastructureWork(task, beadsID) {
+		if configSetBackend && spawnBackend == "opencode" {
+			// Config says opencode, but this is critical infra work - WARN but respect config
+			fmt.Println("⚠️  Critical infrastructure work detected (may restart OpenCode server)")
+			fmt.Println("   Config says 'opencode' - respecting your configuration.")
+			fmt.Println("   If agent dies from server restart, use: --backend claude --tmux")
+
+			// Log the advisory for pattern analysis
+			logger := events.NewLogger(events.DefaultLogPath())
+			event := events.Event{
+				Type:      "spawn.infrastructure_advisory",
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"task":            task,
+					"beads_id":        beadsID,
+					"skill":           skillName,
+					"config_backend":  spawnBackend,
+					"advisory_action": "warned_only",
+				},
+			}
+			if err := logger.Log(event); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure advisory: %v\n", err)
+			}
+		} else if !configSetBackend {
+			// No explicit config - auto-apply escape hatch (original behavior)
+			spawnBackend = "claude"
+			fmt.Println("🔧 Critical infrastructure work detected - auto-applying escape hatch (--backend claude)")
+			fmt.Println("   This ensures the agent survives OpenCode server restarts.")
+			fmt.Println("   To override: set spawn_mode in .orch/config.yaml or use --backend opencode")
+
+			// Log the auto-application for pattern analysis
+			logger := events.NewLogger(events.DefaultLogPath())
+			event := events.Event{
+				Type:      "spawn.infrastructure_detected",
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"task":     task,
+					"beads_id": beadsID,
+					"skill":    skillName,
+				},
+			}
+			if err := logger.Log(event); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
+			}
+		}
 	}
 
 	// Resolve model with config support (after backend determination)
@@ -2270,47 +2305,38 @@ func logTriageBypass(skillName, task string) {
 	}
 }
 
-// isInfrastructureWork detects if a task involves infrastructure work that requires
-// the escape hatch (--backend claude --tmux) to prevent agents from killing themselves
-// when they restart the OpenCode server.
+// isCriticalInfrastructureWork detects if a task involves CRITICAL infrastructure
+// work that could restart the OpenCode server and kill connected agents.
 //
-// Detection strategy:
-// - Check task description for infrastructure keywords
-// - Check beads issue title/description if spawning from issue
-// - Check for file paths that match infrastructure patterns
+// This is intentionally NARROW - only files that directly affect server lifecycle:
+// - serve.go (OpenCode server startup/shutdown)
+// - pkg/opencode/* (OpenCode client that connects to server)
+// - spawn_cmd.go (spawn logic that uses OpenCode API)
 //
-// Returns true if infrastructure work is detected, false otherwise.
-func isInfrastructureWork(task string, beadsID string) bool {
-	// Infrastructure keywords to check for
-	infrastructureKeywords := []string{
-		"opencode",
-		"orch-go",
-		"pkg/spawn",
-		"pkg/opencode",
-		"pkg/verify",
-		"pkg/state",
-		"cmd/orch",
-		"spawn_cmd.go",
-		"serve.go",
-		"status.go",
-		"main.go",
-		"dashboard",
-		"agent-card",
-		"agents.ts",
-		"daemon.ts",
-		"skillc",
-		"skill.yaml",
-		"SPAWN_CONTEXT",
-		"spawn system",
-		"spawn logic",
-		"spawn template",
-		"orchestration infrastructure",
-		"orchestration system",
+// Explicitly EXCLUDED (non-critical):
+// - Dashboard UI, agent cards, frontend components
+// - Skill system, skillc compiler
+// - General orchestration work
+// - Status commands, monitoring
+//
+// Returns true if CRITICAL infrastructure work is detected, false otherwise.
+func isCriticalInfrastructureWork(task string, beadsID string) bool {
+	// CRITICAL keywords - only files that could restart the OpenCode server
+	// These are patterns that indicate work on the server lifecycle itself
+	criticalKeywords := []string{
+		"serve.go",           // OpenCode server startup
+		"pkg/opencode",       // OpenCode client code
+		"opencode server",    // Explicit server work
+		"opencode api",       // API client that connects to server
+		"restart opencode",   // Explicit restart
+		"server restart",     // Explicit restart
+		"server startup",     // Startup changes
+		"server shutdown",    // Shutdown changes
 	}
 
 	// Check task description (case-insensitive)
 	taskLower := strings.ToLower(task)
-	for _, keyword := range infrastructureKeywords {
+	for _, keyword := range criticalKeywords {
 		if strings.Contains(taskLower, keyword) {
 			return true
 		}
@@ -2322,14 +2348,14 @@ func isInfrastructureWork(task string, beadsID string) bool {
 		if err == nil {
 			// Check title
 			titleLower := strings.ToLower(issue.Title)
-			for _, keyword := range infrastructureKeywords {
+			for _, keyword := range criticalKeywords {
 				if strings.Contains(titleLower, keyword) {
 					return true
 				}
 			}
 			// Check description
 			descLower := strings.ToLower(issue.Description)
-			for _, keyword := range infrastructureKeywords {
+			for _, keyword := range criticalKeywords {
 				if strings.Contains(descLower, keyword) {
 					return true
 				}
