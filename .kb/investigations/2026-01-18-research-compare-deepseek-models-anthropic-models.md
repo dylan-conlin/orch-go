@@ -1,6 +1,8 @@
 ## Summary (D.E.K.N.)
 
-**Delta:** DeepSeek offers 10-30x lower pricing than Claude but lacks native function calling (critical for agent orchestration), making Claude models essential for complex agentic workflows.
+**Delta:** DeepSeek offers 10-30x lower pricing than Claude. Function calling was documented as "unstable" but **Jan 19, 2026 testing confirmed it works** for standard orchestration tasks.
+
+**UPDATE (2026-01-19):** Live test with DeepSeek V3 via OpenCode API completed successfully - Read, Grep, Bash, Write all worked. See `.orch/workspace/og-inv-test-deepseek-v3-19jan-25d3/SYNTHESIS.md` for evidence.
 
 **Evidence:** DeepSeek R1 costs $0.45/$2.15/MTok vs Claude Opus 4.5 at $5/$25/MTok. DeepSeek R1-0528 added function calling but it remains "unstable" per their docs. Claude Opus 4.5 scores 80.9% on SWE-bench vs DeepSeek R1's 49.2%, and 62.3% vs 43.8% on scaled tool use benchmarks.
 

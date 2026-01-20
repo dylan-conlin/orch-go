@@ -1,9 +1,8 @@
-spawn_mode: opencode
 claude:
     model: opus
     tmux_session: workers-orch-go
 opencode:
-    model: flash
+    model: deepseek
     server: http://localhost:4096
 servers:
     api: 3348

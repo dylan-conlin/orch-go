@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-arch-design-claude-docker-20jan-3abf",
+  "skill": "architect",
+  "beads_id": "orch-go-2ge8e",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3cd195b82d669c84c82415b094905d2d81e55796",
+  "spawn_time": "2026-01-20T10:51:34-08:00",
+  "tier": "full",
+  "spawn_mode": "claude"
+}

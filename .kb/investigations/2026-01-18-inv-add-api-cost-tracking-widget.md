@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** API cost tracking should use local token counting first since Anthropic billing API returns "Not Found" error.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Existing usage infrastructure displays Max subscription data; billing API tests fail; OpenCode sessions include token metadata for cost calculation.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Local token counting provides immediate visibility without external dependencies, following dashboard patterns for color-coded budget thresholds.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Implement cost tracking with `/api/usage/cost` endpoint and dashboard widget using Sonnet 4.5 pricing.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (implementation detail, follows prior investigation recommendation)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-18
 **Updated:** 2026-01-18
 **Owner:** feature-impl agent
-**Phase:** Investigating
-**Next Step:** Examine existing usage infrastructure and Anthropic billing API
-**Status:** Active
+**Phase:** Complete
+**Next Step:** Implement local token counting cost tracking
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -210,37 +210,42 @@ API cost tracking widget should be implemented using local token counting first,
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `pkg/usage/usage.go` - Existing Max subscription usage implementation
+- `cmd/orch/serve_system.go` - API endpoint handlers including `/api/usage`
+- `web/src/lib/stores/usage.ts` - Frontend usage store
+- `web/src/routes/+layout.svelte` - Dashboard usage display component
+- `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Prior investigation with requirements and API details
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test Anthropic billing API endpoint
+curl -s -H "x-api-key: $ANTHROPIC_API_KEY" "https://api.anthropic.com/v1/billing/cost?start_date=2026-01-01&end_date=2026-01-18"
 
-# [Command description]
-[command]
+# Test with version header
+curl -s -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" "https://api.anthropic.com/v1/billing/cost"
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- Anthropic API Documentation - `/v1/billing/cost` endpoint reference (from prior investigation)
+- Anthropic Pricing - Sonnet 4.5 rates: $3/1M input, $15/1M output, $3.75/1M cache write, $0.30/1M cache read
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Provides requirements and hybrid approach recommendation
+- **Workspace:** Current feature implementation workspace
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-18 12:00:** Investigation started
+- Initial question: How to implement API cost tracking widget for Sonnet API usage in dashboard?
+- Context: Task to add API cost tracking widget referencing prior investigation
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-18 12:15:** Key findings documented
+- Examined existing usage infrastructure and dashboard display patterns
+- Tested Anthropic billing API endpoint (returns "Not Found")
+- Identified local token counting as viable first step
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-18 12:30:** Investigation completed
+- Status: Complete
+- Key outcome: Recommended local token counting implementation following existing dashboard patterns, with API endpoint `/api/usage/cost` and extended UI

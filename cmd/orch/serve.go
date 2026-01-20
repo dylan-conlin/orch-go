@@ -60,6 +60,7 @@ Endpoints:
   GET /api/events    - Proxies the OpenCode SSE stream for real-time updates
   GET /api/agentlog  - Agent lifecycle events
   GET /api/usage     - Claude Max usage stats
+  GET /api/usage/cost - API cost tracking (Sonnet token usage)
   GET /api/focus     - Current focus and drift status
   GET /api/beads     - Beads stats (ready, blocked, open)
   GET /api/beads/ready - List of ready issues for queue visibility
@@ -270,6 +271,9 @@ func runServe(portNum int) error {
 	// GET /api/usage - returns Claude Max usage stats
 	mux.HandleFunc("/api/usage", corsHandler(handleUsage))
 
+	// GET /api/usage/cost - returns API cost tracking data
+	mux.HandleFunc("/api/usage/cost", corsHandler(handleUsageCost))
+
 	// GET /api/focus - returns current focus and drift status
 	mux.HandleFunc("/api/focus", corsHandler(handleFocus))
 
@@ -389,6 +393,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/events    - SSE proxy for OpenCode events")
 	fmt.Println("  GET /api/agentlog  - Agent lifecycle events (supports ?follow=true for SSE)")
 	fmt.Println("  GET /api/usage     - Claude Max usage stats")
+	fmt.Println("  GET /api/usage/cost - API cost tracking (Sonnet token usage)")
 	fmt.Println("  GET /api/focus     - Current focus and drift status")
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")

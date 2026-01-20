@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
+	"github.com/dylan-conlin/orch-go/pkg/cost"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -37,6 +38,16 @@ type UsageAPIResponse struct {
 	WeeklyOpus      *float64 `json:"weekly_opus_percent,omitempty"` // 7-day Opus-specific usage % (null if unavailable)
 	WeeklyOpusReset string   `json:"weekly_opus_reset,omitempty"`   // Human-readable time until Opus weekly reset
 	Error           string   `json:"error,omitempty"`               // Error message if any
+}
+
+// CostAPIResponse is the JSON structure returned by /api/usage/cost.
+type CostAPIResponse struct {
+	CurrentMonthCost float64          `json:"current_month_cost"` // Total cost for current month in USD
+	CurrentMonthDate string           `json:"current_month_date"` // YYYY-MM format
+	DailyCosts       []cost.DailyCost `json:"daily_costs"`        // Daily costs for last 30 days
+	BudgetColor      string           `json:"budget_color"`       // "green", "yellow", or "red" based on budget
+	BudgetEmoji      string           `json:"budget_emoji"`       // Emoji for budget status
+	Error            string           `json:"error,omitempty"`    // Error message if any
 }
 
 // handleUsage returns Claude Max usage stats.
@@ -75,6 +86,31 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode usage: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleUsageCost returns API cost tracking data.
+// Currently returns placeholder data since we need to implement agent cost aggregation.
+func handleUsageCost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO: Implement actual cost aggregation from agent sessions
+	// For now, return placeholder data structure
+	resp := CostAPIResponse{
+		CurrentMonthCost: 0.0,
+		CurrentMonthDate: time.Now().UTC().Format("2006-01"),
+		DailyCosts:       []cost.DailyCost{},
+		BudgetColor:      "green",
+		BudgetEmoji:      "🟢",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode cost data: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

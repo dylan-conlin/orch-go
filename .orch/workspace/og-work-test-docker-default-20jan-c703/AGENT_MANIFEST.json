@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-work-test-docker-default-20jan-c703",
+  "skill": "hello",
+  "beads_id": "orch-go-untracked-1768943304",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "f108a2f68638827862b86a951abe6f17803957fd",
+  "spawn_time": "2026-01-20T13:08:26-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode"
+}

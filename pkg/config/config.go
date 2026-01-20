@@ -19,16 +19,16 @@ import (
 
 // Config represents the project configuration.
 type Config struct {
-	SpawnMode string         `yaml:"spawn_mode"`           // "claude" | "opencode"
-	Claude    ClaudeConfig   `yaml:"claude,omitempty"`     // Claude mode settings
-	OpenCode  OpenCodeConfig `yaml:"opencode,omitempty"`   // OpenCode mode settings
+	SpawnMode string         `yaml:"spawn_mode"`         // "claude" | "opencode"
+	Claude    ClaudeConfig   `yaml:"claude,omitempty"`   // Claude mode settings
+	OpenCode  OpenCodeConfig `yaml:"opencode,omitempty"` // OpenCode mode settings
 	Servers   map[string]int `yaml:"servers,omitempty"`
 }
 
 // ClaudeConfig holds settings for Claude mode spawning.
 type ClaudeConfig struct {
-	Model       string `yaml:"model"`         // "opus" | "sonnet" | "haiku"
-	TmuxSession string `yaml:"tmux_session"`  // tmux session name
+	Model       string `yaml:"model"`        // "opus" | "sonnet" | "haiku"
+	TmuxSession string `yaml:"tmux_session"` // tmux session name
 }
 
 // OpenCodeConfig holds settings for OpenCode mode spawning.
@@ -87,10 +87,9 @@ func Save(projectDir string, cfg *Config) error {
 
 // ApplyDefaults sets default values for unspecified config fields.
 func (c *Config) ApplyDefaults() {
-	// Default spawn mode to opencode for backward compatibility
-	if c.SpawnMode == "" {
-		c.SpawnMode = "opencode"
-	}
+	// NOTE: Do NOT default SpawnMode here - let it stay empty so global config is respected
+	// The backend priority chain is: --backend flag > project config > global config > code default
+	// Setting a default here would prevent global config from being used
 
 	// Default Claude settings
 	if c.Claude.Model == "" {

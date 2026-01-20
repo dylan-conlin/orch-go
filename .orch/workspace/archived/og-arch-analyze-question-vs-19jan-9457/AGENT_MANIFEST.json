@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-arch-analyze-question-vs-19jan-9457",
+  "skill": "architect",
+  "beads_id": "orch-go-2yzjl",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "d4eba576c55a57a3cf99bfd3e36dc64fc1172669",
+  "spawn_time": "2026-01-19T14:42:09-08:00",
+  "tier": "full",
+  "spawn_mode": "claude"
+}

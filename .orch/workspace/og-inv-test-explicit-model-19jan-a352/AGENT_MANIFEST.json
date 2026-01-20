@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-inv-test-explicit-model-19jan-a352",
+  "skill": "investigation",
+  "beads_id": "orch-go-untracked-1768894435",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "49f784d2a39e602a073624cce216ea2ac57a308f",
+  "spawn_time": "2026-01-19T23:33:57-08:00",
+  "tier": "full",
+  "spawn_mode": "opencode"
+}

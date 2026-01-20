@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { connectionStatus } from '$lib/stores/agents';
 	import { usage } from '$lib/stores/usage';
+	import { cost, formatCostBrief, getBudgetColor, getBudgetEmoji } from '$lib/stores/cost';
 	import { theme, mode, getEffective } from '$lib/stores/theme';
 	import { ThemeToggle } from '$lib/components/theme-toggle';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -43,6 +44,8 @@
 		} else {
 			document.documentElement.classList.remove('dark');
 		}
+		// Fetch cost data
+		cost.fetch();
 	});
 </script>
 
@@ -96,6 +99,41 @@
 								<p class="text-xs text-muted-foreground">
 									Weekly: {formatPercent($usage.weekly_percent)}{$usage.weekly_reset ? ` • Resets in ${$usage.weekly_reset}` : ''}
 								</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					{/if}
+					{#if $cost && !$cost.error}
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<span {...props} class="inline-flex items-center gap-2 text-xs cursor-default">
+										<span
+											class="font-medium"
+											class:text-green-600={$cost.budget_color === 'green'}
+											class:text-yellow-600={$cost.budget_color === 'yellow'}
+											class:text-red-600={$cost.budget_color === 'red'}
+										>
+											{$cost.budget_emoji} {formatCostBrief($cost.current_month_cost)}
+										</span>
+									</span>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>
+								<p class="font-medium">Sonnet API Cost</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									Month: {formatCostBrief($cost.current_month_cost)} ({$cost.current_month_date})
+								</p>
+								<p class="text-xs text-muted-foreground">
+									Budget: {$cost.budget_color} ({$cost.budget_emoji})
+								</p>
+								{#if $cost.daily_costs.length > 0}
+									<p class="text-xs text-muted-foreground mt-2 font-medium">Last 7 days:</p>
+									{#each $cost.daily_costs.slice(-7) as daily}
+										<p class="text-xs text-muted-foreground">
+											{daily.date}: {formatCostBrief(daily.total_cost)} ({daily.count} sessions)
+										</p>
+									{/each}
+								{/if}
 							</Tooltip.Content>
 						</Tooltip.Root>
 					{/if}
