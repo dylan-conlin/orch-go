@@ -106,9 +106,10 @@ Spawn Tiers:
   --full:  Require SYNTHESIS.md for knowledge externalization
   
   Default tier is determined by skill:
-    Full tier (require SYNTHESIS.md): investigation, architect, research, 
-      codebase-audit, design-session, systematic-debugging
-    Light tier (skip SYNTHESIS.md): feature-impl, reliability-testing, issue-creation
+    Full tier (require SYNTHESIS.md): investigation, architect, research,
+      codebase-audit, design-session
+    Light tier (skip SYNTHESIS.md): feature-impl, systematic-debugging,
+      reliability-testing, issue-creation
 
 Gap Gating (Gate Over Remind):
   --gate-on-gap:      Block spawn if context quality is too low (score < 20)

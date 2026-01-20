@@ -25,17 +25,17 @@ const (
 // Skills that primarily produce code changes default to "light".
 var SkillTierDefaults = map[string]string{
 	// Full tier: Investigation-type skills that produce knowledge artifacts
-	"investigation":        TierFull,
-	"architect":            TierFull,
-	"research":             TierFull,
-	"codebase-audit":       TierFull,
-	"design-session":       TierFull,
-	"systematic-debugging": TierFull, // Produces investigation file with findings
+	"investigation":  TierFull,
+	"architect":      TierFull,
+	"research":       TierFull,
+	"codebase-audit": TierFull,
+	"design-session": TierFull,
 
-	// Light tier: Implementation-focused skills
-	"feature-impl":        TierLight,
-	"reliability-testing": TierLight,
-	"issue-creation":      TierLight, // Creates beads issue, doesn't need synthesis
+	// Light tier: Implementation-focused skills (code changes auto-complete)
+	"feature-impl":         TierLight,
+	"systematic-debugging": TierLight, // Code-focused debugging, auto-completes
+	"reliability-testing":  TierLight,
+	"issue-creation":       TierLight, // Creates beads issue, doesn't need synthesis
 }
 
 // DefaultTierForSkill returns the default tier for a given skill.
