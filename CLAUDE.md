@@ -58,9 +58,9 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
-## Dual Spawn Modes: Resilience by Design
+## Triple Spawn Modes: Resilience by Design
 
-orch supports two spawn modes for redundancy:
+orch supports three spawn modes for redundancy:
 
 ### Primary Path (Daemon + OpenCode API)
 ```bash
@@ -90,6 +90,22 @@ orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task"
 - Independent of OpenCode server
 - Crash-resistant (agents survive service restarts)
 - Manual lifecycle management
+
+### Double Escape Hatch (Docker + Claude CLI)
+```bash
+orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
+```
+**Use for:**
+- When host fingerprint is rate-limited and you have a second Max account
+- Clean account isolation (avoids Statsig contamination between Max accounts)
+- Fresh "device" identity to Anthropic
+
+**Characteristics:**
+- Host tmux window running Docker container
+- Fresh Statsig fingerprint per spawn via `~/.claude-docker/`
+- Independent of host rate limits
+- ~2-5s container startup overhead
+- Requires Docker image `claude-code-mcp` (built from `~/.claude/docker-workaround/`)
 
 ### Architectural Principle: Critical Paths Need Escape Hatches
 
@@ -173,6 +189,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 ### pkg/spawn/ (Spawn Context)
 - `SpawnConfig` struct with all spawn parameters
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
+- `docker.go` - Docker backend spawn implementation (fresh Statsig fingerprint)
 - Embeds skill content, task description, beads issue context
 - Sets deliverables paths for verification
 - Conditionally includes server context for UI-focused skills (feature-impl, systematic-debugging, reliability-testing)
@@ -284,6 +301,12 @@ orch spawn --inline investigation "explore X"
 
 # Switch accounts when rate-limited
 orch account switch work
+
+# Use Docker escape hatch for fresh fingerprint (rate limit bypass)
+orch spawn --backend docker investigation "explore X"
+
+# Use Claude escape hatch for infrastructure work
+orch spawn --backend claude --tmux --model opus feature-impl "fix spawn"
 
 # Spawn from beads issue
 orch spawn feature-impl "implement X" --issue proj-123
