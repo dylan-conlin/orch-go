@@ -453,6 +453,17 @@ func EnsureWorkersSession(projectName, projectDir string) (string, error) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update tmuxinator config: %v\n", err)
 	}
 
+	// Verify tmux is available before attempting session creation
+	tmuxPath, err := findTmux()
+	if err != nil {
+		return "", fmt.Errorf("tmux not available: %w (install tmux or ensure it's in PATH)", err)
+	}
+
+	// Verify project directory exists (tmux will fail silently otherwise)
+	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
+		return "", fmt.Errorf("project directory does not exist: %s", projectDir)
+	}
+
 	// Create new session with a "servers" window (matching Python behavior)
 	// -d: detached mode
 	// -s: session name
@@ -460,15 +471,31 @@ func EnsureWorkersSession(projectName, projectDir string) (string, error) {
 	// -c: working directory
 	cmd, err := tmuxCommand("new-session", "-d", "-s", sessionName, "-n", "servers", "-c", projectDir)
 	if err != nil {
-		return "", err
-	}
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
+		return "", fmt.Errorf("failed to build tmux command: %w", err)
 	}
 
-	// Verify session was created
+	// Use CombinedOutput to capture both stdout and stderr for better error messages
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Include tmux output in error message for debugging
+		outputStr := strings.TrimSpace(string(output))
+		if outputStr != "" {
+			return "", fmt.Errorf("failed to create tmux session '%s': %s (tmux: %s)", sessionName, err, outputStr)
+		}
+		return "", fmt.Errorf("failed to create tmux session '%s': %w (tmux path: %s)", sessionName, err, tmuxPath)
+	}
+
+	// Verify session was created with helpful error message
 	if !SessionExists(sessionName) {
-		return "", fmt.Errorf("session %s was not created", sessionName)
+		// Try to diagnose why session wasn't created
+		listCmd, listErr := tmuxCommand("list-sessions")
+		var diagInfo string
+		if listErr == nil {
+			listOutput, _ := listCmd.CombinedOutput()
+			diagInfo = fmt.Sprintf(", existing sessions: %s", strings.TrimSpace(string(listOutput)))
+		}
+		return "", fmt.Errorf("tmux session '%s' was not created (projectDir: %s%s). Try manually: tmux new-session -d -s %s -n servers -c %s",
+			sessionName, projectDir, diagInfo, sessionName, projectDir)
 	}
 
 	return sessionName, nil
@@ -490,19 +517,32 @@ func EnsureOrchestratorSession() (string, error) {
 		return OrchestratorSessionName, nil
 	}
 
+	// Verify tmux is available before attempting session creation
+	tmuxPath, err := findTmux()
+	if err != nil {
+		return "", fmt.Errorf("tmux not available: %w (install tmux or ensure it's in PATH)", err)
+	}
+
 	// Create new orchestrator session
 	// Note: We don't specify a working directory - orchestrators work across projects
 	cmd, err := tmuxCommand("new-session", "-d", "-s", OrchestratorSessionName, "-n", "main")
 	if err != nil {
-		return "", err
-	}
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to create orchestrator session: %w", err)
+		return "", fmt.Errorf("failed to build tmux command: %w", err)
 	}
 
-	// Verify session was created
+	// Use CombinedOutput to capture both stdout and stderr for better error messages
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outputStr := strings.TrimSpace(string(output))
+		if outputStr != "" {
+			return "", fmt.Errorf("failed to create orchestrator session: %s (tmux: %s)", err, outputStr)
+		}
+		return "", fmt.Errorf("failed to create orchestrator session: %w (tmux path: %s)", err, tmuxPath)
+	}
+
+	// Verify session was created with helpful error message
 	if !SessionExists(OrchestratorSessionName) {
-		return "", fmt.Errorf("orchestrator session was not created")
+		return "", fmt.Errorf("orchestrator session was not created. Try manually: tmux new-session -d -s %s -n main", OrchestratorSessionName)
 	}
 
 	return OrchestratorSessionName, nil
@@ -518,19 +558,32 @@ func EnsureMetaOrchestratorSession() (string, error) {
 		return MetaOrchestratorSessionName, nil
 	}
 
+	// Verify tmux is available before attempting session creation
+	tmuxPath, err := findTmux()
+	if err != nil {
+		return "", fmt.Errorf("tmux not available: %w (install tmux or ensure it's in PATH)", err)
+	}
+
 	// Create new meta-orchestrator session
 	// Note: We don't specify a working directory - meta-orchestrators work across projects
 	cmd, err := tmuxCommand("new-session", "-d", "-s", MetaOrchestratorSessionName, "-n", "main")
 	if err != nil {
-		return "", err
-	}
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to create meta-orchestrator session: %w", err)
+		return "", fmt.Errorf("failed to build tmux command: %w", err)
 	}
 
-	// Verify session was created
+	// Use CombinedOutput to capture both stdout and stderr for better error messages
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outputStr := strings.TrimSpace(string(output))
+		if outputStr != "" {
+			return "", fmt.Errorf("failed to create meta-orchestrator session: %s (tmux: %s)", err, outputStr)
+		}
+		return "", fmt.Errorf("failed to create meta-orchestrator session: %w (tmux path: %s)", err, tmuxPath)
+	}
+
+	// Verify session was created with helpful error message
 	if !SessionExists(MetaOrchestratorSessionName) {
-		return "", fmt.Errorf("meta-orchestrator session was not created")
+		return "", fmt.Errorf("meta-orchestrator session was not created. Try manually: tmux new-session -d -s %s -n main", MetaOrchestratorSessionName)
 	}
 
 	return MetaOrchestratorSessionName, nil
