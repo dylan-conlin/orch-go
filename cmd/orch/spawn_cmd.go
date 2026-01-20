@@ -86,6 +86,8 @@ This creates friction to encourage the preferred daemon-driven workflow.
 Backend Modes (--backend):
   claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus) (default)
   opencode: Uses OpenCode HTTP API (DeepSeek, etc.)
+  docker:   Uses Claude CLI in Docker container for Statsig fingerprint isolation
+            (Rate limit escape hatch - fresh fingerprint per spawn)
 
   Priority: --backend flag > --opus flag > config (spawn_mode) > --model auto > default
   Config can set default mode: spawn_mode: opencode in .orch/config.yaml
@@ -176,7 +178,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnIssue, "issue", "", "Beads issue ID for tracking")
 	spawnCmd.Flags().StringVar(&spawnPhases, "phases", "", "Feature-impl phases (e.g., implementation,validation)")
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
-	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI) or opencode (HTTP API). Overrides config and auto-selection.")
+	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI), opencode (HTTP API), or docker (containerized for fingerprint isolation). Overrides config and auto-selection.")
 	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
@@ -776,9 +778,9 @@ func checkAndAutoSwitchAccount() error {
 	return nil
 }
 
-// resolveModelWithConfig resolves the model specification, checking project config
+// resolveModelWithConfig resolves the model specification, checking project and global config
 // for backend-specific defaults when no explicit --model flag is provided.
-func resolveModelWithConfig(spawnModel, backend string, projCfg *config.Config) model.ModelSpec {
+func resolveModelWithConfig(spawnModel, backend string, projCfg *config.Config, globalCfg *userconfig.Config) model.ModelSpec {
 	// If model flag is provided, use it (existing behavior)
 	if spawnModel != "" {
 		return model.Resolve(spawnModel)
@@ -794,7 +796,13 @@ func resolveModelWithConfig(spawnModel, backend string, projCfg *config.Config) 
 		}
 	}
 
-	// No config or no backend-specific default - use existing DefaultModel behavior
+	// No project config - for opencode backend, default to DeepSeek (cost optimization)
+	// For claude backend, default to Opus (Max subscription)
+	if backend == "opencode" {
+		return model.Resolve("deepseek")
+	}
+
+	// Claude backend or no backend specified - use existing DefaultModel behavior (Opus)
 	return model.Resolve("")
 }
 
@@ -1135,101 +1143,39 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Load project config (used for server ports, etc.)
 	projCfg, _ = config.Load(projectDir)
 
-	// Determine spawn backend with auto-selection based on model
-	// Priority:
-	//   1. Explicit --backend flag (highest priority)
-	//   2. Explicit --opus flag (forces claude mode)
-	//   3. Config default (spawn_mode in project config) - respects user intent
-	//   4. Auto-selection based on --model flag (opus → claude)
-	//   5. Default to claude (Max subscription covers Claude CLI usage)
-	//
-	// Infrastructure detection is now ADVISORY: warns but respects config.
-	// Use --backend claude to force escape hatch when needed.
-	spawnBackend := "claude"
-	configSetBackend := false // Track if config explicitly set the backend
+	// Determine spawn backend using clean priority chain
+	// Priority: 1) --backend flag, 2) --opus flag, 3) project config, 4) global config, 5) default opencode
+	// Infrastructure detection is ADVISORY only (warns but never overrides)
+	globalCfg, _ := userconfig.Load()
+	resolution := resolveBackend(
+		spawnBackendFlag,
+		spawnOpus,
+		spawnModel,
+		projCfg,
+		globalCfg,
+		task,
+		beadsID,
+	)
 
-	if spawnBackendFlag != "" {
-		// Explicit --backend flag: highest priority
-		spawnBackend = spawnBackendFlag
-		// Validate backend value
-		if spawnBackend != "claude" && spawnBackend != "opencode" {
-			return fmt.Errorf("invalid --backend value: %s (must be 'claude' or 'opencode')", spawnBackend)
-		}
-	} else if spawnOpus {
-		// Explicit --opus flag: use claude CLI
-		spawnBackend = "claude"
-	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
-		// Config default: respect project spawn_mode setting
-		spawnBackend = "claude"
-		configSetBackend = true
-	} else if projCfg != nil && projCfg.SpawnMode == "opencode" {
-		// Config default: respect project spawn_mode setting (for DeepSeek/pay-per-token)
-		spawnBackend = "opencode"
-		configSetBackend = true
-	} else if spawnModel != "" {
-		// Auto-select backend based on model
-		// Default is claude backend (Max subscription covers Claude CLI)
-		// Only switch to opencode if explicitly using --backend opencode
-		modelLower := strings.ToLower(spawnModel)
-		if modelLower == "opus" || strings.Contains(modelLower, "opus") {
-			// Opus model: use claude CLI (Max subscription)
-			spawnBackend = "claude"
-		}
-		// Sonnet and other models also use claude backend by default
-		// Pay-per-token API requires explicit --backend opencode
+	// Print any warnings (infrastructure, invalid config, etc.)
+	for _, warning := range resolution.Warnings {
+		fmt.Println(warning)
 	}
 
-	// Infrastructure detection is now ADVISORY when config explicitly sets backend
-	// Only auto-apply escape hatch when no explicit config is set
-	if isCriticalInfrastructureWork(task, beadsID) {
-		if configSetBackend && spawnBackend == "opencode" {
-			// Config says opencode, but this is critical infra work - WARN but respect config
-			fmt.Println("⚠️  Critical infrastructure work detected (may restart OpenCode server)")
-			fmt.Println("   Config says 'opencode' - respecting your configuration.")
-			fmt.Println("   If agent dies from server restart, use: --backend claude --tmux")
+	// Log resolution reason for debugging
+	if os.Getenv("ORCH_DEBUG") != "" {
+		fmt.Printf("Backend: %s (%s)\n", resolution.Backend, resolution.Reason)
+	}
 
-			// Log the advisory for pattern analysis
-			logger := events.NewLogger(events.DefaultLogPath())
-			event := events.Event{
-				Type:      "spawn.infrastructure_advisory",
-				Timestamp: time.Now().Unix(),
-				Data: map[string]interface{}{
-					"task":            task,
-					"beads_id":        beadsID,
-					"skill":           skillName,
-					"config_backend":  spawnBackend,
-					"advisory_action": "warned_only",
-				},
-			}
-			if err := logger.Log(event); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure advisory: %v\n", err)
-			}
-		} else if !configSetBackend {
-			// No explicit config - auto-apply escape hatch (original behavior)
-			spawnBackend = "claude"
-			fmt.Println("🔧 Critical infrastructure work detected - auto-applying escape hatch (--backend claude)")
-			fmt.Println("   This ensures the agent survives OpenCode server restarts.")
-			fmt.Println("   To override: set spawn_mode in .orch/config.yaml or use --backend opencode")
+	spawnBackend := resolution.Backend
 
-			// Log the auto-application for pattern analysis
-			logger := events.NewLogger(events.DefaultLogPath())
-			event := events.Event{
-				Type:      "spawn.infrastructure_detected",
-				Timestamp: time.Now().Unix(),
-				Data: map[string]interface{}{
-					"task":     task,
-					"beads_id": beadsID,
-					"skill":    skillName,
-				},
-			}
-			if err := logger.Log(event); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log infrastructure detection: %v\n", err)
-			}
-		}
+	// Validate model+backend compatibility (separate from selection)
+	if warning := validateBackendModelCompatibility(spawnBackend, spawnModel); warning != "" {
+		fmt.Println(warning)
 	}
 
 	// Resolve model with config support (after backend determination)
-	resolvedModel := resolveModelWithConfig(spawnModel, spawnBackend, projCfg)
+	resolvedModel := resolveModelWithConfig(spawnModel, spawnBackend, projCfg, globalCfg)
 
 	// Validate flash model - TPM rate limits make it unusable
 	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
@@ -1344,6 +1290,12 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Claude mode: Use tmux + claude CLI
 	if cfg.SpawnMode == "claude" {
 		return runSpawnClaude(serverURL, cfg, beadsID, skillName, task, attach)
+	}
+
+	// Docker mode: Use Docker container for Statsig fingerprint isolation
+	// Escape hatch for rate limit scenarios - explicit opt-in only
+	if cfg.SpawnMode == "docker" {
+		return runSpawnDocker(serverURL, cfg, beadsID, skillName, task, attach)
 	}
 
 	// Orchestrator-type skills default to tmux mode (visible interaction)
@@ -1979,6 +1931,73 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	return nil
 }
 
+// runSpawnDocker spawns the agent using Docker for Statsig fingerprint isolation.
+// This is an escape hatch for rate limit scenarios - provides fresh fingerprint per spawn.
+func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, task string, attach bool) error {
+	result, err := spawn.SpawnDocker(cfg)
+	if err != nil {
+		return err
+	}
+
+	// Register orchestrator session in registry if needed
+	registerOrchestratorSession(cfg, "", task)
+
+	// Register agent in the agent registry (for orch status tracking)
+	registerAgent(cfg, "", result.Window, registry.ModeDocker, cfg.Model)
+
+	// Log the session creation
+	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"window":              result.Window,
+		"window_id":           result.WindowID,
+		"spawn_mode":          "docker",
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
+	addUsageInfoToEventData(eventData, cfg.UsageInfo)
+	event := events.Event{
+		Type:      "session.spawned",
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Focus the newly created window
+	selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
+	if err := selectCmd.Run(); err != nil {
+		// Non-fatal
+		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+	}
+
+	// Print spawn summary with prominent gap warning if needed
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
+	fmt.Printf("Spawned agent in Docker mode (rate limit escape hatch):\n")
+	fmt.Printf("  Window:     %s\n", result.Window)
+	fmt.Printf("  Window ID:  %s\n", result.WindowID)
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Container:  %s\n", spawn.DockerImageName)
+	// Print context quality with visual indicators
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
+
+	// Attach if requested
+	if attach {
+		if err := tmux.Attach(result.Window); err != nil {
+			return fmt.Errorf("failed to attach to tmux: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // determineBeadsID determines the beads ID to use for an agent.
 // It returns an error if beads issue creation fails and --no-track is not set.
 // The createBeadsFn parameter allows for dependency injection in tests.
@@ -2324,14 +2343,14 @@ func isCriticalInfrastructureWork(task string, beadsID string) bool {
 	// CRITICAL keywords - only files that could restart the OpenCode server
 	// These are patterns that indicate work on the server lifecycle itself
 	criticalKeywords := []string{
-		"serve.go",           // OpenCode server startup
-		"pkg/opencode",       // OpenCode client code
-		"opencode server",    // Explicit server work
-		"opencode api",       // API client that connects to server
-		"restart opencode",   // Explicit restart
-		"server restart",     // Explicit restart
-		"server startup",     // Startup changes
-		"server shutdown",    // Shutdown changes
+		"serve.go",         // OpenCode server startup
+		"pkg/opencode",     // OpenCode client code
+		"opencode server",  // Explicit server work
+		"opencode api",     // API client that connects to server
+		"restart opencode", // Explicit restart
+		"server restart",   // Explicit restart
+		"server startup",   // Startup changes
+		"server shutdown",  // Shutdown changes
 	}
 
 	// Check task description (case-insensitive)

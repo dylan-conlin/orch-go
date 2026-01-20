@@ -33,6 +33,7 @@ const (
 const (
 	ModeTmux     = "claude"
 	ModeHeadless = "opencode"
+	ModeDocker   = "docker"
 )
 
 // TimeFormat is the timestamp format used in the registry.
