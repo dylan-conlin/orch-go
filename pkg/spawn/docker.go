@@ -56,6 +56,8 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	// - Mounts .claude-docker as .claude for fresh fingerprint
 	// - Sets working directory to project
 	// - Passes CLAUDE_CONTEXT for hook coordination
+	// - Sets PATH with linux-amd64 first for cross-compiled binaries (bd, orch, kb)
+	//   Built via: scripts/cross-compile-linux.sh
 	// - Pipes context file to claude with dangerous skip permissions
 	dockerCmd := fmt.Sprintf(
 		`docker run -it --rm `+
@@ -66,7 +68,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 			`-e HOME="$HOME" `+
 			`-e CLAUDE_CONTEXT=%s `+
 			`-e TERM=xterm-256color `+
-			`-e PATH="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" `+
+			`-e PATH="$HOME/.local/bin/linux-amd64:$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" `+
 			`%s `+
 			`bash -c 'cat %q | claude --dangerously-skip-permissions'`,
 		cfg.ProjectDir,

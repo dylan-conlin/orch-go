@@ -16,7 +16,7 @@ SOURCE_DIR ?= $(shell pwd)
 GIT_HASH ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.sourceDir=$(SOURCE_DIR) -X main.gitHash=$(GIT_HASH)"
 
-.PHONY: all build clean test install install-restart fmt lint docs version
+.PHONY: all build clean test install install-restart cross-compile-linux fmt lint docs version
 
 # Default target
 all: build
@@ -54,6 +54,15 @@ install-restart: install
 	@echo "Restarting orch daemon..."
 	@launchctl kickstart -k gui/$$(id -u)/com.orch.daemon 2>/dev/null || echo "Note: Daemon not running or not installed"
 	@echo "Done. Daemon restarted with new binary."
+
+# Cross-compile Linux binaries for Docker containers
+# Builds bd, orch, and kb for linux/amd64 to ~/.local/bin/linux-amd64/
+cross-compile-linux:
+	@./scripts/cross-compile-linux.sh --all
+
+# Cross-compile only orch for Linux (faster, for orch-only changes)
+cross-compile-linux-orch:
+	@./scripts/cross-compile-linux.sh --orch
 
 # Clean build artifacts
 clean:
@@ -94,14 +103,16 @@ version: build
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  build           - Build the binary"
-	@echo "  test            - Run tests"
-	@echo "  install         - Install to ~/bin (symlink to build output)"
-	@echo "  install-restart - Install and restart daemon"
-	@echo "  clean           - Clean build artifacts"
-	@echo "  fmt             - Format code"
-	@echo "  lint            - Run linter"
-	@echo "  vet             - Run go vet"
-	@echo "  tidy            - Tidy modules"
-	@echo "  run             - Build and run"
-	@echo "  docs            - Generate CLI documentation"
+	@echo "  build                  - Build the binary"
+	@echo "  test                   - Run tests"
+	@echo "  install                - Install to ~/bin (symlink to build output)"
+	@echo "  install-restart        - Install and restart daemon"
+	@echo "  cross-compile-linux    - Build Linux binaries (bd, orch, kb) for Docker"
+	@echo "  cross-compile-linux-orch - Build only orch for Linux (faster)"
+	@echo "  clean                  - Clean build artifacts"
+	@echo "  fmt                    - Format code"
+	@echo "  lint                   - Run linter"
+	@echo "  vet                    - Run go vet"
+	@echo "  tidy                   - Tidy modules"
+	@echo "  run                    - Build and run"
+	@echo "  docs                   - Generate CLI documentation"
