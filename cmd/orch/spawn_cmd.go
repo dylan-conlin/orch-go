@@ -773,6 +773,28 @@ func checkAndAutoSwitchAccount() error {
 	return nil
 }
 
+// resolveModelWithConfig resolves the model specification, checking project config
+// for backend-specific defaults when no explicit --model flag is provided.
+func resolveModelWithConfig(spawnModel, backend string, projCfg *config.Config) model.ModelSpec {
+	// If model flag is provided, use it (existing behavior)
+	if spawnModel != "" {
+		return model.Resolve(spawnModel)
+	}
+
+	// No model flag provided - check project config for backend-specific default
+	if projCfg != nil {
+		if backend == "claude" && projCfg.Claude.Model != "" {
+			return model.Resolve(projCfg.Claude.Model)
+		}
+		if backend == "opencode" && projCfg.OpenCode.Model != "" {
+			return model.Resolve(projCfg.OpenCode.Model)
+		}
+	}
+
+	// No config or no backend-specific default - use existing DefaultModel behavior
+	return model.Resolve("")
+}
+
 // validateModeModelCombo checks for known invalid mode+model combinations.
 // Returns a warning error (non-blocking) if an invalid combination is detected.
 func validateModeModelCombo(backend string, resolvedModel model.ModelSpec) error {
@@ -876,6 +898,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Get project directory - use --workdir if provided, otherwise current directory
 	var projectDir string
+	var projCfg *config.Config
 	var err error
 	if spawnWorkdir != "" {
 		// User specified target directory via --workdir
@@ -1021,24 +1044,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
-	// Resolve model - convert aliases to full format
-	resolvedModel := model.Resolve(spawnModel)
-
-	// Validate flash model - TPM rate limits make it unusable
-	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
-		return fmt.Errorf(`
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  🚫 Flash model not supported                                                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  Gemini Flash has TPM (tokens per minute) rate limits that make it           │
-│  unsuitable for agent work. Use opus (default) or sonnet instead.            │
-│                                                                             │
-│  Available options:                                                         │
-│    • --model opus    (default, Max subscription via claude CLI)             │
-│    • --model sonnet  (pay-per-token, requires --backend opencode)           │
-└─────────────────────────────────────────────────────────────────────────────┘
-`)
-	}
+	// Model resolution happens later after backend determination
+	// (moved to resolveModelWithConfig function)
 
 	// Parse skill requirements to determine what context to gather
 	requires := spawn.ParseSkillRequires(skillContent)
@@ -1123,7 +1130,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// Load project config (used for server ports, etc.)
-	projCfg, _ := config.Load(projectDir)
+	projCfg, _ = config.Load(projectDir)
 
 	// Determine spawn backend with auto-selection based on model
 	// Priority:
@@ -1181,6 +1188,28 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	} else if projCfg != nil && projCfg.SpawnMode == "claude" {
 		// Config default: respect project spawn_mode setting
 		spawnBackend = "claude"
+	} else if projCfg != nil && projCfg.SpawnMode == "opencode" {
+		// Config default: respect project spawn_mode setting (for DeepSeek/pay-per-token)
+		spawnBackend = "opencode"
+	}
+
+	// Resolve model with config support (after backend determination)
+	resolvedModel := resolveModelWithConfig(spawnModel, spawnBackend, projCfg)
+
+	// Validate flash model - TPM rate limits make it unusable
+	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
+		return fmt.Errorf(`
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🚫 Flash model not supported                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Gemini Flash has TPM (tokens per minute) rate limits that make it           │
+│  unsuitable for agent work. Use opus (default) or sonnet instead.            │
+│                                                                             │
+│  Available options:                                                         │
+│    • --model opus    (default, Max subscription via claude CLI)             │
+│    • --model sonnet  (pay-per-token, requires --backend opencode)           │
+└─────────────────────────────────────────────────────────────────────────────┘
+`)
 	}
 
 	// Validate mode+model combination
