@@ -473,6 +473,15 @@ func checkConcurrencyLimit() error {
 			continue // not an orch-spawned agent
 		}
 
+		// Skip untracked agents (spawned with --no-track).
+		// These have beads IDs like "project-untracked-1766695797" which don't exist
+		// in the beads database, so they would incorrectly fail the "is closed" check
+		// and count against concurrency limit. Untracked spawns are ad-hoc work
+		// that shouldn't block tracked agent spawns.
+		if isUntrackedBeadsID(beadsID) {
+			continue
+		}
+
 		// Determine status based on recent activity
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		status := "idle"
