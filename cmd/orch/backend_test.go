@@ -65,6 +65,12 @@ func TestResolveBackend(t *testing.T) {
 			expectedReason:  "project config (spawn_mode: claude)",
 		},
 		{
+			name:            "project config spawn_mode: docker",
+			projCfg:         &config.Config{SpawnMode: "docker"},
+			expectedBackend: "docker",
+			expectedReason:  "project config (spawn_mode: docker)",
+		},
+		{
 			name:            "--opus flag beats project config",
 			opusFlag:        true,
 			projCfg:         &config.Config{SpawnMode: "opencode"},
@@ -82,6 +88,12 @@ func TestResolveBackend(t *testing.T) {
 			globalCfg:       &userconfig.Config{Backend: "claude"},
 			expectedBackend: "claude",
 			expectedReason:  "global config (backend: claude)",
+		},
+		{
+			name:            "global config backend: docker",
+			globalCfg:       &userconfig.Config{Backend: "docker"},
+			expectedBackend: "docker",
+			expectedReason:  "global config (backend: docker)",
 		},
 		{
 			name:            "project config beats global config",

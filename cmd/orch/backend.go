@@ -53,7 +53,7 @@ func resolveBackend(
 
 	// Priority 3: Project config (.orch/config.yaml in project directory)
 	if projCfg != nil && projCfg.SpawnMode != "" {
-		if projCfg.SpawnMode == "claude" || projCfg.SpawnMode == "opencode" {
+		if projCfg.SpawnMode == "claude" || projCfg.SpawnMode == "opencode" || projCfg.SpawnMode == "docker" {
 			result.Backend = projCfg.SpawnMode
 			result.Reason = fmt.Sprintf("project config (spawn_mode: %s)", projCfg.SpawnMode)
 			return addInfrastructureWarning(result, task, beadsID)
@@ -66,7 +66,7 @@ func resolveBackend(
 	// Priority 4: Global config (~/.orch/config.yaml)
 	// Uses the existing "backend" field which defaults to "opencode"
 	if globalCfg != nil && globalCfg.Backend != "" {
-		if globalCfg.Backend == "claude" || globalCfg.Backend == "opencode" {
+		if globalCfg.Backend == "claude" || globalCfg.Backend == "opencode" || globalCfg.Backend == "docker" {
 			result.Backend = globalCfg.Backend
 			result.Reason = fmt.Sprintf("global config (backend: %s)", globalCfg.Backend)
 			return addInfrastructureWarning(result, task, beadsID)
