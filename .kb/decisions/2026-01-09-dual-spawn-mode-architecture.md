@@ -1,8 +1,10 @@
 # Decision: Dual Spawn Mode Architecture
 
 **Date:** 2026-01-09
-**Status:** Implemented
+**Status:** Implemented (Extended Jan 20, 2026)
 **Context:** Cost and rate limit constraints with Gemini API
+
+**Note (Jan 20, 2026):** This decision has been extended to include a third backend: Docker. Docker provides Statsig fingerprint isolation as a "double escape hatch" for rate limit scenarios. See `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md` for design rationale.
 
 ## Problem
 
@@ -158,5 +160,43 @@ orch spawn --mode opencode investigation "task"
 ## Related
 
 - Investigation: `.kb/investigations/2026-01-09-debug-gemini-flash-rate-limiting.md`
+- Investigation: `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md` (Docker extension)
 - Constraint: `kb-eaf467` (Opus blocked via OAuth)
 - Decision: `kb-81f105` (Attempted plugin bypass)
+
+---
+
+## Extension: Docker Backend (Jan 20, 2026)
+
+This decision has been extended to support a **third backend: Docker**.
+
+### New Backend
+
+| Mode | Purpose | When to Use |
+|------|---------|-------------|
+| Docker | Fresh Statsig fingerprint | Rate limit escape hatch |
+
+### Architecture
+
+```bash
+orch spawn --backend docker investigation "task"
+    ↓
+Host tmux window created (same as claude mode)
+    ↓
+docker run claude-code-mcp ...
+    ↓
+Fresh fingerprint per spawn via ~/.claude-docker/
+```
+
+### Key Design Decisions
+
+1. **Host tmux, not nested tmux** - Docker container runs Claude directly, observed via host tmux
+2. **No dashboard visibility** - Escape hatch philosophy: trade convenience for independence
+3. **One container per spawn** - Simplicity over optimization (rare usage expected)
+4. **Explicit opt-in only** - `--backend docker` required (no auto-selection)
+
+### Implementation References
+
+- `pkg/spawn/docker.go` - SpawnDocker function
+- `cmd/orch/backend.go` - Backend selection with docker support
+- `~/.claude/docker-workaround/` - Docker image source

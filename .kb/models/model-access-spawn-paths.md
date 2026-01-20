@@ -1,14 +1,14 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-01-12
-**Synthesized From:** 5 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations) spanning Jan 8-12, 2026
+**Last Updated:** 2026-01-20
+**Synthesized From:** 6 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations, Docker backend design) spanning Jan 8-20, 2026
 
 ---
 
 ## Summary (30 seconds)
 
-Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but allows Claude Code CLI with Max subscription. This constraint forced a **dual spawn architecture**: primary path (OpenCode API + Sonnet/Flash, headless, high concurrency) and escape hatch (Claude CLI + Opus, tmux, crash-resistant). The escape hatch exists because critical infrastructure work (fixing the spawn system itself) can't depend on what might fail. Model choice now encodes reliability requirements, not just quality preferences.
+Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but allows Claude Code CLI with Max subscription. This constraint forced a **triple spawn architecture**: primary path (OpenCode API + Sonnet/Flash, headless, high concurrency), escape hatch (Claude CLI + Opus, tmux, crash-resistant), and double escape hatch (Docker + Claude CLI, fresh fingerprint, rate limit bypass). The escape hatches exist because critical infrastructure work (fixing the spawn system itself) can't depend on what might fail, and rate limits require fingerprint isolation. Model choice now encodes reliability requirements, not just quality preferences.
 
 ---
 
@@ -54,18 +54,32 @@ User → orch spawn --backend claude → claude CLI fork → Anthropic API (with
 - **Independence:** Survives OpenCode server crashes
 - **Trade-off:** No dashboard visibility, manual lifecycle
 
+**Pattern 3: Docker (Double Escape Hatch)**
+```
+User → orch spawn --backend docker → host tmux window → docker run claude-code-mcp → claude CLI (fresh fingerprint)
+```
+
+**Characteristics:**
+- Host tmux window running Docker container
+- Fresh Statsig fingerprint per spawn (rate limit isolation)
+- Uses `~/.claude-docker/` for config (separate from host `~/.claude/`)
+- Same lifecycle as claude mode (status, complete, abandon via tmux)
+- **Independence:** Bypasses host fingerprint rate limits
+- **Trade-off:** No dashboard visibility, ~2-5s container startup overhead
+- **Prerequisite:** Docker image `claude-code-mcp` built from `~/.claude/docker-workaround/`
+
 ### Key Components
 
-**Backend Selection Priority (pkg/spawn/config.go):**
+**Backend Selection Priority (cmd/orch/backend.go):**
 ```
-1. Explicit --backend flag (highest priority)
-2. Auto-apply for infrastructure work (keywords detected)
-   → Sets --backend claude --tmux automatically
-3. Model-based auto-selection
-   → opus/sonnet → opencode
-   → flash/pro → opencode
-4. Default: opencode
+1. Explicit --backend flag (claude, opencode, or docker)
+2. --opus flag (implies claude backend)
+3. Project config (.orch/config.yaml spawn_mode)
+4. Global config (~/.orch/config.yaml backend)
+5. Default: opencode
 ```
+
+**Note:** Infrastructure work detection is advisory-only (warns, doesn't override). Docker backend must be explicitly requested via `--backend docker`.
 
 **Infrastructure Work Detection:**
 - Scans task description + beads issue for keywords
@@ -112,14 +126,28 @@ Model: opus (Max subscription)
 Tmux session, highest quality
 ```
 
+**Docker escape hatch (rate limit bypass):**
+```
+orch spawn --backend docker investigation "explore X"
+    ↓
+Backend: docker (explicit override)
+    ↓
+Host tmux window created
+    ↓
+docker run claude-code-mcp
+    ↓
+Fresh Statsig fingerprint, rate limit isolated
+```
+
 ### Critical Invariants
 
 1. **Never spawn OpenCode infrastructure work without --backend claude --tmux**
    - Violation: Agent kills itself mid-execution when server restarts
 
-2. **Infrastructure detection runs before model auto-selection**
-   - Priority 2.5 (between explicit flags and model-based selection)
-   - Ensures auto-apply happens even without explicit --backend
+2. **Infrastructure detection is advisory-only**
+   - Warns when critical infrastructure keywords detected
+   - Never auto-overrides backend selection
+   - User must explicitly choose escape hatch
 
 3. **Opus only accessible via Claude CLI backend**
    - API requests to Opus fail with auth error
@@ -129,6 +157,11 @@ Tmux session, highest quality
    - Claude CLI binary ≠ OpenCode server
    - Tmux session persists across service restarts
    - Different authentication path (Max subscription OAuth)
+
+5. **Docker backend requires explicit opt-in**
+   - Must use `--backend docker` flag
+   - Docker image `claude-code-mcp` must be pre-built
+   - Uses separate config directory (`~/.claude-docker/`) for fingerprint isolation
 
 ---
 
@@ -415,6 +448,14 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Cost/quality/reliability tradeoffs explicit
 - Strategic questions about model usage surfaced
 
+**Jan 20, 2026:** Docker backend added as third spawn path
+- Provides Statsig fingerprint isolation for rate limit escape hatch
+- Architecture: Host tmux window runs `docker run ... claude` (NOT nested tmux)
+- Uses `~/.claude-docker/` for fresh fingerprint per spawn
+- Same lifecycle commands (status, complete, abandon) via tmux
+- No dashboard visibility (escape hatch philosophy - use tmux)
+- See: `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md`
+
 ---
 
 ## References
@@ -426,20 +467,23 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `.kb/investigations/2026-01-10-inv-fix-dual-mode-spawn-bug.md` - Backend flag implementation and naming fix
 - `.kb/investigations/2026-01-11-inv-add-infrastructure-work-detection-auto.md` - Keyword detection and auto-flag application
 - `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Cost visibility gap, tracking requirements, strategic questions blocked
+- `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md` - Docker backend design, host tmux pattern, fingerprint isolation
 
 **Decisions informed by this model:**
-- Dual spawn architecture (primary + escape hatch)
+- Triple spawn architecture (primary + escape hatch + double escape hatch)
 - Never spawn infrastructure work via OpenCode
 - Opus access requires Max subscription + Claude CLI
-- Infrastructure detection auto-applies escape hatch flags
+- Infrastructure detection is advisory-only (warns, never overrides)
+- Docker provides fingerprint isolation for rate limit scenarios
 
 **Related models:**
 - `.kb/models/dashboard-agent-status.md` - How status is calculated (relates to session state constraint)
 
 **Primary Evidence (Verify These):**
-- `pkg/spawn/config.go:selectBackend()` - Backend selection priority cascade
-- `pkg/spawn/config.go:detectInfrastructureWork()` - Keyword detection logic
-- `CLAUDE.md` lines 130-170 - Dual spawn mode documentation
+- `cmd/orch/backend.go:resolveBackend()` - Backend selection priority cascade
+- `cmd/orch/backend.go:addInfrastructureWarning()` - Advisory infrastructure detection
+- `pkg/spawn/docker.go:SpawnDocker()` - Docker backend implementation
+- `CLAUDE.md` lines 130-170 - Triple spawn mode documentation
 - `~/.claude/skills/meta/orchestrator/SKILL.md` line 625 - "Why escape hatch exists" section
 
 **Cost evidence:**

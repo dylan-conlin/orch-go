@@ -1,13 +1,14 @@
-# Dual Spawn Mode Implementation Guide
+# Triple Spawn Mode Implementation Guide
 
-**Date:** 2026-01-09
+**Date:** 2026-01-09 (updated 2026-01-20)
 **Decision:** `.kb/decisions/2026-01-09-dual-spawn-mode-architecture.md`
 
 ## Overview
 
-Implement dual backend system for agent spawning:
+Implement triple backend system for agent spawning:
 - **Claude mode:** tmux + `claude` CLI (Max subscription, unlimited Opus)
 - **OpenCode mode:** HTTP API + dashboard (paid API)
+- **Docker mode:** Host tmux + Docker container (fresh Statsig fingerprint, rate limit escape hatch)
 
 ## Implementation Order
 
@@ -114,6 +115,64 @@ tmux capture-pane -p -t workers-orch-go:inv-task-abc
 # Parse for "Phase: Complete" in output
 ```
 
+### 2c. Docker Spawn (Added Jan 20, 2026)
+
+**Files created:**
+- `pkg/spawn/docker.go` - Docker spawn implementation
+
+**Key functions:**
+```go
+// SpawnDocker creates host tmux window and launches claude in Docker container.
+// Provides Statsig fingerprint isolation for rate limit escape hatch.
+func SpawnDocker(cfg SpawnConfig) (AgentInfo, error) {
+    // 1. Generate SPAWN_CONTEXT.md
+    // 2. Create host tmux window in workers session
+    // 3. Build Docker command with volume mounts
+    // 4. Send docker run command to tmux window
+    // 5. Return agent info with mode=docker, tmux_window set
+}
+
+// MonitorDocker reads host tmux pane output (same as claude mode)
+func MonitorDocker(agentID string) (string, error)
+
+// SendDocker sends keys to host tmux window (same as claude mode)
+func SendDocker(agentID string, message string) error
+
+// AbandonDocker kills host tmux window (container auto-removes with --rm)
+func AbandonDocker(agentID string) error
+```
+
+**Docker workflow:**
+```bash
+# Create host tmux window
+tmux new-window -t workers-orch-go: -n "inv-task-abc"
+
+# Send docker run command
+tmux send-keys -t workers-orch-go:inv-task-abc \
+  'docker run -it --rm \
+    --user "$(id -u):$(id -g)" \
+    -v "$HOME":"$HOME" \
+    -v "$HOME/.claude-docker":"$HOME/.claude" \
+    -w /path/to/project \
+    -e HOME="$HOME" \
+    -e CLAUDE_CONTEXT=worker \
+    -e TERM=xterm-256color \
+    claude-code-mcp \
+    bash -c "cat SPAWN_CONTEXT.md | claude --dangerously-skip-permissions"' Enter
+
+# Monitor output (same as claude mode)
+tmux capture-pane -p -t workers-orch-go:inv-task-abc
+
+# Detect completion (same as claude mode)
+# Parse for "Phase: Complete" in output
+```
+
+**Key differences from Claude mode:**
+- Uses `~/.claude-docker/` instead of `~/.claude/` for fresh fingerprint
+- Docker image `claude-code-mcp` must be pre-built
+- Container runs with `--rm` flag (auto-cleanup)
+- ~2-5s startup overhead per spawn
+
 ### 2b. Registry Schema (orch-go-1rk4z)
 
 **Files to modify:**
@@ -124,17 +183,19 @@ tmux capture-pane -p -t workers-orch-go:inv-task-abc
 type Agent struct {
     ID          string    `json:"id"`
     BeadsID     string    `json:"beads_id"`
-    Mode        string    `json:"mode"`         // NEW: "claude" | "opencode"
+    Mode        string    `json:"mode"`         // "claude" | "opencode" | "docker"
     Status      string    `json:"status"`
 
     // Mode-specific fields
     SessionID   string    `json:"session_id,omitempty"`    // OpenCode mode
-    TmuxWindow  string    `json:"tmux_window,omitempty"`   // Claude mode
+    TmuxWindow  string    `json:"tmux_window,omitempty"`   // Claude mode AND Docker mode
 
     SpawnedAt   time.Time `json:"spawned_at"`
     // ... rest of fields
 }
 ```
+
+**Note:** Docker mode uses the same `TmuxWindow` field as Claude mode since both use host tmux windows.
 
 **Backward compatibility:**
 - Load old registry → default `mode` to "opencode"
@@ -153,6 +214,8 @@ func getAgentStatus(agent *registry.Agent) (Status, error) {
         return getClaudeStatus(agent)
     case "opencode":
         return getOpenCodeStatus(agent)
+    case "docker":
+        return getDockerStatus(agent)  // Uses same mechanism as claude
     default:
         return Status{}, fmt.Errorf("unknown mode: %s", agent.Mode)
     }
@@ -167,6 +230,11 @@ func getClaudeStatus(agent *registry.Agent) (Status, error) {
 func getOpenCodeStatus(agent *registry.Agent) (Status, error) {
     // HTTP GET /session/<id>
     // Parse response for status/phase
+}
+
+func getDockerStatus(agent *registry.Agent) (Status, error) {
+    // Same as getClaudeStatus - uses host tmux window
+    return getClaudeStatus(agent)
 }
 ```
 
@@ -268,22 +336,25 @@ func abandonAgent(agent *registry.Agent) error {
 2. **Mixed registry:**
    ```bash
    # Create agents in different modes
-   orch spawn --mode claude investigation "task 1"
-   orch spawn --mode opencode investigation "task 2"
+   orch spawn --backend claude investigation "task 1"
+   orch spawn --backend opencode investigation "task 2"
+   orch spawn --backend docker investigation "task 3"
 
-   # Verify status shows both
+   # Verify status shows all three
    orch status
    ```
 
 3. **Mode-specific operations:**
    ```bash
-   # Test send in both modes
+   # Test send in all modes
    orch send <claude-agent> "message"
    orch send <opencode-agent> "message"
+   orch send <docker-agent> "message"
 
-   # Test complete in both modes
+   # Test complete in all modes
    orch complete <claude-agent>
    orch complete <opencode-agent>
+   orch complete <docker-agent>
    ```
 
 4. **Graceful fallback:**
@@ -295,7 +366,18 @@ func abandonAgent(agent *registry.Agent) error {
    orch status
 
    # Verify claude mode still works
-   orch spawn --mode claude investigation "test"
+   orch spawn --backend claude investigation "test"
+
+   # Verify docker mode still works (independent of OpenCode)
+   orch spawn --backend docker investigation "test"
+   ```
+
+5. **Docker fingerprint isolation:**
+   ```bash
+   # Verify fresh fingerprint per spawn
+   orch spawn --backend docker investigation "task 1"
+   # Check ~/.claude-docker/ is used, not ~/.claude/
+   # Verify rate limits don't carry over from host
    ```
 
 ## Implementation Notes
@@ -343,14 +425,16 @@ fi
 
 ## Success Criteria
 
-- [ ] Config toggle works (`orch config set spawn_mode`)
-- [ ] Claude mode spawns create tmux windows with `claude` CLI
-- [ ] OpenCode mode spawns create HTTP sessions (existing behavior)
-- [ ] Status command works with both backends
-- [ ] Complete command works with both backends
-- [ ] Can switch modes mid-project without breaking registry
-- [ ] Mixed registry (some claude, some opencode agents) works correctly
-- [ ] Graceful fallback when backend unavailable
+- [x] Config toggle works (`orch config set spawn_mode`)
+- [x] Claude mode spawns create tmux windows with `claude` CLI
+- [x] OpenCode mode spawns create HTTP sessions (existing behavior)
+- [x] Docker mode spawns create host tmux windows with Docker containers
+- [x] Status command works with all three backends
+- [x] Complete command works with all three backends
+- [x] Can switch modes mid-project without breaking registry
+- [x] Mixed registry (claude, opencode, docker agents) works correctly
+- [x] Graceful fallback when backend unavailable
+- [x] Docker provides fresh Statsig fingerprint per spawn
 
 ## Cost Impact Summary
 
@@ -358,3 +442,9 @@ fi
 |------|--------------|-------------|
 | Claude | $100 (Max only) | Default, budget-constrained, need Opus quality |
 | OpenCode | $200-300 (Max + API) | Need dashboard, parallel spawning, specific models |
+| Docker | $100 (Max only) | Rate limit escape hatch, fingerprint isolation |
+
+**Docker Prerequisites:**
+- Docker installed and running
+- Docker image `claude-code-mcp` built from `~/.claude/docker-workaround/`
+- Docker socket accessible to current user
