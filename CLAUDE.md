@@ -58,6 +58,30 @@ pkg/
     └── question.go     # Parse pending questions from agent output
 ```
 
+## Tool Restrictions
+
+### Task Tool Disabled
+
+**The Task tool is globally disabled in this project via `.opencode/opencode.json`.**
+
+```json
+{
+  "permission": {
+    "task": "deny"
+  }
+}
+```
+
+**Why:** Orchestrators were using Task tool to spawn subagents instead of using `orch spawn`. This bypasses:
+- The spawn context system (skills, beads integration, workspace setup)
+- Agent registry tracking (dashboard visibility)
+- Completion verification workflow
+- Event tracking for stats
+
+**Correct delegation pattern:** Use `orch spawn` (or the Bash tool to invoke it) to delegate work to other agents.
+
+**Reference:** `.kb/investigations/2026-01-20-research-disable-task-tool-opencode-orchestrator.md`
+
 ## Triple Spawn Modes: Resilience by Design
 
 orch supports three spawn modes for redundancy:
