@@ -162,11 +162,7 @@ orch-dashboard logs     # View service logs (overmind echo)
 ### pkg/model/ (Model Resolution)
 - `Resolve(spec)` maps aliases to full provider/model format
 - Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
-- Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
-- Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
-- Default: `google/gemini-3-flash-preview` (Opus restricted to Claude Code as of Jan 2026)
+- Default: `opus` (Claude Max subscription)
 
 ### pkg/account/ (Account Management)
 - `LoadConfig()` reads `~/.orch/accounts.yaml`
