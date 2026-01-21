@@ -22,7 +22,9 @@ Investigated "fix sse serve dashboard" task and found no code defect - the SSE s
 - None - no code changes needed
 
 ### Commits
-- None - investigation only
+- STAGED but blocked by beads hook (sandbox constraint)
+- Files staged: `.kb/investigations/2026-01-21-inv-fix-sse-serve-dashboard.md`, `SYNTHESIS.md`
+- Orchestrator can commit from macOS terminal: `git commit` (files already staged)
 
 ---
 
