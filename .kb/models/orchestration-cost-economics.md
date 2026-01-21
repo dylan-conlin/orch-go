@@ -1,8 +1,8 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-01-19
-**Synthesized From:** 14 investigations and decisions spanning Nov 2025 - Jan 2026
+**Last Updated:** 2026-01-21
+**Synthesized From:** 14 investigations, 25+ kb quick entries, and decisions spanning Nov 2025 - Jan 2026
 
 ---
 
@@ -68,13 +68,48 @@ At **$200/mo Max subscription breakeven:**
 
 **Source:** `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md`, `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md`
 
+#### Failed Bypass Timeline (Jan 8-9, 2026)
+
+| Time | Attempt | Result |
+|------|---------|--------|
+| Jan 8 PM | Opus 4.5 fingerprint spoofing | Failed - "authorized for use with Claude Code only" |
+| Jan 8 PM | Direct header injection | Failed - sophisticated detection, broke other models |
+| Jan 9 AM | opencode-anthropic-auth@0.0.7 plugin | Worked briefly, then blocked |
+| Jan 9 PM | Community coordination attempts | All failed within hours |
+
+**Conclusion:** Cat-and-mouse is not a viable strategy. Anthropic's detection is actively maintained.
+
+### Rate Limits vs Usage Quota (Critical Distinction)
+
+**⚠️ There are TWO distinct limit types, and they behave differently:**
+
+| Limit Type | Scope | Docker Bypass? | Resets |
+|------------|-------|----------------|--------|
+| **Request-rate limits** | Device (Statsig fingerprint) | ✅ YES | Immediately with new fingerprint |
+| **Weekly usage quota** | Account | ❌ NO | Weekly (Sunday) |
+
+**Request-rate limits:** Per-device throttling based on Statsig fingerprint. Fresh Docker container = fresh fingerprint = no throttling.
+
+**Weekly usage quota:** Account-level weekly allocation (e.g., "97% used"). Tied to account, not device. Docker escape hatch does NOT bypass this.
+
+**Test evidence (Jan 20-21):**
+- Wiped `~/.claude-docker/`, logged in as gmail account
+- Usage charged to gmail (2%→3%) while sendcutsend stayed at 94-95%
+- Copying Statsig fingerprint did NOT bypass 97% quota
+
+**When to use Docker escape hatch:**
+- ✅ Request-rate limited (getting throttled, need to spawn immediately)
+- ❌ Weekly quota exhausted (must wait for reset or switch accounts)
+
+**Source:** `kb-e3e0a8`, `kb-c3dbe7`, `.kb/investigations/2026-01-21-inv-synthesize-anthropic-blocking-kb-quick.md`
+
 ### Cross-Account Rate Limit Bug
 
 **Problem:** Device fingerprinting causes one account's rate limit to affect other accounts on same device.
 
 **Status:** Known bug since March 2025 (GitHub #630), unfixed.
 
-**Workaround:** Docker container (confirmed working but impractical due to tmux-in-tmux and environment isolation).
+**Workaround:** Docker container (confirmed working for rate limits, not for quota).
 
 **Source:** `~/.kb/investigations/2025-11-30-claude-code-cross-account-rate-limit-bug.md`
 
@@ -260,6 +295,7 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 - `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md`
 - `.kb/investigations/2026-01-18-inv-add-api-cost-tracking-widget.md`
 - `.kb/investigations/2026-01-18-research-compare-deepseek-models-anthropic-models.md`
+- `.kb/investigations/2026-01-21-inv-synthesize-anthropic-blocking-kb-quick.md` - kb quick entries synthesis
 - `~/.kb/investigations/2025-11-30-claude-code-cross-account-rate-limit-bug.md`
 
 ### Models & Guides
