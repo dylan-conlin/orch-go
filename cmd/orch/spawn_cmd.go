@@ -1015,7 +1015,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Orchestrators skip beads tracking entirely - they're interactive sessions with Dylan,
 	// not autonomous tasks. SESSION_HANDOFF.md is richer than beads comments.
 	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
-	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnNoTrack || skipBeadsForOrchestrator, createBeadsIssue)
+	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnWorkdir, spawnNoTrack || skipBeadsForOrchestrator, createBeadsIssue)
 	if err != nil {
 		return fmt.Errorf("failed to determine beads ID: %w", err)
 	}
@@ -2030,10 +2030,11 @@ func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 // determineBeadsID determines the beads ID to use for an agent.
 // It returns an error if beads issue creation fails and --no-track is not set.
 // The createBeadsFn parameter allows for dependency injection in tests.
-func determineBeadsID(projectName, skillName, task, spawnIssue string, spawnNoTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
+// The workdir parameter is used for cross-project spawns to resolve IDs in the correct project.
+func determineBeadsID(projectName, skillName, task, spawnIssue, workdir string, spawnNoTrack bool, createBeadsFn func(string, string, string) (string, error)) (string, error) {
 	// If explicit issue ID provided via --issue flag, resolve it to full ID
 	if spawnIssue != "" {
-		return resolveShortBeadsID(spawnIssue)
+		return resolveShortBeadsIDWithDir(spawnIssue, workdir)
 	}
 
 	// If --no-track flag is set, generate a local-only ID

@@ -349,6 +349,10 @@ orch complete proj-123
 
 # Clean up finished agents
 orch clean
+
+# Cross-project daemon (polls all kb-registered projects)
+orch daemon run --cross-project           # Run daemon polling all projects
+orch daemon preview --cross-project       # Preview what would spawn across projects
 ```
 
 ## Event Tracking

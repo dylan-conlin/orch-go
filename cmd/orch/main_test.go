@@ -854,7 +854,7 @@ func TestDetermineBeadsID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotID, gotErr := determineBeadsID("test-project", "test-skill", "test task", tt.spawnIssue, tt.spawnNoTrack, tt.createBeadsFn)
+			gotID, gotErr := determineBeadsID("test-project", "test-skill", "test task", tt.spawnIssue, "", tt.spawnNoTrack, tt.createBeadsFn)
 
 			// Check error expectation
 			if (gotErr != nil) != tt.wantErr {

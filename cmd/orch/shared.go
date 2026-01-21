@@ -357,8 +357,15 @@ func hasSessionHandoff(workspacePath string) bool {
 // Returns an error if the issue doesn't exist - this prevents spawning
 // agents with invalid beads IDs that can never be closed.
 func resolveShortBeadsID(id string) (string, error) {
+	return resolveShortBeadsIDWithDir(id, "")
+}
+
+// resolveShortBeadsIDWithDir resolves a beads ID in a specific project directory.
+// This is used for cross-project operations where the issue belongs to a different
+// project than the current working directory.
+func resolveShortBeadsIDWithDir(id, workdir string) (string, error) {
 	// Try RPC client first for ID resolution
-	socketPath, err := beads.FindSocketPath("")
+	socketPath, err := beads.FindSocketPath(workdir)
 	if err == nil {
 		client := beads.NewClient(socketPath)
 		if err := client.Connect(); err == nil {
@@ -374,7 +381,12 @@ func resolveShortBeadsID(id string) (string, error) {
 
 	// Fallback: Use bd show to resolve the ID
 	// bd show handles short ID resolution and returns the full ID
-	issue, err := beads.FallbackShow(id)
+	var issue *beads.Issue
+	if workdir != "" {
+		issue, err = beads.FallbackShowWithDir(id, workdir)
+	} else {
+		issue, err = beads.FallbackShow(id)
+	}
 	if err != nil {
 		// Issue doesn't exist - return error with helpful hint for cross-project issues
 		// Extract project prefix from ID if present (e.g., "kb-cli" from "kb-cli-xyz123")
