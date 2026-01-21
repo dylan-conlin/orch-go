@@ -120,16 +120,18 @@ orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task"
 orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
 ```
 **Use for:**
-- When host fingerprint is rate-limited and you have a second Max account
-- Clean account isolation (avoids Statsig contamination between Max accounts)
+- When using a second Max account (clean fingerprint isolation)
+- Request-rate throttling (per-device limits, NOT weekly usage quota)
 - Fresh "device" identity to Anthropic
 
 **Characteristics:**
 - Host tmux window running Docker container
 - Fresh Statsig fingerprint per spawn via `~/.claude-docker/`
-- Independent of host rate limits
+- Auto-mounts real configs (CLAUDE.md, settings.json, skills/, hooks/) read-only
 - ~2-5s container startup overhead
 - Requires Docker image `claude-code-mcp` (built from `~/.claude/docker-workaround/`)
+
+**Important:** Weekly usage quota (e.g., "97% used") is **account-level**, not device-level. Docker fingerprint isolation does NOT bypass usage quota - only helps with request-rate throttling.
 
 ### Architectural Principle: Critical Paths Need Escape Hatches
 

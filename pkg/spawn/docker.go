@@ -53,10 +53,12 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	// - Auto-removes container on exit (--rm)
 	// - Matches host user for file permissions
 	// - Mounts home directory for project access
-	// - Mounts .claude-docker as .claude for fresh fingerprint
+	// - Mounts .claude-docker as .claude for fresh fingerprint (statsig isolation)
+	// - Mounts real config files (CLAUDE.md, settings.json, skills/, hooks/) on top
+	//   so Docker Claude sees host configs while keeping separate fingerprint
 	// - Sets working directory to project
 	// - Passes CLAUDE_CONTEXT for hook coordination
-	// - Sets PATH with linux-amd64 first for cross-compiled binaries (bd, orch, kb)
+	// - Sets PATH with linux-amd64 first for cross-compiled binaries (bd, orch, kb, skillc)
 	//   Built via: scripts/cross-compile-linux.sh
 	// - Pipes context file to claude with dangerous skip permissions
 	dockerCmd := fmt.Sprintf(
@@ -64,6 +66,10 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 			`--user "$(id -u):$(id -g)" `+
 			`-v "$HOME":"$HOME" `+
 			`-v "$HOME/.claude-docker":"$HOME/.claude" `+
+			`-v "$HOME/.claude/CLAUDE.md":"$HOME/.claude/CLAUDE.md":ro `+
+			`-v "$HOME/.claude/settings.json":"$HOME/.claude/settings.json":ro `+
+			`-v "$HOME/.claude/skills":"$HOME/.claude/skills":ro `+
+			`-v "$HOME/.claude/hooks":"$HOME/.claude/hooks":ro `+
 			`-w %q `+
 			`-e HOME="$HOME" `+
 			`-e CLAUDE_CONTEXT=%s `+
