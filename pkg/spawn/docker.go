@@ -75,6 +75,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 			`-e HOME="$HOME" `+
 			`-e CLAUDE_CONTEXT=%s `+
 			`-e TERM=xterm-256color `+
+			`-e BEADS_NO_DAEMON=1 `+
 			`-e PATH="$HOME/.local/bin/linux-amd64:$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" `+
 			`%s `+
 			`bash -c 'cat %q | claude --dangerously-skip-permissions'`,
