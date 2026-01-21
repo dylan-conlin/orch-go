@@ -133,6 +133,8 @@ orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
 
 **Important:** Weekly usage quota (e.g., "97% used") is **account-level**, not device-level. Docker fingerprint isolation does NOT bypass usage quota - only helps with request-rate throttling.
 
+**Constraint:** Docker spawns must be initiated from macOS host, not from inside a Claude agent sandbox. The sandbox (Linux container) doesn't have docker installed. Daemon-driven docker spawns work when `orch daemon run` executes on the host. Agent-to-agent docker spawns fail.
+
 ### Architectural Principle: Critical Paths Need Escape Hatches
 
 **Pattern discovered Jan 10, 2026:** When building observability infrastructure, OpenCode server crashed repeatedly (3 times in 1 hour), killing all agents working on the fixes. Switched to `--mode claude --tmux` for critical agents (orch doctor, overmind supervision, dashboard integration), which survived crashes and completed the work.
