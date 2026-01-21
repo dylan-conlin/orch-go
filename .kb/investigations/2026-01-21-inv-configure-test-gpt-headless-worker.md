@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** GPT-5.2 model aliases (`gpt`, `gpt5`, `gpt-5`) are already fully configured in pkg/model/model.go and unit tests pass.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** `go test ./pkg/model/...` shows 100% pass rate for all GPT aliases including `gpt` → `openai/gpt-5.2` resolution.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Model configuration requires no additional work; E2E spawn testing requires human validation per constraint "Worker agents must test spawn functionality via unit tests and code review, not end-to-end spawning".
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Close investigation - configuration complete. Orchestrator should perform E2E spawn test: `orch spawn --model gpt5 feature-impl "simple task" --issue <test-issue>`.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no (configuration only, no architectural changes)
 
 <!--
 Example D.E.K.N.:
@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Configure Test Gpt Headless Worker
 
-**Question:** [Clear, specific question this investigation answers]
+**Question:** Is GPT-5.2 configured as a model option for headless worker spawns? What testing is needed?
 
 **Started:** 2026-01-21
 **Updated:** 2026-01-21
-**Owner:** [Owner name or team]
-**Phase:** [Investigating/Synthesizing/Complete]
-**Next Step:** [Very next action when Active, or "None" when Complete]
-**Status:** [In Progress/Complete/Paused]
+**Owner:** feature-impl worker
+**Phase:** Complete
+**Next Step:** None (orchestrator performs E2E validation)
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -56,33 +56,57 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: [Brief, descriptive title]
+### Finding 1: GPT-5.2 model aliases already configured
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `gpt` → `openai/gpt-5.2`
+- `gpt5` → `openai/gpt-5.2`
+- `gpt-5` → `openai/gpt-5.2`
+- `gpt5-latest` → `openai/gpt-5.2`
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `pkg/model/model.go:48-51`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
-
----
-
-### Finding 2: [Brief, descriptive title]
-
-**Evidence:** [Concrete observations, data, examples]
-
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
-
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Task 1 ("Add model alias") was already completed. No code changes needed.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 2: Unit tests verify model resolution
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+```
+=== RUN   TestResolve_Aliases/gpt
+=== RUN   TestResolve_Aliases/GPT
+=== RUN   TestResolve_Aliases/gpt5
+=== RUN   TestResolve_Aliases/gpt-5
+--- PASS: TestResolve_Aliases (0.00s)
+```
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Command: `/usr/local/go/bin/go test -v ./pkg/model/...`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Model resolution is tested and working. All GPT aliases resolve correctly.
+
+---
+
+### Finding 3: Prior investigation confirms OpenAI auth works
+
+**Evidence:** Investigation `2026-01-20-inv-smoke-test-openai-backend-confirm.md` confirmed:
+- OpenCode has valid OAuth tokens for OpenAI
+- Session creation with OpenAI models succeeds
+- `opencode-openai-codex-auth` plugin is configured
+
+**Source:** `.kb/investigations/2026-01-20-inv-smoke-test-openai-backend-confirm.md`
+
+**Significance:** Authentication infrastructure is ready. The model can be used with OpenCode.
+
+---
+
+### Finding 4: E2E spawn testing blocked by constraint
+
+**Evidence:** KB context returned constraint: "Worker agents must test spawn functionality via unit tests and code review, not end-to-end spawning" with reason "Prevents recursive spawn testing incidents while still enabling verification"
+
+**Source:** KB context query for this spawn
+
+**Significance:** This worker cannot perform E2E spawn test (`orch spawn --model gpt5 ...`). Orchestrator must validate.
 
 ---
 
@@ -90,15 +114,26 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Configuration already complete** - GPT-5.2 aliases were added in a prior commit. Task 1 required no work.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Unit test coverage exists** - Model resolution tests verify `gpt`, `gpt5`, `gpt-5` all resolve to `openai/gpt-5.2`.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Auth infrastructure ready** - Prior investigation (2026-01-20) confirmed OpenAI OAuth works via `opencode-openai-codex-auth` plugin.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Is GPT-5.2 configured?** ✅ Yes - aliases `gpt`, `gpt5`, `gpt-5` all map to `openai/gpt-5.2` in `pkg/model/model.go`.
+
+**What testing is needed?** E2E spawn validation must be performed by orchestrator (not worker) due to constraint. Recommended test:
+```bash
+orch spawn --model gpt5 feature-impl "simple task" --issue <test-issue>
+```
+
+Then validate:
+- Does it follow skill instructions?
+- Does it use beads correctly (bd update, bd close)?
+- Code quality vs Claude?
+- Speed/cost comparison?
 
 ---
 
@@ -106,21 +141,22 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Model aliases resolve correctly (verified: `go test ./pkg/model/...` - all pass)
+- ✅ OpenAI auth works via OpenCode (verified: prior investigation confirmed session creation)
+- ✅ `gpt`, `gpt5`, `gpt-5` all map to `openai/gpt-5.2` (verified: unit tests)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ GPT-5.2 follows skill instructions (not tested - requires E2E spawn)
+- ⚠️ GPT-5.2 uses beads correctly (bd update, bd close) (not tested - requires E2E spawn)
+- ⚠️ Code quality comparison vs Claude (not tested - requires E2E spawn and review)
+- ⚠️ Speed/cost comparison (not benchmarked)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If E2E spawn with `--model gpt5` fails, would need to investigate OpenCode session creation
+- If GPT-5.2 doesn't follow skill instructions, may need model-specific prompting adjustments
+- If auth fails, would need to check `opencode-openai-codex-auth` plugin configuration
 
 ---
 
@@ -130,96 +166,95 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**No code changes needed - proceed to E2E validation** - Configuration is complete; orchestrator should test spawn.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Model aliases already configured and tested
+- OpenAI auth infrastructure confirmed working
+- Only E2E validation remains, which requires orchestrator per constraint
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Deferring E2E testing to orchestrator (required by constraint)
+- Not benchmarking speed/cost in this investigation
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Close this investigation (configuration verified)
+2. Orchestrator runs: `orch spawn --model gpt5 feature-impl "simple task" --issue <test-issue>`
+3. Evaluate GPT-5.2 effectiveness for worker spawns
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Add gpt-5.2 explicit alias**
+- **Pros:** More explicit version number
+- **Cons:** `gpt5` already maps to `gpt-5.2`; redundant
+- **When to use instead:** If OpenCode changes default GPT-5 model
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Worker performs E2E spawn**
+- **Pros:** Immediate validation
+- **Cons:** Violates constraint "Worker agents must test spawn functionality via unit tests and code review, not end-to-end spawning"
+- **When to use instead:** Never for workers
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Configuration is complete. E2E testing is the only remaining work, and it must be done by orchestrator.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Nothing - configuration complete
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ GPT-5.2 may not follow beads protocol as well as Claude (needs validation)
+- ⚠️ OpenCode auth tokens may need refresh if expired
+- ⚠️ Model-specific prompting may be needed if GPT-5.2 struggles with skill format
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- How does GPT-5.2 compare to Claude for code quality?
+- Does GPT-5.2 respect beads workflow (bd update, bd comment, bd close)?
+- What's the cost/speed tradeoff vs Claude?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ `orch spawn --model gpt5 feature-impl "task" --issue <id>` creates working session
+- ✅ Agent follows skill instructions
+- ✅ Agent uses beads correctly (bd update, bd comment)
+- ✅ Code quality acceptable for headless worker use case
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `pkg/model/model.go` - Model aliases and resolution logic
+- `pkg/model/model_test.go` - Unit tests for model resolution
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Run model unit tests
+/usr/local/go/bin/go test -v ./pkg/model/...
 
-# [Command description]
-[command]
+# Verify project location
+pwd
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- OpenCode OpenAI OAuth plugin: `opencode-openai-codex-auth`
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-20-inv-smoke-test-openai-backend-confirm.md` - Confirms OpenAI auth works
+- **Investigation:** `.kb/investigations/2026-01-21-inv-research-openai-potential-partnership-opencode.md` - OpenAI/OpenCode partnership background
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-21:** Investigation started
+- Initial question: Is GPT-5.2 configured for headless worker spawns?
+- Context: Dylan subscribed to ChatGPT Pro; want to test GPT-5.2 for implementation work
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-21:** Found configuration already complete
+- Model aliases `gpt`, `gpt5`, `gpt-5` already map to `openai/gpt-5.2`
+- Unit tests pass for all GPT aliases
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-21:** Investigation completed
+- Status: Complete
+- Key outcome: GPT-5.2 is configured; E2E testing requires orchestrator per constraint
