@@ -34,6 +34,11 @@ type Config struct {
 	// Verbose enables detailed output.
 	Verbose bool
 
+	// CrossProject enables polling across all kb-registered projects.
+	// When enabled, the daemon iterates over all projects from `kb projects list`
+	// and processes issues from each project. Global capacity pool is shared.
+	CrossProject bool
+
 	// ReflectEnabled controls whether periodic reflection analysis is enabled.
 	// When enabled, the daemon will run kb reflect periodically.
 	ReflectEnabled bool
@@ -197,6 +202,12 @@ type Daemon struct {
 	reflectFunc func(createIssues bool) (*ReflectResult, error)
 	// listEpicChildrenFunc is used for testing - allows mocking ListEpicChildren
 	listEpicChildrenFunc func(epicID string) ([]Issue, error)
+	// listProjectsFunc is used for testing - allows mocking kb projects list
+	listProjectsFunc func() ([]Project, error)
+	// listIssuesForProjectFunc is used for testing - allows mocking ListReadyIssuesForProject
+	listIssuesForProjectFunc func(projectPath string) ([]Issue, error)
+	// spawnForProjectFunc is used for testing - allows mocking SpawnWorkForProject
+	spawnForProjectFunc func(beadsID, projectPath string) error
 }
 
 // New creates a new Daemon instance with default configuration.
@@ -207,14 +218,17 @@ func New() *Daemon {
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
-		Config:               config,
-		SpawnedIssues:        NewSpawnedIssueTracker(),
-		resumeAttempts:       make(map[string]time.Time),
-		listIssuesFunc:       ListReadyIssues,
-		spawnFunc:            SpawnWork,
-		activeCountFunc:      DefaultActiveCount,
-		reflectFunc:          DefaultRunReflection,
-		listEpicChildrenFunc: ListEpicChildren,
+		Config:                   config,
+		SpawnedIssues:            NewSpawnedIssueTracker(),
+		resumeAttempts:           make(map[string]time.Time),
+		listIssuesFunc:           ListReadyIssues,
+		spawnFunc:                SpawnWork,
+		activeCountFunc:          DefaultActiveCount,
+		reflectFunc:              DefaultRunReflection,
+		listEpicChildrenFunc:     ListEpicChildren,
+		listProjectsFunc:         ListProjects,
+		listIssuesForProjectFunc: ListReadyIssuesForProject,
+		spawnForProjectFunc:      SpawnWorkForProject,
 	}
 	// Initialize worker pool if MaxAgents is set
 	if config.MaxAgents > 0 {
@@ -231,14 +245,17 @@ func NewWithConfig(config Config) *Daemon {
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 	d := &Daemon{
-		Config:          config,
-		Pool:            pool,
-		SpawnedIssues:   NewSpawnedIssueTracker(),
-		resumeAttempts:  make(map[string]time.Time),
-		listIssuesFunc:  ListReadyIssues,
-		spawnFunc:       SpawnWork,
-		activeCountFunc: DefaultActiveCount,
-		reflectFunc:     DefaultRunReflection,
+		Config:                   config,
+		Pool:                     pool,
+		SpawnedIssues:            NewSpawnedIssueTracker(),
+		resumeAttempts:           make(map[string]time.Time),
+		listIssuesFunc:           ListReadyIssues,
+		spawnFunc:                SpawnWork,
+		activeCountFunc:          DefaultActiveCount,
+		reflectFunc:              DefaultRunReflection,
+		listProjectsFunc:         ListProjects,
+		listIssuesForProjectFunc: ListReadyIssuesForProject,
+		spawnForProjectFunc:      SpawnWorkForProject,
 	}
 	// Initialize rate limiter if MaxSpawnsPerHour is set
 	if config.MaxSpawnsPerHour > 0 {
@@ -1212,4 +1229,423 @@ func (d *Daemon) Run(maxIterations int) ([]*OnceResult, error) {
 	}
 
 	return results, nil
+}
+
+// CrossProjectIssue represents an issue with its associated project context.
+// Used for cross-project polling where issues need to track their source project.
+type CrossProjectIssue struct {
+	Issue   Issue
+	Project Project
+}
+
+// CrossProjectOnceResult contains the result of processing one cross-project issue.
+type CrossProjectOnceResult struct {
+	Processed   bool
+	Issue       *Issue
+	Project     *Project
+	Skill       string
+	Message     string
+	Error       error
+	ProjectName string // Convenience field for logging: "[project-name]"
+}
+
+// ListCrossProjectIssues returns all triage:ready issues across all kb-registered projects.
+// Issues are sorted by priority (0 = highest priority).
+// Errors in individual projects are logged but don't stop processing of other projects.
+func (d *Daemon) ListCrossProjectIssues() ([]CrossProjectIssue, error) {
+	projects, err := d.listProjectsFunc()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	var allIssues []CrossProjectIssue
+
+	for _, project := range projects {
+		issues, err := d.listIssuesForProjectFunc(project.Path)
+		if err != nil {
+			// Log error but continue to next project (per acceptance criteria)
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Failed to list issues: %v\n", project.Name, err)
+			}
+			continue
+		}
+
+		for _, issue := range issues {
+			allIssues = append(allIssues, CrossProjectIssue{
+				Issue:   issue,
+				Project: project,
+			})
+		}
+	}
+
+	// Sort by priority (lower number = higher priority)
+	sort.Slice(allIssues, func(i, j int) bool {
+		return allIssues[i].Issue.Priority < allIssues[j].Issue.Priority
+	})
+
+	return allIssues, nil
+}
+
+// CrossProjectOnce processes a single issue from any kb-registered project.
+// If cross-project mode is not enabled in config, this behaves like Once().
+// Returns a result indicating what was processed and from which project.
+//
+// Key behaviors:
+// - Iterates over all kb-registered projects
+// - Respects global capacity limit (shared across all projects)
+// - Error in one project doesn't block other projects
+// - Includes project name in result for logging visibility
+func (d *Daemon) CrossProjectOnce() (*CrossProjectOnceResult, error) {
+	return d.CrossProjectOnceExcluding(nil)
+}
+
+// CrossProjectOnceExcluding processes a single issue from any kb-registered project,
+// excluding any issues in the skip set. The skip map keys should be "projectPath:issueID".
+func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectOnceResult, error) {
+	// Check rate limit first (before fetching issues)
+	if d.RateLimiter != nil {
+		canSpawn, count, msg := d.RateLimiter.CanSpawn()
+		if !canSpawn {
+			if d.Config.Verbose {
+				fmt.Printf("  Rate limited: %s\n", msg)
+			}
+			return &CrossProjectOnceResult{
+				Processed: false,
+				Message:   fmt.Sprintf("Rate limited: %d/%d spawns in the last hour", count, d.RateLimiter.MaxPerHour),
+			}, nil
+		}
+	}
+
+	// Get all projects
+	projects, err := d.listProjectsFunc()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	if len(projects) == 0 {
+		return &CrossProjectOnceResult{
+			Processed: false,
+			Message:   "No kb-registered projects found",
+		}, nil
+	}
+
+	// Collect all issues across projects
+	var allIssues []CrossProjectIssue
+
+	for _, project := range projects {
+		issues, err := d.listIssuesForProjectFunc(project.Path)
+		if err != nil {
+			// Log error but continue to next project (per acceptance criteria)
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Failed to list issues: %v\n", project.Name, err)
+			}
+			continue
+		}
+
+		for _, issue := range issues {
+			// Skip issues in the skip set
+			skipKey := fmt.Sprintf("%s:%s", project.Path, issue.ID)
+			if skip != nil && skip[skipKey] {
+				if d.Config.Verbose {
+					fmt.Printf("  [%s] Skipping %s (failed to spawn this cycle)\n", project.Name, issue.ID)
+				}
+				continue
+			}
+
+			// Skip issues that have been recently spawned
+			if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
+				if d.Config.Verbose {
+					fmt.Printf("  [%s] Skipping %s (recently spawned)\n", project.Name, issue.ID)
+				}
+				continue
+			}
+
+			// Skip non-spawnable types
+			if !IsSpawnableType(issue.IssueType) {
+				if d.Config.Verbose {
+					fmt.Printf("  [%s] Skipping %s (type %s not spawnable)\n", project.Name, issue.ID, issue.IssueType)
+				}
+				continue
+			}
+
+			// Skip blocked or in_progress issues
+			if issue.Status == "blocked" || issue.Status == "in_progress" {
+				if d.Config.Verbose {
+					fmt.Printf("  [%s] Skipping %s (status: %s)\n", project.Name, issue.ID, issue.Status)
+				}
+				continue
+			}
+
+			// Skip issues without required label (if filter is set)
+			if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+				if d.Config.Verbose {
+					fmt.Printf("  [%s] Skipping %s (missing label %s)\n", project.Name, issue.ID, d.Config.Label)
+				}
+				continue
+			}
+
+			allIssues = append(allIssues, CrossProjectIssue{
+				Issue:   issue,
+				Project: project,
+			})
+		}
+	}
+
+	if len(allIssues) == 0 {
+		return &CrossProjectOnceResult{
+			Processed: false,
+			Message:   "No spawnable issues in any project",
+		}, nil
+	}
+
+	// Sort by priority (lower number = higher priority)
+	sort.Slice(allIssues, func(i, j int) bool {
+		return allIssues[i].Issue.Priority < allIssues[j].Issue.Priority
+	})
+
+	// Take the first (highest priority) issue
+	selected := allIssues[0]
+
+	skill, err := InferSkillFromIssue(&selected.Issue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to infer skill: %w", err)
+	}
+
+	// Session-level dedup: Check if there's an existing OpenCode session for this issue
+	if HasExistingSessionForBeadsID(selected.Issue.ID) {
+		if d.Config.Verbose {
+			fmt.Printf("  [%s] Skipping %s (existing OpenCode session found)\n",
+				selected.Project.Name, selected.Issue.ID)
+		}
+		return &CrossProjectOnceResult{
+			Processed:   false,
+			Issue:       &selected.Issue,
+			Project:     &selected.Project,
+			Skill:       skill,
+			ProjectName: selected.Project.Name,
+			Message:     fmt.Sprintf("Existing session found for %s - skipping", selected.Issue.ID),
+		}, nil
+	}
+
+	// If pool is configured, acquire a slot first
+	var slot *Slot
+	if d.Pool != nil {
+		slot = d.Pool.TryAcquire()
+		if slot == nil {
+			return &CrossProjectOnceResult{
+				Processed:   false,
+				Issue:       &selected.Issue,
+				Project:     &selected.Project,
+				Skill:       skill,
+				ProjectName: selected.Project.Name,
+				Message:     "At capacity - no slots available",
+			}, nil
+		}
+		slot.BeadsID = selected.Issue.ID
+	}
+
+	// Mark issue as spawned BEFORE calling spawnFunc
+	if d.SpawnedIssues != nil {
+		d.SpawnedIssues.MarkSpawned(selected.Issue.ID)
+	}
+
+	// Spawn the work with project context
+	if err := d.spawnForProjectFunc(selected.Issue.ID, selected.Project.Path); err != nil {
+		// Unmark on spawn failure
+		if d.SpawnedIssues != nil {
+			d.SpawnedIssues.Unmark(selected.Issue.ID)
+		}
+		// Release slot on spawn failure
+		if d.Pool != nil && slot != nil {
+			d.Pool.Release(slot)
+		}
+		return &CrossProjectOnceResult{
+			Processed:   false,
+			Issue:       &selected.Issue,
+			Project:     &selected.Project,
+			Skill:       skill,
+			ProjectName: selected.Project.Name,
+			Error:       err,
+			Message:     fmt.Sprintf("[%s] Failed to spawn: %v", selected.Project.Name, err),
+		}, nil
+	}
+
+	// Record successful spawn for rate limiting
+	if d.RateLimiter != nil {
+		d.RateLimiter.RecordSpawn()
+	}
+
+	return &CrossProjectOnceResult{
+		Processed:   true,
+		Issue:       &selected.Issue,
+		Project:     &selected.Project,
+		Skill:       skill,
+		ProjectName: selected.Project.Name,
+		Message:     fmt.Sprintf("[%s] Spawned work on %s", selected.Project.Name, selected.Issue.ID),
+	}, nil
+}
+
+// CrossProjectPreview shows what would be processed next without actually processing.
+// Returns issues from all kb-registered projects, sorted by priority.
+func (d *Daemon) CrossProjectPreview() (*CrossProjectPreviewResult, error) {
+	result := &CrossProjectPreviewResult{}
+
+	// Check rate limit status
+	if d.RateLimiter != nil {
+		canSpawn, count, msg := d.RateLimiter.CanSpawn()
+		result.RateLimited = !canSpawn
+		if d.RateLimiter.MaxPerHour > 0 {
+			result.RateStatus = fmt.Sprintf("%d/%d spawns in last hour", count, d.RateLimiter.MaxPerHour)
+		}
+		if !canSpawn {
+			result.Message = msg
+		}
+	}
+
+	// Get all projects
+	projects, err := d.listProjectsFunc()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	result.Projects = projects
+
+	if len(projects) == 0 {
+		result.Message = "No kb-registered projects found"
+		return result, nil
+	}
+
+	// Collect spawnable and rejected issues from all projects
+	for _, project := range projects {
+		issues, err := d.listIssuesForProjectFunc(project.Path)
+		if err != nil {
+			result.ProjectErrors = append(result.ProjectErrors, ProjectError{
+				Project: project,
+				Error:   err,
+			})
+			continue
+		}
+
+		for _, issue := range issues {
+			reason := d.checkRejectionReason(issue)
+			if reason != "" {
+				result.RejectedIssues = append(result.RejectedIssues, CrossProjectRejected{
+					Issue:   issue,
+					Project: project,
+					Reason:  reason,
+				})
+				continue
+			}
+
+			result.SpawnableIssues = append(result.SpawnableIssues, CrossProjectIssue{
+				Issue:   issue,
+				Project: project,
+			})
+		}
+	}
+
+	// Sort spawnable by priority
+	sort.Slice(result.SpawnableIssues, func(i, j int) bool {
+		return result.SpawnableIssues[i].Issue.Priority < result.SpawnableIssues[j].Issue.Priority
+	})
+
+	// Select the first spawnable issue (if any) for preview
+	if len(result.SpawnableIssues) > 0 {
+		first := result.SpawnableIssues[0]
+		result.NextIssue = &first.Issue
+		result.NextProject = &first.Project
+
+		skill, err := InferSkillFromIssue(&first.Issue)
+		if err == nil {
+			result.Skill = skill
+		}
+
+		// Check for hotspot warnings if checker is configured
+		if d.HotspotChecker != nil {
+			result.HotspotWarnings = CheckHotspotsForIssue(&first.Issue, d.HotspotChecker)
+		}
+	} else if result.Message == "" {
+		result.Message = "No spawnable issues in any project"
+	}
+
+	return result, nil
+}
+
+// CrossProjectPreviewResult contains the result of a cross-project preview operation.
+type CrossProjectPreviewResult struct {
+	NextIssue       *Issue
+	NextProject     *Project
+	Skill           string
+	Message         string
+	RateLimited     bool
+	RateStatus      string
+	HotspotWarnings []HotspotWarning
+	Projects        []Project
+	SpawnableIssues []CrossProjectIssue
+	RejectedIssues  []CrossProjectRejected
+	ProjectErrors   []ProjectError
+}
+
+// CrossProjectRejected captures a rejected issue with its project context.
+type CrossProjectRejected struct {
+	Issue   Issue
+	Project Project
+	Reason  string
+}
+
+// ProjectError captures an error that occurred while processing a project.
+type ProjectError struct {
+	Project Project
+	Error   error
+}
+
+// FormatCrossProjectPreview formats cross-project preview results for display.
+func FormatCrossProjectPreview(result *CrossProjectPreviewResult) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("Projects scanned: %d\n", len(result.Projects)))
+
+	if result.RateLimited {
+		sb.WriteString(fmt.Sprintf("Rate limited: %s\n", result.Message))
+	}
+
+	if len(result.ProjectErrors) > 0 {
+		sb.WriteString("\nProject errors:\n")
+		for _, pe := range result.ProjectErrors {
+			sb.WriteString(fmt.Sprintf("  [%s] %v\n", pe.Project.Name, pe.Error))
+		}
+	}
+
+	if result.NextIssue != nil && result.NextProject != nil {
+		sb.WriteString("\nNext to spawn:\n")
+		sb.WriteString(fmt.Sprintf("  Project:  %s\n", result.NextProject.Name))
+		sb.WriteString(FormatPreview(result.NextIssue))
+		sb.WriteString(fmt.Sprintf("\nInferred skill: %s\n", result.Skill))
+	} else {
+		sb.WriteString(fmt.Sprintf("\n%s\n", result.Message))
+	}
+
+	if len(result.SpawnableIssues) > 1 {
+		sb.WriteString(fmt.Sprintf("\nOther spawnable issues: %d\n", len(result.SpawnableIssues)-1))
+		for i, cpi := range result.SpawnableIssues[1:] {
+			if i >= 5 {
+				sb.WriteString(fmt.Sprintf("  ... and %d more\n", len(result.SpawnableIssues)-6))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("  [%s] %s: %s\n", cpi.Project.Name, cpi.Issue.ID, cpi.Issue.Title))
+		}
+	}
+
+	if len(result.RejectedIssues) > 0 {
+		sb.WriteString(fmt.Sprintf("\nRejected issues: %d\n", len(result.RejectedIssues)))
+		for i, cpr := range result.RejectedIssues {
+			if i >= 10 {
+				sb.WriteString(fmt.Sprintf("  ... and %d more\n", len(result.RejectedIssues)-10))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("  [%s] %s: %s\n", cpr.Project.Name, cpr.Issue.ID, cpr.Reason))
+		}
+	}
+
+	return sb.String()
 }

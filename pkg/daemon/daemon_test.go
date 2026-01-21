@@ -2378,3 +2378,407 @@ func TestExpandTriageReadyEpics_FiltersClosedChildren(t *testing.T) {
 		}
 	}
 }
+
+// =============================================================================
+// Tests for Cross-Project Polling
+// =============================================================================
+
+func TestCrossProjectOnce_NoProjects(t *testing.T) {
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{}, nil
+		},
+	}
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if result.Processed {
+		t.Error("CrossProjectOnce() expected Processed=false for no projects")
+	}
+	if result.Message != "No kb-registered projects found" {
+		t.Errorf("CrossProjectOnce() message = %q, want 'No kb-registered projects found'", result.Message)
+	}
+}
+
+func TestCrossProjectOnce_NoIssuesAcrossProjects(t *testing.T) {
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project-a", Path: "/path/to/a"},
+				{Name: "project-b", Path: "/path/to/b"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return []Issue{}, nil // No issues in any project
+		},
+	}
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if result.Processed {
+		t.Error("CrossProjectOnce() expected Processed=false for no issues")
+	}
+	if result.Message != "No spawnable issues in any project" {
+		t.Errorf("CrossProjectOnce() message = %q, want 'No spawnable issues in any project'", result.Message)
+	}
+}
+
+func TestCrossProjectOnce_SelectsHighestPriorityAcrossProjects(t *testing.T) {
+	spawnedID := ""
+	spawnedPath := ""
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project-a", Path: "/path/to/a"},
+				{Name: "project-b", Path: "/path/to/b"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			if projectPath == "/path/to/a" {
+				return []Issue{
+					{ID: "a-low", Title: "Low priority in A", Priority: 2, IssueType: "feature", Status: "open"},
+				}, nil
+			}
+			return []Issue{
+				{ID: "b-high", Title: "High priority in B", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			spawnedID = beadsID
+			spawnedPath = projectPath
+			return nil
+		},
+	}
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("CrossProjectOnce() expected Processed=true")
+	}
+	// Should select b-high (priority 0) from project-b
+	if spawnedID != "b-high" {
+		t.Errorf("CrossProjectOnce() spawned %q, want 'b-high' (highest priority)", spawnedID)
+	}
+	if spawnedPath != "/path/to/b" {
+		t.Errorf("CrossProjectOnce() spawned in %q, want '/path/to/b'", spawnedPath)
+	}
+	if result.ProjectName != "project-b" {
+		t.Errorf("CrossProjectOnce() ProjectName = %q, want 'project-b'", result.ProjectName)
+	}
+}
+
+func TestCrossProjectOnce_ErrorInOneProjectContinuesToNext(t *testing.T) {
+	spawnedID := ""
+	d := &Daemon{
+		Config: Config{CrossProject: true, Verbose: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "broken", Path: "/path/to/broken"},
+				{Name: "working", Path: "/path/to/working"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			if projectPath == "/path/to/broken" {
+				return nil, fmt.Errorf("database error")
+			}
+			return []Issue{
+				{ID: "working-1", Title: "Issue in working", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			spawnedID = beadsID
+			return nil
+		},
+	}
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("CrossProjectOnce() expected Processed=true (error in one project shouldn't block others)")
+	}
+	if spawnedID != "working-1" {
+		t.Errorf("CrossProjectOnce() spawned %q, want 'working-1'", spawnedID)
+	}
+}
+
+func TestCrossProjectOnce_RespectsRateLimit(t *testing.T) {
+	d := &Daemon{
+		Config: Config{CrossProject: true, MaxSpawnsPerHour: 1},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project", Path: "/path/to/project"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return []Issue{
+				{ID: "issue-1", Title: "Issue", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			return nil
+		},
+	}
+	d.RateLimiter = NewRateLimiter(1)
+	d.RateLimiter.RecordSpawn() // Already at limit
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if result.Processed {
+		t.Error("CrossProjectOnce() should not process when rate limited")
+	}
+	if !strings.Contains(result.Message, "Rate limited") {
+		t.Errorf("CrossProjectOnce() message = %q, should contain 'Rate limited'", result.Message)
+	}
+}
+
+func TestCrossProjectOnceExcluding_SkipsExcludedIssues(t *testing.T) {
+	spawnedID := ""
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project", Path: "/path/to/project"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return []Issue{
+				{ID: "issue-1", Title: "First", Priority: 0, IssueType: "feature", Status: "open"},
+				{ID: "issue-2", Title: "Second", Priority: 1, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			spawnedID = beadsID
+			return nil
+		},
+	}
+
+	// Skip the first issue using cross-project skip key format
+	skip := map[string]bool{"/path/to/project:issue-1": true}
+
+	result, err := d.CrossProjectOnceExcluding(skip)
+	if err != nil {
+		t.Fatalf("CrossProjectOnceExcluding() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("CrossProjectOnceExcluding() expected Processed=true")
+	}
+	// Should skip issue-1 and spawn issue-2
+	if spawnedID != "issue-2" {
+		t.Errorf("CrossProjectOnceExcluding() spawned %q, want 'issue-2'", spawnedID)
+	}
+}
+
+func TestCrossProjectOnce_WithPool_AcquiresSlot(t *testing.T) {
+	pool := NewWorkerPool(2)
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		Pool:   pool,
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project", Path: "/path/to/project"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return []Issue{
+				{ID: "issue-1", Title: "Issue", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			return nil
+		},
+	}
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if !result.Processed {
+		t.Error("CrossProjectOnce() expected Processed=true")
+	}
+	// Pool should have one active slot
+	if pool.Active() != 1 {
+		t.Errorf("Pool.Active() = %d, want 1", pool.Active())
+	}
+}
+
+func TestCrossProjectOnce_WithPool_AtCapacity(t *testing.T) {
+	pool := NewWorkerPool(1)
+	pool.TryAcquire() // Fill the pool
+
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		Pool:   pool,
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project", Path: "/path/to/project"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return []Issue{
+				{ID: "issue-1", Title: "Issue", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			t.Error("spawnForProjectFunc should not be called when at capacity")
+			return nil
+		},
+	}
+
+	result, err := d.CrossProjectOnce()
+	if err != nil {
+		t.Fatalf("CrossProjectOnce() unexpected error: %v", err)
+	}
+	if result.Processed {
+		t.Error("CrossProjectOnce() should not process when at capacity")
+	}
+	if result.Message != "At capacity - no slots available" {
+		t.Errorf("CrossProjectOnce() message = %q, want 'At capacity - no slots available'", result.Message)
+	}
+}
+
+func TestCrossProjectPreview_ShowsIssuesFromAllProjects(t *testing.T) {
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project-a", Path: "/path/to/a"},
+				{Name: "project-b", Path: "/path/to/b"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			if projectPath == "/path/to/a" {
+				return []Issue{
+					{ID: "a-1", Title: "Issue in A", Priority: 1, IssueType: "feature", Status: "open"},
+				}, nil
+			}
+			return []Issue{
+				{ID: "b-1", Title: "Issue in B", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	result, err := d.CrossProjectPreview()
+	if err != nil {
+		t.Fatalf("CrossProjectPreview() unexpected error: %v", err)
+	}
+	// Should list 2 projects
+	if len(result.Projects) != 2 {
+		t.Errorf("CrossProjectPreview() projects count = %d, want 2", len(result.Projects))
+	}
+	// Should have 2 spawnable issues
+	if len(result.SpawnableIssues) != 2 {
+		t.Errorf("CrossProjectPreview() spawnable count = %d, want 2", len(result.SpawnableIssues))
+	}
+	// Next issue should be b-1 (highest priority)
+	if result.NextIssue == nil || result.NextIssue.ID != "b-1" {
+		t.Errorf("CrossProjectPreview() NextIssue = %v, want b-1", result.NextIssue)
+	}
+	if result.NextProject == nil || result.NextProject.Name != "project-b" {
+		t.Errorf("CrossProjectPreview() NextProject = %v, want project-b", result.NextProject)
+	}
+}
+
+func TestCrossProjectPreview_CollectsProjectErrors(t *testing.T) {
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "broken", Path: "/path/to/broken"},
+				{Name: "working", Path: "/path/to/working"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			if projectPath == "/path/to/broken" {
+				return nil, fmt.Errorf("database error")
+			}
+			return []Issue{
+				{ID: "working-1", Title: "Issue", Priority: 0, IssueType: "feature", Status: "open"},
+			}, nil
+		},
+	}
+
+	result, err := d.CrossProjectPreview()
+	if err != nil {
+		t.Fatalf("CrossProjectPreview() unexpected error: %v", err)
+	}
+	// Should have 1 project error
+	if len(result.ProjectErrors) != 1 {
+		t.Errorf("CrossProjectPreview() project errors = %d, want 1", len(result.ProjectErrors))
+	}
+	if result.ProjectErrors[0].Project.Name != "broken" {
+		t.Errorf("CrossProjectPreview() error project = %q, want 'broken'", result.ProjectErrors[0].Project.Name)
+	}
+	// Should still have 1 spawnable issue from working project
+	if len(result.SpawnableIssues) != 1 {
+		t.Errorf("CrossProjectPreview() spawnable count = %d, want 1", len(result.SpawnableIssues))
+	}
+}
+
+func TestListCrossProjectIssues_SortedByPriority(t *testing.T) {
+	d := &Daemon{
+		Config: Config{CrossProject: true},
+		listProjectsFunc: func() ([]Project, error) {
+			return []Project{
+				{Name: "project-a", Path: "/path/to/a"},
+				{Name: "project-b", Path: "/path/to/b"},
+			}, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			if projectPath == "/path/to/a" {
+				return []Issue{
+					{ID: "a-3", Title: "Low priority", Priority: 3, IssueType: "feature"},
+					{ID: "a-1", Title: "High priority", Priority: 1, IssueType: "feature"},
+				}, nil
+			}
+			return []Issue{
+				{ID: "b-0", Title: "Highest priority", Priority: 0, IssueType: "feature"},
+				{ID: "b-2", Title: "Medium priority", Priority: 2, IssueType: "feature"},
+			}, nil
+		},
+	}
+
+	issues, err := d.ListCrossProjectIssues()
+	if err != nil {
+		t.Fatalf("ListCrossProjectIssues() unexpected error: %v", err)
+	}
+
+	if len(issues) != 4 {
+		t.Fatalf("ListCrossProjectIssues() returned %d issues, want 4", len(issues))
+	}
+
+	// Should be sorted by priority
+	expectedOrder := []string{"b-0", "a-1", "b-2", "a-3"}
+	for i, expected := range expectedOrder {
+		if issues[i].Issue.ID != expected {
+			t.Errorf("ListCrossProjectIssues() issues[%d] = %q, want %q", i, issues[i].Issue.ID, expected)
+		}
+	}
+}
+
+func TestNewWithConfig_InitializesCrossProjectFuncs(t *testing.T) {
+	config := Config{CrossProject: true}
+	d := NewWithConfig(config)
+
+	if d.listProjectsFunc == nil {
+		t.Error("NewWithConfig() should initialize listProjectsFunc")
+	}
+	if d.listIssuesForProjectFunc == nil {
+		t.Error("NewWithConfig() should initialize listIssuesForProjectFunc")
+	}
+	if d.spawnForProjectFunc == nil {
+		t.Error("NewWithConfig() should initialize spawnForProjectFunc")
+	}
+}
