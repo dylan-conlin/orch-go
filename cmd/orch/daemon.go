@@ -42,6 +42,10 @@ and only processing issues with the required label.
 Runs continuously until interrupted with Ctrl+C. Use --poll-interval=0
 to run once and exit (legacy behavior).
 
+Cross-project mode (--cross-project) polls all kb-registered projects for
+issues, using a shared global capacity pool. Projects must be registered
+with 'kb projects add' to be included.
+
 Examples:
   orch-go daemon run                        # Continuous polling (default 60s)
   orch-go daemon run --poll-interval 30     # Poll every 30 seconds
@@ -49,7 +53,8 @@ Examples:
   orch-go daemon run --concurrency 5        # Allow up to 5 concurrent agents
   orch-go daemon run --max-agents 5         # Same as --concurrency (alias)
   orch-go daemon run --label triage:ready   # Only process issues with this label
-  orch-go daemon run --dry-run              # Preview without spawning`,
+  orch-go daemon run --dry-run              # Preview without spawning
+  orch-go daemon run --cross-project        # Poll all kb-registered projects`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDaemonLoop()
 	},
@@ -77,7 +82,8 @@ var daemonPreviewCmd = &cobra.Command{
 Shows issue details and inferred skill without actually spawning an agent.
 
 Examples:
-  orch-go daemon preview`,
+  orch-go daemon preview
+  orch-go daemon preview --cross-project   # Preview from all kb-registered projects`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDaemonPreview()
 	},
@@ -119,6 +125,7 @@ var (
 	daemonCleanupInterval     int    // Session cleanup interval in minutes (0 = disabled)
 	daemonCleanupAge          int    // Session age threshold in days for cleanup
 	daemonCleanupPreserveOrch bool   // Preserve orchestrator sessions during cleanup
+	daemonCrossProject        bool   // Poll all kb-registered projects for issues
 )
 
 func init() {
@@ -147,9 +154,14 @@ func init() {
 	// Mark max-agents as hidden since --concurrency is the preferred name
 	daemonRunCmd.Flags().MarkHidden("max-agents")
 
+	// Cross-project mode
+	daemonRunCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Poll all kb-registered projects for issues")
+
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+	daemonPreviewCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Preview issues from all kb-registered projects")
 	daemonOnceCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
+	daemonOnceCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Process one issue from all kb-registered projects")
 }
 
 func runDaemonLoop() error {
@@ -172,6 +184,7 @@ func runDaemonLoop() error {
 		SpawnDelay:                  time.Duration(daemonDelay) * time.Second,
 		DryRun:                      daemonDryRun,
 		Verbose:                     daemonVerbose,
+		CrossProject:                daemonCrossProject,
 		ReflectEnabled:              daemonReflectInterval > 0,
 		ReflectInterval:             time.Duration(daemonReflectInterval) * time.Minute,
 		ReflectCreateIssues:         daemonReflectIssues,
@@ -217,6 +230,9 @@ func runDaemonLoop() error {
 	fmt.Printf("  Concurrency:      %d (worker pool)\n", config.MaxAgents)
 	fmt.Printf("  Required label:   %s\n", config.Label)
 	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
+	if config.CrossProject {
+		fmt.Println("  Cross-project:    enabled (polling all kb-registered projects)")
+	}
 	if config.ReflectEnabled {
 		fmt.Printf("  Reflect interval:  %s\n", formatDaemonDuration(config.ReflectInterval))
 		fmt.Printf("  Reflect issues:    %v\n", config.ReflectCreateIssues)
@@ -455,54 +471,107 @@ func runDaemonLoop() error {
 				break
 			}
 
-			result, err := d.OnceExcluding(skippedThisCycle)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				break
-			}
-
-			if !result.Processed {
-				// Check if this is a spawn failure (not queue empty or capacity)
-				// If so, skip this issue and try the next one.
-				if result.Issue != nil && result.Error != nil {
-					skippedThisCycle[result.Issue.ID] = true
-					fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
-						timestamp, result.Issue.ID, result.Error)
-					// Continue to try the next issue
-					continue
+			// Use cross-project or single-project polling based on config
+			if config.CrossProject {
+				// Cross-project polling: iterate over all kb-registered projects
+				cpResult, err := d.CrossProjectOnceExcluding(skippedThisCycle)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					break
 				}
 
-				// No more issues or non-issue-specific error
-				if daemonVerbose && spawnedThisCycle == 0 {
-					// Use the message from Once() which indicates why processing stopped
-					fmt.Printf("[%s] %s\n", timestamp, result.Message)
+				if !cpResult.Processed {
+					// Check if this is a spawn failure
+					if cpResult.Issue != nil && cpResult.Error != nil {
+						// For cross-project, skip key is "projectPath:issueID"
+						skipKey := fmt.Sprintf("%s:%s", cpResult.Project.Path, cpResult.Issue.ID)
+						skippedThisCycle[skipKey] = true
+						fmt.Fprintf(os.Stderr, "[%s] [%s] Skipping %s: %v\n",
+							timestamp, cpResult.ProjectName, cpResult.Issue.ID, cpResult.Error)
+						continue
+					}
+
+					// No more issues across all projects
+					if daemonVerbose && spawnedThisCycle == 0 {
+						fmt.Printf("[%s] %s\n", timestamp, cpResult.Message)
+					}
+					break
 				}
-				break
-			}
 
-			processed++
-			spawnedThisCycle++
-			lastSpawn = time.Now()
-			fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
-				timestamp,
-				result.Issue.ID,
-				result.Skill,
-				result.Issue.Title,
-			)
+				processed++
+				spawnedThisCycle++
+				lastSpawn = time.Now()
+				fmt.Printf("[%s] [%s] Spawned: %s (%s) - %s\n",
+					timestamp,
+					cpResult.ProjectName,
+					cpResult.Issue.ID,
+					cpResult.Skill,
+					cpResult.Issue.Title,
+				)
 
-			// Log the spawn
-			event := events.Event{
-				Type:      "daemon.spawn",
-				Timestamp: time.Now().Unix(),
-				Data: map[string]interface{}{
-					"beads_id": result.Issue.ID,
-					"skill":    result.Skill,
-					"title":    result.Issue.Title,
-					"count":    processed,
-				},
-			}
-			if err := logger.Log(event); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+				// Log the spawn with project context
+				event := events.Event{
+					Type:      "daemon.spawn",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"beads_id": cpResult.Issue.ID,
+						"skill":    cpResult.Skill,
+						"title":    cpResult.Issue.Title,
+						"project":  cpResult.ProjectName,
+						"count":    processed,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+				}
+			} else {
+				// Single-project polling (original behavior)
+				result, err := d.OnceExcluding(skippedThisCycle)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					break
+				}
+
+				if !result.Processed {
+					// Check if this is a spawn failure (not queue empty or capacity)
+					if result.Issue != nil && result.Error != nil {
+						skippedThisCycle[result.Issue.ID] = true
+						fmt.Fprintf(os.Stderr, "[%s] Skipping %s: %v\n",
+							timestamp, result.Issue.ID, result.Error)
+						continue
+					}
+
+					// No more issues or non-issue-specific error
+					if daemonVerbose && spawnedThisCycle == 0 {
+						fmt.Printf("[%s] %s\n", timestamp, result.Message)
+					}
+					break
+				}
+
+				processed++
+				spawnedThisCycle++
+				lastSpawn = time.Now()
+				fmt.Printf("[%s] Spawned: %s (%s) - %s\n",
+					timestamp,
+					result.Issue.ID,
+					result.Skill,
+					result.Issue.Title,
+				)
+
+				// Log the spawn
+				event := events.Event{
+					Type:      "daemon.spawn",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"beads_id": result.Issue.ID,
+						"skill":    result.Skill,
+						"title":    result.Issue.Title,
+						"count":    processed,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+				}
 			}
 
 			// Delay before next spawn to avoid rate limits
@@ -550,13 +619,29 @@ func formatDaemonDuration(d time.Duration) string {
 
 func runDaemonDryRun() error {
 	config := daemon.Config{
-		Label: daemonLabel,
+		Label:        daemonLabel,
+		CrossProject: daemonCrossProject,
 	}
 	d := daemon.NewWithConfig(config)
 
 	// Configure hotspot checking for dry-run
 	d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Use cross-project preview if enabled
+	if config.CrossProject {
+		cpResult, err := d.CrossProjectPreview()
+		if err != nil {
+			return fmt.Errorf("preview error: %w", err)
+		}
+
+		fmt.Println("[DRY-RUN] Would process the following issue:")
+		fmt.Println()
+		fmt.Print(daemon.FormatCrossProjectPreview(cpResult))
+		fmt.Println("\nNo agents were spawned (dry-run mode).")
+		return nil
+	}
+
+	// Single-project preview (original behavior)
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)
@@ -594,10 +679,47 @@ func runDaemonDryRun() error {
 
 func runDaemonOnce() error {
 	config := daemon.Config{
-		Label: daemonLabel,
+		Label:        daemonLabel,
+		CrossProject: daemonCrossProject,
 	}
 	d := daemon.NewWithConfig(config)
 
+	// Use cross-project version if enabled
+	if config.CrossProject {
+		cpResult, err := d.CrossProjectOnce()
+		if err != nil {
+			return fmt.Errorf("daemon error: %w", err)
+		}
+
+		if !cpResult.Processed {
+			fmt.Println(cpResult.Message)
+			return nil
+		}
+
+		fmt.Printf("[%s] Spawned: %s\n", cpResult.ProjectName, cpResult.Issue.ID)
+		fmt.Printf("  Title:  %s\n", cpResult.Issue.Title)
+		fmt.Printf("  Type:   %s\n", cpResult.Issue.IssueType)
+		fmt.Printf("  Skill:  %s\n", cpResult.Skill)
+
+		// Log the spawn
+		logger := events.NewLogger(events.DefaultLogPath())
+		event := events.Event{
+			Type:      "daemon.once",
+			Timestamp: time.Now().Unix(),
+			Data: map[string]interface{}{
+				"beads_id": cpResult.Issue.ID,
+				"skill":    cpResult.Skill,
+				"title":    cpResult.Issue.Title,
+				"project":  cpResult.ProjectName,
+			},
+		}
+		if err := logger.Log(event); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+		}
+		return nil
+	}
+
+	// Single-project version (original behavior)
 	result, err := d.Once()
 	if err != nil {
 		return fmt.Errorf("daemon error: %w", err)
@@ -633,13 +755,30 @@ func runDaemonOnce() error {
 
 func runDaemonPreview() error {
 	config := daemon.Config{
-		Label: daemonLabel,
+		Label:        daemonLabel,
+		CrossProject: daemonCrossProject,
 	}
 	d := daemon.NewWithConfig(config)
 
 	// Configure hotspot checking for preview
 	d.HotspotChecker = daemon.NewGitHotspotChecker()
 
+	// Use cross-project preview if enabled
+	if config.CrossProject {
+		cpResult, err := d.CrossProjectPreview()
+		if err != nil {
+			return fmt.Errorf("preview error: %w", err)
+		}
+
+		fmt.Print(daemon.FormatCrossProjectPreview(cpResult))
+
+		if cpResult.NextIssue != nil {
+			fmt.Println("\nRun 'orch daemon once --cross-project' to process this issue.")
+		}
+		return nil
+	}
+
+	// Single-project preview (original behavior)
 	result, err := d.Preview()
 	if err != nil {
 		return fmt.Errorf("preview error: %w", err)

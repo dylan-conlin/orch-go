@@ -410,13 +410,16 @@ orch daemon run --reflect  # Run kb reflect when daemon exits (default: true)
 ### Enabling Cross-Project
 
 ```bash
-orch daemon run --cross-project  # Poll all kb-registered projects
+orch daemon run --cross-project       # Poll all kb-registered projects
+orch daemon preview --cross-project   # Preview what would spawn across projects
+orch daemon once --cross-project      # Process one issue from any project
 ```
 
 **Constraints:**
 - Projects must be registered with `kb projects add`
 - Issues in unregistered projects won't be seen
 - Capacity is shared across all projects
+- Flag defaults to false (backward compatible with single-project mode)
 
 ---
 
