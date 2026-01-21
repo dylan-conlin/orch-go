@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -155,4 +156,24 @@ func extractBeadsIDFromSessionTitle(title string) string {
 // Untracked agents are spawned with --no-track and have IDs like "project-untracked-1766695797".
 func isUntrackedBeadsID(beadsID string) bool {
 	return strings.Contains(beadsID, "-untracked-")
+}
+
+// DockerActiveCount returns the number of active agents by counting Docker containers.
+// Counts running containers using the claude-code-mcp image.
+// This is used when backend is "docker" since Docker spawns don't register with OpenCode.
+func DockerActiveCount() int {
+	// Run docker ps to count running claude-code-mcp containers
+	cmd := exec.Command("docker", "ps", "--filter", "ancestor=claude-code-mcp", "--format", "{{.ID}}")
+	output, err := cmd.Output()
+	if err != nil {
+		// Docker not available or error - return 0
+		return 0
+	}
+
+	// Count non-empty lines
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return 0
+	}
+	return len(lines)
 }

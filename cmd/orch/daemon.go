@@ -12,6 +12,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -176,6 +177,13 @@ func runDaemonLoop() error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
+	// Load user config to get backend setting
+	cfg, err := userconfig.Load()
+	if err != nil {
+		// Non-fatal: use default (opencode) if config can't be loaded
+		cfg = userconfig.DefaultConfig()
+	}
+
 	// Build configuration from flags
 	config := daemon.Config{
 		PollInterval:                time.Duration(daemonPollInterval) * time.Second,
@@ -185,6 +193,7 @@ func runDaemonLoop() error {
 		DryRun:                      daemonDryRun,
 		Verbose:                     daemonVerbose,
 		CrossProject:                daemonCrossProject,
+		Backend:                     cfg.Backend, // Use backend from user config
 		ReflectEnabled:              daemonReflectInterval > 0,
 		ReflectInterval:             time.Duration(daemonReflectInterval) * time.Minute,
 		ReflectCreateIssues:         daemonReflectIssues,
@@ -228,6 +237,11 @@ func runDaemonLoop() error {
 	fmt.Println("Starting daemon...")
 	fmt.Printf("  Poll interval:    %s\n", formatDaemonDuration(config.PollInterval))
 	fmt.Printf("  Concurrency:      %d (worker pool)\n", config.MaxAgents)
+	countMode := "OpenCode sessions"
+	if config.Backend == "docker" {
+		countMode = "Docker containers"
+	}
+	fmt.Printf("  Backend:          %s (counting %s)\n", config.Backend, countMode)
 	fmt.Printf("  Required label:   %s\n", config.Label)
 	fmt.Printf("  Spawn delay:      %s\n", formatDaemonDuration(config.SpawnDelay))
 	if config.CrossProject {

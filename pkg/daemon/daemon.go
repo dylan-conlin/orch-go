@@ -39,6 +39,11 @@ type Config struct {
 	// and processes issues from each project. Global capacity pool is shared.
 	CrossProject bool
 
+	// Backend specifies the spawn backend: "opencode", "docker", or "claude".
+	// This affects how active agents are counted for concurrency control.
+	// "docker" counts running Docker containers, others query OpenCode API.
+	Backend string
+
 	// ReflectEnabled controls whether periodic reflection analysis is enabled.
 	// When enabled, the daemon will run kb reflect periodically.
 	ReflectEnabled bool
@@ -217,13 +222,19 @@ func New() *Daemon {
 
 // NewWithConfig creates a new Daemon instance with the given configuration.
 func NewWithConfig(config Config) *Daemon {
+	// Select active count function based on backend
+	activeCount := DefaultActiveCount
+	if config.Backend == "docker" {
+		activeCount = DockerActiveCount
+	}
+
 	d := &Daemon{
 		Config:                   config,
 		SpawnedIssues:            NewSpawnedIssueTracker(),
 		resumeAttempts:           make(map[string]time.Time),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
-		activeCountFunc:          DefaultActiveCount,
+		activeCountFunc:          activeCount,
 		reflectFunc:              DefaultRunReflection,
 		listEpicChildrenFunc:     ListEpicChildren,
 		listProjectsFunc:         ListProjects,
@@ -244,6 +255,12 @@ func NewWithConfig(config Config) *Daemon {
 // NewWithPool creates a new Daemon instance with an explicit worker pool.
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
+	// Select active count function based on backend
+	activeCount := DefaultActiveCount
+	if config.Backend == "docker" {
+		activeCount = DockerActiveCount
+	}
+
 	d := &Daemon{
 		Config:                   config,
 		Pool:                     pool,
@@ -251,7 +268,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		resumeAttempts:           make(map[string]time.Time),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
-		activeCountFunc:          DefaultActiveCount,
+		activeCountFunc:          activeCount,
 		reflectFunc:              DefaultRunReflection,
 		listProjectsFunc:         ListProjects,
 		listIssuesForProjectFunc: ListReadyIssuesForProject,
@@ -531,9 +548,13 @@ func (d *Daemon) RateLimitMessage() string {
 	return msg
 }
 
-// ReconcileWithOpenCode synchronizes the worker pool with actual OpenCode sessions.
+// ReconcileWithOpenCode synchronizes the worker pool with actual active agents.
 // This prevents the pool from becoming stuck at capacity when agents complete
 // without the daemon knowing (e.g., overnight runs, crashes, manual kills).
+//
+// The counting method depends on the configured backend:
+// - "docker": counts running Docker containers with claude-code-mcp image
+// - "opencode" or others: queries OpenCode API for active sessions
 //
 // Also cleans up stale entries from the spawned issue tracker.
 //
@@ -549,8 +570,9 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 		return 0
 	}
 
-	// Get actual count from OpenCode API
-	actualCount := DefaultActiveCount()
+	// Get actual count using the configured counting function
+	// (DockerActiveCount for docker backend, DefaultActiveCount otherwise)
+	actualCount := d.activeCountFunc()
 
 	// Reconcile pool with actual count
 	return d.Pool.Reconcile(actualCount)
