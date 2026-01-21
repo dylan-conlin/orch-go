@@ -28,3 +28,4 @@ tmp/
 
 # Dev/Ops mode (local state, not committed)
 .dev-mode
+.orch/workspace/
