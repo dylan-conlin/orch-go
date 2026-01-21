@@ -4,8 +4,10 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
@@ -33,6 +35,55 @@ func ListReadyIssues() ([]Issue, error) {
 
 	// Fallback to CLI if daemon unavailable
 	return listReadyIssuesCLI()
+}
+
+// ListReadyIssuesForProject returns triage:ready issues for a specific project.
+// Uses the beads RPC daemon if available at that project path, falling back to CLI.
+// On error, returns empty list with logged warning (does not crash).
+func ListReadyIssuesForProject(projectPath string) ([]Issue, error) {
+	if projectPath == "" {
+		return nil, fmt.Errorf("projectPath is required")
+	}
+
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath(projectPath)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
+			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
+			if err == nil {
+				return convertBeadsIssues(beadsIssues), nil
+			}
+			// Fall through to CLI fallback on Ready() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI if daemon unavailable
+	return listReadyIssuesForProjectCLI(projectPath)
+}
+
+// listReadyIssuesForProjectCLI retrieves ready issues for a project by shelling out to bd CLI.
+func listReadyIssuesForProjectCLI(projectPath string) ([]Issue, error) {
+	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
+	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
+	cmd.Dir = projectPath
+	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("warning: failed to get ready issues for project %s: %v", projectPath, err)
+		return []Issue{}, nil // Return empty list, not error (per acceptance criteria)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		log.Printf("warning: failed to parse ready issues for project %s: %v", projectPath, err)
+		return []Issue{}, nil // Return empty list, not error
+	}
+
+	return issues, nil
 }
 
 // listReadyIssuesCLI retrieves ready issues by shelling out to bd CLI.
@@ -131,5 +182,35 @@ func SpawnWork(beadsID string) error {
 		// Manual intervention may be needed to retry.
 		return fmt.Errorf("failed to spawn work: %w: %s", err, string(output))
 	}
+	return nil
+}
+
+// SpawnWorkForProject spawns work on a beads issue in a specific project directory.
+// Uses --workdir flag to ensure the agent operates in the correct project context.
+//
+// IMPORTANT: Sets status to in_progress BEFORE spawning (same dedup mechanism as SpawnWork).
+func SpawnWorkForProject(beadsID, projectPath string) error {
+	if projectPath == "" {
+		return fmt.Errorf("projectPath is required")
+	}
+
+	// Extract project name for logging
+	projectName := filepath.Base(projectPath)
+	log.Printf("[%s] Spawning work for issue %s", projectName, beadsID)
+
+	// Set status to in_progress BEFORE spawning to prevent duplicate spawns.
+	updateCmd := exec.Command("bd", "update", beadsID, "--status=in_progress")
+	updateCmd.Dir = projectPath
+	updateCmd.Env = os.Environ()
+	if output, err := updateCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("[%s] failed to set status to in_progress: %w: %s", projectName, err, string(output))
+	}
+
+	cmd := exec.Command("orch", "work", beadsID, "--workdir", projectPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("[%s] failed to spawn work: %w: %s", projectName, err, string(output))
+	}
+	log.Printf("[%s] Successfully spawned work for issue %s", projectName, beadsID)
 	return nil
 }
