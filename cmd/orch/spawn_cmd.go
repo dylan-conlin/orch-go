@@ -885,19 +885,10 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			isStrategicSkill := skillName == "architect"
 
 			if !daemonDriven && !spawnForce && !isStrategicSkill {
-				// BLOCKING: Strategic approach required in hotspot area
+				// ADVISORY: Show hotspot warning but don't block
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
+				fmt.Fprintln(os.Stderr, "💡 Consider: spawn architect first for strategic approach in hotspot area")
 				fmt.Fprintln(os.Stderr, "")
-				fmt.Fprintln(os.Stderr, "🚫 STRATEGIC-FIRST ORCHESTRATION")
-				fmt.Fprintln(os.Stderr, "   Tactical debugging blocked in hotspot areas.")
-				fmt.Fprintln(os.Stderr, "   ")
-				fmt.Fprintln(os.Stderr, "   REQUIRED: Spawn architect first to understand root cause")
-				fmt.Fprintf(os.Stderr, "   orch spawn architect \"%s\"\n", task)
-				fmt.Fprintln(os.Stderr, "   ")
-				fmt.Fprintln(os.Stderr, "   To override (requires justification):")
-				fmt.Fprintf(os.Stderr, "   orch spawn --force %s \"%s\"\n", skillName, task)
-				fmt.Fprintln(os.Stderr, "")
-				return fmt.Errorf("strategic-first gate: architect required in hotspot area (use --force to override)")
 			}
 
 			// Strategic skill, --force, or daemon-driven: print warning but allow

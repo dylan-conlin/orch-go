@@ -310,6 +310,8 @@ orch version
 - **SSE parsing**: Event type is inside JSON data, not `event:` prefix
 - **Beads integration**: Shells out to `bd` CLI, doesn't use API directly
 - **OpenCode auth**: Reads from `~/.local/share/opencode/auth.json`
+- **Build with make, not go build**: Use `make install` to embed `sourceDir` via ldflags. Direct `go build` leaves `sourceDir: unknown`, breaking `orch serve` (can't find certs).
+- **Claude Code sandbox**: Agents run in Linux sandbox, not macOS. See `.kb/guides/claude-code-sandbox-architecture.md` for implications.
 
 ## Common Commands
 
