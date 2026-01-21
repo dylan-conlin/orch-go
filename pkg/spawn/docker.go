@@ -70,6 +70,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 			`-v "$HOME/.claude/settings.json":"$HOME/.claude/settings.json":ro `+
 			`-v "$HOME/.claude/skills":"$HOME/.claude/skills":ro `+
 			`-v "$HOME/.claude/hooks":"$HOME/.claude/hooks":ro `+
+			`-v "$HOME/.orch/hooks":"$HOME/.orch/hooks":ro `+
 			`-w %q `+
 			`-e HOME="$HOME" `+
 			`-e CLAUDE_CONTEXT=%s `+
