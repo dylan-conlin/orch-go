@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-arch-skillc-include-dependencies-21jan-3026",
+  "skill": "architect",
+  "beads_id": "orch-go-4rboe",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "97a4b6333e1439e92af1a52180586e5bbc98b6fe",
+  "spawn_time": "2026-01-21T12:39:33-08:00",
+  "tier": "full",
+  "spawn_mode": "docker"
+}
