@@ -344,9 +344,9 @@ func isOrchestratorWorkspace(workspacePath string) bool {
 	return false
 }
 
-// hasSessionHandoff checks if SESSION_HANDOFF.md exists in the workspace.
-func hasSessionHandoff(workspacePath string) bool {
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+// hasSynthesis checks if SYNTHESIS.md exists in the workspace.
+func hasSynthesis(workspacePath string) bool {
+	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	_, err := os.Stat(handoffPath)
 	return err == nil
 }

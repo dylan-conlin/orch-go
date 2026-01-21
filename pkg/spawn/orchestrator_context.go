@@ -13,9 +13,9 @@ import (
 // This is used for orchestrator-type skills (skill-type: policy/orchestrator).
 // Key differences from SPAWN_CONTEXT.md:
 // - No beads tracking instructions (orchestrators manage sessions, not issues)
-// - SESSION_HANDOFF.md instead of SYNTHESIS.md requirement
+// - SYNTHESIS.md instead of SYNTHESIS.md requirement
 // - Session goal focus instead of task focus
-// - Waits for level above to complete (no /exit or orch session end)
+// - Waits for level above to complete (no /exit)
 const OrchestratorContextTemplate = `# Orchestrator Session Context
 
 **Session Goal:** {{.SessionGoal}}
@@ -30,8 +30,8 @@ const OrchestratorContextTemplate = `# Orchestrator Session Context
 You are a **spawned orchestrator** - an orchestrator session that was spawned to accomplish a specific goal.
 This is different from interactive orchestrator sessions in that:
 - You have a defined goal to accomplish
-- You produce a SESSION_HANDOFF.md when goal is reached
-- You WAIT after writing handoff - the level above (meta-orchestrator or Dylan) runs ` + "`orch complete`" + ` to close your session
+- You produce a SYNTHESIS.md when goal is reached
+- You WAIT after writing SYNTHESIS.md - the level above (meta-orchestrator or Dylan) runs ` + "`orch complete`" + ` to close your session
 
 ---
 
@@ -40,12 +40,12 @@ This is different from interactive orchestrator sessions in that:
 Within your first 5 tool calls:
 1. Read the orchestrator skill guidance (already embedded below)
 2. Check current project state: ` + "`orch status`" + ` and ` + "`bd ready`" + `
-3. **Fill SESSION_HANDOFF.md sections:** Open {{.WorkspacePath}}/SESSION_HANDOFF.md and fill in:
+3. **Fill SYNTHESIS.md sections:** Open {{.WorkspacePath}}/SYNTHESIS.md and fill in:
    - TLDR (initial framing of session goal)
    - "Where We Started" in Focus Progress section (current state at session start)
 4. Begin working toward your session goal
 
-**Progressive Handoff:** SESSION_HANDOFF.md has been pre-created with metadata. Fill sections AS YOU WORK, not at the end.
+**Progressive Documentation:** SYNTHESIS.md has been pre-created with metadata. Fill sections AS YOU WORK, not at the end.
 
 ---
 
@@ -72,20 +72,20 @@ Within your first 5 tool calls:
 
 When you've accomplished your session goal:
 
-1. **Create SESSION_HANDOFF.md** in workspace: {{.WorkspacePath}}/SESSION_HANDOFF.md
+1. **Create SYNTHESIS.md** in workspace: {{.WorkspacePath}}/SYNTHESIS.md
    - Summary of what was accomplished
    - Active agents and their status
    - Pending work and recommendations
    - Context for the next session
-{{if .HasSessionHandoffTemplate}}
-   **Template available:** Use SESSION_HANDOFF.template.md in your workspace as the structure for your handoff.
+{{if .HasSynthesisTemplate}}
+   **Template available:** Use SYNTHESIS.template.md in your workspace as the structure for your synthesis.
 {{end}}
 2. **WAIT** - Do not exit or try to end your session
    - The level above (meta-orchestrator or Dylan) will run ` + "`orch complete`" + ` to close your session
-   - Your SESSION_HANDOFF.md signals you are ready for completion
-   - If you need to signal completion, you can say "SESSION_HANDOFF.md written, ready for completion"
+   - Your SYNTHESIS.md signals you are ready for completion
+   - If you need to signal completion, you can say "SYNTHESIS.md written, ready for completion"
 
-**Do NOT use ` + "`/exit`" + ` or ` + "`orch session end`" + `** - spawned orchestrators wait for the level above to complete them.
+**Do NOT use ` + "`/exit`" + `** - spawned orchestrators wait for the level above to complete them.
 
 ---
 {{if .SkillContent}}
@@ -115,7 +115,7 @@ When you've accomplished your session goal:
 Your workspace is: {{.WorkspacePath}}
 
 **Required artifacts:**
-- SESSION_HANDOFF.md (before session end)
+- SYNTHESIS.md (before session end)
 
 **Optional artifacts:**
 - Investigation files in .kb/investigations/
@@ -138,7 +138,7 @@ type orchestratorContextData struct {
 	KBContext                 string
 	ServerContext             string
 	RegisteredProjects        string
-	HasSessionHandoffTemplate bool
+	HasSynthesisTemplate bool
 }
 
 // GenerateOrchestratorContext generates the ORCHESTRATOR_CONTEXT.md content.
@@ -171,7 +171,7 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 		KBContext:                 cfg.KBContext,
 		ServerContext:             serverContext,
 		RegisteredProjects:        registeredProjects,
-		HasSessionHandoffTemplate: cfg.HasSessionHandoffTemplate,
+		HasSynthesisTemplate: cfg.HasSynthesisTemplate,
 	}
 
 	// Use Task as SessionGoal if SessionGoal not explicitly set
@@ -200,18 +200,18 @@ func WriteOrchestratorContext(cfg *Config) error {
 		return err
 	}
 
-	// Copy SESSION_HANDOFF.md template to workspace if it exists (as reference)
-	cfg.HasSessionHandoffTemplate = copySessionHandoffTemplate(cfg.ProjectDir, workspacePath)
+	// Copy SYNTHESIS.md template to workspace if it exists (as reference)
+	cfg.HasSynthesisTemplate = copySynthesisTemplate(cfg.ProjectDir, workspacePath)
 
-	// Pre-create SESSION_HANDOFF.md with metadata filled
+	// Pre-create SYNTHESIS.md with metadata filled
 	// This encourages progressive documentation - orchestrators fill as they work
 	startTime := time.Now().Format("2006-01-02 15:04")
 	sessionGoal := cfg.SessionGoal
 	if sessionGoal == "" {
 		sessionGoal = cfg.Task
 	}
-	if err := writePreFilledSessionHandoff(workspacePath, cfg.WorkspaceName, sessionGoal, startTime); err != nil {
-		return fmt.Errorf("failed to write pre-filled session handoff: %w", err)
+	if err := writePreFilledSynthesis(workspacePath, cfg.WorkspaceName, sessionGoal, startTime); err != nil {
+		return fmt.Errorf("failed to write pre-filled synthesis: %w", err)
 	}
 
 	content, err := GenerateOrchestratorContext(cfg)
@@ -231,7 +231,7 @@ func WriteOrchestratorContext(cfg *Config) error {
 	}
 
 	// Write tier file for programmatic detection (orch complete, orch status, etc.)
-	// Uses "orchestrator" tier which has special verification rules (SESSION_HANDOFF.md, no beads)
+	// Uses "orchestrator" tier which has special verification rules (SYNTHESIS.md, no beads)
 	if err := WriteTier(workspacePath, "orchestrator"); err != nil {
 		return fmt.Errorf("failed to write tier file: %w", err)
 	}
@@ -251,16 +251,16 @@ func WriteOrchestratorContext(cfg *Config) error {
 	}
 
 	// Note: Orchestrators do NOT write .beads_id - they don't use beads tracking
-	// SESSION_HANDOFF.md is the completion signal, not Phase: Complete
+	// SYNTHESIS.md is the completion signal, not Phase: Complete
 
 	return nil
 }
 
-// copySessionHandoffTemplate copies the SESSION_HANDOFF.md template from
-// .orch/templates/ to the workspace as SESSION_HANDOFF.template.md.
+// copySynthesisTemplate copies the SYNTHESIS.md template from
+// .orch/templates/ to the workspace as SYNTHESIS.template.md.
 // Returns true if the template was copied, false if it doesn't exist.
-func copySessionHandoffTemplate(projectDir, workspacePath string) bool {
-	templatePath := filepath.Join(projectDir, ".orch", "templates", "SESSION_HANDOFF.md")
+func copySynthesisTemplate(projectDir, workspacePath string) bool {
+	templatePath := filepath.Join(projectDir, ".orch", "templates", "SYNTHESIS.md")
 
 	// Check if template exists
 	content, err := os.ReadFile(templatePath)
@@ -270,7 +270,7 @@ func copySessionHandoffTemplate(projectDir, workspacePath string) bool {
 	}
 
 	// Copy to workspace with .template.md suffix
-	destPath := filepath.Join(workspacePath, "SESSION_HANDOFF.template.md")
+	destPath := filepath.Join(workspacePath, "SYNTHESIS.template.md")
 	if err := os.WriteFile(destPath, content, 0644); err != nil {
 		// Log but don't fail - template is optional
 		return false
@@ -288,8 +288,8 @@ func MinimalOrchestratorPrompt(cfg *Config) string {
 	)
 }
 
-// DefaultSessionHandoffTemplate is the embedded SESSION_HANDOFF.md template content.
-const DefaultSessionHandoffTemplate = `# Session Handoff
+// DefaultSynthesisTemplate is the embedded SYNTHESIS.md template content.
+const DefaultSynthesisTemplate = `# Synthesis
 
 **Orchestrator Session:** {workspace-name}
 **Goal:** {session-goal}
@@ -355,9 +355,9 @@ const DefaultSessionHandoffTemplate = `# Session Handoff
 **Workspace:** ` + "`" + `.orch/workspace/{workspace-name}/` + "`" + `
 `
 
-// PreFilledSessionHandoffTemplate is used to pre-create SESSION_HANDOFF.md with metadata.
+// PreFilledSynthesisTemplate is used to pre-create SYNTHESIS.md with metadata.
 // This encourages progressive documentation - fill as you work, not at the end.
-const PreFilledSessionHandoffTemplate = `# Session Handoff
+const PreFilledSynthesisTemplate = `# Synthesis
 
 **Orchestrator:** {{.WorkspaceName}}
 **Focus:** {{.SessionGoal}}
@@ -380,7 +380,7 @@ const PreFilledSessionHandoffTemplate = `# Session Handoff
 - Add to Evidence as you observe patterns
 - Capture Friction immediately (you'll rationalize it away later)
 
-**Before handoff:**
+**Before completion:**
 - Synthesize Knowledge section
 - Fill Next section with recommendations
 - Update TLDR to reflect what actually happened
@@ -521,21 +521,21 @@ Capture frustrations AS THEY HAPPEN. You'll rationalize them away later.
 **Workspace:** ` + "`.orch/workspace/{{.WorkspaceName}}/`" + `
 `
 
-// preFilledSessionHandoffData holds template data for pre-filled SESSION_HANDOFF.md.
-type preFilledSessionHandoffData struct {
+// preFilledSynthesisData holds template data for pre-filled SYNTHESIS.md.
+type preFilledSynthesisData struct {
 	WorkspaceName string
 	SessionGoal   string
 	StartTime     string
 }
 
-// GeneratePreFilledSessionHandoff generates SESSION_HANDOFF.md with metadata pre-filled.
-func GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime string) (string, error) {
-	tmpl, err := template.New("session_handoff").Parse(PreFilledSessionHandoffTemplate)
+// GeneratePreFilledSynthesis generates SYNTHESIS.md with metadata pre-filled.
+func GeneratePreFilledSynthesis(workspaceName, sessionGoal, startTime string) (string, error) {
+	tmpl, err := template.New("synthesis").Parse(PreFilledSynthesisTemplate)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse session handoff template: %w", err)
+		return "", fmt.Errorf("failed to parse synthesis template: %w", err)
 	}
 
-	data := preFilledSessionHandoffData{
+	data := preFilledSynthesisData{
 		WorkspaceName: workspaceName,
 		SessionGoal:   sessionGoal,
 		StartTime:     startTime,
@@ -543,31 +543,31 @@ func GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime strin
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("failed to execute session handoff template: %w", err)
+		return "", fmt.Errorf("failed to execute synthesis template: %w", err)
 	}
 
 	return buf.String(), nil
 }
 
-// writePreFilledSessionHandoff writes SESSION_HANDOFF.md with metadata pre-filled.
-func writePreFilledSessionHandoff(workspacePath, workspaceName, sessionGoal, startTime string) error {
-	content, err := GeneratePreFilledSessionHandoff(workspaceName, sessionGoal, startTime)
+// writePreFilledSynthesis writes SYNTHESIS.md with metadata pre-filled.
+func writePreFilledSynthesis(workspacePath, workspaceName, sessionGoal, startTime string) error {
+	content, err := GeneratePreFilledSynthesis(workspaceName, sessionGoal, startTime)
 	if err != nil {
 		return err
 	}
 
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
-	if err := os.WriteFile(handoffPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write pre-filled session handoff: %w", err)
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write pre-filled synthesis: %w", err)
 	}
 
 	return nil
 }
 
-// EnsureSessionHandoffTemplate ensures the SESSION_HANDOFF.md template exists.
-func EnsureSessionHandoffTemplate(projectDir string) error {
+// EnsureSynthesisTemplate ensures the SYNTHESIS.md template exists.
+func EnsureSynthesisTemplate(projectDir string) error {
 	templatesDir := filepath.Join(projectDir, ".orch", "templates")
-	templatePath := filepath.Join(templatesDir, "SESSION_HANDOFF.md")
+	templatePath := filepath.Join(templatesDir, "SYNTHESIS.md")
 
 	// Check if template already exists
 	if _, err := os.Stat(templatePath); err == nil {
@@ -580,8 +580,8 @@ func EnsureSessionHandoffTemplate(projectDir string) error {
 	}
 
 	// Write the default template
-	if err := os.WriteFile(templatePath, []byte(DefaultSessionHandoffTemplate), 0644); err != nil {
-		return fmt.Errorf("failed to write session handoff template: %w", err)
+	if err := os.WriteFile(templatePath, []byte(DefaultSynthesisTemplate), 0644); err != nil {
+		return fmt.Errorf("failed to write synthesis template: %w", err)
 	}
 
 	return nil

@@ -135,7 +135,7 @@ type Config struct {
 	// Orchestrator skills (skill-type: policy/orchestrator) have different defaults:
 	// - Default to tmux mode (visible interaction instead of headless)
 	// - Use ORCHESTRATOR_CONTEXT.md template instead of SPAWN_CONTEXT.md
-	// - Different completion verification (SESSION_HANDOFF.md instead of SYNTHESIS.md)
+	// - Completion verification via SYNTHESIS.md (like workers, for consistency)
 	// - No beads tracking (orchestrators manage sessions, not issues)
 	IsOrchestrator bool
 
@@ -143,7 +143,7 @@ type Config struct {
 	// Meta-orchestrators (skill-name: meta-orchestrator) have different framing:
 	// - Use META_ORCHESTRATOR_CONTEXT.md template instead of ORCHESTRATOR_CONTEXT.md
 	// - Interactive session framing ("managing orchestrator sessions" not "work toward goal")
-	// - No SESSION_HANDOFF.md requirement (stay interactive and available)
+	// - No SYNTHESIS.md requirement (stay interactive and available)
 	// - First action: check orch status for sessions to complete/review
 	IsMetaOrchestrator bool
 
@@ -152,22 +152,22 @@ type Config struct {
 	// Only applicable when IsOrchestrator is true.
 	SessionGoal string
 
-	// HasSessionHandoffTemplate indicates whether a SESSION_HANDOFF.template.md
+	// HasSynthesisTemplate indicates whether a SYNTHESIS.template.md
 	// was copied to the workspace. When true, the ORCHESTRATOR_CONTEXT.md will
-	// instruct the agent to use it as the structure for their SESSION_HANDOFF.md.
+	// instruct the agent to use it as the structure for their SYNTHESIS.md.
 	// Set by WriteOrchestratorContext based on template availability.
-	HasSessionHandoffTemplate bool
+	HasSynthesisTemplate bool
 
 	// RegisteredProjects is the formatted list of registered projects to include
 	// in orchestrator context templates. Populated by GenerateRegisteredProjectsContext()
 	// for orchestrator and meta-orchestrator spawns to enable cross-project work.
 	RegisteredProjects string
 
-	// PriorHandoffPath is the path to the most recent prior meta-orchestrator's
-	// SESSION_HANDOFF.md. When set, the new meta-orchestrator session context will
+	// PriorSynthesisPath is the path to the most recent prior orchestrator's
+	// SYNTHESIS.md. When set, the new meta-orchestrator session context will
 	// include a reference to this file so the agent can pick up context from the
 	// previous session. Only used for meta-orchestrator spawns.
-	PriorHandoffPath string
+	PriorSynthesisPath string
 
 	// UsageInfo contains the current account usage at spawn time.
 	// Used for telemetry and monitoring. May be nil if usage check failed.

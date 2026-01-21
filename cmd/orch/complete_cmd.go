@@ -74,7 +74,7 @@ The following gates are checked before completion:
   - phase_gate:           Required skill phases completed
   - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
-  - handoff_content:      SESSION_HANDOFF.md has actual content (orchestrator only)
+  - handoff_content:      SYNTHESIS.md has actual content (orchestrator only)
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
@@ -98,7 +98,7 @@ Using --force will show a deprecation warning.
 
 For orchestrator sessions (spawned with orchestrator or meta-orchestrator skill),
 the argument is the workspace name instead of beads ID. Orchestrators use
-SESSION_HANDOFF.md as completion signal instead of Phase: Complete.
+SYNTHESIS.md as completion signal instead of Phase: Complete.
 
 For agents that modified web/ files (UI tasks), --approve is required to explicitly
 confirm human review of the visual changes. This prevents agents from self-certifying
@@ -504,7 +504,7 @@ func runComplete(identifier, workdir string) error {
 	isQuestion := issue != nil && issue.IssueType == "question"
 
 	// Verify completion status
-	// - For orchestrator sessions: check SESSION_HANDOFF.md exists AND has content
+	// - For orchestrator sessions: check SYNTHESIS.md exists AND has content
 	// - For question entities: skip Phase: Complete (strategic nodes, not agent work)
 	// - For regular agents: check Phase: Complete via beads comments
 	// - Skip flags allow targeted bypass of specific gates
@@ -515,7 +515,7 @@ func runComplete(identifier, workdir string) error {
 			// Just close them without verification.
 			fmt.Printf("Question entity: %s (skipping Phase: Complete - strategic node)\n", beadsID)
 		} else if isOrchestratorSession {
-			// Orchestrator sessions use SESSION_HANDOFF.md as completion signal
+			// Orchestrator sessions use SYNTHESIS.md as completion signal
 			// Use full verification which includes content validation
 			if workspacePath != "" {
 				fmt.Printf("Workspace: %s\n", agentName)
@@ -586,13 +586,13 @@ func runComplete(identifier, workdir string) error {
 				for _, e := range result.Errors {
 					fmt.Fprintf(os.Stderr, "  - %s\n", e)
 				}
-				fmt.Fprintf(os.Stderr, "\nOrchestrator must fill SESSION_HANDOFF.md with:\n")
+				fmt.Fprintf(os.Stderr, "\nOrchestrator must fill SYNTHESIS.md with:\n")
 				fmt.Fprintf(os.Stderr, "  - TLDR section (actual content, not placeholder)\n")
 				fmt.Fprintf(os.Stderr, "  - Outcome field (success, partial, blocked, or failed)\n")
 				fmt.Fprintf(os.Stderr, "Or use --skip-handoff-content --skip-reason \"...\" to bypass\n")
 				return fmt.Errorf("verification failed")
 			}
-			fmt.Println("Completion signal: SESSION_HANDOFF.md verified (content validated)")
+			fmt.Println("Completion signal: SYNTHESIS.md verified (content validated)")
 		} else if !isUntracked {
 			// Regular agents use beads phase verification
 			// Workspace already found at top of function
@@ -865,12 +865,12 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
-	// Update session handoff with spawn completion info (Capture at Context principle)
+	// Update synthesis with spawn completion info (Capture at Context principle)
 	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
 	if !isOrchestratorSession && agentName != "" && beadsID != "" {
 		if err := UpdateHandoffAfterComplete(beadsProjectDir, agentName, beadsID, skillName); err != nil {
 			// Non-critical - warn but don't fail completion
-			fmt.Fprintf(os.Stderr, "Warning: failed to update session handoff: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to update synthesis: %v\n", err)
 		}
 	}
 

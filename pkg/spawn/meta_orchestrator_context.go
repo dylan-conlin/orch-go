@@ -16,8 +16,8 @@ import (
 // Key differences from ORCHESTRATOR_CONTEXT.md:
 // - Interactive session framing ("managing orchestrator sessions" not "work toward goal")
 // - First action: check orch status for sessions to complete or review
-// - No SESSION_HANDOFF.md requirement (stay interactive and available)
-// - Emphasizes: spawn orchestrators, review handoffs, stay available
+// - No SYNTHESIS.md requirement (stay interactive and available)
+// - Emphasizes: spawn orchestrators, review synthesiss, stay available
 const MetaOrchestratorContextTemplate = `# Meta-Orchestrator Session Context
 
 **Role:** You are managing orchestrator sessions
@@ -33,24 +33,24 @@ You are a **meta-orchestrator** - you manage orchestrator sessions, not worker t
 
 **Key distinction:**
 - Orchestrators spawn workers and review their work
-- Meta-orchestrators spawn orchestrators and review their session handoffs
+- Meta-orchestrators spawn orchestrators and review their session synthesiss
 - You operate one level above orchestrators
 
 **Your frame:**
 - Orchestrator sessions are your "work units" (like workers are to orchestrators)
-- You spawn orchestrators to accomplish goals, then review their SESSION_HANDOFF.md
+- You spawn orchestrators to accomplish goals, then review their SYNTHESIS.md
 - Stay interactive and available - don't try to accomplish everything and exit
 
 ---
-{{if .PriorHandoffPath}}
+{{if .PriorSynthesisPath}}
 ## Prior Session Context
 
-**A previous meta-orchestrator session completed with a handoff.**
+**A previous meta-orchestrator session completed with a synthesis.**
 
 Read the prior session's context to understand what was accomplished and what's pending:
 
 ` + "```" + `
-{{.PriorHandoffPath}}
+{{.PriorSynthesisPath}}
 ` + "```" + `
 
 **First action:** Read this file to pick up context from where the previous session left off.
@@ -60,12 +60,12 @@ Read the prior session's context to understand what was accomplished and what's 
 ## First Actions
 
 Within your first 3 tool calls:
-{{if .PriorHandoffPath}}1. **Read the prior SESSION_HANDOFF.md** at {{.PriorHandoffPath}}
+{{if .PriorSynthesisPath}}1. **Read the prior SYNTHESIS.md** at {{.PriorSynthesisPath}}
 2. Run ` + "`orch status`" + ` to check for orchestrator sessions needing completion or review
-3. Review pending handoffs or ask Dylan what to do next
+3. Review pending synthesiss or ask Dylan what to do next
 {{else}}1. Run ` + "`orch status`" + ` to check for orchestrator sessions needing completion or review
 2. Run ` + "`orch review`" + ` if any sessions are pending review
-3. Ask Dylan what orchestrator sessions should be spawned (or review pending handoffs)
+3. Ask Dylan what orchestrator sessions should be spawned (or review pending synthesiss)
 {{end}}
 **Do NOT:**
 - Start reading code files (that's worker behavior)
@@ -88,7 +88,7 @@ orch spawn orchestrator "goal description"
 orch status
 orch review
 
-# Complete a session after reviewing its handoff
+# Complete a session after reviewing its synthesis
 orch complete <session-id>
 ` + "```" + `
 
@@ -112,7 +112,7 @@ orch complete <session-id>
 - Don't debug issues (systematic-debugging skill does that)
 
 **The test:** If you're about to read a file other than:
-- SESSION_HANDOFF.md (reviewing orchestrator output)
+- SYNTHESIS.md (reviewing orchestrator output)
 - orch status output
 - This context file
 
@@ -143,8 +143,8 @@ orch complete <session-id>
 - Don't produce completion artifacts and exit
 - Ask questions and wait for direction
 
-**No SESSION_HANDOFF.md required:**
-- Unlike spawned orchestrators, you don't need to produce handoff artifacts
+**No SYNTHESIS.md required:**
+- Unlike spawned orchestrators, you don't need to produce synthesis artifacts
 - Your session is ongoing until Dylan ends it
 - Focus on being responsive, not completing tasks
 {{if .SkillContent}}
@@ -183,7 +183,7 @@ Your workspace is: {{.WorkspacePath}}
 
 ---
 
-**Remember:** You are a meta-orchestrator. Spawn orchestrators. Review handoffs. Stay available. Never do work yourself.
+**Remember:** You are a meta-orchestrator. Spawn orchestrators. Review synthesiss. Stay available. Never do work yourself.
 `
 
 // metaOrchestratorContextData holds template data for META_ORCHESTRATOR_CONTEXT.md.
@@ -197,7 +197,7 @@ type metaOrchestratorContextData struct {
 	KBContext          string
 	ServerContext      string
 	RegisteredProjects string
-	PriorHandoffPath   string // Path to prior meta-orchestrator's SESSION_HANDOFF.md
+	PriorSynthesisPath   string // Path to prior meta-orchestrator's SYNTHESIS.md
 }
 
 // GenerateMetaOrchestratorContext generates the META_ORCHESTRATOR_CONTEXT.md content.
@@ -219,10 +219,10 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		registeredProjects = GenerateRegisteredProjectsContext()
 	}
 
-	// Find prior meta-orchestrator SESSION_HANDOFF.md if not already set
-	priorHandoffPath := cfg.PriorHandoffPath
-	if priorHandoffPath == "" {
-		priorHandoffPath = findPriorMetaOrchestratorHandoffExcluding(cfg.ProjectDir, cfg.WorkspaceName)
+	// Find prior meta-orchestrator SYNTHESIS.md if not already set
+	priorSynthesisPath := cfg.PriorSynthesisPath
+	if priorSynthesisPath == "" {
+		priorSynthesisPath = findPriorMetaOrchestratorSynthesisExcluding(cfg.ProjectDir, cfg.WorkspaceName)
 	}
 
 	data := metaOrchestratorContextData{
@@ -235,7 +235,7 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		KBContext:          cfg.KBContext,
 		ServerContext:      serverContext,
 		RegisteredProjects: registeredProjects,
-		PriorHandoffPath:   priorHandoffPath,
+		PriorSynthesisPath:   priorSynthesisPath,
 	}
 
 	var buf bytes.Buffer
@@ -296,7 +296,7 @@ func WriteMetaOrchestratorContext(cfg *Config) error {
 	}
 
 	// Note: Meta-orchestrators do NOT write .beads_id - they don't use beads tracking
-	// They also don't require SESSION_HANDOFF.md (stay interactive)
+	// They also don't require SYNTHESIS.md (stay interactive)
 
 	return nil
 }
@@ -310,27 +310,27 @@ func MinimalMetaOrchestratorPrompt(cfg *Config) string {
 	)
 }
 
-// FindPriorMetaOrchestratorHandoff finds the most recent completed meta-orchestrator
-// SESSION_HANDOFF.md in the target project. This allows new meta-orchestrator sessions
+// FindPriorMetaOrchestratorSynthesis finds the most recent completed meta-orchestrator
+// SYNTHESIS.md in the target project. This allows new meta-orchestrator sessions
 // to pick up context from where the prior session left off.
 //
 // It searches both .orch/workspace/ and .orch/workspace-archive/ directories,
 // looking for workspaces with:
 // - .meta-orchestrator marker file (indicating meta-orchestrator workspace)
-// - SESSION_HANDOFF.md (indicating completed session)
+// - SYNTHESIS.md (indicating completed session)
 //
-// Returns the path to the most recent SESSION_HANDOFF.md, or empty string if none found.
+// Returns the path to the most recent SYNTHESIS.md, or empty string if none found.
 // The "most recent" is determined by the .spawn_time file in the workspace.
-func FindPriorMetaOrchestratorHandoff(projectDir string) string {
+func FindPriorMetaOrchestratorSynthesis(projectDir string) string {
 	// Exclude the current workspace being created (will be passed in as part of cfg later)
-	return findPriorMetaOrchestratorHandoffExcluding(projectDir, "")
+	return findPriorMetaOrchestratorSynthesisExcluding(projectDir, "")
 }
 
-// findPriorMetaOrchestratorHandoffExcluding finds the most recent meta-orchestrator
-// SESSION_HANDOFF.md, excluding the specified workspace name.
-func findPriorMetaOrchestratorHandoffExcluding(projectDir, excludeWorkspace string) string {
+// findPriorMetaOrchestratorSynthesisExcluding finds the most recent meta-orchestrator
+// SYNTHESIS.md, excluding the specified workspace name.
+func findPriorMetaOrchestratorSynthesisExcluding(projectDir, excludeWorkspace string) string {
 	type workspaceInfo struct {
-		handoffPath string
+		synthesisPath string
 		spawnTime   time.Time
 	}
 
@@ -368,17 +368,17 @@ func findPriorMetaOrchestratorHandoffExcluding(projectDir, excludeWorkspace stri
 				continue // Not a meta-orchestrator workspace
 			}
 
-			// Check for SESSION_HANDOFF.md
-			handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
-			if info, err := os.Stat(handoffPath); err != nil || info.Size() == 0 {
-				continue // No handoff or empty file
+			// Check for SYNTHESIS.md
+			synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+			if info, err := os.Stat(synthesisPath); err != nil || info.Size() == 0 {
+				continue // No synthesis or empty file
 			}
 
 			// Get spawn time for sorting
 			spawnTime := getSpawnTime(workspacePath)
 
 			candidates = append(candidates, workspaceInfo{
-				handoffPath: handoffPath,
+				synthesisPath: synthesisPath,
 				spawnTime:   spawnTime,
 			})
 		}
@@ -393,7 +393,7 @@ func findPriorMetaOrchestratorHandoffExcluding(projectDir, excludeWorkspace stri
 		return candidates[i].spawnTime.After(candidates[j].spawnTime)
 	})
 
-	return candidates[0].handoffPath
+	return candidates[0].synthesisPath
 }
 
 // getSpawnTime reads the .spawn_time file and parses the timestamp.

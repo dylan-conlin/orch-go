@@ -303,7 +303,7 @@ func TestHandoffOutputPath(t *testing.T) {
 		{
 			name:       "directory path",
 			output:     tmpDir,
-			expectFile: filepath.Join(tmpDir, "SESSION_HANDOFF.md"),
+			expectFile: filepath.Join(tmpDir, "SYNTHESIS.md"),
 			createDir:  false, // Already exists
 		},
 		{
@@ -319,7 +319,7 @@ func TestHandoffOutputPath(t *testing.T) {
 			outputPath := tt.output
 			// If output is a directory, append filename
 			if info, err := os.Stat(tt.output); err == nil && info.IsDir() {
-				outputPath = filepath.Join(tt.output, "SESSION_HANDOFF.md")
+				outputPath = filepath.Join(tt.output, "SYNTHESIS.md")
 			}
 
 			if outputPath != tt.expectFile {

@@ -1013,7 +1013,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Determine beads ID - either from flag, create new issue, or skip if --no-track
 	// Orchestrators skip beads tracking entirely - they're interactive sessions with Dylan,
-	// not autonomous tasks. SESSION_HANDOFF.md is richer than beads comments.
+	// not autonomous tasks. SYNTHESIS.md is richer than beads comments.
 	skipBeadsForOrchestrator := isOrchestrator || isMetaOrchestrator
 	beadsID, err := determineBeadsID(projectName, skillName, task, spawnIssue, spawnWorkdir, spawnNoTrack || skipBeadsForOrchestrator, createBeadsIssue)
 	if err != nil {
@@ -1291,7 +1291,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// Check for existing workspace before writing context
-	// This prevents accidentally overwriting SESSION_HANDOFF.md from completed sessions
+	// This prevents accidentally overwriting SYNTHESIS.md from completed sessions
 	// Note: With unique suffixes in workspace names (since Jan 2026), collisions are rare
 	// but this provides an extra safety net and meaningful error messages
 	if err := checkWorkspaceExists(cfg.WorkspacePath(), spawnForce); err != nil {
@@ -2136,7 +2136,7 @@ func dirExists(path string) bool {
 }
 
 // checkWorkspaceExists verifies if a workspace already exists and has content.
-// Returns an error if the workspace contains SPAWN_CONTEXT.md or SESSION_HANDOFF.md
+// Returns an error if the workspace contains SPAWN_CONTEXT.md or SYNTHESIS.md
 // (indicating an active or completed session), unless force is true.
 // This prevents accidental data loss from overwriting existing session artifacts.
 func checkWorkspaceExists(workspacePath string, force bool) error {
@@ -2148,7 +2148,7 @@ func checkWorkspaceExists(workspacePath string, force bool) error {
 	// Check for critical files that indicate an active or completed session
 	criticalFiles := []string{
 		"SPAWN_CONTEXT.md",
-		"SESSION_HANDOFF.md",
+		"SYNTHESIS.md",
 		"ORCHESTRATOR_CONTEXT.md",
 	}
 

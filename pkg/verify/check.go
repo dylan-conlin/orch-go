@@ -13,8 +13,8 @@ import (
 const (
 	GatePhaseComplete      = "phase_complete"       // Phase: Complete not reported
 	GateSynthesis          = "synthesis"            // SYNTHESIS.md missing
-	GateSessionHandoff     = "session_handoff"      // SESSION_HANDOFF.md missing (orchestrator)
-	GateHandoffContent     = "handoff_content"      // SESSION_HANDOFF.md has empty/placeholder content
+	GateSynthesis     = "synthesis"      // SYNTHESIS.md missing (orchestrator)
+	GateHandoffContent     = "handoff_content"      // SYNTHESIS.md has empty/placeholder content
 	GateConstraint         = "constraint"           // Constraint verification failed
 	GatePhaseGate          = "phase_gate"           // Required phase gate not passed
 	GateSkillOutput        = "skill_output"         // Required skill outputs missing
@@ -37,7 +37,7 @@ type VerificationResult struct {
 
 // Tier constants for orchestrator spawns.
 const (
-	// TierOrchestrator is for orchestrator-type skills that produce SESSION_HANDOFF.md
+	// TierOrchestrator is for orchestrator-type skills that produce SYNTHESIS.md
 	// instead of SYNTHESIS.md and skip beads-dependent checks.
 	TierOrchestrator = "orchestrator"
 )
@@ -58,13 +58,13 @@ func VerifySynthesis(workspacePath string) (bool, error) {
 	return info.Size() > 0, nil
 }
 
-// VerifySessionHandoff checks if SESSION_HANDOFF.md exists and is not empty.
+// VerifySynthesis checks if SYNTHESIS.md exists and is not empty.
 // Used for orchestrator-type skills instead of SYNTHESIS.md.
-func VerifySessionHandoff(workspacePath string) (bool, error) {
+func VerifySynthesis(workspacePath string) (bool, error) {
 	if workspacePath == "" {
 		return false, nil
 	}
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	info, err := os.Stat(handoffPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -83,7 +83,7 @@ type HandoffContentValidation struct {
 	OutcomeFilled bool // Whether Outcome field has a valid value
 }
 
-// ValidateHandoffContent checks if SESSION_HANDOFF.md has actual content,
+// ValidateHandoffContent checks if SYNTHESIS.md has actual content,
 // not just the empty template. It validates:
 // - TLDR section is filled (not placeholder text)
 // - Outcome field is set to a valid value (success, partial, blocked, failed)
@@ -101,12 +101,12 @@ func ValidateHandoffContent(workspacePath string) (HandoffContentValidation, err
 		return result, nil
 	}
 
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	content, err := os.ReadFile(handoffPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			result.Valid = false
-			result.Errors = append(result.Errors, "SESSION_HANDOFF.md not found")
+			result.Errors = append(result.Errors, "SYNTHESIS.md not found")
 			return result, nil
 		}
 		return result, err
@@ -393,7 +393,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 
 	// Verify git diff against SYNTHESIS claims
 	// This detects false positives where agent claims to modify files but didn't
-	// Skip for orchestrator tier (they produce SESSION_HANDOFF.md, not SYNTHESIS.md)
+	// Skip for orchestrator tier (they produce SYNTHESIS.md, not SYNTHESIS.md)
 	if !isOrch {
 		gitDiffResult := VerifyGitDiffForCompletion(workspacePath, projectDir)
 		if gitDiffResult != nil {
@@ -443,7 +443,7 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 // Light tier spawns skip the SYNTHESIS.md requirement.
 // Orchestrator tier spawns:
 //   - Skip beads-dependent phase checks (orchestrators manage sessions, not issues)
-//   - Check SESSION_HANDOFF.md instead of SYNTHESIS.md
+//   - Check SYNTHESIS.md instead of SYNTHESIS.md
 //
 // Returns a VerificationResult with any errors or warnings.
 func VerifyCompletionWithTier(beadsID string, workspacePath string, tier string) (VerificationResult, error) {
@@ -467,7 +467,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		tier = ReadTierFromWorkspace(workspacePath)
 	}
 
-	// Orchestrator tier: skip beads-dependent checks, verify SESSION_HANDOFF.md instead
+	// Orchestrator tier: skip beads-dependent checks, verify SYNTHESIS.md instead
 	if tier == TierOrchestrator {
 		return VerifyOrchestratorCompletion(workspacePath), nil
 	}
@@ -526,7 +526,7 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 // VerifyOrchestratorCompletion checks if an orchestrator session is ready for completion.
 // Orchestrators have different verification requirements than workers:
 //   - No beads-dependent phase checks (orchestrators manage sessions, not issues)
-//   - SESSION_HANDOFF.md instead of SYNTHESIS.md
+//   - SYNTHESIS.md instead of SYNTHESIS.md
 //   - Session end verification instead of Phase: Complete
 //   - Content validation (TLDR and Outcome must be filled, not placeholders)
 func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
@@ -542,22 +542,22 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 	if workspacePath == "" {
 		result.Passed = false
 		result.Errors = append(result.Errors, "workspace path is required for orchestrator verification")
-		result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
+		result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 		return result
 	}
 
-	// Check for SESSION_HANDOFF.md
-	ok, err := VerifySessionHandoff(workspacePath)
+	// Check for SYNTHESIS.md
+	ok, err := VerifySynthesis(workspacePath)
 	if err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SESSION_HANDOFF.md: %v", err))
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
 	} else if !ok {
 		result.Passed = false
 		result.Errors = append(result.Errors,
-			fmt.Sprintf("SESSION_HANDOFF.md is missing or empty in workspace: %s", workspacePath))
-		result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
+			fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+		result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 	}
 
-	// Verify session ended properly by checking for "Session Ended" marker in SESSION_HANDOFF.md
+	// Verify session ended properly by checking for "Session Ended" marker in SYNTHESIS.md
 	if ok {
 		sessionEnded, err := verifySessionEndedProperly(workspacePath)
 		if err != nil {
@@ -565,8 +565,8 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 		} else if !sessionEnded {
 			result.Passed = false
 			result.Errors = append(result.Errors,
-				"SESSION_HANDOFF.md exists but session end not properly recorded")
-			result.GatesFailed = append(result.GatesFailed, GateSessionHandoff)
+				"SYNTHESIS.md exists but session end not properly recorded")
+			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
 		}
 	}
 
@@ -588,10 +588,10 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 	return result
 }
 
-// verifySessionEndedProperly checks if SESSION_HANDOFF.md contains proper session end markers.
+// verifySessionEndedProperly checks if SYNTHESIS.md contains proper session end markers.
 // Returns true if the session appears to have ended properly.
 func verifySessionEndedProperly(workspacePath string) (bool, error) {
-	handoffPath := filepath.Join(workspacePath, "SESSION_HANDOFF.md")
+	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	content, err := os.ReadFile(handoffPath)
 	if err != nil {
 		return false, err

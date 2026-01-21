@@ -846,9 +846,9 @@ func TestReadTierFromWorkspaceOrchestrator(t *testing.T) {
 	})
 }
 
-func TestVerifySessionHandoff(t *testing.T) {
+func TestVerifySynthesis(t *testing.T) {
 	t.Run("returns false for empty workspace path", func(t *testing.T) {
-		ok, err := VerifySessionHandoff("")
+		ok, err := VerifySynthesis("")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -857,37 +857,37 @@ func TestVerifySessionHandoff(t *testing.T) {
 		}
 	})
 
-	t.Run("returns false for missing SESSION_HANDOFF.md", func(t *testing.T) {
+	t.Run("returns false for missing SYNTHESIS.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		ok, err := VerifySessionHandoff(tmpDir)
+		ok, err := VerifySynthesis(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if ok {
-			t.Error("expected false for missing SESSION_HANDOFF.md")
+			t.Error("expected false for missing SYNTHESIS.md")
 		}
 	})
 
-	t.Run("returns false for empty SESSION_HANDOFF.md", func(t *testing.T) {
+	t.Run("returns false for empty SYNTHESIS.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 		if err := os.WriteFile(handoffPath, []byte(""), 0644); err != nil {
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		ok, err := VerifySessionHandoff(tmpDir)
+		ok, err := VerifySynthesis(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if ok {
-			t.Error("expected false for empty SESSION_HANDOFF.md")
+			t.Error("expected false for empty SYNTHESIS.md")
 		}
 	})
 
-	t.Run("returns true for non-empty SESSION_HANDOFF.md", func(t *testing.T) {
+	t.Run("returns true for non-empty SYNTHESIS.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
-		content := `# Session Handoff
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		content := `# Synthesis
 
 ## Session Summary
 Completed orchestrator session for feature X.
@@ -899,12 +899,12 @@ Completed orchestrator session for feature X.
 			t.Fatalf("failed to write handoff file: %v", err)
 		}
 
-		ok, err := VerifySessionHandoff(tmpDir)
+		ok, err := VerifySynthesis(tmpDir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !ok {
-			t.Error("expected true for non-empty SESSION_HANDOFF.md")
+			t.Error("expected true for non-empty SYNTHESIS.md")
 		}
 	})
 }
@@ -923,7 +923,7 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 		}
 	})
 
-	t.Run("fails without SESSION_HANDOFF.md", func(t *testing.T) {
+	t.Run("fails without SYNTHESIS.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		// Write .tier file to indicate orchestrator tier
 		tierPath := filepath.Join(tmpDir, ".tier")
@@ -936,16 +936,16 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if result.Passed {
-			t.Error("expected verification to fail without SESSION_HANDOFF.md")
+			t.Error("expected verification to fail without SYNTHESIS.md")
 		}
 		if len(result.Errors) == 0 {
-			t.Error("expected error about missing SESSION_HANDOFF.md")
+			t.Error("expected error about missing SYNTHESIS.md")
 		}
 	})
 
-	t.Run("fails with minimal SESSION_HANDOFF.md (no session end markers)", func(t *testing.T) {
+	t.Run("fails with minimal SYNTHESIS.md (no session end markers)", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 		// Very short content without end markers
 		if err := os.WriteFile(handoffPath, []byte("Short"), 0644); err != nil {
 			t.Fatalf("failed to write handoff file: %v", err)
@@ -960,10 +960,10 @@ func TestVerifyOrchestratorCompletion(t *testing.T) {
 		}
 	})
 
-	t.Run("passes with proper SESSION_HANDOFF.md", func(t *testing.T) {
+	t.Run("passes with proper SYNTHESIS.md", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
-		content := `# Session Handoff
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		content := `# Synthesis
 
 **Outcome:** success
 
@@ -998,8 +998,8 @@ Made significant progress on the implementation.
 
 	t.Run("passes with Status: Complete marker", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
-		content := `# Session Handoff
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		content := `# Synthesis
 
 **Status:** Complete
 **Outcome:** success
@@ -1027,7 +1027,7 @@ Brief session summary that completed all required work.
 
 	t.Run("passes with Handoff section", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 		content := `# Session
 
 **Outcome:** partial
@@ -1063,8 +1063,8 @@ func TestOrchestratorTierSkipsBeadsChecks(t *testing.T) {
 	// does not require beadsID (unlike worker verification)
 	t.Run("orchestrator tier does not require beadsID", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
-		content := `# Session Handoff
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
+		content := `# Synthesis
 
 **Outcome:** success
 
@@ -1103,9 +1103,9 @@ func TestTierOrchestratorConstant(t *testing.T) {
 func TestValidateHandoffContent(t *testing.T) {
 	t.Run("valid handoff with filled TLDR and Outcome", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
-		content := `# Session Handoff
+		content := `# Synthesis
 
 **Orchestrator:** test-session
 **Focus:** Implement feature X
@@ -1144,9 +1144,9 @@ Done.
 
 	t.Run("invalid handoff with placeholder TLDR", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
-		content := `# Session Handoff
+		content := `# Synthesis
 
 **Orchestrator:** test-session
 **Focus:** Implement feature X
@@ -1179,9 +1179,9 @@ Done.
 
 	t.Run("invalid handoff with placeholder Outcome", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
-		content := `# Session Handoff
+		content := `# Synthesis
 
 **Orchestrator:** test-session
 **Focus:** Implement feature X
@@ -1217,9 +1217,9 @@ Did something useful this session that should be captured.
 
 	t.Run("invalid handoff with empty TLDR", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
-		content := `# Session Handoff
+		content := `# Synthesis
 
 **Outcome:** success
 
@@ -1250,9 +1250,9 @@ Did something useful this session that should be captured.
 		for _, outcome := range validOutcomes {
 			t.Run(outcome, func(t *testing.T) {
 				tmpDir := t.TempDir()
-				handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+				handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
-				content := `# Session Handoff
+				content := `# Synthesis
 
 **Outcome:** ` + outcome + `
 
@@ -1441,10 +1441,10 @@ func TestValidateOutcomeField(t *testing.T) {
 func TestVerifyOrchestratorCompletion_ContentValidation(t *testing.T) {
 	t.Run("fails with placeholder TLDR and Outcome", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
 		// Write handoff with placeholders (simulating empty template)
-		content := `# Session Handoff
+		content := `# Synthesis
 
 **Orchestrator:** test-session
 **Focus:** Something
@@ -1485,9 +1485,9 @@ Done.
 
 	t.Run("passes with filled content", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		handoffPath := filepath.Join(tmpDir, "SESSION_HANDOFF.md")
+		handoffPath := filepath.Join(tmpDir, "SYNTHESIS.md")
 
-		content := `# Session Handoff
+		content := `# Synthesis
 
 **Orchestrator:** test-session
 **Focus:** Implement handoff enforcement

@@ -21,13 +21,13 @@ import (
 )
 
 // ============================================================================
-// Handoff Command - Generate session handoff document
+// Handoff Command - Generate synthesis document
 // ============================================================================
 
 var handoffCmd = &cobra.Command{
 	Use:   "handoff",
-	Short: "Generate a session handoff document",
-	Long: `Generate a session handoff document capturing the current orchestration state.
+	Short: "Generate a synthesis document",
+	Long: `Generate a synthesis document capturing the current orchestration state.
 
 The handoff document is useful for:
 - Ending a work session and resuming later
@@ -43,7 +43,7 @@ The command aggregates:
 
 Examples:
   orch-go handoff                    # Generate handoff to stdout
-  orch-go handoff -o .orch/          # Write to .orch/SESSION_HANDOFF.md
+  orch-go handoff -o .orch/          # Write to .orch/SYNTHESIS.md
   orch-go handoff --json             # Output data as JSON (for scripting)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runHandoff()
@@ -56,7 +56,7 @@ var (
 )
 
 func init() {
-	handoffCmd.Flags().StringVarP(&handoffOutput, "output", "o", "", "Output directory (writes SESSION_HANDOFF.md) or file path")
+	handoffCmd.Flags().StringVarP(&handoffOutput, "output", "o", "", "Output directory (writes SYNTHESIS.md) or file path")
 	handoffCmd.Flags().BoolVar(&handoffJSON, "json", false, "Output as JSON for scripting")
 	rootCmd.AddCommand(handoffCmd)
 }
@@ -166,7 +166,7 @@ func runHandoff() error {
 		outputPath := handoffOutput
 		// If output is a directory, append filename
 		if info, err := os.Stat(handoffOutput); err == nil && info.IsDir() {
-			outputPath = filepath.Join(handoffOutput, "SESSION_HANDOFF.md")
+			outputPath = filepath.Join(handoffOutput, "SYNTHESIS.md")
 		}
 
 		if err := os.WriteFile(outputPath, []byte(markdown), 0644); err != nil {

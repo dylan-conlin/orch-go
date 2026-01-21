@@ -254,7 +254,7 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 			name := entry.Name()
 			// Skip standard workspace files
 			if name == "SPAWN_CONTEXT.md" || name == "SYNTHESIS.md" || name == "ORCHESTRATOR_CONTEXT.md" ||
-				name == "SESSION_HANDOFF.md" || name == ".session_id" || name == ".spawn_time" ||
+				name == "SYNTHESIS.md" || name == ".session_id" || name == ".spawn_time" ||
 				name == ".tier" || name == ".beads_id" {
 				continue
 			}

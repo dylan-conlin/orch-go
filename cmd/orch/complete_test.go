@@ -83,30 +83,30 @@ func TestFindWorkspaceByName(t *testing.T) {
 	}
 }
 
-// TestSessionHandoffDetection verifies SESSION_HANDOFF.md detection.
+// TestSessionHandoffDetection verifies SYNTHESIS.md detection.
 func TestSessionHandoffDetection(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create workspace with SESSION_HANDOFF.md
+	// Create workspace with SYNTHESIS.md
 	wsWithHandoff := filepath.Join(tmpDir, "ws-with-handoff")
 	if err := os.MkdirAll(wsWithHandoff, 0755); err != nil {
 		t.Fatalf("Failed to create workspace: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(wsWithHandoff, "SESSION_HANDOFF.md"), []byte("# Session Handoff"), 0644); err != nil {
-		t.Fatalf("Failed to create SESSION_HANDOFF.md: %v", err)
+	if err := os.WriteFile(filepath.Join(wsWithHandoff, "SYNTHESIS.md"), []byte("# Synthesis"), 0644); err != nil {
+		t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
 	}
 
-	// Create workspace without SESSION_HANDOFF.md
+	// Create workspace without SYNTHESIS.md
 	wsWithoutHandoff := filepath.Join(tmpDir, "ws-without-handoff")
 	if err := os.MkdirAll(wsWithoutHandoff, 0755); err != nil {
 		t.Fatalf("Failed to create workspace: %v", err)
 	}
 
-	if !hasSessionHandoff(wsWithHandoff) {
-		t.Error("Expected wsWithHandoff to have SESSION_HANDOFF.md")
+	if !hasSynthesis(wsWithHandoff) {
+		t.Error("Expected wsWithHandoff to have SYNTHESIS.md")
 	}
-	if hasSessionHandoff(wsWithoutHandoff) {
-		t.Error("Expected wsWithoutHandoff NOT to have SESSION_HANDOFF.md")
+	if hasSynthesis(wsWithoutHandoff) {
+		t.Error("Expected wsWithoutHandoff NOT to have SYNTHESIS.md")
 	}
 }
 
@@ -132,9 +132,9 @@ func TestOrchestratorCompletionWorkflow(t *testing.T) {
 		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
 	}
 
-	// Create SESSION_HANDOFF.md (completion signal)
-	if err := os.WriteFile(filepath.Join(wsOrch, "SESSION_HANDOFF.md"), []byte("# Session Handoff\nCompleted successfully"), 0644); err != nil {
-		t.Fatalf("Failed to create SESSION_HANDOFF.md: %v", err)
+	// Create SYNTHESIS.md (completion signal)
+	if err := os.WriteFile(filepath.Join(wsOrch, "SYNTHESIS.md"), []byte("# Synthesis\nCompleted successfully"), 0644); err != nil {
+		t.Fatalf("Failed to create SYNTHESIS.md: %v", err)
 	}
 
 	// Verify the workspace is found by name
@@ -148,9 +148,9 @@ func TestOrchestratorCompletionWorkflow(t *testing.T) {
 		t.Error("Workspace should be detected as orchestrator")
 	}
 
-	// Verify SESSION_HANDOFF.md is detected (completion signal)
-	if !hasSessionHandoff(found) {
-		t.Error("Workspace should have SESSION_HANDOFF.md")
+	// Verify SYNTHESIS.md is detected (completion signal)
+	if !hasSynthesis(found) {
+		t.Error("Workspace should have SYNTHESIS.md")
 	}
 }
 
@@ -246,12 +246,12 @@ func TestWorkerWithBeadsID(t *testing.T) {
 }
 
 // TestOrchestratorCompletionWithoutHandoff tests that completion fails
-// when SESSION_HANDOFF.md is missing (the gate is working).
+// when SYNTHESIS.md is missing (the gate is working).
 func TestOrchestratorCompletionWithoutHandoff(t *testing.T) {
 	tmpDir := t.TempDir()
 	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
 
-	// Create orchestrator workspace WITHOUT SESSION_HANDOFF.md
+	// Create orchestrator workspace WITHOUT SYNTHESIS.md
 	wsOrch := filepath.Join(workspaceDir, "og-orch-incomplete-05jan")
 	if err := os.MkdirAll(wsOrch, 0755); err != nil {
 		t.Fatalf("Failed to create workspace: %v", err)
@@ -271,9 +271,9 @@ func TestOrchestratorCompletionWithoutHandoff(t *testing.T) {
 		t.Error("Should be detected as orchestrator workspace")
 	}
 
-	// Verify SESSION_HANDOFF.md is NOT present (should fail completion)
-	if hasSessionHandoff(found) {
-		t.Error("Incomplete orchestrator should not have SESSION_HANDOFF.md")
+	// Verify SYNTHESIS.md is NOT present (should fail completion)
+	if hasSynthesis(found) {
+		t.Error("Incomplete orchestrator should not have SYNTHESIS.md")
 	}
 }
 
