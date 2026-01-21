@@ -205,7 +205,8 @@ func init() {
 
 var (
 	// Work command flags
-	workInline bool // Run inline (blocking) with TUI
+	workInline  bool   // Run inline (blocking) with TUI
+	workWorkdir string // Target project directory (defaults to current directory)
 )
 
 var workCmd = &cobra.Command{
@@ -223,19 +224,22 @@ The issue description becomes the task prompt for the spawned agent.
 
 By default, spawns in a tmux window (visible, interruptible).
 Use --inline to run in the current terminal (blocking with TUI).
+Use --workdir to spawn in a different project directory (for cross-project daemon).
 
 Examples:
-  orch-go work proj-123           # Start work in tmux window (default)
-  orch-go work proj-123 --inline  # Start work inline (blocking TUI)`,
+  orch-go work proj-123                           # Start work in tmux window (default)
+  orch-go work proj-123 --inline                  # Start work inline (blocking TUI)
+  orch-go work proj-123 --workdir ~/other-project # Start work in another project`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		beadsID := args[0]
-		return runWork(serverURL, beadsID, workInline)
+		return runWork(serverURL, beadsID, workInline, workWorkdir)
 	},
 }
 
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
+	workCmd.Flags().StringVar(&workWorkdir, "workdir", "", "Target project directory (defaults to current directory)")
 }
 
 // InferSkillFromIssueType maps issue types to appropriate skills.
@@ -309,9 +313,33 @@ func inferMCPFromBeadsIssue(issue *beads.Issue) string {
 	return ""
 }
 
-func runWork(serverURL, beadsID string, inline bool) error {
+func runWork(serverURL, beadsID string, inline bool, workdir string) error {
+	// Resolve workdir to absolute path if provided
+	projectDir := ""
+	if workdir != "" {
+		absPath, err := filepath.Abs(workdir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		info, err := os.Stat(absPath)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("workdir does not exist: %s", absPath)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("workdir is not a directory: %s", absPath)
+		}
+		projectDir = absPath
+	}
+
 	// Get issue details from verify (for description)
-	issue, err := verify.GetIssue(beadsID)
+	// If workdir is provided, get issue from that project's beads
+	var issue *verify.Issue
+	var err error
+	if projectDir != "" {
+		issue, err = verify.GetIssueWithDir(beadsID, projectDir)
+	} else {
+		issue, err = verify.GetIssue(beadsID)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to get beads issue: %w", err)
 	}
@@ -320,7 +348,7 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	// Use beads.Issue which has Labels for full skill/MCP inference
 	var skillName string
 	var mcpServer string
-	socketPath, connErr := beads.FindSocketPath("")
+	socketPath, connErr := beads.FindSocketPath(projectDir)
 	if connErr == nil {
 		beadsClient := beads.NewClient(socketPath)
 		if connErr := beadsClient.Connect(); connErr == nil {
@@ -349,6 +377,11 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	// Set the spawnIssue flag so runSpawnWithSkillInternal uses the existing issue
 	spawnIssue = beadsID
 
+	// Set the spawnWorkdir flag for cross-project spawns
+	if projectDir != "" {
+		spawnWorkdir = projectDir
+	}
+
 	// Set the spawnMCP flag if the issue has a needs:* label (e.g., needs:playwright)
 	// This allows daemon-spawned agents to automatically get browser access for UI work
 	if mcpServer != "" {
@@ -361,6 +394,9 @@ func runWork(serverURL, beadsID string, inline bool) error {
 	fmt.Printf("  Skill:  %s\n", skillName)
 	if mcpServer != "" {
 		fmt.Printf("  MCP:    %s\n", mcpServer)
+	}
+	if projectDir != "" {
+		fmt.Printf("  Project: %s\n", projectDir)
 	}
 
 	// Work command is daemon-driven (issue already created and triaged)
@@ -1276,20 +1312,19 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
-	// Explicit --headless flag overrides all other mode decisions
-	if headless {
-		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
-	}
-
-	// Claude mode: Use tmux + claude CLI
+	// Explicit backend config takes priority over headless flag
+	// This allows daemon spawns to use claude/docker backend when configured
 	if cfg.SpawnMode == "claude" {
 		return runSpawnClaude(serverURL, cfg, beadsID, skillName, task, attach)
 	}
 
-	// Docker mode: Use Docker container for Statsig fingerprint isolation
-	// Escape hatch for rate limit scenarios - explicit opt-in only
 	if cfg.SpawnMode == "docker" {
 		return runSpawnDocker(serverURL, cfg, beadsID, skillName, task, attach)
+	}
+
+	// Headless flag only applies when no explicit backend is configured
+	if headless {
+		return runSpawnHeadless(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
 	// Orchestrator-type skills default to tmux mode (visible interaction)

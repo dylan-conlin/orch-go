@@ -305,6 +305,49 @@ func GetIssue(beadsID string) (*Issue, error) {
 	}, nil
 }
 
+// GetIssueWithDir retrieves a beads issue from a specific project directory.
+// This is used for cross-project operations where the issue belongs to a different project
+// than the current working directory.
+func GetIssueWithDir(beadsID string, projectDir string) (*Issue, error) {
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath(projectDir)
+	if err == nil {
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if projectDir != "" {
+			opts = append(opts, beads.WithCwd(projectDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
+		issue, err := client.Show(beadsID)
+		if err == nil {
+			// Convert beads.Issue to verify.Issue
+			return &Issue{
+				ID:          issue.ID,
+				Title:       issue.Title,
+				Description: issue.Description,
+				Status:      issue.Status,
+				IssueType:   issue.IssueType,
+				CloseReason: issue.CloseReason,
+			}, nil
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	issue, err := beads.FallbackShowWithDir(beadsID, projectDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Issue{
+		ID:          issue.ID,
+		Title:       issue.Title,
+		Description: issue.Description,
+		Status:      issue.Status,
+		IssueType:   issue.IssueType,
+		CloseReason: issue.CloseReason,
+	}, nil
+}
+
 // GetIssuesBatch retrieves multiple issues efficiently.
 // projectDirs should contain beadsID -> projectDir mappings for cross-project lookups.
 // Returns a map from beadsID to Issue. Missing/invalid IDs are silently skipped.
