@@ -1,8 +1,8 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-01-20
-**Synthesized From:** 6 investigations (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations, Docker backend design) spanning Jan 8-20, 2026
+**Last Updated:** 2026-01-21
+**Synthesized From:** 6 investigations + ~70 kb quick entries (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations, Docker backend design, Docker container constraints) spanning Jan 8-21, 2026
 
 ---
 
@@ -64,9 +64,19 @@ User → orch spawn --backend docker → host tmux window → docker run claude-
 - Fresh Statsig fingerprint per spawn (rate limit isolation)
 - Uses `~/.claude-docker/` for config (separate from host `~/.claude/`)
 - Same lifecycle as claude mode (status, complete, abandon via tmux)
-- **Independence:** Bypasses host fingerprint rate limits
+- **Independence:** Bypasses host fingerprint rate limits (device-level throttling)
 - **Trade-off:** No dashboard visibility, ~2-5s container startup overhead
 - **Prerequisite:** Docker image `claude-code-mcp` built from `~/.claude/docker-workaround/`
+
+**Environment Constraints:**
+- `BEADS_NO_DAEMON=1` auto-set (Unix sockets fail with "chmod: invalid argument" over mounts)
+- Container PATH includes `/usr/local/go/bin` for auto-rebuild
+- Real configs (CLAUDE.md, settings.json, skills/, hooks/) mounted read-only after base `~/.claude-docker/` overlay
+
+**Rate Limit Clarification:**
+- Docker bypasses **request-rate throttling** (per-device limits)
+- Docker does NOT bypass **weekly usage quota** (account-level, e.g., "97% used")
+- Tested: Wiped ~/.claude-docker/, logged in fresh - usage charged to correct account
 
 ### Key Components
 
@@ -162,6 +172,16 @@ Fresh Statsig fingerprint, rate limit isolated
    - Must use `--backend docker` flag
    - Docker image `claude-code-mcp` must be pre-built
    - Uses separate config directory (`~/.claude-docker/`) for fingerprint isolation
+
+6. **Docker containers have environment constraints**
+   - `BEADS_NO_DAEMON=1` must be set (Unix sockets don't work over Docker mounts)
+   - Container PATH must include `/usr/local/go/bin` for auto-rebuild
+   - Real configs (CLAUDE.md, settings.json, skills/, hooks/) mounted read-only to override `~/.claude-docker/` overlay
+
+7. **Weekly usage quota is account-level, not device-level**
+   - Docker fingerprint isolation bypasses device-level rate throttling only
+   - Weekly usage quota (e.g., "97% used") is tied to account, not fingerprint
+   - Copying statsig fingerprint to Docker doesn't bypass weekly limits
 
 ---
 
