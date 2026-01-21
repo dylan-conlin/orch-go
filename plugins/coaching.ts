@@ -747,9 +747,16 @@ ${details.recentQuestions.slice(-3).map((q: string) => `- "${q.substring(0, 100)
     // Inject using noReply:true pattern
     if (client?.session?.prompt) {
       await client.session.prompt({
-        sessionID: sessionId,
-        prompt: message,
-        noReply: true,
+        path: { id: sessionId },
+        body: {
+          noReply: true,
+          parts: [
+            {
+              type: "text",
+              text: message,
+            },
+          ],
+        },
       })
       log(`✅ Injected ${patternType} coaching into session ${sessionId}`)
     } else {
@@ -786,13 +793,15 @@ async function streamToCoach(
 
     // Stream to coach session asynchronously
     await client.session.promptAsync({
-      sessionID: COACH_SESSION_ID,
-      parts: [
-        {
-          type: "text",
-          text: message,
-        },
-      ],
+      path: { id: COACH_SESSION_ID },
+      body: {
+        parts: [
+          {
+            type: "text",
+            text: message,
+          },
+        ],
+      },
     })
 
     log(`✓ Streamed ${metric.metric_type} metric to coach session ${COACH_SESSION_ID}`)
@@ -1135,9 +1144,16 @@ async function injectHealthSignal(
   if (prompt) {
     try {
       await client.session.prompt({
-        sessionID: state.sessionId,
-        prompt,
-        noReply: true,
+        path: { id: state.sessionId },
+        body: {
+          noReply: true,
+          parts: [
+            {
+              type: "text",
+              text: prompt,
+            },
+          ],
+        },
       })
       log(`Injected health signal for ${metricType}: ${value}`)
 

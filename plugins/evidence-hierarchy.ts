@@ -284,9 +284,16 @@ export const EvidenceHierarchyPlugin: Plugin = async ({
         // The noReply: true option means the agent won't be expected to respond
         if (client?.session?.prompt) {
           await client.session.prompt({
-            sessionID: input.sessionID,
-            prompt: generateWarning(normalizedPath),
-            noReply: true,
+            path: { id: input.sessionID },
+            body: {
+              noReply: true,
+              parts: [
+                {
+                  type: "text",
+                  text: generateWarning(normalizedPath),
+                },
+              ],
+            },
           })
           log("Warning injected successfully")
         }
