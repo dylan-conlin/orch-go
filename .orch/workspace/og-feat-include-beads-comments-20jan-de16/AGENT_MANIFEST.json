@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-include-beads-comments-20jan-de16",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-t8h57",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3c822d55a1974f1e2bbbfc19afea82113f4ceba3",
+  "spawn_time": "2026-01-20T18:14:55-08:00",
+  "tier": "light",
+  "spawn_mode": "docker"
+}

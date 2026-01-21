@@ -1276,13 +1276,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return fmt.Errorf("failed to write spawn context: %w", err)
 	}
 
-	// Record spawn in session (if session is active)
-	if sessionStore, err := session.New(""); err == nil {
-		if err := sessionStore.RecordSpawn(beadsID, skillName, task, projectDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record spawn in session: %v\n", err)
-		}
-	}
-
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
@@ -2512,4 +2505,37 @@ func extractSection(content, sectionHeader string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(sectionLines, "\n"))
+}
+
+// fetchIssueCommentsForSpawn retrieves comments from a beads issue to include in spawn context.
+// Returns orchestrator notes that were added after issue creation.
+// Filters out Phase: comments (progress tracking) to only include substantive guidance.
+func fetchIssueCommentsForSpawn(beadsID string) []spawn.IssueComment {
+	// Use beads CLIClient to get comments
+	client := beads.NewCLIClient()
+	beadsComments, err := client.Comments(beadsID)
+	if err != nil {
+		// Silently fail - comments are supplementary context
+		return nil
+	}
+
+	// Filter and convert comments
+	var comments []spawn.IssueComment
+	for _, c := range beadsComments {
+		// Skip Phase: comments (progress tracking, not guidance)
+		if strings.HasPrefix(c.Text, "Phase:") {
+			continue
+		}
+		// Skip empty comments
+		if strings.TrimSpace(c.Text) == "" {
+			continue
+		}
+		comments = append(comments, spawn.IssueComment{
+			Author:    c.Author,
+			Text:      c.Text,
+			CreatedAt: c.CreatedAt,
+		})
+	}
+
+	return comments
 }

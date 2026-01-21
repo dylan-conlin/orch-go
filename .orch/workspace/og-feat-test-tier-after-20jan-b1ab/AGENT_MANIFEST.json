@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-test-tier-after-20jan-b1ab",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-untracked-1768948835",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "0816b5a43db08f4959894fbee371d4dd66852461",
+  "spawn_time": "2026-01-20T14:40:37-08:00",
+  "tier": "light",
+  "spawn_mode": "docker"
+}

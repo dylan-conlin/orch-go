@@ -99,6 +99,18 @@ Before marking Phase: Complete, you MUST:
 
 ⚠️ A bug fix is only complete when the original reproduction steps pass.
 {{end}}
+{{if .IssueComments}}
+## ORCHESTRATOR NOTES
+
+The following notes were added to this issue by the orchestrator after issue creation.
+Read these carefully - they may contain important clarifications, constraints, or guidance.
+
+{{range .IssueComments}}
+**{{.Author}}** ({{.CreatedAt}}):
+> {{.Text}}
+
+{{end}}
+{{end}}
 {{if .NoTrack}}
 📋 AD-HOC SPAWN (--no-track):
 This is an ad-hoc spawn without beads issue tracking.
@@ -454,13 +466,14 @@ type contextData struct {
 	KBContext         string
 	Tier              string
 	ServerContext     string
-	NoTrack           bool   // When true, omit beads instructions from spawn context
-	IsBug             bool   // When true, this is a bug issue with reproduction info
-	ReproSteps        string // Reproduction steps from bug issue
-	DesignWorkspace   string // Design workspace name for ui-design-session handoff
-	DesignMockupPath  string // Path to approved mockup
-	DesignPromptPath  string // Path to design prompt
-	DesignNotes       string // Notes from design session
+	NoTrack           bool           // When true, omit beads instructions from spawn context
+	IsBug             bool           // When true, this is a bug issue with reproduction info
+	ReproSteps        string         // Reproduction steps from bug issue
+	DesignWorkspace   string         // Design workspace name for ui-design-session handoff
+	DesignMockupPath  string         // Path to approved mockup
+	DesignPromptPath  string         // Path to design prompt
+	DesignNotes       string         // Notes from design session
+	IssueComments     []IssueComment // Orchestrator comments from beads issue
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -508,6 +521,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignMockupPath:  cfg.DesignMockupPath,
 		DesignPromptPath:  cfg.DesignPromptPath,
 		DesignNotes:       cfg.DesignNotes,
+		IssueComments:     cfg.IssueComments,
 	}
 
 	var buf bytes.Buffer

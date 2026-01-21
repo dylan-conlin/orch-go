@@ -160,7 +160,8 @@ type Dependency struct {
 	ID             string `json:"id"`
 	Title          string `json:"title"`
 	Status         string `json:"status"`
-	DependencyType string `json:"dependency_type"` // e.g., "blocks"
+	IssueType      string `json:"issue_type,omitempty"` // e.g., "question", "task", "bug"
+	DependencyType string `json:"dependency_type"`      // e.g., "blocks"
 }
 
 // ParseDependencies parses the raw dependencies JSON into a slice of Dependency objects.
@@ -185,13 +186,18 @@ type BlockingDependency struct {
 }
 
 // GetBlockingDependencies returns a list of dependencies that are blocking this issue.
-// Blocking behavior depends on dependency type:
+// Blocking behavior depends on dependency type and issue type:
 //   - "blocks": blocks if not closed (open or in_progress)
 //   - "parent-child": NEVER blocks (children are independently workable)
+//   - Questions: unblock when status is "answered" OR "closed"
 //
 // The parent-child distinction is critical for epics: an epic closes when its children
 // complete, so children must be spawnable while the parent epic is open. If children
 // were blocked by their parent, work could never begin (circular dependency).
+//
+// Questions use a different lifecycle: Open → Investigating → Answered → Closed.
+// Dependencies unblock when a question reaches "answered" status, not just "closed",
+// because the answer is the gate - closure is just administrative cleanup.
 func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 	deps := i.ParseDependencies()
 	if deps == nil {
@@ -208,8 +214,16 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 			// Epic closes when children complete, so children can't wait for parent
 			isBlocking = false
 		default:
-			// "blocks" and other types: blocks unless closed
-			isBlocking = dep.Status != "closed"
+			// "blocks" and other types: blocks unless resolved
+			// Questions unblock when "answered" or "closed"
+			// Other types unblock only when "closed"
+			if dep.IssueType == "question" {
+				// Questions: unblock when answered or closed
+				isBlocking = dep.Status != "closed" && dep.Status != "answered"
+			} else {
+				// Regular issues: unblock only when closed
+				isBlocking = dep.Status != "closed"
+			}
 		}
 
 		if isBlocking {

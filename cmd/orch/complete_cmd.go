@@ -499,12 +499,22 @@ func runComplete(identifier, workdir string) error {
 	var gatesFailed []string
 	var skillName string
 
+	// Check if this is a question entity (strategic node, not agent work)
+	// Questions don't have agents, so they skip Phase: Complete requirement
+	isQuestion := issue != nil && issue.IssueType == "question"
+
 	// Verify completion status
 	// - For orchestrator sessions: check SESSION_HANDOFF.md exists AND has content
+	// - For question entities: skip Phase: Complete (strategic nodes, not agent work)
 	// - For regular agents: check Phase: Complete via beads comments
 	// - Skip flags allow targeted bypass of specific gates
 	if !completeForce {
-		if isOrchestratorSession {
+		if isQuestion {
+			// Question entities are strategic nodes - they're answered through
+			// investigations, discussions, etc., not by agents reporting Phase: Complete.
+			// Just close them without verification.
+			fmt.Printf("Question entity: %s (skipping Phase: Complete - strategic node)\n", beadsID)
+		} else if isOrchestratorSession {
 			// Orchestrator sessions use SESSION_HANDOFF.md as completion signal
 			// Use full verification which includes content validation
 			if workspacePath != "" {

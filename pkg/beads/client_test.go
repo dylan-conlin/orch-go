@@ -1363,6 +1363,42 @@ func TestGetBlockingDependencies(t *testing.T) {
 			deps:      json.RawMessage(`[{"id":"dep-1","title":"Blocks Dep","status":"closed","dependency_type":"blocks"},{"id":"epic-1","title":"Parent Epic","status":"open","dependency_type":"parent-child"}]`),
 			wantCount: 0, // Changed: parent-child never blocks, blocks dep is closed
 		},
+		// Question dependency tests
+		// Questions unblock when "answered" OR "closed", not just "closed"
+		// This reflects the question lifecycle: Open → Investigating → Answered → Closed
+		{
+			name:          "question: open question blocks",
+			deps:          json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"open","issue_type":"question","dependency_type":"blocks"}]`),
+			wantCount:     1,
+			wantBlockerID: "q-1",
+		},
+		{
+			name:          "question: investigating question blocks",
+			deps:          json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"investigating","issue_type":"question","dependency_type":"blocks"}]`),
+			wantCount:     1,
+			wantBlockerID: "q-1",
+		},
+		{
+			name:      "question: answered question does NOT block",
+			deps:      json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"answered","issue_type":"question","dependency_type":"blocks"}]`),
+			wantCount: 0, // Answered questions unblock dependents
+		},
+		{
+			name:      "question: closed question does NOT block",
+			deps:      json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"closed","issue_type":"question","dependency_type":"blocks"}]`),
+			wantCount: 0, // Closed questions unblock dependents
+		},
+		{
+			name:          "mixed: question answered + regular issue open",
+			deps:          json.RawMessage(`[{"id":"q-1","title":"Strategic Question","status":"answered","issue_type":"question","dependency_type":"blocks"},{"id":"dep-1","title":"Regular Issue","status":"open","dependency_type":"blocks"}]`),
+			wantCount:     1,
+			wantBlockerID: "dep-1", // Only the regular issue blocks, not the answered question
+		},
+		{
+			name:      "regular issue: answered status still blocks (not a question)",
+			deps:      json.RawMessage(`[{"id":"dep-1","title":"Regular Issue","status":"answered","issue_type":"task","dependency_type":"blocks"}]`),
+			wantCount: 1, // Regular issues only unblock when closed, not answered
+		},
 	}
 
 	for _, tt := range tests {

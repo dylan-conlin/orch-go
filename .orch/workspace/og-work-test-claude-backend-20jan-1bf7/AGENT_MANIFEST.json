@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-work-test-claude-backend-20jan-1bf7",
+  "skill": "hello",
+  "beads_id": "orch-go-untracked-1768944811",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "6e1ae22f8053141d7d4804f9a7f3926b65f063f9",
+  "spawn_time": "2026-01-20T13:33:33-08:00",
+  "tier": "light",
+  "spawn_mode": "claude"
+}

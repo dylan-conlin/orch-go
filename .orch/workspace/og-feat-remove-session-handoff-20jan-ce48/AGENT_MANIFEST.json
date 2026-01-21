@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-remove-session-handoff-20jan-ce48",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-df2n8",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "3c822d55a1974f1e2bbbfc19afea82113f4ceba3",
+  "spawn_time": "2026-01-20T18:10:01-08:00",
+  "tier": "light",
+  "spawn_mode": "docker"
+}

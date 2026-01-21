@@ -185,6 +185,22 @@ type Config struct {
 	DesignPromptPath string
 	// DesignNotes are notes from the design session SYNTHESIS.md
 	DesignNotes string
+
+	// IssueComments contains comments from the beads issue (if --issue was provided).
+	// These are orchestrator notes added after issue creation that provide additional
+	// context, clarifications, or guidance for the spawned agent.
+	IssueComments []IssueComment
+}
+
+// IssueComment represents a comment on a beads issue.
+// Used to pass orchestrator notes to spawned agents via SPAWN_CONTEXT.md.
+type IssueComment struct {
+	// Author is the comment author (e.g., "orchestrator", "dylan")
+	Author string
+	// Text is the comment content
+	Text string
+	// CreatedAt is when the comment was created (ISO 8601 format)
+	CreatedAt string
 }
 
 // UsageInfo contains account usage data at spawn time.
