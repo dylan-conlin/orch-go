@@ -1,6 +1,7 @@
 # Binary
 orch-go
 build/
+.autorebuild.lock
 
 # Test/dev executables at root
 /orch
