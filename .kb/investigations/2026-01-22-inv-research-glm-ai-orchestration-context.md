@@ -28,7 +28,8 @@ Fill this at the END of your investigation, before marking Complete.
 **Next Step:** None
 **Status:** Complete
 
-**Patches-Decision:** .kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md (extends model considerations)
+**Patches-Decision:** .kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md (extends model considerations)
+**References-Superseded:** .kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md (historical context, superseded Jan 18)
 
 ---
 
@@ -169,24 +170,27 @@ Fill this at the END of your investigation, before marking Complete.
 
 ### Finding 6: Current Model Stack Comparison
 
-**Current orch-go stack (from decision 2026-01-09):**
-- Primary: Gemini Flash (free, reliable, no OAuth issues)
-- Fallback: Sonnet API key (expensive but stable)
+**Current orch-go stack (from decision 2026-01-18):**
+- Primary: Claude Max via CLI ($200/mo flat, unlimited Sonnet/Opus)
+- Fallback: OpenCode API + Sonnet (pay-per-token, opt-in only)
+
+> **Note:** The Jan 9 decision (Gemini Flash primary) was superseded on Jan 18 due to API costs spiraling to $70-80/day without visibility. See `.kb/models/current-model-stack.md` for authoritative current state.
 
 **GLM 4.7 comparison:**
-| Aspect | Gemini Flash | GLM 4.7 | Claude Opus 4.5 |
-|--------|--------------|---------|-----------------|
-| Price | Free (AI Studio) | $3-60/mo | $200/mo |
-| Reliability | High | Medium (OpenCode issues) | High (if OAuth works) |
-| Coding quality | Good | Very good | Excellent |
-| Concurrency | Good | Poor (1-5) | Unknown |
-| OpenCode support | Good | Problematic | Blocked |
+| Aspect | Claude Max (CLI) | GLM 4.7 | OpenCode API |
+|--------|------------------|---------|--------------|
+| Price | $200/mo flat | $3-60/mo | Pay-per-token |
+| Reliability | High | Medium (OpenCode issues) | High |
+| Coding quality | Excellent (Opus) | Very good | Good (Sonnet) |
+| Concurrency | Limited (tmux) | Poor (1-5) | High (5+) |
+| Dashboard | No visibility | Problematic | Full visibility |
 
 **Source:**
-- `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md`
-- Research above
+- `.kb/models/current-model-stack.md` (authoritative current state)
+- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` (current policy)
+- `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` (superseded)
 
-**Significance:** Current Gemini Flash stack is working and stable. GLM 4.7 adds value over Gemini but introduces reliability risks via OpenCode integration issues.
+**Significance:** Current Claude Max stack is working and cost-predictable. GLM 4.7's OpenCode issues and concurrency limits conflict with orch-go architecture regardless of which backend is primary.
 
 ---
 
@@ -309,7 +313,9 @@ However, GLM 4.7 could be considered for:
 
 **Files Examined:**
 - `.orch/glm-4-7-reddit.txt` - Reddit discussion with user experiences
-- `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` - Current model strategy
+- `.kb/models/current-model-stack.md` - Authoritative current model stack reference
+- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Current model stack policy
+- `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` - Historical context (superseded)
 
 **External Documentation:**
 - [Z.AI Pricing](https://docs.z.ai/guides/overview/pricing) - Official pricing structure
@@ -324,7 +330,9 @@ However, GLM 4.7 could be considered for:
 - [TechLoy Flash Article](https://www.techloy.com/zhipu-ai-launches-glm-4-7-flash-a-local-ai-coding-model-for-consumer-hardware/) - Flash variant details
 
 **Related Artifacts:**
-- **Decision:** `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` - Context for current model strategy
+- **Model:** `.kb/models/current-model-stack.md` - Authoritative current model stack reference
+- **Decision:** `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Current model stack policy
+- **Decision (superseded):** `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` - Historical context (Gemini Flash primary, superseded)
 
 ---
 
