@@ -36,6 +36,12 @@ func TestResolve_Aliases(t *testing.T) {
 		{"gpt5", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
 		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
 		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini-20251130"}},
+		{"gpt4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"GPT-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
+		{"gpt-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
+		{"gpt4o-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
+		{"gpt-4o-mini", ModelSpec{Provider: "openai", ModelID: "gpt-4o-mini"}},
 
 		// DeepSeek aliases
 		{"deepseek-v3", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
