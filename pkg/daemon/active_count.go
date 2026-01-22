@@ -96,7 +96,8 @@ func DefaultActiveCount() int {
 
 // GetClosedIssuesBatch checks which beads IDs have closed issues.
 // Returns a map of beadsID -> true for closed issues.
-// Uses beads RPC daemon for efficiency, falls back to CLI if needed.
+// Supports cross-project lookups by parsing project prefix from beads IDs
+// and querying the correct beads database for each project.
 // Exported for use by checkConcurrencyLimit in spawn_cmd.go.
 func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 	closed := make(map[string]bool)
@@ -104,8 +105,71 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 		return closed
 	}
 
+	// Build project name -> path map for cross-project resolution
+	projectPaths := buildProjectPathMap()
+
+	// Group beads IDs by project
+	idsByProject := groupBeadsIDsByProject(beadsIDs, projectPaths)
+
+	// Check each project's issues
+	for projectPath, ids := range idsByProject {
+		closedInProject := getClosedIssuesForProject(projectPath, ids)
+		for id := range closedInProject {
+			closed[id] = true
+		}
+	}
+
+	return closed
+}
+
+// buildProjectPathMap returns a map of project name -> project path
+// by querying kb projects list.
+func buildProjectPathMap() map[string]string {
+	projects, _ := ListProjects()
+	pathMap := make(map[string]string, len(projects))
+	for _, p := range projects {
+		pathMap[p.Name] = p.Path
+	}
+	return pathMap
+}
+
+// extractProjectFromBeadsID extracts the project name from a beads ID.
+// Beads IDs have the format "{project-name}-{hash}" like "orch-go-abc1".
+// Returns empty string if format is not recognized.
+func extractProjectFromBeadsID(beadsID string) string {
+	// Find the last dash followed by alphanumeric hash (usually 4-5 chars)
+	// The project name is everything before that
+	lastDash := strings.LastIndex(beadsID, "-")
+	if lastDash <= 0 {
+		return ""
+	}
+	return beadsID[:lastDash]
+}
+
+// groupBeadsIDsByProject groups beads IDs by their project path.
+// IDs without a known project path are grouped under "" (empty string)
+// which means they'll use the current directory.
+func groupBeadsIDsByProject(beadsIDs []string, projectPaths map[string]string) map[string][]string {
+	grouped := make(map[string][]string)
+	for _, id := range beadsIDs {
+		projectName := extractProjectFromBeadsID(id)
+		projectPath := projectPaths[projectName]
+		// If not found in projects, projectPath will be "" which uses current dir
+		grouped[projectPath] = append(grouped[projectPath], id)
+	}
+	return grouped
+}
+
+// getClosedIssuesForProject checks which beads IDs are closed for a specific project.
+// If projectPath is empty, uses the current directory.
+func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string]bool {
+	closed := make(map[string]bool)
+	if len(beadsIDs) == 0 {
+		return closed
+	}
+
 	// Try beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
+	socketPath, err := beads.FindSocketPath(projectPath)
 	if err == nil {
 		client := beads.NewClient(socketPath, beads.WithAutoReconnect(2))
 		if err := client.Connect(); err == nil {
@@ -126,9 +190,9 @@ func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
 		}
 	}
 
-	// Fallback to CLI for each issue
+	// Fallback to CLI for each issue, setting the working directory
 	for _, id := range beadsIDs {
-		issue, err := beads.FallbackShow(id)
+		issue, err := beads.FallbackShowWithDir(id, projectPath)
 		if err != nil {
 			continue
 		}
