@@ -373,3 +373,9 @@ bd --version  # 0.41.0 (744af9cf)
 **2026-01-19 16:45:** Investigation completed
 - Status: Complete
 - Key outcome: Recommend extending beads fork with 3 targeted additions
+
+**2026-01-22 03:30:** Live validation discovered
+- Context: GLM research worker (`orch-go-531vo`) cited stale decision (Jan 9) when it was superseded (Jan 18)
+- Evidence: `.kb/investigations/2026-01-22-inv-research-glm-ai-orchestration-context.md` incorrectly states "Primary: Gemini Flash" - superseded by `2026-01-18-max-subscription-primary-spawn-path.md`
+- Insight: **Decisions are decidability nodes** - they have supersedes edges, authority levels, and frontier queries (current state)
+- Impact: Bumps priority on substrate extensions; decision lifecycle is now a validated use case, not theoretical
