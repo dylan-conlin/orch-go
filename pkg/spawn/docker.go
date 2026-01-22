@@ -81,7 +81,8 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	// - Passes CLAUDE_CONTEXT for hook coordination
 	// - Sets PATH with linux-amd64 first for cross-compiled binaries (bd, orch, kb, skillc)
 	//   Built via: scripts/cross-compile-linux.sh
-	// - Pipes context file to claude with dangerous skip permissions
+	// - Uses stdin redirection (not pipe) to feed context file to claude
+	//   Redirection works more reliably than pipes with Docker's -it flag
 	dockerCmd := fmt.Sprintf(
 		`docker run -it --rm `+
 			`--name %q `+
@@ -100,7 +101,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 			`-e BEADS_NO_DAEMON=1 `+
 			`-e PATH="$HOME/.local/bin/linux-amd64:$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" `+
 			`%s `+
-			`bash -c 'cat %q | claude --dangerously-skip-permissions'`,
+			`bash -c 'claude --dangerously-skip-permissions < %q'`,
 		containerName,
 		cfg.ProjectDir,
 		claudeContext,
