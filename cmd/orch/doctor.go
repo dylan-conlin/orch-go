@@ -16,6 +16,8 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -42,12 +44,18 @@ var doctorCmd = &cobra.Command{
 	Short: "Check health of orch services and optionally fix issues",
 	Long: `Check the health status of orch-related services.
 
-Services checked:
+Liveness checks (is it running?):
   - OpenCode server (default port 4096)
   - orch serve API server (default port 3348)
   - Web UI (vite dev server, port 5188)
   - Beads daemon
   - Overmind services (api, web, opencode)
+
+Correctness checks (is it working correctly?):
+  - Beads DB integrity (PRAGMA integrity_check)
+  - Registry reconciliation (compare against tmux windows)
+  - Docker backend (trivial container spawn test)
+  - OpenCode API (session list, not just port check)
 
 Use --fix to automatically start services that are not running.
 Use --stale-only to check if the orch binary is stale (exit 1 if stale).
@@ -225,6 +233,33 @@ func runDoctor() error {
 	stalledStatus := checkStalledSessions()
 	report.Services = append(report.Services, stalledStatus)
 	if !stalledStatus.Running {
+		report.Healthy = false
+	}
+
+	// =============================================================================
+	// Correctness checks (verify things are working correctly, not just running)
+	// =============================================================================
+
+	// Check beads database integrity
+	beadsIntegrityStatus := checkBeadsIntegrity()
+	report.Services = append(report.Services, beadsIntegrityStatus)
+	if !beadsIntegrityStatus.Running {
+		report.Healthy = false
+	}
+
+	// Check registry reconciliation against tmux
+	registryStatus := checkRegistryReconciliation()
+	report.Services = append(report.Services, registryStatus)
+	if !registryStatus.Running {
+		report.Healthy = false
+	}
+
+	// Check Docker backend (optional - only if docker is installed)
+	dockerStatus := checkDockerBackend()
+	report.Services = append(report.Services, dockerStatus)
+	// Docker check only fails health if Docker IS installed but broken
+	// (the check returns Running=true if Docker is not installed)
+	if !dockerStatus.Running {
 		report.Healthy = false
 	}
 
@@ -667,6 +702,197 @@ func printDoctorReport(report *DoctorReport) {
 	} else {
 		fmt.Println("Some services are not running.")
 	}
+}
+
+// =============================================================================
+// Correctness checks (not just liveness - verify things are working correctly)
+// =============================================================================
+
+// checkBeadsIntegrity runs PRAGMA integrity_check on the beads database.
+// This detects database corruption that wouldn't be caught by liveness checks.
+// Principle: Fail-loud over fail-open (kb-42d29d)
+func checkBeadsIntegrity() ServiceStatus {
+	status := ServiceStatus{
+		Name:      "Beads DB Integrity",
+		CanFix:    false,
+		FixAction: "Run: sqlite3 .beads/beads.db \".recover\" > recovered.sql && mv .beads/beads.db .beads/beads.db.corrupted && sqlite3 .beads/beads.db < recovered.sql",
+	}
+
+	projectDir, err := os.Getwd()
+	if err != nil {
+		status.Running = true // Skip check if can't get pwd
+		status.Details = "Could not determine working directory"
+		return status
+	}
+
+	dbPath := filepath.Join(projectDir, ".beads", "beads.db")
+
+	// Check if database file exists
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		status.Running = true // No beads DB is OK (not all projects use beads)
+		status.Details = "No beads database (OK)"
+		return status
+	}
+
+	// Run PRAGMA integrity_check
+	cmd := exec.Command("sqlite3", dbPath, "PRAGMA integrity_check;")
+	output, err := cmd.Output()
+	if err != nil {
+		status.Running = false
+		status.Details = fmt.Sprintf("⚠️ integrity_check failed: %v", err)
+		if doctorVerbose {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				status.Details = fmt.Sprintf("⚠️ integrity_check failed: %v (stderr: %s)", err, string(exitErr.Stderr))
+			}
+		}
+		return status
+	}
+
+	result := strings.TrimSpace(string(output))
+	if result == "ok" {
+		status.Running = true
+		status.Details = "Database integrity verified"
+		return status
+	}
+
+	// Corruption detected!
+	status.Running = false
+	status.Details = fmt.Sprintf("⚠️ CORRUPTION DETECTED: %s", result)
+	return status
+}
+
+// RegistryReconcileResult holds the result of registry-tmux reconciliation.
+type RegistryReconcileResult struct {
+	TotalActive    int      // Total active agents in registry
+	StaleEntries   int      // Agents with missing tmux windows
+	StaleAgentIDs  []string // IDs of stale agents
+	ReconcileError string   // Error if reconciliation failed
+}
+
+// checkRegistryReconciliation compares registry entries against tmux windows.
+// Active registry entries should have corresponding tmux windows.
+// Stale entries indicate registry drift from actual state.
+func checkRegistryReconciliation() ServiceStatus {
+	status := ServiceStatus{
+		Name:      "Registry Reconciliation",
+		CanFix:    false,
+		FixAction: "Use 'orch clean --stale' to remove stale registry entries",
+	}
+
+	// Load registry
+	reg, err := registry.New("")
+	if err != nil {
+		status.Running = true // Skip if can't load registry
+		status.Details = fmt.Sprintf("Could not load registry: %v", err)
+		return status
+	}
+
+	activeAgents := reg.ListActive()
+	if len(activeAgents) == 0 {
+		status.Running = true
+		status.Details = "No active agents in registry"
+		return status
+	}
+
+	// Check each active agent
+	var staleAgents []string
+	for _, agent := range activeAgents {
+		// Skip agents without tmux windows (headless mode)
+		if agent.TmuxWindow == "" {
+			continue
+		}
+
+		// Check if tmux window exists by ID
+		windowExists := tmux.WindowExistsByID(agent.TmuxWindow)
+		if !windowExists {
+			staleAgents = append(staleAgents, agent.ID)
+		}
+	}
+
+	if len(staleAgents) == 0 {
+		status.Running = true
+		status.Details = fmt.Sprintf("%d active agents, all tmux windows verified", len(activeAgents))
+		return status
+	}
+
+	// Stale entries found
+	status.Running = false
+	if len(staleAgents) == 1 {
+		status.Details = fmt.Sprintf("⚠️ 1 stale registry entry (tmux window missing): %s", staleAgents[0])
+	} else {
+		if doctorVerbose {
+			status.Details = fmt.Sprintf("⚠️ %d stale registry entries (tmux windows missing): %s", len(staleAgents), strings.Join(staleAgents, ", "))
+		} else {
+			status.Details = fmt.Sprintf("⚠️ %d stale registry entries (tmux windows missing)", len(staleAgents))
+		}
+	}
+	return status
+}
+
+// checkDockerBackend tests the Docker backend by spawning a trivial container.
+// Only runs if Docker is available. Failure indicates Docker issues that would
+// affect --backend docker spawns.
+func checkDockerBackend() ServiceStatus {
+	status := ServiceStatus{
+		Name:      "Docker Backend",
+		CanFix:    false,
+		FixAction: "Start Docker Desktop or run: sudo systemctl start docker",
+	}
+
+	// Check if docker command exists
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		status.Running = true // Docker not installed is OK
+		status.Details = "Docker not installed (optional)"
+		return status
+	}
+
+	// Check if Docker daemon is running (quick info check)
+	infoCmd := exec.Command(dockerPath, "info", "--format", "{{.ServerVersion}}")
+	infoOutput, err := infoCmd.Output()
+	if err != nil {
+		status.Running = false
+		status.Details = "⚠️ Docker daemon not responding"
+		if doctorVerbose {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				status.Details = fmt.Sprintf("⚠️ Docker daemon not responding: %s", string(exitErr.Stderr))
+			}
+		}
+		return status
+	}
+
+	dockerVersion := strings.TrimSpace(string(infoOutput))
+
+	// Run a trivial container test (hello-world is small and fast)
+	testCmd := exec.Command(dockerPath, "run", "--rm", "hello-world")
+	testOutput, err := testCmd.CombinedOutput()
+	if err != nil {
+		status.Running = false
+		status.Details = fmt.Sprintf("⚠️ Container test failed (Docker %s)", dockerVersion)
+		if doctorVerbose {
+			// Look for common failure patterns
+			outputStr := string(testOutput)
+			if strings.Contains(outputStr, "Cannot connect") {
+				status.Details = fmt.Sprintf("⚠️ Cannot connect to Docker daemon (Docker %s)", dockerVersion)
+			} else if strings.Contains(outputStr, "pull access denied") {
+				status.Details = fmt.Sprintf("⚠️ Pull access denied for hello-world (Docker %s)", dockerVersion)
+			} else {
+				status.Details = fmt.Sprintf("⚠️ Container test failed: %v (Docker %s)", err, dockerVersion)
+			}
+		}
+		return status
+	}
+
+	// Verify the output contains expected hello-world message
+	if !strings.Contains(string(testOutput), "Hello from Docker") {
+		status.Running = false
+		status.Details = fmt.Sprintf("⚠️ Unexpected container output (Docker %s)", dockerVersion)
+		return status
+	}
+
+	status.Running = true
+	status.Details = fmt.Sprintf("Container test passed (Docker %s)", dockerVersion)
+	return status
 }
 
 // checkStalledSessions checks for sessions that spawned but never reported a Phase status.
@@ -1446,6 +1672,25 @@ func runHealthCheckWithNotifications(notifier *notify.Notifier, previousHealth m
 		report.Healthy = false
 	}
 
+	// Correctness checks (also in watch mode)
+	beadsIntegrityStatus := checkBeadsIntegrity()
+	report.Services = append(report.Services, beadsIntegrityStatus)
+	if !beadsIntegrityStatus.Running {
+		report.Healthy = false
+	}
+
+	registryStatus := checkRegistryReconciliation()
+	report.Services = append(report.Services, registryStatus)
+	if !registryStatus.Running {
+		report.Healthy = false
+	}
+
+	dockerStatus := checkDockerBackend()
+	report.Services = append(report.Services, dockerStatus)
+	if !dockerStatus.Running {
+		report.Healthy = false
+	}
+
 	// Print current status with timestamp
 	fmt.Printf("[%s] ", time.Now().Format("15:04:05"))
 	if report.Healthy {
@@ -1612,7 +1857,15 @@ func runDaemonHealthCycle(config DoctorDaemonConfig, logger *DoctorDaemonLogger,
 	interventions += restarted
 
 	report := &DoctorReport{Healthy: true, Services: make([]ServiceStatus, 0)}
+	// Liveness checks
 	for _, status := range []ServiceStatus{checkOpenCode(), checkOrchServe(), checkWebUI(), checkOvermindServices()} {
+		report.Services = append(report.Services, status)
+		if !status.Running {
+			report.Healthy = false
+		}
+	}
+	// Correctness checks (also in daemon mode)
+	for _, status := range []ServiceStatus{checkBeadsIntegrity(), checkRegistryReconciliation(), checkDockerBackend()} {
 		report.Services = append(report.Services, status)
 		if !status.Running {
 			report.Healthy = false
