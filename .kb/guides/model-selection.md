@@ -1,325 +1,248 @@
 # Model Selection Guide
 
-**Purpose:** Single authoritative reference for model selection, aliases, and provider architecture in orch-go. Synthesized from 10 investigations spanning Dec 20, 2025 - Jan 4, 2026.
+**Purpose:** Authoritative reference for model selection in orch-go, reflecting the post-Jan-9-2026 reality where Anthropic blocks third-party OAuth access.
 
-**Last verified:** Jan 6, 2026
+**Last verified:** Jan 21, 2026
 
 ---
 
 ## Quick Reference
 
-### Model Aliases
+### Current Reality (Jan 2026)
 
-| Alias | Provider/Model | Use When |
-|-------|---------------|----------|
-| `opus` | anthropic/claude-opus-4-5-20251101 | Complex work, debugging, architecture (default) |
-| `sonnet` | anthropic/claude-sonnet-4-5-20250929 | Simple edits, typo fixes, known simple scope |
-| `haiku` | anthropic/claude-haiku | Routing, triage, simple classification |
-| `flash` | google/gemini-2.5-flash | Cost-sensitive, large context (>200K tokens) |
-| `flash3` | google/gemini-3-flash-preview | Alternative Gemini 3 flash alias |
-| `pro` | google/gemini-2.0-pro | Gemini with higher reasoning capability |
+| Model | Access Method | Cost | Best For |
+|-------|---------------|------|----------|
+| **Opus 4.5** | Claude CLI only (Max subscription) | $200/mo flat | Orchestration, complex reasoning, architecture |
+| **Sonnet 4.5** | API or Claude CLI | $3/$15/MTok or $200/mo | General work, feature implementation |
+| **DeepSeek V3** | API (OpenCode) | $0.25/$0.38/MTok | Cost-sensitive work, standard investigations |
+| **Gemini Flash** | API (OpenCode) | Free tier available | Large context (>200K), but 2K req/min limit |
+| **GPT-5.2** | OpenCode (ChatGPT Pro) | $200/mo flat | Worker tasks only - **unsuitable for orchestration** |
 
-### Spawn Examples
+### Key Constraints
+
+1. **Opus requires Claude CLI** - Anthropic fingerprinting blocks API access since Jan 9
+2. **GPT-5.2 unsuitable for orchestration** - Role boundary collapse, reactive gate handling, excessive deliberation
+3. **Gemini Flash has TPM limits** - 2,000 req/min blocks tool-heavy agents
+4. **DeepSeek V3 function calling works** - Confirmed Jan 19, despite "unstable" warning in docs
+
+---
+
+## Spawn Examples
 
 ```bash
-# Default (Opus) - recommended for most work
+# Default: Claude CLI + Opus (primary path since Jan 18)
 orch spawn investigation "analyze auth system"
 
-# Explicit model selection
+# Explicit API path (opt-in, pay-per-token)
+orch spawn --backend opencode --model sonnet feature-impl "add logout button"
+
+# Cost-optimized (DeepSeek V3)
+orch spawn --backend opencode --model deepseek investigation "explore codebase"
+
+# Rate limit escape (fresh fingerprint)
+orch spawn --backend docker investigation "explore X"
+
+# OpenAI (worker tasks only, NOT orchestration)
+orch spawn --backend opencode --model gpt-5.2 feature-impl "simple edit"
+```
+
+---
+
+## Architecture: Triple Spawn Paths
+
+Model selection is now coupled to spawn backend due to Anthropic's OAuth blocking.
+
+| Backend | Models Available | Cost | Use When |
+|---------|------------------|------|----------|
+| **Claude CLI** (default) | Opus, Sonnet (Max) | $200/mo flat | Primary work, orchestration, quality-critical |
+| **OpenCode API** | Sonnet, DeepSeek, Gemini, GPT | Pay-per-token | Cost tracking needed, headless batch work |
+| **Docker** | Opus, Sonnet (Max) | $200/mo + overhead | Rate limit escape (fresh fingerprint) |
+
+**Why Claude CLI is default (Jan 18 decision):**
+- API costs hit $70-80/day ($2,100-2,400/mo projected)
+- Max subscription is 10x cheaper at that usage level
+- Opus quality available only via CLI
+
+---
+
+## Model Selection by Task
+
+### Orchestration / Meta-Work
+
+**Required: Opus 4.5 via Claude CLI**
+
+Orchestration requires:
+- Gate anticipation (synthesize flags upfront, not learn by hitting)
+- Role boundary maintenance (delegate, don't collapse to worker)
+- Failure adaptation (change strategy, not repeat)
+- Confident execution (minimal deliberation)
+
+**GPT-5.2 tested and failed** (Jan 21):
+- 3 spawn attempts for multi-gate scenario
+- Role boundary collapse (started debugging instead of delegating)
+- 6+ identical timeout failures without strategy change
+- 200+ second thinking blocks
+
+### Complex Reasoning / Architecture
+
+**Recommended: Opus via Claude CLI**
+
+```bash
+orch spawn architect "design auth system"
+orch spawn systematic-debugging "root cause analysis"
+```
+
+### Standard Investigations / Feature Work
+
+**Options:**
+- Opus (quality, $200/mo flat) - `orch spawn investigation "task"`
+- DeepSeek V3 (cost, $0.25/$0.38/MTok) - `orch spawn --backend opencode --model deepseek investigation "task"`
+
+DeepSeek V3 confirmed working for standard orchestration (Jan 19 test: 3 minutes, 62K tokens, successful completion with tool calls).
+
+### Simple Edits / Known Scope
+
+**Recommended: Sonnet**
+
+```bash
 orch spawn --model sonnet feature-impl "fix typo in README"
-orch spawn --model flash investigation "analyze large codebase"
-
-# Rate-limited escape hatch
-orch spawn --model flash feature-impl "task" # Gemini, pay-per-token
 ```
+
+### Large Context (>200K tokens)
+
+**Recommended: Gemini Flash** (but watch TPM limits)
+
+```bash
+orch spawn --backend opencode --model flash investigation "analyze large codebase"
+```
+
+**Warning:** Tool-heavy agents (35+ calls/sec) hit 2,000 req/min limit. Use Sonnet if hitting rate limits.
 
 ---
 
-## Architecture
+## Cost Economics
 
-### Responsibility Split
+### The Jan 18 Discovery
 
-| Layer | Responsibility | Location |
-|-------|---------------|----------|
-| **Model Resolution** | Alias → provider/model mapping | pkg/model/model.go |
-| **Account Management** | Claude Max OAuth, account switching | pkg/account/account.go |
-| **Runtime Auth** | API auth at inference time | OpenCode (via auth.json) |
-| **Session Creation** | Passing model to OpenCode | pkg/opencode/client.go |
+Switched from free Gemini to paid Sonnet on Jan 9 with no cost tracking:
+- **$402 spent in ~2 weeks** without awareness
+- Ramping to **$70-80/day** ($2,100-2,400/mo projected)
+- Max subscription at $200/mo is **10x cheaper**
 
-**Key insight:** orch handles model selection and Claude Max accounts. OpenCode handles runtime auth. They handoff via `~/.local/share/opencode/auth.json` for Anthropic tokens.
+### Breakeven Analysis
 
-### The Flow
+At Max subscription cost ($200/mo):
 
-```
-orch spawn --model opus ...
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  1. MODEL RESOLUTION (pkg/model)                                 │
-│     model.Resolve("opus") → {Provider: "anthropic",             │
-│                               ModelID: "claude-opus-4-5-20251101"}│
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  2. SPAWN CONFIG                                                 │
-│     spawn.Config.Model = resolvedModel.Format()                 │
-│     → "anthropic/claude-opus-4-5-20251101"                      │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  3. OPENCODE INVOCATION                                          │
-│     Headless: HTTP API POST /session (model in body)            │
-│     Inline: opencode run --model {model} ...                    │
-│     Tmux: opencode attach --model {model} ...                   │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Model | Breakeven Usage |
+|-------|-----------------|
+| DeepSeek V3 | ~317M input tokens OR ~526M output tokens |
+| Sonnet | ~67M input tokens OR ~13M output tokens |
+| Opus API | ~40M input tokens OR ~8M output tokens |
+
+**Implication:** Heavy usage → Max subscription. Light/metered usage → API with cost tracking.
+
+### Current Recommendation
+
+1. **Primary:** Claude CLI + Max subscription (predictable $200/mo)
+2. **Cost-sensitive:** DeepSeek V3 via API ($0.25/$0.38/MTok)
+3. **Never:** Sonnet API without cost tracking (learned the hard way)
 
 ---
 
-## Default Model Behavior
+## Model Aliases
 
-**Default is Opus** - When no `--model` flag is provided:
-
-```go
-// In pkg/model/model.go
-var DefaultModel = ModelSpec{
-    Provider: "anthropic",
-    ModelID:  "claude-opus-4-5-20251101",
-}
-```
-
-**Why Opus is default:**
-- Best reasoning capability for orchestration work
-- Covered by Claude Max subscription (no per-token cost)
-- Orchestrator skill guidance recommends Opus for complex work
-- Matches user expectation for high-quality agents
-
-**Historical note:** Default was briefly Gemini 3 Flash during development, causing confusion. Changed to Opus to align with orchestrator guidance (Dec 2025).
+| Alias | Provider/Model |
+|-------|----------------|
+| `opus` | anthropic/claude-opus-4-5-20251101 |
+| `sonnet` | anthropic/claude-sonnet-4-5-20250929 |
+| `haiku` | anthropic/claude-haiku |
+| `flash` | google/gemini-2.5-flash |
+| `flash3` | google/gemini-3-flash-preview |
+| `pro` | google/gemini-2.0-pro |
+| `deepseek` | deepseek/deepseek-chat |
+| `gpt5`, `gpt-5` | openai/gpt-5-20251215 |
+| `o3` | openai/o3 |
 
 ---
 
-## Spawn Mode Model Passing
+## Rate Limit Handling
 
-All three spawn modes correctly pass the `--model` flag:
+### Claude Max Rate Limits
 
-| Mode | How Model is Passed | Verified |
-|------|---------------------|----------|
-| **Headless** | HTTP POST /session with model field | Yes |
-| **Inline** | `opencode run --model {model}` CLI flag | Yes |
-| **Tmux** | `opencode attach --model {model}` CLI flag | Yes |
-
-**Historical bug:** Early headless mode (HTTP API) ignored model parameter. Fixed by adding model field to CreateSessionRequest and ensuring API passes it through (Dec 22, 2025).
-
----
-
-## Model Selection Strategy
-
-### When to Use Each Model
-
-| Skill | Recommended Model | Why |
-|-------|------------------|-----|
-| `investigation` | Opus (default) | Understanding codebase requires depth |
-| `architect` | Opus (default) | Design decisions require tradeoff analysis |
-| `systematic-debugging` | Opus (default) | Root cause analysis requires reasoning |
-| `codebase-audit` | Opus (default) | Comprehensive review requires thoroughness |
-| `feature-impl` (complex) | Opus (default) | Multi-step implementation needs context |
-| `feature-impl` (simple) | Sonnet | Single-file typo fixes, simple edits |
-| Large context (>200K) | Flash | Gemini handles 1M tokens efficiently |
-
-**The test:** Before downgrading to Sonnet, ask: "Would I trust a quick summary or do I need thorough analysis?"
-
-### Rate-Limiting Escalation
-
-When Claude Max hits rate limits:
-
-1. **Primary:** Switch Claude Max account
+1. **Primary:** Wait for reset (resets at 6am local)
+2. **Secondary:** Switch account (if multiple Max subscriptions)
    ```bash
-   orch account switch work  # Second Max account
+   orch account switch work
+   ```
+3. **Escape hatch:** Docker backend (fresh Statsig fingerprint)
+   ```bash
+   orch spawn --backend docker investigation "task"
    ```
 
-2. **Secondary:** Use Gemini (pay-per-token)
-   ```bash
-   orch spawn --model flash feature-impl "task"
-   ```
+**Note:** Docker fingerprint isolation bypasses device-level rate throttling, NOT weekly usage quota. The weekly quota is account-level.
 
-**Account management:**
-- `orch account list` - Show saved accounts
-- `orch account switch <name>` - Switch to different Max account
-- Accounts stored in `~/.orch/accounts.yaml`
+### Gemini TPM Limits
 
----
+Gemini Flash Paid Tier 2: 2,000 req/min
 
-## Multi-Provider Architecture
-
-### Anthropic (Claude)
-
-- **Auth:** OAuth via Claude Max subscription
-- **Token management:** orch handles refresh, writes to OpenCode's auth.json
-- **Account switching:** orch manages multiple Max accounts for capacity
-
-### Google (Gemini)
-
-- **Auth:** API key (no OAuth)
-- **Token management:** OpenCode handles via its own config
-- **No orch account management needed** - Simple API key
-
-### Future Providers (OpenRouter, DeepSeek)
-
-- **Expected pattern:** API key based (like Gemini)
-- **orch responsibility:** Add model aliases to pkg/model
-- **OpenCode responsibility:** Handle API key auth
-- **No orch account management needed** - They're not OAuth providers
+Tool-heavy agents (investigation, systematic-debugging) can hit this with a single agent. Solutions:
+1. Use Sonnet instead
+2. Apply for Tier 3 (20,000 req/min)
+3. Accept retry delays (not recommended)
 
 ---
 
-## Cost Considerations (Late 2025 Pricing)
+## Debugging
 
-### Claude API Pricing
+### "Model ignored"
 
-| Model | Input | Output | Notes |
-|-------|-------|--------|-------|
-| Opus 4.5 | $5.00/MTok | $25.00/MTok | Highest capability |
-| Sonnet 4.5 | $3.00/MTok | $15.00/MTok | ≤200K tokens |
-| Sonnet 4.5 (>200K) | $6.00/MTok | $22.50/MTok | Context cliff |
-| Haiku 4.5 | $1.00/MTok | $5.00/MTok | Triage/routing |
-
-**Key insight:** Sonnet's price doubles at 200K tokens ("context cliff"). Use Gemini for large context work.
-
-### Claude Max Subscriptions
-
-| Plan | Price | Usage |
-|------|-------|-------|
-| Pro | $20/mo | Basic usage |
-| Max 5x | $100/mo | 5x Pro (~100 turns/day break-even) |
-| Max 20x | ~$400/mo | 20x Pro (~400 turns/day break-even) |
-
-**Recommendation:** Max 5x for power users. API for automated/cached workflows.
-
-### Gemini Pricing
-
-| Model | Input | Output |
-|-------|-------|--------|
-| Flash 2.0 | ~$0.10-0.30/MTok | Variable |
-| Pro 2.0 | ~$1.25-2.00/MTok | Variable |
-
-**Gemini advantage:** 1M token context window, much cheaper for large context.
-
----
-
-## Model Arbitrage Pattern
-
-From the investigations, a three-tier arbitrage strategy emerged:
-
-| Tier | Purpose | Recommended Model | Cost |
-|------|---------|-------------------|------|
-| **1. Routing** | Intent detection, triage | Haiku or Llama 4 Scout | <$0.30/MTok |
-| **2. Execution** | General tasks, coding | Gemini Flash or DeepSeek | <$0.30/MTok |
-| **3. Reasoning** | Complex planning, debugging | Opus or DeepSeek R1 | Higher |
-
-**For orch-go:** We default to Opus (Tier 3) because orchestration work is complex reasoning work. Tier 1/2 routing could be future optimization.
-
----
-
-## Debugging Model Issues
-
-### "Wrong model used"
-
-**Check resolution:**
 ```bash
-# In Go tests
-go test ./pkg/model -v -run TestResolve
-```
-
-**Check what orch passes:**
-```bash
-# Look at spawn output
+# Check what orch passes
 orch spawn --model opus investigation "test" 2>&1 | grep -i model
 ```
 
-### "Model ignored in headless mode"
+### "Opus auth rejected"
 
-**Historical bug** (fixed Dec 2025). If you see this:
-1. Update orch-go (fix is in pkg/opencode/client.go)
-2. Verify model field in CreateSessionRequest
+Opus requires Claude CLI backend:
+```bash
+# Wrong (will fail)
+orch spawn --backend opencode --model opus investigation "task"
 
-### "Rate limited, need different model"
+# Right
+orch spawn --backend claude --model opus investigation "task"
+# Or just (claude is default backend)
+orch spawn investigation "task"
+```
+
+### "Rate limited"
 
 ```bash
-# Check current account
+# Check account status
 orch account list
 
-# Switch accounts
+# Check usage
+orch usage
+
+# Switch accounts or use Docker escape hatch
 orch account switch work
-
-# Fall back to Gemini
-orch spawn --model flash ...
+# or
+orch spawn --backend docker investigation "task"
 ```
 
 ---
 
-## Implementation Details
+## References
 
-### pkg/model/model.go
+### Decisions
+- `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` - Anthropic blocking response
+- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Switch to Claude CLI default
+- `.kb/decisions/2026-01-21-gpt-unsuitable-for-orchestration.md` - GPT-5.2 findings
 
-```go
-// Key structures
-type ModelSpec struct {
-    Provider string
-    ModelID  string
-}
+### Models
+- `.kb/models/model-access-spawn-paths.md` - Detailed spawn path mechanics
+- `.kb/models/orchestration-cost-economics.md` - Full cost analysis
 
-// Aliases map
-var Aliases = map[string]ModelSpec{
-    "opus":    {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
-    "sonnet":  {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
-    "haiku":   {Provider: "anthropic", ModelID: "claude-haiku"},
-    "flash":   {Provider: "google", ModelID: "gemini-2.5-flash"},
-    "flash3":  {Provider: "google", ModelID: "gemini-3-flash-preview"},
-    "pro":     {Provider: "google", ModelID: "gemini-2.0-pro"},
-    // ... more aliases
-}
-
-// Resolution
-func Resolve(spec string) ModelSpec {
-    if spec == "" {
-        return DefaultModel  // Opus
-    }
-    spec = strings.ToLower(spec)  // Case-insensitive
-    if alias, ok := Aliases[spec]; ok {
-        return alias
-    }
-    // Parse provider/model format
-    return parseProviderModel(spec)
-}
-```
-
-### Adding New Aliases
-
-1. Add to `Aliases` map in pkg/model/model.go
-2. Add test case in pkg/model/model_test.go
-3. No account management changes needed (API key providers)
-
----
-
-## Source Investigations (Synthesized)
-
-This guide consolidates findings from:
-
-1. **2025-12-20-inv-investigate-model-flexibility-arbitrage-orch.md** - Initial model alias implementation
-2. **2025-12-20-inv-research-gemini-model-arbitrage-alternatives.md** - Gemini/DeepSeek arbitrage research
-3. **2025-12-20-research-model-arbitrage-api-vs-max.md** - API vs Max pricing analysis
-4. **2025-12-21-inv-fix-buildspawncommand-pass-model-flag.md** - BuildSpawnCommand --model fix
-5. **2025-12-21-inv-model-handling-conflicts-between-orch.md** - Model handling bugs root cause
-6. **2025-12-22-inv-model-flexibility-phase-expand-model.md** - Headless mode model support
-7. **2025-12-23-inv-model-selection-issue-architect-agent.md** - OpenCode API model fix
-8. **2025-12-24-inv-model-provider-architecture-orch-vs.md** - Provider auth architecture
-9. **2025-12-24-inv-test-gemini-flash-model-resolution.md** - Gemini alias verification
-10. **2026-01-04-inv-implement-priority-cascade-model-dashboard.md** - Dashboard model display
-
-**Key patterns across investigations:**
-- Model selection is now consistent across all spawn modes (after Dec 2025 fixes)
-- Opus is the correct default for orchestration work
-- Multi-provider support is additive (just add aliases)
-- Claude Max account management is Anthropic-specific complexity
+### Investigations
+- `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md` - Why workarounds failed
+- `.kb/investigations/2026-01-19-inv-test-deepseek-v3-function-calling.md` - DeepSeek V3 validation
+- `.kb/investigations/2026-01-21-inv-analyze-gpt-orchestrator-session-users.md` - GPT-5.2 analysis
