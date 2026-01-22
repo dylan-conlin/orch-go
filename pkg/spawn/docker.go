@@ -4,7 +4,9 @@ package spawn
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -13,11 +15,17 @@ import (
 // This image should be built from ~/.claude/docker-workaround/Dockerfile.
 const DockerImageName = "claude-code-mcp"
 
+// ContainerNamePrefix is the prefix used for orch-managed Docker containers.
+const ContainerNamePrefix = "orch-"
+
 // SpawnDocker launches a Claude Code agent in Docker via a host tmux window.
 // This provides Statsig fingerprint isolation for rate limit escape hatch.
 //
 // Architecture: Host tmux window runs 'docker run ... claude' (NOT nested tmux).
 // This matches the claude backend pattern while providing fresh fingerprint per spawn.
+//
+// Container tracking: The container name is written to .container_id in the workspace
+// for cleanup by `orch complete` and `orch abandon`.
 func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	// 1. Ensure appropriate tmux session exists
 	// Docker mode is an escape hatch, so both orchestrators and workers go into workers session
@@ -48,9 +56,22 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 		return nil, fmt.Errorf("failed to create docker config dir: %w", err)
 	}
 
+	// 4a. Generate container name for tracking and cleanup
+	// Format: orch-{workspace-name} (sanitized for Docker naming rules)
+	containerName := ContainerNamePrefix + sanitizeContainerName(cfg.WorkspaceName)
+
+	// 4b. Write container name to workspace for cleanup by orch complete/abandon
+	workspacePath := filepath.Join(cfg.ProjectDir, ".orch", "workspace", cfg.WorkspaceName)
+	containerIDFile := filepath.Join(workspacePath, ".container_id")
+	if err := os.WriteFile(containerIDFile, []byte(containerName), 0644); err != nil {
+		// Non-fatal - cleanup will just skip this container if file is missing
+		fmt.Fprintf(os.Stderr, "Warning: failed to write container ID file: %v\n", err)
+	}
+
 	// Docker command that:
 	// - Uses interactive terminal (-it)
 	// - Auto-removes container on exit (--rm)
+	// - Names the container for tracking and cleanup (--name)
 	// - Matches host user for file permissions
 	// - Mounts home directory for project access
 	// - Mounts .claude-docker as .claude for fresh fingerprint (statsig isolation)
@@ -63,6 +84,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	// - Pipes context file to claude with dangerous skip permissions
 	dockerCmd := fmt.Sprintf(
 		`docker run -it --rm `+
+			`--name %q `+
 			`--user "$(id -u):$(id -g)" `+
 			`-v "$HOME":"$HOME" `+
 			`-v "$HOME/.claude-docker":"$HOME/.claude" `+
@@ -79,6 +101,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 			`-e PATH="$HOME/.local/bin/linux-amd64:$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" `+
 			`%s `+
 			`bash -c 'cat %q | claude --dangerously-skip-permissions'`,
+		containerName,
 		cfg.ProjectDir,
 		claudeContext,
 		DockerImageName,
@@ -147,4 +170,95 @@ func CheckDockerImage() error {
 	// For now, just return nil and let the spawn fail with docker's error message
 	// The error from docker run will be clear enough
 	return nil
+}
+
+// sanitizeContainerName converts a workspace name to a valid Docker container name.
+// Docker container names must match [a-zA-Z0-9][a-zA-Z0-9_.-]*.
+// We replace invalid characters with hyphens.
+func sanitizeContainerName(name string) string {
+	var result []byte
+	for i, c := range name {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			result = append(result, byte(c))
+		} else if c == '_' || c == '.' || c == '-' {
+			// These are valid in Docker names (except at position 0)
+			if i > 0 {
+				result = append(result, byte(c))
+			} else {
+				result = append(result, 'x') // Replace leading special char
+			}
+		} else {
+			// Replace other chars with hyphen
+			result = append(result, '-')
+		}
+	}
+	// Ensure name starts with alphanumeric
+	if len(result) > 0 && !((result[0] >= 'a' && result[0] <= 'z') || (result[0] >= 'A' && result[0] <= 'Z') || (result[0] >= '0' && result[0] <= '9')) {
+		result[0] = 'x'
+	}
+	return string(result)
+}
+
+// CleanupDockerContainer stops and removes a Docker container by name.
+// This is called by orch complete and orch abandon to clean up containers
+// that were spawned with the docker backend.
+//
+// Returns nil if:
+// - Container was successfully stopped/removed
+// - Container doesn't exist (already cleaned up or never created)
+// - Container already stopped (--rm flag auto-removed it)
+//
+// Only returns error for unexpected failures.
+func CleanupDockerContainer(containerName string) error {
+	if containerName == "" {
+		return nil
+	}
+
+	// Try to stop the container (will fail gracefully if already stopped/removed)
+	// docker stop sends SIGTERM, waits, then SIGKILL
+	stopCmd := exec.Command("docker", "stop", containerName)
+	stopOutput, stopErr := stopCmd.CombinedOutput()
+
+	if stopErr != nil {
+		// Check if error is "container not found" - that's fine
+		outputStr := string(stopOutput)
+		if strings.Contains(outputStr, "No such container") ||
+			strings.Contains(outputStr, "not found") {
+			// Container already gone - this is expected with --rm flag
+			return nil
+		}
+		// Log warning but don't fail - container might be in weird state
+		fmt.Fprintf(os.Stderr, "Warning: docker stop %s: %s\n", containerName, outputStr)
+	}
+
+	// Try to remove the container (may already be removed by --rm flag)
+	rmCmd := exec.Command("docker", "rm", "-f", containerName)
+	rmOutput, rmErr := rmCmd.CombinedOutput()
+
+	if rmErr != nil {
+		outputStr := string(rmOutput)
+		if strings.Contains(outputStr, "No such container") ||
+			strings.Contains(outputStr, "not found") {
+			// Container already gone - expected with --rm flag
+			return nil
+		}
+		// Log warning but don't fail
+		fmt.Fprintf(os.Stderr, "Warning: docker rm %s: %s\n", containerName, outputStr)
+	}
+
+	return nil
+}
+
+// ReadContainerID reads the container name from a workspace's .container_id file.
+// Returns empty string if file doesn't exist or can't be read.
+func ReadContainerID(workspacePath string) string {
+	if workspacePath == "" {
+		return ""
+	}
+	containerIDFile := filepath.Join(workspacePath, ".container_id")
+	data, err := os.ReadFile(containerIDFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }

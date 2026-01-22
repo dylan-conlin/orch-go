@@ -208,6 +208,19 @@ func runAbandon(beadsID, reason, workdir string) error {
 		fmt.Printf("The agent may have already exited.\n")
 	}
 
+	// Clean up Docker container if this was a docker-backend spawn
+	// This must happen before tmux cleanup since killing tmux might leave container orphaned
+	if workspacePath != "" {
+		containerName := spawn.ReadContainerID(workspacePath)
+		if containerName != "" {
+			if err := spawn.CleanupDockerContainer(containerName); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to clean up Docker container %s: %v\n", containerName, err)
+			} else {
+				fmt.Printf("Cleaned up Docker container: %s\n", containerName)
+			}
+		}
+	}
+
 	// Optionally kill the tmux window if it exists
 	if windowInfo != nil {
 		fmt.Printf("Killing tmux window: %s\n", windowInfo.Target)

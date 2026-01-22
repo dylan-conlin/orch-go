@@ -18,6 +18,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/session"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
@@ -865,14 +866,16 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
-	// Update synthesis with spawn completion info (Capture at Context principle)
+	// TODO: Update synthesis with spawn completion info (Capture at Context principle)
 	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
-	if !isOrchestratorSession && agentName != "" && beadsID != "" {
-		if err := UpdateHandoffAfterComplete(beadsProjectDir, agentName, beadsID, skillName); err != nil {
-			// Non-critical - warn but don't fail completion
-			fmt.Fprintf(os.Stderr, "Warning: failed to update synthesis: %v\n", err)
-		}
-	}
+	// UpdateHandoffAfterComplete was planned but never implemented - see:
+	// .kb/investigations/2026-01-14-inv-orch-complete-triggers-handoff-updates.md
+	// if !isOrchestratorSession && agentName != "" && beadsID != "" {
+	// 	if err := UpdateHandoffAfterComplete(beadsProjectDir, agentName, beadsID, skillName); err != nil {
+	// 		// Non-critical - warn but don't fail completion
+	// 		fmt.Fprintf(os.Stderr, "Warning: failed to update synthesis: %v\n", err)
+	// 	}
+	// }
 
 	// Determine close reason
 	reason := completeReason
@@ -1002,6 +1005,19 @@ func runComplete(identifier, workdir string) error {
 		}
 	} else if completeNoArchive && workspacePath != "" {
 		fmt.Println("Skipped workspace archival (--no-archive)")
+	}
+
+	// Clean up Docker container if this was a docker-backend spawn
+	// This must happen before tmux cleanup since killing tmux might leave container orphaned
+	if workspacePath != "" {
+		containerName := spawn.ReadContainerID(workspacePath)
+		if containerName != "" {
+			if err := spawn.CleanupDockerContainer(containerName); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to clean up Docker container %s: %v\n", containerName, err)
+			} else {
+				fmt.Printf("Cleaned up Docker container: %s\n", containerName)
+			}
+		}
 	}
 
 	// Clean up tmux window if it exists (prevents phantom accumulation)
