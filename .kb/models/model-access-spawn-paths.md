@@ -1,14 +1,14 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-01-21
-**Synthesized From:** 6 investigations + ~70 kb quick entries (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations, Docker backend design, Docker container constraints) spanning Jan 8-21, 2026
+**Last Updated:** 2026-01-22
+**Synthesized From:** 8 investigations + ~70 kb quick entries (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations, Docker backend design, Docker container constraints, API cost discovery, GPT-5.2 orchestration test) spanning Jan 8-22, 2026
 
 ---
 
 ## Summary (30 seconds)
 
-Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but allows Claude Code CLI with Max subscription. This constraint forced a **triple spawn architecture**: primary path (OpenCode API + Sonnet/Flash, headless, high concurrency), escape hatch (Claude CLI + Opus, tmux, crash-resistant), and double escape hatch (Docker + Claude CLI, fresh fingerprint, rate limit bypass). The escape hatches exist because critical infrastructure work (fixing the spawn system itself) can't depend on what might fail, and rate limits require fingerprint isolation. Model choice now encodes reliability requirements, not just quality preferences.
+Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but allows Claude Code CLI with Max subscription. After discovering API costs hit $70-80/day ($2,100-2,400/mo projected), the **recommended primary path** became Claude CLI + Opus ($200/mo flat). The **triple spawn architecture** provides three backends: Claude CLI (Opus, tmux, quality + cost-effective), OpenCode API (Sonnet/DeepSeek, headless, cost tracking), and Docker (fresh fingerprint, rate limit bypass). Default backend is configured via `~/.orch/config.yaml` → `backend:` field. GPT-5.2 tested Jan 21 and deemed unsuitable for orchestration (role boundary collapse, reactive gate handling). Model choice encodes cost, quality, and reliability requirements.
 
 ---
 
@@ -17,42 +17,60 @@ Anthropic restricts Opus 4.5 access via fingerprinting that blocks API usage but
 ### Available Models and Access Methods
 
 **Anthropic Models:**
-- **Opus 4.5** (`claude-opus-4-5-20251101`) - Highest quality, restricted access
-- **Sonnet 4.5** (`claude-sonnet-4-5-20250929`) - Balanced quality/speed
+- **Opus 4.5** (`claude-opus-4-5-20251101`) - Highest quality, primary model for orchestration
+- **Sonnet 4.5** (`claude-sonnet-4-5-20250929`) - Balanced quality/speed, API fallback
 - **Haiku** - Fast, lower cost
+
+**DeepSeek Models:**
+- **DeepSeek V3** (`deepseek/deepseek-chat`) - Cost-effective ($0.25/$0.38/MTok), function calling confirmed working Jan 19
 
 **Gemini Models:**
 - **Flash 3** (`gemini-3-flash-preview`) - Fast, cheap, but 2,000 req/min TPM limit (Paid Tier 2)
 - **Pro** - Higher quality Gemini option
 
+**OpenAI Models:**
+- **GPT-5.2** - Available via ChatGPT Pro subscription, **unsuitable for orchestration** (Jan 21 decision)
+- **GPT-5.2 Codex** - Optimized for agentic coding, worker tasks only
+
 ### Access Patterns
 
-**Pattern 1: OpenCode API (Primary Path)**
+**Pattern 1: Claude CLI (Recommended Primary)**
 ```
-User → orch spawn → OpenCode HTTP API (localhost:4096) → Anthropic/Gemini API
+User → orch spawn → claude CLI → Anthropic API (with fingerprint)
+```
+
+**Characteristics:**
+- Tmux window (visual progress)
+- Opus 4.5 access (Max subscription required)
+- Flat $200/mo unlimited - **10x cheaper than API at heavy usage**
+- Best model quality for orchestration
+- **Trade-off:** No dashboard visibility, manual lifecycle
+- **Independence:** Doesn't depend on OpenCode server
+
+**Why this became primary (Jan 18):**
+- API costs discovered: $402 in ~2 weeks, ramping to $70-80/day
+- Projected API spend: $2,100-2,400/mo vs $200/mo flat
+- Opus quality only available via CLI (fingerprinting blocks API)
+
+**Pattern 2: OpenCode API (Secondary Path - Opt-in)**
+```
+User → orch spawn --backend opencode → OpenCode HTTP API (localhost:4096) → Anthropic/DeepSeek/Gemini API
 ```
 
 **Characteristics:**
 - Headless (no UI, returns immediately)
 - High concurrency (5+ agents simultaneously)
 - Dashboard visibility via SSE
-- Pay-per-token pricing (unknown current spend, switched to Sonnet Jan 9)
+- Pay-per-token pricing (cost tracking recommended)
 - **Constraint:** Cannot use Opus (fingerprinting blocks it)
 - **Constraint:** Gemini Flash has 2,000 req/min TPM limit (tool-heavy agents hit it)
 - **Dependency:** OpenCode server must be running
 
-**Pattern 2: Claude CLI (Escape Hatch)**
-```
-User → orch spawn --backend claude → claude CLI fork → Anthropic API (with fingerprint)
-```
-
-**Characteristics:**
-- Tmux window (visual progress)
-- Lower concurrency (manual tracking)
-- Opus 4.5 access (Max subscription required)
-- Flat $200/mo (unlimited usage)
-- **Independence:** Survives OpenCode server crashes
-- **Trade-off:** No dashboard visibility, manual lifecycle
+**When to use API path:**
+- Cost tracking/metering needed
+- DeepSeek V3 for cost-sensitive work ($0.25/$0.38/MTok)
+- Dashboard visibility required
+- Headless batch processing
 
 **Pattern 3: Docker (Double Escape Hatch)**
 ```
@@ -85,9 +103,11 @@ User → orch spawn --backend docker → host tmux window → docker run claude-
 1. Explicit --backend flag (claude, opencode, or docker)
 2. --opus flag (implies claude backend)
 3. Project config (.orch/config.yaml spawn_mode)
-4. Global config (~/.orch/config.yaml backend)
-5. Default: opencode
+4. Global config (~/.orch/config.yaml backend)  ← CHECK THIS FOR CURRENT DEFAULT
+5. Code default: opencode (fallback if no config)
 ```
+
+**Current default:** See `~/.orch/config.yaml` → `backend:` field
 
 **Note:** Infrastructure work detection is advisory-only (warns, doesn't override). Docker backend must be explicitly requested via `--backend docker`.
 
@@ -99,17 +119,28 @@ User → orch spawn --backend docker → host tmux window → docker run claude-
 
 ### State Transitions
 
-**Normal spawn (OpenCode):**
+**Normal spawn (uses configured default):**
 ```
 orch spawn feature-impl "task"
     ↓
-Backend: opencode (default)
+Backend: from ~/.orch/config.yaml (or code default: opencode)
     ↓
-Model: claude-sonnet-4-5 (default since Jan 9, was gemini-3-flash before TPM limits)
+Model: depends on backend (opus for claude, configurable for opencode)
+    ↓
+Session type depends on backend
+```
+
+**API spawn (opt-in for cost tracking/headless):**
+```
+orch spawn --backend opencode --model sonnet feature-impl "task"
+    ↓
+Backend: opencode (explicit)
+    ↓
+Model: sonnet (or deepseek for cost-sensitive)
     ↓
 Headless session via HTTP API
     ↓
-Dashboard visibility
+Dashboard visibility, pay-per-token
 ```
 
 **Infrastructure spawn (auto-detected):**
@@ -118,22 +149,11 @@ orch spawn systematic-debugging "fix opencode server crash"
     ↓
 Keyword detected: "opencode"
     ↓
-Auto-apply: --backend claude --tmux
+Advisory warning (doesn't override, since claude is already default)
     ↓
 Tmux session via Claude CLI
     ↓
 Survives OpenCode server restart
-```
-
-**Explicit escape hatch:**
-```
-orch spawn --backend claude --model opus architect "complex design"
-    ↓
-Backend: claude (explicit override)
-    ↓
-Model: opus (Max subscription)
-    ↓
-Tmux session, highest quality
 ```
 
 **Docker escape hatch (rate limit bypass):**
@@ -300,26 +320,30 @@ OpenCode HTTP API provides:
 **This enables:** Simple OpenCode API without internal state exposure
 **This constrains:** Dashboard must infer status from indirect signals
 
-### Constraint 4: Cost Model Determines Concurrency
+### Constraint 4: Cost Model Determines Primary Path
 
-**OpenCode API (pay-per-token):**
-- Variable cost scales with usage
-- Natural limit from budget
-- Currently ~$100-200/mo (Dylan's usage)
-- Can spawn 5+ agents concurrently (only paying for active work)
+**The Jan 18 Discovery:**
+- API costs hit $402 in ~2 weeks without awareness
+- Ramping to $70-80/day ($2,100-2,400/mo projected)
+- Max subscription at $200/mo is **10x cheaper** at heavy usage
 
-**Claude CLI (Max subscription):**
+**Claude CLI (Max subscription) - NOW PRIMARY:**
 - Flat $200/mo unlimited
-- Could spawn unlimited agents
-- But: No dashboard visibility
-- But: Manual tmux management doesn't scale
+- Best model quality (Opus)
+- Trade-off: No dashboard visibility, tmux management
 
-**Strategic question enabled:** "Should we shift more work to escape hatch to optimize cost?"
+**OpenCode API (pay-per-token) - NOW SECONDARY:**
+- Variable cost scales with usage
+- Dashboard visibility, headless operation
+- DeepSeek V3: $0.25/$0.38/MTok (cost-effective option)
+- Sonnet: $3/$15/MTok (quality fallback)
 
-**Current answer:** No - headless primary path provides better ergonomics for most work. Reserve escape hatch for critical infrastructure.
+**Strategic question answered:** "Should we shift more work to Max subscription?"
 
-**This enables:** Cost-effective high-concurrency spawning via API path
-**This constrains:** Escape hatch limited to critical work due to ergonomic overhead
+**Current answer (Jan 18):** YES - Claude CLI is now default. API path is opt-in for cost tracking, headless batch work, or specific model needs.
+
+**This enables:** Predictable $200/mo cost with highest model quality
+**This constrains:** Lose dashboard visibility for primary path (accepted trade-off)
 
 ### Constraint 5: Gemini Flash TPM Limits Block Tool-Heavy Agents
 
@@ -411,6 +435,33 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 **This enables:** Simple setup without external API integrations
 **This constrains:** Cannot make data-driven model selection decisions
 
+### Constraint 8: GPT-5.2 Unsuitable for Orchestration
+
+**Why we can't use GPT-5.2 for orchestrators:**
+
+Tested GPT-5.2 as orchestrator on Jan 21 (session ses_4207). Five critical anti-patterns emerged:
+
+| Pattern | GPT-5.2 Behavior | Expected (Opus) Behavior |
+|---------|-----------------|-------------------------|
+| Gate handling | Reactive (hit → fix → repeat) | Anticipatory (synthesize all flags upfront) |
+| Role boundaries | Collapses to worker mode | Maintains supervision boundary |
+| Deliberation | Excessive (200+ second thinking blocks) | Confident, decision-focused |
+| Failure recovery | Repeats same pattern (6+ identical failures) | Adapts strategy |
+| Instruction synthesis | Literal, sequential | Contextual, synthesized |
+
+**Evidence:**
+- 3 spawn attempts required for multi-gate scenario (--bypass-triage, then strategic-first)
+- Role boundary collapse: After spawning architect agent, GPT started debugging Docker directly
+- 6+ timeout failures without strategy adaptation
+- 200+ second thinking blocks revealing internal uncertainty
+
+**Implication:** GPT-5.2 may work for constrained worker tasks but is structurally unsuited for orchestration. This isn't a prompting issue - it's a fundamental behavioral difference.
+
+**This enables:** Clear model selection guidance (Opus for orchestration)
+**This constrains:** Cannot use GPT-5.2/ChatGPT Pro subscription for orchestrator agents
+
+**Reference:** `.kb/decisions/2026-01-21-gpt-unsuitable-for-orchestration.md`
+
 ---
 
 ## Evolution
@@ -468,6 +519,19 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Cost/quality/reliability tradeoffs explicit
 - Strategic questions about model usage surfaced
 
+**Jan 18, 2026:** Claude CLI recommended as primary path
+- Discovered API costs: $402 in ~2 weeks, ramping to $70-80/day
+- Projected spend: $2,100-2,400/mo vs $200/mo flat Max subscription
+- Decision: Use Claude CLI + Opus as primary (via config, not code change)
+- Code default unchanged (`opencode`), but config overrides it
+- See: `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md`
+
+**Jan 19, 2026:** DeepSeek V3 function calling confirmed
+- Tested: 3 minutes, 62K tokens, successful completion with tool calls
+- Cost: $0.25/$0.38/MTok (viable cost-effective API option)
+- Works despite "unstable" warning in DeepSeek docs
+- See: `.kb/investigations/2026-01-19-inv-test-deepseek-v3-function-calling.md`
+
 **Jan 20, 2026:** Docker backend added as third spawn path
 - Provides Statsig fingerprint isolation for rate limit escape hatch
 - Architecture: Host tmux window runs `docker run ... claude` (NOT nested tmux)
@@ -475,6 +539,19 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - Same lifecycle commands (status, complete, abandon) via tmux
 - No dashboard visibility (escape hatch philosophy - use tmux)
 - See: `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md`
+
+**Jan 21, 2026:** GPT-5.2 tested and deemed unsuitable for orchestration
+- ChatGPT Pro subscription ($200/mo) tested as potential escape hatch
+- Five critical anti-patterns: reactive gates, role collapse, excessive deliberation, no failure adaptation, literal instruction handling
+- Decision: Claude Opus 4.5 exclusive for orchestration
+- GPT-5.2 may work for constrained worker tasks only
+- See: `.kb/decisions/2026-01-21-gpt-unsuitable-for-orchestration.md`
+
+**Jan 22, 2026:** Model updated to reflect current state
+- Removed hardcoded defaults; model now points to config for actual values
+- Backend selection mechanism documented (priority cascade)
+- GPT-5.2 orchestration constraint added
+- DeepSeek V3 added as viable API model
 
 ---
 
@@ -487,17 +564,27 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `.kb/investigations/2026-01-10-inv-fix-dual-mode-spawn-bug.md` - Backend flag implementation and naming fix
 - `.kb/investigations/2026-01-11-inv-add-infrastructure-work-detection-auto.md` - Keyword detection and auto-flag application
 - `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md` - Cost visibility gap, tracking requirements, strategic questions blocked
+- `.kb/investigations/2026-01-19-inv-test-deepseek-v3-function-calling.md` - DeepSeek V3 function calling validation
 - `.kb/investigations/2026-01-20-inv-design-claude-docker-backend-integration.md` - Docker backend design, host tmux pattern, fingerprint isolation
+- `.kb/investigations/2026-01-21-inv-analyze-gpt-orchestrator-session-users.md` - GPT-5.2 orchestration test, anti-patterns discovered
 
 **Decisions informed by this model:**
-- Triple spawn architecture (primary + escape hatch + double escape hatch)
-- Never spawn infrastructure work via OpenCode
+- Triple spawn architecture (primary Claude CLI + API secondary + Docker escape hatch)
+- Claude CLI + Opus as default (Jan 18 cost discovery)
+- Never spawn infrastructure work via OpenCode (advisory warning)
 - Opus access requires Max subscription + Claude CLI
-- Infrastructure detection is advisory-only (warns, never overrides)
 - Docker provides fingerprint isolation for rate limit scenarios
+- GPT-5.2 unsuitable for orchestration (Jan 21)
+
+**Decisions:**
+- `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Claude CLI became default after API cost discovery
+- `.kb/decisions/2026-01-21-gpt-unsuitable-for-orchestration.md` - GPT-5.2 unsuitable for orchestration
 
 **Related models:**
 - `.kb/models/dashboard-agent-status.md` - How status is calculated (relates to session state constraint)
+
+**Related guides:**
+- `.kb/guides/model-selection.md` - Authoritative model selection reference (quick lookup)
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/backend.go:resolveBackend()` - Backend selection priority cascade
@@ -507,10 +594,11 @@ Switched from free Gemini to paid Sonnet on Jan 9, 2026. No cost tracking implem
 - `~/.claude/skills/meta/orchestrator/SKILL.md` line 625 - "Why escape hatch exists" section
 
 **Cost evidence:**
-- Claude Max: $200/mo flat (unlimited Opus via CLI)
-- Anthropic API: Unknown current spend (switched to Sonnet Jan 9, no tracking)
+- Claude Max: $200/mo flat (unlimited Opus via CLI) - **NOW PRIMARY**
+- Anthropic API: $402 spent in ~2 weeks (Jan 9-18), ramping to $70-80/day before switch
+- DeepSeek V3 API: $0.25/$0.38/MTok (cost-effective secondary option)
 - Gemini API: Free via AI Studio (but 2,000 req/min limit hit)
-- Gemini Tier 3: Pending (20,000 req/min, would enable Flash as primary)
+- ChatGPT Pro: $200/mo flat (GPT-5.2, but unsuitable for orchestration)
 
 **Failure evidence:**
 - Zombie agents: orch-go-mo0ja, orch-go-pzi2i, orch-go-aoei0 (Jan 8)
