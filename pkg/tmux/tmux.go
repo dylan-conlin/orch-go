@@ -1024,6 +1024,82 @@ func WindowExistsByID(windowID string) bool {
 	return false
 }
 
+// PaneActivity holds information about activity in a tmux pane.
+type PaneActivity struct {
+	CurrentCommand string    // The command currently running in the pane (e.g., "claude", "opencode", "zsh")
+	PanePID        string    // The PID of the shell process in the pane
+	ActivityTime   time.Time // Last activity timestamp
+	IsActive       bool      // True if there's a non-shell process running
+}
+
+// GetPaneActivity returns activity information for a tmux pane.
+// This is useful for detecting if an agent is actively running in a tmux window.
+// windowTarget can be "session:window" format or a window ID like "@1234".
+func GetPaneActivity(windowTarget string) (*PaneActivity, error) {
+	// Query pane info: current_command, pane_pid, pane_activity
+	cmd, err := tmuxCommand("display-message", "-t", windowTarget, "-p",
+		"#{pane_current_command}:#{pane_pid}:#{pane_activity}")
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pane activity: %w", err)
+	}
+
+	// Parse "command:pid:activity_timestamp"
+	outputStr := strings.TrimSpace(string(output))
+	parts := strings.SplitN(outputStr, ":", 3)
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("unexpected pane activity format: %s", outputStr)
+	}
+
+	activity := &PaneActivity{
+		CurrentCommand: parts[0],
+		PanePID:        parts[1],
+	}
+
+	// Parse activity timestamp (Unix timestamp)
+	if activityTS := parts[2]; activityTS != "" {
+		if ts, err := parseUnixTimestamp(activityTS); err == nil {
+			activity.ActivityTime = ts
+		}
+	}
+
+	// Determine if the pane is active (running a non-shell process)
+	// Common shells: bash, zsh, sh, fish, dash
+	// If current command is NOT a shell, the pane is actively running something
+	shellCommands := map[string]bool{
+		"bash": true, "zsh": true, "sh": true, "fish": true, "dash": true,
+		"tcsh": true, "csh": true, "ksh": true,
+	}
+	activity.IsActive = !shellCommands[activity.CurrentCommand]
+
+	return activity, nil
+}
+
+// parseUnixTimestamp parses a Unix timestamp string to time.Time.
+func parseUnixTimestamp(ts string) (time.Time, error) {
+	var timestamp int64
+	_, err := fmt.Sscanf(ts, "%d", &timestamp)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(timestamp, 0), nil
+}
+
+// IsPaneProcessRunning checks if a tmux pane has an active process running.
+// Returns true if the pane is running a command (not just a shell prompt).
+// This is useful for detecting if a claude/opencode agent is actively working.
+func IsPaneProcessRunning(windowTarget string) bool {
+	activity, err := GetPaneActivity(windowTarget)
+	if err != nil {
+		return false
+	}
+	return activity.IsActive
+}
+
 // CaptureLines captures the last N lines from a tmux pane.
 // If lines is 0, captures all visible content.
 func CaptureLines(windowTarget string, lines int) ([]string, error) {

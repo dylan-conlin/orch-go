@@ -399,6 +399,23 @@ func runStatus(serverURL string) error {
 			}
 		}
 
+		// For tmux-based agents, check tmux pane activity as primary or fallback signal
+		// This handles:
+		// 1. Pure claude CLI mode agents that don't have an OpenCode session
+		// 2. OpenCode session-based agents where session reports idle but tmux shows activity
+		//    (e.g., agent is reading files or thinking - no new messages but process is running)
+		if agent.Window != "" {
+			paneRunning := tmux.IsPaneProcessRunning(agent.Window)
+			if agent.SessionID == "" {
+				// No OpenCode session - tmux pane activity is the only signal
+				agent.IsProcessing = paneRunning
+			} else if !agent.IsProcessing && paneRunning {
+				// OpenCode session said idle, but tmux shows active process
+				// Trust tmux as the more direct signal of agent activity
+				agent.IsProcessing = true
+			}
+		}
+
 		// Ensure runtime has a value
 		if agent.Runtime == "" {
 			agent.Runtime = "unknown"
