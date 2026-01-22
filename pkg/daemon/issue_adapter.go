@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
@@ -155,6 +156,79 @@ func ListEpicChildren(epicID string) ([]Issue, error) {
 		return nil, err
 	}
 	return convertBeadsIssues(beadsIssues), nil
+}
+
+// HasPhaseComplete checks if an issue has "Phase: Complete" in its comments.
+// This prevents respawning work that an agent has already completed but the
+// orchestrator hasn't closed yet (e.g., waiting for review).
+// Uses the beads RPC daemon if available, falling back to the bd CLI if not.
+func HasPhaseComplete(beadsID string) (bool, error) {
+	return HasPhaseCompleteForProject(beadsID, "")
+}
+
+// HasPhaseCompleteForProject checks if an issue has "Phase: Complete" in its
+// comments, using a specific project path for beads socket lookup.
+// If projectPath is empty, uses the current working directory.
+func HasPhaseCompleteForProject(beadsID, projectPath string) (bool, error) {
+	if beadsID == "" {
+		return false, nil
+	}
+
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath(projectPath)
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			comments, err := client.Comments(beadsID)
+			if err == nil {
+				return checkCommentsForPhaseComplete(comments), nil
+			}
+			// Fall through to CLI fallback on Comments() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI if daemon unavailable
+	return hasPhaseCompleteCLI(beadsID, projectPath)
+}
+
+// hasPhaseCompleteCLI checks for Phase: Complete via bd CLI.
+func hasPhaseCompleteCLI(beadsID, projectPath string) (bool, error) {
+	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	if projectPath != "" {
+		cmd.Dir = projectPath
+	}
+	cmd.Env = os.Environ()
+	output, err := cmd.Output()
+	if err != nil {
+		// If the command fails (e.g., invalid beads ID), treat as not complete
+		// rather than failing the spawn flow entirely
+		log.Printf("warning: failed to check Phase: Complete for %s: %v", beadsID, err)
+		return false, nil
+	}
+
+	var comments []beads.Comment
+	if err := json.Unmarshal(output, &comments); err != nil {
+		log.Printf("warning: failed to parse comments for %s: %v", beadsID, err)
+		return false, nil
+	}
+
+	return checkCommentsForPhaseComplete(comments), nil
+}
+
+// checkCommentsForPhaseComplete checks if any comment contains "Phase: Complete".
+// The check is case-insensitive for the phase name portion.
+func checkCommentsForPhaseComplete(comments []beads.Comment) bool {
+	for _, c := range comments {
+		// Check for "Phase: Complete" case-insensitively
+		// Common formats: "Phase: Complete", "Phase: Complete - summary", etc.
+		text := strings.ToLower(c.Text)
+		if strings.Contains(text, "phase: complete") {
+			return true
+		}
+	}
+	return false
 }
 
 // SpawnWork spawns work on a beads issue using orch work command.

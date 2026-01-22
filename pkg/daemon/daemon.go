@@ -817,6 +817,24 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}, nil
 	}
 
+	// Pre-spawn completion check: Skip issues where an agent has already reported
+	// Phase: Complete but the orchestrator hasn't closed the issue yet.
+	// This prevents respawning completed work when:
+	// 1. SpawnedIssueTracker TTL expires
+	// 2. OpenCode session was deleted (manual cleanup, server restart)
+	// 3. Beads status is still "open" because orch complete hasn't run
+	if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Message:   fmt.Sprintf("Skipping %s: already completed (Phase: Complete found in comments)", issue.ID),
+		}, nil
+	}
+
 	// If pool is configured, acquire a slot first
 	var slot *Slot
 	if d.Pool != nil {
@@ -919,6 +937,20 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 			Issue:     issue,
 			Skill:     skill,
 			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
+		}, nil, nil
+	}
+
+	// Pre-spawn completion check: Skip issues where an agent has already reported
+	// Phase: Complete but the orchestrator hasn't closed the issue yet.
+	if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
+		if d.Config.Verbose {
+			fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
+		}
+		return &OnceResult{
+			Processed: false,
+			Issue:     issue,
+			Skill:     skill,
+			Message:   fmt.Sprintf("Skipping %s: already completed (Phase: Complete found in comments)", issue.ID),
 		}, nil, nil
 	}
 
@@ -1446,6 +1478,24 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 			Skill:       skill,
 			ProjectName: selected.Project.Name,
 			Message:     fmt.Sprintf("Existing session found for %s - skipping", selected.Issue.ID),
+		}, nil
+	}
+
+	// Pre-spawn completion check: Skip issues where an agent has already reported
+	// Phase: Complete but the orchestrator hasn't closed the issue yet.
+	// Use project path for correct beads socket lookup in cross-project mode.
+	if hasComplete, _ := HasPhaseCompleteForProject(selected.Issue.ID, selected.Project.Path); hasComplete {
+		if d.Config.Verbose {
+			fmt.Printf("  [%s] Skipping %s (Phase: Complete already reported)\n",
+				selected.Project.Name, selected.Issue.ID)
+		}
+		return &CrossProjectOnceResult{
+			Processed:   false,
+			Issue:       &selected.Issue,
+			Project:     &selected.Project,
+			Skill:       skill,
+			ProjectName: selected.Project.Name,
+			Message:     fmt.Sprintf("[%s] Skipping %s: already completed (Phase: Complete found)", selected.Project.Name, selected.Issue.ID),
 		}, nil
 	}
 
