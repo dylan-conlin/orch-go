@@ -23,9 +23,9 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 **Started:** 2026-01-22
 **Updated:** 2026-01-22
 **Owner:** Worker Agent
-**Phase:** Implementing
-**Next Step:** Add authority field to dependency table
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None (future work documented below)
+**Status:** Complete
 
 **Patches-Decision:** `.kb/decisions/2026-01-18-questions-as-first-class-entities.md`
 **Extracted-From:** `.kb/investigations/2026-01-19-design-investigate-substrate-options-decidability-graphs.md`
