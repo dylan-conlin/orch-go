@@ -25,8 +25,8 @@ func TestGetMaxAgentsDefault(t *testing.T) {
 		}
 	}()
 
-	// Clear flag and env var
-	spawnMaxAgents = 0
+	// Clear flag (sentinel -1 means "not set") and env var
+	spawnMaxAgents = -1
 	os.Unsetenv("ORCH_MAX_AGENTS")
 
 	got := getMaxAgents()
@@ -59,7 +59,7 @@ func TestGetMaxAgentsFlagOverridesAll(t *testing.T) {
 	}
 }
 
-// TestGetMaxAgentsEnvVar tests that ORCH_MAX_AGENTS env var is used when flag is 0.
+// TestGetMaxAgentsEnvVar tests that ORCH_MAX_AGENTS env var is used when flag is not set (-1).
 func TestGetMaxAgentsEnvVar(t *testing.T) {
 	// Save and restore original values
 	originalMaxAgents := spawnMaxAgents
@@ -73,8 +73,8 @@ func TestGetMaxAgentsEnvVar(t *testing.T) {
 		}
 	}()
 
-	// Clear flag, set env to 15
-	spawnMaxAgents = 0
+	// Clear flag (sentinel -1 means "not set"), set env to 15
+	spawnMaxAgents = -1
 	os.Setenv("ORCH_MAX_AGENTS", "15")
 
 	got := getMaxAgents()
@@ -97,13 +97,61 @@ func TestGetMaxAgentsInvalidEnvVar(t *testing.T) {
 		}
 	}()
 
-	// Clear flag, set invalid env
-	spawnMaxAgents = 0
+	// Clear flag (sentinel -1 means "not set"), set invalid env
+	spawnMaxAgents = -1
 	os.Setenv("ORCH_MAX_AGENTS", "not-a-number")
 
 	got := getMaxAgents()
 	if got != DefaultMaxAgents {
 		t.Errorf("getMaxAgents() = %d, want default %d (invalid env)", got, DefaultMaxAgents)
+	}
+}
+
+// TestGetMaxAgentsZeroDisablesLimit tests that --max-agents 0 returns 0 (unlimited).
+func TestGetMaxAgentsZeroDisablesLimit(t *testing.T) {
+	// Save and restore original values
+	originalMaxAgents := spawnMaxAgents
+	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
+	defer func() {
+		spawnMaxAgents = originalMaxAgents
+		if originalEnv == "" {
+			os.Unsetenv("ORCH_MAX_AGENTS")
+		} else {
+			os.Setenv("ORCH_MAX_AGENTS", originalEnv)
+		}
+	}()
+
+	// Set flag to 0 (explicitly disables limit), env should be ignored
+	spawnMaxAgents = 0
+	os.Setenv("ORCH_MAX_AGENTS", "10") // Should be ignored because flag is explicitly set
+
+	got := getMaxAgents()
+	if got != 0 {
+		t.Errorf("getMaxAgents() = %d, want 0 (unlimited - flag explicitly set to 0)", got)
+	}
+}
+
+// TestGetMaxAgentsEnvZeroDisablesLimit tests that ORCH_MAX_AGENTS=0 returns 0 (unlimited).
+func TestGetMaxAgentsEnvZeroDisablesLimit(t *testing.T) {
+	// Save and restore original values
+	originalMaxAgents := spawnMaxAgents
+	originalEnv := os.Getenv("ORCH_MAX_AGENTS")
+	defer func() {
+		spawnMaxAgents = originalMaxAgents
+		if originalEnv == "" {
+			os.Unsetenv("ORCH_MAX_AGENTS")
+		} else {
+			os.Setenv("ORCH_MAX_AGENTS", originalEnv)
+		}
+	}()
+
+	// Clear flag (sentinel -1 means "not set"), set env to 0
+	spawnMaxAgents = -1
+	os.Setenv("ORCH_MAX_AGENTS", "0")
+
+	got := getMaxAgents()
+	if got != 0 {
+		t.Errorf("getMaxAgents() = %d, want 0 (unlimited via env var)", got)
 	}
 }
 
