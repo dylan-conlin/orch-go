@@ -288,73 +288,6 @@ func MinimalOrchestratorPrompt(cfg *Config) string {
 	)
 }
 
-// DefaultSynthesisTemplate is the embedded SYNTHESIS.md template content.
-const DefaultSynthesisTemplate = `# Synthesis
-
-**Orchestrator Session:** {workspace-name}
-**Goal:** {session-goal}
-**Duration:** {start-time} → {end-time}
-**Outcome:** {accomplished | partial | blocked}
-
----
-
-## Summary
-
-[1-2 sentence summary of what was accomplished during this session]
-
----
-
-## Work Completed
-
-### Agents Spawned
-- ` + "`{agent-name}`" + ` - {status} - {brief outcome}
-
-### Issues Closed
-- ` + "`{issue-id}`" + ` - {reason}
-
-### Decisions Made
-- {Decision 1}
-- {Decision 2}
-
----
-
-## Active Work
-
-### Running Agents
-- ` + "`{agent-name}`" + ` - {current phase} - {ETA if known}
-
-### Pending Issues
-- ` + "`{issue-id}`" + ` - {why pending}
-
----
-
-## Recommendations for Next Session
-
-**Immediate Priority:**
-- {What to do first when resuming}
-
-**Pending Decisions:**
-- {Decisions that need human input}
-
-**Blocked Items:**
-- {What's blocked and why}
-
----
-
-## Context to Remember
-
-- {Key insight 1}
-- {Key insight 2}
-- {Important constraint discovered}
-
----
-
-## Session Metadata
-
-**Skill:** {skill-name}
-**Workspace:** ` + "`" + `.orch/workspace/{workspace-name}/` + "`" + `
-`
-
 // PreFilledSynthesisTemplate is used to pre-create SYNTHESIS.md with metadata.
 // This encourages progressive documentation - fill as you work, not at the end.
 const PreFilledSynthesisTemplate = `# Synthesis
@@ -559,29 +492,6 @@ func writePreFilledSynthesis(workspacePath, workspaceName, sessionGoal, startTim
 	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	if err := os.WriteFile(synthesisPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write pre-filled synthesis: %w", err)
-	}
-
-	return nil
-}
-
-// EnsureSynthesisTemplate ensures the SYNTHESIS.md template exists.
-func EnsureSynthesisTemplate(projectDir string) error {
-	templatesDir := filepath.Join(projectDir, ".orch", "templates")
-	templatePath := filepath.Join(templatesDir, "SYNTHESIS.md")
-
-	// Check if template already exists
-	if _, err := os.Stat(templatePath); err == nil {
-		return nil // Template exists
-	}
-
-	// Create templates directory if needed
-	if err := os.MkdirAll(templatesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create templates directory: %w", err)
-	}
-
-	// Write the default template
-	if err := os.WriteFile(templatePath, []byte(DefaultSynthesisTemplate), 0644); err != nil {
-		return fmt.Errorf("failed to write synthesis template: %w", err)
 	}
 
 	return nil

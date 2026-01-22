@@ -13,7 +13,6 @@ import (
 const (
 	GatePhaseComplete      = "phase_complete"       // Phase: Complete not reported
 	GateSynthesis          = "synthesis"            // SYNTHESIS.md missing
-	GateSynthesis     = "synthesis"      // SYNTHESIS.md missing (orchestrator)
 	GateHandoffContent     = "handoff_content"      // SYNTHESIS.md has empty/placeholder content
 	GateConstraint         = "constraint"           // Constraint verification failed
 	GatePhaseGate          = "phase_gate"           // Required phase gate not passed
@@ -49,23 +48,6 @@ func VerifySynthesis(workspacePath string) (bool, error) {
 	}
 	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
 	info, err := os.Stat(synthesisPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return info.Size() > 0, nil
-}
-
-// VerifySynthesis checks if SYNTHESIS.md exists and is not empty.
-// Used for orchestrator-type skills instead of SYNTHESIS.md.
-func VerifySynthesis(workspacePath string) (bool, error) {
-	if workspacePath == "" {
-		return false, nil
-	}
-	handoffPath := filepath.Join(workspacePath, "SYNTHESIS.md")
-	info, err := os.Stat(handoffPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
