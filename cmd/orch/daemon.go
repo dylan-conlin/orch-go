@@ -397,6 +397,16 @@ func runDaemonLoop() error {
 					lastCompletion = time.Now()
 					fmt.Printf("[%s] Auto-completed: %s (escalation=%s)\n",
 						timestamp, cr.BeadsID, cr.Escalation)
+
+					// Release the pool slot immediately on completion.
+					// This provides active slot release without waiting for reconciliation,
+					// fixing the capacity leak where beads lookup errors cause stuck counters.
+					if d.Pool != nil && d.Pool.ReleaseByBeadsID(cr.BeadsID) {
+						if daemonVerbose {
+							fmt.Printf("[%s] Released pool slot for %s\n", timestamp, cr.BeadsID)
+						}
+					}
+
 					// Log the completion
 					event := events.Event{
 						Type:      "daemon.complete",
