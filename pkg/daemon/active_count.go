@@ -208,9 +208,11 @@ func groupBeadsIDsByProject(beadsIDs []string, projectPaths map[string]string) m
 
 // getClosedIssuesForProject checks which beads IDs are closed for a specific project.
 // If projectPath is empty, uses the current directory.
-// Beads lookup errors are logged but non-fatal - the function continues processing
-// other IDs rather than failing entirely. This prevents lookup failures from
-// incorrectly inflating active counts in capacity tracking.
+//
+// IMPORTANT: Lookup failures are treated as "closed" to prevent capacity leaks.
+// If we can't confirm a session is active, we don't count it toward capacity.
+// This is conservative: better to potentially allow extra spawns than to get
+// permanently stuck at capacity (which requires manual daemon restart).
 func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string]bool {
 	closed := make(map[string]bool)
 	if len(beadsIDs) == 0 {
@@ -227,11 +229,17 @@ func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string
 			for _, id := range beadsIDs {
 				issue, err := client.Show(id)
 				if err != nil {
-					// Log the error but continue - don't let lookup failures
-					// cause the issue to be incorrectly counted as active.
-					// The issue may have been deleted, or there may be a temporary
-					// connection issue. Either way, we continue processing.
-					log.Printf("Warning: beads lookup failed for %s (via RPC): %v", id, err)
+					// Treat lookup failures as "closed" to prevent capacity leaks.
+					// If we can't confirm a session is active (open beads issue),
+					// we shouldn't count it toward capacity. This is conservative:
+					// better to potentially spawn extra agents than get permanently
+					// stuck at capacity. Common failure cases:
+					// - Issue was deleted
+					// - RPC connection timeout
+					// - Wrong project directory
+					// - Beads daemon not running
+					log.Printf("Warning: beads lookup failed for %s (via RPC): %v - treating as closed", id, err)
+					closed[id] = true
 					continue
 				}
 				if strings.EqualFold(issue.Status, "closed") {
@@ -246,8 +254,10 @@ func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string
 	for _, id := range beadsIDs {
 		issue, err := beads.FallbackShowWithDir(id, projectPath)
 		if err != nil {
-			// Log the error but continue - same rationale as above.
-			log.Printf("Warning: beads lookup failed for %s (via CLI): %v", id, err)
+			// Treat lookup failures as "closed" to prevent capacity leaks.
+			// Same rationale as RPC path above.
+			log.Printf("Warning: beads lookup failed for %s (via CLI): %v - treating as closed", id, err)
+			closed[id] = true
 			continue
 		}
 		if strings.EqualFold(issue.Status, "closed") {

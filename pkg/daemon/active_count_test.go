@@ -226,3 +226,35 @@ func TestGetClosedIssuesBatchWithProjectDirs_ProjectDirsUsed(t *testing.T) {
 		t.Error("expected non-nil result map")
 	}
 }
+
+func TestGetClosedIssuesBatchWithProjectDirs_LookupFailuresTreatedAsClosed(t *testing.T) {
+	// This test verifies the critical behavior fix: when beads lookups fail,
+	// the issues should be treated as "closed" to prevent capacity leaks.
+	// Without this behavior, lookup failures would cause issues to be incorrectly
+	// counted as "active", preventing reconciliation from freeing slots.
+
+	beadsIDs := []string{
+		"nonexistent-proj-abc1",
+		"another-missing-xyz2",
+	}
+
+	// Use invalid paths that will definitely fail lookup
+	projectDirs := map[string]string{
+		"nonexistent-proj-abc1": "/definitely/not/a/real/path",
+		"another-missing-xyz2":  "/also/not/real",
+	}
+
+	result := GetClosedIssuesBatchWithProjectDirs(beadsIDs, projectDirs)
+
+	// With the fix: lookup failures should add to closed map
+	// Both issues should be marked as closed (lookup failed)
+	if len(result) != 2 {
+		t.Errorf("expected 2 issues marked as closed (due to lookup failure), got %d", len(result))
+	}
+
+	for _, id := range beadsIDs {
+		if !result[id] {
+			t.Errorf("expected %s to be marked as closed (lookup failure), but it wasn't", id)
+		}
+	}
+}
