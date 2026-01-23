@@ -788,56 +788,81 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		}
 	}
 
-	issue, err := d.NextIssueExcluding(skip)
-	if err != nil {
-		return nil, err
+	// Create extended skip set that includes issues skipped due to session/completion checks.
+	// This fixes the bug where the daemon stops looking if the highest-priority
+	// issue has an existing session or Phase: Complete.
+	extendedSkip := make(map[string]bool)
+	for k, v := range skip {
+		extendedSkip[k] = v
 	}
 
-	if issue == nil {
-		return &OnceResult{
-			Processed: false,
-			Message:   "No spawnable issues in queue",
-		}, nil
-	}
+	var issue *Issue
+	var skill string
+	var skippedReasons []string
 
-	skill, err := InferSkillFromIssue(issue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to infer skill: %w", err)
-	}
-
-	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
-	// This prevents duplicate spawns when:
-	// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
-	// 2. Status update to "in_progress" failed silently
-	// 3. Multiple daemon instances try to spawn the same issue
-	if HasExistingSessionForBeadsID(issue.ID) {
-		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+	for {
+		var err error
+		issue, err = d.NextIssueExcluding(extendedSkip)
+		if err != nil {
+			return nil, err
 		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
-		}, nil
-	}
 
-	// Pre-spawn completion check: Skip issues where an agent has already reported
-	// Phase: Complete but the orchestrator hasn't closed the issue yet.
-	// This prevents respawning completed work when:
-	// 1. SpawnedIssueTracker TTL expires
-	// 2. OpenCode session was deleted (manual cleanup, server restart)
-	// 3. Beads status is still "open" because orch complete hasn't run
-	if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
-		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
+		if issue == nil {
+			// No more issues to try
+			if len(skippedReasons) > 0 {
+				return &OnceResult{
+					Processed: false,
+					Message:   fmt.Sprintf("No spawnable issues (skipped: %v)", skippedReasons),
+				}, nil
+			}
+			return &OnceResult{
+				Processed: false,
+				Message:   "No spawnable issues in queue",
+			}, nil
 		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Message:   fmt.Sprintf("Skipping %s: already completed (Phase: Complete found in comments)", issue.ID),
-		}, nil
+
+		var skillErr error
+		skill, skillErr = InferSkillFromIssue(issue)
+		if skillErr != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (failed to infer skill: %v)\n", issue.ID, skillErr)
+			}
+			extendedSkip[issue.ID] = true
+			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: failed to infer skill", issue.ID))
+			continue
+		}
+
+		// Session-level dedup: Check if there's an existing OpenCode session for this issue.
+		// This prevents duplicate spawns when:
+		// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
+		// 2. Status update to "in_progress" failed silently
+		// 3. Multiple daemon instances try to spawn the same issue
+		if HasExistingSessionForBeadsID(issue.ID) {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+			}
+			extendedSkip[issue.ID] = true
+			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: existing session", issue.ID))
+			continue
+		}
+
+		// Pre-spawn completion check: Skip issues where an agent has already reported
+		// Phase: Complete but the orchestrator hasn't closed the issue yet.
+		// This prevents respawning completed work when:
+		// 1. SpawnedIssueTracker TTL expires
+		// 2. OpenCode session was deleted (manual cleanup, server restart)
+		// 3. Beads status is still "open" because orch complete hasn't run
+		if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
+			}
+			extendedSkip[issue.ID] = true
+			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: Phase: Complete", issue.ID))
+			continue
+		}
+
+		// Found an issue that passes all checks
+		break
 	}
 
 	// If pool is configured, acquire a slot first
@@ -1462,45 +1487,67 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 		return allIssues[i].Issue.Priority < allIssues[j].Issue.Priority
 	})
 
-	// Take the first (highest priority) issue
-	selected := allIssues[0]
+	// Try each issue in priority order until one passes session/completion checks.
+	// This fixes the bug where the daemon stops looking if the highest-priority
+	// issue has an existing session or Phase: Complete.
+	var selected *CrossProjectIssue
+	var skill string
+	var skippedReasons []string
 
-	skill, err := InferSkillFromIssue(&selected.Issue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to infer skill: %w", err)
+	for i := range allIssues {
+		candidate := &allIssues[i]
+
+		// Infer skill for this candidate
+		candidateSkill, err := InferSkillFromIssue(&candidate.Issue)
+		if err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Skipping %s (failed to infer skill: %v)\n",
+					candidate.Project.Name, candidate.Issue.ID, err)
+			}
+			skippedReasons = append(skippedReasons,
+				fmt.Sprintf("%s: failed to infer skill", candidate.Issue.ID))
+			continue
+		}
+
+		// Session-level dedup: Check if there's an existing OpenCode session for this issue
+		if HasExistingSessionForBeadsID(candidate.Issue.ID) {
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Skipping %s (existing OpenCode session found)\n",
+					candidate.Project.Name, candidate.Issue.ID)
+			}
+			skippedReasons = append(skippedReasons,
+				fmt.Sprintf("%s: existing session", candidate.Issue.ID))
+			continue
+		}
+
+		// Pre-spawn completion check: Skip issues where an agent has already reported
+		// Phase: Complete but the orchestrator hasn't closed the issue yet.
+		// Use project path for correct beads socket lookup in cross-project mode.
+		if hasComplete, _ := HasPhaseCompleteForProject(candidate.Issue.ID, candidate.Project.Path); hasComplete {
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Skipping %s (Phase: Complete already reported)\n",
+					candidate.Project.Name, candidate.Issue.ID)
+			}
+			skippedReasons = append(skippedReasons,
+				fmt.Sprintf("%s: Phase: Complete", candidate.Issue.ID))
+			continue
+		}
+
+		// This candidate passes all checks
+		selected = candidate
+		skill = candidateSkill
+		break
 	}
 
-	// Session-level dedup: Check if there's an existing OpenCode session for this issue
-	if HasExistingSessionForBeadsID(selected.Issue.ID) {
-		if d.Config.Verbose {
-			fmt.Printf("  [%s] Skipping %s (existing OpenCode session found)\n",
-				selected.Project.Name, selected.Issue.ID)
+	// If no issue passed the checks, report what was skipped
+	if selected == nil {
+		msg := "No spawnable issues (all skipped due to existing sessions or Phase: Complete)"
+		if len(skippedReasons) > 0 && d.Config.Verbose {
+			msg = fmt.Sprintf("Skipped %d issues: %v", len(skippedReasons), skippedReasons)
 		}
 		return &CrossProjectOnceResult{
-			Processed:   false,
-			Issue:       &selected.Issue,
-			Project:     &selected.Project,
-			Skill:       skill,
-			ProjectName: selected.Project.Name,
-			Message:     fmt.Sprintf("Existing session found for %s - skipping", selected.Issue.ID),
-		}, nil
-	}
-
-	// Pre-spawn completion check: Skip issues where an agent has already reported
-	// Phase: Complete but the orchestrator hasn't closed the issue yet.
-	// Use project path for correct beads socket lookup in cross-project mode.
-	if hasComplete, _ := HasPhaseCompleteForProject(selected.Issue.ID, selected.Project.Path); hasComplete {
-		if d.Config.Verbose {
-			fmt.Printf("  [%s] Skipping %s (Phase: Complete already reported)\n",
-				selected.Project.Name, selected.Issue.ID)
-		}
-		return &CrossProjectOnceResult{
-			Processed:   false,
-			Issue:       &selected.Issue,
-			Project:     &selected.Project,
-			Skill:       skill,
-			ProjectName: selected.Project.Name,
-			Message:     fmt.Sprintf("[%s] Skipping %s: already completed (Phase: Complete found)", selected.Project.Name, selected.Issue.ID),
+			Processed: false,
+			Message:   msg,
 		}, nil
 	}
 
