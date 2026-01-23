@@ -99,6 +99,8 @@ Spawn Modes:
   Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
   --tmux:             Spawns in a tmux window - visible, interruptible, opt-in
   --inline:           Runs in current terminal - blocking with TUI, for debugging
+                      With --backend claude: Claude CLI runs directly (interactive orchestrator sessions)
+                      Without backend: OpenCode TUI runs directly
   --attach:           Spawns in tmux and attaches immediately (implies --tmux)
 
 Spawn Tiers:
@@ -157,7 +159,10 @@ Examples:
   
   # Inline mode - blocking with TUI, for debugging
   orch spawn --bypass-triage --inline investigation "explore codebase"
-  
+
+  # Claude CLI inline mode - interactive orchestrator session in current terminal
+  orch spawn --bypass-triage --backend claude --inline orchestrator "coordinate work"
+
   # Gap gating - block spawn on poor context quality
   orch spawn --bypass-triage --gate-on-gap investigation "important task"
   
@@ -1307,20 +1312,27 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
-	// Spawn mode: inline (blocking TUI), tmux (opt-in for workers, default for orchestrators), claude (tmux), or headless (default for workers)
-	if inline {
-		// Inline mode (blocking) - run in current terminal with TUI
-		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
-	}
+	// Spawn mode priority:
+	// 1. Explicit backend config (claude, docker) - handles inline within backend
+	// 2. Generic inline mode (uses opencode)
+	// 3. Headless/tmux modes
 
-	// Explicit backend config takes priority over headless flag
-	// This allows daemon spawns to use claude/docker backend when configured
+	// Explicit backend config takes priority - backends handle their own inline mode
 	if cfg.SpawnMode == "claude" {
+		if inline {
+			// Claude CLI inline mode - blocking, interactive in current terminal
+			return runSpawnClaudeInline(serverURL, cfg, beadsID, skillName, task)
+		}
 		return runSpawnClaude(serverURL, cfg, beadsID, skillName, task, attach)
 	}
 
 	if cfg.SpawnMode == "docker" {
 		return runSpawnDocker(serverURL, cfg, beadsID, skillName, task, attach)
+	}
+
+	// Inline mode (blocking) for opencode backend - run in current terminal with TUI
+	if inline {
+		return runSpawnInline(serverURL, cfg, minimalPrompt, beadsID, skillName, task)
 	}
 
 	// Headless flag only applies when no explicit backend is configured
@@ -1956,6 +1968,55 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 		if err := tmux.Attach(result.Window); err != nil {
 			return fmt.Errorf("failed to attach to tmux: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// runSpawnClaudeInline spawns the agent using Claude Code CLI inline (blocking).
+// This runs claude directly in the current terminal without tmux, for interactive sessions.
+func runSpawnClaudeInline(serverURL string, cfg *spawn.Config, beadsID, skillName, task string) error {
+	// Register orchestrator session in registry if needed (before spawn, in case it fails)
+	registerOrchestratorSession(cfg, "", task)
+
+	// Register agent in the agent registry (for orch status tracking)
+	// Note: No window target for inline mode
+	registerAgent(cfg, "", "", registry.ModeHeadless, cfg.Model)
+
+	// Log the session creation
+	logger := events.NewLogger(events.DefaultLogPath())
+	eventData := map[string]interface{}{
+		"skill":               skillName,
+		"task":                task,
+		"workspace":           cfg.WorkspaceName,
+		"beads_id":            beadsID,
+		"spawn_mode":          "claude-inline",
+		"no_track":            cfg.NoTrack,
+		"skip_artifact_check": cfg.SkipArtifactCheck,
+	}
+	addGapAnalysisToEventData(eventData, cfg.GapAnalysis)
+	addUsageInfoToEventData(eventData, cfg.UsageInfo)
+	event := events.Event{
+		Type:      "session.spawned",
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	}
+	if err := logger.Log(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
+	}
+
+	// Print spawn summary with prominent gap warning if needed
+	printSpawnSummaryWithGapWarning(cfg.GapAnalysis)
+
+	fmt.Printf("Spawning agent in Claude mode (inline):\n")
+	fmt.Printf("  Workspace:  %s\n", cfg.WorkspaceName)
+	fmt.Printf("  Beads ID:   %s\n", beadsID)
+	fmt.Printf("  Context:    %s\n", formatContextQualitySummary(cfg.GapAnalysis))
+	fmt.Println()
+
+	// Run Claude inline (blocking) - this will take over the terminal
+	if err := spawn.SpawnClaudeInline(cfg); err != nil {
+		return err
 	}
 
 	return nil

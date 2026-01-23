@@ -3,6 +3,8 @@ package spawn
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
@@ -92,5 +94,70 @@ func AbandonClaude(windowTarget string) error {
 	if err := tmux.KillWindow(windowTarget); err != nil {
 		return fmt.Errorf("failed to kill tmux window: %w", err)
 	}
+	return nil
+}
+
+// SpawnClaudeInline launches a Claude Code agent inline (blocking) in the current terminal.
+// Unlike SpawnClaude, this runs directly without tmux, blocking until the session completes.
+// This is useful for interactive orchestrator sessions where Dylan wants to collaborate
+// directly with the agent in the current terminal.
+func SpawnClaudeInline(cfg *Config) error {
+	// Get context file path
+	contextPath := cfg.ContextFilePath()
+
+	// Determine CLAUDE_CONTEXT env var to signal hooks to skip duplicate injection
+	var claudeContext string
+	switch {
+	case cfg.IsMetaOrchestrator:
+		claudeContext = "meta-orchestrator"
+	case cfg.IsOrchestrator:
+		claudeContext = "orchestrator"
+	default:
+		claudeContext = "worker"
+	}
+
+	// Read the context file content
+	contextContent, err := os.ReadFile(contextPath)
+	if err != nil {
+		return fmt.Errorf("failed to read context file: %w", err)
+	}
+
+	// Build claude command
+	// Use --dangerously-skip-permissions to avoid blocking on edit prompts
+	cmd := exec.Command("claude", "--dangerously-skip-permissions")
+	cmd.Dir = cfg.ProjectDir
+	cmd.Env = append(os.Environ(),
+		"CLAUDE_CONTEXT="+claudeContext,
+		"ORCH_WORKER=1",
+	)
+
+	// Connect stdin to the context content, then inherit from terminal
+	// We pipe the context first, then claude continues with interactive input
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	// Connect stdout and stderr to terminal for interactive use
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start claude: %w", err)
+	}
+
+	// Write context to stdin and close to signal end of initial input
+	if _, err := stdinPipe.Write(contextContent); err != nil {
+		cmd.Process.Kill()
+		return fmt.Errorf("failed to write context to stdin: %w", err)
+	}
+	stdinPipe.Close()
+
+	// Wait for command to complete (blocking)
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("claude exited with error: %w", err)
+	}
+
 	return nil
 }
