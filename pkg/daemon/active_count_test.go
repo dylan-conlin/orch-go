@@ -180,3 +180,49 @@ func TestIsUntrackedBeadsID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetClosedIssuesBatchWithProjectDirs_EmptyInput(t *testing.T) {
+	// Test with nil beads IDs
+	result := GetClosedIssuesBatchWithProjectDirs(nil, nil)
+	if len(result) != 0 {
+		t.Errorf("expected empty map for nil input, got %v", result)
+	}
+
+	// Test with empty slice
+	result = GetClosedIssuesBatchWithProjectDirs([]string{}, nil)
+	if len(result) != 0 {
+		t.Errorf("expected empty map for empty input, got %v", result)
+	}
+
+	// Test with nil projectDirs (should use kb projects fallback)
+	result = GetClosedIssuesBatchWithProjectDirs([]string{"orch-go-abc1"}, nil)
+	// Note: This won't actually find closed issues without a beads daemon,
+	// but it shouldn't panic
+	if result == nil {
+		t.Error("expected non-nil map, got nil")
+	}
+}
+
+func TestGetClosedIssuesBatchWithProjectDirs_ProjectDirsUsed(t *testing.T) {
+	// This test verifies that explicit projectDirs are preferred over kb projects.
+	// We can't test the actual beads lookup without a daemon, but we can verify
+	// the function doesn't panic and handles the input correctly.
+
+	beadsIDs := []string{
+		"proj-a-abc1",
+		"proj-b-xyz2",
+	}
+
+	projectDirs := map[string]string{
+		"proj-a-abc1": "/path/to/proj-a",
+		// proj-b-xyz2 is intentionally missing - should fall back to kb projects
+	}
+
+	// This won't find actual issues (no daemon), but it tests the code path
+	result := GetClosedIssuesBatchWithProjectDirs(beadsIDs, projectDirs)
+
+	// Should return a valid (possibly empty) map
+	if result == nil {
+		t.Error("expected non-nil result map")
+	}
+}

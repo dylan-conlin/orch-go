@@ -34,9 +34,10 @@ func DefaultActiveCount() int {
 	defer resp.Body.Close()
 
 	var sessions []struct {
-		ID    string `json:"id"`
-		Title string `json:"title"`
-		Time  struct {
+		ID        string `json:"id"`
+		Title     string `json:"title"`
+		Directory string `json:"directory"` // Session's working directory (for cross-project resolution)
+		Time      struct {
 			Updated int64 `json:"updated"` // Unix timestamp in milliseconds
 		} `json:"time"`
 	}
@@ -51,9 +52,13 @@ func DefaultActiveCount() int {
 	const maxIdleTime = 30 * time.Minute
 	now := time.Now()
 
-	// Collect beads IDs for batch lookup
+	// Collect beads IDs and project directories for batch lookup.
+	// Using session.Directory is more reliable than kb projects list because:
+	// 1. It directly identifies where the agent is running
+	// 2. It doesn't require the project to be registered in kb
 	var recentBeadsIDs []string
 	beadsIDToSession := make(map[string]bool)
+	beadsIDToProjectDir := make(map[string]string)
 	for _, s := range sessions {
 		updatedAt := time.Unix(s.Time.Updated/1000, 0)
 		if now.Sub(updatedAt) > maxIdleTime {
@@ -70,6 +75,12 @@ func DefaultActiveCount() int {
 
 		recentBeadsIDs = append(recentBeadsIDs, beadsID)
 		beadsIDToSession[beadsID] = true
+
+		// Use session directory for cross-project resolution.
+		// Skip "/" as it's not a valid project directory.
+		if s.Directory != "" && s.Directory != "/" {
+			beadsIDToProjectDir[beadsID] = s.Directory
+		}
 	}
 
 	// If no recent sessions, return early
@@ -77,9 +88,9 @@ func DefaultActiveCount() int {
 		return 0
 	}
 
-	// Batch fetch issue status to check if closed
-	// This prevents counting completed agents (beads issue closed but session still exists)
-	closedIssues := GetClosedIssuesBatch(recentBeadsIDs)
+	// Batch fetch issue status to check if closed.
+	// Use project dirs from sessions (more reliable for cross-project scenarios).
+	closedIssues := GetClosedIssuesBatchWithProjectDirs(recentBeadsIDs, beadsIDToProjectDir)
 
 	// Count sessions with open issues only
 	activeCount := 0
@@ -100,20 +111,54 @@ func DefaultActiveCount() int {
 // and querying the correct beads database for each project.
 // Exported for use by checkConcurrencyLimit in spawn_cmd.go.
 func GetClosedIssuesBatch(beadsIDs []string) map[string]bool {
+	// Delegate to the version with empty project dirs.
+	// This will fall back to kb projects list for project resolution.
+	return GetClosedIssuesBatchWithProjectDirs(beadsIDs, nil)
+}
+
+// GetClosedIssuesBatchWithProjectDirs checks which beads IDs have closed issues.
+// Returns a map of beadsID -> true for closed issues.
+// The projectDirs map provides explicit beadsID -> projectDir mappings (typically from session.Directory).
+// For beads IDs not in projectDirs, falls back to kb projects list resolution.
+// This is the preferred method when session directories are available, as it's more reliable
+// than deriving project paths from beads ID prefixes.
+func GetClosedIssuesBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]string) map[string]bool {
 	closed := make(map[string]bool)
 	if len(beadsIDs) == 0 {
 		return closed
 	}
 
-	// Build project name -> path map for cross-project resolution
-	projectPaths := buildProjectPathMap()
+	// Build project name -> path map for cross-project resolution (used as fallback)
+	projectNamePaths := buildProjectPathMap()
 
-	// Group beads IDs by project
-	idsByProject := groupBeadsIDsByProject(beadsIDs, projectPaths)
+	// Group beads IDs by project directory.
+	// Priority: 1) explicit projectDirs, 2) kb projects list, 3) current directory
+	idsByProjectDir := make(map[string][]string)
+	for _, id := range beadsIDs {
+		var projectDir string
+
+		// First, check if we have an explicit project dir from the caller
+		if projectDirs != nil {
+			if dir, ok := projectDirs[id]; ok && dir != "" {
+				projectDir = dir
+			}
+		}
+
+		// Fall back to kb projects list resolution by beads ID prefix
+		if projectDir == "" {
+			projectName := extractProjectFromBeadsID(id)
+			if path, ok := projectNamePaths[projectName]; ok {
+				projectDir = path
+			}
+		}
+
+		// Group by project dir (empty string = current directory)
+		idsByProjectDir[projectDir] = append(idsByProjectDir[projectDir], id)
+	}
 
 	// Check each project's issues
-	for projectPath, ids := range idsByProject {
-		closedInProject := getClosedIssuesForProject(projectPath, ids)
+	for projectDir, ids := range idsByProjectDir {
+		closedInProject := getClosedIssuesForProject(projectDir, ids)
 		for id := range closedInProject {
 			closed[id] = true
 		}

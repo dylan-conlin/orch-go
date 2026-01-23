@@ -572,7 +572,12 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 
 	// Get actual count using the configured counting function
 	// (DockerActiveCount for docker backend, DefaultActiveCount otherwise)
-	actualCount := d.activeCountFunc()
+	// Fall back to DefaultActiveCount if activeCountFunc is not set (e.g., in tests).
+	countFunc := d.activeCountFunc
+	if countFunc == nil {
+		countFunc = DefaultActiveCount
+	}
+	actualCount := countFunc()
 
 	// Reconcile pool with actual count
 	return d.Pool.Reconcile(actualCount)
