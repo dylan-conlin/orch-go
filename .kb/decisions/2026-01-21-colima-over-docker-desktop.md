@@ -35,8 +35,10 @@ brew install colima docker-credential-helper
 # Stop Docker Desktop
 osascript -e 'quit app "Docker Desktop"'
 
-# Start Colima (4 CPUs, 8GB RAM)
-colima start --cpu 4 --memory 8
+# Start Colima (4 CPUs, 12GB RAM)
+# 12GB allows 6GB per container (2 concurrent agents)
+# Increased from 8GB (4GB/container) after SIGKILL crashes at ~9k tokens
+colima start --cpu 4 --memory 12
 
 # Auto-start on boot
 brew services start colima

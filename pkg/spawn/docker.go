@@ -72,8 +72,8 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	// - Uses interactive terminal (-it)
 	// - Auto-removes container on exit (--rm)
 	// - Names the container for tracking and cleanup (--name)
-	// - Limits memory to 4GB to prevent OOM kills in Colima VM
-	//   (Colima VM has 8GB total; 4GB per container allows 2 concurrent agents)
+	// - Limits memory to 6GB to prevent OOM kills in Colima VM
+	//   (Colima VM has 12GB total; 6GB per container allows 2 concurrent agents)
 	//   Setting --memory-swap equal to --memory disables swap (prevents disk thrashing)
 	// - Matches host user for file permissions
 	// - Mounts home directory for project access
@@ -89,7 +89,7 @@ func SpawnDocker(cfg *Config) (*tmux.SpawnResult, error) {
 	dockerCmd := fmt.Sprintf(
 		`docker run -it --rm `+
 			`--name %q `+
-			`--memory 4g --memory-swap 4g `+
+			`--memory 6g --memory-swap 6g `+
 			`--user "$(id -u):$(id -g)" `+
 			`-v "$HOME":"$HOME" `+
 			`-v "$HOME/.claude-docker":"$HOME/.claude" `+

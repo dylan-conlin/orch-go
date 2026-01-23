@@ -41,9 +41,16 @@ func ListReadyIssues() ([]Issue, error) {
 // ListReadyIssuesForProject returns triage:ready issues for a specific project.
 // Uses the beads RPC daemon if available at that project path, falling back to CLI.
 // On error, returns empty list with logged warning (does not crash).
+// Returns empty list (no error) for projects without .beads/ directory.
 func ListReadyIssuesForProject(projectPath string) ([]Issue, error) {
 	if projectPath == "" {
 		return nil, fmt.Errorf("projectPath is required")
+	}
+
+	// Skip projects without beads initialized (avoids noisy warnings)
+	beadsDir := filepath.Join(projectPath, ".beads")
+	if _, err := os.Stat(beadsDir); os.IsNotExist(err) {
+		return []Issue{}, nil
 	}
 
 	// Try to use the beads RPC client first
