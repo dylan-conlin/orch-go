@@ -79,6 +79,36 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 
 ---
 
+## Deliverables
+
+### Changes Made
+
+1. **pkg/spawn/claude.go** - Added `SpawnClaudeInline` function
+   - Runs claude CLI directly in current terminal (blocking)
+   - Pipes SPAWN_CONTEXT.md content to stdin
+   - Sets CLAUDE_CONTEXT and ORCH_WORKER env vars
+
+2. **cmd/orch/spawn_cmd.go** - Modified spawn flow
+   - Reordered to check backend mode BEFORE inline flag
+   - Added `runSpawnClaudeInline` function for inline sessions
+   - Updated help text to document `--backend claude --inline`
+   - Added example: `orch spawn --bypass-triage --backend claude --inline orchestrator "task"`
+
+### Test Results
+
+- `go build ./cmd/orch` - succeeded
+- `go test ./cmd/orch/... -v -run "Spawn"` - all spawn tests pass (45+)
+- Pre-existing test failure in `TestFormatBeadsIDForDisplay` (timezone issue, unrelated)
+
+### Usage
+
+```bash
+# Interactive orchestrator session with Claude CLI in current terminal
+orch spawn --bypass-triage --backend claude --inline orchestrator "coordinate work"
+```
+
+---
+
 ## References
 
 **Files Examined:**
