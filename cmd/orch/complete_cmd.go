@@ -500,6 +500,11 @@ func runComplete(identifier, workdir string) error {
 	var gatesFailed []string
 	var skillName string
 
+	// Auto-rebuild Go binaries BEFORE verification
+	// This ensures verification runs against fresh binaries when agents modify Go code
+	// Handles both same-project and cross-project scenarios
+	rebuildGoProjectsIfNeeded(beadsProjectDir, workspacePath)
+
 	// Check if this is a question entity (strategic node, not agent work)
 	// Questions don't have agents, so they skip Phase: Complete requirement
 	isQuestion := issue != nil && issue.IssueType == "question"
@@ -1048,22 +1053,9 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
-	// Auto-rebuild if agent committed Go changes (in the beads project)
+	// Check for new CLI commands that may need skill documentation
+	// Note: Auto-rebuild is done BEFORE verification via rebuildGoProjectsIfNeeded()
 	if hasGoChangesInRecentCommits(beadsProjectDir) {
-		fmt.Println("Detected Go file changes in recent commits")
-		if err := runAutoRebuild(beadsProjectDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed: %v\n", err)
-		} else {
-			fmt.Println("Auto-rebuild completed: make install")
-			// Restart orch serve if running
-			if restarted, err := restartOrchServe(beadsProjectDir); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to restart orch serve: %v\n", err)
-			} else if restarted {
-				fmt.Println("Restarted orch serve")
-			}
-		}
-
-		// Check for new CLI commands that may need skill documentation
 		newCommands := detectNewCLICommands(beadsProjectDir)
 		if len(newCommands) > 0 {
 			// Track new commands in doc debt registry
@@ -1429,6 +1421,68 @@ func isSkillRelevantChange(commit CommitInfo, skillName string) bool {
 		}
 	}
 	return false
+}
+
+// rebuildGoProjectsIfNeeded checks for Go changes and rebuilds affected projects.
+// This is called BEFORE verification to ensure verification runs against fresh binaries.
+// It handles both the beads project directory and cross-project scenarios.
+func rebuildGoProjectsIfNeeded(beadsProjectDir, workspacePath string) {
+	// Collect unique project directories that might have Go changes
+	projectDirs := make(map[string]bool)
+
+	// Always check the beads project directory
+	if beadsProjectDir != "" {
+		projectDirs[beadsProjectDir] = true
+	}
+
+	// Check if workspace points to a different project (cross-project agent)
+	if workspacePath != "" {
+		projectDirFromWorkspace := extractProjectDirFromWorkspace(workspacePath)
+		if projectDirFromWorkspace != "" && projectDirFromWorkspace != beadsProjectDir {
+			projectDirs[projectDirFromWorkspace] = true
+		}
+	}
+
+	// Check each project for Go changes and rebuild if needed
+	var rebuiltOrchGo bool
+	var orchGoDir string
+
+	for projectDir := range projectDirs {
+		if !hasGoChangesInRecentCommits(projectDir) {
+			continue
+		}
+
+		// Check if this is a Go project (has go.mod)
+		goModPath := filepath.Join(projectDir, "go.mod")
+		if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+			continue
+		}
+
+		projectName := filepath.Base(projectDir)
+		fmt.Printf("Detected Go changes in %s, auto-rebuilding...\n", projectName)
+
+		if err := runAutoRebuild(projectDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: auto-rebuild failed for %s: %v\n", projectName, err)
+			continue
+		}
+
+		fmt.Printf("Auto-rebuild completed: %s/make install\n", projectName)
+
+		// Track if we rebuilt orch-go (for service restart)
+		if projectName == "orch-go" {
+			rebuiltOrchGo = true
+			orchGoDir = projectDir
+		}
+	}
+
+	// Restart orch serve if orch-go was rebuilt
+	if rebuiltOrchGo {
+		if restarted, err := restartOrchServe(orchGoDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to restart orch serve: %v\n", err)
+		} else if restarted {
+			fmt.Println("Restarted orch serve")
+		}
+	}
 }
 
 // runAutoRebuild runs make install in the project directory.
