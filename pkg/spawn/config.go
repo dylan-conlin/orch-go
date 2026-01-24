@@ -64,6 +64,35 @@ func DefaultIncludeServersForSkill(skillName string) bool {
 	return false // Don't include for investigation-type skills by default
 }
 
+// SkillRequiresInvestigation maps skills to whether they mandate investigation files.
+// Investigation-type skills produce knowledge artifacts and require investigation files.
+// Implementation-focused skills produce code changes and do NOT require investigation files.
+var SkillRequiresInvestigation = map[string]bool{
+	// Skills that require investigation files (knowledge artifact producers)
+	"investigation":  true,
+	"architect":      true,
+	"research":       true,
+	"codebase-audit": true,
+
+	// Skills that do NOT require investigation files (implementation-focused)
+	"feature-impl":         false,
+	"systematic-debugging": false,
+	"reliability-testing":  false,
+	"issue-creation":       false,
+	"design-session":       false, // Produces design artifacts, not investigation files
+}
+
+// IsInvestigationSkill returns whether a skill requires investigation files.
+// Returns true for investigation-type skills (investigation, architect, research).
+// Returns false for implementation-focused skills (feature-impl, systematic-debugging).
+// Unknown skills default to false (conservative - don't mandate investigation files).
+func IsInvestigationSkill(skillName string) bool {
+	if requires, ok := SkillRequiresInvestigation[skillName]; ok {
+		return requires
+	}
+	return false // Conservative default: don't mandate investigation files for unknown skills
+}
+
 // Config holds configuration for spawning an agent.
 type Config struct {
 	// Task description

@@ -217,6 +217,7 @@ This applies to:
 
 DELIVERABLES (REQUIRED):
 1. **FIRST:** Verify project location: pwd (must be {{.ProjectDir}})
+{{if .IsInvestigationSkill}}
 2. **SET UP investigation file:** Run ` + "`kb create investigation {{.InvestigationSlug}}`" + ` to create from template
    - This creates: ` + "`.kb/investigations/simple/YYYY-MM-DD-{{.InvestigationSlug}}.md`" + `
    - This file is your coordination artifact (replaces WORKSPACE.md)
@@ -232,18 +233,22 @@ DELIVERABLES (REQUIRED):
    - Only fill Conclusion if you actually tested (this is the key discipline)
 4. Update Status: field when done (Active → Complete)
 5. [Task-specific deliverables]
+{{else}}
+2. [Task-specific deliverables from skill guidance]
+{{end}}
 {{if ne .Tier "light"}}
-6. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
+{{if .IsInvestigationSkill}}6{{else}}3{{end}}. **CREATE SYNTHESIS.md:** Before completing, create ` + "`SYNTHESIS.md`" + ` in your workspace: {{.ProjectDir}}/.orch/workspace/{{.WorkspaceName}}/SYNTHESIS.md
    - Use the template from: {{.ProjectDir}}/.orch/templates/SYNTHESIS.md
    - This is CRITICAL for the orchestrator to review your work.
 {{else}}
-6. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
+{{if .IsInvestigationSkill}}6{{else}}3{{end}}. ⚡ SYNTHESIS.md is NOT required (light tier spawn).
 {{end}}
-
+{{if .IsInvestigationSkill}}
 STATUS UPDATES:
 Update Status: field in your investigation file:
 - Status: Active (while working)
 - Status: Complete (when done and committed) → then call /exit to close agent session
+{{end}}
 
 Signal orchestrator when blocked:
 - Add '**Status:** BLOCKED - [reason]' to investigation file
@@ -455,29 +460,30 @@ func StripBeadsInstructions(content string) string {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task              string
-	BeadsID           string
-	ProjectDir        string
-	WorkspaceName     string
-	SkillName         string
-	SkillContent      string
-	InvestigationSlug string
-	Phases            string
-	Mode              string
-	Validation        string
-	InvestigationType string
-	KBContext         string
-	Tier              string
-	ServerContext     string
-	BloatWarnings     string         // Bloat warnings for files mentioned in task exceeding 800 lines
-	NoTrack           bool           // When true, omit beads instructions from spawn context
-	IsBug             bool           // When true, this is a bug issue with reproduction info
-	ReproSteps        string         // Reproduction steps from bug issue
-	DesignWorkspace   string         // Design workspace name for ui-design-session handoff
-	DesignMockupPath  string         // Path to approved mockup
-	DesignPromptPath  string         // Path to design prompt
-	DesignNotes       string         // Notes from design session
-	IssueComments     []IssueComment // Orchestrator comments from beads issue
+	Task               string
+	BeadsID            string
+	ProjectDir         string
+	WorkspaceName      string
+	SkillName          string
+	SkillContent       string
+	InvestigationSlug  string
+	Phases             string
+	Mode               string
+	Validation         string
+	InvestigationType  string
+	KBContext          string
+	Tier               string
+	ServerContext      string
+	BloatWarnings      string         // Bloat warnings for files mentioned in task exceeding 800 lines
+	NoTrack            bool           // When true, omit beads instructions from spawn context
+	IsBug              bool           // When true, this is a bug issue with reproduction info
+	ReproSteps         string         // Reproduction steps from bug issue
+	DesignWorkspace    string         // Design workspace name for ui-design-session handoff
+	DesignMockupPath   string         // Path to approved mockup
+	DesignPromptPath   string         // Path to design prompt
+	DesignNotes        string         // Notes from design session
+	IssueComments      []IssueComment // Orchestrator comments from beads issue
+	IsInvestigationSkill bool         // When true, mandate investigation file creation
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -511,29 +517,30 @@ func GenerateContext(cfg *Config) (string, error) {
 	}
 
 	data := contextData{
-		Task:              cfg.Task,
-		BeadsID:           cfg.BeadsID,
-		ProjectDir:        cfg.ProjectDir,
-		WorkspaceName:     cfg.WorkspaceName,
-		SkillName:         cfg.SkillName,
-		SkillContent:      skillContent,
-		InvestigationSlug: slug,
-		Phases:            cfg.Phases,
-		Mode:              cfg.Mode,
-		Validation:        cfg.Validation,
-		InvestigationType: cfg.InvestigationType,
-		KBContext:         cfg.KBContext,
-		Tier:              cfg.Tier,
-		ServerContext:     serverContext,
-		BloatWarnings:     bloatWarnings,
-		NoTrack:           cfg.NoTrack,
-		IsBug:             cfg.IsBug,
-		ReproSteps:        cfg.ReproSteps,
-		DesignWorkspace:   cfg.DesignWorkspace,
-		DesignMockupPath:  cfg.DesignMockupPath,
-		DesignPromptPath:  cfg.DesignPromptPath,
-		DesignNotes:       cfg.DesignNotes,
-		IssueComments:     cfg.IssueComments,
+		Task:                 cfg.Task,
+		BeadsID:              cfg.BeadsID,
+		ProjectDir:           cfg.ProjectDir,
+		WorkspaceName:        cfg.WorkspaceName,
+		SkillName:            cfg.SkillName,
+		SkillContent:         skillContent,
+		InvestigationSlug:    slug,
+		Phases:               cfg.Phases,
+		Mode:                 cfg.Mode,
+		Validation:           cfg.Validation,
+		InvestigationType:    cfg.InvestigationType,
+		KBContext:            cfg.KBContext,
+		Tier:                 cfg.Tier,
+		ServerContext:        serverContext,
+		BloatWarnings:        bloatWarnings,
+		NoTrack:              cfg.NoTrack,
+		IsBug:                cfg.IsBug,
+		ReproSteps:           cfg.ReproSteps,
+		DesignWorkspace:      cfg.DesignWorkspace,
+		DesignMockupPath:     cfg.DesignMockupPath,
+		DesignPromptPath:     cfg.DesignPromptPath,
+		DesignNotes:          cfg.DesignNotes,
+		IssueComments:        cfg.IssueComments,
+		IsInvestigationSkill: IsInvestigationSkill(cfg.SkillName),
 	}
 
 	var buf bytes.Buffer
