@@ -463,7 +463,7 @@ func TestInferSkill(t *testing.T) {
 		wantSkill string
 		wantErr   bool
 	}{
-		{"bug", "architect", false}, // Default: understand before fixing (Premise Before Solution)
+		{"bug", "systematic-debugging", false}, // Default: direct action on bugs
 		{"feature", "feature-impl", false},
 		{"task", "feature-impl", false},
 		{"investigation", "investigation", false},
@@ -557,7 +557,7 @@ func TestInferSkillFromIssue(t *testing.T) {
 		{
 			name:      "falls back to issue type",
 			issue:     &Issue{Labels: []string{}, Title: "Fix the bug", IssueType: "bug"},
-			wantSkill: "architect", // Default: understand before fixing
+			wantSkill: "systematic-debugging", // Default: direct action on bugs
 			wantErr:   false,
 		},
 	}
