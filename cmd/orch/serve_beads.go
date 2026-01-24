@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/kb"
 )
 
 // projectCacheEntry holds cached data for a single project.
@@ -592,13 +594,16 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GraphNode represents a node (issue) in the dependency graph.
+// GraphNode represents a node in the decidability graph.
+// Can be a beads issue or a kb artifact (investigation/decision).
 type GraphNode struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
-	Type     string `json:"type"`     // issue_type: task, bug, feature, epic, question
-	Status   string `json:"status"`   // open, in_progress, closed, blocked
-	Priority int    `json:"priority"` // 0-4
+	Type     string `json:"type"`     // beads: task, bug, feature, epic, question; kb: investigation, decision
+	Status   string `json:"status"`   // open, in_progress, closed, blocked, Complete, Accepted, etc.
+	Priority int    `json:"priority"` // 0-4 for beads, 0 for kb artifacts
+	Source   string `json:"source"`   // "beads" or "kb"
+	Date     string `json:"date,omitempty"` // for kb artifacts
 }
 
 // GraphEdge represents an edge (dependency) in the graph.
@@ -798,6 +803,7 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 				Type:     issue.IssueType,
 				Status:   issue.Status,
 				Priority: issue.Priority,
+				Source:   "beads",
 			})
 		} else {
 			// Issue might be closed but still a blocker - fetch it
@@ -809,6 +815,40 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 					Type:     showIssue.IssueType,
 					Status:   showIssue.Status,
 					Priority: showIssue.Priority,
+					Source:   "beads",
+				})
+			}
+		}
+	}
+
+	// 4. Add kb artifacts that reference focus set issues (last 14 days)
+	kbDir := filepath.Join(workDir, ".kb")
+	kbArtifacts, err := kb.ListRecentArtifacts(kbDir, 14)
+	if err == nil {
+		for _, artifact := range kbArtifacts {
+			// Check if this artifact references any focus set issue
+			hasRelevantRef := false
+			for _, ref := range artifact.References {
+				if focusSet[ref] {
+					hasRelevantRef = true
+					// Add edge from artifact to referenced issue
+					edges = append(edges, GraphEdge{
+						From: artifact.ID,
+						To:   ref,
+						Type: "references",
+					})
+				}
+			}
+
+			// Only include artifact if it references something in focus set
+			if hasRelevantRef {
+				nodes = append(nodes, GraphNode{
+					ID:     artifact.ID,
+					Title:  artifact.Title,
+					Type:   string(artifact.Type),
+					Status: artifact.Status,
+					Source: "kb",
+					Date:   artifact.Date,
 				})
 			}
 		}
@@ -833,6 +873,7 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 			Type:     issue.IssueType,
 			Status:   issue.Status,
 			Priority: issue.Priority,
+			Source:   "beads",
 		})
 	}
 

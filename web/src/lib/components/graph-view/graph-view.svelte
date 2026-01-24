@@ -9,9 +9,11 @@
 	interface GraphNode {
 		id: string;
 		title: string;
-		type: 'task' | 'question' | 'epic' | 'feature' | 'bug';
-		status: 'open' | 'closed' | 'in_progress' | 'blocked';
+		type: 'task' | 'question' | 'epic' | 'feature' | 'bug' | 'investigation' | 'decision';
+		status: string;
 		priority: number;
+		source?: 'beads' | 'kb';
+		date?: string;
 	}
 
 	interface GraphEdge {
@@ -41,13 +43,17 @@
 	let nodeCount = 0;
 	let edgeCount = 0;
 
-	// Colors by issue type
+	// Colors by node type
 	const typeColors: Record<string, string> = {
-		task: '#3b82f6',      // blue-500
-		question: '#f59e0b',  // amber-500
-		epic: '#a855f7',      // purple-500
-		feature: '#22c55e',   // green-500
-		bug: '#ef4444'        // red-500
+		// Beads issue types
+		task: '#3b82f6',          // blue-500
+		question: '#f59e0b',      // amber-500
+		epic: '#a855f7',          // purple-500
+		feature: '#22c55e',       // green-500
+		bug: '#ef4444',           // red-500
+		// KB artifact types
+		investigation: '#06b6d4', // cyan-500
+		decision: '#f97316'       // orange-500
 	};
 
 	// Get opacity based on status
@@ -106,14 +112,25 @@
 
 		// Add nodes
 		for (const node of data.nodes) {
+			// Shorter label for kb artifacts (just the topic part)
+			let label = node.id;
+			if (node.source === 'kb' && node.id.includes('-inv-')) {
+				// Extract topic from "2026-01-22-inv-topic-here" -> "topic-here"
+				const parts = node.id.split('-inv-');
+				if (parts.length > 1) {
+					label = parts[1].substring(0, 20) + (parts[1].length > 20 ? '...' : '');
+				}
+			}
+
 			elements.push({
 				data: {
 					id: node.id,
-					label: node.id,
+					label: label,
 					title: node.title,
 					type: node.type,
 					status: node.status,
 					priority: node.priority,
+					source: node.source || 'beads',
 					color: typeColors[node.type] || '#6b7280',
 					opacity: getStatusOpacity(node.status)
 				}
@@ -190,6 +207,24 @@
 					'line-color': '#ef4444',
 					'target-arrow-color': '#ef4444'
 				}
+			},
+			// KB artifacts get square shape to distinguish from beads issues
+			{
+				selector: 'node[source = "kb"]',
+				style: {
+					'shape': 'rectangle',
+					'width': 35,
+					'height': 25
+				}
+			},
+			// Reference edges get dotted style
+			{
+				selector: 'edge[type = "references"]',
+				style: {
+					'line-style': 'dotted',
+					'line-color': '#06b6d4',
+					'target-arrow-color': '#06b6d4'
+				}
 			}
 		];
 	}
@@ -248,7 +283,8 @@
 					title: node.data('title'),
 					type: node.data('type'),
 					status: node.data('status'),
-					priority: node.data('priority')
+					priority: node.data('priority'),
+					source: node.data('source')
 				};
 			});
 
@@ -379,7 +415,7 @@
 
 	<!-- Legend -->
 	<div class="absolute top-2 left-2 z-10 rounded border bg-background/90 p-2 text-xs">
-		<div class="font-medium mb-1">Node Types</div>
+		<div class="font-medium mb-1">Beads Issues</div>
 		<div class="flex flex-wrap gap-x-3 gap-y-1">
 			<span class="flex items-center gap-1">
 				<span class="inline-block h-3 w-3 rounded-full" style="background-color: {typeColors.task}"></span>
@@ -402,6 +438,17 @@
 				Bug
 			</span>
 		</div>
+		<div class="font-medium mt-2 mb-1">KB Artifacts</div>
+		<div class="flex flex-wrap gap-x-3 gap-y-1">
+			<span class="flex items-center gap-1">
+				<span class="inline-block h-3 w-3 rounded-sm" style="background-color: {typeColors.investigation}"></span>
+				Investigation
+			</span>
+			<span class="flex items-center gap-1">
+				<span class="inline-block h-3 w-3 rounded-sm" style="background-color: {typeColors.decision}"></span>
+				Decision
+			</span>
+		</div>
 		<div class="font-medium mt-2 mb-1">Status</div>
 		<div class="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
 			<span>Solid = Open/Active</span>
@@ -417,16 +464,22 @@
 
 	<!-- Hover tooltip -->
 	{#if hoveredNode}
-		<div class="absolute bottom-2 left-2 z-10 rounded border bg-background/95 p-2 text-xs max-w-xs">
+		<div class="absolute bottom-2 left-2 z-10 rounded border bg-background/95 p-2 text-xs max-w-md">
 			<div class="font-medium">{hoveredNode.id}</div>
-			<div class="text-muted-foreground mt-1 line-clamp-2">{hoveredNode.title}</div>
+			{#if hoveredNode.title}
+				<div class="text-muted-foreground mt-1 line-clamp-2">{hoveredNode.title}</div>
+			{/if}
 			<div class="flex gap-2 mt-1 text-muted-foreground">
-				<span class="capitalize">{hoveredNode.type}</span>
-				<span>•</span>
-				<span class="capitalize">{hoveredNode.status}</span>
-				{#if hoveredNode.priority !== undefined && hoveredNode.priority <= 1}
+				{#if hoveredNode.source === 'kb'}
+					<span class="text-cyan-500">{hoveredNode.type}</span>
+				{:else}
+					<span class="capitalize">{hoveredNode.type}</span>
 					<span>•</span>
-					<span class="text-red-500">P{hoveredNode.priority}</span>
+					<span class="capitalize">{hoveredNode.status}</span>
+					{#if hoveredNode.priority !== undefined && hoveredNode.priority <= 1}
+						<span>•</span>
+						<span class="text-red-500">P{hoveredNode.priority}</span>
+					{/if}
 				{/if}
 			</div>
 		</div>
