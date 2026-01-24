@@ -4,7 +4,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/frontier"
@@ -14,6 +13,13 @@ import (
 
 var (
 	frontierJSON bool
+)
+
+const (
+	// maxDisplayItems is the maximum number of items to show per section
+	maxDisplayItems = 8
+	// stuckThreshold is the duration after which an agent is considered stuck
+	stuckThreshold = 2 * time.Hour
 )
 
 var frontierCmd = &cobra.Command{
@@ -40,9 +46,15 @@ func init() {
 
 // FrontierOutput represents the full frontier output for JSON serialization.
 type FrontierOutput struct {
-	Ready   []FrontierIssue `json:"ready"`
-	Blocked []BlockedOutput `json:"blocked"`
-	Active  []ActiveOutput  `json:"active"`
+	Warnings    []string        `json:"warnings,omitempty"`
+	Ready       []FrontierIssue `json:"ready"`
+	ReadyTotal  int             `json:"ready_total"`
+	Blocked     []BlockedOutput `json:"blocked"`
+	BlockedTotal int            `json:"blocked_total"`
+	Active      []ActiveOutput  `json:"active"`
+	ActiveTotal int             `json:"active_total"`
+	Stuck       []ActiveOutput  `json:"stuck"`
+	StuckTotal  int             `json:"stuck_total"`
 }
 
 // FrontierIssue represents an issue in the frontier output.
@@ -65,9 +77,11 @@ type BlockedOutput struct {
 
 // ActiveOutput represents an active agent.
 type ActiveOutput struct {
-	BeadsID string `json:"beads_id"`
-	Runtime string `json:"runtime"`
-	Skill   string `json:"skill,omitempty"`
+	BeadsID  string        `json:"beads_id"`
+	Title    string        `json:"title,omitempty"`
+	Runtime  string        `json:"runtime"`
+	Duration time.Duration `json:"-"` // For sorting, not serialized
+	Skill    string        `json:"skill,omitempty"`
 }
 
 func runFrontier() error {
@@ -77,31 +91,76 @@ func runFrontier() error {
 		return fmt.Errorf("failed to calculate frontier: %w", err)
 	}
 
-	// Get active agents from registry
-	activeAgents := getActiveAgentsForFrontier()
+	// Get active agents from registry and split into active vs stuck
+	activeAgents, stuckAgents := getActiveAndStuckAgents()
 
 	if frontierJSON {
-		return printFrontierJSON(state, activeAgents)
+		return printFrontierJSON(state, activeAgents, stuckAgents)
 	}
 
-	printFrontierText(state, activeAgents)
+	printFrontierText(state, activeAgents, stuckAgents)
 	return nil
 }
 
-// getActiveAgentsForFrontier fetches active agents from the registry.
-func getActiveAgentsForFrontier() []*registry.Agent {
+// getActiveAndStuckAgents fetches agents from the registry and splits them into
+// active (< 2h) and stuck (>= 2h) categories.
+func getActiveAndStuckAgents() (active, stuck []ActiveOutput) {
 	reg, err := registry.New("")
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	return reg.ListActive()
+
+	agents := reg.ListActive()
+	for _, agent := range agents {
+		output := agentToOutput(agent)
+		if output.Duration >= stuckThreshold {
+			stuck = append(stuck, output)
+		} else {
+			active = append(active, output)
+		}
+	}
+
+	return active, stuck
 }
 
-func printFrontierJSON(state *frontier.FrontierState, activeAgents []*registry.Agent) error {
+// agentToOutput converts a registry agent to an ActiveOutput.
+func agentToOutput(agent *registry.Agent) ActiveOutput {
+	var duration time.Duration
+	if agent.SpawnedAt != "" {
+		if spawnedAt, err := time.Parse(registry.TimeFormat, agent.SpawnedAt); err == nil {
+			duration = time.Since(spawnedAt)
+		}
+	}
+
+	id := agent.BeadsID
+	if id == "" {
+		id = agent.ID
+	}
+
+	return ActiveOutput{
+		BeadsID:  id,
+		Title:    "", // Title not stored in registry, would require bd lookup
+		Runtime:  formatDuration(duration),
+		Duration: duration,
+		Skill:    agent.Skill,
+	}
+}
+
+func printFrontierJSON(state *frontier.FrontierState, active, stuck []ActiveOutput) error {
 	output := FrontierOutput{
-		Ready:   make([]FrontierIssue, 0, len(state.Ready)),
-		Blocked: make([]BlockedOutput, 0, len(state.Blocked)),
-		Active:  make([]ActiveOutput, 0, len(activeAgents)),
+		Ready:        make([]FrontierIssue, 0, len(state.Ready)),
+		ReadyTotal:   len(state.Ready),
+		Blocked:      make([]BlockedOutput, 0, len(state.Blocked)),
+		BlockedTotal: len(state.Blocked),
+		Active:       active,
+		ActiveTotal:  len(active),
+		Stuck:        stuck,
+		StuckTotal:   len(stuck),
+	}
+
+	// Add health warnings
+	if len(stuck) > 0 {
+		output.Warnings = append(output.Warnings, fmt.Sprintf("%d stuck agents (> 2h) - run 'orch clean --stale' to clean up", len(stuck)))
 	}
 
 	for _, issue := range state.Ready {
@@ -124,15 +183,6 @@ func printFrontierJSON(state *frontier.FrontierState, activeAgents []*registry.A
 		})
 	}
 
-	for _, agent := range activeAgents {
-		runtime := formatAgentRuntime(agent)
-		output.Active = append(output.Active, ActiveOutput{
-			BeadsID: agent.BeadsID,
-			Runtime: runtime,
-			Skill:   agent.Skill,
-		})
-	}
-
 	data, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -141,77 +191,92 @@ func printFrontierJSON(state *frontier.FrontierState, activeAgents []*registry.A
 	return nil
 }
 
-func printFrontierText(state *frontier.FrontierState, activeAgents []*registry.Agent) {
-	// READY TO RELEASE
+func printFrontierText(state *frontier.FrontierState, active, stuck []ActiveOutput) {
+	// Health warnings at top
+	if len(stuck) > 0 {
+		fmt.Println("⚠️  HEALTH WARNINGS")
+		fmt.Printf("   %d stuck agents (> 2h) - run 'orch clean --stale' to clean up\n", len(stuck))
+		fmt.Println()
+	}
+
+	// READY TO RELEASE - show ID + title
 	fmt.Printf("READY TO RELEASE (%d)\n", len(state.Ready))
 	if len(state.Ready) == 0 {
 		fmt.Println("   (none)")
 	} else {
-		// Show as comma-separated list for compactness
-		ids := make([]string, 0, len(state.Ready))
-		for _, issue := range state.Ready {
-			ids = append(ids, issue.ID)
+		displayCount := min(len(state.Ready), maxDisplayItems)
+		for i := 0; i < displayCount; i++ {
+			issue := state.Ready[i]
+			title := truncateTitle(issue.Title, 50)
+			fmt.Printf("   %s  %s\n", issue.ID, title)
 		}
-		// Print in rows of ~4 IDs to fit terminal width
-		printCompactList(ids, 4, "   ")
+		if len(state.Ready) > maxDisplayItems {
+			fmt.Printf("   ... and %d more\n", len(state.Ready)-maxDisplayItems)
+		}
 	}
 	fmt.Println()
 
-	// BLOCKED - sorted by leverage
-	fmt.Printf("BLOCKED - would unblock most first (%d)\n", len(state.Blocked))
+	// BLOCKED - sorted by leverage, show ID + title
+	fmt.Printf("BLOCKED (%d)\n", len(state.Blocked))
 	if len(state.Blocked) == 0 {
 		fmt.Println("   (none)")
 	} else {
-		for _, bi := range state.Blocked {
+		displayCount := min(len(state.Blocked), maxDisplayItems)
+		for i := 0; i < displayCount; i++ {
+			bi := state.Blocked[i]
+			title := truncateTitle(bi.Issue.Title, 40)
 			leverage := frontier.FormatLeverage(bi)
 			if leverage != "" {
-				fmt.Printf("   %s → %s\n", bi.Issue.ID, leverage)
+				fmt.Printf("   %s  %s → %s\n", bi.Issue.ID, title, leverage)
 			} else {
-				fmt.Printf("   %s (no leverage)\n", bi.Issue.ID)
+				fmt.Printf("   %s  %s\n", bi.Issue.ID, title)
 			}
+		}
+		if len(state.Blocked) > maxDisplayItems {
+			fmt.Printf("   ... and %d more\n", len(state.Blocked)-maxDisplayItems)
 		}
 	}
 	fmt.Println()
 
-	// ACTIVE agents
-	fmt.Printf("ACTIVE (%d)\n", len(activeAgents))
-	if len(activeAgents) == 0 {
+	// ACTIVE agents (< 2h)
+	fmt.Printf("ACTIVE (%d)\n", len(active))
+	if len(active) == 0 {
 		fmt.Println("   (none)")
 	} else {
-		// Show agents with runtime
-		for _, agent := range activeAgents {
-			runtime := formatAgentRuntime(agent)
-			if agent.BeadsID != "" {
-				fmt.Printf("   %s [%s]\n", agent.BeadsID, runtime)
-			} else {
-				fmt.Printf("   %s [%s]\n", agent.ID, runtime)
+		displayCount := min(len(active), maxDisplayItems)
+		for i := 0; i < displayCount; i++ {
+			agent := active[i]
+			skillInfo := ""
+			if agent.Skill != "" {
+				skillInfo = fmt.Sprintf(" (%s)", agent.Skill)
 			}
+			fmt.Printf("   %s [%s]%s\n", agent.BeadsID, agent.Runtime, skillInfo)
+		}
+		if len(active) > maxDisplayItems {
+			fmt.Printf("   ... and %d more\n", len(active)-maxDisplayItems)
+		}
+	}
+	fmt.Println()
+
+	// STUCK agents (>= 2h)
+	if len(stuck) > 0 {
+		fmt.Printf("STUCK (> 2h) (%d)\n", len(stuck))
+		displayCount := min(len(stuck), maxDisplayItems)
+		for i := 0; i < displayCount; i++ {
+			agent := stuck[i]
+			fmt.Printf("   %s [%s]\n", agent.BeadsID, agent.Runtime)
+		}
+		if len(stuck) > maxDisplayItems {
+			fmt.Printf("   ... and %d more\n", len(stuck)-maxDisplayItems)
 		}
 	}
 }
 
-// printCompactList prints IDs in rows of `perRow` items.
-func printCompactList(ids []string, perRow int, indent string) {
-	for i := 0; i < len(ids); i += perRow {
-		end := i + perRow
-		if end > len(ids) {
-			end = len(ids)
-		}
-		fmt.Printf("%s%s\n", indent, strings.Join(ids[i:end], ", "))
+// truncateTitle truncates a title to maxLen characters, adding "..." if truncated.
+func truncateTitle(title string, maxLen int) string {
+	if len(title) <= maxLen {
+		return title
 	}
+	return title[:maxLen-3] + "..."
 }
 
-// formatAgentRuntime formats the runtime of an agent.
-func formatAgentRuntime(agent *registry.Agent) string {
-	if agent.SpawnedAt == "" {
-		return "unknown"
-	}
-
-	spawnedAt, err := time.Parse(registry.TimeFormat, agent.SpawnedAt)
-	if err != nil {
-		return "unknown"
-	}
-
-	duration := time.Since(spawnedAt)
-	return formatDuration(duration)
-}
