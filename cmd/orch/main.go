@@ -68,6 +68,7 @@ func init() {
 	rootCmd.AddCommand(portCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(retriesCmd)
+	rootCmd.AddCommand(frontierCmd)
 }
 
 var (
