@@ -1900,18 +1900,20 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       }
 
       const sessionId = info.id
-      const sessionDirectory = info.directory
+      const sessionTitle = info.title || ""
 
       if (!sessionId) {
         log("Event: No sessionID in event properties, skipping")
         return
       }
 
-      // Early worker detection via directory path
-      // Workers operate in .orch/workspace/ directories
-      if (sessionDirectory && sessionDirectory.includes(".orch/workspace/")) {
+      // Early worker detection via session title pattern
+      // Workers spawned by orch have titles like "og-inv-*", "og-feat-*", "op-feat-*"
+      // and contain beads ID in brackets like "[orch-go-xyz]"
+      const isWorkerTitle = /^(og|op|pw)-/.test(sessionTitle) || /\[[\w-]+-\w+\]/.test(sessionTitle)
+      if (isWorkerTitle) {
         workerSessions.set(sessionId, true)
-        log(`Worker detected (session.created, directory): ${sessionId}, dir: ${sessionDirectory}`)
+        log(`Worker detected (session.created, title): ${sessionId}, title: ${sessionTitle}`)
       }
     },
   }
