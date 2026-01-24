@@ -91,7 +91,8 @@ func CalculateFrontier() (*FrontierState, error) {
 
 // getReadyIssues fetches issues that are ready to work on from beads.
 func getReadyIssues() ([]*Issue, error) {
-	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
+	// Use --sandbox to force JSONL-only mode, avoiding SQLite foreign key issues
+	cmd := exec.Command("bd", "--sandbox", "ready", "--json", "--limit", "0")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd ready failed: %w", err)
@@ -107,7 +108,7 @@ func getReadyIssues() ([]*Issue, error) {
 
 // getBlockedIssues fetches issues that are blocked.
 func getBlockedIssues() ([]*Issue, error) {
-	cmd := exec.Command("bd", "blocked", "--json")
+	cmd := exec.Command("bd", "--sandbox", "blocked", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd blocked failed: %w", err)
@@ -123,7 +124,7 @@ func getBlockedIssues() ([]*Issue, error) {
 
 // getAllOpenIssues fetches all open issues with full dependency info.
 func getAllOpenIssues() (map[string]*Issue, error) {
-	cmd := exec.Command("bd", "list", "--status", "open", "--json", "--limit", "0")
+	cmd := exec.Command("bd", "--sandbox", "list", "--status", "open", "--json", "--limit", "0")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd list failed: %w", err)
@@ -150,7 +151,7 @@ func getAllOpenIssues() (map[string]*Issue, error) {
 
 // getIssueWithDeps fetches a single issue with full dependency information.
 func getIssueWithDeps(id string) (*Issue, error) {
-	cmd := exec.Command("bd", "show", id, "--json")
+	cmd := exec.Command("bd", "--sandbox", "show", id, "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd show failed: %w", err)
