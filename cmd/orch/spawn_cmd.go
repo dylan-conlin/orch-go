@@ -1062,6 +1062,13 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			if issue.Status == "closed" {
 				return fmt.Errorf("issue %s is already closed", beadsID)
 			}
+			// Pre-spawn Phase: Complete check: block spawn if agent reported complete
+			// This runs for ANY status (open, in_progress) - catches issues where
+			// Phase: Complete was reported but issue wasn't closed yet
+			// (e.g., orchestrator hasn't run 'orch complete')
+			if complete, err := verify.IsPhaseComplete(beadsID); err == nil && complete {
+				return fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
+			}
 			if issue.Status == "in_progress" {
 				// Check if there's a truly active agent for this issue
 				// OpenCode persists sessions to disk, so we must verify liveness not just existence
@@ -1078,12 +1085,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 						fmt.Fprintf(os.Stderr, "Note: found stale session %s for issue %s (no activity in 30m)\n", s.ID[:12], beadsID)
 					}
 				}
-				// No active session - check if Phase: Complete was reported
-				// If so, orchestrator needs to run 'orch complete' before respawning
-				if complete, err := verify.IsPhaseComplete(beadsID); err == nil && complete {
-					return fmt.Errorf("issue %s has Phase: Complete but is not closed. Run 'orch complete %s' first", beadsID, beadsID)
-				}
-				// In progress but no active agent and not Phase: Complete - warn but allow respawn
+				// In progress but no active agent - warn but allow respawn
+				// (Phase: Complete is already checked above for any status)
 				fmt.Fprintf(os.Stderr, "Warning: issue %s is in_progress but no active agent found. Respawning.\n", beadsID)
 			}
 		}
