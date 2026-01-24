@@ -28,12 +28,18 @@
 		edge_count: number;
 	}
 
+	// Scope controls what issues are shown
+	type GraphScope = 'focus' | 'open' | 'all';
+	let scope: GraphScope = 'focus';
+
 	let container: HTMLDivElement;
 	let cy: Core | null = null;
 	let loading = true;
 	let error: string | null = null;
 	let hoveredNode: GraphNode | null = null;
 	let debugState = 'initializing';
+	let nodeCount = 0;
+	let edgeCount = 0;
 
 	// Colors by issue type
 	const typeColors: Record<string, string> = {
@@ -83,11 +89,16 @@
 	const API_BASE = 'https://localhost:3348';
 
 	async function fetchGraphData(): Promise<GraphData> {
-		const response = await fetch(`${API_BASE}/api/beads/graph`);
+		const response = await fetch(`${API_BASE}/api/beads/graph?scope=${scope}`);
 		if (!response.ok) {
 			throw new Error(`Failed to fetch graph: ${response.statusText}`);
 		}
 		return response.json();
+	}
+
+	function setScope(newScope: GraphScope) {
+		scope = newScope;
+		initGraph();
 	}
 
 	function buildCytoscapeElements(data: GraphData): ElementDefinition[] {
@@ -213,6 +224,8 @@
 
 		try {
 			const data = await fetchGraphData();
+			nodeCount = data.node_count;
+			edgeCount = data.edge_count;
 			debugState = `data: ${data.nodes.length} nodes, ${data.edges.length} edges`;
 			const elements = buildCytoscapeElements(data);
 			const isDark = getEffective($mode) === 'dark';
@@ -316,7 +329,31 @@
 
 <div class="relative h-full w-full min-h-[600px] rounded-lg border bg-card">
 	<!-- Controls -->
-	<div class="absolute top-2 right-2 z-10 flex gap-1">
+	<div class="absolute top-2 right-2 z-10 flex gap-2">
+		<!-- Scope toggle -->
+		<div class="flex rounded border bg-background">
+			<button
+				onclick={() => setScope('focus')}
+				class="px-2 py-1 text-xs transition-colors {scope === 'focus' ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}"
+				title="Focus: in_progress + blockers + P0/P1"
+			>
+				Focus
+			</button>
+			<button
+				onclick={() => setScope('open')}
+				class="px-2 py-1 text-xs border-l transition-colors {scope === 'open' ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}"
+				title="All open issues"
+			>
+				Open
+			</button>
+			<button
+				onclick={() => setScope('all')}
+				class="px-2 py-1 text-xs border-l transition-colors {scope === 'all' ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}"
+				title="All issues including closed"
+			>
+				All
+			</button>
+		</div>
 		<button
 			onclick={fitGraph}
 			class="rounded border bg-background px-2 py-1 text-xs hover:bg-accent"
@@ -371,6 +408,11 @@
 			<span>Dimmed = Blocked</span>
 			<span>Faded = Closed</span>
 		</div>
+		{#if nodeCount > 0}
+			<div class="mt-2 pt-2 border-t text-muted-foreground">
+				{nodeCount} nodes, {edgeCount} edges
+			</div>
+		{/if}
 	</div>
 
 	<!-- Hover tooltip -->

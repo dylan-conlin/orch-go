@@ -618,11 +618,45 @@ type BeadsGraphAPIResponse struct {
 	Error      string      `json:"error,omitempty"`
 }
 
-// handleBeadsGraph returns the full dependency graph for visualization.
-// Returns all issues as nodes and all dependencies as edges.
+// beadsIssue is the parsed structure from bd list --json
+type beadsIssue struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Status          string `json:"status"`
+	Priority        int    `json:"priority"`
+	IssueType       string `json:"issue_type"`
+	DependencyCount int    `json:"dependency_count"`
+	DependentCount  int    `json:"dependent_count"`
+	Parent          string `json:"parent,omitempty"`
+}
+
+// beadsShowIssue is the parsed structure from bd show --json
+type beadsShowIssue struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	Priority     int    `json:"priority"`
+	IssueType    string `json:"issue_type"`
+	Dependencies []struct {
+		ID             string `json:"id"`
+		DependencyType string `json:"dependency_type"`
+	} `json:"dependencies"`
+	Dependents []struct {
+		ID             string `json:"id"`
+		DependencyType string `json:"dependency_type"`
+	} `json:"dependents"`
+}
+
+// handleBeadsGraph returns the dependency graph for visualization.
 // Query params:
 //   - project_dir: Optional project directory to query. If not provided, uses default.
-//   - status: Optional status filter (open, in_progress, closed, all). Default is "all".
+//   - scope: "focus" (default) shows active working set, "open" shows all open issues
+//
+// Focus scope includes:
+//   - All in_progress issues (the active work)
+//   - Their blockers (what's preventing completion)
+//   - Their immediate dependents (what's waiting)
+//   - Any P0/P1 issues (urgent items regardless of status)
 func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -631,9 +665,9 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 
 	// Get query params
 	projectDir := r.URL.Query().Get("project_dir")
-	statusFilter := r.URL.Query().Get("status")
-	if statusFilter == "" {
-		statusFilter = "open" // Default to open issues only - "all" floods graph with closed
+	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = "focus" // Default to focus view - the useful working set
 	}
 
 	// Determine the directory to use
@@ -642,114 +676,28 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		workDir = beads.DefaultDir
 	}
 
-	// Build command args for bd list
-	// Use --all to include closed issues, --limit 0 to get all
-	args := []string{"list", "--json", "--limit", "0"}
-	if statusFilter != "all" {
-		args = append(args, "--status", statusFilter)
+	var nodes []GraphNode
+	var edges []GraphEdge
+	var err error
+
+	if scope == "focus" {
+		nodes, edges, err = buildFocusGraph(workDir)
 	} else {
-		args = append(args, "--all") // Include closed issues
+		// scope=open or scope=all
+		includeAll := scope == "all"
+		nodes, edges, err = buildFullGraph(workDir, includeAll)
 	}
 
-	// Get all issues
-	cmd := exec.Command(getBdPath(), args...)
-	if workDir != "" {
-		cmd.Dir = workDir
-	}
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-
-	output, err := cmd.Output()
 	if err != nil {
 		resp := BeadsGraphAPIResponse{
 			Nodes:      []GraphNode{},
 			Edges:      []GraphEdge{},
 			ProjectDir: projectDir,
-			Error:      fmt.Sprintf("Failed to list issues: %v", err),
+			Error:      err.Error(),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
-	}
-
-	// Parse the list output
-	var listIssues []struct {
-		ID              string `json:"id"`
-		Title           string `json:"title"`
-		Status          string `json:"status"`
-		Priority        int    `json:"priority"`
-		IssueType       string `json:"issue_type"`
-		DependencyCount int    `json:"dependency_count"`
-		DependentCount  int    `json:"dependent_count"`
-		Parent          string `json:"parent,omitempty"`
-	}
-	if err := json.Unmarshal(output, &listIssues); err != nil {
-		resp := BeadsGraphAPIResponse{
-			Nodes:      []GraphNode{},
-			Edges:      []GraphEdge{},
-			ProjectDir: projectDir,
-			Error:      fmt.Sprintf("Failed to parse issues: %v", err),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
-	// Build nodes
-	nodes := make([]GraphNode, 0, len(listIssues))
-	for _, issue := range listIssues {
-		nodes = append(nodes, GraphNode{
-			ID:       issue.ID,
-			Title:    issue.Title,
-			Type:     issue.IssueType,
-			Status:   issue.Status,
-			Priority: issue.Priority,
-		})
-	}
-
-	// Collect IDs of issues that have dependencies
-	// (we need to call bd show to get the actual dependency details)
-	idsWithDeps := make([]string, 0)
-	for _, issue := range listIssues {
-		if issue.DependencyCount > 0 {
-			idsWithDeps = append(idsWithDeps, issue.ID)
-		}
-	}
-
-	// Fetch dependencies for issues that have them
-	edges := make([]GraphEdge, 0)
-	for _, id := range idsWithDeps {
-		showCmd := exec.Command(getBdPath(), "show", id, "--json")
-		if workDir != "" {
-			showCmd.Dir = workDir
-		}
-		showCmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-
-		showOutput, err := showCmd.Output()
-		if err != nil {
-			// Log but continue - one failed show shouldn't break the whole graph
-			continue
-		}
-
-		// bd show returns an array
-		var showIssues []struct {
-			ID           string `json:"id"`
-			Dependencies []struct {
-				ID             string `json:"id"`
-				DependencyType string `json:"dependency_type"`
-			} `json:"dependencies"`
-		}
-		if err := json.Unmarshal(showOutput, &showIssues); err != nil || len(showIssues) == 0 {
-			continue
-		}
-
-		// Add edges for each dependency
-		for _, dep := range showIssues[0].Dependencies {
-			edges = append(edges, GraphEdge{
-				From: id,       // This issue depends on...
-				To:   dep.ID,   // ...this issue
-				Type: dep.DependencyType,
-			})
-		}
 	}
 
 	resp := BeadsGraphAPIResponse{
@@ -765,6 +713,204 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode graph: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// buildFocusGraph builds a focused graph showing the active working set:
+// - in_progress issues
+// - their blockers (recursive)
+// - their immediate dependents
+// - P0/P1 issues
+func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
+	// First get all open issues to have the full picture
+	allIssues, err := listBeadsIssues(workDir, false)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Build lookup maps
+	issueByID := make(map[string]beadsIssue)
+	for _, issue := range allIssues {
+		issueByID[issue.ID] = issue
+	}
+
+	// Collect the focus set IDs
+	focusSet := make(map[string]bool)
+
+	// 1. Add all in_progress issues
+	for _, issue := range allIssues {
+		if issue.Status == "in_progress" {
+			focusSet[issue.ID] = true
+		}
+	}
+
+	// 2. Add P0/P1 issues (urgent regardless of status)
+	for _, issue := range allIssues {
+		if issue.Priority <= 1 {
+			focusSet[issue.ID] = true
+		}
+	}
+
+	// 3. For each focus issue, get blockers and dependents
+	// We need to call bd show for dependency details
+	edges := make([]GraphEdge, 0)
+	processedForDeps := make(map[string]bool)
+
+	// Process in_progress issues to get their relationships
+	for id := range focusSet {
+		if processedForDeps[id] {
+			continue
+		}
+		processedForDeps[id] = true
+
+		showIssue, err := showBeadsIssue(workDir, id)
+		if err != nil {
+			continue
+		}
+
+		// Add blockers (dependencies) to focus set
+		for _, dep := range showIssue.Dependencies {
+			focusSet[dep.ID] = true
+			edges = append(edges, GraphEdge{
+				From: id,
+				To:   dep.ID,
+				Type: dep.DependencyType,
+			})
+		}
+
+		// Add immediate dependents (things waiting on this)
+		for _, dep := range showIssue.Dependents {
+			focusSet[dep.ID] = true
+			edges = append(edges, GraphEdge{
+				From: dep.ID,
+				To:   id,
+				Type: dep.DependencyType,
+			})
+		}
+	}
+
+	// Build nodes for everything in focus set
+	nodes := make([]GraphNode, 0, len(focusSet))
+	for id := range focusSet {
+		if issue, ok := issueByID[id]; ok {
+			nodes = append(nodes, GraphNode{
+				ID:       issue.ID,
+				Title:    issue.Title,
+				Type:     issue.IssueType,
+				Status:   issue.Status,
+				Priority: issue.Priority,
+			})
+		} else {
+			// Issue might be closed but still a blocker - fetch it
+			showIssue, err := showBeadsIssue(workDir, id)
+			if err == nil {
+				nodes = append(nodes, GraphNode{
+					ID:       showIssue.ID,
+					Title:    showIssue.Title,
+					Type:     showIssue.IssueType,
+					Status:   showIssue.Status,
+					Priority: showIssue.Priority,
+				})
+			}
+		}
+	}
+
+	return nodes, edges, nil
+}
+
+// buildFullGraph builds the full graph with optional status filtering
+func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, error) {
+	issues, err := listBeadsIssues(workDir, includeAll)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Build nodes
+	nodes := make([]GraphNode, 0, len(issues))
+	for _, issue := range issues {
+		nodes = append(nodes, GraphNode{
+			ID:       issue.ID,
+			Title:    issue.Title,
+			Type:     issue.IssueType,
+			Status:   issue.Status,
+			Priority: issue.Priority,
+		})
+	}
+
+	// Collect IDs of issues that have dependencies
+	idsWithDeps := make([]string, 0)
+	for _, issue := range issues {
+		if issue.DependencyCount > 0 {
+			idsWithDeps = append(idsWithDeps, issue.ID)
+		}
+	}
+
+	// Fetch dependencies
+	edges := make([]GraphEdge, 0)
+	for _, id := range idsWithDeps {
+		showIssue, err := showBeadsIssue(workDir, id)
+		if err != nil {
+			continue
+		}
+		for _, dep := range showIssue.Dependencies {
+			edges = append(edges, GraphEdge{
+				From: id,
+				To:   dep.ID,
+				Type: dep.DependencyType,
+			})
+		}
+	}
+
+	return nodes, edges, nil
+}
+
+// listBeadsIssues calls bd list and returns parsed issues
+func listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
+	args := []string{"list", "--json", "--limit", "0"}
+	if includeAll {
+		args = append(args, "--all")
+	} else {
+		args = append(args, "--status", "open")
+	}
+
+	cmd := exec.Command(getBdPath(), args...)
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bd list failed: %w", err)
+	}
+
+	var issues []beadsIssue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("parse issues: %w", err)
+	}
+
+	return issues, nil
+}
+
+// showBeadsIssue calls bd show and returns the parsed issue with dependencies
+func showBeadsIssue(workDir, id string) (*beadsShowIssue, error) {
+	cmd := exec.Command(getBdPath(), "show", id, "--json")
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bd show %s failed: %w", id, err)
+	}
+
+	// bd show returns an array
+	var issues []beadsShowIssue
+	if err := json.Unmarshal(output, &issues); err != nil || len(issues) == 0 {
+		return nil, fmt.Errorf("parse show output: %w", err)
+	}
+
+	return &issues[0], nil
 }
 
 // getBdPath returns the resolved bd path or falls back to "bd".
