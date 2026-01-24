@@ -1127,6 +1127,35 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 		// Check gap gating - may block spawn if context quality is too low
 		if err := checkGapGating(gapAnalysis, spawnGateOnGap, spawnSkipGapGate, spawnGapThreshold); err != nil {
+			// Log the blocked spawn for pattern analysis and orchestrator visibility
+			logger := events.NewLogger(events.DefaultLogPath())
+
+			// Extract critical gaps for logging
+			criticalGaps := []string{}
+			if gapAnalysis != nil {
+				for _, gap := range gapAnalysis.Gaps {
+					if gap.Severity == spawn.GapSeverityCritical {
+						criticalGaps = append(criticalGaps, gap.Description)
+					}
+				}
+			}
+
+			event := events.Event{
+				Type:      "spawn.blocked.gap_gate",
+				Timestamp: time.Now().Unix(),
+				Data: map[string]interface{}{
+					"task":            task,
+					"context_quality": gapAnalysis.ContextQuality,
+					"threshold":       spawnGapThreshold,
+					"beads_id":        beadsID,
+					"skill":           skillName,
+					"critical_gaps":   criticalGaps,
+				},
+			}
+			if logErr := logger.Log(event); logErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log gap gate block: %v\n", logErr)
+			}
+
 			return err
 		}
 
@@ -2337,8 +2366,19 @@ func checkGapGating(gapAnalysis *spawn.GapAnalysis, gateEnabled, skipGate bool, 
 	}
 
 	if gapAnalysis.ShouldBlockSpawn(threshold) {
+		// Display loud visual warning before the detailed message
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "🚨🚨🚨 SPAWN BLOCKED BY GAP GATE 🚨🚨🚨\n")
+		fmt.Fprintf(os.Stderr, "\n")
+
 		// Display the block message
 		fmt.Fprintf(os.Stderr, "%s", gapAnalysis.FormatGateBlockMessage())
+
+		// Add visual separator after the message for prominence
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "⚠️  This spawn has been BLOCKED. The orchestrator should add context or use --skip-gap-gate.\n")
+		fmt.Fprintf(os.Stderr, "\n")
+
 		return fmt.Errorf("spawn blocked: context quality %d is below threshold %d", gapAnalysis.ContextQuality, threshold)
 	}
 
