@@ -931,18 +931,16 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
 				fmt.Fprintln(os.Stderr, "💡 Consider: spawn architect first for strategic approach in hotspot area")
 				fmt.Fprintln(os.Stderr, "")
-			}
-
-			// Strategic skill, --force, or daemon-driven: print warning but allow
-			if daemonDriven {
+			} else if daemonDriven {
 				// Daemon-driven: triage already happened, silent bypass
 				// (issue was labeled triage:ready by orchestrator)
 			} else if spawnForce {
+				// --force used: print warning with bypass notice
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
 				fmt.Fprintln(os.Stderr, "⚠️  --force used: bypassing strategic-first gate")
 				fmt.Fprintln(os.Stderr, "")
-			} else {
-				// Architect skill: print info message
+			} else if isStrategicSkill {
+				// Architect or other strategic skill: print info message
 				fmt.Fprint(os.Stderr, hotspotResult.Warning)
 				fmt.Fprintln(os.Stderr, "✓ Strategic approach: architect skill in hotspot area")
 				fmt.Fprintln(os.Stderr, "")
