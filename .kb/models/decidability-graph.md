@@ -116,6 +116,34 @@ Not because architect can't think - but because orchestrator was abdicating the 
 
 **Decision:** `.kb/decisions/2026-01-19-worker-authority-boundaries.md`
 
+### Intra-Task Authority (Decision Boundaries Within Work Nodes)
+
+The decidability graph models authority at the **issue level** (Work/Question/Gate nodes). But within a single Work node, sub-decisions arise. This section clarifies when those are worker authority vs escalation triggers.
+
+**Core rule:** Within a scoped Work node, implementation decisions are worker authority.
+
+**Worker decides autonomously (document via `kb quick decide`):**
+- Threshold values, exemptions, edge case handling
+- Implementation approach within established constraints
+- Naming conventions, code structure, minor tradeoffs
+- Tool/library choices within the scoped domain
+
+**Worker escalates (surface in SYNTHESIS.md as question/concern):**
+- Conflicts with existing kb decisions or constraints
+- Cross-task implications (affects other Work nodes in the graph)
+- Irreversibility beyond what orchestrator scoped for
+- Discovery that the question being asked is wrong (premise failure)
+
+**The test:** "Does this decision stay inside my scoped context, or does it reach out?"
+- Stays inside → decide and document
+- Reaches out → surface for orchestrator
+
+**Why this matters:** Workers surfacing every implementation detail as "open questions" creates false escalation load. The orchestrator scoped the work; that scoping implicitly delegates implementation authority. Workers who don't exercise this authority are under-using their scoped context.
+
+**Anti-pattern:** Architect produces design with 5 "open questions" that are all implementation details → orchestrator asks Dylan → Dylan says "just decide" → wasted round-trip. The architect should have decided and documented via `kb quick decide`.
+
+**Reference:** Discovered 2026-01-23 when bloat control design surfaced tactical questions (test file exemptions, threshold calibration) that were implementation details within the scoped design work.
+
 ### Resolution Typing (Question Subtypes)
 
 Not all questions are equal. Resolution type determines who can traverse:
