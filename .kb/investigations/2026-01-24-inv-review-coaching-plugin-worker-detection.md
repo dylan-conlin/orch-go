@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Backend selection in orch spawn uses 5-level priority chain: flags > project config > global config > default opencode, with advisory-only infrastructure warnings.
+**Delta:** [What was discovered/answered - the key finding in one sentence]
 
-**Evidence:** Code analysis shows `resolveBackend()` function implements clear priority chain; `addInfrastructureWarning()` only adds warnings, never overrides.
+**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
 
-**Knowledge:** User intent (flags) respected over config; infrastructure safety is advisory; default opencode optimizes cost; `--opus` flag implies claude backend.
+**Knowledge:** [What was learned - insights, constraints, or decisions made]
 
-**Next:** Close investigation - backend selection priority is clearly documented and working as designed.
+**Next:** [Recommended action - close, implement, investigate further, or escalate]
 
-**Promote to Decision:** recommend-yes - establishes architectural pattern for config precedence and advisory safety mechanisms
+**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
 
 <!--
 Example D.E.K.N.:
@@ -35,16 +35,16 @@ Guidelines:
 
 ---
 
-# Investigation: Backend Selection Priority Work Orch
+# Investigation: Review Coaching Plugin Worker Detection
 
-**Question:** How does the backend selection priority work in orch spawn? Find the code that determines which backend (claude, opencode, docker) is used and explain the priority order.
+**Question:** [Clear, specific question this investigation answers]
 
-**Started:** 2026-01-23
-**Updated:** 2026-01-23
-**Owner:** investigation agent
-**Phase:** Complete
-**Next Step:** None
-**Status:** Complete
+**Started:** 2026-01-24
+**Updated:** 2026-01-24
+**Owner:** [Owner name or team]
+**Phase:** [Investigating/Synthesizing/Complete]
+**Next Step:** [Very next action when Active, or "None" when Complete]
+**Status:** [In Progress/Complete/Paused]
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -56,33 +56,33 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Backend selection uses a 5-level priority chain
+### Finding 1: [Brief, descriptive title]
 
-**Evidence:** The `resolveBackend()` function in `cmd/orch/backend.go` implements a clear priority chain: 1) `--backend` flag, 2) `--opus` flag, 3) project config, 4) global config, 5) default opencode.
+**Evidence:** [Concrete observations, data, examples]
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/cmd/orch/backend.go:23-83` - `resolveBackend()` function with documented priority chain
+**Source:** [File paths with line numbers, commands run, specific artifacts examined]
 
-**Significance:** This establishes a clear, testable precedence order where explicit user flags override configuration, and configuration overrides defaults.
-
----
-
-### Finding 2: Infrastructure detection warns but doesn't override
-
-**Evidence:** The `addInfrastructureWarning()` function checks for critical infrastructure work (OpenCode server files) and adds advisory warnings but never changes the backend selection.
-
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/cmd/orch/backend.go:85-100` - `addInfrastructureWarning()` function that only adds warnings
-
-**Significance:** Infrastructure safety is advisory-only - users get warnings about potential server restarts but their backend choice is respected.
+**Significance:** [Why this matters, what it tells us, implications for the investigation question]
 
 ---
 
-### Finding 3: Default backend is opencode for cost optimization
+### Finding 2: [Brief, descriptive title]
 
-**Evidence:** When no flags or config specify a backend, the system defaults to "opencode" backend (line 80 in backend.go) with reason "default (opencode for cost optimization)".
+**Evidence:** [Concrete observations, data, examples]
 
-**Source:** `/Users/dylanconlin/Documents/personal/orch-go/cmd/orch/backend.go:79-82` - Default fallback to opencode backend
+**Source:** [File paths with line numbers, commands run, specific artifacts examined]
 
-**Significance:** The system prioritizes cost efficiency by default, using OpenCode with DeepSeek model instead of Claude CLI with Opus (Max subscription).
+**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+
+---
+
+### Finding 3: [Brief, descriptive title]
+
+**Evidence:** [Concrete observations, data, examples]
+
+**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+
+**Significance:** [Why this matters, what it tells us, implications for the investigation question]
 
 ---
 
