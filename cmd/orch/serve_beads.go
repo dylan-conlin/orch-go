@@ -633,7 +633,7 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	projectDir := r.URL.Query().Get("project_dir")
 	statusFilter := r.URL.Query().Get("status")
 	if statusFilter == "" {
-		statusFilter = "all"
+		statusFilter = "open" // Default to open issues only - "all" floods graph with closed
 	}
 
 	// Determine the directory to use
