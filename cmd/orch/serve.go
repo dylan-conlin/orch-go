@@ -72,6 +72,7 @@ Endpoints:
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
+  GET /api/frontier  - Decidability frontier (ready, blocked, active, stuck)
   GET/PUT /api/config - User configuration settings (~/.orch/config.yaml)
   GET /api/changelog - Aggregated changelog (?days=7&project=all)
   POST /api/approve  - Approve agent's work (creates beads comment + updates manifest)
@@ -368,6 +369,9 @@ func runServe(portNum int) error {
 	// GET /api/coaching - returns orchestrator behavioral coaching metrics
 	mux.HandleFunc("/api/coaching", corsHandler(handleCoaching))
 
+	// GET /api/frontier - returns decidability frontier (ready, blocked, active, stuck)
+	mux.HandleFunc("/api/frontier", corsHandler(handleFrontier))
+
 	// GET /api/session/{sessionID}/messages - proxies OpenCode session messages for activity feed history
 	// Uses prefix matching to extract sessionID from path
 	mux.HandleFunc("/api/session/", corsHandler(handleSessionMessages))
@@ -412,6 +416,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
+	fmt.Println("  GET /api/frontier   - Decidability frontier (ready, blocked, active, stuck)")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")

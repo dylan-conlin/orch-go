@@ -58,6 +58,8 @@
 	import { coaching, startCoachingPolling, stopCoachingPolling } from '$lib/stores/coaching';
 	import { questions } from '$lib/stores/questions';
 	import { QuestionsSection } from '$lib/components/questions-section';
+	import { FrontierSection } from '$lib/components/frontier-section';
+	import { frontier } from '$lib/stores/frontier';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -80,7 +82,8 @@
 		sseStream: false, // SSE Stream collapsed by default (low signal-to-noise for most users)
 		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
 		services: true, // Services expanded by default (important visibility)
-		coaching: true // Coaching metrics expanded by default
+		coaching: true, // Coaching metrics expanded by default
+		frontier: true // Frontier expanded by default (shows decidability state)
 	};
 	
 	// Track whether component has mounted and loaded initial state
@@ -168,6 +171,7 @@
 			orchestratorSessions.fetch();
 			services.fetch();
 			questions.fetch();
+			frontier.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -187,7 +191,7 @@
 		const refreshInterval = setInterval(() => {
 			// Get current project_dir from context (if following orchestrator)
 			const projectDir = $filters.followOrchestrator ? $orchestratorContext.project_dir : undefined;
-			
+
 			Promise.all([
 				usage.fetch(),
 				focus.fetch(),
@@ -198,7 +202,8 @@
 				hotspots.fetch(),
 				orchestratorSessions.fetch(),
 				services.fetch(),
-				questions.fetch()
+				questions.fetch(),
+				frontier.fetch()
 			]).catch(console.error);
 		}, 60000);
 
@@ -456,6 +461,11 @@
 		<!-- Up Next (priority queue visibility) -->
 		<UpNextSection
 			bind:expanded={sectionState.upNext}
+		/>
+
+		<!-- Frontier (decidability state) -->
+		<FrontierSection
+			bind:expanded={sectionState.frontier}
 		/>
 
 		<!-- Questions (blocking questions for visibility) -->
