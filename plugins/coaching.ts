@@ -61,10 +61,14 @@ function log(...args: any[]) {
 }
 
 /**
- * NOTE: Worker detection moved to per-session detection in tool hooks.
+ * NOTE: Worker detection uses two approaches:
+ * 1. Early detection via session.created event - checks if session directory
+ *    contains .orch/workspace/ and marks as worker BEFORE any tool calls.
+ * 2. Backup detection via tool hooks - checks tool arguments for SPAWN_CONTEXT.md
+ *    reads or .orch/workspace/ paths.
+ *
  * Plugin-level detection (checking process.env.ORCH_WORKER) doesn't work because
  * the plugin runs in the OpenCode server process, not in spawned agent processes.
- * See detectWorkerSession() function below for the correct implementation.
  */
 
 interface CoachingMetric {
@@ -1871,6 +1875,43 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         if (state.spawns > 0 || state.reads > 0 || state.actions > 0) {
           flushMetrics(state, client)
         }
+      }
+    },
+
+    /**
+     * Early worker detection via session.created event.
+     * Workers are spawned into .orch/workspace/ directories - detect this
+     * at session creation time BEFORE any tool calls occur.
+     * This eliminates the race condition where coaching fires before
+     * tool-based detection can identify the session as a worker.
+     */
+    event: async ({ event }) => {
+      // Only handle session.created events
+      if (event.type !== "session.created") {
+        return
+      }
+
+      // Extract session info from event properties
+      // session.created events have: { info: { id, directory, ... } }
+      const info = (event as any).properties?.info
+      if (!info) {
+        log("Event: No info in session.created event properties, skipping")
+        return
+      }
+
+      const sessionId = info.id
+      const sessionDirectory = info.directory
+
+      if (!sessionId) {
+        log("Event: No sessionID in event properties, skipping")
+        return
+      }
+
+      // Early worker detection via directory path
+      // Workers operate in .orch/workspace/ directories
+      if (sessionDirectory && sessionDirectory.includes(".orch/workspace/")) {
+        workerSessions.set(sessionId, true)
+        log(`Worker detected (session.created, directory): ${sessionId}, dir: ${sessionDirectory}`)
       }
     },
   }
