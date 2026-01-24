@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { connectionStatus } from '$lib/stores/agents';
 	import { usage } from '$lib/stores/usage';
 	import { cost, formatCostBrief, getBudgetColor, getBudgetEmoji } from '$lib/stores/cost';
@@ -10,6 +11,11 @@
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
+
+	// Navigation items
+	const navItems = [
+		{ href: '/', label: 'Dashboard' }
+	];
 
 	function getUsageColor(percent: number | null): 'green' | 'yellow' | 'red' | 'unavailable' {
 		if (percent === null) return 'unavailable';
@@ -54,11 +60,21 @@
 		<!-- Compact Header -->
 		<header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
 			<div class="container flex h-10 items-center">
-				<div class="flex items-center gap-2">
+				<div class="flex items-center gap-4">
 					<a href="/" class="flex items-center gap-1.5">
 						<span class="text-base">🐝</span>
 						<span class="text-sm font-semibold">Swarm</span>
 					</a>
+					<nav class="flex items-center gap-1">
+						{#each navItems as item}
+							<a
+								href={item.href}
+								class="rounded px-2 py-1 text-xs transition-colors hover:bg-accent {$page.url.pathname === item.href ? 'bg-accent font-medium' : 'text-muted-foreground'}"
+							>
+								{item.label}
+							</a>
+						{/each}
+					</nav>
 				</div>
 				<div class="flex flex-1 items-center justify-end gap-3">
 					{#if $usage && !$usage.error}
