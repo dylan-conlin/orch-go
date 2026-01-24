@@ -1203,6 +1203,11 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		beadsID,
 	)
 
+	// Check for fatal errors (e.g., explicitly requested disabled backend)
+	if resolution.Error != nil {
+		return fmt.Errorf("backend resolution failed: %w", resolution.Error)
+	}
+
 	// Print any warnings (infrastructure, invalid config, etc.)
 	for _, warning := range resolution.Warnings {
 		fmt.Println(warning)

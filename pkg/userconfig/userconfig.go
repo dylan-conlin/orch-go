@@ -104,6 +104,9 @@ type DaemonConfig struct {
 type Config struct {
 	// Backend specifies the orchestration backend (e.g., "opencode").
 	Backend string `yaml:"backend,omitempty"`
+	// DisabledBackends lists backends that should never be selected, even via auto-selection.
+	// Example: ["docker"] to prevent docker backend from being used.
+	DisabledBackends []string `yaml:"disabled_backends,omitempty"`
 	// AutoExportTranscript enables automatic transcript export.
 	AutoExportTranscript bool `yaml:"auto_export_transcript,omitempty"`
 	// Notifications holds notification-related settings.
@@ -220,6 +223,16 @@ func (c *Config) GetDefaultTier() string {
 		return "full"
 	}
 	return "" // Use skill defaults
+}
+
+// IsBackendDisabled returns true if the given backend is in the disabled list.
+func (c *Config) IsBackendDisabled(backend string) bool {
+	for _, disabled := range c.DisabledBackends {
+		if disabled == backend {
+			return true
+		}
+	}
+	return false
 }
 
 // DaemonPollInterval returns the daemon poll interval in seconds.

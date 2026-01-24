@@ -13,6 +13,7 @@ type BackendResolution struct {
 	Backend  string   // "claude", "opencode", or "docker"
 	Warnings []string // Advisory messages (infrastructure, compatibility, etc.)
 	Reason   string   // Why this backend was selected (for logging/debugging)
+	Error    error    // Fatal error (e.g., explicitly requested disabled backend)
 }
 
 // resolveBackend determines which backend to use for spawning.
@@ -20,6 +21,10 @@ type BackendResolution struct {
 //
 // This function consolidates all backend selection logic into a single place with
 // a clear, documented priority chain. Infrastructure detection is advisory-only.
+//
+// Disabled backends: If globalCfg.DisabledBackends contains a backend, that backend
+// will not be selected via auto-selection. Explicit --backend flag for a disabled
+// backend returns an Error (fatal).
 func resolveBackend(
 	backendFlag string, // --backend flag value ("claude", "opencode", or "")
 	opusFlag bool, // --opus flag
@@ -31,6 +36,11 @@ func resolveBackend(
 ) BackendResolution {
 	var result BackendResolution
 
+	// Helper to check if backend is disabled
+	isDisabled := func(backend string) bool {
+		return globalCfg != nil && globalCfg.IsBackendDisabled(backend)
+	}
+
 	// Priority 1: Explicit --backend flag (highest priority, user knows what they want)
 	if backendFlag != "" {
 		if backendFlag != "claude" && backendFlag != "opencode" && backendFlag != "docker" {
@@ -38,6 +48,11 @@ func resolveBackend(
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Invalid --backend value %q ignored (must be 'claude', 'opencode', or 'docker')", backendFlag))
 		} else {
+			// Explicit flag for disabled backend is a fatal error
+			if isDisabled(backendFlag) {
+				result.Error = fmt.Errorf("backend %q is disabled in ~/.orch/config.yaml (disabled_backends)", backendFlag)
+				return result
+			}
 			result.Backend = backendFlag
 			result.Reason = fmt.Sprintf("--backend %s flag", backendFlag)
 			return addInfrastructureWarning(result, task, beadsID)
@@ -45,41 +60,81 @@ func resolveBackend(
 	}
 
 	// Priority 2: Explicit --opus flag (implies claude backend)
-	if opusFlag {
+	// Skip if claude is disabled
+	if opusFlag && !isDisabled("claude") {
 		result.Backend = "claude"
 		result.Reason = "--opus flag (implies claude backend)"
 		return addInfrastructureWarning(result, task, beadsID)
+	}
+	if opusFlag && isDisabled("claude") {
+		result.Warnings = append(result.Warnings,
+			"--opus flag ignored: claude backend is disabled")
 	}
 
 	// Priority 3: Project config (.orch/config.yaml in project directory)
 	if projCfg != nil && projCfg.SpawnMode != "" {
 		if projCfg.SpawnMode == "claude" || projCfg.SpawnMode == "opencode" || projCfg.SpawnMode == "docker" {
-			result.Backend = projCfg.SpawnMode
-			result.Reason = fmt.Sprintf("project config (spawn_mode: %s)", projCfg.SpawnMode)
-			return addInfrastructureWarning(result, task, beadsID)
+			if !isDisabled(projCfg.SpawnMode) {
+				result.Backend = projCfg.SpawnMode
+				result.Reason = fmt.Sprintf("project config (spawn_mode: %s)", projCfg.SpawnMode)
+				return addInfrastructureWarning(result, task, beadsID)
+			}
+			// Disabled - warn and fall through
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Project spawn_mode %q is disabled, falling back", projCfg.SpawnMode))
+		} else {
+			// Invalid config value - warn and fall through
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Invalid project spawn_mode %q ignored", projCfg.SpawnMode))
 		}
-		// Invalid config value - warn and fall through
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("Invalid project spawn_mode %q ignored", projCfg.SpawnMode))
 	}
 
 	// Priority 4: Global config (~/.orch/config.yaml)
 	// Uses the existing "backend" field which defaults to "opencode"
 	if globalCfg != nil && globalCfg.Backend != "" {
 		if globalCfg.Backend == "claude" || globalCfg.Backend == "opencode" || globalCfg.Backend == "docker" {
-			result.Backend = globalCfg.Backend
-			result.Reason = fmt.Sprintf("global config (backend: %s)", globalCfg.Backend)
-			return addInfrastructureWarning(result, task, beadsID)
+			if !isDisabled(globalCfg.Backend) {
+				result.Backend = globalCfg.Backend
+				result.Reason = fmt.Sprintf("global config (backend: %s)", globalCfg.Backend)
+				return addInfrastructureWarning(result, task, beadsID)
+			}
+			// Disabled - warn and fall through
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Global backend %q is disabled, falling back to default", globalCfg.Backend))
+		} else {
+			// Invalid config value - warn and fall through
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Invalid global backend %q ignored", globalCfg.Backend))
 		}
-		// Invalid config value - warn and fall through
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("Invalid global backend %q ignored", globalCfg.Backend))
 	}
 
-	// Priority 5: Default to opencode (cost optimization)
-	result.Backend = "opencode"
-	result.Reason = "default (opencode for cost optimization)"
-	return addInfrastructureWarning(result, task, beadsID)
+	// Priority 5: Default to opencode (cost optimization), unless disabled
+	if !isDisabled("opencode") {
+		result.Backend = "opencode"
+		result.Reason = "default (opencode for cost optimization)"
+		return addInfrastructureWarning(result, task, beadsID)
+	}
+
+	// opencode is disabled, try claude as fallback
+	if !isDisabled("claude") {
+		result.Backend = "claude"
+		result.Reason = "fallback (opencode disabled)"
+		result.Warnings = append(result.Warnings, "opencode disabled, using claude as fallback")
+		return addInfrastructureWarning(result, task, beadsID)
+	}
+
+	// Both opencode and claude disabled, try docker
+	if !isDisabled("docker") {
+		result.Backend = "docker"
+		result.Reason = "fallback (opencode and claude disabled)"
+		result.Warnings = append(result.Warnings, "opencode and claude disabled, using docker as fallback")
+		return addInfrastructureWarning(result, task, beadsID)
+	}
+
+	// All backends disabled - fatal error
+	result.Error = fmt.Errorf("all backends are disabled in ~/.orch/config.yaml (disabled_backends: %v)",
+		globalCfg.DisabledBackends)
+	return result
 }
 
 // addInfrastructureWarning checks for critical infrastructure work and adds advisory warning.

@@ -371,6 +371,14 @@ func runShowConfig() error {
 	fmt.Println("# ~/.orch/config.yaml (effective values)")
 	fmt.Println()
 	fmt.Printf("backend: %s\n", cfg.Backend)
+	if len(cfg.DisabledBackends) > 0 {
+		fmt.Println("disabled_backends:")
+		for _, b := range cfg.DisabledBackends {
+			fmt.Printf("  - %s\n", b)
+		}
+	} else {
+		fmt.Println("disabled_backends: []")
+	}
 	fmt.Printf("auto_export_transcript: %v\n", cfg.AutoExportTranscript)
 	fmt.Printf("default_tier: %s\n", cfg.DefaultTier)
 	fmt.Println()
