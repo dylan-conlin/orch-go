@@ -52,6 +52,9 @@ func CreateScreenshotsDir(workspacePath string) error {
 // SpawnContextTemplate is the basic structure for SPAWN_CONTEXT.md.
 // This is a simplified version of the Python template.
 const SpawnContextTemplate = `TASK: {{.Task}}
+{{if .BloatWarnings}}
+{{.BloatWarnings}}
+{{end}}
 {{if .DesignWorkspace}}
 ## DESIGN REFERENCE
 
@@ -466,6 +469,7 @@ type contextData struct {
 	KBContext         string
 	Tier              string
 	ServerContext     string
+	BloatWarnings     string         // Bloat warnings for files mentioned in task exceeding 800 lines
 	NoTrack           bool           // When true, omit beads instructions from spawn context
 	IsBug             bool           // When true, this is a bug issue with reproduction info
 	ReproSteps        string         // Reproduction steps from bug issue
@@ -499,6 +503,13 @@ func GenerateContext(cfg *Config) (string, error) {
 		skillContent = StripBeadsInstructions(skillContent)
 	}
 
+	// Check for bloated files mentioned in the task
+	bloatWarnings := ""
+	if cfg.ProjectDir != "" {
+		warnings := CheckBloatedFiles(cfg.Task, cfg.ProjectDir)
+		bloatWarnings = GenerateBloatWarningSection(warnings)
+	}
+
 	data := contextData{
 		Task:              cfg.Task,
 		BeadsID:           cfg.BeadsID,
@@ -514,6 +525,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		KBContext:         cfg.KBContext,
 		Tier:              cfg.Tier,
 		ServerContext:     serverContext,
+		BloatWarnings:     bloatWarnings,
 		NoTrack:           cfg.NoTrack,
 		IsBug:             cfg.IsBug,
 		ReproSteps:        cfg.ReproSteps,
