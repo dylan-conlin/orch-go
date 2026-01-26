@@ -20,6 +20,7 @@ type Issue struct {
 	Priority       int          `json:"priority"`
 	Dependencies   []Dependency `json:"dependencies,omitempty"`
 	Dependents     []Dependency `json:"dependents,omitempty"`
+	BlockedBy      []string     `json:"blocked_by,omitempty"`
 	BlockedByCount int          `json:"blocked_by_count,omitempty"`
 	DependentCount int          `json:"dependent_count,omitempty"`
 }
