@@ -46,6 +46,14 @@ func TestResolve_Aliases(t *testing.T) {
 		// DeepSeek aliases
 		{"deepseek-v3", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
 		{"reasoning", ModelSpec{Provider: "deepseek", ModelID: "deepseek-r1"}},
+
+		// Alibaba (Qwen) aliases
+		{"qwen", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
+		{"QWEN", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
+		{"qwen-max", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
+		{"qwen3", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
+		{"qwen3-max", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max"}},
+		{"qwen-thinking", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max-2026-01-23"}},
 	}
 
 	for _, tt := range tests {
@@ -96,6 +104,9 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 
 		// DeepSeek models default to deepseek
 		{"deepseek-v3.2", ModelSpec{Provider: "deepseek", ModelID: "deepseek-v3.2"}},
+
+		// Qwen models default to alibaba
+		{"qwen3-max-2026-01-23", ModelSpec{Provider: "alibaba", ModelID: "qwen3-max-2026-01-23"}},
 	}
 
 	for _, tt := range tests {

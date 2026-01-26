@@ -65,6 +65,13 @@ var Aliases = map[string]ModelSpec{
 	"deepseek-v3":   {Provider: "deepseek", ModelID: "deepseek-v3.2"},
 	"deepseek-r1":   {Provider: "deepseek", ModelID: "deepseek-r1"},
 	"reasoning":     {Provider: "deepseek", ModelID: "deepseek-r1"},
+
+	// Alibaba models (Qwen) - uses dashscope-intl.aliyuncs.com endpoint
+	"qwen":          {Provider: "alibaba", ModelID: "qwen3-max"},
+	"qwen-max":      {Provider: "alibaba", ModelID: "qwen3-max"},
+	"qwen3":         {Provider: "alibaba", ModelID: "qwen3-max"},
+	"qwen3-max":     {Provider: "alibaba", ModelID: "qwen3-max"},
+	"qwen-thinking": {Provider: "alibaba", ModelID: "qwen3-max-2026-01-23"},
 }
 
 // Resolve resolves a model specification to a full ModelSpec.
@@ -107,6 +114,9 @@ func Resolve(spec string) ModelSpec {
 	if strings.Contains(specLower, "deepseek") {
 		return ModelSpec{Provider: "deepseek", ModelID: spec}
 	}
+	if strings.Contains(specLower, "qwen") {
+		return ModelSpec{Provider: "alibaba", ModelID: spec}
+	}
 
 	// Default to anthropic for unknown models
 	return ModelSpec{Provider: "anthropic", ModelID: spec}
@@ -119,5 +129,6 @@ func ListAliases() []string {
 		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
 		"OpenAI: gpt (latest 5.2), gpt5, gpt-5, gpt-5-mini, gpt4o, gpt-4o, gpt-mini, gpt-4o-mini, o3, o3-mini",
 		"DeepSeek: deepseek, deepseek-chat, deepseek-r1, reasoning (alias for reasoner)",
+		"Alibaba: qwen, qwen-max, qwen3, qwen3-max, qwen-thinking (thinking mode snapshot)",
 	}
 }
