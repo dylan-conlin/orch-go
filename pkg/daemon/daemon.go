@@ -1485,21 +1485,27 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 			continue
 		}
 
+		// Track skip reasons per project for summary logging (reduces log verbosity)
+		var skipCounts struct {
+			failedSpawn   int
+			recentSpawn   int
+			typeNotSpawn  int
+			statusBlocked int
+			missingLabel  int
+		}
+		spawnable := 0
+
 		for _, issue := range issues {
 			// Skip issues in the skip set
 			skipKey := fmt.Sprintf("%s:%s", project.Path, issue.ID)
 			if skip != nil && skip[skipKey] {
-				if d.Config.Verbose {
-					fmt.Printf("  [%s] Skipping %s (failed to spawn this cycle)\n", project.Name, issue.ID)
-				}
+				skipCounts.failedSpawn++
 				continue
 			}
 
 			// Skip issues that have been recently spawned
 			if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
-				if d.Config.Verbose {
-					fmt.Printf("  [%s] Skipping %s (recently spawned)\n", project.Name, issue.ID)
-				}
+				skipCounts.recentSpawn++
 				// Emit telemetry event when SpawnedIssueTracker blocks spawn
 				if d.EventLogger != nil {
 					_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
@@ -1513,32 +1519,55 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 
 			// Skip non-spawnable types
 			if !IsSpawnableType(issue.IssueType) {
-				if d.Config.Verbose {
-					fmt.Printf("  [%s] Skipping %s (type %s not spawnable)\n", project.Name, issue.ID, issue.IssueType)
-				}
+				skipCounts.typeNotSpawn++
 				continue
 			}
 
 			// Skip blocked or in_progress issues
 			if issue.Status == "blocked" || issue.Status == "in_progress" {
-				if d.Config.Verbose {
-					fmt.Printf("  [%s] Skipping %s (status: %s)\n", project.Name, issue.ID, issue.Status)
-				}
+				skipCounts.statusBlocked++
 				continue
 			}
 
 			// Skip issues without required label (if filter is set)
 			if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
-				if d.Config.Verbose {
-					fmt.Printf("  [%s] Skipping %s (missing label %s)\n", project.Name, issue.ID, d.Config.Label)
-				}
+				skipCounts.missingLabel++
 				continue
 			}
 
+			spawnable++
 			allIssues = append(allIssues, CrossProjectIssue{
 				Issue:   issue,
 				Project: project,
 			})
+		}
+
+		// Log skip summary per project (much less verbose than per-issue)
+		if d.Config.Verbose {
+			totalSkipped := skipCounts.failedSpawn + skipCounts.recentSpawn +
+				skipCounts.typeNotSpawn + skipCounts.statusBlocked + skipCounts.missingLabel
+			if totalSkipped > 0 || spawnable > 0 {
+				var parts []string
+				if spawnable > 0 {
+					parts = append(parts, fmt.Sprintf("%d spawnable", spawnable))
+				}
+				if skipCounts.missingLabel > 0 {
+					parts = append(parts, fmt.Sprintf("%d missing label", skipCounts.missingLabel))
+				}
+				if skipCounts.statusBlocked > 0 {
+					parts = append(parts, fmt.Sprintf("%d blocked/in_progress", skipCounts.statusBlocked))
+				}
+				if skipCounts.typeNotSpawn > 0 {
+					parts = append(parts, fmt.Sprintf("%d non-spawnable type", skipCounts.typeNotSpawn))
+				}
+				if skipCounts.recentSpawn > 0 {
+					parts = append(parts, fmt.Sprintf("%d recently spawned", skipCounts.recentSpawn))
+				}
+				if skipCounts.failedSpawn > 0 {
+					parts = append(parts, fmt.Sprintf("%d failed this cycle", skipCounts.failedSpawn))
+				}
+				fmt.Printf("  [%s] %s\n", project.Name, strings.Join(parts, ", "))
+			}
 		}
 	}
 
