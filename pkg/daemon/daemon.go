@@ -10,6 +10,12 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
+// EventLogger is an interface for logging deduplication events.
+// Implemented by events.Logger.
+type EventLogger interface {
+	LogDedupBlocked(data interface{}) error
+}
+
 // Config holds configuration for the daemon.
 type Config struct {
 	// PollInterval is the time between polling cycles (0 = run once).
@@ -181,6 +187,10 @@ type Daemon struct {
 	// because the status update hasn't propagated yet.
 	SpawnedIssues *SpawnedIssueTracker
 
+	// EventLogger is used to log deduplication events for telemetry.
+	// If nil, events are not logged.
+	EventLogger EventLogger
+
 	// lastReflect tracks when reflection was last run for periodic reflection.
 	lastReflect time.Time
 
@@ -231,6 +241,7 @@ func NewWithConfig(config Config) *Daemon {
 	d := &Daemon{
 		Config:                   config,
 		SpawnedIssues:            NewSpawnedIssueTracker(),
+		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
@@ -252,6 +263,13 @@ func NewWithConfig(config Config) *Daemon {
 	return d
 }
 
+// SetEventLogger sets the event logger for telemetry.
+// This is separate from the constructor to avoid circular dependencies
+// with the events package.
+func (d *Daemon) SetEventLogger(logger EventLogger) {
+	d.EventLogger = logger
+}
+
 // NewWithPool creates a new Daemon instance with an explicit worker pool.
 // This is useful for sharing a pool across daemon instances or for testing.
 func NewWithPool(config Config, pool *WorkerPool) *Daemon {
@@ -265,6 +283,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		Config:                   config,
 		Pool:                     pool,
 		SpawnedIssues:            NewSpawnedIssueTracker(),
+		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
@@ -335,6 +354,14 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 		if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Skipping %s (recently spawned, awaiting status update)\n", issue.ID)
+			}
+			// Emit telemetry event when SpawnedIssueTracker blocks spawn
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    issue.ID,
+					"dedup_layer": "spawned_tracker",
+					"reason":      "Issue recently spawned, awaiting status update (6h TTL)",
+				})
 			}
 			continue
 		}
@@ -841,6 +868,14 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
 			}
+			// Emit telemetry event when session dedup blocks spawn
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    issue.ID,
+					"dedup_layer": "session_dedup",
+					"reason":      "Existing OpenCode session found via API check",
+				})
+			}
 			extendedSkip[issue.ID] = true
 			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: existing session", issue.ID))
 			continue
@@ -855,6 +890,14 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
 			if d.Config.Verbose {
 				fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
+			}
+			// Emit telemetry event when Phase:Complete blocks spawn
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    issue.ID,
+					"dedup_layer": "phase_complete",
+					"reason":      "Phase: Complete comment found in beads issue",
+				})
 			}
 			extendedSkip[issue.ID] = true
 			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: Phase: Complete", issue.ID))
@@ -962,6 +1005,14 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		if d.Config.Verbose {
 			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
 		}
+		// Emit telemetry event when session dedup blocks spawn
+		if d.EventLogger != nil {
+			_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+				"beads_id":    issue.ID,
+				"dedup_layer": "session_dedup",
+				"reason":      "Existing OpenCode session found via API check",
+			})
+		}
 		return &OnceResult{
 			Processed: false,
 			Issue:     issue,
@@ -975,6 +1026,14 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
 		if d.Config.Verbose {
 			fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
+		}
+		// Emit telemetry event when Phase:Complete blocks spawn
+		if d.EventLogger != nil {
+			_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+				"beads_id":    issue.ID,
+				"dedup_layer": "phase_complete",
+				"reason":      "Phase: Complete comment found in beads issue",
+			})
 		}
 		return &OnceResult{
 			Processed: false,
@@ -1441,6 +1500,14 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 				if d.Config.Verbose {
 					fmt.Printf("  [%s] Skipping %s (recently spawned)\n", project.Name, issue.ID)
 				}
+				// Emit telemetry event when SpawnedIssueTracker blocks spawn
+				if d.EventLogger != nil {
+					_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+						"beads_id":    issue.ID,
+						"dedup_layer": "spawned_tracker",
+						"reason":      "Issue recently spawned, awaiting status update (6h TTL)",
+					})
+				}
 				continue
 			}
 
@@ -1515,6 +1582,14 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 				fmt.Printf("  [%s] Skipping %s (existing OpenCode session found)\n",
 					candidate.Project.Name, candidate.Issue.ID)
 			}
+			// Emit telemetry event when session dedup blocks spawn
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    candidate.Issue.ID,
+					"dedup_layer": "session_dedup",
+					"reason":      "Existing OpenCode session found via API check",
+				})
+			}
 			skippedReasons = append(skippedReasons,
 				fmt.Sprintf("%s: existing session", candidate.Issue.ID))
 			continue
@@ -1527,6 +1602,14 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 			if d.Config.Verbose {
 				fmt.Printf("  [%s] Skipping %s (Phase: Complete already reported)\n",
 					candidate.Project.Name, candidate.Issue.ID)
+			}
+			// Emit telemetry event when Phase:Complete blocks spawn
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    candidate.Issue.ID,
+					"dedup_layer": "phase_complete",
+					"reason":      "Phase: Complete comment found in beads issue",
+				})
 			}
 			skippedReasons = append(skippedReasons,
 				fmt.Sprintf("%s: Phase: Complete", candidate.Issue.ID))

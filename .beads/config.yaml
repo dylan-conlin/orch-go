@@ -1,3 +1,3 @@
-issue_prefix: orch-go
+issue-prefix: orch-go
 repos:
   primary: "."

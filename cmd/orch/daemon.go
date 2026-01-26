@@ -220,6 +220,8 @@ func runDaemonLoop() error {
 	}()
 
 	logger := events.NewLogger(events.DefaultLogPath())
+	// Inject event logger into daemon for dedup telemetry
+	d.SetEventLogger(logger)
 	processed := 0
 	completed := 0 // Track auto-completed agents
 	cycles := 0
@@ -648,6 +650,10 @@ func runDaemonDryRun() error {
 	}
 	d := daemon.NewWithConfig(config)
 
+	// Inject event logger for dedup telemetry
+	logger := events.NewLogger(events.DefaultLogPath())
+	d.SetEventLogger(logger)
+
 	// Configure hotspot checking for dry-run
 	d.HotspotChecker = daemon.NewGitHotspotChecker()
 
@@ -708,6 +714,10 @@ func runDaemonOnce() error {
 	}
 	d := daemon.NewWithConfig(config)
 
+	// Inject event logger for dedup telemetry
+	logger := events.NewLogger(events.DefaultLogPath())
+	d.SetEventLogger(logger)
+
 	// Use cross-project version if enabled
 	if config.CrossProject {
 		cpResult, err := d.CrossProjectOnce()
@@ -726,7 +736,6 @@ func runDaemonOnce() error {
 		fmt.Printf("  Skill:  %s\n", cpResult.Skill)
 
 		// Log the spawn
-		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
 			Type:      "daemon.once",
 			Timestamp: time.Now().Unix(),
@@ -760,7 +769,6 @@ func runDaemonOnce() error {
 	fmt.Printf("  Skill:  %s\n", result.Skill)
 
 	// Log the spawn
-	logger := events.NewLogger(events.DefaultLogPath())
 	event := events.Event{
 		Type:      "daemon.once",
 		Timestamp: time.Now().Unix(),
@@ -783,6 +791,10 @@ func runDaemonPreview() error {
 		CrossProject: daemonCrossProject,
 	}
 	d := daemon.NewWithConfig(config)
+
+	// Inject event logger for dedup telemetry
+	logger := events.NewLogger(events.DefaultLogPath())
+	d.SetEventLogger(logger)
 
 	// Configure hotspot checking for preview
 	d.HotspotChecker = daemon.NewGitHotspotChecker()

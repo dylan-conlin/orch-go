@@ -36,6 +36,8 @@ const (
 	EventTypeVerificationBypassed = "verification.bypassed"
 	// EventTypeAgentAbandoned indicates an agent was abandoned via orch abandon.
 	EventTypeAgentAbandoned = "agent.abandoned"
+	// EventTypeDedupBlocked indicates a spawn was blocked by a deduplication layer.
+	EventTypeDedupBlocked = "daemon.dedup_blocked"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -402,6 +404,43 @@ func (l *Logger) LogVerificationBypassed(data VerificationBypassedData) error {
 	return l.Log(Event{
 		Type:      EventTypeVerificationBypassed,
 		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}
+
+// DedupBlockedData contains the data for a daemon.dedup_blocked event.
+type DedupBlockedData struct {
+	BeadsID    string `json:"beads_id"`
+	DedupLayer string `json:"dedup_layer"` // Which layer blocked: "spawned_tracker", "session_dedup", "phase_complete", "beads_status"
+	Reason     string `json:"reason"`      // Human-readable reason
+}
+
+// LogDedupBlocked logs a deduplication blocking event.
+// This is emitted when the daemon skips spawning an issue because a dedup layer detected it already exists.
+// Accepts either DedupBlockedData struct or map[string]interface{} for flexibility.
+func (l *Logger) LogDedupBlocked(data interface{}) error {
+	var eventData map[string]interface{}
+
+	switch d := data.(type) {
+	case DedupBlockedData:
+		eventData = map[string]interface{}{
+			"beads_id":    d.BeadsID,
+			"dedup_layer": d.DedupLayer,
+			"reason":      d.Reason,
+		}
+	case map[string]interface{}:
+		// Already a map, use directly
+		eventData = d
+	default:
+		return fmt.Errorf("unexpected data type for LogDedupBlocked: %T", data)
+	}
+
+	beadsID, _ := eventData["beads_id"].(string)
+
+	return l.Log(Event{
+		Type:      EventTypeDedupBlocked,
+		SessionID: beadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
 	})
