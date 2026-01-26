@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/frontier"
@@ -71,6 +72,7 @@ type BlockedOutput struct {
 	Title         string   `json:"title"`
 	IssueType     string   `json:"issue_type"`
 	Priority      int      `json:"priority"`
+	BlockedBy     []string `json:"blocked_by,omitempty"`
 	WouldUnblock  []string `json:"would_unblock,omitempty"`
 	TotalLeverage int      `json:"total_leverage"`
 }
@@ -178,6 +180,7 @@ func printFrontierJSON(state *frontier.FrontierState, active, stuck []ActiveOutp
 			Title:         bi.Issue.Title,
 			IssueType:     bi.Issue.IssueType,
 			Priority:      bi.Issue.Priority,
+			BlockedBy:     bi.Issue.BlockedBy,
 			WouldUnblock:  bi.WouldUnblock,
 			TotalLeverage: bi.TotalLeverage,
 		})
@@ -207,8 +210,8 @@ func printFrontierText(state *frontier.FrontierState, active, stuck []ActiveOutp
 		displayCount := min(len(state.Ready), maxDisplayItems)
 		for i := 0; i < displayCount; i++ {
 			issue := state.Ready[i]
-			title := truncateTitle(issue.Title, 50)
-			fmt.Printf("   %s  %s\n", issue.ID, title)
+			title := truncateTitle(issue.Title, 45)
+			fmt.Printf("   [%s] %s  %s\n", issue.IssueType, issue.ID, title)
 		}
 		if len(state.Ready) > maxDisplayItems {
 			fmt.Printf("   ... and %d more\n", len(state.Ready)-maxDisplayItems)
@@ -216,7 +219,7 @@ func printFrontierText(state *frontier.FrontierState, active, stuck []ActiveOutp
 	}
 	fmt.Println()
 
-	// BLOCKED - sorted by leverage, show ID + title
+	// BLOCKED - sorted by leverage, show ID + title + blockers
 	fmt.Printf("BLOCKED (%d)\n", len(state.Blocked))
 	if len(state.Blocked) == 0 {
 		fmt.Println("   (none)")
@@ -224,12 +227,11 @@ func printFrontierText(state *frontier.FrontierState, active, stuck []ActiveOutp
 		displayCount := min(len(state.Blocked), maxDisplayItems)
 		for i := 0; i < displayCount; i++ {
 			bi := state.Blocked[i]
-			title := truncateTitle(bi.Issue.Title, 40)
-			leverage := frontier.FormatLeverage(bi)
-			if leverage != "" {
-				fmt.Printf("   %s  %s → %s\n", bi.Issue.ID, title, leverage)
-			} else {
-				fmt.Printf("   %s  %s\n", bi.Issue.ID, title)
+			title := truncateTitle(bi.Issue.Title, 35)
+			blockers := formatBlockers(bi.Issue.BlockedBy)
+			fmt.Printf("   %s  %s\n", bi.Issue.ID, title)
+			if blockers != "" {
+				fmt.Printf("      ← %s\n", blockers)
 			}
 		}
 		if len(state.Blocked) > maxDisplayItems {
@@ -278,5 +280,24 @@ func truncateTitle(title string, maxLen int) string {
 		return title
 	}
 	return title[:maxLen-3] + "..."
+}
+
+// formatBlockers returns a human-readable description of what's blocking an issue.
+func formatBlockers(blockedBy []string) string {
+	if len(blockedBy) == 0 {
+		return ""
+	}
+
+	if len(blockedBy) == 1 {
+		return fmt.Sprintf("blocked by: %s", blockedBy[0])
+	}
+
+	if len(blockedBy) <= 3 {
+		return fmt.Sprintf("blocked by: %s", strings.Join(blockedBy, ", "))
+	}
+
+	return fmt.Sprintf("blocked by: %s (+%d more)",
+		strings.Join(blockedBy[:2], ", "),
+		len(blockedBy)-2)
 }
 
