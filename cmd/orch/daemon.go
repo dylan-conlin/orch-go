@@ -184,25 +184,26 @@ func runDaemonLoop() error {
 		cfg = userconfig.DefaultConfig()
 	}
 
-	// Build configuration from flags
-	config := daemon.Config{
-		PollInterval:                time.Duration(daemonPollInterval) * time.Second,
-		MaxAgents:                   daemonMaxAgents,
-		Label:                       daemonLabel,
-		SpawnDelay:                  time.Duration(daemonDelay) * time.Second,
-		DryRun:                      daemonDryRun,
-		Verbose:                     daemonVerbose,
-		CrossProject:                daemonCrossProject,
-		Backend:                     cfg.Backend, // Use backend from user config
-		ReflectEnabled:              daemonReflectInterval > 0,
-		ReflectInterval:             time.Duration(daemonReflectInterval) * time.Minute,
-		ReflectCreateIssues:         daemonReflectIssues,
-		CleanupEnabled:              daemonCleanupEnabled && daemonCleanupInterval > 0,
-		CleanupInterval:             time.Duration(daemonCleanupInterval) * time.Minute,
-		CleanupAgeDays:              daemonCleanupAge,
-		CleanupPreserveOrchestrator: daemonCleanupPreserveOrch,
-		CleanupServerURL:            serverURL, // Use global serverURL from root command
-	}
+	// Build configuration from defaults, then override with flags.
+	// This ensures recovery settings (RecoveryEnabled, ServerRecoveryEnabled, etc.)
+	// get their default values even when not explicitly set via flags.
+	config := daemon.DefaultConfig()
+	config.PollInterval = time.Duration(daemonPollInterval) * time.Second
+	config.MaxAgents = daemonMaxAgents
+	config.Label = daemonLabel
+	config.SpawnDelay = time.Duration(daemonDelay) * time.Second
+	config.DryRun = daemonDryRun
+	config.Verbose = daemonVerbose
+	config.CrossProject = daemonCrossProject
+	config.Backend = cfg.Backend // Use backend from user config
+	config.ReflectEnabled = daemonReflectInterval > 0
+	config.ReflectInterval = time.Duration(daemonReflectInterval) * time.Minute
+	config.ReflectCreateIssues = daemonReflectIssues
+	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
+	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
+	config.CleanupAgeDays = daemonCleanupAge
+	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
+	config.CleanupServerURL = serverURL // Use global serverURL from root command
 
 	d := daemon.NewWithConfig(config)
 
