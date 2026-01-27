@@ -1908,22 +1908,29 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         return
       }
 
-      // Early worker detection via directory path
-      // Workers are spawned into .orch/workspace/ directories - this is universal
-      // and provides early detection before any tool calls
-      if (sessionDirectory && sessionDirectory.includes(".orch/workspace/")) {
+      // Early worker detection via directory + title pattern
+      // Workers are spawned into .orch/workspace/ directories, but so are spawned orchestrators.
+      // Spawned orchestrators have titles like "og-orch-*" or "meta-orch-*" and SHOULD receive coaching.
+      // Workers have skill-based prefixes: og-feat-*, og-inv-*, og-debug-*, og-arch-*, etc.
+      //
+      // Detection logic:
+      // 1. If in .orch/workspace/ AND title contains "-orch-" → spawned orchestrator (NOT a worker)
+      // 2. If in .orch/workspace/ AND title does NOT contain "-orch-" → worker
+      // 3. If title contains beads ID pattern [xxx-yyy] AND NOT "-orch-" → worker
+      // 4. Otherwise → orchestrator (receives coaching)
+      
+      const isInWorkspace = sessionDirectory && sessionDirectory.includes(".orch/workspace/")
+      const isOrchestratorTitle = /-orch-/.test(sessionTitle) || /^meta-/.test(sessionTitle)
+      const hasBeadsId = /\[[\w-]+-\w+\]/.test(sessionTitle)
+      
+      // Workers: in workspace but NOT orchestrator, OR has beads ID but NOT orchestrator
+      const isWorker = (isInWorkspace && !isOrchestratorTitle) || (hasBeadsId && !isOrchestratorTitle)
+      
+      if (isWorker) {
         workerSessions.set(sessionId, true)
-        log(`Worker detected (session.created, directory): ${sessionId}, path: ${sessionDirectory}`)
-        return // Early exit - no need for further checks
-      }
-
-      // Early worker detection via session title pattern
-      // Workers spawned by orch have titles like "og-inv-*", "og-feat-*", "op-feat-*"
-      // and contain beads ID in brackets like "[orch-go-xyz]"
-      const isWorkerTitle = /^(og|op|pw)-/.test(sessionTitle) || /\[[\w-]+-\w+\]/.test(sessionTitle)
-      if (isWorkerTitle) {
-        workerSessions.set(sessionId, true)
-        log(`Worker detected (session.created, title): ${sessionId}, title: ${sessionTitle}`)
+        log(`Worker detected (session.created): ${sessionId}, title: ${sessionTitle}, dir: ${sessionDirectory}`)
+      } else if (isInWorkspace && isOrchestratorTitle) {
+        log(`Spawned orchestrator detected (will receive coaching): ${sessionId}, title: ${sessionTitle}`)
       }
     },
   }
