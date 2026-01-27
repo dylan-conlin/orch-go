@@ -7,13 +7,14 @@
  * - Task tool spawns aren't visible in dashboard
  * - Task tool bypasses completion verification workflow
  *
- * Detection methods:
- * 1. Session title pattern: Orchestrator sessions have titles starting with "og-" or "op-"
+ * Detection methods (in priority order):
+ * 1. Skill loading: When "orchestrator" skill is loaded via Skill tool, mark session
+ * 2. Session title pattern: Orchestrator sessions have titles starting with "og-" or "op-"
  *    (orch-go spawned sessions) but WITHOUT beads ID brackets (workers have [beads-id])
- * 2. Environment check: ORCH_WORKER env var (set by orch spawn for workers)
- * 3. Workspace path: Workers operate in .orch/workspace/ directories
+ * 3. Environment check: ORCH_WORKER env var (set by orch spawn for workers)
+ * 4. Workspace path: Workers operate in .orch/workspace/ directories
  *
- * Triggered by: tool.execute.before (Task tool)
+ * Triggered by: tool.execute.before (Task tool, Skill tool)
  * Action: Inject warning message explaining why to use orch spawn
  *
  * Note: Task tool is also denied via .opencode/opencode.json permission config.
@@ -110,6 +111,47 @@ function isWorkerSession(sessionId: string, tool?: string, args?: any): boolean 
 }
 
 /**
+ * Detect if a session is an orchestrator via Skill tool loading.
+ * When the "orchestrator" skill is loaded, mark the session as orchestrator
+ * AND update the session metadata so the registry gate can block Task tool.
+ *
+ * This is the primary detection method for interactive sessions where
+ * the user invokes the orchestrator skill manually.
+ */
+async function detectOrchestratorFromSkill(
+  sessionId: string,
+  tool: string,
+  args?: any,
+  updateSessionMetadata?: (sessionId: string, role: "orchestrator") => Promise<void>
+): Promise<boolean> {
+  if (tool.toLowerCase() !== "skill") return false
+
+  // Skill tool uses 'skill' parameter (from SPAWN_CONTEXT) or 'name' parameter (from OpenCode)
+  const skillName = args?.skill || args?.name
+  if (!skillName) return false
+
+  // Check if orchestrator skill is being loaded
+  if (skillName.toLowerCase() === "orchestrator") {
+    log(`Orchestrator detected (skill loading): session ${sessionId}`)
+    sessionTypes.set(sessionId, "orchestrator")
+
+    // Update session metadata so registry gate can block Task tool
+    if (updateSessionMetadata) {
+      try {
+        await updateSessionMetadata(sessionId, "orchestrator")
+        log(`Session metadata updated for ${sessionId}: role=orchestrator`)
+      } catch (err) {
+        if (DEBUG) console.error(LOG_PREFIX, "Failed to update session metadata:", err)
+      }
+    }
+
+    return true
+  }
+
+  return false
+}
+
+/**
  * Detect if session is an orchestrator based on session title patterns.
  * Called via event hook when session.created fires.
  *
@@ -166,6 +208,35 @@ export const TaskToolGatePlugin: Plugin = async ({
 }) => {
   log("Plugin initialized, directory:", directory)
 
+  /**
+   * Update session metadata to set the role field.
+   * This allows the registry gate to block Task tool for orchestrators.
+   *
+   * Uses the OpenCode PATCH /session/:sessionID API endpoint.
+   */
+  async function updateSessionMetadata(sessionId: string, role: "orchestrator") {
+    try {
+      // Make HTTP request to update session metadata
+      // Use localhost since plugin runs in same process as server
+      const response = await fetch(`https://localhost:3348/session/${sessionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ metadata: { role } }),
+      })
+
+      if (response.ok) {
+        log(`Session metadata updated via API: ${sessionId} role=${role}`)
+      } else {
+        const text = await response.text()
+        throw new Error(`API returned ${response.status}: ${text}`)
+      }
+    } catch (err) {
+      if (DEBUG) console.error(LOG_PREFIX, "Failed to update session metadata:", err)
+    }
+  }
+
   return {
     /**
      * Event hook: Detect orchestrator sessions via session title.
@@ -187,6 +258,8 @@ export const TaskToolGatePlugin: Plugin = async ({
       if (detectOrchestratorFromTitle(sessionTitle)) {
         sessionTypes.set(sessionId, "orchestrator")
         log(`Orchestrator session detected via title: ${sessionId}`)
+        // Update session metadata immediately when detected via title
+        await updateSessionMetadata(sessionId, "orchestrator")
       }
 
       // Detect worker from title patterns
@@ -197,7 +270,7 @@ export const TaskToolGatePlugin: Plugin = async ({
     },
 
     /**
-     * Tool hook: Detect Task tool usage and inject warning for orchestrators.
+     * Tool hook: Detect orchestrator context via Skill tool, and warn about Task tool usage.
      */
     "tool.execute.before": async (input, output) => {
       const { tool, sessionID } = input
@@ -206,7 +279,11 @@ export const TaskToolGatePlugin: Plugin = async ({
       // Always run worker detection to populate cache
       const isWorker = isWorkerSession(sessionID, tool, args)
 
-      // Only intercept Task tool
+      // Detection: Check for orchestrator skill loading
+      // This is the primary detection method for interactive sessions
+      await detectOrchestratorFromSkill(sessionID, tool, args, updateSessionMetadata)
+
+      // Only intercept Task tool for warnings
       if (tool.toLowerCase() !== "task") {
         return
       }
