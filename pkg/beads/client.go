@@ -813,8 +813,12 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 // FallbackList retrieves issues via bd CLI.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
+// Uses --limit 0 to get ALL issues (bd list defaults to 50 most recent).
 func FallbackList(status string) ([]Issue, error) {
-	args := []string{"list", "--json"}
+	// Use --limit 0 to get ALL issues. Without this, bd list returns only
+	// the 50 most recent issues, which can miss in_progress issues when
+	// the repo has many recent closed issues (discovered in orch-go-20942).
+	args := []string{"list", "--json", "--limit", "0"}
 	if status != "" {
 		args = append(args, "--status", status)
 	}
