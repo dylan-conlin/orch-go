@@ -5,11 +5,11 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** 2 + 2 = 4 (verified through mathematical calculation)
+**Delta:** 9 * 2 = 18 (verified through mathematical calculation and shell test)
 
-**Evidence:** Arithmetic verification: 2 + 2 = 4. Tested via shell calculation: `echo "2 + 2" | bc` returns 4.
+**Evidence:** Arithmetic verification: 9 * 2 = 18. Tested via shell calculation: `echo "9 * 2" | bc` returns 18.
 
-**Knowledge:** Basic arithmetic is reliable and consistent.
+**Knowledge:** Basic multiplication is reliable and consistent.
 
 **Next:** Close investigation - question answered.
 
@@ -37,14 +37,14 @@ Guidelines:
 
 # Investigation: Quick Math
 
-**Question:** What is 2 + 2?
+**Question:** What is 9 * 2?
 
 **Started:** 2026-01-27
 **Updated:** 2026-01-27
 **Owner:** Agent
-**Phase:** Complete
+**Phase:** Active
 **Next Step:** None
-**Status:** Complete
+**Status:** Active
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
