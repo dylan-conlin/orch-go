@@ -387,7 +387,15 @@ func runDaemonLoop() error {
 		// Run server restart recovery if due (runs once after daemon startup)
 		// This handles the case where OpenCode server was restarted and sessions
 		// were lost from memory but persist on disk.
-		if serverRecoveryResult := d.RunServerRecovery(); serverRecoveryResult != nil {
+		serverRecoveryResult := d.RunServerRecovery()
+		if daemonVerbose {
+			if serverRecoveryResult == nil {
+				fmt.Printf("[%s] [DEBUG] Server recovery: ShouldRunServerRecovery returned false (recovery not due)\n", timestamp)
+			} else {
+				fmt.Printf("[%s] [DEBUG] Server recovery: result=%+v\n", timestamp, serverRecoveryResult)
+			}
+		}
+		if serverRecoveryResult != nil {
 			if serverRecoveryResult.Error != nil {
 				fmt.Fprintf(os.Stderr, "[%s] Server recovery error: %v\n", timestamp, serverRecoveryResult.Error)
 				// Log the server recovery error

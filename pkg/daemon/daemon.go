@@ -1385,13 +1385,27 @@ func (d *Daemon) NextRecoveryTime() time.Time {
 // ShouldRunServerRecovery returns true if server restart recovery should run.
 // This runs once after daemon startup, after the stabilization delay has passed.
 func (d *Daemon) ShouldRunServerRecovery() bool {
+	if d.Config.Verbose {
+		fmt.Printf("[DEBUG] ShouldRunServerRecovery: ServerRecoveryEnabled=%v\n", d.Config.ServerRecoveryEnabled)
+	}
 	if !d.Config.ServerRecoveryEnabled {
+		if d.Config.Verbose {
+			fmt.Printf("[DEBUG] ShouldRunServerRecovery: returning false - ServerRecoveryEnabled is false\n")
+		}
 		return false
 	}
 	if d.serverRecoveryState == nil {
+		if d.Config.Verbose {
+			fmt.Printf("[DEBUG] ShouldRunServerRecovery: returning false - serverRecoveryState is nil\n")
+		}
 		return false
 	}
-	return d.serverRecoveryState.ShouldRunServerRecovery(d.Config.ServerRecoveryStabilizationDelay)
+	result := d.serverRecoveryState.ShouldRunServerRecovery(d.Config.ServerRecoveryStabilizationDelay)
+	if d.Config.Verbose {
+		fmt.Printf("[DEBUG] ShouldRunServerRecovery: stabilizationDelay=%v, result=%v\n",
+			d.Config.ServerRecoveryStabilizationDelay, result)
+	}
+	return result
 }
 
 // RunServerRecovery runs server restart recovery if due.

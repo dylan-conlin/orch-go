@@ -237,12 +237,17 @@ func (s *ServerRecoveryState) ShouldRunServerRecovery(stabilizationDelay time.Du
 
 	// Only run if we haven't run recovery since daemon started
 	if !s.lastRecoveryTime.IsZero() {
+		fmt.Printf("[DEBUG] ServerRecoveryState.ShouldRunServerRecovery: returning false - already ran at %v\n",
+			s.lastRecoveryTime.Format(time.RFC3339))
 		return false
 	}
 
 	// Wait for stabilization delay after daemon start
 	timeSinceStart := time.Since(s.daemonStartTime)
-	return timeSinceStart >= stabilizationDelay
+	result := timeSinceStart >= stabilizationDelay
+	fmt.Printf("[DEBUG] ServerRecoveryState.ShouldRunServerRecovery: daemonStartTime=%v, timeSinceStart=%v, stabilizationDelay=%v, result=%v\n",
+		s.daemonStartTime.Format(time.RFC3339), timeSinceStart.Round(time.Second), stabilizationDelay, result)
+	return result
 }
 
 // MarkRecoveryRun records that server recovery has run.
@@ -277,16 +282,20 @@ func (s *ServerRecoveryState) MarkRecovered(beadsID string) {
 // 3. Compares against OpenCode's current in-memory sessions
 // Returns sessions that exist on disk but aren't in memory.
 func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
+	fmt.Printf("[DEBUG] FindOrphanedSessions: starting with serverURL=%s\n", serverURL)
+
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
+	fmt.Printf("[DEBUG] FindOrphanedSessions: projectDir=%s\n", projectDir)
 
 	// Get in_progress beads issues
 	openIssues, err := verify.ListOpenIssues()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list open issues: %w", err)
 	}
+	fmt.Printf("[DEBUG] FindOrphanedSessions: found %d open issues\n", len(openIssues))
 
 	// Filter to in_progress issues
 	var inProgressIDs []string
@@ -297,8 +306,10 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 			inProgressIssues[id] = issue
 		}
 	}
+	fmt.Printf("[DEBUG] FindOrphanedSessions: %d issues are in_progress\n", len(inProgressIDs))
 
 	if len(inProgressIDs) == 0 {
+		fmt.Printf("[DEBUG] FindOrphanedSessions: no in_progress issues, returning nil\n")
 		return nil, nil // No in-progress issues means no orphaned sessions
 	}
 
@@ -309,9 +320,11 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 	client := opencode.NewClient(serverURL)
 	inMemorySessions, err := client.ListSessions(projectDir)
 	if err != nil {
+		fmt.Printf("[DEBUG] FindOrphanedSessions: ListSessions error (treating as empty): %v\n", err)
 		// Server might not be responding - treat as no in-memory sessions
 		inMemorySessions = nil
 	}
+	fmt.Printf("[DEBUG] FindOrphanedSessions: %d in-memory sessions\n", len(inMemorySessions))
 
 	// Build set of in-memory session IDs for fast lookup
 	inMemorySessionIDs := make(map[string]bool)
@@ -328,29 +341,36 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 		comments := commentMap[beadsID]
 		phaseStatus := verify.ParsePhaseFromComments(comments)
 		if strings.EqualFold(phaseStatus.Phase, "complete") {
+			fmt.Printf("[DEBUG] FindOrphanedSessions: skipping %s - Phase: Complete\n", beadsID)
 			continue // Skip - agent finished but issue not closed yet
 		}
 
 		// Find workspace for this beads ID
 		entries, err := os.ReadDir(workspaceBase)
 		if err != nil {
+			fmt.Printf("[DEBUG] FindOrphanedSessions: skipping %s - cannot read workspace dir: %v\n", beadsID, err)
 			continue // No workspace dir
 		}
 
+		foundInWorkspace := false
 		for _, entry := range entries {
 			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
 				workspacePath := filepath.Join(workspaceBase, entry.Name())
 				sessionID := spawn.ReadSessionID(workspacePath)
 				if sessionID == "" {
+					fmt.Printf("[DEBUG] FindOrphanedSessions: %s - workspace %s has no session_id\n", beadsID, entry.Name())
 					continue // No session ID in workspace
 				}
 
 				// Check if session is in memory
 				if inMemorySessionIDs[sessionID] {
-					continue // Session is still active - not orphaned
+					fmt.Printf("[DEBUG] FindOrphanedSessions: %s - session %s is in memory (not orphaned)\n", beadsID, sessionID)
+					foundInWorkspace = true
+					break // Session is still active - not orphaned
 				}
 
 				// Found an orphaned session
+				fmt.Printf("[DEBUG] FindOrphanedSessions: %s - ORPHANED session %s found\n", beadsID, sessionID)
 				orphaned = append(orphaned, OrphanedSession{
 					BeadsID:       beadsID,
 					SessionID:     sessionID,
@@ -359,20 +379,26 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 					Phase:         phaseStatus.Phase,
 					ProjectDir:    projectDir,
 				})
+				foundInWorkspace = true
 				break // Found workspace for this beadsID
 			}
 		}
 
 		// If no workspace found with session, try to find session via disk query
 		// This handles cases where session exists on disk but workspace was cleaned
-		if len(orphaned) == 0 || orphaned[len(orphaned)-1].BeadsID != beadsID {
+		if !foundInWorkspace {
+			fmt.Printf("[DEBUG] FindOrphanedSessions: %s - no workspace match, trying disk sessions\n", beadsID)
 			// Try listing disk sessions to find one matching this beads ID
 			diskSessions, err := client.ListDiskSessions(projectDir)
-			if err == nil {
+			if err != nil {
+				fmt.Printf("[DEBUG] FindOrphanedSessions: %s - ListDiskSessions error: %v\n", beadsID, err)
+			} else {
+				fmt.Printf("[DEBUG] FindOrphanedSessions: %s - checking %d disk sessions\n", beadsID, len(diskSessions))
 				for _, ds := range diskSessions {
 					if strings.Contains(ds.Title, beadsID) {
 						// Found disk session - check if in memory
 						if !inMemorySessionIDs[ds.ID] {
+							fmt.Printf("[DEBUG] FindOrphanedSessions: %s - ORPHANED disk session %s found\n", beadsID, ds.ID)
 							orphaned = append(orphaned, OrphanedSession{
 								BeadsID:    beadsID,
 								SessionID:  ds.ID,
@@ -380,6 +406,8 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 								Phase:      phaseStatus.Phase,
 								ProjectDir: projectDir,
 							})
+						} else {
+							fmt.Printf("[DEBUG] FindOrphanedSessions: %s - disk session %s is in memory (not orphaned)\n", beadsID, ds.ID)
 						}
 						break
 					}
@@ -390,6 +418,7 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 		_ = issue // Suppress unused variable warning
 	}
 
+	fmt.Printf("[DEBUG] FindOrphanedSessions: returning %d orphaned sessions\n", len(orphaned))
 	return orphaned, nil
 }
 
