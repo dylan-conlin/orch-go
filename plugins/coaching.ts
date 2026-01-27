@@ -541,6 +541,7 @@ function isCodeFile(filePath: string): boolean {
  */
 interface SessionState {
   sessionId: string
+  sessionStartTime: number // Track session start for warm-up period
   contextChecks: number
   spawns: number
   reads: number
@@ -623,7 +624,12 @@ async function flushMetrics(state: SessionState, client: any): Promise<void> {
     })
 
     // Frame 1: Inject coaching when action ratio is low
-    if (actionRatio < 0.5 && state.reads >= 6) {
+    // FIX: Add warm-up period (5 min OR 15 tool calls) before alerting
+    const sessionAgeMins = (Date.now() - state.sessionStartTime) / 60000
+    const totalToolCalls = state.toolWindow.length + state.spawns + state.reads + state.actions
+    const hasWarmupPassed = sessionAgeMins > 5 || totalToolCalls > 15
+    
+    if (actionRatio < 0.5 && state.reads >= 6 && hasWarmupPassed) {
       shouldInjectActionCoaching = true
     }
   }
@@ -1032,9 +1038,11 @@ function detectPremiseSkipping(text: string): { matched: boolean; verb?: string;
 /**
  * Phase 3.5: Extract keywords from text for compensation pattern detection.
  * Simple keyword extraction (words >4 chars, not common stopwords).
+ * FIX: Added domain stopwords to filter out file system noise (drwxr, usernames, etc.)
  */
 function extractKeywordsSimple(text: string): string[] {
   const stopwords = new Set([
+    // Common English stopwords
     "this",
     "that",
     "with",
@@ -1052,6 +1060,40 @@ function extractKeywordsSimple(text: string): string[] {
     "could",
     "would",
     "there",
+    // Domain stopwords: file system noise
+    "drwxr",
+    "rwxr",
+    "total",
+    "bytes",
+    "permissions",
+    // Common usernames/groups
+    "staff",
+    "wheel",
+    "admin",
+    "root",
+    "dylanconlin",
+    // Path fragments
+    "users",
+    "documents",
+    "personal",
+    "library",
+    // Date fragments (month abbreviations)
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+    // Common CLI output tokens
+    "lines",
+    "modified",
+    "created",
   ])
 
   const words = text.toLowerCase().match(/\b\w+\b/g) || []
@@ -1415,6 +1457,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (!state) {
         state = {
           sessionId,
+          sessionStartTime: Date.now(),
           contextChecks: 0,
           spawns: 0,
           reads: 0,
@@ -1635,6 +1678,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (!state) {
         state = {
           sessionId,
+          sessionStartTime: Date.now(),
           contextChecks: 0,
           spawns: 0,
           reads: 0,
@@ -1857,14 +1901,12 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       }
 
       // Periodic flush: every 10 tool calls
+      // FIX: Only flush current session, not all sessions (prevents 4x duplicates)
       toolCallCounter++
       if (toolCallCounter >= 10) {
-        // Flush all active sessions
-        for (const [sid, s] of sessions.entries()) {
-          // Only flush if there's activity to report
-          if (s.spawns > 0 || s.reads > 0 || s.actions > 0) {
-            flushMetrics(s, client)
-          }
+        // Flush current session only
+        if (state.spawns > 0 || state.reads > 0 || state.actions > 0) {
+          flushMetrics(state, client)
         }
         toolCallCounter = 0
       }
