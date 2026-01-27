@@ -519,6 +519,13 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	var kbContext string
 	var gapAnalysis *spawn.GapAnalysis
 	if !spawnSkipArtifactCheck {
+		// Load config early to check for domain override
+		earlyProjCfg, _ := config.Load(projectDir)
+		var domainOverride string
+		if earlyProjCfg != nil && earlyProjCfg.Domain != "" {
+			domainOverride = earlyProjCfg.Domain
+		}
+
 		if requires != nil && requires.HasRequirements() {
 			// Skill-driven context gathering
 			fmt.Printf("Gathering context (skill requires: %s)\n", requires.String())
@@ -528,7 +535,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 			gapAnalysis = spawn.AnalyzeGaps(nil, task)
 		} else {
 			// Fall back to default kb context check with full gap analysis
-			gapResult := runPreSpawnKBCheckFull(task)
+			// Pass projectDir for domain-aware ecosystem filtering, with optional config override
+			gapResult := runPreSpawnKBCheckFull(task, projectDir, domainOverride)
 			kbContext = gapResult.Context
 			gapAnalysis = gapResult.GapAnalysis
 		}
@@ -1399,4 +1407,3 @@ func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 
 	return nil
 }
-

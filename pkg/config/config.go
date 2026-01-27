@@ -20,6 +20,7 @@ import (
 // Config represents the project configuration.
 type Config struct {
 	SpawnMode string         `yaml:"spawn_mode"`         // "claude" | "opencode"
+	Domain    string         `yaml:"domain,omitempty"`   // "personal" | "work" - overrides auto-detection
 	Claude    ClaudeConfig   `yaml:"claude,omitempty"`   // Claude mode settings
 	OpenCode  OpenCodeConfig `yaml:"opencode,omitempty"` // OpenCode mode settings
 	Servers   map[string]int `yaml:"servers,omitempty"`

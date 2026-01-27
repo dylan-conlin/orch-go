@@ -25,15 +25,30 @@ type GapCheckResult struct {
 // runPreSpawnKBCheck runs kb context check before spawning an agent.
 // Returns formatted context string to include in SPAWN_CONTEXT.md, or empty string if no matches.
 // Also performs gap analysis and displays warnings for sparse or missing context.
+// Uses the default personal domain (backward compatible).
 func runPreSpawnKBCheck(task string) string {
-	result := runPreSpawnKBCheckFull(task)
+	result := runPreSpawnKBCheckFull(task, "")
 	return result.Context
 }
 
 // runPreSpawnKBCheckFull runs kb context check with full gap analysis results.
 // This allows callers to access gap analysis for gating decisions.
-func runPreSpawnKBCheckFull(task string) *GapCheckResult {
+// If projectDir is provided, domain is auto-detected for ecosystem filtering.
+// Domain can be explicitly overridden via domainOverride parameter.
+func runPreSpawnKBCheckFull(task string, projectDir string, domainOverride ...string) *GapCheckResult {
 	gcr := &GapCheckResult{}
+
+	// Determine domain: explicit override > config file > auto-detection
+	var domain string
+	if len(domainOverride) > 0 && domainOverride[0] != "" {
+		domain = domainOverride[0]
+		fmt.Printf("Using domain override: %s\n", domain)
+	} else if projectDir != "" {
+		domain = spawn.DetectDomain(projectDir)
+		fmt.Printf("Detected domain: %s (from %s)\n", domain, projectDir)
+	} else {
+		domain = spawn.DomainPersonal
+	}
 
 	// Extract keywords from task description
 	// Try with 3 keywords first (more specific), fall back to 1 keyword (more broad)
@@ -50,8 +65,8 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 
 	fmt.Printf("Checking kb context for: %q\n", keywords)
 
-	// Run kb context check
-	result, err := spawn.RunKBContextCheck(keywords)
+	// Run kb context check with domain-aware filtering
+	result, err := spawn.RunKBContextCheckWithDomain(keywords, domain)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
 		return gcr
@@ -62,7 +77,7 @@ func runPreSpawnKBCheckFull(task string) *GapCheckResult {
 		firstKeyword := spawn.ExtractKeywords(task, 1)
 		if firstKeyword != "" && firstKeyword != keywords {
 			fmt.Printf("Trying broader search for: %q\n", firstKeyword)
-			result, err = spawn.RunKBContextCheck(firstKeyword)
+			result, err = spawn.RunKBContextCheckWithDomain(firstKeyword, domain)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
 				return gcr

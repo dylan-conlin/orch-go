@@ -10,6 +10,92 @@ import (
 // EcosystemFilePath is the path to the ecosystem registry file.
 const EcosystemFilePath = "~/.orch/ECOSYSTEM.md"
 
+// Domain constants for ecosystem filtering.
+const (
+	DomainPersonal = "personal"
+	DomainWork     = "work"
+)
+
+// DomainEcosystems maps domain names to their ecosystem repo allowlists.
+// When filtering global KB search results, only repos in the matching domain's
+// ecosystem are included.
+var DomainEcosystems = map[string]map[string]bool{
+	DomainPersonal: {
+		// Core orchestration repos
+		"orch-go":        true,
+		"orch-cli":       true,
+		"kb-cli":         true,
+		"orch-knowledge": true,
+		"beads":          true,
+		"kn":             true,
+		// Additional ecosystem repos
+		"beads-ui-svelte": true,
+		"glass":           true,
+		"skillc":          true,
+		"agentlog":        true,
+		"opencode":        true,
+	},
+	DomainWork: {
+		// SendCutSend projects
+		"scs-special-projects": true,
+		// Future: add other SCS repos as needed
+	},
+}
+
+// DetectDomain auto-detects the domain (work vs personal) from a project path.
+// Detection rules:
+//   - ~/Documents/work/... or ~/work/... → "work"
+//   - ~/Documents/personal/... → "personal"
+//   - Other → "personal" (default, preserves current behavior)
+func DetectDomain(projectDir string) string {
+	// Normalize path for consistent matching
+	projectDir = filepath.Clean(projectDir)
+
+	// Expand ~ to home directory if present
+	if strings.HasPrefix(projectDir, "~") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			projectDir = filepath.Join(home, projectDir[1:])
+		}
+	}
+
+	// Get home directory for path matching
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return DomainPersonal // Default on error
+	}
+
+	// Check for work paths
+	workPaths := []string{
+		filepath.Join(home, "Documents", "work"),
+		filepath.Join(home, "work"),
+	}
+	for _, workPath := range workPaths {
+		if strings.HasPrefix(projectDir, workPath+string(os.PathSeparator)) || projectDir == workPath {
+			return DomainWork
+		}
+	}
+
+	// Check for personal paths (explicit)
+	personalPaths := []string{
+		filepath.Join(home, "Documents", "personal"),
+	}
+	for _, personalPath := range personalPaths {
+		if strings.HasPrefix(projectDir, personalPath+string(os.PathSeparator)) || projectDir == personalPath {
+			return DomainPersonal
+		}
+	}
+
+	// Default to personal (preserves current orch ecosystem behavior)
+	return DomainPersonal
+}
+
+// GetEcosystemRepos returns the ecosystem repo allowlist for a given domain.
+// Returns nil if domain is not recognized.
+func GetEcosystemRepos(domain string) map[string]bool {
+	return DomainEcosystems[domain]
+}
+
 // ExpandedOrchEcosystemRepos is the full list of repos in Dylan's orchestration ecosystem.
 // This extends OrchEcosystemRepos (in kbcontext.go) with additional projects that were
 // not originally included but are part of the ecosystem.

@@ -510,6 +510,115 @@ func TestMergeResults(t *testing.T) {
 	}
 }
 
+func TestFilterToEcosystem(t *testing.T) {
+	tests := []struct {
+		name          string
+		domain        string
+		matches       []KBContextMatch
+		expectedCount int
+		wantTitles    []string
+		noTitles      []string
+	}{
+		{
+			name:   "personal domain filters to orch ecosystem",
+			domain: DomainPersonal,
+			matches: []KBContextMatch{
+				{Type: "constraint", Title: "[orch-go] Agents must not spawn recursively"},
+				{Type: "constraint", Title: "[price-watch] Max retries per product"},
+				{Type: "decision", Title: "[kb-cli] Use YAML for config"},
+				{Type: "constraint", Title: "Local constraint without prefix"},
+			},
+			expectedCount: 3,
+			wantTitles: []string{
+				"[orch-go] Agents must not spawn recursively",
+				"[kb-cli] Use YAML for config",
+				"Local constraint without prefix",
+			},
+			noTitles: []string{
+				"[price-watch] Max retries per product",
+			},
+		},
+		{
+			name:   "work domain filters to work ecosystem",
+			domain: DomainWork,
+			matches: []KBContextMatch{
+				{Type: "constraint", Title: "[orch-go] Agents must not spawn recursively"},
+				{Type: "decision", Title: "[scs-special-projects] API rate limits"},
+				{Type: "constraint", Title: "Local constraint without prefix"},
+			},
+			expectedCount: 2,
+			wantTitles: []string{
+				"[scs-special-projects] API rate limits",
+				"Local constraint without prefix",
+			},
+			noTitles: []string{
+				"[orch-go] Agents must not spawn recursively",
+			},
+		},
+		{
+			name:   "unknown domain falls back to personal",
+			domain: "unknown",
+			matches: []KBContextMatch{
+				{Type: "constraint", Title: "[orch-go] Constraint from orch ecosystem"},
+				{Type: "constraint", Title: "[unknown-repo] Some other constraint"},
+			},
+			expectedCount: 1,
+			wantTitles: []string{
+				"[orch-go] Constraint from orch ecosystem",
+			},
+			noTitles: []string{
+				"[unknown-repo] Some other constraint",
+			},
+		},
+		{
+			name:   "local matches always included",
+			domain: DomainWork,
+			matches: []KBContextMatch{
+				{Type: "constraint", Title: "Local constraint one"},
+				{Type: "constraint", Title: "Local constraint two"},
+			},
+			expectedCount: 2,
+			wantTitles: []string{
+				"Local constraint one",
+				"Local constraint two",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := filterToEcosystem(tt.matches, tt.domain)
+
+			if len(filtered) != tt.expectedCount {
+				t.Errorf("filterToEcosystem() returned %d matches, want %d", len(filtered), tt.expectedCount)
+			}
+
+			// Check wanted titles are present
+			for _, wantTitle := range tt.wantTitles {
+				found := false
+				for _, m := range filtered {
+					if m.Title == wantTitle {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("filterToEcosystem() missing expected title: %q", wantTitle)
+				}
+			}
+
+			// Check unwanted titles are NOT present
+			for _, noTitle := range tt.noTitles {
+				for _, m := range filtered {
+					if m.Title == noTitle {
+						t.Errorf("filterToEcosystem() should have filtered out: %q", noTitle)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestMergeResults_NilInputs(t *testing.T) {
 	local := &KBContextResult{
 		Query:   "test",

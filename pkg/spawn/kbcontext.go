@@ -98,14 +98,22 @@ func ExtractKeywords(task string, maxWords int) string {
 // 2. If sparse (<3 matches), expand to global search with orch ecosystem filter
 // 3. Apply per-category limits to prevent context flood
 // Returns nil if no matches found or if kb command fails.
+// Uses the default "personal" domain for ecosystem filtering (backward compatible).
 func RunKBContextCheck(query string) (*KBContextResult, error) {
+	return RunKBContextCheckWithDomain(query, DomainPersonal)
+}
+
+// RunKBContextCheckWithDomain runs 'kb context' with domain-aware ecosystem filtering.
+// The domain determines which repos are included when expanding to global search.
+// See DetectDomain() for auto-detection, or pass domain explicitly.
+func RunKBContextCheckWithDomain(query, domain string) (*KBContextResult, error) {
 	// Step 1: Try current project first (no --global flag)
 	result, err := runKBContextQuery(query, false)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 2: If local search is sparse, expand to global with ecosystem filter
+	// Step 2: If local search is sparse, expand to global with domain-aware ecosystem filter
 	if result == nil || len(result.Matches) < MinMatchesForLocalSearch {
 		globalResult, err := runKBContextQuery(query, true)
 		if err != nil {
@@ -113,8 +121,8 @@ func RunKBContextCheck(query string) (*KBContextResult, error) {
 		}
 
 		if globalResult != nil && len(globalResult.Matches) > 0 {
-			// Post-filter to orch ecosystem repos
-			globalResult.Matches = filterToOrchEcosystem(globalResult.Matches)
+			// Post-filter to domain's ecosystem repos
+			globalResult.Matches = filterToEcosystem(globalResult.Matches, domain)
 			globalResult.HasMatches = len(globalResult.Matches) > 0
 
 			// Merge with local results if any
@@ -188,12 +196,25 @@ func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
 
 // filterToOrchEcosystem filters matches to only include those from orch ecosystem repos.
 // Matches without a project prefix (local results) are always included.
+// Deprecated: Use filterToEcosystem with domain parameter for domain-aware filtering.
 func filterToOrchEcosystem(matches []KBContextMatch) []KBContextMatch {
+	return filterToEcosystem(matches, DomainPersonal)
+}
+
+// filterToEcosystem filters matches to only include those from the specified domain's ecosystem.
+// Matches without a project prefix (local results) are always included.
+func filterToEcosystem(matches []KBContextMatch, domain string) []KBContextMatch {
+	ecosystemRepos := GetEcosystemRepos(domain)
+	if ecosystemRepos == nil {
+		// Unknown domain - fall back to personal ecosystem (original behavior)
+		ecosystemRepos = GetEcosystemRepos(DomainPersonal)
+	}
+
 	var filtered []KBContextMatch
 	for _, m := range matches {
 		project := extractProjectFromMatch(m)
-		// Include if: no project prefix (local), OR project is in ecosystem allowlist
-		if project == "" || OrchEcosystemRepos[project] {
+		// Include if: no project prefix (local), OR project is in domain's ecosystem allowlist
+		if project == "" || ecosystemRepos[project] {
 			filtered = append(filtered, m)
 		}
 	}
