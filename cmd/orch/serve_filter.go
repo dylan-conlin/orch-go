@@ -119,3 +119,26 @@ func extractProjectName(dir string) string {
 	}
 	return dir
 }
+
+// matchAgentProject returns true if an agent matches ANY of the project filters.
+// Matches against BOTH the beads prefix (e.g., "ok") AND directory name (e.g., "orch-knowledge").
+// This handles the common case where beads prefix differs from directory name.
+// If filters is empty, returns true (no filtering).
+func matchAgentProject(beadsProject, projectDir string, filters []string) bool {
+	if len(filters) == 0 {
+		return true // No filtering
+	}
+
+	// Extract directory name from path
+	dirName := extractProjectName(projectDir)
+
+	// Check if EITHER identifier matches ANY filter
+	for _, filter := range filters {
+		filterName := extractProjectName(filter)
+		if beadsProject == filterName || dirName == filterName {
+			return true
+		}
+	}
+
+	return false
+}

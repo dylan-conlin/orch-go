@@ -270,6 +270,109 @@ func TestExtractProjectName(t *testing.T) {
 	}
 }
 
+func TestMatchAgentProject(t *testing.T) {
+	tests := []struct {
+		name         string
+		beadsProject string
+		projectDir   string
+		filters      []string
+		expected     bool
+	}{
+		// Empty filter cases - no filtering
+		{
+			name:         "empty_filters_returns_true",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      nil,
+			expected:     true,
+		},
+		// Match on beads prefix
+		{
+			name:         "match_beads_prefix",
+			beadsProject: "orch-go",
+			projectDir:   "/Users/dylan/orch-go",
+			filters:      []string{"orch-go"},
+			expected:     true,
+		},
+		// Match on directory name
+		{
+			name:         "match_directory_name",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      []string{"orch-knowledge"},
+			expected:     true,
+		},
+		// BUG FIX TEST: Beads prefix differs from directory name
+		// This is the specific scenario that was broken before the fix.
+		// Agent from orch-knowledge has beads prefix "ok" (from beads ID like "ok-765").
+		// Filter is "orch-knowledge" (directory name). Should match via projectDir.
+		{
+			name:         "beads_prefix_differs_from_dir_name",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      []string{"orch-knowledge"},
+			expected:     true,
+		},
+		// Match when either matches (beads prefix)
+		{
+			name:         "match_either_beads_prefix",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      []string{"ok"},
+			expected:     true,
+		},
+		// No match when neither matches
+		{
+			name:         "no_match_when_neither_matches",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      []string{"orch-go"},
+			expected:     false,
+		},
+		// Multi-filter matching
+		{
+			name:         "multi_filter_match_by_dir",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      []string{"orch-go", "orch-knowledge", "beads"},
+			expected:     true,
+		},
+		{
+			name:         "multi_filter_match_by_beads",
+			beadsProject: "ok",
+			projectDir:   "/Users/dylan/orch-knowledge",
+			filters:      []string{"orch-go", "ok", "beads"},
+			expected:     true,
+		},
+		// Empty projectDir - should still match if beads prefix matches
+		{
+			name:         "empty_projectDir_match_beads",
+			beadsProject: "orch-go",
+			projectDir:   "",
+			filters:      []string{"orch-go"},
+			expected:     true,
+		},
+		// Empty both - should not match
+		{
+			name:         "empty_both_no_match",
+			beadsProject: "",
+			projectDir:   "",
+			filters:      []string{"orch-go"},
+			expected:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchAgentProject(tt.beadsProject, tt.projectDir, tt.filters)
+			if got != tt.expected {
+				t.Errorf("matchAgentProject(%q, %q, %v) = %v, want %v",
+					tt.beadsProject, tt.projectDir, tt.filters, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestFilterByTime(t *testing.T) {
 	now := time.Now()
 	tests := []struct {

@@ -1031,29 +1031,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Project filter: check project name against all filters
-			// Use Project field (derived from beads or workspace) instead of ProjectDir
-			// because cross-project agents have ProjectDir=orchestrator-cwd, Project=target-project
-			if len(projectFilterParam) > 0 {
-				// Get project name to match
-				projectName := agent.Project
-				if projectName == "" && agent.ProjectDir != "" {
-					// Fallback: extract project name from directory path
-					projectName = extractProjectName(agent.ProjectDir)
-				}
-
-				// Check if project name matches ANY filter
-				matched := false
-				for _, filter := range projectFilterParam {
-					filterName := extractProjectName(filter) // Handle both "orch-go" and "/path/to/orch-go"
-					if projectName == filterName {
-						matched = true
-						break
-					}
-				}
-				if !matched {
-					continue
-				}
+			// Project filter: check project identifiers against all filters.
+			// We match against BOTH beads prefix AND directory name because they can differ:
+			// - Beads prefix: "ok" (from beads ID "ok-765")
+			// - Directory name: "orch-knowledge" (from ProjectDir "/Users/.../orch-knowledge")
+			// See .kb/investigations/2026-01-27-inv-investigate-untracked-agents-no-track.md
+			if len(projectFilterParam) > 0 && !matchAgentProject(agent.Project, agent.ProjectDir, projectFilterParam) {
+				continue
 			}
 
 			filtered = append(filtered, agent)
