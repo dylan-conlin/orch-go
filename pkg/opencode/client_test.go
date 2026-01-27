@@ -143,6 +143,31 @@ func TestExtractSessionIDFromReader(t *testing.T) {
 			wantID:  "ses_mixed",
 			wantErr: false,
 		},
+		// Tests for npm warning leaking into stdout (baseline-browser-mapping issue)
+		{
+			name:    "npm warning prepended to JSON without newline",
+			input:   `[baseline-browser-mapping] The data in this module is over two months old{"type":"step_start","sessionID":"ses_warn123"}` + "\n",
+			wantID:  "ses_warn123",
+			wantErr: false,
+		},
+		{
+			name:    "npm warning on separate line then JSON",
+			input:   "[baseline-browser-mapping] The data in this module is over two months old\n" + `{"type":"step_start","sessionID":"ses_warn456"}` + "\n",
+			wantID:  "ses_warn456",
+			wantErr: false,
+		},
+		{
+			name:    "multiple warnings prepended to JSON",
+			input:   `[warn] some warning[baseline-browser-mapping] old data{"type":"step_start","sessionID":"ses_multi789"}` + "\n",
+			wantID:  "ses_multi789",
+			wantErr: false,
+		},
+		{
+			name:    "warning with brackets in JSON",
+			input:   `[baseline-browser-mapping] warning{"type":"step_start","sessionID":"ses_bracket","data":{"array":[1,2,3]}}` + "\n",
+			wantID:  "ses_bracket",
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -155,6 +180,80 @@ func TestExtractSessionIDFromReader(t *testing.T) {
 			}
 			if id != tt.wantID {
 				t.Errorf("ExtractSessionIDFromReader() = %v, want %v", id, tt.wantID)
+			}
+		})
+	}
+}
+
+// TestFindSessionIDInLine tests the findSessionIDInLine helper function.
+func TestFindSessionIDInLine(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		wantID string
+	}{
+		{
+			name:   "pure JSON line",
+			input:  `{"type":"step_start","sessionID":"ses_pure123"}`,
+			wantID: "ses_pure123",
+		},
+		{
+			name:   "npm warning prepended to JSON",
+			input:  `[baseline-browser-mapping] The data in this module is over two months old{"type":"step_start","sessionID":"ses_npm456"}`,
+			wantID: "ses_npm456",
+		},
+		{
+			name:   "multiple warnings prepended",
+			input:  `[warn] msg1[info] msg2{"type":"event","sessionID":"ses_multi"}`,
+			wantID: "ses_multi",
+		},
+		{
+			name:   "no sessionID in JSON",
+			input:  `{"type":"init","data":"test"}`,
+			wantID: "",
+		},
+		{
+			name:   "warning only, no JSON",
+			input:  `[baseline-browser-mapping] The data in this module is over two months old`,
+			wantID: "",
+		},
+		{
+			name:   "invalid JSON after warning",
+			input:  `[warn] message{not valid json}`,
+			wantID: "",
+		},
+		{
+			name:   "empty line",
+			input:  "",
+			wantID: "",
+		},
+		{
+			name:   "JSON with nested braces",
+			input:  `[warn] test{"type":"event","sessionID":"ses_nested","config":{"key":"value"}}`,
+			wantID: "ses_nested",
+		},
+		{
+			name:   "JSON with array containing braces",
+			input:  `[warn]{"type":"test","sessionID":"ses_array","items":[{"a":1},{"b":2}]}`,
+			wantID: "ses_array",
+		},
+		{
+			name:   "whitespace before JSON",
+			input:  `   {"type":"event","sessionID":"ses_space"}`,
+			wantID: "ses_space",
+		},
+		{
+			name:   "warning with timestamp",
+			input:  `2026-01-26T10:30:00Z [baseline-browser-mapping] old data{"type":"step_start","sessionID":"ses_ts"}`,
+			wantID: "ses_ts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := findSessionIDInLine(tt.input)
+			if got != tt.wantID {
+				t.Errorf("findSessionIDInLine(%q) = %q, want %q", tt.input, got, tt.wantID)
 			}
 		})
 	}

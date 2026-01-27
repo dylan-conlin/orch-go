@@ -102,6 +102,10 @@ func ExtractSessionID(events []string) (string, error) {
 // Returns as soon as a session ID is found, leaving remaining data unread.
 // This is useful for headless spawns where we need the session ID quickly
 // but don't want to block waiting for the process to complete.
+//
+// The function is robust to non-JSON content mixed with JSON lines. This handles
+// cases where warnings from npm dependencies leak into stdout without a trailing
+// newline, e.g.: "[baseline-browser-mapping] warning...{"type":"event",...}
 func ExtractSessionIDFromReader(r io.Reader) (string, error) {
 	scanner := bufio.NewScanner(r)
 	// Use large buffer to handle OpenCode's potentially large JSON events
@@ -111,19 +115,48 @@ func ExtractSessionIDFromReader(r io.Reader) (string, error) {
 		if line == "" {
 			continue
 		}
-		event, err := ParseEvent(line)
-		if err != nil {
-			// Skip non-JSON lines
-			continue
-		}
-		if event.SessionID != "" {
-			return event.SessionID, nil
+
+		// Try to extract session ID from this line.
+		// Uses findSessionIDInLine which handles both pure JSON lines
+		// and lines with non-JSON content prepended (e.g., npm warnings).
+		if sessionID := findSessionIDInLine(line); sessionID != "" {
+			return sessionID, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("scanner error: %w", err)
 	}
 	return "", ErrNoSessionID
+}
+
+// findSessionIDInLine attempts to extract a session ID from a line that may contain
+// mixed content (non-JSON prefix followed by JSON). This handles cases where
+// npm warnings like "[baseline-browser-mapping] ..." leak into stdout without
+// a trailing newline, concatenating with the JSON event.
+//
+// Returns the session ID if found, or empty string if not found.
+func findSessionIDInLine(line string) string {
+	// First, try parsing the entire line as JSON (most common case)
+	event, err := ParseEvent(line)
+	if err == nil && event.SessionID != "" {
+		return event.SessionID
+	}
+
+	// If that failed, look for JSON object start markers and try parsing from there.
+	// This handles lines like: '[warn] message{"type":"event","sessionID":"ses_..."}'
+	for i := 0; i < len(line); i++ {
+		if line[i] == '{' {
+			// Try to parse JSON starting from this position
+			event, err := ParseEvent(line[i:])
+			if err == nil && event.SessionID != "" {
+				return event.SessionID
+			}
+			// If parsing failed, continue looking for next '{'
+			// This handles malformed content before valid JSON
+		}
+	}
+
+	return ""
 }
 
 // ProcessOutput processes the output from opencode command.
