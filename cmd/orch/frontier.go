@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/frontier"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
+	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -104,48 +105,91 @@ func runFrontier() error {
 	return nil
 }
 
-// getActiveAndStuckAgents fetches agents from the registry and splits them into
-// active (< 2h) and stuck (>= 2h) categories.
+// getActiveAndStuckAgents discovers agents from tmux windows and OpenCode sessions,
+// then splits them into active (< 2h) and stuck (>= 2h) categories.
+// This uses authoritative sources (live runtime state) instead of the registry.
 func getActiveAndStuckAgents() (active, stuck []ActiveOutput) {
-	reg, err := registry.New("")
-	if err != nil {
-		return nil, nil
+	now := time.Now()
+	seenBeadsIDs := make(map[string]bool)
+
+	// Phase 1: Discover agents from tmux windows (claude mode agents)
+	workersSessions, _ := tmux.ListWorkersSessions()
+	for _, sessionName := range workersSessions {
+		windows, _ := tmux.ListWindows(sessionName)
+		for _, w := range windows {
+			// Skip known non-agent windows
+			if w.Name == "servers" || w.Name == "zsh" {
+				continue
+			}
+
+			beadsID := extractBeadsIDFromWindowName(w.Name)
+			if beadsID == "" {
+				continue
+			}
+
+			// Skip if already seen (duplicate window)
+			if seenBeadsIDs[beadsID] {
+				continue
+			}
+
+			// For tmux agents, we don't have spawn time easily accessible
+			// Default to 0 duration (won't be marked as stuck)
+			// This is acceptable since tmux agents are visible and monitored
+			output := ActiveOutput{
+				BeadsID: beadsID,
+				Runtime: "tmux",
+				Skill:   extractSkillFromWindowName(w.Name),
+			}
+
+			active = append(active, output)
+			seenBeadsIDs[beadsID] = true
+		}
 	}
 
-	agents := reg.ListActive()
-	for _, agent := range agents {
-		output := agentToOutput(agent)
-		if output.Duration >= stuckThreshold {
+	// Phase 2: Discover agents from OpenCode sessions
+	// Use 3h window to catch stuck agents (beyond 2h threshold)
+	client := opencode.NewClient(serverURL)
+	sessions, err := client.ListSessions("")
+	if err != nil {
+		return active, stuck
+	}
+
+	const maxAge = 3 * time.Hour
+	for _, s := range sessions {
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		if now.Sub(updatedAt) > maxAge {
+			continue
+		}
+
+		beadsID := extractBeadsIDFromTitle(s.Title)
+		if beadsID == "" {
+			continue
+		}
+
+		// Skip if already tracked via tmux
+		if seenBeadsIDs[beadsID] {
+			continue
+		}
+
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+		duration := now.Sub(createdAt)
+
+		output := ActiveOutput{
+			BeadsID:  beadsID,
+			Runtime:  formatDuration(duration),
+			Duration: duration,
+			Skill:    extractSkillFromTitle(s.Title),
+		}
+
+		if duration >= stuckThreshold {
 			stuck = append(stuck, output)
 		} else {
 			active = append(active, output)
 		}
+		seenBeadsIDs[beadsID] = true
 	}
 
 	return active, stuck
-}
-
-// agentToOutput converts a registry agent to an ActiveOutput.
-func agentToOutput(agent *registry.Agent) ActiveOutput {
-	var duration time.Duration
-	if agent.SpawnedAt != "" {
-		if spawnedAt, err := time.Parse(registry.TimeFormat, agent.SpawnedAt); err == nil {
-			duration = time.Since(spawnedAt)
-		}
-	}
-
-	id := agent.BeadsID
-	if id == "" {
-		id = agent.ID
-	}
-
-	return ActiveOutput{
-		BeadsID:  id,
-		Title:    "", // Title not stored in registry, would require bd lookup
-		Runtime:  formatDuration(duration),
-		Duration: duration,
-		Skill:    agent.Skill,
-	}
 }
 
 func printFrontierJSON(state *frontier.FrontierState, active, stuck []ActiveOutput) error {

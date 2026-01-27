@@ -1,3 +1,4 @@
 issue-prefix: orch-go
+no-db: true
 repos:
   primary: "."

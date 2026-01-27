@@ -1,10 +1,12 @@
 # Decision: Abandon Claude Max OAuth, Use Gemini Flash as Primary Model
 
 > **⚠️ SUPERSEDED:** This decision was superseded on Jan 18, 2026 by cost considerations. See `2026-01-18-max-subscription-primary-spawn-path.md` for current model stack policy. API costs ($70-80/day) made Gemini Flash + Sonnet API unsustainable; Claude Max via CLI is now primary.
+>
+> **📝 UPDATE (Jan 26, 2026):** The core technical conclusion of this decision ("OAuth workarounds are fragile") has been invalidated. Analysis of pi-ai (badlogic/pi-mono) shows stable OAuth access IS possible via "stealth mode" - mimicking Claude Code's identity markers. See `2026-01-26-claude-max-oauth-stealth-mode-viable.md` for current understanding.
 
 **Date:** 2026-01-09
 **Status:** Superseded
-**Superseded-By:** 2026-01-18-max-subscription-primary-spawn-path.md
+**Superseded-By:** 2026-01-18-max-subscription-primary-spawn-path.md, 2026-01-26-claude-max-oauth-stealth-mode-viable.md
 **Context:** Anthropic OAuth blocking, community workaround fragility
 **Scope:** orch-go model selection strategy
 
