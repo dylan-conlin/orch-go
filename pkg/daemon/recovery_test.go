@@ -479,3 +479,129 @@ func TestShouldRunServerRecovery_NilStateReturnsFalse(t *testing.T) {
 		t.Error("ShouldRunServerRecovery should be false when state is nil")
 	}
 }
+
+func TestServerRecoveryState_DetectsServerRestart(t *testing.T) {
+	state := NewServerRecoveryState()
+	stabilizationDelay := 1 * time.Millisecond
+
+	// Simulate time passing (past stabilization delay)
+	state.daemonStartTime = time.Now().Add(-10 * time.Second)
+
+	// First recovery should be allowed
+	if !state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("First recovery should be allowed after stabilization delay")
+	}
+
+	// Mark first recovery as run
+	state.MarkRecoveryRun()
+
+	// Recovery should NOT run immediately after (no restart detected)
+	if state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should not run immediately after first run")
+	}
+
+	// Simulate server going down
+	state.UpdateServerHealth(false)
+
+	// Recovery should still not run while server is down
+	if state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should not run while server is down")
+	}
+
+	// Simulate server coming back up (restart detected)
+	state.UpdateServerHealth(true)
+
+	// NOW recovery should be allowed again because we detected a restart
+	if !state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should run after detecting server restart (down -> up transition)")
+	}
+
+	// Run recovery again
+	state.MarkRecoveryRun()
+
+	// Should not run again until next restart
+	if state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should not run again until next restart")
+	}
+
+	// Simulate second restart
+	state.UpdateServerHealth(false)
+	state.UpdateServerHealth(true)
+
+	// Should allow recovery again after second restart
+	if !state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should run after second server restart")
+	}
+}
+
+func TestCheckServerHealth_UpdatesRecoveryState(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerRecoveryEnabled = true
+	config.CleanupServerURL = "http://127.0.0.1:4096"
+	d := NewWithConfig(config)
+
+	// Simulate time passing (past stabilization delay)
+	d.serverRecoveryState.daemonStartTime = time.Now().Add(-1 * time.Minute)
+
+	// First call - server might be up or down depending on test environment
+	// This just verifies the method doesn't panic and updates state
+	d.CheckServerHealth()
+
+	// Verify serverRecoveryState was updated (checking that method works)
+	// We can't easily test the full flow without a real server, but we can
+	// verify the method exists and doesn't panic
+}
+
+func TestUpdateServerHealth_NoOpWhenServerStaysUp(t *testing.T) {
+	state := NewServerRecoveryState()
+	stabilizationDelay := 1 * time.Millisecond
+	state.daemonStartTime = time.Now().Add(-10 * time.Second)
+
+	// First recovery
+	state.MarkRecoveryRun()
+
+	// Server stays up (no down -> up transition)
+	state.UpdateServerHealth(true)
+	state.UpdateServerHealth(true)
+	state.UpdateServerHealth(true)
+
+	// Should NOT allow recovery since no restart was detected
+	if state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should not run when server has been continuously up")
+	}
+}
+
+func TestUpdateServerHealth_MultipleRestarts(t *testing.T) {
+	state := NewServerRecoveryState()
+	stabilizationDelay := 1 * time.Millisecond
+	state.daemonStartTime = time.Now().Add(-10 * time.Second)
+
+	// First recovery
+	state.MarkRecoveryRun()
+
+	// First restart
+	state.UpdateServerHealth(false)
+	state.UpdateServerHealth(true)
+
+	if !state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should run after first restart")
+	}
+	state.MarkRecoveryRun()
+
+	// Second restart
+	state.UpdateServerHealth(false)
+	state.UpdateServerHealth(true)
+
+	if !state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should run after second restart")
+	}
+	state.MarkRecoveryRun()
+
+	// Third restart
+	state.UpdateServerHealth(false)
+	state.UpdateServerHealth(true)
+
+	if !state.ShouldRunServerRecovery(stabilizationDelay) {
+		t.Error("Recovery should run after third restart")
+	}
+}

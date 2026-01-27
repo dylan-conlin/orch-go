@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -603,6 +604,37 @@ func (d *Daemon) RateLimitMessage() string {
 	}
 	_, _, msg := d.RateLimiter.CanSpawn()
 	return msg
+}
+
+// CheckServerHealth checks if the OpenCode server is reachable and updates
+// the server recovery state. This enables detection of server restarts by
+// tracking when the server goes down and comes back up.
+//
+// Should be called at the start of each poll cycle, before RunServerRecovery.
+// Returns true if the server is reachable, false otherwise.
+func (d *Daemon) CheckServerHealth() bool {
+	if d.serverRecoveryState == nil {
+		return true // No recovery state to update
+	}
+
+	serverURL := d.Config.CleanupServerURL
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:4096"
+	}
+
+	// Make a simple HTTP request to check if server is reachable
+	// Use a short timeout to avoid blocking the poll loop
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(serverURL + "/session")
+	available := err == nil && resp != nil && resp.StatusCode == http.StatusOK
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	// Update the recovery state with server health
+	d.serverRecoveryState.UpdateServerHealth(available)
+
+	return available
 }
 
 // ReconcileWithOpenCode synchronizes the worker pool with actual active agents.

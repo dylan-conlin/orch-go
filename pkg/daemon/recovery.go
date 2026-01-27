@@ -214,9 +214,11 @@ type ServerRecoveryResult struct {
 // This is used by the daemon to determine when server recovery should run.
 type ServerRecoveryState struct {
 	mu                   sync.Mutex
-	daemonStartTime      time.Time // When the daemon started
-	lastRecoveryTime     time.Time // When server recovery last ran
+	daemonStartTime      time.Time            // When the daemon started
+	lastRecoveryTime     time.Time            // When server recovery last ran
 	recoveredSessionsMap map[string]time.Time // Sessions we've already recovered (beadsID -> time)
+	serverWasDown        bool                 // True if server was unavailable (used to detect restart)
+	restartDetected      bool                 // True when a restart is detected (down -> up transition)
 }
 
 // NewServerRecoveryState creates a new server recovery state tracker.
@@ -229,13 +231,25 @@ func NewServerRecoveryState() *ServerRecoveryState {
 
 // ShouldRunServerRecovery determines if server recovery should run.
 // Returns true if:
-// - Daemon just started (within first poll cycle)
-// - Hasn't run recovery yet since daemon start
+// - Daemon just started (within first poll cycle) and stabilization delay passed
+// - OR a server restart was detected (server went down then came back up)
 func (s *ServerRecoveryState) ShouldRunServerRecovery(stabilizationDelay time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Only run if we haven't run recovery since daemon started
+	// If a restart was detected, allow recovery to run
+	if s.restartDetected {
+		fmt.Printf("[DEBUG] ServerRecoveryState.ShouldRunServerRecovery: returning true - server restart detected\n")
+		return true
+	}
+
+	// If server is currently down, don't run recovery (wait for it to come back)
+	if s.serverWasDown {
+		fmt.Printf("[DEBUG] ServerRecoveryState.ShouldRunServerRecovery: returning false - server is down\n")
+		return false
+	}
+
+	// Only run initial recovery if we haven't run recovery since daemon started
 	if !s.lastRecoveryTime.IsZero() {
 		fmt.Printf("[DEBUG] ServerRecoveryState.ShouldRunServerRecovery: returning false - already ran at %v\n",
 			s.lastRecoveryTime.Format(time.RFC3339))
@@ -255,6 +269,31 @@ func (s *ServerRecoveryState) MarkRecoveryRun() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lastRecoveryTime = time.Now()
+	s.restartDetected = false // Clear restart flag after recovery runs
+}
+
+// UpdateServerHealth updates the server availability state and detects restarts.
+// Call this with available=false when the server is unreachable, and available=true
+// when it becomes reachable again. A transition from unavailable to available
+// indicates a server restart and enables recovery to run again.
+func (s *ServerRecoveryState) UpdateServerHealth(available bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if available {
+		// Server is up - check if this is a restart (was down, now up)
+		if s.serverWasDown {
+			fmt.Printf("[DEBUG] ServerRecoveryState.UpdateServerHealth: server restart detected (was down, now up)\n")
+			s.restartDetected = true
+			s.serverWasDown = false
+		}
+	} else {
+		// Server is down
+		if !s.serverWasDown {
+			fmt.Printf("[DEBUG] ServerRecoveryState.UpdateServerHealth: server went down\n")
+		}
+		s.serverWasDown = true
+	}
 }
 
 // WasRecentlyRecovered checks if a session was recently recovered.

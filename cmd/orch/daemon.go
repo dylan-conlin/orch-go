@@ -292,7 +292,14 @@ func runDaemonLoop() error {
 		timestamp := time.Now().Format("15:04:05")
 		pollTime := time.Now()
 
-		// Reconcile pool with actual OpenCode sessions FIRST.
+		// Check server health and update recovery state FIRST.
+		// This enables detection of server restarts (down -> up transitions).
+		serverAvailable := d.CheckServerHealth()
+		if daemonVerbose {
+			fmt.Printf("[%s] Server health: available=%v\n", timestamp, serverAvailable)
+		}
+
+		// Reconcile pool with actual OpenCode sessions.
 		// This prevents stale capacity counts when agents complete without
 		// the daemon knowing (overnight runs, crashes, manual kills).
 		// Must happen before status write so status shows accurate counts.
