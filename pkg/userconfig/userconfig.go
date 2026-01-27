@@ -122,6 +122,12 @@ type Config struct {
 	Daemon DaemonConfig `yaml:"daemon,omitempty"`
 	// Session holds settings for orchestrator session management.
 	Session SessionConfig `yaml:"session,omitempty"`
+	// SkillModels maps skill names to their default model (e.g., {"investigation": "sonnet"}).
+	// When spawning without --model flag, looks up skill in this map first.
+	SkillModels map[string]string `yaml:"skill_models,omitempty"`
+	// DefaultModel is the fallback model when skill has no entry in SkillModels.
+	// Defaults to "sonnet" if not specified.
+	DefaultModel string `yaml:"default_model,omitempty"`
 }
 
 // ConfigPath returns the path to the user config file.
@@ -388,6 +394,23 @@ func (c *Config) AgentCheckpointMax() int {
 		return *c.Session.AgentCheckpoints.MaxMinutes
 	}
 	return DefaultAgentMaxMinutes
+}
+
+// GetModelForSkill returns the model for a given skill.
+// Priority: 1) SkillModels[skill], 2) DefaultModel, 3) "sonnet"
+func (c *Config) GetModelForSkill(skill string) string {
+	// Check skill-specific model first
+	if c.SkillModels != nil {
+		if model, ok := c.SkillModels[skill]; ok && model != "" {
+			return model
+		}
+	}
+	// Fall back to default_model
+	if c.DefaultModel != "" {
+		return c.DefaultModel
+	}
+	// Final fallback
+	return "sonnet"
 }
 
 // DocDebt tracks documentation debt for CLI commands.

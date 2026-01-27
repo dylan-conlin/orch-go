@@ -242,10 +242,18 @@ func init() {
 
 // resolveModelWithConfig resolves the model specification, checking project and global config
 // for backend-specific defaults when no explicit --model flag is provided.
-func resolveModelWithConfig(spawnModel, backend string, projCfg *config.Config, globalCfg *userconfig.Config) model.ModelSpec {
+func resolveModelWithConfig(spawnModel, backend, skillName string, projCfg *config.Config, globalCfg *userconfig.Config) model.ModelSpec {
 	// If model flag is provided, use it (existing behavior)
 	if spawnModel != "" {
 		return model.Resolve(spawnModel)
+	}
+
+	// Check global config for skill-specific model
+	if globalCfg != nil {
+		skillModel := globalCfg.GetModelForSkill(skillName)
+		if skillModel != "" {
+			return model.Resolve(skillModel)
+		}
 	}
 
 	// No model flag provided - check project config for backend-specific default
@@ -671,7 +679,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// Resolve model with config support (after backend determination)
-	resolvedModel := resolveModelWithConfig(spawnModel, spawnBackend, projCfg, globalCfg)
+	resolvedModel := resolveModelWithConfig(spawnModel, spawnBackend, skillName, projCfg, globalCfg)
 
 	// Validate flash model - TPM rate limits make it unusable
 	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
