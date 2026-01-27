@@ -694,6 +694,16 @@ func runComplete(identifier, workdir string) error {
 					fmt.Printf("Summary: %s\n", result.Phase.Summary)
 				}
 			}
+
+			// Behavioral validation checkpoint - structured output, not blocking
+			// This helps orchestrators identify when behavioral verification is warranted
+			if beadsID != "" && beadsProjectDir != "" {
+				comments, _ := verify.GetComments(beadsID)
+				behavioralResult := verify.CheckBehavioralValidationForCompletion(beadsID, workspacePath, beadsProjectDir, comments)
+				if behavioralResult != nil && behavioralResult.BehavioralValidationSuggested {
+					printBehavioralValidationInfo(behavioralResult)
+				}
+			}
 		} else {
 			fmt.Println("Skipping phase verification (untracked agent)")
 		}
@@ -1717,4 +1727,86 @@ func collectCompletionTelemetry(workspacePath string, forced bool, verificationP
 	}
 
 	return durationSeconds, tokensInput, tokensOutput, outcome
+}
+
+// printBehavioralValidationInfo outputs structured behavioral validation information.
+// This is informational output for orchestrators, not a blocking gate.
+func printBehavioralValidationInfo(result *verify.BehavioralValidationResult) {
+	if result == nil || !result.BehavioralValidationSuggested {
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
+	fmt.Println("│  🔍 BEHAVIORAL VALIDATION SUGGESTED                         │")
+	fmt.Println("├─────────────────────────────────────────────────────────────┤")
+
+	// Validation type
+	if result.ValidationType != "" {
+		fmt.Printf("│  Type: %s\n", result.ValidationType)
+	}
+
+	// Trigger reason
+	if result.TriggerReason != "" {
+		fmt.Printf("│  Reason: %s\n", truncateString(result.TriggerReason, 50))
+	}
+
+	// Show evidence status
+	if result.HasBehavioralEvidence {
+		fmt.Println("│  ✅ Behavioral evidence found in beads comments")
+		for _, e := range result.Evidence {
+			if len(e) > 50 {
+				e = e[:47] + "..."
+			}
+			fmt.Printf("│     • %s\n", e)
+		}
+	} else {
+		fmt.Println("│  ⚠️  No behavioral evidence found in beads comments")
+	}
+
+	// Suggested URL for UI changes
+	if result.SuggestedURL != "" {
+		fmt.Printf("│  URL: %s\n", result.SuggestedURL)
+	}
+
+	// Suggested validation steps
+	if len(result.SuggestedSteps) > 0 {
+		fmt.Println("├─────────────────────────────────────────────────────────────┤")
+		fmt.Println("│  Suggested validation steps:                                │")
+		for i, step := range result.SuggestedSteps {
+			if i >= 4 {
+				fmt.Printf("│  ... and %d more steps\n", len(result.SuggestedSteps)-4)
+				break
+			}
+			stepTrunc := step
+			if len(step) > 50 {
+				stepTrunc = step[:47] + "..."
+			}
+			fmt.Printf("│  %d. %s\n", i+1, stepTrunc)
+		}
+	}
+
+	// Changed files that triggered this
+	if len(result.ChangedFiles) > 0 && len(result.ChangedFiles) <= 3 {
+		fmt.Println("├─────────────────────────────────────────────────────────────┤")
+		fmt.Println("│  Changed files:                                             │")
+		for _, f := range result.ChangedFiles {
+			if len(f) > 50 {
+				f = f[:47] + "..."
+			}
+			fmt.Printf("│    %s\n", f)
+		}
+	} else if len(result.ChangedFiles) > 3 {
+		fmt.Println("├─────────────────────────────────────────────────────────────┤")
+		fmt.Printf("│  Changed files: %d files (showing first 3)                 │\n", len(result.ChangedFiles))
+		for _, f := range result.ChangedFiles[:3] {
+			if len(f) > 50 {
+				f = f[:47] + "..."
+			}
+			fmt.Printf("│    %s\n", f)
+		}
+	}
+
+	fmt.Println("└─────────────────────────────────────────────────────────────┘")
+	fmt.Println()
 }
