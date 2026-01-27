@@ -200,10 +200,14 @@ Claude passes timeout as a string instead of a number because stealth mode (intr
 - This is acceptable because the schema still signals the correct type to the model
 
 **Implementation sequence:**
-1. ✅ bash.ts - timeout parameter (primary issue)
-2. ✅ webfetch.ts - timeout parameter
-3. ✅ websearch.ts - numResults and contextMaxCharacters parameters
-4. ✅ lsp.ts - line and character parameters
+1. ✅ bash.ts - timeout parameter (z.coerce.number())
+2. ✅ webfetch.ts - timeout parameter (z.coerce.number())
+3. ✅ websearch.ts - numResults and contextMaxCharacters parameters (z.coerce.number())
+4. ✅ lsp.ts - line and character parameters (z.coerce.number())
+5. ✅ todo.ts - todos array (coerceArray helper)
+6. ✅ question.ts - questions array (coerceArray helper)
+7. ✅ ls.ts - ignore array (coerceArray helper)
+8. ✅ batch.ts - tool_calls array (coerceArray helper)
 
 ### Alternative Approaches Considered
 
