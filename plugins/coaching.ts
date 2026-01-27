@@ -1901,10 +1901,20 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       const sessionId = info.id
       const sessionTitle = info.title || ""
+      const sessionDirectory = info.directory || ""
 
       if (!sessionId) {
         log("Event: No sessionID in event properties, skipping")
         return
+      }
+
+      // Early worker detection via directory path
+      // Workers are spawned into .orch/workspace/ directories - this is universal
+      // and provides early detection before any tool calls
+      if (sessionDirectory && sessionDirectory.includes(".orch/workspace/")) {
+        workerSessions.set(sessionId, true)
+        log(`Worker detected (session.created, directory): ${sessionId}, path: ${sessionDirectory}`)
+        return // Early exit - no need for further checks
       }
 
       // Early worker detection via session title pattern
