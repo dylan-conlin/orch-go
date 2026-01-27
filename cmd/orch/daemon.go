@@ -269,6 +269,13 @@ func runDaemonLoop() error {
 	} else {
 		fmt.Println("  Recovery interval: disabled")
 	}
+	if config.ServerRecoveryEnabled {
+		fmt.Printf("  Server recovery:   enabled\n")
+		fmt.Printf("  Server stab delay: %s\n", formatDaemonDuration(config.ServerRecoveryStabilizationDelay))
+		fmt.Printf("  Server resume gap: %s\n", formatDaemonDuration(config.ServerRecoveryResumeDelay))
+	} else {
+		fmt.Println("  Server recovery:   disabled")
+	}
 	fmt.Println()
 
 	// Main polling loop
@@ -374,6 +381,48 @@ func runDaemonLoop() error {
 				}
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Recovery: no stuck agents found\n", timestamp)
+			}
+		}
+
+		// Run server restart recovery if due (runs once after daemon startup)
+		// This handles the case where OpenCode server was restarted and sessions
+		// were lost from memory but persist on disk.
+		if serverRecoveryResult := d.RunServerRecovery(); serverRecoveryResult != nil {
+			if serverRecoveryResult.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Server recovery error: %v\n", timestamp, serverRecoveryResult.Error)
+				// Log the server recovery error
+				event := events.Event{
+					Type:      "daemon.server_recovery",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"orphaned": 0,
+						"resumed":  0,
+						"skipped":  serverRecoveryResult.SkippedCount,
+						"error":    serverRecoveryResult.Error.Error(),
+						"message":  serverRecoveryResult.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log server recovery error event: %v\n", err)
+				}
+			} else if serverRecoveryResult.OrphanedCount > 0 {
+				fmt.Printf("[%s] Server recovery: %s\n", timestamp, serverRecoveryResult.Message)
+				// Log the successful server recovery
+				event := events.Event{
+					Type:      "daemon.server_recovery",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"orphaned": serverRecoveryResult.OrphanedCount,
+						"resumed":  serverRecoveryResult.ResumedCount,
+						"skipped":  serverRecoveryResult.SkippedCount,
+						"message":  serverRecoveryResult.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log server recovery event: %v\n", err)
+				}
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Server recovery: %s\n", timestamp, serverRecoveryResult.Message)
 			}
 		}
 

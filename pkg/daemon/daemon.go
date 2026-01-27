@@ -97,6 +97,26 @@ type Config struct {
 	// RecoveryRateLimit is minimum time between resume attempts per agent.
 	// Default is 1 hour to prevent infinite loops.
 	RecoveryRateLimit time.Duration
+
+	// ServerRecoveryEnabled controls whether server restart recovery is enabled.
+	// When enabled, the daemon will detect orphaned sessions after server restart
+	// and resume them with recovery-specific context.
+	ServerRecoveryEnabled bool
+
+	// ServerRecoveryStabilizationDelay is how long to wait after daemon start
+	// before running server recovery. This allows the OpenCode server to fully
+	// initialize before we query it.
+	// Default is 30 seconds.
+	ServerRecoveryStabilizationDelay time.Duration
+
+	// ServerRecoveryResumeDelay is the delay between resuming each orphaned session.
+	// This prevents overwhelming the server with simultaneous resumes.
+	// Default is 10 seconds.
+	ServerRecoveryResumeDelay time.Duration
+
+	// ServerRecoveryRateLimit is minimum time between recovery attempts per agent.
+	// Default is 1 hour to prevent infinite loops.
+	ServerRecoveryRateLimit time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -117,10 +137,14 @@ func DefaultConfig() Config {
 		CleanupAgeDays:              7,             // 7 days threshold
 		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
 		CleanupServerURL:            "http://127.0.0.1:4096",
-		RecoveryEnabled:             true,
-		RecoveryInterval:            5 * time.Minute,  // Check every 5 minutes
-		RecoveryIdleThreshold:       10 * time.Minute, // Idle >10min triggers recovery
-		RecoveryRateLimit:           time.Hour,        // 1 resume per agent per hour
+		RecoveryEnabled:                  true,
+		RecoveryInterval:                 5 * time.Minute,  // Check every 5 minutes
+		RecoveryIdleThreshold:            10 * time.Minute, // Idle >10min triggers recovery
+		RecoveryRateLimit:                time.Hour,        // 1 resume per agent per hour
+		ServerRecoveryEnabled:            true,
+		ServerRecoveryStabilizationDelay: 30 * time.Second,  // Wait 30s for server stability
+		ServerRecoveryResumeDelay:        10 * time.Second,  // 10s between each resume
+		ServerRecoveryRateLimit:          time.Hour,         // 1 recovery per agent per hour
 	}
 }
 
@@ -204,6 +228,10 @@ type Daemon struct {
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
 
+	// serverRecoveryState tracks state for server restart recovery.
+	// Used to determine when server recovery should run (once per daemon start).
+	serverRecoveryState *ServerRecoveryState
+
 	// listIssuesFunc is used for testing - allows mocking bd list
 	listIssuesFunc func() ([]Issue, error)
 	// spawnFunc is used for testing - allows mocking orch work
@@ -243,6 +271,7 @@ func NewWithConfig(config Config) *Daemon {
 		SpawnedIssues:            NewSpawnedIssueTracker(),
 		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
+		serverRecoveryState:      NewServerRecoveryState(),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
 		activeCountFunc:          activeCount,
@@ -285,6 +314,7 @@ func NewWithPool(config Config, pool *WorkerPool) *Daemon {
 		SpawnedIssues:            NewSpawnedIssueTracker(),
 		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
+		serverRecoveryState:      NewServerRecoveryState(),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
 		activeCountFunc:          activeCount,
@@ -1350,6 +1380,106 @@ func (d *Daemon) NextRecoveryTime() time.Time {
 		return time.Now() // Due immediately
 	}
 	return d.lastRecovery.Add(d.Config.RecoveryInterval)
+}
+
+// ShouldRunServerRecovery returns true if server restart recovery should run.
+// This runs once after daemon startup, after the stabilization delay has passed.
+func (d *Daemon) ShouldRunServerRecovery() bool {
+	if !d.Config.ServerRecoveryEnabled {
+		return false
+	}
+	if d.serverRecoveryState == nil {
+		return false
+	}
+	return d.serverRecoveryState.ShouldRunServerRecovery(d.Config.ServerRecoveryStabilizationDelay)
+}
+
+// RunServerRecovery runs server restart recovery if due.
+// This detects orphaned sessions (sessions that exist on disk but aren't in OpenCode's
+// in-memory state) and resumes them with recovery-specific context.
+//
+// Unlike RunPeriodicRecovery which handles individual stuck agents, this handles
+// the bulk recovery scenario after a server restart where ALL in-memory sessions
+// are lost simultaneously.
+//
+// Returns the result if recovery was run, or nil if it wasn't due.
+func (d *Daemon) RunServerRecovery() *ServerRecoveryResult {
+	if !d.ShouldRunServerRecovery() {
+		return nil
+	}
+
+	// Mark that we've run recovery (regardless of outcome)
+	d.serverRecoveryState.MarkRecoveryRun()
+
+	serverURL := d.Config.CleanupServerURL
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:4096"
+	}
+
+	// Find orphaned sessions
+	orphaned, err := FindOrphanedSessions(serverURL)
+	if err != nil {
+		return &ServerRecoveryResult{
+			Error:   err,
+			Message: fmt.Sprintf("Server recovery failed to find orphaned sessions: %v", err),
+		}
+	}
+
+	if len(orphaned) == 0 {
+		return &ServerRecoveryResult{
+			OrphanedCount: 0,
+			Message:       "Server recovery: no orphaned sessions found",
+		}
+	}
+
+	// Resume orphaned sessions with staggered delay
+	resumed := 0
+	skipped := 0
+
+	for i, orphan := range orphaned {
+		// Check rate limit for this specific agent
+		if d.serverRecoveryState.WasRecentlyRecovered(orphan.BeadsID, d.Config.ServerRecoveryRateLimit) {
+			if d.Config.Verbose {
+				fmt.Printf("  Skipping %s: already recovered recently (rate limit)\n", orphan.BeadsID)
+			}
+			skipped++
+			continue
+		}
+
+		// Add delay between resumes (except for the first one)
+		if i > 0 && d.Config.ServerRecoveryResumeDelay > 0 {
+			time.Sleep(d.Config.ServerRecoveryResumeDelay)
+		}
+
+		if d.Config.Verbose {
+			fmt.Printf("  Resuming orphaned session %s (phase=%s)\n", orphan.BeadsID, orphan.Phase)
+		}
+
+		if err := ResumeOrphanedAgent(orphan, serverURL); err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Failed to resume %s: %v\n", orphan.BeadsID, err)
+			}
+			// Still mark as attempted to avoid retry storm
+			d.serverRecoveryState.MarkRecovered(orphan.BeadsID)
+			skipped++
+			continue
+		}
+
+		// Mark as successfully recovered
+		d.serverRecoveryState.MarkRecovered(orphan.BeadsID)
+		resumed++
+
+		if d.Config.Verbose {
+			fmt.Printf("  Resumed %s successfully\n", orphan.BeadsID)
+		}
+	}
+
+	return &ServerRecoveryResult{
+		ResumedCount:  resumed,
+		SkippedCount:  skipped,
+		OrphanedCount: len(orphaned),
+		Message:       fmt.Sprintf("Server recovery: %d orphaned found, %d resumed, %d skipped", len(orphaned), resumed, skipped),
+	}
 }
 
 // Run processes issues in a loop until the queue is empty or maxIterations is reached.

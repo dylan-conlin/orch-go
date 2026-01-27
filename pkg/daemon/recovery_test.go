@@ -313,3 +313,169 @@ func TestRecoveryIntegration_VerifyPackage(t *testing.T) {
 		t.Errorf("Expected phase 'Planning', got '%s'", phaseStatus.Phase)
 	}
 }
+
+// =============================================================================
+// Server Recovery Tests
+// =============================================================================
+
+func TestServerRecoveryState_ShouldRunServerRecovery(t *testing.T) {
+	state := NewServerRecoveryState()
+
+	// Immediately after creation, should not run (stabilization delay not passed)
+	if state.ShouldRunServerRecovery(30 * time.Second) {
+		t.Error("Should not run server recovery immediately after creation")
+	}
+
+	// Simulate time passing (past stabilization delay)
+	state.daemonStartTime = time.Now().Add(-31 * time.Second)
+	if !state.ShouldRunServerRecovery(30 * time.Second) {
+		t.Error("Should run server recovery after stabilization delay")
+	}
+
+	// After marking as run, should not run again
+	state.MarkRecoveryRun()
+	if state.ShouldRunServerRecovery(30 * time.Second) {
+		t.Error("Should not run server recovery again after already run")
+	}
+}
+
+func TestServerRecoveryState_WasRecentlyRecovered(t *testing.T) {
+	state := NewServerRecoveryState()
+	beadsID := "test-123"
+	rateLimit := time.Hour
+
+	// Before any recovery, should return false
+	if state.WasRecentlyRecovered(beadsID, rateLimit) {
+		t.Error("WasRecentlyRecovered should be false before any recovery")
+	}
+
+	// After marking as recovered, should return true
+	state.MarkRecovered(beadsID)
+	if !state.WasRecentlyRecovered(beadsID, rateLimit) {
+		t.Error("WasRecentlyRecovered should be true after recovery")
+	}
+
+	// Simulate rate limit passing
+	state.recoveredSessionsMap[beadsID] = time.Now().Add(-2 * time.Hour)
+	if state.WasRecentlyRecovered(beadsID, rateLimit) {
+		t.Error("WasRecentlyRecovered should be false after rate limit passed")
+	}
+}
+
+func TestRunServerRecovery_DisabledWhenConfigDisabled(t *testing.T) {
+	config := Config{
+		ServerRecoveryEnabled: false,
+	}
+	d := NewWithConfig(config)
+
+	result := d.RunServerRecovery()
+	if result != nil {
+		t.Errorf("Expected nil result when server recovery disabled, got %+v", result)
+	}
+}
+
+func TestRunServerRecovery_WaitsForStabilizationDelay(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerRecoveryEnabled = true
+	config.ServerRecoveryStabilizationDelay = 30 * time.Second
+	d := NewWithConfig(config)
+
+	// Immediately after creation, should not run (stabilization delay)
+	result := d.RunServerRecovery()
+	if result != nil {
+		t.Errorf("Expected nil result during stabilization delay, got %+v", result)
+	}
+
+	// Simulate time passing
+	d.serverRecoveryState.daemonStartTime = time.Now().Add(-31 * time.Second)
+
+	// Now it should run (will likely return 0 orphaned since no real sessions)
+	result = d.RunServerRecovery()
+	if result == nil {
+		t.Error("Expected result after stabilization delay")
+	}
+}
+
+func TestServerRecoveryResult_Structure(t *testing.T) {
+	result := ServerRecoveryResult{
+		ResumedCount:  2,
+		SkippedCount:  1,
+		OrphanedCount: 3,
+		Message:       "Server recovery: 3 orphaned found, 2 resumed, 1 skipped",
+	}
+
+	if result.ResumedCount != 2 {
+		t.Errorf("Expected ResumedCount=2, got %d", result.ResumedCount)
+	}
+	if result.SkippedCount != 1 {
+		t.Errorf("Expected SkippedCount=1, got %d", result.SkippedCount)
+	}
+	if result.OrphanedCount != 3 {
+		t.Errorf("Expected OrphanedCount=3, got %d", result.OrphanedCount)
+	}
+	if result.Message == "" {
+		t.Error("Message should not be empty")
+	}
+}
+
+func TestOrphanedSession_Structure(t *testing.T) {
+	orphan := OrphanedSession{
+		BeadsID:       "test-123",
+		SessionID:     "ses_abc",
+		WorkspacePath: "/path/to/workspace",
+		AgentID:       "og-feature-impl-test",
+		Phase:         "Implementing",
+		ProjectDir:    "/path/to/project",
+	}
+
+	if orphan.BeadsID == "" {
+		t.Error("BeadsID should not be empty")
+	}
+	if orphan.SessionID == "" {
+		t.Error("SessionID should not be empty")
+	}
+	if orphan.Phase == "" {
+		t.Error("Phase should not be empty")
+	}
+}
+
+func TestServerRecoveryConfig_Defaults(t *testing.T) {
+	config := DefaultConfig()
+
+	// Verify server recovery defaults
+	if !config.ServerRecoveryEnabled {
+		t.Error("ServerRecovery should be enabled by default")
+	}
+	if config.ServerRecoveryStabilizationDelay != 30*time.Second {
+		t.Errorf("Expected ServerRecoveryStabilizationDelay=30s, got %v", config.ServerRecoveryStabilizationDelay)
+	}
+	if config.ServerRecoveryResumeDelay != 10*time.Second {
+		t.Errorf("Expected ServerRecoveryResumeDelay=10s, got %v", config.ServerRecoveryResumeDelay)
+	}
+	if config.ServerRecoveryRateLimit != time.Hour {
+		t.Errorf("Expected ServerRecoveryRateLimit=1h, got %v", config.ServerRecoveryRateLimit)
+	}
+}
+
+func TestShouldRunServerRecovery_DisabledWhenRecoveryOff(t *testing.T) {
+	config := Config{
+		ServerRecoveryEnabled: false,
+	}
+	d := NewWithConfig(config)
+
+	if d.ShouldRunServerRecovery() {
+		t.Error("ShouldRunServerRecovery should be false when disabled")
+	}
+}
+
+func TestShouldRunServerRecovery_NilStateReturnsFalse(t *testing.T) {
+	config := Config{
+		ServerRecoveryEnabled: true,
+	}
+	d := NewWithConfig(config)
+	d.serverRecoveryState = nil
+
+	if d.ShouldRunServerRecovery() {
+		t.Error("ShouldRunServerRecovery should be false when state is nil")
+	}
+}
