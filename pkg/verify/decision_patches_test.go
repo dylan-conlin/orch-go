@@ -68,6 +68,163 @@ Second mention: .kb/decisions/2026-01-09-foo.md`,
 	}
 }
 
+func TestHasBlocksFrontmatter(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected bool
+	}{
+		{
+			name: "has blocks frontmatter",
+			content: `---
+status: active
+blocks:
+  - keywords:
+      - coaching plugin
+---
+# Decision`,
+			expected: true,
+		},
+		{
+			name: "no blocks frontmatter",
+			content: `---
+status: active
+---
+# Decision`,
+			expected: false,
+		},
+		{
+			name: "no frontmatter",
+			content: `# Decision
+
+Some content.`,
+			expected: false,
+		},
+		{
+			name: "blocks in content but not frontmatter",
+			content: `---
+status: active
+---
+# Decision
+
+blocks: this is not in frontmatter`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary file
+			tempDir := t.TempDir()
+			testFile := filepath.Join(tempDir, "test-decision.md")
+			if err := os.WriteFile(testFile, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("Failed to write test file: %v", err)
+			}
+
+			result, err := hasBlocksFrontmatter(testFile)
+			if err != nil {
+				t.Fatalf("hasBlocksFrontmatter() returned error: %v", err)
+			}
+
+			if result != tt.expected {
+				t.Errorf("hasBlocksFrontmatter() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFindDecisionsWithoutBlocksFrontmatter(t *testing.T) {
+	// Create temporary directories
+	tempDir := t.TempDir()
+	projectDir := filepath.Join(tempDir, "project")
+	kbDir := filepath.Join(projectDir, ".kb")
+	decisionsDir := filepath.Join(kbDir, "decisions")
+	workspaceDir := filepath.Join(tempDir, "workspace")
+
+	// Create directory structure
+	os.MkdirAll(decisionsDir, 0755)
+	os.MkdirAll(workspaceDir, 0755)
+
+	// Create decision with blocks
+	decisionWithBlocks := filepath.Join(decisionsDir, "2026-01-28-has-blocks.md")
+	os.WriteFile(decisionWithBlocks, []byte(`---
+status: active
+blocks:
+  - keywords:
+      - test
+---
+# Decision with blocks`), 0644)
+
+	// Create decision without blocks
+	decisionWithoutBlocks := filepath.Join(decisionsDir, "2026-01-28-no-blocks.md")
+	os.WriteFile(decisionWithoutBlocks, []byte(`---
+status: active
+---
+# Decision without blocks`), 0644)
+
+	tests := []struct {
+		name              string
+		synthesisContent  string
+		expectedCount     int
+		expectedFilenames []string
+	}{
+		{
+			name:              "no decision references",
+			synthesisContent:  "No decisions referenced here.",
+			expectedCount:     0,
+			expectedFilenames: []string{},
+		},
+		{
+			name:              "decision with blocks",
+			synthesisContent:  "References .kb/decisions/2026-01-28-has-blocks.md",
+			expectedCount:     0,
+			expectedFilenames: []string{},
+		},
+		{
+			name:              "decision without blocks",
+			synthesisContent:  "References .kb/decisions/2026-01-28-no-blocks.md",
+			expectedCount:     1,
+			expectedFilenames: []string{"2026-01-28-no-blocks.md"},
+		},
+		{
+			name: "mixed decisions",
+			synthesisContent: `References .kb/decisions/2026-01-28-has-blocks.md and
+.kb/decisions/2026-01-28-no-blocks.md`,
+			expectedCount:     1,
+			expectedFilenames: []string{"2026-01-28-no-blocks.md"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create SYNTHESIS.md
+			synthesisPath := filepath.Join(workspaceDir, "SYNTHESIS.md")
+			os.WriteFile(synthesisPath, []byte(tt.synthesisContent), 0644)
+
+			// Run detection
+			results, err := FindDecisionsWithoutBlocksFrontmatter(workspaceDir, projectDir)
+			if err != nil {
+				t.Fatalf("FindDecisionsWithoutBlocksFrontmatter() returned error: %v", err)
+			}
+
+			if len(results) != tt.expectedCount {
+				t.Errorf("Expected %d results, got %d", tt.expectedCount, len(results))
+			}
+
+			// Check filenames
+			for i, expectedFilename := range tt.expectedFilenames {
+				if i >= len(results) {
+					t.Errorf("Missing expected result: %s", expectedFilename)
+					continue
+				}
+				if results[i].Filename != expectedFilename {
+					t.Errorf("Expected filename %s, got %s", expectedFilename, results[i].Filename)
+				}
+			}
+		})
+	}
+}
+
 func TestNormalizeDecisionPath(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -235,13 +235,32 @@ orch-dashboard logs     # View service logs (overmind echo)
 ## Spawn Flow
 
 1. `orch spawn SKILL "task"` invokes spawn command in main.go
-2. Resolves model alias via `pkg/model.Resolve()`
-3. Creates workspace: `.orch/workspace/{name}/`
-4. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
-5. **Default (headless):** Creates session via HTTP API, sends prompt
-6. **With --tmux:** Creates session + tmux window for monitoring (opt-in)
-7. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
-8. Returns immediately (unless --inline)
+2. **Decision gate:** Checks `.kb/decisions/` for conflicts (see below)
+3. Resolves model alias via `pkg/model.Resolve()`
+4. Creates workspace: `.orch/workspace/{name}/`
+5. Generates `SPAWN_CONTEXT.md` via `pkg/spawn`
+6. **Default (headless):** Creates session via HTTP API, sends prompt
+7. **With --tmux:** Creates session + tmux window for monitoring (opt-in)
+8. **With --inline:** Runs OpenCode TUI in current terminal (blocking)
+9. Returns immediately (unless --inline)
+
+## Decision Gate
+
+Architect decisions can block spawns via the decision gate. This gives decisions teeth - you can't accidentally spawn investigation #19 when a decision says "stop tactical fixes."
+
+**How it works:**
+1. Decisions declare blocked keywords in YAML frontmatter:
+   ```yaml
+   ---
+   blocks:
+     - keywords: ["coaching plugin", "worker detection"]
+   ---
+   ```
+2. `orch spawn` checks if task matches any blocked keywords
+3. If match found → spawn blocked with warning
+4. Override with `--acknowledge-decision <decision-id>` (logged)
+
+**Reference:** `.kb/decisions/2026-01-28-decision-gate.md`
 
 ## Commands
 

@@ -182,3 +182,102 @@ func countPatchesToDecision(investigationsDir, decisionPath string) (int, error)
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	return len(lines), nil
 }
+
+// DecisionWithoutBlocks represents a decision that was referenced but lacks blocks: frontmatter.
+type DecisionWithoutBlocks struct {
+	Path     string // Path to the decision file
+	Filename string // Just the filename (for display)
+}
+
+// FindDecisionsWithoutBlocksFrontmatter analyzes SYNTHESIS.md and returns decisions
+// that are referenced but lack blocks: frontmatter.
+// This surfaces opportunities to add blocks: keywords during completion review.
+func FindDecisionsWithoutBlocksFrontmatter(workspacePath, projectDir string) ([]DecisionWithoutBlocks, error) {
+	if workspacePath == "" || projectDir == "" {
+		return nil, nil
+	}
+
+	// Read SYNTHESIS.md
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	synthesisBytes, err := os.ReadFile(synthesisPath)
+	if err != nil {
+		// No SYNTHESIS.md, nothing to check
+		return nil, nil
+	}
+
+	// Find decision references
+	decisionRefs := findDecisionReferences(string(synthesisBytes))
+	if len(decisionRefs) == 0 {
+		return nil, nil
+	}
+
+	var results []DecisionWithoutBlocks
+
+	// Check each referenced decision
+	for _, decisionPath := range decisionRefs {
+		normalizedPath := normalizeDecisionPath(decisionPath, projectDir)
+
+		// Check if decision file exists
+		var fullPath string
+		if filepath.IsAbs(normalizedPath) {
+			fullPath = normalizedPath
+		} else {
+			// Try to find it in .kb/decisions/
+			fullPath = filepath.Join(projectDir, ".kb", "decisions", normalizedPath)
+		}
+
+		// Check if decision has blocks: frontmatter
+		hasBlocks, err := hasBlocksFrontmatter(fullPath)
+		if err != nil {
+			// If we can't read the file, skip it (might not exist yet)
+			continue
+		}
+
+		if !hasBlocks {
+			results = append(results, DecisionWithoutBlocks{
+				Path:     fullPath,
+				Filename: filepath.Base(fullPath),
+			})
+		}
+	}
+
+	return results, nil
+}
+
+// hasBlocksFrontmatter checks if a decision file has blocks: frontmatter.
+// Returns true if blocks: is present, false otherwise.
+func hasBlocksFrontmatter(decisionPath string) (bool, error) {
+	content, err := os.ReadFile(decisionPath)
+	if err != nil {
+		return false, err
+	}
+
+	// Look for YAML frontmatter with blocks: field
+	// Pattern: ---\n...blocks:\n...---
+	lines := strings.Split(string(content), "\n")
+
+	inFrontmatter := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check for frontmatter start
+		if i == 0 && trimmed == "---" {
+			inFrontmatter = true
+			continue
+		}
+
+		// Check for frontmatter end
+		if inFrontmatter && trimmed == "---" {
+			// Reached end of frontmatter without finding blocks:
+			return false, nil
+		}
+
+		// Check for blocks: field
+		if inFrontmatter && strings.HasPrefix(trimmed, "blocks:") {
+			return true, nil
+		}
+	}
+
+	// No frontmatter or no blocks: field found
+	return false, nil
+}
