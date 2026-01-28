@@ -625,13 +625,49 @@
       "created": "2026-01-28",
       "source": ".kb/investigations/2026-01-28-inv-design-unified-strategic-center-dashboard.md",
       "notes": "Foundation for Strategic Center knowledge surfaces. Phase 1 of feat-052 implementation sequence."
+    },
+    {
+      "id": "feat-054",
+      "title": "Add version command to glass CLI",
+      "description": "Add 'glass version' subcommand exposing build-time version info (Version, BuildTime, SourceDir, GitHash). Support --json flag for machine-readable output. Variables already defined in main.go via ldflags. Enables staleness detection by external tools (orch doctor). Pattern follows orch, kb, skillc version commands. File targets: glass/main.go (add case in switch, add printVersion function). Out of scope: --version flag (use subcommand for consistency). Acceptance: 'glass version' outputs human-readable version, 'glass version --json' outputs JSON with all fields, orch doctor can verify glass staleness.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-28",
+      "source": ".kb/investigations/2026-01-28-inv-design-systemic-solution-ecosystem-rebuild.md",
+      "repo": "glass",
+      "notes": "Trivial implementation (~30 lines). Glass already has Version, BuildTime, SourceDir, GitHash variables and on-demand auto-rebuild. Just missing the version command to expose these externally."
+    },
+    {
+      "id": "feat-055",
+      "title": "Add version command to agentlog CLI",
+      "description": "Add 'agentlog version' subcommand exposing build-time version info (Version, BuildTime, SourceDir, GitHash). Support --json flag for machine-readable output. Variables already defined in main.go via ldflags. Use cobra command pattern (consistent with agentlog's existing structure). Enables staleness detection by external tools. File targets: agentlog/internal/cmd/version.go (new cobra command), agentlog/internal/cmd/root.go (add command). Out of scope: Auto-rebuild changes (already implemented). Acceptance: 'agentlog version' outputs human-readable version, 'agentlog version --json' outputs JSON.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-28",
+      "source": ".kb/investigations/2026-01-28-inv-design-systemic-solution-ecosystem-rebuild.md",
+      "repo": "agentlog",
+      "notes": "Trivial implementation (~40 lines). Agentlog already has version variables and on-demand auto-rebuild. Just missing the version command."
+    },
+    {
+      "id": "feat-056",
+      "title": "Extend orch doctor to verify all ecosystem CLI binaries",
+      "description": "Add ecosystem binary staleness verification to orch doctor. Check Dylan's CLIs (orch, kb, glass, skillc, agentlog) by running '<cli> version --json' and comparing embedded git hash to current HEAD in source directory. Report stale binaries with severity based on age. Show which binaries have working on-demand auto-rebuild vs requiring manual rebuild. File targets: cmd/orch/doctor.go (add checkEcosystemBinaries function). Out of scope: bd (upstream OSS), kn (rarely used), auto-repair. Acceptance: 'orch doctor --stale-only' reports staleness status for all 5 Dylan CLIs, distinguishes auto-rebuild capable vs manual rebuild required.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "medium",
+      "created": "2026-01-28",
+      "source": ".kb/investigations/2026-01-28-inv-design-systemic-solution-ecosystem-rebuild.md",
+      "depends_on": ["feat-054", "feat-055"],
+      "notes": "Depends on version commands being added to glass and agentlog first. Expands existing orch doctor capability."
     }
   ],
   "meta": {
     "last_updated": "2026-01-28",
-    "total_features": 53,
+    "total_features": 56,
     "by_status": {
-      "todo": 51,
+      "todo": 54,
       "in_progress": 0,
       "done": 2
     }
