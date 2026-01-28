@@ -566,7 +566,8 @@ type CreateSessionResponse struct {
 
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
-func (c *Client) CreateSession(title, directory, model string) (*CreateSessionResponse, error) {
+// Set isWorker=true for worker spawns to enable ORCH_WORKER detection.
+func (c *Client) CreateSession(title, directory, model string, isWorker bool) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
@@ -589,9 +590,11 @@ func (c *Client) CreateSession(title, directory, model string) (*CreateSessionRe
 		req.Header.Set("x-opencode-directory", directory)
 	}
 
-	// Set ORCH_WORKER=1 header to signal this is an orch-managed worker session
+	// Set ORCH_WORKER=1 header for worker sessions to signal orch-managed workers
 	// This allows the session-context plugin to skip loading orchestrator skill
-	req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
+	if isWorker {
+		req.Header.Set("x-opencode-env-ORCH_WORKER", "1")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -49,12 +49,18 @@ func SpawnClaude(cfg *Config) (*tmux.SpawnResult, error) {
 		claudeContext = "worker"
 	}
 
-	// Command: export CLAUDE_CONTEXT=X; cat CONTEXT.md | claude --dangerously-skip-permissions
-	// - Export env var so SessionStart hooks skip duplicate context injection
+	// Command: export CLAUDE_CONTEXT=X [ORCH_WORKER=1]; cat CONTEXT.md | claude --dangerously-skip-permissions
+	// - Export env vars so SessionStart hooks skip duplicate context injection
 	//   (must export, not inline, so claude inherits it through the pipe)
+	// - For workers, also export ORCH_WORKER=1 so OpenCode can detect worker sessions
 	// - Pipe the file content to claude (no --file flag exists)
 	// - Use --dangerously-skip-permissions to avoid blocking on edit prompts
-	launchCmd := fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
+	var launchCmd string
+	if claudeContext == "worker" {
+		launchCmd = fmt.Sprintf("export CLAUDE_CONTEXT=%s ORCH_WORKER=1; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
+	} else {
+		launchCmd = fmt.Sprintf("export CLAUDE_CONTEXT=%s; cat %q | claude --dangerously-skip-permissions", claudeContext, contextPath)
+	}
 
 	if err := tmux.SendKeys(windowTarget, launchCmd); err != nil {
 		return nil, fmt.Errorf("failed to send launch command: %w", err)

@@ -1297,7 +1297,7 @@ func TestCreateSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	resp, err := client.CreateSession(title, directory, model)
+	resp, err := client.CreateSession(title, directory, model, true)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -1321,7 +1321,7 @@ func TestCreateSession(t *testing.T) {
 		t.Errorf("receivedRequest.Model = %s, want %s", receivedRequest.Model, model)
 	}
 
-	// Verify ORCH_WORKER header is set
+	// Verify ORCH_WORKER header is set for worker sessions
 	if orchWorker := receivedHeaders.Get("x-opencode-env-ORCH_WORKER"); orchWorker != "1" {
 		t.Errorf("x-opencode-env-ORCH_WORKER header = %q, want \"1\"", orchWorker)
 	}
@@ -1351,7 +1351,7 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.CreateSession(title, directory, model)
+	_, err := client.CreateSession(title, directory, model, false)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}

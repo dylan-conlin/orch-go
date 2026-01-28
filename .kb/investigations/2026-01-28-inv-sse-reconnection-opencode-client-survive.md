@@ -103,19 +103,52 @@ This means the defaults are used:
 
 ---
 
+### Finding 4: run.ts Has No Error Handling Around Event Stream
+
+**Evidence:** In run.ts, the code structure is:
+```typescript
+const eventProcessor = (async () => {
+  for await (const event of events.stream) {
+    // ... process events
+  }
+})()
+// ... send prompt
+await eventProcessor  // No try/catch!
+if (errorMsg) process.exit(1)
+```
+
+There's no try/catch around `await eventProcessor`. If the SSE async generator throws an unhandled error, it would crash the process.
+
+**Source:** `/Users/dylanconlin/Documents/personal/opencode/packages/opencode/src/cli/cmd/run.ts` (lines 157-229, 273)
+
+**Significance:** If the reconnection logic in `createSseClient` fails to catch errors properly, or if `reader.read()` throws instead of returning `done=true`, the error would propagate up and kill the client. This could explain why agents die on server restart despite having retry logic.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **SSE reconnection exists but may not be working** - The SDK has full retry logic with exponential backoff (Finding 2), but agents still die on server restart (per Jan 26 investigation). The retry logic is in `createSseClient` but might not handle all failure modes.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **for await loop may exit before retry** - The `for await (const event of events.stream)` pattern in run.ts (Finding 1) consumes the async generator. If the generator completes (returns) instead of throwing when the connection drops, the loop exits normally and the client never knows to wait for reconnection.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **No error boundaries in run.ts** - There's no try/catch around the event processor (Finding 4). If an error escapes the retry logic, it kills the client immediately.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The OpenCode client **already has SSE reconnection logic** in the SDK (Finding 2), with infinite retries and exponential backoff by default (Finding 3). However, **the retry logic is unreachable** (Finding 5).
+
+**Root cause:** In serverSentEvents.gen.ts:220, there's an unconditional `break` statement after the try/finally block. When the SSE connection drops:
+1. `reader.read()` returns `{done: true}` (graceful close)
+2. Inner while loop exits (line 152)
+3. Finally block runs
+4. **Line 220 break exits the outer retry loop**
+5. Generator completes normally
+6. `for await` loop in run.ts exits
+7. Client process dies
+
+The retry logic at lines 221-232 only runs if an **exception is thrown**, not when the stream completes normally. This is a structural bug in the generated SDK code - the break at line 220 should be conditional or removed entirely to allow retry on disconnection.
 
 ---
 
@@ -123,21 +156,23 @@ This means the defaults are used:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ SSE client has retry logic with exponential backoff (verified: read serverSentEvents.gen.ts:78-239)
+- ✅ run.ts uses default configuration (infinite retries) (verified: grep for sseMaxRetryAttempts showed no configuration)
+- ✅ run.ts has no try/catch around eventProcessor (verified: read run.ts around line 273)
+- ✅ Test shows client dies on server kill (verified: ran test-sse-reconnect.sh)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether async generator completes or throws on connection drop (hypothesis not validated)
+- ⚠️ Whether reader.read() returns done=true or throws error when connection breaks
+- ⚠️ Whether break statement at line 220 is reached when connection drops
+- ⚠️ Whether adding error handling in run.ts would help
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- If reader.read() throws instead of returning done=true, the catch block should work
+- If break at line 220 is NOT reached, the retry loop should continue
+- If adding try/catch + retry in run.ts makes agents survive, the SDK retry isn't working as expected
 
 ---
 
@@ -147,21 +182,24 @@ This means the defaults are used:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Remove the unconditional break at line 220** - Delete or conditionalize the break statement so the retry loop continues after stream completion.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Directly fixes the root cause (Finding 5)
+- Minimal change - one line removal or condition
+- Leverages existing retry logic that's already implemented
+- No new dependencies or architecture changes needed
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Must modify generated SDK code (serverSentEvents.gen.ts)
+- Will be overwritten if SDK regenerates from OpenAPI spec
+- Need to document this as a patch to maintain
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Modify serverSentEvents.gen.ts:220** - Change `break` to only exit if signal is aborted or connection succeeds with explicit close event
+2. **Add condition:** `if (signal.aborted) break` instead of unconditional break
+3. **Test with server restart** - Verify agent survives OpenCode server kill and restart
+4. **Document the patch** - Create decision record explaining why this line must stay modified
 
 ### Alternative Approaches Considered
 
@@ -179,27 +217,61 @@ This means the defaults are used:
 
 ---
 
+### Finding 5: Root Cause - Unconditional Break After Stream Read
+
+**Evidence:** In serverSentEvents.gen.ts, the code structure is:
+```typescript
+while (true) {  // Outer retry loop (line 100)
+  try {
+    // ... fetch and read stream
+    while (true) {  // Inner read loop (line 150)
+      const { done, value } = await reader.read()
+      if (done) break  // Exit inner loop
+      // ... process events
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  
+  break  // Line 220 - UNCONDITIONAL BREAK!
+} catch (error) {
+  // Retry logic - NEVER REACHED when stream completes normally!
+}
+```
+
+When the server drops the connection, `reader.read()` returns `{done: true}`. This breaks the inner loop (line 152), runs the finally block, then hits line 220's **unconditional break**, exiting the outer retry loop. The catch block at line 221 with retry logic is never reached.
+
+**Source:** `/Users/dylanconlin/Documents/personal/opencode/packages/sdk/js/src/v2/gen/core/serverSentEvents.gen.ts:220`
+
+**Significance:** **This is the bug!** The retry logic is unreachable for normal stream completion. Reconnection only works if `reader.read()` **throws** an error, not when it completes normally. When OpenCode server dies, the SSE connection completes gracefully (done=true), so the client exits without retry.
+
+---
+
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Modify serverSentEvents.gen.ts line 220 from `break` to `if (signal.aborted) break`
+- This is the minimal change to fix the bug
+- Test immediately with server restart scenario
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ serverSentEvents.gen.ts is auto-generated (comment at top says "This file is auto-generated by @hey-api/openapi-ts")
+- ⚠️ SDK regeneration will overwrite this fix
+- ⚠️ Need to patch the generator template or maintain manual patch
+- ⚠️ Should the stream ever complete "successfully"? Need to understand session.idle event
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Why does reader.read() return done=true instead of throwing when connection drops?
+- Should session.idle event cause the outer loop to break?
+- Can we fix this in the generator template instead of patching generated code?
+- Should orch-go fork the SDK or contribute fix upstream to @hey-api/openapi-ts?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Agent survives OpenCode server kill and restart
+- ✅ SSE stream reconnects automatically within 3-30 seconds
+- ✅ Agent receives events after reconnection
+- ✅ Last-Event-ID header is sent on reconnect (already implemented)
+- ✅ No visible disruption to user - agent keeps working
 
 ---
 
