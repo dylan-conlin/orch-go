@@ -87,6 +87,70 @@
 		selectedAgentId.set(agent.id);
 	}
 
+	/**
+	 * Get user-friendly death reason message and icon
+	 */
+	function getDeathReasonInfo(reason?: string): { message: string; icon: string; color: string } {
+		switch (reason) {
+			case 'server_restart':
+				return {
+					message: 'Server restarted while agent was running.',
+					icon: '🔄',
+					color: 'text-blue-500'
+				};
+			case 'context_exhausted':
+				return {
+					message: 'Agent exhausted context/token limit.',
+					icon: '📊',
+					color: 'text-purple-500'
+				};
+			case 'auth_failed':
+				return {
+					message: 'Authentication failed (Claude Max limit?).',
+					icon: '🔒',
+					color: 'text-yellow-500'
+				};
+			case 'error':
+				return {
+					message: 'Agent encountered an unrecoverable error.',
+					icon: '❌',
+					color: 'text-red-500'
+				};
+			case 'timeout':
+				return {
+					message: 'No activity for 3+ minutes (timeout).',
+					icon: '⏱️',
+					color: 'text-orange-500'
+				};
+			default:
+				return {
+					message: 'Unknown cause (check logs).',
+					icon: '💀',
+					color: 'text-red-500'
+				};
+		}
+	}
+
+	/**
+	 * Get short label for death reason (for status footer display)
+	 */
+	function getDeathReasonLabel(reason?: string): string {
+		switch (reason) {
+			case 'server_restart':
+				return 'server restart';
+			case 'context_exhausted':
+				return 'context limit';
+			case 'auth_failed':
+				return 'auth failed';
+			case 'error':
+				return 'error';
+			case 'timeout':
+				return 'timeout';
+			default:
+				return 'crashed/stuck';
+		}
+	}
+
 	function getStatusVariant(status: Agent['status']) {
 		switch (status) {
 			case 'active':
@@ -461,16 +525,21 @@
 				</Tooltip.Root>
 			{/if}
 		{#if displayState === 'dead'}
+			{@const deathInfo = getDeathReasonInfo(agent.death_reason)}
 			<Tooltip.Root>
 				<Tooltip.Trigger>
-					<span class="text-red-500">💀</span>
+					<span class={deathInfo.color}>{deathInfo.icon}</span>
 				</Tooltip.Trigger>
 				<Tooltip.Content>
-					<p class="font-medium text-red-500">Dead Agent</p>
-					<p class="text-xs text-muted-foreground">
-						No activity for 3+ minutes.<br />
-						Agent may have crashed, been killed, or is completely stuck.
+					<p class="font-medium {deathInfo.color}">Dead Agent</p>
+					<p class="text-xs text-muted-foreground mb-1">
+						{deathInfo.message}
 					</p>
+					{#if agent.death_reason === 'timeout'}
+						<p class="text-xs text-muted-foreground opacity-70">
+							Agent may have crashed, been killed, or is stuck.
+						</p>
+					{/if}
 				</Tooltip.Content>
 			</Tooltip.Root>
 		{:else if displayState === 'awaiting-cleanup'}
@@ -637,24 +706,28 @@
 		<div class="mt-1.5 border-t border-border/50 pt-1.5">
 			{#if displayState === 'dead' || agent.status === 'dead'}
 				<!-- Agent is dead - no heartbeat for 3+ minutes -->
+				{@const deathInfo = getDeathReasonInfo(agent.death_reason)}
 				<div class="flex items-center gap-1">
-					<span class="text-[10px]">💀</span>
+					<span class="text-[10px]">{deathInfo.icon}</span>
 					<p class="flex-1 truncate text-[10px] text-red-400 font-medium">
 						No activity for {formatElapsedTime(agent.updated_at)}
 					</p>
 					<Tooltip.Root>
 						<Tooltip.Trigger>
 							<span class="text-[9px] text-red-400/70 shrink-0">
-								crashed/stuck
+								{getDeathReasonLabel(agent.death_reason)}
 							</span>
 						</Tooltip.Trigger>
 						<Tooltip.Content>
 							<p class="font-medium text-red-500">Agent Unresponsive</p>
-							<p class="text-xs text-muted-foreground">
-								No heartbeat for 3+ minutes.<br />
-								The agent may have crashed, been killed,<br />
-								or is completely stuck.
+							<p class="text-xs text-muted-foreground mb-1">
+								{deathInfo.message}
 							</p>
+							{#if agent.death_reason === 'timeout'}
+								<p class="text-xs text-muted-foreground opacity-70">
+									Agent may have crashed, been killed, or is stuck.
+								</p>
+							{/if}
 							<p class="text-xs text-muted-foreground mt-1">
 								Consider running <code class="bg-muted px-1 rounded">orch abandon</code>
 							</p>

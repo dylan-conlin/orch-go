@@ -34,6 +34,10 @@ const DefaultServePort = 3348
 var (
 	servePort int
 
+	// serverStartTime tracks when the orch serve process started.
+	// Used to distinguish agent death reasons (server restart vs other failures).
+	serverStartTime time.Time
+
 	// beadsClient is a persistent RPC client for beads operations.
 	// Initialized at startup with auto-reconnect enabled.
 	// Protected by beadsClientMu for thread-safe access across HTTP handlers.
@@ -177,6 +181,9 @@ func runServeStatus(portNum int) error {
 }
 
 func runServe(portNum int) error {
+	// Record server start time for agent death diagnostics
+	serverStartTime = time.Now()
+
 	// Set default directory for beads socket discovery
 	// This is needed because serve may run from any working directory
 	if sourceDir != "" && sourceDir != "unknown" {

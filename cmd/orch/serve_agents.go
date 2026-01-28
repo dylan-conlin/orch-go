@@ -27,10 +27,11 @@ type AgentAPIResponse struct {
 	BeadsID              string               `json:"beads_id,omitempty"`
 	BeadsTitle           string               `json:"beads_title,omitempty"`
 	Skill                string               `json:"skill,omitempty"`
-	Status               string               `json:"status"`            // "active", "idle", "dead", "completed", "awaiting-cleanup"
-	Phase                string               `json:"phase,omitempty"`   // "Planning", "Implementing", "Complete", etc.
-	Task                 string               `json:"task,omitempty"`    // Task description from beads issue
-	Project              string               `json:"project,omitempty"` // Project name (orch-go, skillc, etc.)
+	Status               string               `json:"status"`                 // "active", "idle", "dead", "completed", "awaiting-cleanup"
+	DeathReason          string               `json:"death_reason,omitempty"` // Reason for death: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
+	Phase                string               `json:"phase,omitempty"`        // "Planning", "Implementing", "Complete", etc.
+	Task                 string               `json:"task,omitempty"`         // Task description from beads issue
+	Project              string               `json:"project,omitempty"`      // Project name (orch-go, skillc, etc.)
 	Runtime              string               `json:"runtime,omitempty"`
 	Window               string               `json:"window,omitempty"`
 	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response
@@ -81,6 +82,65 @@ type SynthesisResponse struct {
 type investigationDirCache struct {
 	// entries maps directory path -> list of .md file names (not full DirEntry, just names for efficiency)
 	entries map[string][]string
+}
+
+// determineDeathReason analyzes why an agent died and returns a specific reason code.
+// Reasons: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
+func determineDeathReason(sessionID string, sessionCreatedAt time.Time, client *opencode.Client) string {
+	// Check if session existed before server restart
+	if !serverStartTime.IsZero() && sessionCreatedAt.Before(serverStartTime) {
+		return "server_restart"
+	}
+
+	// Check last message for specific error patterns
+	lastMsg, err := client.GetLastMessage(sessionID)
+	if err != nil || lastMsg == nil {
+		// No messages available, likely timeout
+		return "timeout"
+	}
+
+	// Check for context exhaustion (token limit errors)
+	// OpenCode reports token limits in error messages
+	for _, part := range lastMsg.Parts {
+		if part.Type == "text" && part.Text != "" {
+			text := strings.ToLower(part.Text)
+			if strings.Contains(text, "token limit") ||
+				strings.Contains(text, "context length") ||
+				strings.Contains(text, "maximum context") ||
+				strings.Contains(text, "too many tokens") {
+				return "context_exhausted"
+			}
+		}
+	}
+
+	// Check for auth failures (401/403 errors)
+	// Look at message finish reason or error info
+	if lastMsg.Info.Finish != "" {
+		finish := strings.ToLower(lastMsg.Info.Finish)
+		if strings.Contains(finish, "unauthorized") ||
+			strings.Contains(finish, "forbidden") ||
+			strings.Contains(finish, "authentication") ||
+			strings.Contains(finish, "auth") {
+			return "auth_failed"
+		}
+	}
+
+	// Check for general errors in the last message
+	// If the last message had an error, it's an error death
+	if lastMsg.Info.Finish == "error" || lastMsg.Info.Finish == "tool_error" {
+		return "error"
+	}
+
+	// Check message parts for error indicators
+	for _, part := range lastMsg.Parts {
+		if part.Type == "error" || (part.Type == "text" && strings.HasPrefix(strings.ToLower(part.Text), "error:")) {
+			return "error"
+		}
+	}
+
+	// If we got here, it's likely a timeout (no activity for threshold period)
+	// This is the most common death reason for agents that just stop responding
+	return "timeout"
 }
 
 // buildInvestigationDirCache pre-loads directory listings for investigation discovery.
@@ -451,8 +511,11 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		// Priority: dead (3min silence) > active (recent) > idle (10min+)
 		// Dead agents need attention - they're crashed/stuck/killed.
 		status := "active"
+		var deathReason string
 		if timeSinceUpdate > deadThreshold {
 			status = "dead" // No activity for 3+ minutes = dead (crashed/stuck/killed)
+			// Determine specific death reason for diagnostics
+			deathReason = determineDeathReason(s.ID, createdAt, client)
 		} else if timeSinceUpdate > activeThreshold {
 			status = "idle" // Session exists but hasn't had recent activity
 		}
@@ -467,6 +530,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			ID:           s.Title,
 			SessionID:    s.ID,
 			Status:       status,
+			DeathReason:  deathReason,
 			Runtime:      formatDuration(runtime),
 			SpawnedAt:    createdAt.Format(time.RFC3339),
 			UpdatedAt:    updatedAt.Format(time.RFC3339),
@@ -598,6 +662,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 							timeSinceActivity := now.Sub(lastActivity)
 							if timeSinceActivity > deadThreshold {
 								agent.Status = "dead"
+								// For tmux-only agents without session ID, default to timeout
+								// (we can't inspect messages to determine more specific reason)
+								agent.DeathReason = "timeout"
 							}
 						}
 					}
@@ -1401,10 +1468,10 @@ type ToolState struct {
 // This file serves as archival storage for session activity, loaded when
 // the OpenCode session no longer exists (deleted/cleaned up).
 type ActivityJSONFile struct {
-	Version    int                    `json:"version"`
-	SessionID  string                 `json:"session_id"`
-	ExportedAt string                 `json:"exported_at"`
-	Events     []MessagePartResponse  `json:"events"`
+	Version    int                   `json:"version"`
+	SessionID  string                `json:"session_id"`
+	ExportedAt string                `json:"exported_at"`
+	Events     []MessagePartResponse `json:"events"`
 }
 
 // findWorkspaceBySessionID searches for a workspace directory with a matching .session_id file.

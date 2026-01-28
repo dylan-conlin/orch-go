@@ -35,6 +35,7 @@ export interface Agent {
 	window_id?: string;
 	window?: string;
 	status: AgentState;
+	death_reason?: string; // Reason for death: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
 	spawned_at: string;
 	updated_at: string;
 	completed_at?: string;
