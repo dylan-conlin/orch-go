@@ -130,6 +130,13 @@ type Config struct {
 	// before being automatically abandoned. Set to 0 to disable auto-abandon.
 	// Default is 24 hours.
 	AutoAbandonAfterHours int
+
+	// SpawnFactualQuestions controls whether the daemon should spawn investigations
+	// for factual questions (questions with subtype:factual label).
+	// When enabled, queries 'bd ready --type question --label subtype:factual'
+	// and spawns investigation skill for matching questions.
+	// Default is false (opt-in feature).
+	SpawnFactualQuestions bool
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -160,6 +167,7 @@ func DefaultConfig() Config {
 		ServerRecoveryRateLimit:          time.Hour,        // 1 recovery per agent per hour
 		MaxResumeAttempts:                3,                // Escalate after 3 failed attempts
 		AutoAbandonAfterHours:            24,               // Auto-abandon after 24h dead
+		SpawnFactualQuestions:            false,            // Opt-in feature
 	}
 }
 

@@ -113,20 +113,21 @@ Examples:
 
 var (
 	// Daemon flags
-	daemonDelay               int    // Delay between spawns in seconds
-	daemonDryRun              bool   // Preview mode - show what would be processed without spawning
-	daemonPollInterval        int    // Poll interval in seconds (0 = run once)
-	daemonMaxAgents           int    // Maximum concurrent agents (0 = no limit)
-	daemonLabel               string // Filter issues by label
-	daemonVerbose             bool   // Enable verbose output
-	daemonReflect             bool   // Run reflection analysis after processing (on exit)
-	daemonReflectInterval     int    // Periodic reflection interval in minutes (0 = disabled)
-	daemonReflectIssues       bool   // Create beads issues for synthesis opportunities
-	daemonCleanupEnabled      bool   // Enable periodic session cleanup
-	daemonCleanupInterval     int    // Session cleanup interval in minutes (0 = disabled)
-	daemonCleanupAge          int    // Session age threshold in days for cleanup
-	daemonCleanupPreserveOrch bool   // Preserve orchestrator sessions during cleanup
-	daemonCrossProject        bool   // Poll all kb-registered projects for issues
+	daemonDelay                 int    // Delay between spawns in seconds
+	daemonDryRun                bool   // Preview mode - show what would be processed without spawning
+	daemonPollInterval          int    // Poll interval in seconds (0 = run once)
+	daemonMaxAgents             int    // Maximum concurrent agents (0 = no limit)
+	daemonLabel                 string // Filter issues by label
+	daemonVerbose               bool   // Enable verbose output
+	daemonReflect               bool   // Run reflection analysis after processing (on exit)
+	daemonReflectInterval       int    // Periodic reflection interval in minutes (0 = disabled)
+	daemonReflectIssues         bool   // Create beads issues for synthesis opportunities
+	daemonCleanupEnabled        bool   // Enable periodic session cleanup
+	daemonCleanupInterval       int    // Session cleanup interval in minutes (0 = disabled)
+	daemonCleanupAge            int    // Session age threshold in days for cleanup
+	daemonCleanupPreserveOrch   bool   // Preserve orchestrator sessions during cleanup
+	daemonCrossProject          bool   // Poll all kb-registered projects for issues
+	daemonSpawnFactualQuestions bool   // Spawn investigations for factual questions (subtype:factual label)
 )
 
 func init() {
@@ -157,6 +158,9 @@ func init() {
 
 	// Cross-project mode
 	daemonRunCmd.Flags().BoolVar(&daemonCrossProject, "cross-project", false, "Poll all kb-registered projects for issues")
+
+	// Factual questions spawning
+	daemonRunCmd.Flags().BoolVar(&daemonSpawnFactualQuestions, "spawn-factual-questions", false, "Spawn investigations for factual questions (subtype:factual label)")
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
@@ -204,6 +208,7 @@ func runDaemonLoop() error {
 	config.CleanupAgeDays = daemonCleanupAge
 	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
 	config.CleanupServerURL = serverURL // Use global serverURL from root command
+	config.SpawnFactualQuestions = daemonSpawnFactualQuestions
 
 	d := daemon.NewWithConfig(config)
 
@@ -276,6 +281,11 @@ func runDaemonLoop() error {
 		fmt.Printf("  Server resume gap: %s\n", formatDaemonDuration(config.ServerRecoveryResumeDelay))
 	} else {
 		fmt.Println("  Server recovery:   disabled")
+	}
+	if config.SpawnFactualQuestions {
+		fmt.Println("  Factual questions: enabled (spawning investigations for subtype:factual)")
+	} else {
+		fmt.Println("  Factual questions: disabled")
 	}
 	fmt.Println()
 
@@ -495,6 +505,19 @@ func runDaemonLoop() error {
 			}
 			if completedThisCycle > 0 && daemonVerbose {
 				fmt.Printf("[%s] Auto-completed %d agent(s) this cycle\n", timestamp, completedThisCycle)
+			}
+		}
+
+		// Process factual questions if enabled
+		// This happens after completions free up capacity but before regular issue polling
+		if config.SpawnFactualQuestions {
+			factualSpawned := d.ProcessFactualQuestions()
+			if factualSpawned > 0 {
+				processed += factualSpawned
+				lastSpawn = time.Now()
+				fmt.Printf("[%s] Spawned %d investigation(s) for factual questions\n", timestamp, factualSpawned)
+			} else if daemonVerbose && !d.AtCapacity() {
+				fmt.Printf("[%s] No factual questions to spawn\n", timestamp)
 			}
 		}
 
