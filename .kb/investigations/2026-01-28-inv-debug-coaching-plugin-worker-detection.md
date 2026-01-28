@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Coaching plugin is disabled because it uses broken metadata-based worker detection (line 2028 checks `sessionMetadata.role === "worker"` but metadata field doesn't exist in session.created events).
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** File is named `coaching.ts.disabled`; code at line 2028 uses metadata approach; investigation 21001 confirmed metadata field is always empty object in session.created events; investigation 21001 verified title-based detection works.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The plugin was "upgraded" from working title-based to broken metadata-based detection without validating that metadata is available in event hooks; title-based pattern (`hasBeadsId && !isOrchestrator`) is proven working and ready to use.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Replace line 2028 with title-based detection, remove debug logging, rename to `coaching.ts`, test with worker spawn.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - This is a bug fix reverting to proven working approach, not a new architectural decision.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-28
 **Updated:** 2026-01-28
 **Owner:** og-inv-debug-coaching-plugin-28jan-3d11
-**Phase:** Investigating
-**Next Step:** Examine why plugin is disabled and verify detection logic
-**Status:** Active
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -112,15 +112,19 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **The plugin is disabled because the detection logic is broken** - The coaching plugin was "upgraded" from working title-based detection to broken metadata-based detection (Finding 4). Since session.created events don't include metadata (Finding 2), worker detection never succeeds, causing workers to incorrectly receive coaching alerts. The plugin was disabled as a temporary measure.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Title-based detection is proven and ready to use** - Investigation 21001 verified that title-based detection (`hasBeadsId && !isOrchestratorTitle`) works correctly across multiple worker sessions (Finding 3). This approach is reliable for the common case of worker spawns with beads tracking.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **The fix is straightforward** - Replace line 2028 (`sessionMetadata.role === "worker"`) with title-based pattern matching on `sessionTitle`. The pattern is well-documented from prior investigations and has proven test results.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The coaching plugin worker detection is currently **not functioning** because:
+1. The plugin file is disabled (`.ts.disabled` extension prevents loading) - Finding 1
+2. Even if enabled, the detection logic is broken (metadata-based approach fails because metadata field doesn't exist in session.created events) - Finding 4
+
+To fix this: Replace the metadata-based detection at line 2028 with title-based detection using the pattern `/\[[\w-]+-\d+\]/` (has beads ID) AND NOT `/-orch-/` (not orchestrator). This pattern was proven working in investigation 2026-01-28-inv-verify-coaching-plugin-worker-detection.md (Finding 3).
 
 ---
 
@@ -128,21 +132,24 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Plugin file is disabled (verified: file is named `coaching.ts.disabled`, not `coaching.ts`)
+- ✅ Current code uses metadata-based detection (verified: read line 2028 showing `sessionMetadata.role === "worker"`)
+- ✅ Title-based detection pattern works (verified: investigation 2026-01-28-inv-verify-coaching-plugin-worker-detection.md tested two sessions)
+- ✅ session.created events lack metadata field (verified: investigation 21001 examined actual event structure via event-test.jsonl)
+- ✅ Timeline of when plugin was disabled (verified: stat showed modification at 13:39, between investigations 21000 and 21001)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether fixing detection and re-enabling will work (implementation not performed)
+- ⚠️ Whether there are other issues preventing the plugin from working
+- ⚠️ Whether ad-hoc spawns (without beads IDs) need different handling
+- ⚠️ Impact on orchestrator sessions if detection pattern is wrong
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if metadata IS actually available in session.created events (contradicts investigation 21001)
+- Finding would be wrong if plugin file is actually active (contradicts file listing showing `.disabled` suffix)
+- Finding would be wrong if title-based detection failed in production (contradicts verified test results)
 
 ---
 
@@ -152,96 +159,118 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Fix detection logic and re-enable plugin** - Replace metadata-based detection (line 2028) with title-based pattern, remove debug logging, rename file to `.ts` to enable.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Title-based detection is proven working (Finding 3 - two verified worker sessions)
+- Addresses root cause (Finding 4 - metadata approach doesn't work)
+- Simple, low-risk change (single line of logic + cleanup)
+- Gets coaching plugin back online for orchestrators
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Title-based detection doesn't cover edge cases (ad-hoc spawns without beads IDs)
+- Relies on proper session titling conventions
+- Won't work if titles are manually changed mid-session
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. Replace line 2028 with title-based detection: `const hasBeadsId = /\[[\w-]+-\d+\]/.test(sessionTitle); const isOrchestrator = /-orch-/.test(sessionTitle); const isWorker = hasBeadsId && !isOrchestrator;`
+2. Remove enhanced debug logging (lines 1998-1999, 2008, 2011, 2019, 2030, 2034-2039)
+3. Rename `coaching.ts.disabled` to `coaching.ts`
+4. Test with worker spawn to verify zero coaching alerts
+5. Test with orchestrator session to verify coaching still fires
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Keep plugin disabled until OpenCode adds metadata support**
+- **Pros:** Waits for proper architectural fix (metadata in events)
+- **Cons:** Orchestrators lose coaching functionality indefinitely; upstream fix timeline unknown
+- **When to use instead:** If title-based detection proves unreliable in production
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Move coaching logic to orch-go process**
+- **Pros:** orch-go CAN see ORCH_WORKER env var; eliminates architectural gap
+- **Cons:** Loses OpenCode plugin hooks; significant refactoring; coupling increases
+- **When to use instead:** If OpenCode plugin architecture proves fundamentally unsuitable
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Title-based detection is proven working (Finding 3), the fix is simple (one line + cleanup), and coaching provides value to orchestrators. Option B leaves coaching broken indefinitely. Option C is over-engineering for a problem that has a working solution.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Fix the detection logic at line 2028 (this is the core bug)
+- Remove debug logging (prevents console noise)
+- Rename file to enable plugin (makes fix active)
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ Verify OpenCode server restarts after renaming file (plugins load at server startup)
+- ⚠️ Test with REAL worker spawn, not just code review (verify in production)
+- ⚠️ Check that orchestrator coaching still works (don't break existing functionality)
+- ⚠️ Ad-hoc spawns without beads IDs will still receive coaching (known limitation)
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Whether OpenCode will eventually add metadata to session.created events
+- Whether ad-hoc worker sessions (without beads tracking) need different handling
+- Whether to add fallback detection for edge cases
+- Whether to add telemetry to track detection accuracy over time
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Worker sessions (with beads IDs) have zero coaching alerts in coaching-metrics.jsonl
+- ✅ Orchestrator sessions continue receiving coaching (action_ratio, analysis_paralysis, etc.)
+- ✅ No debug logging appears in console during normal operation
+- ✅ Plugin file exists as `coaching.ts` (not `.disabled`)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.opencode/plugins/coaching.ts.disabled` - Current (broken) plugin code
+- `.kb/investigations/2026-01-28-inv-verify-coaching-plugin-worker-detection.md` - Proof that title-based detection works
+- `.kb/investigations/2026-01-28-inv-audit-opencode-plugins-worker-detection.md` - Audit of plugin detection approaches
+- `.orch/workspace/og-inv-debug-coaching-plugin-28jan-b245/SYNTHESIS.md` - Root cause analysis from issue 21001
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check plugin file status
+ls -la /Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins/
 
-# [Command description]
-[command]
+# Check when plugin was disabled
+stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" /Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins/coaching.ts.disabled
+
+# Search for detection patterns in plugin code
+grep -n "sessionMetadata.role" .opencode/plugins/coaching.ts.disabled
+
+# List coaching-related workspaces to understand investigation timeline
+ls -lt /Users/dylanconlin/Documents/personal/orch-go/.orch/workspace/ | grep "coaching"
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- N/A
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-28-inv-verify-coaching-plugin-worker-detection.md` - Proves title-based detection works
+- **Investigation:** `.kb/investigations/2026-01-28-inv-audit-opencode-plugins-worker-detection.md` - Identifies metadata approach as reference
+- **Investigation:** `.kb/investigations/2026-01-28-inv-orchestrator-coaching-plugin-cannot-reliably.md` - Architectural analysis
+- **Workspace:** `.orch/workspace/og-inv-debug-coaching-plugin-28jan-b245/` - Issue 21001 root cause investigation
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-28 14:59:** Investigation started
+- Initial question: Is the coaching plugin worker detection functioning correctly?
+- Context: Spawned as worker to debug coaching plugin worker detection issues
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-28 15:00:** First finding - plugin is disabled
+- Discovered coaching.ts.disabled instead of coaching.ts
+- Created investigation file and committed initial checkpoint
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-28 15:05:** Timeline and root cause uncovered
+- Read prior investigations (21000, 21001) and SYNTHESIS.md
+- Found that plugin was disabled at 13:39 after metadata-based detection failed
+- Confirmed title-based detection is proven working
+
+**2026-01-28 15:10:** Investigation completed
+- Status: Complete
+- Key outcome: Plugin is disabled due to broken metadata-based detection; fix requires reverting to title-based pattern at line 2028
