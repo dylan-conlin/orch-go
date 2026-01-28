@@ -61,12 +61,14 @@ function log(...args: any[]) {
 }
 
 /**
- * NOTE: Worker detection uses two approaches:
- * 1. Early detection via session.created event - checks if session directory
- *    contains .orch/workspace/ and marks as worker BEFORE any tool calls.
- * 2. Backup detection via tool hooks - checks tool arguments for SPAWN_CONTEXT.md
- *    reads or .orch/workspace/ paths.
- *
+ * NOTE: Worker detection via session.metadata.role
+ * 
+ * OpenCode now reliably exposes session.metadata.role='worker' from the
+ * x-opencode-env-ORCH_WORKER header sent by orch-go during spawn.
+ * 
+ * This is set in the session.created event BEFORE any tool calls occur,
+ * eliminating the need for complex title-based or tool-path heuristics.
+ * 
  * Plugin-level detection (checking process.env.ORCH_WORKER) doesn't work because
  * the plugin runs in the OpenCode server process, not in spawned agent processes.
  */
@@ -1457,94 +1459,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   // Worker health state tracking (for worker-specific metrics)
   const workerHealthStates = new Map<string, WorkerHealthState>()
 
-  /**
-   * Detect if a session is a worker by examining tool arguments.
-   * Returns true if worker detected, false otherwise.
-   * IMPORTANT: Only caches positive results (isWorker=true) to avoid
-   * permanently misclassifying workers based on their first tool call.
-   *
-   * Detection signals (robust, works even when session.metadata.role not set):
-   * 1. Read tool accessing SPAWN_CONTEXT.md - workers always read this early
-   * 2. Any tool accessing files in .orch/workspace/ - workers operate here
-   */
-  /**
-   * Detect worker from session title pattern.
-   * Workers have beads ID [xxx-yyy] in title and are NOT orchestrators (-orch-).
-   */
-  function isWorkerByTitle(title: string): boolean {
-    if (!title) return false
-    const hasBeadsId = /\[[\w-]+-\w+\]/.test(title)
-    const isOrchestratorTitle = /-orch-/.test(title) || /^meta-/.test(title)
-    return hasBeadsId && !isOrchestratorTitle
-  }
-
-  /**
-   * Async worker detection via session API lookup.
-   * Called once per session to get definitive answer from session title.
-   */
-  async function detectWorkerViaAPI(sessionId: string, client: any): Promise<boolean> {
-    try {
-      // Use client to get session info
-      const sessions = await client.session.list()
-      const session = sessions?.find((s: any) => s.id === sessionId)
-      if (session?.title) {
-        const isWorker = isWorkerByTitle(session.title)
-        if (isWorker) {
-          workerSessions.set(sessionId, true)
-          console.error(`[coaching] Worker detected via API: ${sessionId} title="${session.title}"`)
-        }
-        return isWorker
-      }
-    } catch (err) {
-      log(`Failed to detect worker via API: ${err}`)
-    }
-    return false
-  }
-
-  // Track sessions we've already checked via API (to avoid repeated lookups)
-  const sessionAPIChecked = new Set<string>()
-
-  function detectWorkerSession(sessionId: string, tool?: string, args?: any): boolean {
-    // Check cache first - only returns early if we've confirmed this IS a worker
-    const cached = workerSessions.get(sessionId)
-    if (cached === true) return true
-
-    let isWorker = false
-
-    // Detection signal 1: read tool accessing SPAWN_CONTEXT.md
-    // Workers ALWAYS read this file early in their session.
-    if (tool === "read" && args?.filePath) {
-      if (args.filePath.endsWith("SPAWN_CONTEXT.md")) {
-        log(`Worker detected (SPAWN_CONTEXT.md read): session ${sessionId}, file: ${args.filePath}`)
-        isWorker = true
-      }
-    }
-
-    // Detection signal 2: any tool accessing files in .orch/workspace/
-    // Workers operate on files within their workspace directory.
-    if (args?.filePath && typeof args.filePath === "string") {
-      if (args.filePath.includes(".orch/workspace/")) {
-        log(`Worker detected (filePath in workspace): session ${sessionId}, file: ${args.filePath}`)
-        isWorker = true
-      }
-    }
-    if (args?.file_path && typeof args.file_path === "string") {
-      if (args.file_path.includes(".orch/workspace/")) {
-        log(`Worker detected (file_path in workspace): session ${sessionId}, file: ${args.file_path}`)
-        isWorker = true
-      }
-    }
-
-    // Only cache positive results - don't cache false
-    // This allows detection to succeed on later tool calls if first tools don't match
-    if (isWorker) {
-      workerSessions.set(sessionId, true)
-      log(`Session ${sessionId} marked as worker (will NOT receive coaching alerts)`)
-    }
-
-    return isWorker
-  }
-
   // Session state (Map<sessionID, SessionState>)
   const sessions = new Map<string, SessionState>()
 
@@ -1581,16 +1495,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Infer session ID from messages (use first message's info if available)
       const sessionId = output.messages[0]?.info?.sessionID || "unknown"
 
-      // Check if this is a worker session
-      let cachedWorkerStatus = workerSessions.get(sessionId)
+      // Check if this is a worker session (already detected in session.created)
+      const isWorker = workerSessions.get(sessionId) === true
       
-      // If not detected yet, try API lookup (once per session)
-      if (cachedWorkerStatus !== true && !sessionAPIChecked.has(sessionId)) {
-        sessionAPIChecked.add(sessionId)
-        cachedWorkerStatus = await detectWorkerViaAPI(sessionId, client)
-      }
-      
-      if (cachedWorkerStatus === true) {
+      if (isWorker) {
         // Skip Dylan pattern detection for worker sessions
         return
       }
@@ -1793,14 +1701,8 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         pendingArgs.delete(input.callID)
       }
 
-      // Check if this is a worker session (detects via SPAWN_CONTEXT.md read or .orch/workspace/ paths)
-      let isWorker = detectWorkerSession(sessionId, tool, args)
-      
-      // If not detected yet, try API lookup (once per session)
-      if (!isWorker && !sessionAPIChecked.has(sessionId)) {
-        sessionAPIChecked.add(sessionId)
-        isWorker = await detectWorkerViaAPI(sessionId, client)
-      }
+      // Check if this is a worker session (already detected in session.created)
+      const isWorker = workerSessions.get(sessionId) === true
       
       if (isWorker) {
         // Track worker-specific health metrics instead of orchestrator metrics
@@ -2085,10 +1987,8 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
     /**
      * Early worker detection via session.created event.
-     * Workers are spawned into .orch/workspace/ directories - detect this
-     * at session creation time BEFORE any tool calls occur.
-     * This eliminates the race condition where coaching fires before
-     * tool-based detection can identify the session as a worker.
+     * OpenCode now reliably exposes metadata.role='worker' from the x-opencode-env-ORCH_WORKER header.
+     * This is set at session creation time BEFORE any tool calls occur.
      */
     event: async ({ event }) => {
       // Log ALL events for debugging
@@ -2100,7 +2000,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       }
 
       // Extract session info from event properties
-      // session.created events have: { info: { id, directory, ... } }
       const info = (event as any).properties?.info
       if (!info) {
         log("Event: No info in session.created event properties, skipping")
@@ -2109,7 +2008,6 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       const sessionId = info.id
       const sessionTitle = info.title || ""
-      const sessionDirectory = info.directory || ""
       const sessionMetadata = info.metadata || {}
 
       if (!sessionId) {
@@ -2117,51 +2015,17 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         return
       }
 
-      // Primary worker detection: session.metadata.role
+      // Worker detection: session.metadata.role
       // OpenCode sets this to "worker" when x-opencode-env-ORCH_WORKER header is present
-      // This is the most reliable method since it comes directly from the spawn context
-      let isWorker = false
-      if (sessionMetadata.role === "worker") {
-        isWorker = true
-        log(`Worker detected (metadata.role): ${sessionId}, title: ${sessionTitle}`)
-      } else {
-        // Fallback: title-based detection for sessions where metadata isn't set
-        // Workers are spawned into .orch/workspace/ directories, but so are spawned orchestrators.
-        // Spawned orchestrators have titles like "og-orch-*" or "meta-orch-*" and SHOULD receive coaching.
-        // Workers have skill-based prefixes: og-feat-*, og-inv-*, og-debug-*, og-arch-*, etc.
-        //
-        // Detection logic:
-        // 1. If in .orch/workspace/ AND title contains "-orch-" → spawned orchestrator (NOT a worker)
-        // 2. If in .orch/workspace/ AND title does NOT contain "-orch-" → worker
-        // 3. If title contains beads ID pattern [xxx-yyy] AND NOT "-orch-" → worker
-        // 4. Otherwise → orchestrator (receives coaching)
-        
-        const isInWorkspace = sessionDirectory && sessionDirectory.includes(".orch/workspace/")
-        const isOrchestratorTitle = /-orch-/.test(sessionTitle) || /^meta-/.test(sessionTitle)
-        const hasBeadsId = /\[[\w-]+-\w+\]/.test(sessionTitle)
-        
-        // Workers: in workspace but NOT orchestrator, OR has beads ID but NOT orchestrator
-        isWorker = (isInWorkspace && !isOrchestratorTitle) || (hasBeadsId && !isOrchestratorTitle)
-        if (isWorker) {
-          log(`Worker detected (title fallback): ${sessionId}, title: ${sessionTitle}`)
-        }
-      }
-      
-      // Define variables for later use (outside if/else)
-      const isInWorkspace = sessionDirectory && sessionDirectory.includes(".orch/workspace/")
-      const isOrchestratorTitle = /-orch-/.test(sessionTitle) || /^meta-/.test(sessionTitle)
-      const hasBeadsId = /\[[\w-]+-\w+\]/.test(sessionTitle)
+      const isWorker = sessionMetadata.role === "worker"
       
       if (isWorker) {
         workerSessions.set(sessionId, true)
-        log(`Worker detected (session.created): ${sessionId}, title: ${sessionTitle}, dir: ${sessionDirectory}`)
+        log(`Worker detected (metadata.role): ${sessionId}, title: ${sessionTitle}`)
         // Also log to stderr for visibility without DEBUG flag
         console.error(`[coaching] Worker detected: ${sessionId} title="${sessionTitle}"`)
-      } else if (isInWorkspace && isOrchestratorTitle) {
-        log(`Spawned orchestrator detected (will receive coaching): ${sessionId}, title: ${sessionTitle}`)
       } else {
-        // Log why we didn't detect as worker
-        console.error(`[coaching] NOT worker: ${sessionId} title="${sessionTitle}" isInWorkspace=${isInWorkspace} isOrchestratorTitle=${isOrchestratorTitle} hasBeadsId=${hasBeadsId}`)
+        log(`Orchestrator session (will receive coaching): ${sessionId}, title: ${sessionTitle}`)
       }
     },
   }
