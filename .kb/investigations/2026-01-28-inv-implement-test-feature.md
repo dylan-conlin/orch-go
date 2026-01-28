@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Decision gate exists but fails open on errors, allowing this "test feature" spawn to proceed despite matching blocked keywords.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Manual test confirmed keyword matching works ("✓ MATCH FOUND"), but error handling at spawn_validation.go:405-408 returns nil on errors, allowing spawn with stderr warning only.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** "Test feature" is a meta-test for decision gate functionality; gate is implemented with sound logic but has fail-open error handling that compromises blocking effectiveness; security/safety-critical gates should fail closed.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** File issue to fix fail-open error handling in decision gate (change lines 405-408 to block spawn on errors); investigate what error findBlockingDecisions() encountered; add monitoring for decision gate bypass events.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes (fail-closed vs fail-open for security gates is architectural principle worth documenting)
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-28
 **Updated:** 2026-01-28
 **Owner:** Worker Agent
-**Phase:** Investigating
-**Next Step:** Search codebase and recent commits for context about "test feature"
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
