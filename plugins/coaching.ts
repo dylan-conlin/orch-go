@@ -1551,7 +1551,20 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
   // Tool call counter for periodic flush
   let toolCallCounter = 0
 
+  // Store args from tool.execute.before for use in tool.execute.after
+  // Map<callID, args> - args only available in before hook via output.args
+  const pendingArgs = new Map<string, any>()
+
   return {
+    /**
+     * Store args from tool calls for retrieval in after hook.
+     * Args are available in output.args in before hook, but not in after hook.
+     */
+    "tool.execute.before": async (input: any, output: any) => {
+      if (input.callID && output.args) {
+        pendingArgs.set(input.callID, output.args)
+      }
+    },
     /**
      * Phase 3.5: Track Dylan's behavioral patterns via message monitoring.
      * Detects: explicit prefixes, priority uncertainty, compensation patterns.
@@ -1772,8 +1785,16 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       if (!tool || !sessionId) return
 
+      // Retrieve stored args from before hook
+      const args = input.callID ? pendingArgs.get(input.callID) : undefined
+
+      // Clean up stored args to prevent memory leak
+      if (input.callID) {
+        pendingArgs.delete(input.callID)
+      }
+
       // Check if this is a worker session (detects via SPAWN_CONTEXT.md read or .orch/workspace/ paths)
-      let isWorker = detectWorkerSession(sessionId, tool, input.args)
+      let isWorker = detectWorkerSession(sessionId, tool, args)
       
       // If not detected yet, try API lookup (once per session)
       if (!isWorker && !sessionAPIChecked.has(sessionId)) {
@@ -1804,7 +1825,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         const success = !output?.error && !output?.isError
 
         // Track worker health metrics
-        await trackWorkerHealth(client, workerState, tool, success, input.args, output)
+        await trackWorkerHealth(client, workerState, tool, success, args, output)
 
         // Skip orchestrator metrics for workers
         return
@@ -1813,7 +1834,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Phase 2: Information hiding - filter outputs for orchestrator sessions
       // This reduces temptation to "dive in" by hiding details that invite investigation.
       // Orchestrators should delegate detailed work to workers instead.
-      filterOrchestratorOutput(tool, input.args, output)
+      filterOrchestratorOutput(tool, args, output)
 
       // Get or create session state
       let state = sessions.get(sessionId)
@@ -1870,7 +1891,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Frame Collapse Detection: Track edit/write on code files
       // Only triggers for orchestrator sessions (NOT worker sessions - already filtered above)
       if (tool === "edit" || tool === "write") {
-        const filePath = (input as any).args?.file_path || (input as any).args?.filePath || ""
+        const filePath = args?.file_path || args?.filePath || ""
 
         if (isCodeFile(filePath)) {
           state.frameCollapse.codeEditCount++
@@ -2089,29 +2110,47 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       const sessionId = info.id
       const sessionTitle = info.title || ""
       const sessionDirectory = info.directory || ""
+      const sessionMetadata = info.metadata || {}
 
       if (!sessionId) {
         log("Event: No sessionID in event properties, skipping")
         return
       }
 
-      // Early worker detection via directory + title pattern
-      // Workers are spawned into .orch/workspace/ directories, but so are spawned orchestrators.
-      // Spawned orchestrators have titles like "og-orch-*" or "meta-orch-*" and SHOULD receive coaching.
-      // Workers have skill-based prefixes: og-feat-*, og-inv-*, og-debug-*, og-arch-*, etc.
-      //
-      // Detection logic:
-      // 1. If in .orch/workspace/ AND title contains "-orch-" → spawned orchestrator (NOT a worker)
-      // 2. If in .orch/workspace/ AND title does NOT contain "-orch-" → worker
-      // 3. If title contains beads ID pattern [xxx-yyy] AND NOT "-orch-" → worker
-      // 4. Otherwise → orchestrator (receives coaching)
+      // Primary worker detection: session.metadata.role
+      // OpenCode sets this to "worker" when x-opencode-env-ORCH_WORKER header is present
+      // This is the most reliable method since it comes directly from the spawn context
+      let isWorker = false
+      if (sessionMetadata.role === "worker") {
+        isWorker = true
+        log(`Worker detected (metadata.role): ${sessionId}, title: ${sessionTitle}`)
+      } else {
+        // Fallback: title-based detection for sessions where metadata isn't set
+        // Workers are spawned into .orch/workspace/ directories, but so are spawned orchestrators.
+        // Spawned orchestrators have titles like "og-orch-*" or "meta-orch-*" and SHOULD receive coaching.
+        // Workers have skill-based prefixes: og-feat-*, og-inv-*, og-debug-*, og-arch-*, etc.
+        //
+        // Detection logic:
+        // 1. If in .orch/workspace/ AND title contains "-orch-" → spawned orchestrator (NOT a worker)
+        // 2. If in .orch/workspace/ AND title does NOT contain "-orch-" → worker
+        // 3. If title contains beads ID pattern [xxx-yyy] AND NOT "-orch-" → worker
+        // 4. Otherwise → orchestrator (receives coaching)
+        
+        const isInWorkspace = sessionDirectory && sessionDirectory.includes(".orch/workspace/")
+        const isOrchestratorTitle = /-orch-/.test(sessionTitle) || /^meta-/.test(sessionTitle)
+        const hasBeadsId = /\[[\w-]+-\w+\]/.test(sessionTitle)
+        
+        // Workers: in workspace but NOT orchestrator, OR has beads ID but NOT orchestrator
+        isWorker = (isInWorkspace && !isOrchestratorTitle) || (hasBeadsId && !isOrchestratorTitle)
+        if (isWorker) {
+          log(`Worker detected (title fallback): ${sessionId}, title: ${sessionTitle}`)
+        }
+      }
       
+      // Define variables for later use (outside if/else)
       const isInWorkspace = sessionDirectory && sessionDirectory.includes(".orch/workspace/")
       const isOrchestratorTitle = /-orch-/.test(sessionTitle) || /^meta-/.test(sessionTitle)
       const hasBeadsId = /\[[\w-]+-\w+\]/.test(sessionTitle)
-      
-      // Workers: in workspace but NOT orchestrator, OR has beads ID but NOT orchestrator
-      const isWorker = (isInWorkspace && !isOrchestratorTitle) || (hasBeadsId && !isOrchestratorTitle)
       
       if (isWorker) {
         workerSessions.set(sessionId, true)
