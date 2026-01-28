@@ -32,6 +32,7 @@ export interface Agent {
 	session_id?: string;
 	beads_id?: string;
 	beads_title?: string;
+	beads_labels?: string[]; // Labels from beads issue
 	window_id?: string;
 	window?: string;
 	status: AgentState;
@@ -334,6 +335,12 @@ export const awaitingCleanupAgents = derived(agents, ($agents) =>
 // See .kb/investigations/2026-01-08-inv-design-stalled-agent-detection-agents.md
 export const stalledAgents = derived(agents, ($agents) =>
 	$agents.filter((a) => a.status === 'active' && a.is_stalled === true)
+);
+
+// Escalated agents: agents with needs:human label (failed resume attempts)
+// These agents have been escalated after multiple failed resume attempts and need human intervention
+export const escalatedAgents = derived(agents, ($agents) =>
+	$agents.filter((a) => a.beads_labels?.includes('needs:human'))
 );
 
 // Needs Review: agents at Phase: Complete that haven't been closed yet

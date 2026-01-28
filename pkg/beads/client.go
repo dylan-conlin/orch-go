@@ -1073,6 +1073,22 @@ func FallbackRemoveLabel(id, label string) error {
 	return nil
 }
 
+// FallbackAddLabel adds a label to an issue via bd CLI.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackAddLabel(id, label string) error {
+	cmd := exec.Command(getBdPath(), "update", id, "--add-label", label)
+	setupFallbackEnv(cmd)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd add-label failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // CheckBlockingDependencies checks if an issue has any blocking dependencies.
 // Returns a list of blocking dependencies if any exist, or nil if the issue can be worked on.
 // Uses RPC client if available, falls back to CLI otherwise.

@@ -26,6 +26,7 @@ type AgentAPIResponse struct {
 	SessionID            string               `json:"session_id,omitempty"`
 	BeadsID              string               `json:"beads_id,omitempty"`
 	BeadsTitle           string               `json:"beads_title,omitempty"`
+	BeadsLabels          []string             `json:"beads_labels,omitempty"` // Labels from beads issue
 	Skill                string               `json:"skill,omitempty"`
 	Status               string               `json:"status"`                 // "active", "idle", "dead", "completed", "awaiting-cleanup"
 	DeathReason          string               `json:"death_reason,omitempty"` // Reason for death: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
@@ -838,12 +839,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			// Get task from open issue title first
 			if issue, ok := openIssues[agents[i].BeadsID]; ok {
 				agents[i].Task = truncate(issue.Title, 60)
+				agents[i].BeadsLabels = issue.Labels
 			}
 
 			// If not in open issues, try all issues (for closed ones)
 			if agents[i].Task == "" {
 				if issue, ok := allIssues[agents[i].BeadsID]; ok {
 					agents[i].Task = truncate(issue.Title, 60)
+					agents[i].BeadsLabels = issue.Labels
 					// For completed agents without synthesis, use close_reason as fallback
 					if agents[i].Synthesis == nil && issue.CloseReason != "" {
 						agents[i].CloseReason = issue.CloseReason

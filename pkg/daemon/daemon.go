@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // EventLogger is an interface for logging deduplication events.
@@ -118,34 +119,47 @@ type Config struct {
 	// ServerRecoveryRateLimit is minimum time between recovery attempts per agent.
 	// Default is 1 hour to prevent infinite loops.
 	ServerRecoveryRateLimit time.Duration
+
+	// MaxResumeAttempts is the maximum number of resume attempts before escalating
+	// to 'Needs Human Decision'. After this many failed attempts, the agent is
+	// marked as needing manual intervention.
+	// Default is 3 attempts.
+	MaxResumeAttempts int
+
+	// AutoAbandonAfterHours is how long an agent can be dead with no progress
+	// before being automatically abandoned. Set to 0 to disable auto-abandon.
+	// Default is 24 hours.
+	AutoAbandonAfterHours int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
 func DefaultConfig() Config {
 	return Config{
-		PollInterval:                time.Minute,
-		MaxAgents:                   3,
-		MaxSpawnsPerHour:            20, // Prevents runaway spawning
-		Label:                       "triage:ready",
-		SpawnDelay:                  10 * time.Second,
-		DryRun:                      false,
-		Verbose:                     false,
-		ReflectEnabled:              true,
-		ReflectInterval:             time.Hour, // Hourly by default
-		ReflectCreateIssues:         true,
-		CleanupEnabled:              true,
-		CleanupInterval:             6 * time.Hour, // Every 6 hours by default
-		CleanupAgeDays:              7,             // 7 days threshold
-		CleanupPreserveOrchestrator: true,          // Preserve orchestrator sessions
-		CleanupServerURL:            "http://127.0.0.1:4096",
+		PollInterval:                     time.Minute,
+		MaxAgents:                        3,
+		MaxSpawnsPerHour:                 20, // Prevents runaway spawning
+		Label:                            "triage:ready",
+		SpawnDelay:                       10 * time.Second,
+		DryRun:                           false,
+		Verbose:                          false,
+		ReflectEnabled:                   true,
+		ReflectInterval:                  time.Hour, // Hourly by default
+		ReflectCreateIssues:              true,
+		CleanupEnabled:                   true,
+		CleanupInterval:                  6 * time.Hour, // Every 6 hours by default
+		CleanupAgeDays:                   7,             // 7 days threshold
+		CleanupPreserveOrchestrator:      true,          // Preserve orchestrator sessions
+		CleanupServerURL:                 "http://127.0.0.1:4096",
 		RecoveryEnabled:                  true,
 		RecoveryInterval:                 5 * time.Minute,  // Check every 5 minutes
 		RecoveryIdleThreshold:            10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:                time.Hour,        // 1 resume per agent per hour
 		ServerRecoveryEnabled:            true,
-		ServerRecoveryStabilizationDelay: 30 * time.Second,  // Wait 30s for server stability
-		ServerRecoveryResumeDelay:        10 * time.Second,  // 10s between each resume
-		ServerRecoveryRateLimit:          time.Hour,         // 1 recovery per agent per hour
+		ServerRecoveryStabilizationDelay: 30 * time.Second, // Wait 30s for server stability
+		ServerRecoveryResumeDelay:        10 * time.Second, // 10s between each resume
+		ServerRecoveryRateLimit:          time.Hour,        // 1 recovery per agent per hour
+		MaxResumeAttempts:                3,                // Escalate after 3 failed attempts
+		AutoAbandonAfterHours:            24,               // Auto-abandon after 24h dead
 	}
 }
 
@@ -229,6 +243,10 @@ type Daemon struct {
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
 	resumeAttempts map[string]time.Time
 
+	// resumeAttemptCounts tracks how many times we've attempted to resume each agent.
+	// Used for escalation after N failed attempts.
+	resumeAttemptCounts map[string]int
+
 	// serverRecoveryState tracks state for server restart recovery.
 	// Used to determine when server recovery should run (once per daemon start).
 	serverRecoveryState *ServerRecoveryState
@@ -272,6 +290,7 @@ func NewWithConfig(config Config) *Daemon {
 		SpawnedIssues:            NewSpawnedIssueTracker(),
 		EventLogger:              nil, // Set via SetEventLogger() to avoid circular deps
 		resumeAttempts:           make(map[string]time.Time),
+		resumeAttemptCounts:      make(map[string]int),
 		serverRecoveryState:      NewServerRecoveryState(),
 		listIssuesFunc:           ListReadyIssues,
 		spawnFunc:                SpawnWork,
@@ -1298,10 +1317,12 @@ func (d *Daemon) ShouldRunRecovery() bool {
 
 // RecoveryResult contains the result of a recovery operation.
 type RecoveryResult struct {
-	ResumedCount int
-	SkippedCount int
-	Error        error
-	Message      string
+	ResumedCount   int
+	SkippedCount   int
+	EscalatedCount int // Agents escalated to needs human decision
+	AbandonedCount int // Agents auto-abandoned after timeout
+	Error          error
+	Message        string
 }
 
 // RunPeriodicRecovery runs the periodic stuck agent recovery if due.
@@ -1315,15 +1336,19 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 	agents, err := GetActiveAgents()
 	if err != nil {
 		return &RecoveryResult{
-			ResumedCount: 0,
-			SkippedCount: 0,
-			Error:        err,
-			Message:      fmt.Sprintf("Recovery failed to list agents: %v", err),
+			ResumedCount:   0,
+			SkippedCount:   0,
+			EscalatedCount: 0,
+			AbandonedCount: 0,
+			Error:          err,
+			Message:        fmt.Sprintf("Recovery failed to list agents: %v", err),
 		}
 	}
 
 	resumed := 0
 	skipped := 0
+	escalated := 0
+	abandoned := 0
 	now := time.Now()
 
 	for _, agent := range agents {
@@ -1347,6 +1372,53 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 			continue
 		}
 
+		// Auto-abandon: If agent has been dead for X hours with no progress, auto-abandon
+		if d.Config.AutoAbandonAfterHours > 0 {
+			abandonThreshold := time.Duration(d.Config.AutoAbandonAfterHours) * time.Hour
+			if idleTime >= abandonThreshold {
+				if d.Config.Verbose {
+					fmt.Printf("  Auto-abandoning %s (dead for %v, threshold: %v)\n",
+						agent.BeadsID, idleTime.Round(time.Minute), abandonThreshold)
+				}
+				// Close the issue with auto-abandon reason
+				reason := fmt.Sprintf("Auto-abandoned: No progress for %v (threshold: %v)",
+					idleTime.Round(time.Minute), abandonThreshold)
+				if err := verify.CloseIssue(agent.BeadsID, reason); err != nil {
+					if d.Config.Verbose {
+						fmt.Printf("  Failed to auto-abandon %s: %v\n", agent.BeadsID, err)
+					}
+				} else {
+					abandoned++
+					// Clear tracking for this agent
+					delete(d.resumeAttempts, agent.BeadsID)
+					delete(d.resumeAttemptCounts, agent.BeadsID)
+				}
+				continue
+			}
+		}
+
+		// Escalation: If agent has failed resume N times, escalate to needs human decision
+		attemptCount := d.resumeAttemptCounts[agent.BeadsID]
+		if d.Config.MaxResumeAttempts > 0 && attemptCount >= d.Config.MaxResumeAttempts {
+			if d.Config.Verbose {
+				fmt.Printf("  Escalating %s to 'Needs Human Decision' (attempts: %d, threshold: %d)\n",
+					agent.BeadsID, attemptCount, d.Config.MaxResumeAttempts)
+			}
+			// Add needs:human label for escalation
+			if err := addNeedsHumanLabel(agent.BeadsID); err != nil {
+				if d.Config.Verbose {
+					fmt.Printf("  Failed to escalate %s: %v\n", agent.BeadsID, err)
+				}
+			} else {
+				escalated++
+				// Reset attempt count after escalation
+				delete(d.resumeAttemptCounts, agent.BeadsID)
+			}
+			// Skip resume attempt after escalation
+			skipped++
+			continue
+		}
+
 		// Check if we've attempted resume recently (rate limiting)
 		if lastAttempt, exists := d.resumeAttempts[agent.BeadsID]; exists {
 			timeSinceLastAttempt := now.Sub(lastAttempt)
@@ -1362,15 +1434,18 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 
 		// Attempt to resume the agent
 		if d.Config.Verbose {
-			fmt.Printf("  Attempting recovery for %s (idle for %v)\n",
-				agent.BeadsID, idleTime.Round(time.Minute))
+			fmt.Printf("  Attempting recovery for %s (idle for %v, attempt %d)\n",
+				agent.BeadsID, idleTime.Round(time.Minute), attemptCount+1)
 		}
+
+		// Increment attempt count BEFORE attempting resume
+		d.resumeAttemptCounts[agent.BeadsID] = attemptCount + 1
 
 		if err := ResumeAgentByBeadsID(agent.BeadsID); err != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  Failed to resume %s: %v\n", agent.BeadsID, err)
 			}
-			// Don't count failures toward resumed count, but don't retry immediately
+			// Record failed attempt time (for rate limiting)
 			d.resumeAttempts[agent.BeadsID] = now
 			skipped++
 			continue
@@ -1388,11 +1463,21 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 	// Update last recovery time on success
 	d.lastRecovery = time.Now()
 
+	message := fmt.Sprintf("Recovery attempted: %d resumed, %d skipped", resumed, skipped)
+	if escalated > 0 {
+		message += fmt.Sprintf(", %d escalated", escalated)
+	}
+	if abandoned > 0 {
+		message += fmt.Sprintf(", %d abandoned", abandoned)
+	}
+
 	return &RecoveryResult{
-		ResumedCount: resumed,
-		SkippedCount: skipped,
-		Error:        nil,
-		Message:      fmt.Sprintf("Recovery attempted: %d resumed, %d skipped", resumed, skipped),
+		ResumedCount:   resumed,
+		SkippedCount:   skipped,
+		EscalatedCount: escalated,
+		AbandonedCount: abandoned,
+		Error:          nil,
+		Message:        message,
 	}
 }
 
@@ -1412,6 +1497,32 @@ func (d *Daemon) NextRecoveryTime() time.Time {
 		return time.Now() // Due immediately
 	}
 	return d.lastRecovery.Add(d.Config.RecoveryInterval)
+}
+
+// addNeedsHumanLabel adds the needs:human label to a beads issue.
+// This label indicates that the agent requires human intervention.
+// Uses the beads RPC client with auto-reconnect when available, falling back to CLI.
+func addNeedsHumanLabel(beadsID string) error {
+	// Try RPC client first with auto-reconnect
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		opts := []beads.Option{beads.WithAutoReconnect(3)}
+		if beads.DefaultDir != "" {
+			opts = append(opts, beads.WithCwd(beads.DefaultDir))
+		}
+		client := beads.NewClient(socketPath, opts...)
+		if connErr := client.Connect(); connErr == nil {
+			defer client.Close()
+			err := client.AddLabel(beadsID, "needs:human")
+			if err == nil {
+				return nil
+			}
+		}
+		// Fall through to CLI fallback on RPC error
+	}
+
+	// Fallback to CLI
+	return beads.FallbackAddLabel(beadsID, "needs:human")
 }
 
 // ShouldRunServerRecovery returns true if server restart recovery should run.
