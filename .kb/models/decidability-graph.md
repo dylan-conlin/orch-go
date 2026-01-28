@@ -156,6 +156,29 @@ Not all questions are equal. Resolution type determines who can traverse:
 
 A question's subtype may not be known at creation. "How does X work?" might reveal "X is the wrong abstraction" (factual→framing escalation).
 
+**Encoding Convention:**
+
+Question subtypes are encoded using labels with the convention `subtype:{factual|judgment|framing}`:
+
+```bash
+# Create a factual question
+bd create "How does X work?" --type question -l subtype:factual
+
+# Create a judgment question
+bd create "Should we use X or Y?" --type question -l subtype:judgment
+
+# Create a framing question
+bd create "Is X even the right question?" --type question -l subtype:framing
+
+# Query factual questions (daemon-spawnable)
+bd ready --type question --label subtype:factual
+
+# Query judgment questions (orchestrator synthesis)
+bd ready --type question --label subtype:judgment
+```
+
+**Decision:** See `.kb/decisions/2026-01-28-question-subtype-encoding-labels.md` for rationale and trade-offs.
+
 ### Graph Dynamics
 
 Unlike static workflow DAGs, decidability graphs change during execution:

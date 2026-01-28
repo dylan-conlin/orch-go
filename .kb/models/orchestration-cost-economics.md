@@ -1,8 +1,8 @@
 # Model: Orchestration Cost Economics
 
 **Domain:** Agent Orchestration / Model Selection / Cost Management
-**Last Updated:** 2026-01-21
-**Synthesized From:** 14 investigations, 25+ kb quick entries, and decisions spanning Nov 2025 - Jan 2026
+**Last Updated:** 2026-01-28
+**Synthesized From:** 15 investigations, 25+ kb quick entries, and decisions spanning Nov 2025 - Jan 2026
 
 ---
 
@@ -47,6 +47,58 @@ At **$200/mo Max subscription breakeven:**
 - Opus: ~40M input tokens OR ~8M output tokens
 
 **Key insight:** At Jan 18 burn rate ($70-80/day with Sonnet), Max subscription is 10x cheaper. But DeepSeek V3 could be even cheaper if function calling holds up.
+
+---
+
+## Internal Credit System (Reverse Engineered Jan 2026)
+
+**Source:** she-llac.com/claude-limits - obtained via reverse engineering SSE responses and Stern-Brocot tree algorithm on float precision artifacts. Data may become stale if Anthropic patches the leak.
+
+### Credit Formula
+
+Anthropic uses an internal credit system to meter subscription usage:
+
+```
+credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
+```
+
+**Per-model credit rates:**
+
+| Model | Input Rate | Output Rate |
+|-------|------------|-------------|
+| Haiku | 2/15 (0.133) | 10/15 (0.667) |
+| Sonnet | 6/15 (0.4) | 30/15 (2.0) |
+| Opus | 10/15 (0.667) | 50/15 (3.333) |
+
+### Actual Limits vs Marketing Claims
+
+| Plan | Marketing | 5-Hour Session | Weekly Limit | Actual Ratio |
+|------|-----------|----------------|--------------|--------------|
+| Pro ($20) | 1× | 550,000 | 5,000,000 | baseline |
+| Max 5× ($100) | 5× | 3,300,000 | 41,666,700 | **6× session, 8.33× weekly** |
+| Max 20× ($200) | 20× | 11,000,000 | 83,333,300 | **20× session, 16.67× weekly** |
+
+**Key insight:** Max 5× actually **overdelivers** (6× session, 8.33× weekly) while Max 20× **underdelivers** on weekly (16.67× instead of 20×). The 5× plan may offer better value per dollar.
+
+### Cache Pricing: Subscription Advantage
+
+| Operation | API Cost | Subscription Cost |
+|-----------|----------|-------------------|
+| Cache read | 10% of input rate | **FREE** |
+| Cache write (5-min) | 1.25× input rate | Regular input price |
+| Cache write (1-hour) | 2× input rate | Regular input price |
+
+**This is massive for agentic work:** Our tool-heavy orchestration (dozens of tool calls per agent turn) generates heavy cache hits. Free cache reads mean warm-cache scenarios deliver up to **36× value over API**.
+
+### Value Multipliers (API Equivalent)
+
+| Plan | Monthly Cost | API Equivalent Value | Multiplier |
+|------|-------------|---------------------|------------|
+| Pro | $20 | $163 | 8.1× |
+| Max 5× | $100 | $1,354 | 13.5× |
+| Max 20× | $200 | $2,708 | 13.5× |
+
+**Validation:** Our Jan 18 discovery showed $70-80/day API burn rate (~$2,100-2,400/mo). At 13.5× value multiplier, our $200/mo Max subscription delivers ~$2,708 equivalent API value - right at our burn rate. External validation of cost decision.
 
 ---
 
@@ -290,6 +342,7 @@ The $402 surprise proves: never use pay-per-token without cost tracking. Impleme
 - `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md`
 
 ### Investigations
+- `.kb/investigations/2026-01-28-inv-download-analyze-https-she-llac.md` - Credit formula, free cache reads, value multipliers
 - `.kb/investigations/2026-01-08-inv-opus-auth-gate-fingerprinting.md`
 - `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md`
 - `.kb/investigations/2026-01-12-inv-sonnet-cost-tracking-requirements.md`

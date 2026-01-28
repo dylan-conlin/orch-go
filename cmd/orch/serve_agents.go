@@ -1422,6 +1422,11 @@ func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 		globalBeadsStatsCache.invalidate("")
 	}
 
+	// Invalidate kb health cache (knowledge hygiene signals)
+	if globalKBHealthCache != nil {
+		globalKBHealthCache.invalidate()
+	}
+
 	// Invalidate workspace cache (workspace metadata)
 	globalWorkspaceCacheInstance.invalidate()
 

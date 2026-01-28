@@ -43,7 +43,7 @@ Guidelines:
 **Updated:** 2026-01-28
 **Owner:** Worker agent (investigation)
 **Phase:** Investigating
-**Next Step:** Examine current SSE implementation in run.ts
+**Next Step:** Test why reconnection isn't working despite built-in support
 **Status:** In Progress
 
 <!-- Lineage (fill only when applicable) -->
@@ -66,23 +66,40 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: SSE Client Already Has Reconnection Logic Built-In
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** The OpenCode SDK's `createSseClient` function (serverSentEvents.gen.ts:78-239) already implements automatic reconnection:
+- Line 100-232: while(true) loop that retries on connection failure
+- Line 110-112: Sets `Last-Event-ID` header for event resumption
+- Line 221-232: Error handler with exponential backoff (doubles delay each attempt)
+- Line 230: Backoff capped at `sseMaxRetryDelay` (default 30000ms)
+- Line 225-227: Only stops after `sseMaxRetryAttempts` (if specified)
+- Line 220: Only exits loop on normal stream completion
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+Configuration options available:
+- `sseDefaultRetryDelay` (default: 3000ms)
+- `sseMaxRetryAttempts` (default: undefined = retry indefinitely)
+- `sseMaxRetryDelay` (default: 30000ms)
+- `sseSleepFn` (default: setTimeout wrapper)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** `/Users/dylanconlin/Documents/personal/opencode/packages/sdk/js/src/v2/gen/core/serverSentEvents.gen.ts:78-239`
+
+**Significance:** This is a major finding - **the SSE client already supports reconnection!** The question shifts from "how to implement reconnection" to "why isn't it working?" or "is it configured correctly?"
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: run.ts Uses Default SSE Configuration (No Options Passed)
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** In run.ts:154, the SDK is called with no options: `const events = await sdk.event.subscribe()`. Searching the codebase shows no use of `sseMaxRetryAttempts` or `sseDefaultRetryDelay` configuration anywhere in packages/opencode/src/.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+This means the defaults are used:
+- sseDefaultRetryDelay: 3000ms (3 second initial retry)
+- sseMaxRetryAttempts: undefined (retry indefinitely)
+- sseMaxRetryDelay: 30000ms (30 second max backoff)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Source:** `/Users/dylanconlin/Documents/personal/opencode/packages/opencode/src/cli/cmd/run.ts:154`, grep search across opencode source
+
+**Significance:** The SSE client should already be retrying automatically with exponential backoff! If agents are dying on server restart (per Jan 26 investigation), either: (1) the retry logic isn't working as expected, (2) there's a different failure mode, or (3) the issue was misdiagnosed. Need to test actual behavior.
 
 ---
 

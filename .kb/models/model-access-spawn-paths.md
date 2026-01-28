@@ -1,7 +1,7 @@
 # Model: Model Access and Spawn Paths
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-01-22
+**Last Updated:** 2026-01-28
 **Synthesized From:** 8 investigations + ~70 kb quick entries (Opus gate, Gemini TPM limits, community workarounds, cost tracking, escape hatch implementations, Docker backend design, Docker container constraints, API cost discovery, GPT-5.2 orchestration test) spanning Jan 8-22, 2026
 
 ---
@@ -330,6 +330,7 @@ OpenCode HTTP API provides:
 **Claude CLI (Max subscription) - NOW PRIMARY:**
 - Flat $200/mo unlimited
 - Best model quality (Opus)
+- **Free cache reads** (vs 10% on API) - massive for tool-heavy agentic work
 - Trade-off: No dashboard visibility, tmux management
 
 **OpenCode API (pay-per-token) - NOW SECONDARY:**
@@ -529,7 +530,7 @@ Evidence: GPT-5.2 works well in Codex CLI (OpenAI-tuned prompts) but fails in ou
 - `~/.claude/skills/meta/orchestrator/SKILL.md` line 625 - "Why escape hatch exists" section
 
 **Cost evidence:**
-- Claude Max: $200/mo flat (unlimited Opus via CLI) - **NOW PRIMARY**
+- Claude Max: $200/mo flat (unlimited Opus via CLI, free cache reads) - **NOW PRIMARY**
 - Anthropic API: $402 spent in ~2 weeks (Jan 9-18), ramping to $70-80/day before switch
 - DeepSeek V3 API: $0.25/$0.38/MTok (cost-effective secondary option)
 - Gemini API: Free via AI Studio (but 2,000 req/min limit hit)

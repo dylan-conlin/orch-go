@@ -74,9 +74,11 @@ Endpoints:
   GET /api/daemon    - Daemon status (running, capacity, last poll)
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
+  GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET /api/frontier  - Decidability frontier (ready, blocked, active, stuck)
+  GET /api/decisions - Decision center items grouped by action type
   GET/PUT /api/config - User configuration settings (~/.orch/config.yaml)
   GET /api/changelog - Aggregated changelog (?days=7&project=all)
   POST /api/approve  - Approve agent's work (creates beads comment + updates manifest)
@@ -173,7 +175,10 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/daemon    - Daemon status (running, capacity, last poll)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions")
+	fmt.Println("  GET /api/kb-health - Knowledge hygiene signals")
 	fmt.Println("  GET /api/errors    - Error pattern analysis")
+	fmt.Println("  GET /api/frontier  - Decidability frontier")
+	fmt.Println("  GET /api/decisions - Decision center items")
 	fmt.Println("  GET /api/changelog - Aggregated changelog")
 	fmt.Println("  GET /health        - Health check")
 
@@ -222,6 +227,10 @@ func runServe(portNum int) error {
 	// Initialize beads stats cache to prevent slow API responses.
 	// Without caching, /api/beads spawns bd stats (~1.5s) on every request.
 	globalBeadsStatsCache = newBeadsStatsCache()
+
+	// Initialize kb health cache to prevent slow API responses.
+	// kb reflect can be slow with many artifacts, so we cache with 5-minute TTL.
+	globalKBHealthCache = newKBHealthCache()
 
 	// Start service monitoring daemon (Phase 1 MVP: crash detection + auto-restart)
 	// Polls overmind status every 10s, tracks PIDs, emits crash notifications, auto-restarts services
@@ -330,6 +339,9 @@ func runServe(portNum int) error {
 	// GET /api/reflect - returns reflect suggestions for kb reflect UI
 	mux.HandleFunc("/api/reflect", corsHandler(handleReflect))
 
+	// GET /api/kb-health - returns knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
+	mux.HandleFunc("/api/kb-health", corsHandler(handleKBHealth))
+
 	// GET /api/errors - returns error pattern analysis
 	mux.HandleFunc("/api/errors", corsHandler(handleErrors))
 
@@ -379,6 +391,9 @@ func runServe(portNum int) error {
 	// GET /api/frontier - returns decidability frontier (ready, blocked, active, stuck)
 	mux.HandleFunc("/api/frontier", corsHandler(handleFrontier))
 
+	// GET /api/decisions - returns decision center items grouped by action type
+	mux.HandleFunc("/api/decisions", corsHandler(handleDecisions))
+
 	// GET /api/session/{sessionID}/messages - proxies OpenCode session messages for activity feed history
 	// Uses prefix matching to extract sessionID from path
 	mux.HandleFunc("/api/session/", corsHandler(handleSessionMessages))
@@ -420,10 +435,12 @@ func runServe(portNum int) error {
 	fmt.Println("  POST /api/issues   - Create new beads issue (for follow-ups)")
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
+	fmt.Println("  GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
 	fmt.Println("  GET /api/frontier   - Decidability frontier (ready, blocked, active, stuck)")
+	fmt.Println("  GET /api/decisions  - Decision center items (absorb_knowledge, give_approvals, answer_questions, handle_failures)")
 	fmt.Println("  GET /api/pending-reviews - Agents with unreviewed synthesis recommendations")
 	fmt.Println("  POST /api/dismiss-review - Dismiss a specific recommendation")
 	fmt.Println("  GET/PUT /api/config - User configuration settings")

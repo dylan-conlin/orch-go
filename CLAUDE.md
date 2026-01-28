@@ -383,6 +383,48 @@ orch emit agent.completed --beads-id proj-123 --reason "Closed via bd close"
 1. Create `.beads/hooks/on_close` (executable)
 2. Copy content from orch-go's hook as a template
 
+## Question Subtyping
+
+Questions in beads can be tagged with subtypes to indicate their resolvability and authority requirements. The subtyping convention enables the daemon to identify which questions can be auto-spawned (factual) and which require orchestrator synthesis (judgment) or Dylan reframing (framing).
+
+### Subtype Convention
+
+Use labels with the format `subtype:{factual|judgment|framing}`:
+
+| Subtype | Meaning | Who Resolves | Example |
+|---------|---------|--------------|---------|
+| `subtype:factual` | "How does X work?" | Daemon (via investigation) | "How does the escalation model work?" |
+| `subtype:judgment` | "Should we use X or Y?" | Orchestrator | "Should we refactor auth before adding feature?" |
+| `subtype:framing` | "Is X even the right question?" | Dylan | "Is the current abstraction even correct?" |
+
+### Usage Examples
+
+```bash
+# Create a factual question (daemon-spawnable)
+bd create "How does the spawn system work?" --type question -l subtype:factual
+
+# Create a judgment question (orchestrator synthesis)
+bd create "Should we use event sourcing for this?" --type question -l subtype:judgment
+
+# Create a framing question (Dylan reframes)
+bd create "Is this the right problem to solve?" --type question -l subtype:framing
+
+# Query factual questions ready for daemon
+bd ready --type question --label subtype:factual
+
+# Query judgment questions for orchestrator review
+bd ready --type question --label subtype:judgment
+```
+
+### Design Rationale
+
+- **Zero schema changes:** Uses existing beads label infrastructure
+- **Flexible:** Questions can evolve subtypes during resolution (factual → framing escalation)
+- **Authority-aware:** Enables daemon to auto-spawn factual questions while deferring judgment/framing to humans
+- **Convention over enforcement:** Matches beads design philosophy
+
+**Reference:** See `.kb/decisions/2026-01-28-question-subtype-encoding-labels.md` for full decision context and `.kb/models/decidability-graph.md` for the conceptual model.
+
 ## Related
 
 - **Python orch-cli:** `~/Documents/personal/orch-cli` (fallback: `orch-py`)
