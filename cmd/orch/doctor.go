@@ -128,17 +128,25 @@ type DoctorReport struct {
 func runDoctor() error {
 	// Handle --stale-only flag for quick staleness check
 	if doctorStaleOnly {
-		status := checkStaleBinary()
-		if status.Error != "" {
-			fmt.Fprintf(os.Stderr, "⚠️  %s\n", status.Error)
-			return nil // Not an error, just a warning
+		result := checkAllEcosystemBinaries()
+
+		// Print status for each binary
+		hasStale := false
+		for _, status := range result.Binaries {
+			if status.Error != "" {
+				fmt.Printf("⚠️  %s: %s\n", status.Name, status.Error)
+			} else if status.Stale {
+				fmt.Printf("⚠️  %s STALE: binary=%s HEAD=%s\n", status.Name, status.BinaryHash[:12], status.CurrentHash[:12])
+				fmt.Printf("   rebuild: cd %s && make install\n", status.SourceDir)
+				hasStale = true
+			} else {
+				fmt.Printf("✓ %s UP TO DATE\n", status.Name)
+			}
 		}
-		if status.Stale {
-			fmt.Printf("⚠️  STALE: binary=%s HEAD=%s\n", status.BinaryHash[:12], status.CurrentHash[:12])
-			fmt.Printf("   rebuild: cd %s && make install\n", status.SourceDir)
+
+		if hasStale {
 			os.Exit(1)
 		}
-		fmt.Println("✓ UP TO DATE")
 		return nil
 	}
 
@@ -617,8 +625,9 @@ func startOrchServe() error {
 	return fmt.Errorf("orch serve started but not responding after 5s")
 }
 
-// BinaryStatus represents the staleness status of the orch binary.
+// BinaryStatus represents the staleness status of a binary.
 type BinaryStatus struct {
+	Name        string `json:"name"`
 	Stale       bool   `json:"stale"`
 	BinaryHash  string `json:"binary_hash,omitempty"`
 	CurrentHash string `json:"current_hash,omitempty"`
@@ -626,10 +635,17 @@ type BinaryStatus struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// EcosystemBinariesStatus represents the staleness status of all ecosystem binaries.
+type EcosystemBinariesStatus struct {
+	Binaries []BinaryStatus `json:"binaries"`
+	AllFresh bool           `json:"all_fresh"`
+}
+
 // checkStaleBinary checks if the orch binary is stale compared to git HEAD.
 // This reuses the logic from runVersionSource() in main.go.
 func checkStaleBinary() BinaryStatus {
 	status := BinaryStatus{
+		Name:      "orch",
 		SourceDir: sourceDir,
 	}
 
@@ -669,6 +685,109 @@ func checkStaleBinary() BinaryStatus {
 	}
 
 	return status
+}
+
+// checkEcosystemBinary checks if a specific ecosystem binary is stale.
+// It attempts to run `<binary> version --json` to get version info.
+func checkEcosystemBinary(binaryName string) BinaryStatus {
+	status := BinaryStatus{
+		Name: binaryName,
+	}
+
+	// Check if binary exists in PATH
+	binaryPath, err := exec.LookPath(binaryName)
+	if err != nil {
+		status.Error = fmt.Sprintf("%s not found in PATH", binaryName)
+		return status
+	}
+
+	// Try to get version info via --json flag
+	cmd := exec.Command(binaryPath, "version", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		// Binary doesn't support --json flag yet
+		status.Error = fmt.Sprintf("%s version --json not supported", binaryName)
+		return status
+	}
+
+	// Parse JSON output
+	var versionInfo struct {
+		GitHash   string `json:"git_hash"`
+		SourceDir string `json:"source_dir"`
+	}
+	if err := json.Unmarshal(output, &versionInfo); err != nil {
+		// Binary returned output but it's not valid JSON - treat as unsupported
+		status.Error = fmt.Sprintf("%s version --json not supported", binaryName)
+		return status
+	}
+
+	status.BinaryHash = versionInfo.GitHash
+	status.SourceDir = versionInfo.SourceDir
+
+	// Check if source directory exists
+	if versionInfo.SourceDir == "" || versionInfo.SourceDir == "unknown" {
+		status.Error = "source directory not embedded"
+		return status
+	}
+
+	if _, err := os.Stat(versionInfo.SourceDir); os.IsNotExist(err) {
+		status.Error = fmt.Sprintf("source directory not found: %s", versionInfo.SourceDir)
+		return status
+	}
+
+	// Get current git hash from source directory
+	gitCmd := exec.Command("git", "rev-parse", "HEAD")
+	gitCmd.Dir = versionInfo.SourceDir
+	gitOutput, err := gitCmd.Output()
+	if err != nil {
+		status.Error = fmt.Sprintf("could not get current git hash: %v", err)
+		return status
+	}
+
+	currentHash := strings.TrimSpace(string(gitOutput))
+	status.CurrentHash = currentHash
+
+	// Compare hashes
+	if versionInfo.GitHash == "" || versionInfo.GitHash == "unknown" {
+		status.Error = "git hash not embedded (dev build)"
+		return status
+	}
+
+	if currentHash != versionInfo.GitHash {
+		status.Stale = true
+	}
+
+	return status
+}
+
+// checkAllEcosystemBinaries checks all Dylan ecosystem binaries for staleness.
+func checkAllEcosystemBinaries() EcosystemBinariesStatus {
+	result := EcosystemBinariesStatus{
+		AllFresh: true,
+	}
+
+	// List of ecosystem binaries to check
+	binaries := []string{"orch", "kb", "glass", "skillc", "agentlog"}
+
+	for _, binName := range binaries {
+		var status BinaryStatus
+		if binName == "orch" {
+			// Use the existing checkStaleBinary for orch (has embedded version info)
+			status = checkStaleBinary()
+		} else {
+			// Use checkEcosystemBinary for others
+			status = checkEcosystemBinary(binName)
+		}
+
+		result.Binaries = append(result.Binaries, status)
+
+		// If any binary is stale, mark as not all fresh
+		if status.Stale {
+			result.AllFresh = false
+		}
+	}
+
+	return result
 }
 
 // printDoctorReport prints the health report in a formatted way.

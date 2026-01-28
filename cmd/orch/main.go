@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -73,6 +74,7 @@ func init() {
 
 var (
 	versionSource bool // Show source info and staleness check
+	versionJSON   bool // Output as JSON
 )
 
 var versionCmd = &cobra.Command{
@@ -80,8 +82,13 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version information",
 	Long: `Print version information.
 
-Use --source to see where the binary was built from and check if it's stale.`,
+Use --source to see where the binary was built from and check if it's stale.
+Use --json to output version information in JSON format.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if versionJSON {
+			runVersionJSON()
+			return
+		}
 		if versionSource {
 			runVersionSource()
 			return
@@ -93,6 +100,33 @@ Use --source to see where the binary was built from and check if it's stale.`,
 
 func init() {
 	versionCmd.Flags().BoolVar(&versionSource, "source", false, "Show source location and staleness check")
+	versionCmd.Flags().BoolVar(&versionJSON, "json", false, "Output as JSON")
+}
+
+// VersionInfo represents version information in JSON format.
+type VersionInfo struct {
+	Version   string `json:"version"`
+	BuildTime string `json:"build_time"`
+	SourceDir string `json:"source_dir"`
+	GitHash   string `json:"git_hash"`
+}
+
+// runVersionJSON outputs version information in JSON format.
+func runVersionJSON() {
+	info := VersionInfo{
+		Version:   version,
+		BuildTime: buildTime,
+		SourceDir: sourceDir,
+		GitHash:   gitHash,
+	}
+
+	output, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(string(output))
 }
 
 // runVersionSource shows where the binary was built from and checks staleness.

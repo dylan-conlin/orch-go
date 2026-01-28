@@ -141,11 +141,40 @@ func fetchKBReflect(projectDir, reflectType string) ([]map[string]interface{}, e
 		return []map[string]interface{}{}, nil
 	}
 
-	// Parse JSON output - kb reflect returns array of objects
-	var items []map[string]interface{}
-	if err := json.Unmarshal(output, &items); err != nil {
+	// kb reflect returns nested JSON: {"synthesis": [...], "promote": [...], etc}
+	// We need to extract the array for the specific type
+	var result map[string]interface{}
+	if err := json.Unmarshal(output, &result); err != nil {
 		// Parse error - return empty for graceful degradation
 		return []map[string]interface{}{}, nil
+	}
+
+	// Extract the array for this reflection type
+	// The key matches the reflectType (synthesis, promote, stale, investigation-promotion)
+	// But investigation-promotion uses underscore in JSON: investigation_promotion
+	jsonKey := reflectType
+	if reflectType == "investigation-promotion" {
+		jsonKey = "investigation_promotion"
+	}
+
+	itemsRaw, ok := result[jsonKey]
+	if !ok {
+		// Key not found - return empty for graceful degradation
+		return []map[string]interface{}{}, nil
+	}
+
+	// Convert to []map[string]interface{}
+	itemsArray, ok := itemsRaw.([]interface{})
+	if !ok {
+		// Not an array - return empty for graceful degradation
+		return []map[string]interface{}{}, nil
+	}
+
+	items := make([]map[string]interface{}, 0, len(itemsArray))
+	for _, item := range itemsArray {
+		if itemMap, ok := item.(map[string]interface{}); ok {
+			items = append(items, itemMap)
+		}
 	}
 
 	return items, nil

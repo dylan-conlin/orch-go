@@ -60,15 +60,17 @@ What unified architecture enables reliable staleness detection and auto-rebuild 
 
 **In Scope:**
 - Dylan's Go CLIs: orch, kb, glass, skillc, agentlog (5 binaries)
+- Dylan's forked projects: beads (`bd`), opencode
 - Version command standardization
 - Auto-rebuild mechanism architecture
 - `orch doctor` expansion
 
 **Out of Scope:**
 - Non-binary repos (orch-knowledge, beads-ui-svelte)
-- Upstream beads (`bd`) - OSS project, Dylan uses as-is
 - Python legacy (`orch-cli`) - being deprecated
 - Skills (handled by skillc, not binary staleness)
+
+**Note:** beads and opencode are Dylan's forks, not upstream. They should be included in ecosystem rebuild architecture. See orch-go-20989 for follow-up.
 
 ---
 
@@ -200,13 +202,13 @@ Human-readable is default for developer experience, `--json` flag enables progra
 - Constraint: bd is upstream OSS, Dylan uses releases not source builds
 - Evidence: kn binary location was "unknown" in audit (not installed or different path)
 
-**RECOMMENDATION:** Option A (Dylan's CLIs only)
+**RECOMMENDATION:** Option A (Dylan's CLIs only) → **UPDATED to include beads and opencode**
 
-Focus on binaries Dylan builds from source. bd is upstream (no rebuild needed), kn is rarely used and can be added later if needed.
+Focus on binaries Dylan builds from source. This includes beads (`bd`) and opencode since Dylan maintains forks of both.
 
-**Trade-off accepted:** Incomplete coverage of ecosystem
+**Trade-off accepted:** kn excluded (rarely used)
 
-**When this would change:** If kn becomes frequently used or bd moves to source builds
+**When this would change:** If kn becomes frequently used
 
 ---
 
