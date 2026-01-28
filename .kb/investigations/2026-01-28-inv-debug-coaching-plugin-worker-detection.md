@@ -69,23 +69,42 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Plugin Was Disabled After Metadata-Based Detection Failed
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Investigation `2026-01-28-inv-debug-coaching-plugin-still-fires.md` (issue 21001, completed 13:43) found that the coaching plugin was "upgraded" from title-based to metadata-based worker detection, but session.created events do NOT include the metadata field. This caused worker detection to fail completely. The plugin was disabled at 13:39, during or shortly after this investigation.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `.orch/workspace/og-inv-debug-coaching-plugin-28jan-b245/SYNTHESIS.md` - Details the root cause
+- `stat` output showing coaching.ts.disabled modified at 13:39
+- Timeline: audit investigation completed 13:35, plugin disabled 13:39, verify investigation completed 13:43
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The plugin is disabled because the metadata-based detection approach doesn't work (metadata not available in session.created events). The recommended fix is to revert to title-based detection, which was proven working in prior investigations.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Title-Based Detection Pattern Is Proven to Work
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Investigation `2026-01-28-inv-verify-coaching-plugin-worker-detection.md` tested two separate worker sessions and confirmed zero coaching alerts were fired despite 10+ tool calls each. The title-based pattern used was: `hasBeadsId && !isOrchestratorTitle` where beads ID matches `/\[[\w-]+-\d+\]/` and orchestrator pattern is `/-orch-/`.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `.kb/investigations/2026-01-28-inv-verify-coaching-plugin-worker-detection.md` - Verification testing
+- Tested sessions: `ses_3f9d325bbffetxp88HZ2YFlWhq` and `ses_3f9d0c828ffeGIx3oua2PzXlnx`
+- Both had titles like `og-inv-verify-coaching-plugin-28jan-5e08 [orch-go-20993]`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This provides strong evidence that title-based detection is reliable for standard worker spawns with beads tracking. This is the fallback approach that should be used since metadata-based detection is not available.
+
+---
+
+### Finding 4: Current Code Uses Broken Metadata-Based Detection
+
+**Evidence:** The disabled coaching plugin at line 2028 uses `sessionMetadata.role === "worker"` for worker detection. However, investigation 21001 confirmed that `info.metadata` is always an empty object (`{}`) in session.created events, so `sessionMetadata.role` is always undefined, making this check always false.
+
+**Source:**
+- `.opencode/plugins/coaching.ts.disabled:2028` - `const isWorker = sessionMetadata.role === "worker"`
+- `.opencode/plugins/coaching.ts.disabled:2017` - `const sessionMetadata = info.metadata || {}`
+- Investigation finding: session.created events have `properties.info.{id, title, directory, ...}` but NO metadata field
+
+**Significance:** This confirms the plugin cannot work in its current state. It needs to be modified to use title-based detection (pattern: `hasBeadsId && !isOrchestrator`) before being re-enabled.
 
 ---
 
