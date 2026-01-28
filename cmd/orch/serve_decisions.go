@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -156,9 +157,18 @@ func handleDecisions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 3. Add questions from questions store (already have this via /api/questions)
-	// For now, we'll include a count and reference the existing endpoint
-	// In the future, this could be integrated directly or just reference the existing endpoint
+	// 3. Add questions from questions store (strategic questions needing answers)
+	questions := getOpenQuestions()
+	for _, q := range questions {
+		item := DecisionItem{
+			ID:          q.ID,
+			BeadsID:     q.ID,
+			Title:       q.Title,
+			Project:     projectDir,
+			NextActions: q.Blocking, // Issues this question blocks
+		}
+		resp.AnswerQuestions = append(resp.AnswerQuestions, item)
+	}
 
 	// Calculate total
 	resp.TotalCount = len(resp.AbsorbKnowledge) + len(resp.GiveApprovals) +
@@ -306,4 +316,46 @@ func findInvestigationPath(workspacePath, projectDir, beadsID string) string {
 	}
 
 	return ""
+}
+
+// getOpenQuestions fetches open questions from the beads store.
+// Returns QuestionResponse items that are status=open (need answering).
+func getOpenQuestions() []QuestionResponse {
+	cliClient := beads.NewCLIClient()
+
+	allQuestions, err := cliClient.List(&beads.ListArgs{
+		IssueType: "question",
+		Status:    "open",
+		Limit:     50,
+	})
+	if err != nil {
+		return []QuestionResponse{}
+	}
+
+	questions := make([]QuestionResponse, 0, len(allQuestions))
+	for _, q := range allQuestions {
+		qr := QuestionResponse{
+			ID:        q.ID,
+			Title:     q.Title,
+			Status:    q.Status,
+			Priority:  q.Priority,
+			Labels:    q.Labels,
+			CreatedAt: q.CreatedAt,
+		}
+
+		// Get blocking info from full issue
+		if fullIssue, err := cliClient.Show(q.ID); err == nil && fullIssue.Dependencies != nil {
+			var dependents []struct {
+				ID string `json:"id"`
+			}
+			json.Unmarshal(fullIssue.Dependencies, &dependents)
+			for _, dep := range dependents {
+				qr.Blocking = append(qr.Blocking, dep.ID)
+			}
+		}
+
+		questions = append(questions, qr)
+	}
+
+	return questions
 }
