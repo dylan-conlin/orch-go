@@ -521,15 +521,13 @@ export const OrchestratorToolGatePlugin: Plugin = async ({
       // Block Edit tool
       if (lowerTool === "edit") {
         await injectWarning(client, sessionID, MESSAGES.EDIT, tool)
-        // Note: We inject warning but don't throw error
-        // OpenCode handles blocking via permission config if needed
-        return
+        throw new Error("Orchestrator tool gate: Edit tool blocked. Use 'orch spawn' instead or add force_primitive: true to override.")
       }
 
       // Block Write tool
       if (lowerTool === "write") {
         await injectWarning(client, sessionID, MESSAGES.WRITE, tool)
-        return
+        throw new Error("Orchestrator tool gate: Write tool blocked. Use 'orch spawn' instead or add force_primitive: true to override.")
       }
 
       // Gate Read tool (allow artifacts, block code)
@@ -537,7 +535,7 @@ export const OrchestratorToolGatePlugin: Plugin = async ({
         const filePath = args?.filePath || args?.file_path
         if (filePath && !isReadPathAllowed(filePath)) {
           await injectWarning(client, sessionID, MESSAGES.READ_CODE, tool)
-          return
+          throw new Error(`Orchestrator tool gate: Read blocked for code file '${filePath}'. Spawn a worker to investigate or add force_primitive: true to override.`)
         }
       }
 
@@ -546,7 +544,7 @@ export const OrchestratorToolGatePlugin: Plugin = async ({
         const command = args?.command
         if (command && !isBashCommandAllowed(command)) {
           await injectWarning(client, sessionID, MESSAGES.BASH_COMMAND, tool)
-          return
+          throw new Error(`Orchestrator tool gate: Bash command '${command}' blocked. Use allowed meta-commands or add force_primitive: true to override.`)
         }
       }
     },
