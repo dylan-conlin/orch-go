@@ -90,6 +90,18 @@ Guidelines:
 
 ---
 
+### Finding 5: ROOT CAUSE - Decision gate silently fails open on errors
+
+**Evidence:** Manual test using standalone Go program confirmed keyword matching SHOULD detect "test feature" in task (output: "✓ Decision gate SHOULD block this spawn! Matched keywords: [test feature]"). However, error handling in `spawn_validation.go:405-408` catches errors from `findBlockingDecisions()` and returns `nil` error with warning to stderr: "Don't fail spawn on decision check errors - log and continue". This means ANY error in decision checking (file read, YAML parse, etc.) allows spawn to proceed.
+
+**Source:**
+- Manual test output showing keyword match detection works correctly
+- /Users/dylanconlin/Documents/personal/orch-go/cmd/orch/spawn_validation.go:405-408 (silent failure handling)
+
+**Significance:** **ROOT CAUSE IDENTIFIED**. The decision gate has a fail-open design - errors in decision checking allow spawns to proceed with only a stderr warning. This is a security/safety issue for blocking decisions. The spawn succeeded not because the keyword matching failed, but because error handling allowed it to proceed despite an error.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
