@@ -537,6 +537,92 @@ function isCodeFile(filePath: string): boolean {
 }
 
 /**
+ * Phase 2: Check if a file path is in the orchestration allowlist.
+ * Orchestrators can read these files without filtering.
+ * Returns true if file should be accessible to orchestrators.
+ */
+function isOrchestrationFile(filePath: string): boolean {
+  if (!filePath) return false
+
+  const normalizedPath = filePath.toLowerCase()
+
+  // Exact filenames (case-insensitive)
+  const allowedFilenames = [
+    "claude.md",
+    "agents.md",
+    "synthesis.md",
+    "spawn_context.md",
+  ]
+
+  for (const filename of allowedFilenames) {
+    if (normalizedPath.endsWith(filename)) {
+      return true
+    }
+  }
+
+  // Directory patterns
+  const allowedPaths = [
+    "/.kb/",
+    "/.orch/",
+  ]
+
+  for (const path of allowedPaths) {
+    if (normalizedPath.includes(path) && normalizedPath.endsWith(".md")) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * Phase 2: Filter tool output for orchestrator sessions.
+ * Implements information hiding by truncating non-orchestration file reads
+ * and bash outputs, encouraging delegation to workers instead of direct investigation.
+ */
+function filterOrchestratorOutput(tool: string, args: any, output: any): void {
+  // Only filter successful outputs (don't modify errors)
+  if (!output || output.error || output.isError) {
+    return
+  }
+
+  // Filter read tool outputs
+  if (tool === "read" && output.text) {
+    const filePath = args?.filePath || args?.file_path || ""
+    
+    // Skip filtering for orchestration files
+    if (isOrchestrationFile(filePath)) {
+      return
+    }
+
+    // Truncate to first 20 lines
+    const lines = output.text.split("\n")
+    if (lines.length > 20) {
+      const truncatedLines = lines.slice(0, 20)
+      const warningMessage = `\n\n[... ${lines.length - 20} lines hidden ...]\n\n⚠️ Full file hidden - orchestrator should delegate to worker.\nOrchestrators operate in meta-action space (spawn, monitor, query).\nFor file investigation, use: orch spawn investigation "analyze ${filePath}"`
+      
+      output.text = truncatedLines.join("\n") + warningMessage
+      log(`Filtered read output for orchestrator: ${filePath} (${lines.length} → 20 lines)`)
+    }
+  }
+
+  // Filter bash outputs
+  if (tool === "bash" && output.output) {
+    const outputLength = output.output.length
+    const TRUNCATE_THRESHOLD = 1000 // Truncate if >1000 chars
+
+    if (outputLength > TRUNCATE_THRESHOLD) {
+      const truncated = output.output.substring(0, TRUNCATE_THRESHOLD)
+      const hiddenChars = outputLength - TRUNCATE_THRESHOLD
+      const warningMessage = `\n\n[... ${hiddenChars} characters hidden ...]\n\n⚠️ Command completed. Full output hidden.\nOrchestrators should delegate detailed investigations to workers.\nFor command analysis, use: orch spawn investigation "analyze command output"`
+      
+      output.output = truncated + warningMessage
+      log(`Filtered bash output for orchestrator: ${outputLength} → ${TRUNCATE_THRESHOLD} chars`)
+    }
+  }
+}
+
+/**
  * Session state tracker.
  */
 interface SessionState {
@@ -1381,6 +1467,43 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
    * 1. Read tool accessing SPAWN_CONTEXT.md - workers always read this early
    * 2. Any tool accessing files in .orch/workspace/ - workers operate here
    */
+  /**
+   * Detect worker from session title pattern.
+   * Workers have beads ID [xxx-yyy] in title and are NOT orchestrators (-orch-).
+   */
+  function isWorkerByTitle(title: string): boolean {
+    if (!title) return false
+    const hasBeadsId = /\[[\w-]+-\w+\]/.test(title)
+    const isOrchestratorTitle = /-orch-/.test(title) || /^meta-/.test(title)
+    return hasBeadsId && !isOrchestratorTitle
+  }
+
+  /**
+   * Async worker detection via session API lookup.
+   * Called once per session to get definitive answer from session title.
+   */
+  async function detectWorkerViaAPI(sessionId: string, client: any): Promise<boolean> {
+    try {
+      // Use client to get session info
+      const sessions = await client.session.list()
+      const session = sessions?.find((s: any) => s.id === sessionId)
+      if (session?.title) {
+        const isWorker = isWorkerByTitle(session.title)
+        if (isWorker) {
+          workerSessions.set(sessionId, true)
+          console.error(`[coaching] Worker detected via API: ${sessionId} title="${session.title}"`)
+        }
+        return isWorker
+      }
+    } catch (err) {
+      log(`Failed to detect worker via API: ${err}`)
+    }
+    return false
+  }
+
+  // Track sessions we've already checked via API (to avoid repeated lookups)
+  const sessionAPIChecked = new Set<string>()
+
   function detectWorkerSession(sessionId: string, tool?: string, args?: any): boolean {
     // Check cache first - only returns early if we've confirmed this IS a worker
     const cached = workerSessions.get(sessionId)
@@ -1446,7 +1569,14 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       const sessionId = output.messages[0]?.info?.sessionID || "unknown"
 
       // Check if this is a worker session
-      const cachedWorkerStatus = workerSessions.get(sessionId)
+      let cachedWorkerStatus = workerSessions.get(sessionId)
+      
+      // If not detected yet, try API lookup (once per session)
+      if (cachedWorkerStatus !== true && !sessionAPIChecked.has(sessionId)) {
+        sessionAPIChecked.add(sessionId)
+        cachedWorkerStatus = await detectWorkerViaAPI(sessionId, client)
+      }
+      
       if (cachedWorkerStatus === true) {
         // Skip Dylan pattern detection for worker sessions
         return
@@ -1643,7 +1773,14 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (!tool || !sessionId) return
 
       // Check if this is a worker session (detects via SPAWN_CONTEXT.md read or .orch/workspace/ paths)
-      const isWorker = detectWorkerSession(sessionId, tool, input.args)
+      let isWorker = detectWorkerSession(sessionId, tool, input.args)
+      
+      // If not detected yet, try API lookup (once per session)
+      if (!isWorker && !sessionAPIChecked.has(sessionId)) {
+        sessionAPIChecked.add(sessionId)
+        isWorker = await detectWorkerViaAPI(sessionId, client)
+      }
+      
       if (isWorker) {
         // Track worker-specific health metrics instead of orchestrator metrics
         let workerState = workerHealthStates.get(sessionId)
@@ -1672,6 +1809,11 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
         // Skip orchestrator metrics for workers
         return
       }
+
+      // Phase 2: Information hiding - filter outputs for orchestrator sessions
+      // This reduces temptation to "dive in" by hiding details that invite investigation.
+      // Orchestrators should delegate detailed work to workers instead.
+      filterOrchestratorOutput(tool, input.args, output)
 
       // Get or create session state
       let state = sessions.get(sessionId)
@@ -1928,6 +2070,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
      * tool-based detection can identify the session as a worker.
      */
     event: async ({ event }) => {
+      // Log ALL events for debugging
+      log(`Event received: type=${event.type}`)
+      
       // Only handle session.created events
       if (event.type !== "session.created") {
         return
@@ -1971,8 +2116,13 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       if (isWorker) {
         workerSessions.set(sessionId, true)
         log(`Worker detected (session.created): ${sessionId}, title: ${sessionTitle}, dir: ${sessionDirectory}`)
+        // Also log to stderr for visibility without DEBUG flag
+        console.error(`[coaching] Worker detected: ${sessionId} title="${sessionTitle}"`)
       } else if (isInWorkspace && isOrchestratorTitle) {
         log(`Spawned orchestrator detected (will receive coaching): ${sessionId}, title: ${sessionTitle}`)
+      } else {
+        // Log why we didn't detect as worker
+        console.error(`[coaching] NOT worker: ${sessionId} title="${sessionTitle}" isInWorkspace=${isInWorkspace} isOrchestratorTitle=${isOrchestratorTitle} hasBeadsId=${hasBeadsId}`)
       }
     },
   }
