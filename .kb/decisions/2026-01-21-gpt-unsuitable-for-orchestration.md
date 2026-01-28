@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - gpt orchestrator
+      - gpt-5 orchestration
+      - openai orchestrator
+---
+
 # Decision: GPT-5.2 Unsuitable for Orchestration Role
 
 **Date:** 2026-01-21

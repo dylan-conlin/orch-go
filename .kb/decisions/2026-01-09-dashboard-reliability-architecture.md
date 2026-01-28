@@ -1,3 +1,11 @@
+---
+status: active
+blocks:
+  - keywords:
+      - dashboard architecture redesign
+      - replace dashboard infrastructure
+---
+
 # Decision: Dashboard Reliability Architecture
 
 **Date:** 2026-01-09

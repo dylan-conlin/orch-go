@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - constitutional bypass
+      - worker direct user access
+      - skip orchestrator approval
+---
+
 # Decision: Orchestrator Constitutional Responsibility
 
 **Date:** 2026-01-22

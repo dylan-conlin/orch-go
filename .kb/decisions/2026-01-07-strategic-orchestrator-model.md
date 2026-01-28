@@ -1,3 +1,13 @@
+---
+status: active
+blocks:
+  - keywords:
+      - meta-orchestrator role
+      - orchestrator synthesis
+      - spawn architect to think
+      - delegate understanding
+---
+
 # Decision: Strategic Orchestrator Model
 
 **Date:** 2026-01-07

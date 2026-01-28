@@ -1,3 +1,13 @@
+---
+status: active
+blocks:
+  - keywords:
+      - model-agnostic orchestration
+      - gpt worker
+      - openai worker
+      - multi-model orchestration
+---
+
 # Decision: Accept Claude-Specific Orchestration
 
 **Date:** 2026-01-24

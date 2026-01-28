@@ -1,3 +1,11 @@
+---
+status: active
+blocks:
+  - keywords:
+      - completion-only forcing function
+      - defer capture to completion
+---
+
 # Decision: Capture at Context Principle
 
 **Date:** 2026-01-14

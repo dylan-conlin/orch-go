@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - change escalation tiers
+      - new escalation level
+      - completion escalation redesign
+---
+
 # Decision: Five-Tier Completion Escalation Model
 
 **Date:** 2026-01-17

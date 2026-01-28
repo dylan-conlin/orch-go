@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - new artifact type
+      - add artifact type
+      - artifact taxonomy change
+---
+
 # Decision: Minimal Artifact Taxonomy for Amnesia-Resilient Orchestration
 
 **Status:** Accepted

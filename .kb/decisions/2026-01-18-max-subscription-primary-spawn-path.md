@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - switch to api billing
+      - change default backend to opencode
+      - remove max subscription
+---
+
 ## Summary (D.E.K.N.)
 
 **Delta:** Switch from OpenCode API (pay-per-token) to Claude CLI (Max subscription) as default spawn backend.

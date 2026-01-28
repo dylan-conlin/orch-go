@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - switch to docker desktop
+      - use docker desktop
+      - replace colima
+---
+
 # Decision: Use Colima Instead of Docker Desktop
 
 **Date:** 2026-01-21

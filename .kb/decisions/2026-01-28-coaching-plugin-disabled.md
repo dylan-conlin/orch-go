@@ -4,10 +4,11 @@ blocks:
   - keywords:
       - coaching plugin
       - coaching alerts
-      - worker detection
+      - coaching worker detection
       - coaching.ts
+      - orchestrator coaching
     patterns:
-      - "**/coaching*"
+      - "**/plugins/coaching*"
 ---
 
 # Decision: Coaching Plugin Disabled

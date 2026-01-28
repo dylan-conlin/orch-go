@@ -1,3 +1,13 @@
+---
+status: active
+blocks:
+  - keywords:
+      - worker add dependency
+      - worker close issue
+      - worker override decision
+      - expand worker authority
+---
+
 # Decision: Worker Authority Boundaries
 
 **Date:** 2026-01-19

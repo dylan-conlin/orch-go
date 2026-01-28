@@ -1,3 +1,12 @@
+---
+status: active
+blocks:
+  - keywords:
+      - add production launchd
+      - production supervision on mac
+      - auto-restart daemon on mac
+---
+
 # Decision: Dev vs Prod Architecture Separation
 
 **Date:** 2026-01-10
