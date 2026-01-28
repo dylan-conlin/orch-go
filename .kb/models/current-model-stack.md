@@ -1,44 +1,43 @@
 # Model: Current Model Stack
 
 **Domain:** Agent Spawning / Model Selection
-**Last Updated:** 2026-01-26
+**Last Updated:** 2026-01-28
 **Authoritative For:** What models and backends orch-go uses TODAY
 
 ---
 
 ## Summary (30 seconds)
 
-**Orchestrator:** Claude Code CLI on macOS (Opus) - Dylan's primary Max account
-**Workers:** Claude Code CLI on macOS (Opus) - same Max account (original "escape hatch")
-**Fallback:** OpenCode API with Sonnet - pay-per-token, rarely used
+**Orchestrator:** Claude Code CLI on macOS (Opus 4.5) - Dylan's primary Max account
+**Workers:** OpenCode API with OAuth stealth mode (Opus/Sonnet) - same Max account, dashboard visibility
+**Fallback:** Claude Code CLI (native) - for infrastructure work or when OpenCode server is unstable
 
-Dylan orchestrates directly from Claude Code on macOS. Workers also spawn via native Claude Code CLI using `orch spawn --backend claude`. The Docker backend is disabled (second Max account cancelled).
+Dylan orchestrates directly from Claude Code on macOS. Workers spawn via OpenCode API using OAuth stealth mode (implemented Jan 28). This restores dashboard visibility while using the Max subscription.
 
-**Under investigation:**
-- `CLAUDE_CONFIG_DIR` fingerprint isolation as simpler alternative to Docker (`orch-go-20922`)
-- OpenCode stealth mode for Max OAuth access (`orch-go-20925`) - could restore dashboard visibility + Max subscription from spawned agents
+**Stealth mode implemented (Jan 28):** Full pi-ai parity achieved - see `2026-01-26-claude-max-oauth-stealth-mode-viable.md`. Commit `77e60ac7e` in OpenCode fork.
 
-**New development (Jan 26):** OAuth stealth mode IS viable - pi-ai demonstrates stable Max subscription access by mimicking Claude Code's identity markers. See `2026-01-26-claude-max-oauth-stealth-mode-viable.md`.
+**Still under investigation:**
+- `CLAUDE_CONFIG_DIR` fingerprint isolation for request-rate isolation (`orch-go-20922`)
 
 This document is the authoritative "current state" reference. Cite THIS document when describing orch-go's model stack, not individual historical decisions.
 
 ---
 
-## Current Stack (as of Jan 26, 2026)
+## Current Stack (as of Jan 28, 2026)
 
 | Role | Model/Backend | Account | Cost | Notes |
 |------|---------------|---------|------|-------|
 | **Orchestrator** | Claude Code CLI (macOS) | Max #1 | $200/mo | This conversation - Dylan orchestrates here |
-| **Workers** | Claude Code CLI (macOS) | Max #1 | (same) | Native CLI spawn, shared account |
-| **Fallback** | OpenCode API + Sonnet | API key | Pay-per-token | Rarely used - no Opus access |
+| **Workers** | OpenCode API + OAuth stealth | Max #1 | (same) | Dashboard visibility, Opus/Sonnet via OAuth |
+| **Fallback** | Claude Code CLI (native) | Max #1 | (same) | Infrastructure work, escape hatch |
 
 ### Current Operational Setup
 
 **Why this setup:**
 - Orchestrator needs macOS access (launchctl, make, Docker CLI)
-- Second Max account was cancelled → Docker backend no longer viable
-- Workers share single Max account ($200/mo total)
-- OpenCode coaching plugin NOT exercised (orchestrator is in Claude Code, not OpenCode)
+- Workers use OpenCode API with OAuth stealth mode for dashboard visibility
+- Single Max account ($200/mo total) shared across orchestrator and workers
+- OpenCode server must be started WITHOUT `ANTHROPIC_API_KEY` to use OAuth
 
 **Constraint:** All workers share same fingerprint (statsig stable_id) → subject to request-rate throttling when concurrent.
 
@@ -46,40 +45,47 @@ This document is the authoritative "current state" reference. Cite THIS document
 
 ```bash
 # Dylan orchestrates from Claude Code (this conversation)
-# Workers spawn via native Claude CLI:
-orch spawn --backend claude feature-impl "task"
 
-# Daemon auto-spawns with claude backend (configured in ~/.orch/config.yaml)
-bd create "task" --type task -l triage:ready  # Daemon picks up and spawns
+# Workers spawn via OpenCode API with OAuth (default)
+orch spawn --backend opencode --model anthropic/claude-opus-4-5-20251101 feature-impl "task"
 
-# OpenCode API (rarely used)
-orch spawn --backend opencode --model sonnet feature-impl "task"
+# Or let daemon auto-spawn (uses opencode backend from config)
+bd create "task" --type task -l triage:ready
+
+# Native CLI fallback for infrastructure work
+orch spawn --backend claude --tmux feature-impl "fix opencode server"
 ```
+
+### Server Setup for OAuth
+
+**Critical:** The OpenCode server must be started without `ANTHROPIC_API_KEY`:
+
+```bash
+# Start dashboard services with OAuth
+ANTHROPIC_API_KEY="" orch-dashboard start
+
+# Or manually restart OpenCode server
+pkill -f "opencode serve"
+ANTHROPIC_API_KEY="" opencode serve --port 4096
+```
+
+If `ANTHROPIC_API_KEY` is set, OpenCode uses that instead of OAuth tokens.
+
+### OpenCode Stealth Mode (Implemented Jan 28)
+
+Full pi-ai parity achieved in commit `77e60ac7e`:
+- User-Agent: `claude-cli/2.1.15 (external, cli)`
+- System prompt: `"You are Claude Code, Anthropic's official CLI for Claude."`
+- Headers: `x-app: cli`, `anthropic-dangerous-direct-browser-access: true`, `anthropic-beta: claude-code-20250219,oauth-2025-04-20,...`
+- SDK: Uses `authToken` instead of `apiKey` for OAuth tokens
+
+**Verified working:**
+- Sonnet 4.5 via OAuth ✅
+- Opus 4.5 via OAuth ✅
 
 ### Potential Future: CLAUDE_CONFIG_DIR Isolation
 
-Investigation `orch-go-20910` found that fingerprint isolation doesn't require Docker - simply setting `CLAUDE_CONFIG_DIR` to a fresh directory creates new statsig identity. This is how sneakpeek achieves variant isolation.
-
-**Testing in `orch-go-20922`:** If successful, could add `--backend config-dir` that:
-- Creates fresh `~/.claude-spawn-{beads-id}` per spawn
-- No Docker overhead (~2-5s container startup eliminated)
-- Request-rate isolation without second Max account
-
-### Potential Future: OpenCode Stealth Mode
-
-Investigation `2026-01-26-inv-analyze-pi-ai-anthropic-oauth.md` found that OAuth access IS viable by mimicking Claude Code's identity markers. pi-ai has been doing this stably for months.
-
-**Implementation in `orch-go-20925`:** Modify Dylan's OpenCode fork to:
-- Detect OAuth tokens (`sk-ant-oat` prefix) and activate stealth mode
-- Set headers: `user-agent: claude-cli/{version}`, `x-app: cli`, etc.
-- Include Claude Code identity system prompt
-- Optional: tool name normalization to PascalCase
-
-**Benefits if successful:**
-- Dashboard visibility restored (OpenCode spawns visible again)
-- Max subscription usable from spawned agents
-- Leverages existing orch-go/OpenCode integration
-- Could become default backend again, displacing native CLI
+Investigation `orch-go-20910` found that fingerprint isolation doesn't require Docker. Testing in `orch-go-20922` to add `--backend config-dir` for request-rate isolation without Docker overhead.
 
 ---
 
@@ -92,12 +98,15 @@ This stack evolved through several decisions. **Only the most recent decision is
 | Jan 9, 2026 | `2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` | **Superseded** | Gemini Flash primary (abandoned due to TPM limits → Sonnet API) |
 | Jan 18, 2026 | `2026-01-18-max-subscription-primary-spawn-path.md` | **Superseded** | Claude Max via CLI primary, Docker workers with second Max account |
 | Jan 26, 2026 | `2026-01-26-claude-max-oauth-stealth-mode-viable.md` | **Active** | OAuth stealth mode viable; OpenCode can use Max subscriptions |
-| Jan 26, 2026 | (stack change - no formal decision yet) | **Current** | Single Max account, native CLI workers, Docker disabled |
+| Jan 28, 2026 | (stack change) | **Current** | OpenCode with OAuth stealth as primary worker backend |
 
 ### Why the Stack Changed
 
 1. **Jan 9:** Anthropic blocked OAuth → switched to Gemini Flash (free) + Sonnet API (fallback)
 2. **Jan 9-18:** API costs spiraled ($402 in ~2 weeks, $70-80/day) without visibility
+3. **Jan 18:** Switched to Claude Max via CLI ($200/mo flat) as primary
+4. **Jan 26:** Discovered pi-ai's stealth mode approach - mimics Claude Code identity
+5. **Jan 28:** Implemented full pi-ai parity in OpenCode fork → OAuth works again
 3. **Jan 18:** Switched to Claude Max via CLI ($200/mo flat) as primary, Docker workers with second Max account
 4. **Jan 26:** Second Max account cancelled → Docker backend disabled, workers use native CLI on single account
 

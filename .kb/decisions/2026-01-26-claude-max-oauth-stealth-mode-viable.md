@@ -165,31 +165,40 @@ Custom tool names pass through unchanged.
 
 ---
 
-## Implementation Status (Updated 2026-01-26)
+## Implementation Status (Updated 2026-01-28)
 
 **Stealth mode is fully implemented and verified in Dylan's OpenCode fork.**
 
 ### Commits
-- `d494d4708` - feat(provider): add stealth mode for Claude Max OAuth access
-- `1e69d9b03` - fix(provider): prioritize OAuth access token over API key
+- `77e60ac7e` - feat(stealth): implement full pi-ai stealth mode parity for Claude Max OAuth (Jan 28, 2026)
+- `d494d4708` - feat(provider): add stealth mode for Claude Max OAuth access (Jan 26, 2026)
+- `1e69d9b03` - fix(provider): prioritize OAuth access token over API key (Jan 26, 2026)
 
-### Verification
-Tested with `ANTHROPIC_API_KEY=""` (unset) - requests still succeed using OAuth token from `~/.local/share/opencode/auth.json`. Confirms:
-- OAuth tokens detected via `sk-ant-oat` prefix
-- Stealth headers sent when OAuth active
-- Model selection works via CLI (`opencode run --model`)
-- Extended thinking (reasoning) works
+### Key Changes (Jan 28 - Full pi-ai Parity)
+1. **User-Agent format**: Changed from `claude-code/2.0.32` to `claude-cli/2.1.15 (external, cli)`
+2. **System prompt identity**: Prepends `"You are Claude Code, Anthropic's official CLI for Claude."` for Anthropic OAuth
+3. **Full stealth headers**: `x-app: cli`, `anthropic-dangerous-direct-browser-access: true`, `anthropic-beta: claude-code-20250219,oauth-2025-04-20,...`
+4. **SDK auth parameter**: Uses `authToken` instead of `apiKey` for OAuth tokens (`sk-ant-oat-` prefix)
 
-### Beads Issues (all closed)
-- `orch-go-20925` - Main stealth mode feature
-- `orch-go-20926` - Model selection clarification (not a bug - per-prompt by design)
-- `orch-go-20927` - Investigation into OpenCode model architecture
-- `orch-go-20928` - Verification test issue
+### Verification (Jan 28)
+Tested with `ANTHROPIC_API_KEY=""` (unset) and OpenCode server restarted:
+- ✅ Sonnet 4.5 via OAuth: `{"model": "claude-sonnet-4-5-20250929", "provider": "anthropic"}`
+- ✅ Opus 4.5 via OAuth: `{"model": "claude-opus-4-5-20251101", "provider": "anthropic", "tokens": {"cache": {"write": 34439}}}`
+- OAuth tokens from `~/.local/share/opencode/auth.json` used successfully
+
+### Beads Issues
+- `orch-go-20925` - Main stealth mode feature (closed)
+- `orch-go-20926` - Model selection clarification (closed)
+- `orch-go-20927` - Investigation into OpenCode model architecture (closed)
+- `orch-go-20928` - Verification test issue (closed)
 
 ### Usage
 ```bash
+# Restart OpenCode server WITHOUT API key to use OAuth
+ANTHROPIC_API_KEY="" opencode serve --port 4096
+
 # Spawn with Claude Max OAuth via OpenCode
-orch spawn --backend opencode --model anthropic/claude-sonnet-4-5-20250929 investigation "task"
+orch spawn --backend opencode --model anthropic/claude-opus-4-5-20251101 investigation "task"
 ```
 
-OAuth credentials must be present in `~/.local/share/opencode/auth.json` (via `oc auth login`).
+**Important:** The server must be started without `ANTHROPIC_API_KEY` in the environment to use OAuth. If the API key is set, OpenCode uses that instead of OAuth tokens.
