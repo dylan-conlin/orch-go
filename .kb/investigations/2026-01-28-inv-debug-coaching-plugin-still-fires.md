@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Coaching plugin's metadata-based worker detection (session.metadata.role) cannot work because session.created events do NOT include a metadata field in the event structure.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Examined session.created events from event-test.jsonl - the event.properties.info object contains id, title, projectID, directory, permission, and time fields, but NO metadata field; coaching plugin code at line 2011 accesses empty object `{}` for sessionMetadata, so `role === "worker"` check always fails.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The ORCH_WORKER environment variable and x-opencode-env headers may set session metadata on the OpenCode side, but that metadata is not exposed to plugins via session.created events; plugins need an alternative detection mechanism like title-based heuristics or a different API.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Revert to title-based worker detection (hasBeadsId && !isOrchestratorTitle pattern from prior investigation) OR investigate if metadata is accessible via client API rather than events.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-no - This is a bug fix, not an architectural decision.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-28
 **Updated:** 2026-01-28
 **Owner:** Worker Agent
-**Phase:** Investigating
-**Next Step:** Read full coaching plugin code and trace worker detection logic
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -160,15 +160,15 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Event hooks work, but metadata is not exposed** - The session.created event successfully fires and can access basic session info (id, title, projectID), but the metadata field that would contain role='worker' is not included in the event properties available to plugins.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Title-based detection was working** - The prior investigation (2026-01-28-inv-verify-coaching-plugin-worker-detection.md) confirmed that title-based worker detection successfully excluded two worker sessions from coaching alerts while orchestrator sessions continued receiving them.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **The plugin was "upgraded" incorrectly** - Comments in the code (lines 63-74) claim metadata-based detection is "now reliable" and "eliminates the need for complex title-based or tool-path heuristics", but this was implemented without verifying that metadata is actually available in session.created events.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The coaching plugin still fires on workers because the metadata-based detection at lines 2011-2029 never registers workers in the workerSessions map. Specifically, line 2011 reads `const sessionMetadata = info.metadata || {}`, which evaluates to an empty object `{}` because info.metadata doesn't exist in the event structure. Therefore line 2020's check `sessionMetadata.role === "worker"` is always false, workers are never detected, and tool.execute.after treats all sessions as orchestrators.
 
 ---
 
@@ -176,15 +176,18 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Session.created events do NOT include metadata field (verified: examined actual event JSON from event-test.jsonl)
+- ✅ Event hook is functional (verified: event-test plugin successfully logs events)
+- ✅ Session info includes id and title (verified: observed in session.created event structure)
+- ✅ Worker detection code checks sessionMetadata.role (verified: read coaching.ts:2020)
+- ✅ Title-based detection worked in prior verification (verified: read 2026-01-28-inv-verify-coaching-plugin-worker-detection.md)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether metadata is available via OpenCode client API (not attempted)
+- ⚠️ Whether metadata appears in different event types (only checked session.created)
+- ⚠️ Whether orch-go actually sets x-opencode-env-ORCH_WORKER header (assumed based on comments)
+- ⚠️ Title-based detection fix (recommended but not implemented yet)
 
 **What would change this:**
 
@@ -200,21 +203,24 @@ Guidelines:
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Revert to Title-Based Worker Detection** - Replace metadata-based detection with title pattern matching (hasBeadsId && !isOrchestratorTitle).
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Title-based detection was proven working in today's verification (2026-01-28-inv-verify-coaching-plugin-worker-detection.md)
+- Session titles are available in session.created events (confirmed in Finding 4)
+- Pattern is simple: workers have beads IDs in title like `[orch-go-20993]`, orchestrators have `-orch-` pattern
+- No dependency on unavailable metadata field
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Relies on proper session titling by orch-go (if title is wrong, detection fails)
+- Cannot detect ad-hoc worker sessions without beads IDs
+- Title parsing is less elegant than explicit role metadata
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Remove metadata-based detection** - Delete lines 2018-2029 (metadata check that doesn't work)
+2. **Add title-based detection** - Implement pattern: `const hasBeadsId = /\[[\w-]+-\d+\]/.test(sessionTitle); const isOrchestrator = /-orch-/.test(sessionTitle); const isWorker = hasBeadsId && !isOrchestrator;`
+3. **Test with worker spawn** - Spawn a worker and verify coaching alerts are suppressed
+4. **Remove debug logging** - Clean up enhanced debug statements added during investigation
 
 ### Alternative Approaches Considered
 
@@ -259,16 +265,21 @@ Guidelines:
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `/Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins/coaching.ts` - Read full plugin to understand worker detection logic (lines 1-2033, especially event hook at 1993-2030)
+- `/Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins/event-test.ts` - Confirmed event hook pattern works (lines 61-101)
+- `~/.orch/event-test.jsonl` - Examined actual session.created event structure to find missing metadata field
+- `.kb/investigations/2026-01-28-inv-verify-coaching-plugin-worker-detection.md` - Prior investigation showing title-based detection working
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Find recent session.created events with metadata check
+grep "session.created" ~/.orch/event-test.jsonl | tail -5 | jq -c '{timestamp, session_id, role: .properties.info.metadata.role, title: .properties.info.title}'
 
-# [Command description]
-[command]
+# View full session.created event structure
+grep '"event_type":"session.created"' ~/.orch/event-test.jsonl | tail -1 | jq '.'
+
+# Check daemon logs for plugin activity
+tail -200 ~/.orch/daemon.log | grep -A 5 -B 5 "plugin\|coaching\|event"
 ```
 
 **External Documentation:**
