@@ -66,23 +66,27 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: "Test feature" is a decision gate test case, not an actual feature
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Found decision file `.kb/decisions/2026-01-28-test-decision-gate.md` with frontmatter `blocks: keywords: ["test feature", "sample implementation"]` and decision text "Do not proceed with test feature work without explicit acknowledgment." Also found test code in `pkg/spawn/context_test.go:694` using "implement test feature" as test data.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** 
+- /Users/dylanconlin/Documents/personal/orch-go/.kb/decisions/2026-01-28-test-decision-gate.md:3-19
+- /Users/dylanconlin/Documents/personal/orch-go/pkg/spawn/context_test.go:694,721
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** This spawn is itself a test of the decision gate functionality. The fact that this agent was spawned suggests the decision gate either (a) is not implemented, (b) was bypassed for testing, or (c) is implemented but not working. Need to verify which.
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Decision gate is implemented and should have blocked this spawn
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Code in `cmd/orch/spawn_validation.go` implements `checkDecisionConflicts()` which reads `.kb/decisions/` files, parses YAML frontmatter with `blocks.keywords`, and blocks spawns that match unless `--acknowledge-decision` flag is used. The gate checks if task contains keywords (case-insensitive) and returns an error if conflict is found without acknowledgment.
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- /Users/dylanconlin/Documents/personal/orch-go/cmd/orch/spawn_validation.go:398-536 (checkDecisionConflicts and findBlockingDecisions functions)
+- /Users/dylanconlin/Documents/personal/orch-go/cmd/orch/spawn_cmd.go:567 (decision check is called during spawn)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The decision gate IS implemented. The fact that this agent was successfully spawned with task "implement test feature" means either: (a) the gate was bypassed with `--acknowledge-decision` flag, (b) the gate has a bug and didn't detect the keyword match, or (c) spawn bypassed the validation (e.g., via --bypass-triage or programmatic API). Event logs show `spawn.triage_bypassed` which suggests validation may have been skipped.
 
 ---
 
