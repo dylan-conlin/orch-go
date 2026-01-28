@@ -602,13 +602,24 @@
       "created": "2026-01-20",
       "source": ".kb/investigations/2026-01-20-inv-backend-selection-logic-spawn-cmd.md",
       "notes": "Addresses 7+ overlapping decision factors causing repeated bugs. Follows architect recommendations from investigation."
+    },
+    {
+      "id": "feat-052",
+      "title": "Implement Decision Center dashboard section for meta-orchestrator decision-making",
+      "description": "Transform NeedsAttention component into 'Decision Center' with action-oriented categories: Absorb Knowledge (knowledge-producing skill completions), Give Approvals (visual verification needed), Answer Questions (strategic questions), Handle Failures (failed verifications, escalated agents). Creates /api/decisions endpoint that aggregates from agents, questions, and workspace metadata. Frontend uses decisions.ts store and decision-center.svelte component. Manifests 5-tier escalation model in user-facing UI. File targets: cmd/orch/serve_decisions.go (new), web/src/lib/stores/decisions.ts (new), web/src/lib/components/decision-center/decision-center.svelte (new), web/src/routes/+page.svelte (replace NeedsAttention). Acceptance: Meta-orchestrator sees all decision points at a glance grouped by action type, 666px width constraint maintained, escalation levels reflected in UI.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-27",
+      "source": ".kb/investigations/2026-01-27-design-redesign-dashboard-ops-view-meta.md",
+      "notes": "Architect design complete. Implements backend aggregation pattern with 4-phase implementation: API endpoint → store → component → integration. See investigation for full decision fork analysis."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-17",
-    "total_features": 50,
+    "last_updated": "2026-01-27",
+    "total_features": 51,
     "by_status": {
-      "todo": 48,
+      "todo": 49,
       "in_progress": 0,
       "done": 2
     }
