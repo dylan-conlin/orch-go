@@ -1938,7 +1938,7 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       // Special handling for bash commands
       if (tool === "bash") {
-        const command = (input as any).args?.command || ""
+        const command = args?.command || ""
 
         if (isContextCheck(command)) {
           state.contextChecks++
