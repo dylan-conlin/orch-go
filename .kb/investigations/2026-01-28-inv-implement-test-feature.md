@@ -106,15 +106,17 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **This is a meta-test, not a real feature** - The task "implement test feature" is a test case for verifying decision gate functionality. The decision file `.kb/decisions/2026-01-28-test-decision-gate.md` exists specifically to block spawns containing these keywords, making this a test of the gating system itself.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Decision gate implementation exists but fails open** - The gate is fully implemented with keyword matching, YAML parsing, and spawn blocking logic at `spawn_validation.go:398-536`. However, error handling at lines 405-408 returns `nil` on errors, allowing spawns to proceed with only a stderr warning. This is a fail-open design that compromises the gate's effectiveness.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Keyword matching works but wasn't reached** - Manual testing confirmed the keyword matching logic correctly detects "test feature" in the task. The spawn succeeded not because matching failed, but because `findBlockingDecisions()` encountered an error (unknown cause) and the error handler allowed the spawn to proceed.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+The "test feature" is a test scenario to verify decision gate functionality, not an actual feature to implement. The decision gate IS fully implemented in `spawn_validation.go` with keyword matching, YAML parsing, spawn blocking, and acknowledgment bypass. However, this spawn succeeded despite matching the blocked keyword "test feature" because the gate has a fail-open error handling design: any error in decision checking (file read, YAML parse, etc.) allows the spawn to proceed with only a stderr warning.
+
+Root cause: `spawn_validation.go:405-408` catches errors and returns `nil`, allowing spawns when decision checking fails. This is a security/safety issue - blocking decisions should fail-closed (block spawn) rather than fail-open (allow spawn).
 
 ---
 
@@ -122,21 +124,22 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Keyword matching logic works correctly (verified: manual Go program detected "test feature" in task)
+- ✅ Decision file exists with correct YAML frontmatter (verified: read and parsed successfully)
+- ✅ Decision gate is called during spawn (verified: code at spawn_cmd.go:530)
+- ✅ Error handling returns nil on findBlockingDecisions() errors (verified: code at spawn_validation.go:405-408)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ What specific error is returned by `findBlockingDecisions()` for this spawn
+- ⚠️ Whether stderr warning "decision check failed" was actually printed during spawn
+- ⚠️ Whether --no-track or --bypass-triage flags affect decision gate execution path
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Running spawn with explicit logging/debugging to capture the actual error message
+- Adding instrumentation to `checkDecisionConflicts()` to log all decision checks
+- Finding would be wrong if decision gate wasn't called at all (but verified it is called at line 530)
 
 ---
 
