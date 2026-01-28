@@ -71,6 +71,71 @@ Guidelines:
 
 ---
 
+### Finding 2: Added Enhanced Debug Logging
+
+**Evidence:**
+- Added console.error logging to session.created event handler (line ~1996+)
+- Logs full event structure, sessionId, metadata, and worker detection result
+- Added console.error logging to tool.execute.after handler (line ~1708)
+- Logs every tool call with sessionId, isWorker status, workerSessions map size
+- All logs use [coaching:DEBUG] prefix for easy filtering
+
+**Source:** /Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins/coaching.ts:1708, 1996-2030
+
+**Significance:** This instrumentation will reveal: (1) Is session.created firing? (2) What's the actual event structure? (3) Is sessionId consistent? (4) Is workerSessions being populated? Next step is to test with a real worker spawn.
+
+---
+
+### Finding 3: Event Structure Mismatch Discovered
+
+**Evidence:**
+- Event-test plugin successfully logs session.created events (hook is working)
+- BUT: sessionId, metadata.role, and title are all NULL in logged events
+- Recent events from ~/.orch/event-test.jsonl show: `{"session_id":null,"role":null,"title":null}`
+- Event-test plugin accesses event.properties but coaching plugin expects event.properties.info
+- This suggests coaching plugin is reading from wrong path in event object
+
+**Source:** 
+- `grep "session.created" ~/.orch/event-test.jsonl | tail -5`
+- Event-test plugin: .opencode/plugins/event-test.ts:64 (accesses props.sessionID)
+- Coaching plugin: .opencode/plugins/coaching.ts:2003 (accesses (event as any).properties?.info)
+
+**Significance:** **ROOT CAUSE IDENTIFIED** - The coaching plugin expects session metadata at `event.properties.info.metadata`, but the actual event structure has this data somewhere else. This explains why workerSessions map is never populated - the event handler exits early because it can't find the sessionId or metadata.
+
+---
+
+### Finding 4: Session Metadata Not Available in session.created Events
+
+**Evidence:**
+- Examined actual session.created event from event-test.jsonl:
+  ```json
+  {
+    "properties": {
+      "info": {
+        "id": "ses_3f97443b3ffejTFCqZGmnmslhn",
+        "title": "og-feat-implement-strategic-center-28jan-246c [orch-go-20971]",
+        "projectID": "...",
+        "directory": "...",
+        "permission": [...],
+        "time": {...}
+        // NO metadata field!
+      }
+    }
+  }
+  ```
+- The metadata.role field does NOT exist in session.created events
+- Coaching plugin checks for `sessionMetadata.role === "worker"` but sessionMetadata is an empty object `{}`
+- Worker detection code at line 2020 always evaluates to false, so workers are NEVER registered
+- This means workerSessions map remains empty, tool.execute.after treats all sessions as orchestrators
+
+**Source:** 
+- `grep '"event_type":"session.created"' ~/.orch/event-test.jsonl | tail -1 | jq '.'`
+- Coaching plugin: .opencode/plugins/coaching.ts:2011-2020
+
+**Significance:** **The metadata-based worker detection cannot work** - the metadata field simply doesn't exist in session.created events. The plugin needs to use a different detection mechanism. Prior investigation (2026-01-28-inv-verify-coaching-plugin-worker-detection.md) showed title-based detection was working correctly.
+
+---
+
 ### Finding 2: [Brief, descriptive title]
 
 **Evidence:** [Concrete observations, data, examples]
