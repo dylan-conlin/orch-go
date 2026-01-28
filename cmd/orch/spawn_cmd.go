@@ -36,32 +36,33 @@ const DefaultMaxAgents = 5
 
 var (
 	// Spawn command flags
-	spawnSkill             string
-	spawnIssue             string
-	spawnPhases            string
-	spawnMode              string // Implementation mode: tdd or direct
-	spawnBackendFlag       string // Spawn backend: claude or opencode (overrides config and auto-selection)
-	spawnOpus              bool   // Use Opus via Claude CLI in tmux (implies claude mode)
-	spawnValidation        string
-	spawnInline            bool   // Run inline (blocking) with TUI
-	spawnHeadless          bool   // Run headless via HTTP API (automation/scripting)
-	spawnTmux              bool   // Run in tmux window (opt-in, overrides default headless)
-	spawnAttach            bool   // Attach to tmux window after spawning
-	spawnModel             string // Model to use for standalone spawns
-	spawnNoTrack           bool   // Opt-out of beads tracking
-	spawnMCP               string // MCP server config (e.g., "playwright")
-	spawnSkipArtifactCheck bool   // Bypass pre-spawn kb context check
-	spawnMaxAgents         int    // Maximum concurrent agents (0 = use default or env var)
-	spawnAutoInit          bool   // Auto-initialize .orch and .beads if missing
-	spawnLight             bool   // Light tier spawn (skips SYNTHESIS.md requirement)
-	spawnFull              bool   // Full tier spawn (requires SYNTHESIS.md)
-	spawnWorkdir           string // Target project directory (defaults to current directory)
-	spawnGateOnGap         bool   // Block spawn if context quality is too low
-	spawnSkipGapGate       bool   // Explicitly bypass gap gating (documents conscious decision)
-	spawnGapThreshold      int    // Custom gap quality threshold (default 20)
-	spawnForce             bool   // Force spawn even if issue has blocking dependencies
-	spawnBypassTriage      bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
-	spawnDesignWorkspace   string // Design workspace name for ui-design-session → feature-impl handoff
+	spawnSkill               string
+	spawnIssue               string
+	spawnPhases              string
+	spawnMode                string // Implementation mode: tdd or direct
+	spawnBackendFlag         string // Spawn backend: claude or opencode (overrides config and auto-selection)
+	spawnOpus                bool   // Use Opus via Claude CLI in tmux (implies claude mode)
+	spawnValidation          string
+	spawnInline              bool   // Run inline (blocking) with TUI
+	spawnHeadless            bool   // Run headless via HTTP API (automation/scripting)
+	spawnTmux                bool   // Run in tmux window (opt-in, overrides default headless)
+	spawnAttach              bool   // Attach to tmux window after spawning
+	spawnModel               string // Model to use for standalone spawns
+	spawnNoTrack             bool   // Opt-out of beads tracking
+	spawnMCP                 string // MCP server config (e.g., "playwright")
+	spawnSkipArtifactCheck   bool   // Bypass pre-spawn kb context check
+	spawnMaxAgents           int    // Maximum concurrent agents (0 = use default or env var)
+	spawnAutoInit            bool   // Auto-initialize .orch and .beads if missing
+	spawnLight               bool   // Light tier spawn (skips SYNTHESIS.md requirement)
+	spawnFull                bool   // Full tier spawn (requires SYNTHESIS.md)
+	spawnWorkdir             string // Target project directory (defaults to current directory)
+	spawnGateOnGap           bool   // Block spawn if context quality is too low
+	spawnSkipGapGate         bool   // Explicitly bypass gap gating (documents conscious decision)
+	spawnGapThreshold        int    // Custom gap quality threshold (default 20)
+	spawnForce               bool   // Force spawn even if issue has blocking dependencies
+	spawnBypassTriage        bool   // Explicitly bypass triage (documents conscious decision to spawn directly)
+	spawnDesignWorkspace     string // Design workspace name for ui-design-session → feature-impl handoff
+	spawnAcknowledgeDecision string // Acknowledge decision conflict to proceed with spawn
 )
 
 var spawnCmd = &cobra.Command{
@@ -199,6 +200,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
+	spawnCmd.Flags().StringVar(&spawnAcknowledgeDecision, "acknowledge-decision", "", "Acknowledge decision conflict (decision ID to override)")
 }
 
 var (
@@ -522,6 +524,18 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Parse skill requirements to determine what context to gather
 	requires := spawn.ParseSkillRequires(skillContent)
+
+	// Check for decision conflicts - may block spawn if decisions prohibit this work
+	// This gate runs independently of artifact checks
+	decisionResult, err := checkDecisionConflicts(task, projectDir, spawnAcknowledgeDecision)
+	if err != nil {
+		return err
+	}
+
+	// Log decision override if conflict was found and acknowledged
+	if decisionResult.ConflictFound && decisionResult.Acknowledged {
+		logDecisionOverride(task, decisionResult.DecisionID, decisionResult.MatchedOn, skillName, beadsID)
+	}
 
 	// Gather context based on skill requirements (or fall back to default behavior)
 	var kbContext string

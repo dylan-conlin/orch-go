@@ -2,9 +2,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
+	"gopkg.in/yaml.v3"
 )
 
 // GapCheckResult contains the results of a pre-spawn gap check.
@@ -351,4 +355,319 @@ func fetchIssueCommentsForSpawn(beadsID string) []spawn.IssueComment {
 	}
 
 	return comments
+}
+
+// DecisionBlock represents a block rule in decision frontmatter.
+type DecisionBlock struct {
+	Keywords []string `yaml:"keywords"`
+	Patterns []string `yaml:"patterns"`
+}
+
+// DecisionFrontmatter represents the YAML frontmatter in a decision file.
+type DecisionFrontmatter struct {
+	Blocks []DecisionBlock `yaml:"blocks"`
+}
+
+// DecisionConflict represents a decision that blocks a spawn.
+type DecisionConflict struct {
+	DecisionID   string   // Decision filename without extension
+	DecisionPath string   // Full path to decision file
+	Title        string   // Decision title
+	Summary      string   // First paragraph of decision
+	MatchedOn    []string // Keywords or patterns that matched
+}
+
+// DecisionOverrideLog represents an entry in the decision override log.
+type DecisionOverrideLog struct {
+	Timestamp  int64  `json:"timestamp"`
+	Task       string `json:"task"`
+	DecisionID string `json:"decision_id"`
+	MatchedOn  string `json:"matched_on"`
+	SkillName  string `json:"skill_name,omitempty"`
+	BeadsID    string `json:"beads_id,omitempty"`
+}
+
+// DecisionCheckResult contains the result of a decision conflict check.
+type DecisionCheckResult struct {
+	ConflictFound bool
+	Acknowledged  bool
+	DecisionID    string
+	MatchedOn     string
+}
+
+// checkDecisionConflicts checks if any decisions block this spawn.
+// Returns an error if a decision conflict is found and not acknowledged.
+// Also returns metadata about the check for logging purposes.
+func checkDecisionConflicts(task, projectDir, acknowledgedDecision string) (*DecisionCheckResult, error) {
+	result := &DecisionCheckResult{}
+
+	conflicts, err := findBlockingDecisions(task, projectDir)
+	if err != nil {
+		// Don't fail spawn on decision check errors - log and continue
+		fmt.Fprintf(os.Stderr, "Warning: decision check failed: %v\n", err)
+		return result, nil
+	}
+
+	if len(conflicts) == 0 {
+		return result, nil
+	}
+
+	result.ConflictFound = true
+
+	// Check if conflict was acknowledged
+	for _, conflict := range conflicts {
+		if conflict.DecisionID == acknowledgedDecision {
+			// Conflict acknowledged, allow spawn but log it
+			result.Acknowledged = true
+			result.DecisionID = conflict.DecisionID
+			result.MatchedOn = strings.Join(conflict.MatchedOn, ", ")
+			fmt.Fprintf(os.Stderr, "⚠️  Decision conflict acknowledged: %s\n", conflict.DecisionID)
+			return result, nil
+		}
+	}
+
+	// Display conflict warning
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "⚠️ ⚠️ ⚠️  DECISION CONFLICT  ⚠️ ⚠️ ⚠️\n")
+	fmt.Fprintf(os.Stderr, "\n")
+
+	for _, conflict := range conflicts {
+		fmt.Fprintf(os.Stderr, "Decision: %s\n", conflict.Title)
+		fmt.Fprintf(os.Stderr, "File: %s\n", conflict.DecisionID)
+		fmt.Fprintf(os.Stderr, "\n")
+		if conflict.Summary != "" {
+			fmt.Fprintf(os.Stderr, "%s\n", conflict.Summary)
+			fmt.Fprintf(os.Stderr, "\n")
+		}
+		if len(conflict.MatchedOn) > 0 {
+			fmt.Fprintf(os.Stderr, "Matched on: %s\n", strings.Join(conflict.MatchedOn, ", "))
+			fmt.Fprintf(os.Stderr, "\n")
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "To proceed, acknowledge this decision:\n")
+	fmt.Fprintf(os.Stderr, "  orch spawn --acknowledge-decision %s [other flags] <skill> \"<task>\"\n", conflicts[0].DecisionID)
+	fmt.Fprintf(os.Stderr, "\n")
+
+	result.DecisionID = conflicts[0].DecisionID
+	result.MatchedOn = strings.Join(conflicts[0].MatchedOn, ", ")
+	return result, fmt.Errorf("spawn blocked: decision conflict (use --acknowledge-decision to override)")
+}
+
+// findBlockingDecisions finds decisions that block the given task.
+func findBlockingDecisions(task, projectDir string) ([]DecisionConflict, error) {
+	// Find .kb directory
+	kbDir := filepath.Join(projectDir, ".kb", "decisions")
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		return nil, nil // No .kb/decisions directory, no conflicts
+	}
+
+	// Extract keywords from task
+	taskKeywords := spawn.ExtractKeywords(task, 10)
+	taskKeywordList := strings.Fields(strings.ToLower(taskKeywords))
+	taskLower := strings.ToLower(task)
+
+	// Read all decision files
+	files, err := ioutil.ReadDir(kbDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read decisions directory: %w", err)
+	}
+
+	var conflicts []DecisionConflict
+
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
+			continue
+		}
+
+		decisionPath := filepath.Join(kbDir, file.Name())
+		content, err := ioutil.ReadFile(decisionPath)
+		if err != nil {
+			continue // Skip files we can't read
+		}
+
+		// Parse frontmatter
+		frontmatter, err := parseDecisionFrontmatter(string(content))
+		if err != nil || frontmatter == nil || len(frontmatter.Blocks) == 0 {
+			continue // No blocks defined, skip
+		}
+
+		// Check if any blocks match
+		var matchedOn []string
+		for _, block := range frontmatter.Blocks {
+			// Check keywords
+			for _, keyword := range block.Keywords {
+				keywordLower := strings.ToLower(keyword)
+				// Check if keyword appears in task
+				if strings.Contains(taskLower, keywordLower) {
+					matchedOn = append(matchedOn, keyword)
+				}
+				// Check if keyword matches any extracted task keywords
+				for _, taskKw := range taskKeywordList {
+					if strings.Contains(taskKw, keywordLower) || strings.Contains(keywordLower, taskKw) {
+						matchedOn = append(matchedOn, keyword)
+					}
+				}
+			}
+
+			// Check patterns (file patterns)
+			for _, pattern := range block.Patterns {
+				if strings.Contains(taskLower, pattern) {
+					matchedOn = append(matchedOn, "pattern: "+pattern)
+				}
+			}
+		}
+
+		if len(matchedOn) > 0 {
+			// Extract decision title and summary
+			title, summary := extractDecisionInfo(string(content))
+			decisionID := strings.TrimSuffix(file.Name(), ".md")
+
+			conflicts = append(conflicts, DecisionConflict{
+				DecisionID:   decisionID,
+				DecisionPath: decisionPath,
+				Title:        title,
+				Summary:      summary,
+				MatchedOn:    matchedOn,
+			})
+		}
+	}
+
+	return conflicts, nil
+}
+
+// parseDecisionFrontmatter parses YAML frontmatter from a decision file.
+// Returns nil if no frontmatter found or parsing fails.
+func parseDecisionFrontmatter(content string) (*DecisionFrontmatter, error) {
+	// Check if content starts with YAML frontmatter (---)
+	if !strings.HasPrefix(content, "---\n") {
+		return nil, nil
+	}
+
+	// Find the closing ---
+	endIdx := strings.Index(content[4:], "\n---\n")
+	if endIdx == -1 {
+		return nil, nil
+	}
+
+	// Extract YAML content
+	yamlContent := content[4 : 4+endIdx]
+
+	// Parse YAML
+	var frontmatter DecisionFrontmatter
+	if err := yaml.Unmarshal([]byte(yamlContent), &frontmatter); err != nil {
+		return nil, err
+	}
+
+	return &frontmatter, nil
+}
+
+// extractDecisionInfo extracts the title and first paragraph from a decision file.
+func extractDecisionInfo(content string) (title, summary string) {
+	lines := strings.Split(content, "\n")
+
+	// Skip frontmatter if present
+	startIdx := 0
+	if strings.HasPrefix(content, "---\n") {
+		endIdx := strings.Index(content[4:], "\n---\n")
+		if endIdx != -1 {
+			startIdx = len(strings.Split(content[:4+endIdx+5], "\n"))
+		}
+	}
+
+	// Find title (first # heading)
+	titleRe := regexp.MustCompile(`^#\s+(.+)$`)
+	for i := startIdx; i < len(lines); i++ {
+		if match := titleRe.FindStringSubmatch(lines[i]); match != nil {
+			title = match[1]
+			break
+		}
+	}
+
+	// Extract first paragraph after title (non-empty, non-heading lines)
+	var summaryLines []string
+	inSummary := false
+	for i := startIdx; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+
+		// Skip until we find the title
+		if !inSummary && strings.HasPrefix(line, "# ") {
+			inSummary = true
+			continue
+		}
+
+		if !inSummary {
+			continue
+		}
+
+		// Stop at next heading or end of first paragraph
+		if strings.HasPrefix(line, "#") {
+			break
+		}
+
+		// Skip empty lines before we have content
+		if line == "" && len(summaryLines) == 0 {
+			continue
+		}
+
+		// Stop at first empty line after we have content (end of paragraph)
+		if line == "" && len(summaryLines) > 0 {
+			break
+		}
+
+		summaryLines = append(summaryLines, line)
+
+		// Limit to ~3 lines for summary
+		if len(summaryLines) >= 3 {
+			break
+		}
+	}
+
+	summary = strings.Join(summaryLines, " ")
+	return title, summary
+}
+
+// logDecisionOverride logs a decision override to ~/.orch/decision-overrides.jsonl.
+func logDecisionOverride(task, decisionID, matchedOn, skillName, beadsID string) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to get home directory: %v\n", err)
+		return
+	}
+
+	orchDir := filepath.Join(homeDir, ".orch")
+	if err := os.MkdirAll(orchDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to create .orch directory: %v\n", err)
+		return
+	}
+
+	logPath := filepath.Join(orchDir, "decision-overrides.jsonl")
+
+	entry := DecisionOverrideLog{
+		Timestamp:  time.Now().Unix(),
+		Task:       task,
+		DecisionID: decisionID,
+		MatchedOn:  matchedOn,
+		SkillName:  skillName,
+		BeadsID:    beadsID,
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to marshal decision override log: %v\n", err)
+		return
+	}
+
+	// Append to log file
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to open decision override log: %v\n", err)
+		return
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(string(data) + "\n"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write decision override log: %v\n", err)
+		return
+	}
 }

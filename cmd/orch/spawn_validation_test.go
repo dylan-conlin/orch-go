@@ -1,0 +1,348 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestParseDecisionFrontmatter(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    *DecisionFrontmatter
+		wantErr bool
+	}{
+		{
+			name: "valid frontmatter with blocks",
+			content: `---
+blocks:
+  - keywords: ["test", "sample"]
+    patterns: ["**/test/**"]
+---
+
+# Decision Title
+
+Content here.`,
+			want: &DecisionFrontmatter{
+				Blocks: []DecisionBlock{
+					{
+						Keywords: []string{"test", "sample"},
+						Patterns: []string{"**/test/**"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no frontmatter",
+			content: `# Decision Title
+
+Content here.`,
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name: "empty frontmatter",
+			content: `---
+---
+
+# Decision Title
+
+Content here.`,
+			want:    &DecisionFrontmatter{},
+			wantErr: false,
+		},
+		{
+			name: "multiple blocks",
+			content: `---
+blocks:
+  - keywords: ["test"]
+  - keywords: ["sample"]
+    patterns: ["**/*.test.ts"]
+---
+
+# Decision Title`,
+			want: &DecisionFrontmatter{
+				Blocks: []DecisionBlock{
+					{Keywords: []string{"test"}},
+					{
+						Keywords: []string{"sample"},
+						Patterns: []string{"**/*.test.ts"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDecisionFrontmatter(tt.content)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseDecisionFrontmatter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.want == nil && got != nil {
+				t.Errorf("parseDecisionFrontmatter() = %v, want nil", got)
+				return
+			}
+			if tt.want != nil && got == nil {
+				t.Errorf("parseDecisionFrontmatter() = nil, want %v", tt.want)
+				return
+			}
+			if tt.want != nil && got != nil {
+				if len(got.Blocks) != len(tt.want.Blocks) {
+					t.Errorf("parseDecisionFrontmatter() blocks count = %d, want %d", len(got.Blocks), len(tt.want.Blocks))
+					return
+				}
+				for i := range tt.want.Blocks {
+					if len(got.Blocks[i].Keywords) != len(tt.want.Blocks[i].Keywords) {
+						t.Errorf("parseDecisionFrontmatter() block %d keywords count = %d, want %d", i, len(got.Blocks[i].Keywords), len(tt.want.Blocks[i].Keywords))
+					}
+					if len(got.Blocks[i].Patterns) != len(tt.want.Blocks[i].Patterns) {
+						t.Errorf("parseDecisionFrontmatter() block %d patterns count = %d, want %d", i, len(got.Blocks[i].Patterns), len(tt.want.Blocks[i].Patterns))
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestExtractDecisionInfo(t *testing.T) {
+	tests := []struct {
+		name        string
+		content     string
+		wantTitle   string
+		wantSummary string
+	}{
+		{
+			name: "basic decision",
+			content: `# Decision: Test Decision
+
+This is the first paragraph.
+It continues here.
+
+## Context
+
+More content.`,
+			wantTitle:   "Decision: Test Decision",
+			wantSummary: "This is the first paragraph. It continues here.",
+		},
+		{
+			name: "decision with frontmatter",
+			content: `---
+blocks:
+  - keywords: ["test"]
+---
+
+# Decision: With Frontmatter
+
+Summary paragraph here.
+
+## Context`,
+			wantTitle:   "Decision: With Frontmatter",
+			wantSummary: "Summary paragraph here.",
+		},
+		{
+			name: "decision with empty lines",
+			content: `# Decision Title
+
+
+First paragraph after empty lines.
+
+Second paragraph.`,
+			wantTitle:   "Decision Title",
+			wantSummary: "First paragraph after empty lines.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTitle, gotSummary := extractDecisionInfo(tt.content)
+			if gotTitle != tt.wantTitle {
+				t.Errorf("extractDecisionInfo() title = %q, want %q", gotTitle, tt.wantTitle)
+			}
+			if gotSummary != tt.wantSummary {
+				t.Errorf("extractDecisionInfo() summary = %q, want %q", gotSummary, tt.wantSummary)
+			}
+		})
+	}
+}
+
+func TestFindBlockingDecisions(t *testing.T) {
+	// Create temp directory with test decisions
+	tmpDir := t.TempDir()
+	kbDir := filepath.Join(tmpDir, ".kb", "decisions")
+	if err := os.MkdirAll(kbDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create test decision files
+	decision1 := `---
+blocks:
+  - keywords: ["coaching plugin", "worker detection"]
+---
+
+# Decision: Test Decision 1
+
+This blocks coaching plugin work.
+`
+	if err := os.WriteFile(filepath.Join(kbDir, "2026-01-28-test-decision-1.md"), []byte(decision1), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	decision2 := `# Decision: No Blocks
+
+This decision has no blocks frontmatter.
+`
+	if err := os.WriteFile(filepath.Join(kbDir, "2026-01-28-test-decision-2.md"), []byte(decision2), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	decision3 := `---
+blocks:
+  - patterns: ["**/api/**"]
+---
+
+# Decision: Pattern Block
+
+This blocks API changes.
+`
+	if err := os.WriteFile(filepath.Join(kbDir, "2026-01-28-test-decision-3.md"), []byte(decision3), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name          string
+		task          string
+		wantConflicts int
+		wantDecisions []string
+	}{
+		{
+			name:          "matches keyword",
+			task:          "fix coaching plugin worker detection",
+			wantConflicts: 1,
+			wantDecisions: []string{"2026-01-28-test-decision-1"},
+		},
+		{
+			name:          "no match",
+			task:          "implement new feature",
+			wantConflicts: 0,
+			wantDecisions: nil,
+		},
+		{
+			name:          "matches pattern",
+			task:          "update api endpoint",
+			wantConflicts: 1,
+			wantDecisions: []string{"2026-01-28-test-decision-3"},
+		},
+		{
+			name:          "partial keyword match",
+			task:          "coaching improvements",
+			wantConflicts: 1,
+			wantDecisions: []string{"2026-01-28-test-decision-1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conflicts, err := findBlockingDecisions(tt.task, tmpDir)
+			if err != nil {
+				t.Errorf("findBlockingDecisions() error = %v", err)
+				return
+			}
+			if len(conflicts) != tt.wantConflicts {
+				t.Errorf("findBlockingDecisions() conflicts = %d, want %d", len(conflicts), tt.wantConflicts)
+				return
+			}
+			if tt.wantDecisions != nil {
+				for i, wantID := range tt.wantDecisions {
+					if conflicts[i].DecisionID != wantID {
+						t.Errorf("findBlockingDecisions() conflict[%d] = %s, want %s", i, conflicts[i].DecisionID, wantID)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCheckDecisionConflicts(t *testing.T) {
+	// Create temp directory with test decision
+	tmpDir := t.TempDir()
+	kbDir := filepath.Join(tmpDir, ".kb", "decisions")
+	if err := os.MkdirAll(kbDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	decision := `---
+blocks:
+  - keywords: ["blocked feature"]
+---
+
+# Decision: Block Feature
+
+This blocks the feature.
+`
+	if err := os.WriteFile(filepath.Join(kbDir, "2026-01-28-block-test.md"), []byte(decision), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name                 string
+		task                 string
+		acknowledgedDecision string
+		wantErr              bool
+		wantConflictFound    bool
+		wantAcknowledged     bool
+	}{
+		{
+			name:                 "no conflict",
+			task:                 "allowed feature",
+			acknowledgedDecision: "",
+			wantErr:              false,
+			wantConflictFound:    false,
+			wantAcknowledged:     false,
+		},
+		{
+			name:                 "conflict not acknowledged",
+			task:                 "implement blocked feature",
+			acknowledgedDecision: "",
+			wantErr:              true,
+			wantConflictFound:    true,
+			wantAcknowledged:     false,
+		},
+		{
+			name:                 "conflict acknowledged",
+			task:                 "implement blocked feature",
+			acknowledgedDecision: "2026-01-28-block-test",
+			wantErr:              false,
+			wantConflictFound:    true,
+			wantAcknowledged:     true,
+		},
+		{
+			name:                 "conflict acknowledged with wrong ID",
+			task:                 "implement blocked feature",
+			acknowledgedDecision: "wrong-decision-id",
+			wantErr:              true,
+			wantConflictFound:    true,
+			wantAcknowledged:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := checkDecisionConflicts(tt.task, tmpDir, tt.acknowledgedDecision)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkDecisionConflicts() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if result.ConflictFound != tt.wantConflictFound {
+				t.Errorf("checkDecisionConflicts() ConflictFound = %v, want %v", result.ConflictFound, tt.wantConflictFound)
+			}
+			if result.Acknowledged != tt.wantAcknowledged {
+				t.Errorf("checkDecisionConflicts() Acknowledged = %v, want %v", result.Acknowledged, tt.wantAcknowledged)
+			}
+		})
+	}
+}
