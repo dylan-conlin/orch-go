@@ -605,21 +605,33 @@
     },
     {
       "id": "feat-052",
-      "title": "Implement Decision Center dashboard section for meta-orchestrator decision-making",
-      "description": "Transform NeedsAttention component into 'Decision Center' with action-oriented categories: Absorb Knowledge (knowledge-producing skill completions), Give Approvals (visual verification needed), Answer Questions (strategic questions), Handle Failures (failed verifications, escalated agents). Creates /api/decisions endpoint that aggregates from agents, questions, and workspace metadata. Frontend uses decisions.ts store and decision-center.svelte component. Manifests 5-tier escalation model in user-facing UI. File targets: cmd/orch/serve_decisions.go (new), web/src/lib/stores/decisions.ts (new), web/src/lib/components/decision-center/decision-center.svelte (new), web/src/routes/+page.svelte (replace NeedsAttention). Acceptance: Meta-orchestrator sees all decision points at a glance grouped by action type, 666px width constraint maintained, escalation levels reflected in UI.",
+      "title": "Implement unified Strategic Center with Decision Center + Knowledge State",
+      "description": "Transform NeedsAttention component into 'Strategic Center' with 5 action-oriented categories: Absorb Knowledge (knowledge-producing skill completions), Give Approvals (visual verification needed), Answer Questions (strategic questions), Handle Failures (failed verifications, escalated agents), Tend Knowledge (synthesis opportunities, pending promotions, stale decisions, investigation-promotions). Creates /api/decisions and /api/kb-health endpoints. Frontend uses decisions.ts and kb-health.ts stores with decision-center.svelte component. Manifests 5-tier escalation model + knowledge hygiene in user-facing UI. File targets: cmd/orch/serve_decisions.go (new), cmd/orch/serve_kb_health.go (new), web/src/lib/stores/decisions.ts (new), web/src/lib/stores/kb-health.ts (new), web/src/lib/components/decision-center/decision-center.svelte (new), web/src/lib/components/decision-center/tend-knowledge.svelte (new), web/src/routes/+page.svelte (replace NeedsAttention). Acceptance: Meta-orchestrator sees all decision points AND knowledge hygiene at a glance grouped by action type, 666px width constraint maintained, kb reflect signals surfaced.",
       "status": "todo",
       "skill": "feature-impl",
       "priority": "high",
       "created": "2026-01-27",
-      "source": ".kb/investigations/2026-01-27-design-redesign-dashboard-ops-view-meta.md",
-      "notes": "Architect design complete. Implements backend aggregation pattern with 4-phase implementation: API endpoint → store → component → integration. See investigation for full decision fork analysis."
+      "updated": "2026-01-28",
+      "source": ".kb/investigations/2026-01-28-inv-design-unified-strategic-center-dashboard.md",
+      "notes": "Extended from original Decision Center design. 5 categories: Absorb Knowledge, Give Approvals, Answer Questions, Handle Failures, Tend Knowledge. Leverages existing kb reflect backend for knowledge hygiene signals. 4-phase implementation: API endpoints → stores → components → integration."
+    },
+    {
+      "id": "feat-053",
+      "title": "Add /api/kb-health endpoint for knowledge hygiene signals",
+      "description": "Create /api/kb-health endpoint in serve.go that calls kb reflect --format json --limit 5 for each reflection type (synthesis, promote, stale, investigation-promotion). Returns aggregated KBHealthResponse with counts and top items per category. 5-minute cache TTL. Graceful degradation if kb CLI unavailable (return empty response). Uses binutil pattern for kb CLI resolution. File targets: cmd/orch/serve_kb_health.go (new). Out of scope: Auto-issue creation (use kb reflect --create-issue directly). Acceptance: /api/kb-health returns synthesis opportunities, promotion candidates, stale decisions, and investigation-promotions with counts and preview items.",
+      "status": "todo",
+      "skill": "feature-impl",
+      "priority": "high",
+      "created": "2026-01-28",
+      "source": ".kb/investigations/2026-01-28-inv-design-unified-strategic-center-dashboard.md",
+      "notes": "Foundation for Strategic Center knowledge surfaces. Phase 1 of feat-052 implementation sequence."
     }
   ],
   "meta": {
-    "last_updated": "2026-01-27",
-    "total_features": 51,
+    "last_updated": "2026-01-28",
+    "total_features": 53,
     "by_status": {
-      "todo": 49,
+      "todo": 51,
       "in_progress": 0,
       "done": 2
     }
