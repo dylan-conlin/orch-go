@@ -4,13 +4,13 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 ## Summary (D.E.K.N.)
 
-**Delta:** OpenCode's plugin system can achieve 85% of Claude Code's native HUD pattern using existing hooks, but requires fork modification for true mid-turn XML tag injection.
+**Delta:** OpenCode's `experimental.chat.system.transform` hook provides per-turn system prompt injection - exactly what's needed for dynamic HUD. No fork modification required.
 
-**Evidence:** Analyzed llm.ts system prompt construction, plugin hook signatures, session-compaction plugin pattern, and Claude Code's teammate-message XML injection mechanism.
+**Evidence:** Post-upstream-sync analysis confirms hook receives `sessionID` and mutable `system: string[]` array on every LLM call. This is the primary injection point.
 
-**Knowledge:** Three implementation tiers possible: (1) Plugin-only achievable now, (2) System prompt transform hook exists but is experimental, (3) True mid-turn injection requires OpenCode fork. The value/cost tradeoff favors starting with plugin-only pattern.
+**Knowledge:** Single-tier implementation: use `experimental.chat.system.transform` for dynamic HUD injection per-turn. The hook is now upstream with sessionID support (commit 4752c8315). Supplementary hooks (session.compacting, tool.execute.before) available for edge cases.
 
-**Next:** Phase 1 implementation recommended using existing plugin hooks (session.created, compacting, tool.execute.before) without fork changes.
+**Next:** Implement `orch-hud.ts` plugin using `experimental.chat.system.transform` as primary injection mechanism.
 
 **Promote to Decision:** recommend-yes - Establishes architectural pattern for agent context injection that will guide future development.
 
@@ -24,8 +24,8 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 **Updated:** 2026-01-27
 **Owner:** Architect agent
 **Phase:** Complete
-**Next Step:** None - ready for orchestrator review
-**Status:** Complete
+**Next Step:** Implement orch-hud.ts plugin using experimental.chat.system.transform
+**Status:** Updated - approach revised post-upstream-sync
 
 **Patches-Decision:** N/A
 **Extracted-From:** N/A
