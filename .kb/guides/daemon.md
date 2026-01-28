@@ -83,6 +83,7 @@ Daemon infers skill from issue type (NOT labels):
 | `investigation` | `investigation` | Understand how something works |
 | `feature` | `feature-impl` | Build new capability |
 | `task` | `feature-impl` | Generic implementation work |
+| `question` | `investigation` | Answer a specific question |
 | `epic` | (not spawnable) | Container for child issues |
 | `chore` | (not spawnable) | Non-agent maintenance work |
 
@@ -91,6 +92,7 @@ Daemon infers skill from issue type (NOT labels):
 bd create "fix login bug" --type bug          # → systematic-debugging
 bd create "add dark mode" --type feature      # → feature-impl
 bd create "how does auth work" --type investigation  # → investigation
+bd create "what is the db schema" --type question    # → investigation
 ```
 
 **Common mistake:** Missing or null type causes spawn failure. Always specify `--type`.

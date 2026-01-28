@@ -792,7 +792,7 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 		if issue.IssueType == "epic" && issue.HasLabel(d.Config.Label) {
 			return fmt.Sprintf("type 'epic' not spawnable (children will be processed instead)")
 		}
-		return fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation)", issue.IssueType)
+		return fmt.Sprintf("type '%s' not spawnable (must be bug/feature/task/investigation/question)", issue.IssueType)
 	}
 
 	// Check for blocked status

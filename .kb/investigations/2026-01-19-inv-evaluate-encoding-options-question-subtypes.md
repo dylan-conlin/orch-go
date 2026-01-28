@@ -105,6 +105,7 @@ Tested: `bd ready --type question --label subtype:factual` would work today (no 
 - `bd ready` excludes questions by default (they're not Work nodes)
 - `bd ready --type question` shows questions separately
 - Daemon's `IsSpawnableType()` rejects `question` type (only allows bug/feature/task/investigation)
+  - **UPDATE 2026-01-27:** Resolved - `question` type now maps to `investigation` skill in daemon spawn logic
 
 **Source:** `.kb/models/decidability-graph.md:246-260`, `pkg/daemon/issue_type.go`
 

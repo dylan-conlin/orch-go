@@ -237,6 +237,7 @@ func TestIsSpawnableType(t *testing.T) {
 		{"feature", true},
 		{"task", true},
 		{"investigation", true},
+		{"question", true},
 		{"epic", false},
 		{"chore", false},
 		{"unknown", false},
@@ -467,6 +468,7 @@ func TestInferSkill(t *testing.T) {
 		{"feature", "feature-impl", false},
 		{"task", "feature-impl", false},
 		{"investigation", "investigation", false},
+		{"question", "investigation", false},
 		{"epic", "", true},
 		{"unknown", "", true},
 	}
