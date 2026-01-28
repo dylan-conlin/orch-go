@@ -60,6 +60,9 @@
 	import { QuestionsSection } from '$lib/components/questions-section';
 	import { FrontierSection } from '$lib/components/frontier-section';
 	import { frontier } from '$lib/stores/frontier';
+	import { DecisionCenter } from '$lib/components/decision-center';
+	import { decisions } from '$lib/stores/decisions';
+	import { kbHealth } from '$lib/stores/kb-health';
 
 	// Filter and sort state
 	let statusFilter: AgentState | 'all' = 'all';
@@ -83,7 +86,8 @@
 		orchestratorSessions: true, // Orchestrator sessions expanded by default (important visibility)
 		services: true, // Services expanded by default (important visibility)
 		coaching: true, // Coaching metrics expanded by default
-		frontier: true // Frontier expanded by default (shows decidability state)
+		frontier: true, // Frontier expanded by default (shows decidability state)
+		decisionCenter: true // Decision Center expanded by default (strategic decisions)
 	};
 	
 	// Track whether component has mounted and loaded initial state
@@ -172,6 +176,8 @@
 			services.fetch();
 			questions.fetch();
 			frontier.fetch();
+			decisions.fetch();
+			kbHealth.fetch();
 		};
 
 		// Use requestIdleCallback for better performance, with setTimeout fallback
@@ -203,7 +209,9 @@
 				orchestratorSessions.fetch(),
 				services.fetch(),
 				questions.fetch(),
-				frontier.fetch()
+				frontier.fetch(),
+				decisions.fetch(),
+				kbHealth.fetch()
 			]).catch(console.error);
 		}, 60000);
 
@@ -536,8 +544,8 @@
 			</div>
 		{/if}
 
-		<!-- Needs Attention (consolidated errors, pending reviews, blocked) -->
-		<NeedsAttention />
+		<!-- Strategic Center (decision center with knowledge health) -->
+		<DecisionCenter bind:expanded={sectionState.decisionCenter} />
 
 		<!-- Recent Wins (completed in last 24h) -->
 		<RecentWins />

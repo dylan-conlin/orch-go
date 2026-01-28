@@ -1704,6 +1704,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // Check if this is a worker session (already detected in session.created)
       const isWorker = workerSessions.get(sessionId) === true
       
+      // ENHANCED DEBUG: Log worker check for every tool call
+      console.error(`[coaching:DEBUG] tool.execute.after: sessionId=${sessionId}, tool=${tool}, isWorker=${isWorker}, workerSessions.has(${sessionId})=${workerSessions.has(sessionId)}, workerSessions.size=${workerSessions.size}`)
+      
       if (isWorker) {
         // Track worker-specific health metrics instead of orchestrator metrics
         let workerState = workerHealthStates.get(sessionId)
@@ -1991,8 +1994,9 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
      * This is set at session creation time BEFORE any tool calls occur.
      */
     event: async ({ event }) => {
-      // Log ALL events for debugging
-      log(`Event received: type=${event.type}`)
+      // ENHANCED DEBUG: Log ALL events with full structure
+      console.error(`[coaching:DEBUG] Event received: type=${event.type}`)
+      console.error(`[coaching:DEBUG] Event full structure:`, JSON.stringify(event, null, 2))
       
       // Only handle session.created events
       if (event.type !== "session.created") {
@@ -2001,8 +2005,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
 
       // Extract session info from event properties
       const info = (event as any).properties?.info
+      console.error(`[coaching:DEBUG] session.created info:`, JSON.stringify(info, null, 2))
+      
       if (!info) {
-        log("Event: No info in session.created event properties, skipping")
+        console.error("[coaching:DEBUG] Event: No info in session.created event properties, skipping")
         return
       }
 
@@ -2010,8 +2016,10 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       const sessionTitle = info.title || ""
       const sessionMetadata = info.metadata || {}
 
+      console.error(`[coaching:DEBUG] Extracted sessionId=${sessionId}, title="${sessionTitle}", metadata=`, JSON.stringify(sessionMetadata, null, 2))
+
       if (!sessionId) {
-        log("Event: No sessionID in event properties, skipping")
+        console.error("[coaching:DEBUG] Event: No sessionID in event properties, skipping")
         return
       }
 
@@ -2019,13 +2027,16 @@ export const CoachingPlugin: Plugin = async ({ directory, client }) => {
       // OpenCode sets this to "worker" when x-opencode-env-ORCH_WORKER header is present
       const isWorker = sessionMetadata.role === "worker"
       
+      console.error(`[coaching:DEBUG] isWorker check: sessionMetadata.role="${sessionMetadata.role}", isWorker=${isWorker}`)
+      
       if (isWorker) {
         workerSessions.set(sessionId, true)
-        log(`Worker detected (metadata.role): ${sessionId}, title: ${sessionTitle}`)
+        console.error(`[coaching:DEBUG] ✅ Worker detected and registered: ${sessionId} title="${sessionTitle}"`)
+        console.error(`[coaching:DEBUG] workerSessions map now has ${workerSessions.size} entries`)
         // Also log to stderr for visibility without DEBUG flag
         console.error(`[coaching] Worker detected: ${sessionId} title="${sessionTitle}"`)
       } else {
-        log(`Orchestrator session (will receive coaching): ${sessionId}, title: ${sessionTitle}`)
+        console.error(`[coaching:DEBUG] Orchestrator session (will receive coaching): ${sessionId}, title: ${sessionTitle}`)
       }
     },
   }
