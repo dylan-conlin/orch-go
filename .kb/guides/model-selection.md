@@ -246,3 +246,6 @@ orch spawn --backend docker investigation "task"
 - `.kb/investigations/2026-01-09-inv-anthropic-oauth-community-workarounds.md` - Why workarounds failed
 - `.kb/investigations/2026-01-19-inv-test-deepseek-v3-function-calling.md` - DeepSeek V3 validation
 - `.kb/investigations/2026-01-21-inv-analyze-gpt-orchestrator-session-users.md` - GPT-5.2 analysis
+
+### Benchmarks
+- `.kb/benchmarks/2026-01-28-logout-fix-6-model-comparison.md` - 6 models on debugging task (Codex, DeepSeek passed; Opus, Sonnet, GPT, Gemini failed)
