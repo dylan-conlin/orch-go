@@ -3,6 +3,7 @@
 package tmux
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,8 +53,39 @@ windows:
 {{- end}}
 `
 
+// parseProcfile parses a Procfile and returns a map of service name to command.
+// Returns nil if Procfile doesn't exist or can't be parsed.
+func parseProcfile(projectDir string) map[string]string {
+	procfilePath := filepath.Join(projectDir, "Procfile")
+	file, err := os.Open(procfilePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	commands := make(map[string]string)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Parse "service: command" format
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			service := strings.TrimSpace(parts[0])
+			command := strings.TrimSpace(parts[1])
+			commands[service] = command
+		}
+	}
+	return commands
+}
+
 // GenerateTmuxinatorConfig generates a tmuxinator configuration for a project.
 // It queries the port registry for allocated ports and builds server pane commands.
+// If a Procfile exists in the project directory, it uses those commands instead
+// of auto-generating them.
 func GenerateTmuxinatorConfig(projectName, projectDir string, portRegistry *port.Registry) (*TmuxinatorConfig, error) {
 	// Get port allocations for this project
 	var allocations []port.Allocation
@@ -61,11 +93,26 @@ func GenerateTmuxinatorConfig(projectName, projectDir string, portRegistry *port
 		allocations = portRegistry.ListByProject(projectName)
 	}
 
+	// Try to parse Procfile for commands
+	procfileCommands := parseProcfile(projectDir)
+
 	// Build server panes from allocations
 	serverPanes := make([]ServerPane, 0)
 	for _, alloc := range allocations {
+		var command string
+		// Use Procfile command if available for this service
+		if procfileCommands != nil {
+			if cmd, ok := procfileCommands[alloc.Service]; ok {
+				command = cmd
+			}
+		}
+		// Fall back to auto-generated command
+		if command == "" {
+			command = buildServerCommand(alloc)
+		}
+
 		pane := ServerPane{
-			Command: buildServerCommand(alloc),
+			Command: command,
 			Service: alloc.Service,
 			Port:    alloc.Port,
 		}

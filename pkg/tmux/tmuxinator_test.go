@@ -272,3 +272,118 @@ func TestTmuxinatorConfigDir(t *testing.T) {
 		t.Errorf("TmuxinatorConfigDir() = %q, want %q", got, expected)
 	}
 }
+
+func TestParseProcfile(t *testing.T) {
+	// Create temp directory with a Procfile
+	tmpDir := t.TempDir()
+	procfilePath := filepath.Join(tmpDir, "Procfile")
+
+	procfileContent := `# Comment line
+api: orch serve
+web: cd web && bun run dev
+opencode: env -u ANTHROPIC_API_KEY ~/.bun/bin/opencode serve --port 4096
+
+# Another comment
+`
+	if err := os.WriteFile(procfilePath, []byte(procfileContent), 0644); err != nil {
+		t.Fatalf("Failed to write Procfile: %v", err)
+	}
+
+	commands := parseProcfile(tmpDir)
+	if commands == nil {
+		t.Fatal("parseProcfile() returned nil")
+	}
+
+	// Check parsed commands
+	tests := []struct {
+		service string
+		want    string
+	}{
+		{"api", "orch serve"},
+		{"web", "cd web && bun run dev"},
+		{"opencode", "env -u ANTHROPIC_API_KEY ~/.bun/bin/opencode serve --port 4096"},
+	}
+
+	for _, tt := range tests {
+		got, ok := commands[tt.service]
+		if !ok {
+			t.Errorf("parseProcfile() missing service %q", tt.service)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("parseProcfile()[%q] = %q, want %q", tt.service, got, tt.want)
+		}
+	}
+
+	// Should only have 3 services (comments and blank lines ignored)
+	if len(commands) != 3 {
+		t.Errorf("parseProcfile() returned %d services, want 3", len(commands))
+	}
+}
+
+func TestParseProcfile_NotExists(t *testing.T) {
+	// Test with non-existent Procfile
+	tmpDir := t.TempDir()
+	commands := parseProcfile(tmpDir)
+	if commands != nil {
+		t.Error("parseProcfile() should return nil when Procfile doesn't exist")
+	}
+}
+
+func TestGenerateTmuxinatorConfig_WithProcfile(t *testing.T) {
+	// Create a temporary directory with port registry and Procfile
+	tmpDir := t.TempDir()
+	registryPath := filepath.Join(tmpDir, "ports.yaml")
+
+	// Create port registry
+	reg, err := port.New(registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create port registry: %v", err)
+	}
+
+	// Allocate ports
+	_, err = reg.Allocate("myproject", "web", port.PurposeVite)
+	if err != nil {
+		t.Fatalf("Failed to allocate vite port: %v", err)
+	}
+	_, err = reg.Allocate("myproject", "api", port.PurposeAPI)
+	if err != nil {
+		t.Fatalf("Failed to allocate api port: %v", err)
+	}
+
+	// Create project directory with Procfile
+	projectDir := filepath.Join(tmpDir, "myproject")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("Failed to create project dir: %v", err)
+	}
+
+	procfileContent := `api: go run ./cmd/server
+web: cd frontend && npm run dev
+`
+	procfilePath := filepath.Join(projectDir, "Procfile")
+	if err := os.WriteFile(procfilePath, []byte(procfileContent), 0644); err != nil {
+		t.Fatalf("Failed to write Procfile: %v", err)
+	}
+
+	// Generate config
+	config, err := GenerateTmuxinatorConfig("myproject", projectDir, reg)
+	if err != nil {
+		t.Fatalf("GenerateTmuxinatorConfig() error = %v", err)
+	}
+
+	// Check that Procfile commands are used
+	for _, pane := range config.ServerPane {
+		switch pane.Service {
+		case "web":
+			// Should use Procfile command, not auto-generated
+			if pane.Command != "cd frontend && npm run dev" {
+				t.Errorf("web pane.Command = %q, want %q (from Procfile)", pane.Command, "cd frontend && npm run dev")
+			}
+		case "api":
+			// Should use Procfile command, not auto-generated
+			if pane.Command != "go run ./cmd/server" {
+				t.Errorf("api pane.Command = %q, want %q (from Procfile)", pane.Command, "go run ./cmd/server")
+			}
+		}
+	}
+}
