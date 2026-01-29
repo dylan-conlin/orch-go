@@ -259,6 +259,7 @@ func SpawnWork(beadsID string) error {
 // Uses --workdir flag to ensure the agent operates in the correct project context.
 //
 // IMPORTANT: Sets status to in_progress BEFORE spawning (same dedup mechanism as SpawnWork).
+// If spawn fails, rolls back status to open so the issue can be retried.
 func SpawnWorkForProject(beadsID, projectPath string) error {
 	if projectPath == "" {
 		return fmt.Errorf("projectPath is required")
@@ -279,6 +280,15 @@ func SpawnWorkForProject(beadsID, projectPath string) error {
 	cmd := exec.Command("orch", "work", beadsID, "--workdir", projectPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// Rollback: set status back to open so the issue can be retried
+		rollbackCmd := exec.Command("bd", "update", beadsID, "--status=open")
+		rollbackCmd.Dir = projectPath
+		rollbackCmd.Env = os.Environ()
+		if rollbackOutput, rollbackErr := rollbackCmd.CombinedOutput(); rollbackErr != nil {
+			log.Printf("[%s] WARNING: failed to rollback status to open for %s: %v: %s", projectName, beadsID, rollbackErr, string(rollbackOutput))
+		} else {
+			log.Printf("[%s] Rolled back status to open for %s after spawn failure", projectName, beadsID)
+		}
 		return fmt.Errorf("[%s] failed to spawn work: %w: %s", projectName, err, string(output))
 	}
 	log.Printf("[%s] Successfully spawned work for issue %s", projectName, beadsID)

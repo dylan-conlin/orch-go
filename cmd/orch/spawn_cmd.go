@@ -526,15 +526,20 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	requires := spawn.ParseSkillRequires(skillContent)
 
 	// Check for decision conflicts - may block spawn if decisions prohibit this work
-	// This gate runs independently of artifact checks
-	decisionResult, err := checkDecisionConflicts(task, projectDir, spawnAcknowledgeDecision)
-	if err != nil {
-		return err
-	}
+	// Skip for daemon-driven spawns: decidability graph handles authority boundaries.
+	// Issues labeled triage:ready have already been validated by orchestrator.
+	// See: .kb/models/decidability-graph.md
+	var decisionResult *DecisionCheckResult
+	if !daemonDriven {
+		decisionResult, err = checkDecisionConflicts(task, projectDir, spawnAcknowledgeDecision)
+		if err != nil {
+			return err
+		}
 
-	// Log decision override if conflict was found and acknowledged
-	if decisionResult.ConflictFound && decisionResult.Acknowledged {
-		logDecisionOverride(task, decisionResult.DecisionID, decisionResult.MatchedOn, skillName, beadsID)
+		// Log decision override if conflict was found and acknowledged
+		if decisionResult != nil && decisionResult.ConflictFound && decisionResult.Acknowledged {
+			logDecisionOverride(task, decisionResult.DecisionID, decisionResult.MatchedOn, skillName, beadsID)
+		}
 	}
 
 	// Gather context based on skill requirements (or fall back to default behavior)

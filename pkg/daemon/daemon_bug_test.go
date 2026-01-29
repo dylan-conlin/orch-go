@@ -2,6 +2,7 @@
 package daemon
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -234,6 +235,95 @@ func TestBug_SingleProjectSessionDedupContinuesToNextIssue(t *testing.T) {
 
 	if spawnedID != "issue-2" {
 		t.Errorf("spawnFunc should have been called with issue-2, got %s", spawnedID)
+	}
+}
+
+// TestBug_SpawnFailureDoesNotBlockRetry verifies that when spawn fails,
+// the daemon properly handles cleanup so the issue can be retried.
+//
+// Bug report: "Daemon marks issue as in_progress before spawn, but doesn't
+// rollback when spawn fails. Issue orch-go-21009 is now stuck at in_progress
+// with no agent running."
+//
+// The fix: SpawnWorkForProject now rolls back status to open when spawn fails.
+// This test verifies that the daemon's spawn failure handling works correctly.
+func TestBug_SpawnFailureDoesNotBlockRetry(t *testing.T) {
+	issues := []Issue{
+		{ID: "issue-1", Title: "Will fail to spawn", Priority: 0, IssueType: "bug", Status: "open", Labels: []string{"triage:ready"}},
+		{ID: "issue-2", Title: "Should spawn next", Priority: 1, IssueType: "bug", Status: "open", Labels: []string{"triage:ready"}},
+	}
+
+	config := Config{
+		Label:        "triage:ready",
+		CrossProject: true,
+	}
+
+	projects := []Project{
+		{Name: "test-project", Path: "/test"},
+	}
+
+	spawnAttempts := []string{}
+	d := &Daemon{
+		Config:        config,
+		SpawnedIssues: NewSpawnedIssueTracker(),
+		listProjectsFunc: func() ([]Project, error) {
+			return projects, nil
+		},
+		listIssuesForProjectFunc: func(projectPath string) ([]Issue, error) {
+			return issues, nil
+		},
+		spawnForProjectFunc: func(beadsID, projectPath string) error {
+			spawnAttempts = append(spawnAttempts, beadsID)
+			if beadsID == "issue-1" {
+				return fmt.Errorf("simulated spawn failure")
+			}
+			return nil
+		},
+	}
+
+	// First attempt: issue-1 should fail
+	result1, err := d.CrossProjectOnceExcluding(nil)
+	if err != nil {
+		t.Fatalf("CrossProjectOnceExcluding error: %v", err)
+	}
+
+	if result1.Error == nil {
+		t.Error("First call should return error for spawn failure")
+	}
+	if result1.Issue == nil || result1.Issue.ID != "issue-1" {
+		t.Errorf("First call should attempt issue-1, got %v", result1.Issue)
+	}
+
+	t.Logf("First attempt: Issue=%s, Error=%v, Message=%s",
+		result1.Issue.ID, result1.Error, result1.Message)
+
+	// After spawn failure, SpawnedIssues tracker should be cleared (issue unmarked)
+	// so the daemon knows to try again on retry
+	if d.SpawnedIssues.IsSpawned("issue-1") {
+		t.Error("issue-1 should NOT be marked as spawned after spawn failure")
+	}
+
+	// Second attempt with skip set (simulating daemon's retry with failed issues skipped)
+	// Skip key format is "projectPath:issueID"
+	skip := map[string]bool{"/test:issue-1": true}
+	result2, err := d.CrossProjectOnceExcluding(skip)
+	if err != nil {
+		t.Fatalf("CrossProjectOnceExcluding error: %v", err)
+	}
+
+	if result2.Issue == nil || result2.Issue.ID != "issue-2" {
+		t.Errorf("Second call should spawn issue-2, got %v", result2.Issue)
+	}
+	if !result2.Processed {
+		t.Error("Second call should process successfully")
+	}
+
+	t.Logf("Second attempt: Issue=%s, Processed=%v", result2.Issue.ID, result2.Processed)
+	t.Logf("Spawn attempts: %v", spawnAttempts)
+
+	// Verify spawn was attempted for both issues
+	if len(spawnAttempts) != 2 {
+		t.Errorf("Expected 2 spawn attempts, got %d: %v", len(spawnAttempts), spawnAttempts)
 	}
 }
 

@@ -1,2 +1,5 @@
 * orchestrators never remember that opencode plugins are here:
 /Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins
+* we created the 'strategic center', but it appears incomplete: /Users/dylanconlin/Screenshots/screenshot_2026-01-29_10-05-58.png
+
+what happened with the implementation? was this the intended result? 

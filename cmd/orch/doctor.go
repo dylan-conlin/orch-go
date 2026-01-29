@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -548,25 +549,108 @@ func checkBeadsDaemon() ServiceStatus {
 
 // startOpenCode starts the OpenCode server in the background.
 func startOpenCode() error {
+	// Pre-flight check: Is something already listening on the port?
+	addr := fmt.Sprintf("localhost:%d", 4096)
+	conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
+	if err == nil {
+		conn.Close()
+		// Something is listening, but the API check failed earlier
+		// Try to find and kill zombie opencode processes
+		if err := killZombieOpenCodeProcesses(); err != nil {
+			return fmt.Errorf("port 4096 in use but API not responding, and failed to clean up: %w", err)
+		}
+		// Wait for port to be released
+		time.Sleep(2 * time.Second)
+	}
+
+	// Find opencode binary - prefer the known location from Procfile
+	homeDir, _ := os.UserHomeDir()
+	opencodePath := filepath.Join(homeDir, ".bun", "bin", "opencode")
+	if _, err := os.Stat(opencodePath); os.IsNotExist(err) {
+		// Fallback to PATH
+		opencodePath, err = exec.LookPath("opencode")
+		if err != nil {
+			return fmt.Errorf("opencode binary not found at ~/.bun/bin/opencode or in PATH")
+		}
+	}
+
+	// Create a log file for startup diagnostics
+	logDir := filepath.Join(homeDir, ".local", "share", "opencode")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		// Continue anyway, just won't have logs
+	}
+	startupLogPath := filepath.Join(logDir, "startup.log")
+
 	// Start OpenCode server in background, fully detached via shell
 	// This ensures the process survives even if the parent is killed
-	// Set ORCH_WORKER=1 so agents spawned by this server know they are orch-managed workers
-	cmd := exec.Command("sh", "-c", "ORCH_WORKER=1 opencode serve --port 4096 </dev/null >/dev/null 2>&1 &")
+	// - ORCH_WORKER=1: so spawned agents know they are orch-managed workers
+	// - env -u ANTHROPIC_API_KEY: use OAuth stealth mode (matches Procfile)
+	// - Capture stdout/stderr to startup.log for debugging
+	cmdStr := fmt.Sprintf(
+		"ORCH_WORKER=1 env -u ANTHROPIC_API_KEY %s serve --port 4096 >> %s 2>&1 &",
+		opencodePath, startupLogPath,
+	)
+	cmd := exec.Command("sh", "-c", cmdStr)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to start OpenCode: %w", err)
 	}
 
-	// Wait for it to be ready (poll for up to 10 seconds)
+	// Wait for it to be ready (poll for up to 15 seconds)
 	client := opencode.NewClient(serverURL)
-	for i := 0; i < 20; i++ {
+	var lastErr error
+	for i := 0; i < 30; i++ {
 		time.Sleep(500 * time.Millisecond)
 		_, err := client.ListSessions("")
 		if err == nil {
 			return nil
 		}
+		lastErr = err
 	}
 
-	return fmt.Errorf("OpenCode started but not responding after 10s")
+	// Failed to start - read the startup log for diagnostics
+	logContent, _ := os.ReadFile(startupLogPath)
+	if len(logContent) > 0 {
+		// Truncate to last 500 bytes
+		if len(logContent) > 500 {
+			logContent = logContent[len(logContent)-500:]
+		}
+		return fmt.Errorf("OpenCode not responding after 15s (last error: %v)\nStartup log tail:\n%s", lastErr, string(logContent))
+	}
+	return fmt.Errorf("OpenCode not responding after 15s (last error: %v, no startup log)", lastErr)
+}
+
+// killZombieOpenCodeProcesses finds and kills unresponsive opencode serve processes.
+func killZombieOpenCodeProcesses() error {
+	// Find opencode serve processes
+	cmd := exec.Command("pgrep", "-f", "opencode serve.*4096")
+	output, err := cmd.Output()
+	if err != nil {
+		// No processes found, which is fine
+		return nil
+	}
+
+	pids := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, pidStr := range pids {
+		if pidStr == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(pidStr)
+		if err != nil {
+			continue
+		}
+		// Send SIGTERM first
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			continue
+		}
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			continue
+		}
+		if doctorVerbose {
+			fmt.Printf("  Sent SIGTERM to zombie opencode process (PID %d)\n", pid)
+		}
+	}
+	return nil
 }
 
 // startOrchServe starts the orch serve API server in the background.

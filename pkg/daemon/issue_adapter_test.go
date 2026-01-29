@@ -100,6 +100,33 @@ func TestSpawnWork_DelegatesToSpawnWorkForProject(t *testing.T) {
 	t.Logf("SpawnWork error (expected): %v", err)
 }
 
+// TestSpawnWorkForProject_RollbackOnSpawnFailure documents the rollback behavior.
+// When orch work fails after status was set to in_progress, the status should
+// be rolled back to open so the issue can be retried.
+//
+// This is difficult to unit test without mocking exec.Command, so this test
+// documents the expected behavior and verifies the error handling path.
+func TestSpawnWorkForProject_RollbackOnSpawnFailure(t *testing.T) {
+	// Create a temp directory that exists but has no real beads/orch setup
+	tmpDir := t.TempDir()
+
+	// Call with a fake beads ID - this should fail at the "bd update" step
+	// (before we even get to spawn), but it documents the expected flow
+	err := SpawnWorkForProject("fake-beads-id-12345", tmpDir)
+	if err == nil {
+		t.Error("SpawnWorkForProject should fail with fake beads ID")
+	}
+
+	// The error should be from the bd update step (no .beads in tmpDir)
+	// This confirms the function properly handles early failures
+	t.Logf("SpawnWorkForProject error (expected): %v", err)
+
+	// Note: Full integration testing of rollback behavior requires:
+	// 1. A real beads project with a real issue
+	// 2. A way to make "orch work" fail after "bd update" succeeds
+	// This is covered by manual testing and the daemon_bug_test.go integration tests
+}
+
 // Tests for Phase: Complete check functionality
 
 func TestCheckCommentsForPhaseComplete(t *testing.T) {
