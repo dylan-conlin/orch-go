@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -48,15 +49,15 @@ func init() {
 
 // FrontierOutput represents the full frontier output for JSON serialization.
 type FrontierOutput struct {
-	Warnings    []string        `json:"warnings,omitempty"`
-	Ready       []FrontierIssue `json:"ready"`
-	ReadyTotal  int             `json:"ready_total"`
-	Blocked     []BlockedOutput `json:"blocked"`
-	BlockedTotal int            `json:"blocked_total"`
-	Active      []ActiveOutput  `json:"active"`
-	ActiveTotal int             `json:"active_total"`
-	Stuck       []ActiveOutput  `json:"stuck"`
-	StuckTotal  int             `json:"stuck_total"`
+	Warnings     []string        `json:"warnings,omitempty"`
+	Ready        []FrontierIssue `json:"ready"`
+	ReadyTotal   int             `json:"ready_total"`
+	Blocked      []BlockedOutput `json:"blocked"`
+	BlockedTotal int             `json:"blocked_total"`
+	Active       []ActiveOutput  `json:"active"`
+	ActiveTotal  int             `json:"active_total"`
+	Stuck        []ActiveOutput  `json:"stuck"`
+	StuckTotal   int             `json:"stuck_total"`
 }
 
 // FrontierIssue represents an issue in the frontier output.
@@ -96,6 +97,11 @@ func runFrontier() error {
 
 	// Get active agents from registry and split into active vs stuck
 	activeAgents, stuckAgents := getActiveAndStuckAgents()
+
+	// Filter out agents whose beads issues are closed
+	// This prevents stale OpenCode sessions from showing as "stuck"
+	activeAgents = filterOpenIssueAgents(activeAgents)
+	stuckAgents = filterOpenIssueAgents(stuckAgents)
 
 	if frontierJSON {
 		return printFrontierJSON(state, activeAgents, stuckAgents)
@@ -318,6 +324,78 @@ func printFrontierText(state *frontier.FrontierState, active, stuck []ActiveOutp
 	}
 }
 
+// filterOpenIssueAgents filters out agents whose beads issues are closed.
+// This prevents stale OpenCode sessions from appearing in the frontier output.
+func filterOpenIssueAgents(agents []ActiveOutput) []ActiveOutput {
+	if len(agents) == 0 {
+		return agents
+	}
+
+	// Collect all beads IDs
+	beadsIDs := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		if agent.BeadsID != "" {
+			beadsIDs = append(beadsIDs, agent.BeadsID)
+		}
+	}
+
+	if len(beadsIDs) == 0 {
+		return agents
+	}
+
+	// Get status for all beads IDs in one call
+	closedIssues := getClosedIssueIDs(beadsIDs)
+
+	// Filter out agents with closed issues
+	filtered := make([]ActiveOutput, 0, len(agents))
+	for _, agent := range agents {
+		if !closedIssues[agent.BeadsID] {
+			filtered = append(filtered, agent)
+		}
+	}
+
+	return filtered
+}
+
+// getClosedIssueIDs checks which of the given beads IDs are for closed issues.
+// Returns a map of beads ID -> true for closed issues.
+func getClosedIssueIDs(beadsIDs []string) map[string]bool {
+	closed := make(map[string]bool)
+
+	if len(beadsIDs) == 0 {
+		return closed
+	}
+
+	// Build command: bd show <id1> <id2> ... --json
+	args := append([]string{"--sandbox", "show"}, beadsIDs...)
+	args = append(args, "--json")
+
+	cmd := exec.Command("bd", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		// On error, assume all are open (fail open for visibility)
+		return closed
+	}
+
+	// Parse response - bd show returns an array of issues
+	var issues []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return closed
+	}
+
+	// Mark closed issues
+	for _, issue := range issues {
+		if issue.Status == "closed" {
+			closed[issue.ID] = true
+		}
+	}
+
+	return closed
+}
+
 // truncateTitle truncates a title to maxLen characters, adding "..." if truncated.
 func truncateTitle(title string, maxLen int) string {
 	if len(title) <= maxLen {
@@ -344,4 +422,3 @@ func formatBlockers(blockedBy []string) string {
 		strings.Join(blockedBy[:2], ", "),
 		len(blockedBy)-2)
 }
-
