@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** SSE reconnection already works in OpenCode SDK after fixing unconditional break statement; client now survives server restarts with automatic retry.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Test confirmed client (PID 78918) survived server kill/restart, reconnected automatically, and completed successfully with exit code 0 (test-sse-reconnect.sh).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** The fix (serverSentEvents.gen.ts:220-221 conditional break) is in auto-generated code; will be overwritten if SDK regenerates from OpenAPI spec using @hey-api/openapi-ts without patching generator template or post-processing.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Make fix permanent by either: (A) patching @hey-api/openapi-ts generator template, (B) adding post-process step in packages/sdk/js/script/build.ts, or (C) contributing fix upstream to @hey-api/client-fetch plugin.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes (establishes constraint: SSE reconnection must survive SDK regeneration)
 
 <!--
 Example D.E.K.N.:
@@ -40,11 +40,11 @@ Guidelines:
 **Question:** How can the OpenCode client implement SSE reconnection to survive server restarts without losing agent work?
 
 **Started:** 2026-01-28
-**Updated:** 2026-01-28
+**Updated:** 2026-01-29
 **Owner:** Worker agent (investigation)
-**Phase:** Investigating
-**Next Step:** Test why reconnection isn't working despite built-in support
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** Make fix permanent in SDK generator
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** None
@@ -159,20 +159,21 @@ The retry logic at lines 221-232 only runs if an **exception is thrown**, not wh
 - ✅ SSE client has retry logic with exponential backoff (verified: read serverSentEvents.gen.ts:78-239)
 - ✅ run.ts uses default configuration (infinite retries) (verified: grep for sseMaxRetryAttempts showed no configuration)
 - ✅ run.ts has no try/catch around eventProcessor (verified: read run.ts around line 273)
-- ✅ Test shows client dies on server kill (verified: ran test-sse-reconnect.sh)
+- ✅ Fix confirmed working - client survives server restart (verified: ran test-sse-reconnect.sh, client PID 78918 survived server kill/restart)
+- ✅ Conditional break at line 220-221 enables reconnection (verified: read serverSentEvents.gen.ts:220-221)
+- ✅ SDK generation process identified (verified: read packages/sdk/js/script/build.ts, uses @hey-api/openapi-ts)
 
 **What's untested:**
 
-- ⚠️ Whether async generator completes or throws on connection drop (hypothesis not validated)
-- ⚠️ Whether reader.read() returns done=true or throws error when connection breaks
-- ⚠️ Whether break statement at line 220 is reached when connection drops
-- ⚠️ Whether adding error handling in run.ts would help
+- ⚠️ Whether fix persists after running SDK build script (likely overwrites)
+- ⚠️ Which of the three permanence options (patch/post-process/upstream) is most maintainable
+- ⚠️ Whether @hey-api/openapi-ts upstream would accept this fix
 
 **What would change this:**
 
-- If reader.read() throws instead of returning done=true, the catch block should work
-- If break at line 220 is NOT reached, the retry loop should continue
-- If adding try/catch + retry in run.ts makes agents survive, the SDK retry isn't working as expected
+- If SDK regeneration preserves the fix, no action needed
+- If build.ts post-processing is simple, that may be most pragmatic
+- If @hey-api maintainers are receptive, upstream fix is cleanest long-term solution
 
 ---
 
@@ -182,38 +183,39 @@ The retry logic at lines 221-232 only runs if an **exception is thrown**, not wh
 
 ### Recommended Approach ⭐
 
-**Remove the unconditional break at line 220** - Delete or conditionalize the break statement so the retry loop continues after stream completion.
+**Option B: Post-Process Generated File in build.ts** - Add a sed/replace step after SDK generation to apply the fix automatically.
 
 **Why this approach:**
-- Directly fixes the root cause (Finding 5)
-- Minimal change - one line removal or condition
-- Leverages existing retry logic that's already implemented
-- No new dependencies or architecture changes needed
+- Survives SDK regeneration (runs every build)
+- Simple 1-2 line addition to build.ts
+- No external dependencies or upstream coordination
+- Easy to review (change is visible in build script)
+- Can be removed if @hey-api fixes upstream
 
 **Trade-offs accepted:**
-- Must modify generated SDK code (serverSentEvents.gen.ts)
-- Will be overwritten if SDK regenerates from OpenAPI spec
-- Need to document this as a patch to maintain
+- Fix is applied to generated code (not at source)
+- Requires documentation so future maintainers understand why
+- If @hey-api changes SSE generation significantly, regex may break
 
 **Implementation sequence:**
-1. **Modify serverSentEvents.gen.ts:220** - Change `break` to only exit if signal is aborted or connection succeeds with explicit close event
-2. **Add condition:** `if (signal.aborted) break` instead of unconditional break
-3. **Test with server restart** - Verify agent survives OpenCode server kill and restart
-4. **Document the patch** - Create decision record explaining why this line must stay modified
+1. **Add post-process step to build.ts after line 41** (after prettier, before tsc)
+2. **Use sed or bun to replace:** `break` with `if (signal.aborted) break` at serverSentEvents.gen.ts:220
+3. **Add comment:** Explain why this patch is needed (link to this investigation)
+4. **Test:** Run SDK build, verify fix persists, run test-sse-reconnect.sh
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option A: Patch @hey-api/openapi-ts Templates**
+- **Pros:** Fixes at source, most "correct" solution
+- **Cons:** Requires forking @hey-api/openapi-ts or modifying node_modules (fragile), updates overwrite patch
+- **When to use instead:** If contributing upstream (Option C) fails and we need a local fork
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Contribute Fix Upstream to @hey-api/openapi-ts**
+- **Pros:** Cleanest long-term solution, benefits entire ecosystem, no maintenance burden
+- **Cons:** Requires PR approval (may take time), may be rejected, need to maintain local patch until merged
+- **When to use instead:** After Option B proves stable (collect evidence for PR justification)
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Rationale for recommendation:** Option B (post-process) is most pragmatic for immediate needs - it's simple, survives regeneration, and can coexist with future upstream contribution. Option A requires ongoing fork maintenance. Option C is ideal but has uncertain timeline; use Option B as bridge while pursuing upstream fix.
 
 ---
 
@@ -247,68 +249,138 @@ When the server drops the connection, `reader.read()` returns `{done: true}`. Th
 
 ---
 
+### Finding 6: Test Confirms Fix Works - Client Survives Server Restart
+
+**Evidence:** Ran test-sse-reconnect.sh on 2026-01-29:
+- Client started (PID 78918) with 10-second sleep task
+- Server killed at 20:15:54 (PID 23525)
+- New server started (PID 79580)
+- Client still running after server restart
+- Client successfully completed task with exit code 0
+- Total test duration: ~15 seconds (including server restart)
+
+Current code at serverSentEvents.gen.ts:220-221:
+```typescript
+// Only exit retry loop if explicitly aborted, otherwise reconnect
+if (signal.aborted) break
+```
+
+**Source:** test-sse-reconnect.sh execution output, serverSentEvents.gen.ts:220-221
+
+**Significance:** **The fix works!** Changing from unconditional break to conditional break enables automatic reconnection. However, serverSentEvents.gen.ts is auto-generated by @hey-api/openapi-ts (see comment at top of file), so this fix will be overwritten if SDK regenerates.
+
+---
+
+### Finding 7: SDK Generation Process Identified
+
+**Evidence:** packages/sdk/js/script/build.ts uses @hey-api/openapi-ts v0.90.10 with three plugins:
+- `@hey-api/typescript` (generates types)
+- `@hey-api/sdk` (generates SDK client)
+- `@hey-api/client-fetch` (generates serverSentEvents.gen.ts)
+
+Build process:
+1. Generate OpenAPI spec from OpenCode server
+2. Run createClient() to generate SDK files
+3. Format with prettier
+4. Compile with TypeScript
+
+**Source:** packages/sdk/js/script/build.ts:9-44, packages/sdk/js/package.json:23
+
+**Significance:** The fix needs to be made permanent in one of three ways:
+- **Option A:** Patch @hey-api/client-fetch plugin templates (requires modifying node_modules or forking)
+- **Option B:** Add post-processing step in build.ts to modify generated file
+- **Option C:** Contribute fix upstream to @hey-api/openapi-ts repository
+
+---
+
 ### Implementation Details
 
-**What to implement first:**
-- Modify serverSentEvents.gen.ts line 220 from `break` to `if (signal.aborted) break`
-- This is the minimal change to fix the bug
-- Test immediately with server restart scenario
+**What to implement next (Option B - Post-Process):**
 
-**Things to watch out for:**
-- ⚠️ serverSentEvents.gen.ts is auto-generated (comment at top says "This file is auto-generated by @hey-api/openapi-ts")
-- ⚠️ SDK regeneration will overwrite this fix
-- ⚠️ Need to patch the generator template or maintain manual patch
-- ⚠️ Should the stream ever complete "successfully"? Need to understand session.idle event
+1. **Modify packages/sdk/js/script/build.ts** - Add after line 41:
+   ```typescript
+   // Fix SSE reconnection: change unconditional break to conditional
+   // See: .kb/investigations/2026-01-28-inv-sse-reconnection-opencode-client-survive.md
+   const sseFile = path.join(dir, "src/v2/gen/core/serverSentEvents.gen.ts")
+   const content = await Bun.file(sseFile).text()
+   const fixed = content.replace(
+     /(\s+)break\s*$/m,  // Match unconditional break at end of line
+     "$1if (signal.aborted) break  // Only exit on abort, otherwise reconnect"
+   )
+   await Bun.write(sseFile, fixed)
+   ```
 
-**Areas needing further investigation:**
-- Why does reader.read() return done=true instead of throwing when connection drops?
-- Should session.idle event cause the outer loop to break?
-- Can we fix this in the generator template instead of patching generated code?
-- Should orch-go fork the SDK or contribute fix upstream to @hey-api/openapi-ts?
+2. **Test the fix persists:**
+   ```bash
+   cd packages/sdk/js
+   bun run build  # Regenerate SDK
+   grep -A 1 "Only exit retry loop" src/v2/gen/core/serverSentEvents.gen.ts  # Verify fix applied
+   cd ../../../orch-go
+   bash test-sse-reconnect.sh  # Confirm reconnection still works
+   ```
+
+3. **Document in decision:** Create `.kb/decisions/sse-reconnection-fix-post-process.md` explaining why this patch is necessary
 
 **Success criteria:**
-- ✅ Agent survives OpenCode server kill and restart
-- ✅ SSE stream reconnects automatically within 3-30 seconds
-- ✅ Agent receives events after reconnection
-- ✅ Last-Event-ID header is sent on reconnect (already implemented)
-- ✅ No visible disruption to user - agent keeps working
+- ✅ Agent survives OpenCode server kill and restart (TESTED - confirmed working)
+- ✅ SSE stream reconnects automatically within 3-30 seconds (TESTED - confirmed working)
+- ✅ Agent receives events after reconnection (TESTED - confirmed working)
+- ✅ Last-Event-ID header is sent on reconnect (already implemented in SDK)
+- ✅ No visible disruption to user - agent keeps working (TESTED - confirmed working)
+- ⏳ Fix survives SDK regeneration (needs implementation - Option B post-process step)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `/Users/dylanconlin/Documents/personal/opencode/packages/sdk/js/src/v2/gen/core/serverSentEvents.gen.ts` - Auto-generated SSE client with retry logic
+- `/Users/dylanconlin/Documents/personal/opencode/packages/opencode/src/cli/cmd/run.ts` - CLI command that consumes SSE events
+- `/Users/dylanconlin/Documents/personal/opencode/packages/sdk/js/script/build.ts` - SDK generation script using @hey-api/openapi-ts
+- `/Users/dylanconlin/Documents/personal/opencode/packages/sdk/js/package.json` - SDK dependencies and build configuration
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Test SSE reconnection on server restart
+bash /Users/dylanconlin/Documents/personal/orch-go/test-sse-reconnect.sh
 
-# [Command description]
-[command]
+# Search for SSE retry configuration
+cd /Users/dylanconlin/Documents/personal/opencode && grep -r "sseMaxRetryAttempts" packages/opencode/src/
+
+# Find SDK generator configuration
+cd /Users/dylanconlin/Documents/personal/opencode && grep -r "@hey-api/openapi-ts" package.json packages/*/package.json
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- `@hey-api/openapi-ts` - OpenAPI TypeScript generator used for SDK generation
+- `@hey-api/client-fetch` - Plugin that generates serverSentEvents.gen.ts
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-26-inv-opencode-server-keeps-crashing-dying.md` - Established that SSE stream breaking kills agents
+- **Issue:** orch-go-20979 - Parent issue requesting SSE reconnection investigation
+- **Test Script:** `test-sse-reconnect.sh` - Automated test for SSE reconnection behavior
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-28 16:00:** Investigation started
+- Initial question: How can OpenCode client implement SSE reconnection to survive server restarts?
+- Context: Agents die when OpenCode server crashes/restarts (per Jan 26 investigation orch-go-20979)
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-28 16:30:** Major finding - SDK already has retry logic
+- Discovered serverSentEvents.gen.ts has full exponential backoff retry implementation
+- Question shifted from "how to implement" to "why isn't it working"
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-28 17:00:** Root cause identified
+- Found unconditional break at line 220 prevents retry loop from executing
+- Retry only runs if reader.read() throws, not when stream completes normally (done=true)
+
+**2026-01-29 20:15:** Test confirms fix works
+- Ran test-sse-reconnect.sh: client (PID 78918) survived server kill/restart
+- Conditional break at line 220-221 enables automatic reconnection
+- Identified SDK generation process needs post-processing to preserve fix
+
+**2026-01-29 20:20:** Investigation completed
+- Status: Complete
+- Key outcome: SSE reconnection works with conditional break fix; needs post-processing in build.ts to survive SDK regeneration
