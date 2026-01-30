@@ -99,23 +99,25 @@ func ExtractKeywords(task string, maxWords int) string {
 // 3. Apply per-category limits to prevent context flood
 // Returns nil if no matches found or if kb command fails.
 // Uses the default "personal" domain for ecosystem filtering (backward compatible).
+// Deprecated: Use RunKBContextCheckWithProjectDir for cross-project spawns.
 func RunKBContextCheck(query string) (*KBContextResult, error) {
-	return RunKBContextCheckWithDomain(query, DomainPersonal)
+	return RunKBContextCheckWithDomain(query, DomainPersonal, "")
 }
 
 // RunKBContextCheckWithDomain runs 'kb context' with domain-aware ecosystem filtering.
 // The domain determines which repos are included when expanding to global search.
 // See DetectDomain() for auto-detection, or pass domain explicitly.
-func RunKBContextCheckWithDomain(query, domain string) (*KBContextResult, error) {
+// projectDir sets the working directory for kb context queries; if empty, uses CWD.
+func RunKBContextCheckWithDomain(query, domain, projectDir string) (*KBContextResult, error) {
 	// Step 1: Try current project first (no --global flag)
-	result, err := runKBContextQuery(query, false)
+	result, err := runKBContextQuery(query, false, projectDir)
 	if err != nil {
 		return nil, err
 	}
 
 	// Step 2: If local search is sparse, expand to global with domain-aware ecosystem filter
 	if result == nil || len(result.Matches) < MinMatchesForLocalSearch {
-		globalResult, err := runKBContextQuery(query, true)
+		globalResult, err := runKBContextQuery(query, true, projectDir)
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +154,10 @@ func RunKBContextCheckWithDomain(query, domain string) (*KBContextResult, error)
 // runKBContextQuery runs a single kb context query with optional --global flag.
 // Uses a 5-second timeout to prevent infinite hangs from kb context --global
 // scanning large directories like ~/Documents.
-func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
+// The workdir parameter sets the working directory for the kb command, which is
+// essential for cross-project spawns where kb should search the target project's
+// .kb directory, not the current working directory.
+func runKBContextQuery(query string, global bool, workdir string) (*KBContextResult, error) {
 	// Create context with timeout to prevent hangs
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -162,6 +167,13 @@ func runKBContextQuery(query string, global bool) (*KBContextResult, error) {
 		cmd = exec.CommandContext(ctx, "kb", "context", "--global", query)
 	} else {
 		cmd = exec.CommandContext(ctx, "kb", "context", query)
+	}
+
+	// Set working directory for local kb context queries.
+	// This ensures kb searches the target project's .kb directory,
+	// not the directory from which orch spawn was invoked.
+	if workdir != "" {
+		cmd.Dir = workdir
 	}
 
 	output, err := cmd.Output()

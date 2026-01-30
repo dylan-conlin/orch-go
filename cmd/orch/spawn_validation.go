@@ -70,7 +70,8 @@ func runPreSpawnKBCheckFull(task string, projectDir string, domainOverride ...st
 	fmt.Printf("Checking kb context for: %q\n", keywords)
 
 	// Run kb context check with domain-aware filtering
-	result, err := spawn.RunKBContextCheckWithDomain(keywords, domain)
+	// Pass projectDir to ensure kb searches the target project's .kb directory
+	result, err := spawn.RunKBContextCheckWithDomain(keywords, domain, projectDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
 		return gcr
@@ -81,7 +82,7 @@ func runPreSpawnKBCheckFull(task string, projectDir string, domainOverride ...st
 		firstKeyword := spawn.ExtractKeywords(task, 1)
 		if firstKeyword != "" && firstKeyword != keywords {
 			fmt.Printf("Trying broader search for: %q\n", firstKeyword)
-			result, err = spawn.RunKBContextCheckWithDomain(firstKeyword, domain)
+			result, err = spawn.RunKBContextCheckWithDomain(firstKeyword, domain, projectDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: kb context check failed: %v\n", err)
 				return gcr
