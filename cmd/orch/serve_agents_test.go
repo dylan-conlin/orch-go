@@ -1163,27 +1163,39 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 		t.Fatalf("Failed to create local investigation: %v", err)
 	}
 
+	// Spawn times for testing timestamp filtering:
+	// - earlySpawn: Before all investigation files (will see all)
+	// - recentSpawn: On Jan 6, 2026 (will see Jan 6 file only)
+	// - futureSpawn: After all investigation files (will see none via keyword match)
+	earlySpawn := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	recentSpawn := time.Date(2026, 1, 6, 0, 0, 0, 0, time.UTC)
+	futureSpawn := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	zeroTime := time.Time{}
+
 	tests := []struct {
 		name          string
 		workspaceName string
 		beadsID       string
 		projectDir    string
+		spawnTime     time.Time
 		wantFound     bool
 		wantContains  string // substring that should be in the result
 	}{
 		{
-			name:          "match_by_workspace_keywords",
+			name:          "match_by_workspace_keywords_with_early_spawn",
 			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
 			beadsID:       "orch-go-wrrks",
 			projectDir:    tmpDir,
+			spawnTime:     earlySpawn, // Before Jan 6, so Jan 6 file is valid
 			wantFound:     true,
 			wantContains:  "dashboard-auto-discover",
 		},
 		{
-			name:          "match_by_workspace_keywords_skillc",
+			name:          "match_by_workspace_keywords_skillc_with_early_spawn",
 			workspaceName: "og-inv-skillc-deploy-structure-06jan-ed96",
 			beadsID:       "orch-go-xyz",
 			projectDir:    tmpDir,
+			spawnTime:     earlySpawn, // Before Jan 4, so Jan 4 file is valid
 			wantFound:     true,
 			wantContains:  "skillc-deploy-structure",
 		},
@@ -1192,6 +1204,7 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 			workspaceName: "og-inv-test",
 			beadsID:       "test-123",
 			projectDir:    "",
+			spawnTime:     zeroTime,
 			wantFound:     false,
 			wantContains:  "",
 		},
@@ -1200,6 +1213,7 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 			workspaceName: "og-inv-nonexistent-topic-06jan-1234",
 			beadsID:       "orch-go-nomatch",
 			projectDir:    tmpDir,
+			spawnTime:     earlySpawn,
 			wantFound:     false,
 			wantContains:  "",
 		},
@@ -1208,8 +1222,46 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 			workspaceName: "og-inv-my-workspace-06jan-1234",
 			beadsID:       "orch-go-local",
 			projectDir:    tmpDir,
+			spawnTime:     earlySpawn,
 			wantFound:     true,
 			wantContains:  "inv-local-findings.md",
+		},
+		// NEW: Tests for timestamp filtering
+		{
+			name:          "timestamp_filter_excludes_old_investigation",
+			workspaceName: "og-feat-skillc-deploy-structure-06jan-dfc6", // Would match Jan 4 file by keywords
+			beadsID:       "orch-go-filter",
+			projectDir:    tmpDir,
+			spawnTime:     recentSpawn, // Jan 6 spawn, Jan 4 file should be excluded
+			wantFound:     false,       // No match because Jan 4 file is before spawn
+			wantContains:  "",
+		},
+		{
+			name:          "timestamp_filter_allows_same_day",
+			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
+			beadsID:       "orch-go-sameday",
+			projectDir:    tmpDir,
+			spawnTime:     recentSpawn, // Jan 6 spawn should see Jan 6 file
+			wantFound:     true,
+			wantContains:  "dashboard-auto-discover",
+		},
+		{
+			name:          "zero_spawn_time_allows_all",
+			workspaceName: "og-inv-skillc-deploy-structure-06jan-ed96",
+			beadsID:       "orch-go-zero",
+			projectDir:    tmpDir,
+			spawnTime:     zeroTime, // Zero time = no filtering (backwards compatibility)
+			wantFound:     true,
+			wantContains:  "skillc-deploy-structure",
+		},
+		{
+			name:          "future_spawn_excludes_all_keyword_matches",
+			workspaceName: "og-feat-dashboard-auto-discover-06jan-dfc6",
+			beadsID:       "orch-go-future",
+			projectDir:    tmpDir,
+			spawnTime:     futureSpawn, // Jan 10 spawn, all files are before
+			wantFound:     false,
+			wantContains:  "",
 		},
 	}
 
@@ -1218,7 +1270,7 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := discoverInvestigationPath(tt.workspaceName, tt.beadsID, tt.projectDir, cache)
+			got := discoverInvestigationPath(tt.workspaceName, tt.beadsID, tt.projectDir, cache, tt.spawnTime)
 			if tt.wantFound && got == "" {
 				t.Errorf("discoverInvestigationPath() = empty, want path containing %q", tt.wantContains)
 			}
@@ -1227,6 +1279,66 @@ func TestDiscoverInvestigationPath(t *testing.T) {
 			}
 			if tt.wantFound && tt.wantContains != "" && !filepath.IsAbs(got) {
 				t.Errorf("discoverInvestigationPath() = %q, want absolute path", got)
+			}
+		})
+	}
+}
+
+// TestParseInvestigationDate tests extraction of dates from investigation filenames.
+func TestParseInvestigationDate(t *testing.T) {
+	tests := []struct {
+		filename string
+		wantYear int
+		wantOK   bool
+	}{
+		{"2026-01-06-inv-dashboard.md", 2026, true},
+		{"2025-12-25-christmas.md", 2025, true},
+		{"inv-no-date.md", 0, false},
+		{"short.md", 0, false},
+		{"invalid-date-xx.md", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.filename, func(t *testing.T) {
+			got := parseInvestigationDate(tt.filename)
+			if tt.wantOK {
+				if got.IsZero() {
+					t.Errorf("parseInvestigationDate(%q) = zero, want valid date", tt.filename)
+				} else if got.Year() != tt.wantYear {
+					t.Errorf("parseInvestigationDate(%q).Year() = %d, want %d", tt.filename, got.Year(), tt.wantYear)
+				}
+			} else {
+				if !got.IsZero() {
+					t.Errorf("parseInvestigationDate(%q) = %v, want zero", tt.filename, got)
+				}
+			}
+		})
+	}
+}
+
+// TestIsInvestigationFromSpawnDate tests the timestamp filtering logic.
+func TestIsInvestigationFromSpawnDate(t *testing.T) {
+	jan4 := time.Date(2026, 1, 4, 12, 0, 0, 0, time.UTC)
+	jan6 := time.Date(2026, 1, 6, 8, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name      string
+		filename  string
+		spawnTime time.Time
+		want      bool
+	}{
+		{"same_day", "2026-01-06-inv-test.md", jan6, true},
+		{"file_after_spawn", "2026-01-06-inv-test.md", jan4, true},
+		{"file_before_spawn", "2026-01-04-inv-old.md", jan6, false},
+		{"zero_spawn_allows_all", "2026-01-04-inv-old.md", time.Time{}, true},
+		{"unparseable_filename_excluded", "no-date-inv.md", jan4, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isInvestigationFromSpawnDate(tt.filename, tt.spawnTime)
+			if got != tt.want {
+				t.Errorf("isInvestigationFromSpawnDate(%q, %v) = %v, want %v", tt.filename, tt.spawnTime, got, tt.want)
 			}
 		})
 	}
