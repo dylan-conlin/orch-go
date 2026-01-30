@@ -56,6 +56,7 @@ func init() {
 	rootCmd.AddCommand(workCmd)
 	rootCmd.AddCommand(daemonCmd)
 	rootCmd.AddCommand(tailCmd)
+	rootCmd.AddCommand(claimCmd)
 	rootCmd.AddCommand(questionCmd)
 	rootCmd.AddCommand(abandonCmd)
 	rootCmd.AddCommand(cleanCmd)

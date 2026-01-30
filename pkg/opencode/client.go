@@ -622,6 +622,38 @@ func (c *Client) SendPrompt(sessionID, prompt, model string) error {
 	return c.SendMessageAsync(sessionID, prompt, model)
 }
 
+// UpdateSessionTitle updates the title of an existing OpenCode session.
+// This is used when claiming untracked sessions to add beads ID to the title.
+func (c *Client) UpdateSessionTitle(sessionID, newTitle string) error {
+	payload := map[string]string{
+		"title": newTitle,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/sessions/%s", c.ServerURL, sessionID)
+	req, err := http.NewRequest("PATCH", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+
 // GetMessages fetches all messages for a session from the OpenCode API.
 func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	req, err := http.NewRequest("GET", c.ServerURL+"/session/"+sessionID+"/message", nil)
