@@ -237,6 +237,50 @@ func killOrphanedProcesses() int {
 		fmt.Printf("  Killed %d stuck bd process(es)\n", bdKilled)
 	}
 
+	// Kill orphaned orch serve processes (blocking port 3348)
+	orchKilled := killOrphanedOrchServe()
+	killed += orchKilled
+
+	if deployVerbose && orchKilled > 0 {
+		fmt.Printf("  Killed %d orphaned orch serve process(es)\n", orchKilled)
+	}
+
+	return killed
+}
+
+// killOrphanedOrchServe kills orphaned orch serve processes that aren't managed by overmind.
+// An orphaned orch serve process has PPID=1 (parent died) or is blocking port 3348.
+func killOrphanedOrchServe() int {
+	// Only kill if overmind is not running (these are orphans from crashed overmind)
+	statusCmd := exec.Command("overmind", "status")
+	if statusCmd.Run() == nil {
+		// Overmind is running, don't kill - let overmind manage its processes
+		return 0
+	}
+
+	// Find orch processes with PPID=1 that look like "orch serve"
+	// ps -eo pid,ppid,args | grep "orch.*serve" | awk '$2==1 {print $1}'
+	cmd := exec.Command("bash", "-c", `ps -eo pid,ppid,args | grep -E 'orch.*serve' | grep -v grep | awk '$2==1 {print $1}'`)
+	output, err := cmd.Output()
+	if err != nil || len(output) == 0 {
+		return 0
+	}
+
+	pids := strings.Fields(string(output))
+	killed := 0
+	for _, pid := range pids {
+		if pid == "" {
+			continue
+		}
+		if deployVerbose {
+			fmt.Printf("  Killing orphaned orch serve (PID %s)\n", pid)
+		}
+		killCmd := exec.Command("kill", pid) // SIGTERM first, not SIGKILL
+		if err := killCmd.Run(); err == nil {
+			killed++
+		}
+	}
+
 	return killed
 }
 
@@ -292,12 +336,62 @@ func killStuckBdProcesses() int {
 	return killed
 }
 
+// killProcessOnPort kills the process listening on the given port.
+// Uses lsof to find the PID and sends SIGTERM.
+func killProcessOnPort(port int) {
+	// Find PID listening on the port: lsof -i :PORT -t
+	cmd := exec.Command("lsof", "-i", fmt.Sprintf(":%d", port), "-t")
+	output, err := cmd.Output()
+	if err != nil || len(output) == 0 {
+		return
+	}
+
+	pids := strings.Fields(string(output))
+	for _, pid := range pids {
+		if pid == "" {
+			continue
+		}
+		if deployVerbose {
+			fmt.Printf("  Sending SIGTERM to PID %s\n", pid)
+		}
+		killCmd := exec.Command("kill", pid)
+		killCmd.Run()
+	}
+}
+
 // restartOvermind restarts all overmind services atomically.
+// If OpenCode is already running on port 4096, it will be reused (not restarted by overmind).
 func restartOvermind() error {
+	// Check if OpenCode is already running on port 4096
+	opencodeAlreadyRunning := isPortResponding(4096)
+	if opencodeAlreadyRunning {
+		fmt.Println("  OpenCode already running on port 4096 (will be reused)")
+	}
+
 	// Check if overmind is running
 	statusCmd := exec.Command("overmind", "status")
-	if err := statusCmd.Run(); err != nil {
-		// Overmind not running, need to start it
+	overmindRunning := statusCmd.Run() == nil
+
+	if !overmindRunning {
+		// Overmind not running - check if ports are blocked by orphaned processes
+		// These need to be killed before starting overmind
+		apiBlocked := isPortResponding(DefaultServePort)
+		webBlocked := isPortResponding(DefaultWebPort)
+
+		if apiBlocked || webBlocked {
+			fmt.Println("  Detected orphaned services (overmind not running but ports in use)")
+			if apiBlocked {
+				fmt.Printf("  Killing process on port %d (api)\n", DefaultServePort)
+				killProcessOnPort(DefaultServePort)
+			}
+			if webBlocked {
+				fmt.Printf("  Killing process on port %d (web)\n", DefaultWebPort)
+				killProcessOnPort(DefaultWebPort)
+			}
+			// Give processes time to die
+			time.Sleep(1 * time.Second)
+		}
+
 		if deployVerbose {
 			fmt.Println("  Overmind not running, starting...")
 		}
@@ -308,10 +402,22 @@ func restartOvermind() error {
 			return fmt.Errorf("cannot find Procfile")
 		}
 
-		// Start overmind in daemon mode
-		startCmd := exec.Command("overmind", "start", "-D")
+		// Build overmind start command with resilience options:
+		// - "-D" for daemon mode
+		// - "--can-die opencode" so opencode binding failure won't kill api/web
+		// - "--ignored-processes opencode" if opencode is already running (skip starting it)
+		args := []string{"start", "-D", "--can-die", "opencode"}
+		if opencodeAlreadyRunning {
+			args = append(args, "--ignored-processes", "opencode")
+		}
+
+		startCmd := exec.Command("overmind", args...)
 		startCmd.Dir = projectDir
 		startCmd.Env = os.Environ()
+
+		if deployVerbose {
+			fmt.Printf("  Running: overmind %s\n", strings.Join(args, " "))
+		}
 
 		if err := startCmd.Run(); err != nil {
 			return fmt.Errorf("failed to start overmind: %w", err)
@@ -322,9 +428,9 @@ func restartOvermind() error {
 		return nil
 	}
 
-	// Overmind is running, restart all services
+	// Overmind is running, restart services
 	if deployVerbose {
-		fmt.Println("  Restarting all overmind services...")
+		fmt.Println("  Restarting overmind services...")
 	}
 
 	// Find project directory for restart
@@ -333,7 +439,19 @@ func restartOvermind() error {
 		return fmt.Errorf("cannot find Procfile")
 	}
 
-	restartCmd := exec.Command("overmind", "restart")
+	// If OpenCode is already running externally, only restart api and web
+	var restartCmd *exec.Cmd
+	if opencodeAlreadyRunning {
+		if deployVerbose {
+			fmt.Println("  Skipping opencode restart (already running externally)")
+		}
+		// Restart only api and web, leave opencode alone
+		restartCmd = exec.Command("overmind", "restart", "api", "web")
+	} else {
+		// Restart all services
+		restartCmd = exec.Command("overmind", "restart")
+	}
+
 	restartCmd.Dir = projectDir
 	restartCmd.Env = os.Environ()
 
