@@ -8,6 +8,8 @@
 
 **Related guide:** `.kb/guides/opencode-plugins.md` - Comprehensive plugin system reference
 
+**Related model:** `.kb/models/sse-connection-management.md` - SSE reconnection and HTTP connection pool management
+
 ---
 
 ## Overview
