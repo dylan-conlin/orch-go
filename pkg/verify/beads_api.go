@@ -614,3 +614,38 @@ func GetCommentsBatchWithProjectDirs(beadsIDs []string, projectDirs map[string]s
 	wg.Wait()
 	return commentMap
 }
+
+// EpicChildInfo represents information about an epic's child issue.
+type EpicChildInfo struct {
+	ID     string
+	Title  string
+	Status string
+}
+
+// GetOpenEpicChildren retrieves any open (non-closed) children of an epic.
+// Returns a slice of open children and any error encountered.
+// If the issue is not an epic or has no children, returns empty slice.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
+func GetOpenEpicChildren(beadsID string) ([]EpicChildInfo, error) {
+	// Get all children of the epic (including closed)
+	children, err := beads.FallbackListByParent(beadsID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list epic children: %w", err)
+	}
+
+	// Filter to only open children (not closed, deferred, or tombstone)
+	var openChildren []EpicChildInfo
+	for _, child := range children {
+		status := strings.ToLower(child.Status)
+		// Exclude closed, deferred, and tombstone statuses
+		if status != "closed" && status != "deferred" && status != "tombstone" {
+			openChildren = append(openChildren, EpicChildInfo{
+				ID:     child.ID,
+				Title:  child.Title,
+				Status: child.Status,
+			})
+		}
+	}
+
+	return openChildren, nil
+}

@@ -37,6 +37,7 @@ var (
 	completeSkipReproCheck   bool
 	completeSkipReproReason  string
 	completeNoArchive        bool
+	completeForceCloseEpic   bool // Force close epic even with open children
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
@@ -109,6 +110,11 @@ For cross-project completion (agents spawned with --workdir in another project),
 the command auto-detects the project from the workspace's SPAWN_CONTEXT.md.
 Use --workdir as explicit override when auto-detection fails.
 
+EPIC PROTECTION:
+For epic issues, completion is blocked if the epic has open children (tasks, bugs, etc.)
+that are not yet closed. This prevents accidentally closing an epic while work remains.
+Use --force-close-epic to override this protection.
+
 Examples:
   orch-go complete proj-123
   orch-go complete proj-123 --reason "All tests passing"
@@ -119,6 +125,9 @@ Examples:
 
   # Orchestrator session completion (by workspace name)
   orch-go complete og-orch-goal-04jan       # Complete orchestrator session
+
+  # Epic with open children (will fail unless forced)
+  orch-go complete proj-epic-123 --force-close-epic
 
   # Deprecated (shows warning):
   orch-go complete proj-123 --force         # Use targeted --skip-* flags instead`,
@@ -138,6 +147,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipReproCheck, "skip-repro-check", false, "Skip reproduction verification for bug issues (requires --reason)")
 	completeCmd.Flags().StringVar(&completeSkipReproReason, "skip-repro-reason", "", "Reason for skipping reproduction verification")
 	completeCmd.Flags().BoolVar(&completeNoArchive, "no-archive", false, "Skip automatic workspace archival after completion")
+	completeCmd.Flags().BoolVar(&completeForceCloseEpic, "force-close-epic", false, "Force close epic even if it has open children (use with caution)")
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
@@ -914,6 +924,31 @@ func runComplete(identifier, workdir string) error {
 	// Close the beads issue if not already closed
 	// Skip for untracked agents and orchestrator sessions (they have no beads issue to close)
 	if !isClosed && !isUntracked && beadsID != "" {
+		// Epic protection: check for open children before closing
+		if issue != nil && issue.IssueType == "epic" && !completeForceCloseEpic {
+			openChildren, err := verify.GetOpenEpicChildren(beadsID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to check epic children: %v\n", err)
+				// Continue - don't block on failure to check children
+			} else if len(openChildren) > 0 {
+				fmt.Fprintf(os.Stderr, "Cannot complete epic %s - has %d open children:\n", beadsID, len(openChildren))
+				// Show up to 5 children
+				showCount := len(openChildren)
+				if showCount > 5 {
+					showCount = 5
+				}
+				for i := 0; i < showCount; i++ {
+					child := openChildren[i]
+					fmt.Fprintf(os.Stderr, "  - %s (%s): %s\n", child.ID, child.Status, child.Title)
+				}
+				if len(openChildren) > 5 {
+					fmt.Fprintf(os.Stderr, "  ... and %d more\n", len(openChildren)-5)
+				}
+				fmt.Fprintf(os.Stderr, "\nUse --force-close-epic to close anyway\n")
+				return fmt.Errorf("epic has open children")
+			}
+		}
+
 		if err := verify.CloseIssue(beadsID, reason); err != nil {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
