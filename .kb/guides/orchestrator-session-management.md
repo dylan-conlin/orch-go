@@ -2,9 +2,11 @@
 
 **Purpose:** Single authoritative reference for orchestrator sessions, spawnable orchestrators, and the meta-orchestrator architecture. Read this before debugging orchestrator lifecycle issues.
 
-**Last verified:** 2026-01-07
+**Last verified:** 2026-01-29
 
-**Synthesized from:** 40 investigations on orchestrator topics (Dec 21, 2025 - Jan 7, 2026)
+**Synthesized from:** 45+ investigations on orchestrator topics (Dec 21, 2025 - Jan 29, 2026)
+
+**Critical Update (Jan 2026):** Session handoff machinery (orch session start/end, SESSION_HANDOFF.md, auto-resume) was removed. Orchestrators now produce SYNTHESIS.md. See "Session Handoff Removal" section below.
 
 ---
 
@@ -61,8 +63,9 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 | Session Type | Boundary Trigger | Handoff Mechanism | Artifact |
 |--------------|------------------|-------------------|----------|
 | Worker | `bd comment "Phase: Complete"` + `/exit` | SPAWN_CONTEXT.md → SYNTHESIS.md | SYNTHESIS.md |
-| Orchestrator | SESSION_HANDOFF.md created + wait | ORCHESTRATOR_CONTEXT.md → SESSION_HANDOFF.md | SESSION_HANDOFF.md |
-| Cross-session | End of working day/session | Manual reflection | SESSION_HANDOFF.md |
+| Orchestrator | SYNTHESIS.md created + wait | ORCHESTRATOR_CONTEXT.md → SYNTHESIS.md | SYNTHESIS.md |
+
+**Note:** Cross-session handoff mechanism was removed Jan 2026. Context continuity now relies on kb/beads capture during work.
 
 ### Orchestrator Spawn Infrastructure
 
@@ -73,10 +76,10 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 | Aspect | Worker | Orchestrator |
 |--------|--------|--------------|
 | Context File | SPAWN_CONTEXT.md | ORCHESTRATOR_CONTEXT.md |
-| Completion Artifact | SYNTHESIS.md | SESSION_HANDOFF.md |
+| Completion Artifact | SYNTHESIS.md | SYNTHESIS.md |
 | Beads Tracking | Required | Skipped |
 | Default Spawn Mode | Headless | Tmux (visible) |
-| Completion Signal | `Phase: Complete` + `/exit` | SESSION_HANDOFF.md + wait |
+| Completion Signal | `Phase: Complete` + `/exit` | SYNTHESIS.md + wait |
 | Workspace Prefix | og-work-*, og-feat-*, etc. | og-orch-* |
 
 ### Session Registry
@@ -144,11 +147,11 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 
 ## Common Problems
 
-### "Spawned orchestrator tried to run orch session end"
+### "Spawned orchestrator tried to run /exit"
 
 **Cause:** ORCHESTRATOR_CONTEXT.md template contradicted the hierarchical completion model.
 
-**Fix:** Spawned orchestrators should write SESSION_HANDOFF.md and WAIT. The level above runs `orch complete`. Template was fixed in Jan 2026.
+**Fix:** Spawned orchestrators should write SYNTHESIS.md and WAIT. The level above runs `orch complete`. Template was fixed in Jan 2026.
 
 **NOT the fix:** Adding more guardrails to the skill - the template framing sets behavioral mode.
 
@@ -165,9 +168,9 @@ This guide covers the orchestrator session lifecycle - from spawning orchestrato
 
 **Detection (Jan 2026):** Frame collapse requires EXTERNAL detection - orchestrators can't see their own frame collapse. Multi-layer approach:
 1. **Skill guidance** with explicit time check: "If editing code for >15 minutes, you've frame collapsed"
-2. **SESSION_HANDOFF.md** "Frame Collapse Check" section prompting reflection
+2. **SYNTHESIS.md** "Frame Collapse Check" section prompting reflection
 3. **OpenCode plugin** potential: Track Edit tool usage on code files vs orchestration artifacts
-4. **Meta-orchestrator review** of handoffs looking for "Manual fixes" sections
+4. **Meta-orchestrator review** of synthesis looking for "Manual fixes" sections
 
 **Key trigger:** Failure-to-implementation pattern - after agents fail, orchestrator tries to "just fix it" instead of trying different spawn strategy.
 
@@ -221,6 +224,34 @@ var coordinationSkills = map[string]bool{
 
 ---
 
+## Session Handoff Removal (Jan 2026)
+
+**What was removed:**
+- `orch session start` / `orch session end` commands
+- `.orch/session/` directory structure (active/, latest/ symlinks, window-scoped directories)
+- SESSION_HANDOFF.md artifact for orchestrators
+- Session-resume OpenCode plugin
+- Global session store (`~/.orch/session.json`)
+
+**What replaced it:**
+- Orchestrators now produce SYNTHESIS.md (same as workers)
+- Context continuity relies on kb/beads capture during work
+- New sessions start fresh from durable state: `kb context`, `bd ready`, `orch status`
+
+**Why removed:**
+- Session handoff was a buffer for un-externalized knowledge that should have been captured elsewhere
+- System became overengineered (cross-window scan, staleness detection, active/ cleanup)
+- Reminders fail under cognitive load - orchestrators couldn't maintain session hygiene reliably
+- "Pressure Over Compensation" - removing the buffer creates pressure to capture properly during work
+
+**What remains:**
+- Session registry (`~/.orch/sessions.json`) - still used for spawned orchestrator workspace tracking
+- `orch resume <id>` - for resuming paused agents (unrelated to session handoff)
+
+**Reference:** `.kb/decisions/2026-01-19-remove-session-handoff-machinery.md`
+
+---
+
 ## Key Decisions (from investigations)
 
 These are settled. Don't re-investigate:
@@ -243,11 +274,9 @@ These are settled. Don't re-investigate:
 |-------|----------|---------|
 | Session Registry | `~/.orch/sessions.json` | Track active orchestrator sessions |
 | Orchestrator Context Template | `pkg/spawn/orchestrator_context.go` | Generate ORCHESTRATOR_CONTEXT.md |
-| Session State | `pkg/session/session.go` | Session lifecycle management |
 | Completion Verification | `pkg/verify/check.go` | Tier-aware verification |
 | Orchestrator Skill | `~/.claude/skills/meta/orchestrator/SKILL.md` | Orchestrator guidance |
 | Meta-Orchestrator Skill | `~/.claude/skills/meta/meta-orchestrator/SKILL.md` | Meta-orchestrator guidance |
-| SESSION_HANDOFF Template | `~/.orch/templates/SESSION_HANDOFF.md` | Handoff artifact structure |
 
 ---
 
@@ -309,7 +338,7 @@ Meta-orchestrator's core workflow:
 |------|-------------------|--------------|-----------------|
 | light | None | Yes | Yes |
 | full | SYNTHESIS.md | Yes | Yes |
-| orchestrator | SESSION_HANDOFF.md | No | No |
+| orchestrator | SYNTHESIS.md | No | No |
 
 **Implementation:** `pkg/verify/check.go:VerifyCompletionWithTier()` routes to tier-specific verification.
 
@@ -350,5 +379,6 @@ Dashboard shows wrong project → check orchestrator context → tmux window may
 
 ## History
 
+- **2026-01-29:** Updated with session handoff removal (Jan 2026), OpenCode session inspection capability, SYNTHESIS.md as orchestrator artifact
 - **2026-01-07:** Updated with 12 additional investigations covering: checkpoint discipline, frame collapse detection, stats correlation, dashboard context-following, session registry status updates, interactive vs spawned workspace differences
 - **2026-01-06:** Created from synthesis of 28 orchestrator investigations

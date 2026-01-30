@@ -1,14 +1,14 @@
 # Model: Orchestrator Session Lifecycle
 
 **Domain:** Orchestrator / Meta-Orchestration / Session Management
-**Last Updated:** 2026-01-12
-**Synthesized From:** 40 investigations (Dec 21, 2025 - Jan 7, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, and hierarchical completion model
+**Last Updated:** 2026-01-29
+**Synthesized From:** 45+ investigations (Dec 21, 2025 - Jan 29, 2026) on orchestrator session boundaries, completion verification, frame collapse, checkpoint discipline, hierarchical completion model, and session handoff removal
 
 ---
 
 ## Summary (30 seconds)
 
-Orchestrator sessions operate in a **three-tier hierarchy** (meta-orchestrator → orchestrator → worker) where each level is completed by the level above. Orchestrators produce **SESSION_HANDOFF.md** (not SYNTHESIS.md) and **wait** for completion (not /exit). They track via **session registry** (not beads) because orchestrators manage conversations, not work items. Frame collapse occurs when orchestrators drop levels and do work below their station - detected externally, not self-diagnosed. Checkpoint discipline uses duration thresholds (2h/3h/4h) as a proxy for context exhaustion.
+Orchestrator sessions operate in a **three-tier hierarchy** (meta-orchestrator → orchestrator → worker) where each level is completed by the level above. Orchestrators produce **SYNTHESIS.md** (same as workers) and **wait** for completion (not /exit). They track via **session registry** (not beads) because orchestrators manage conversations, not work items. Frame collapse occurs when orchestrators drop levels and do work below their station - detected externally, not self-diagnosed. Checkpoint discipline uses duration thresholds (2h/3h/4h) as a proxy for context exhaustion. **Session handoff machinery** (orch session start/end, .orch/session/ directories, auto-resume) was **removed in Jan 2026** in favor of capturing learnings to kb/beads during work.
 
 ---
 
@@ -44,19 +44,18 @@ Orchestration operates across three distinct levels:
 
 ### Session Types and Boundaries
 
-Three distinct session types exist with different completion patterns:
+Two distinct session types exist with different completion patterns:
 
 | Session Type | Boundary Trigger | Handoff Mechanism | Artifact | Beads Tracking |
 |--------------|------------------|-------------------|----------|----------------|
 | **Worker** | `Phase: Complete` + `/exit` | SPAWN_CONTEXT → SYNTHESIS | SYNTHESIS.md | Required |
-| **Orchestrator** | SESSION_HANDOFF.md + wait | ORCHESTRATOR_CONTEXT → SESSION_HANDOFF | SESSION_HANDOFF.md | Skipped |
-| **Cross-session** | End of working day | Manual reflection | SESSION_HANDOFF.md | N/A |
+| **Orchestrator** | SYNTHESIS.md + wait | ORCHESTRATOR_CONTEXT → SYNTHESIS | SYNTHESIS.md | Skipped |
 
 **Worker boundaries:** Protocol-driven. Agent reports completion via beads comment, exits, waits for orchestrator verification.
 
-**Orchestrator boundaries:** State-driven. Agent writes handoff artifact, waits (doesn't exit), meta-orchestrator reviews and completes.
+**Orchestrator boundaries:** State-driven. Agent writes synthesis artifact, waits (doesn't exit), meta-orchestrator reviews and completes.
 
-**Cross-session boundaries:** Manual checkpointing when Dylan ends work session.
+**Note:** Session handoff machinery (orch session start/end, SESSION_HANDOFF.md for cross-session continuity) was removed in Jan 2026. Context continuity now relies on kb/beads capture during work, not session handoffs.
 
 ### Orchestrator Detection
 
@@ -66,10 +65,10 @@ Orchestrators are detected via **skill metadata**, not explicit flags:
 |--------|--------|--------------|
 | Skill type | `skill-type: worker` | `skill-type: policy` or `orchestrator` |
 | Context file | SPAWN_CONTEXT.md | ORCHESTRATOR_CONTEXT.md |
-| Completion artifact | SYNTHESIS.md | SESSION_HANDOFF.md |
+| Completion artifact | SYNTHESIS.md | SYNTHESIS.md |
 | Beads tracking | Required | Skipped (uses session registry) |
 | Default spawn mode | Headless | Tmux (visible) |
-| Completion signal | `Phase: Complete` + `/exit` | SESSION_HANDOFF.md + wait |
+| Completion signal | `Phase: Complete` + `/exit` | SYNTHESIS.md + wait |
 | Workspace prefix | `og-work-*`, `og-feat-*` | `og-orch-*` |
 
 **Key insight:** Skills with `skill-type: policy` trigger orchestrator context generation, which sets behavioral mode through framing, not instructions.
@@ -144,7 +143,7 @@ Meta frame:          "What is the orchestrator struggling with?"
 **Detection signals:**
 - Edit tool usage on code files (not orchestration artifacts)
 - Time spent >15 minutes on direct fixes
-- SESSION_HANDOFF.md shows "Manual fixes" sections
+- SYNTHESIS.md shows "Manual fixes" sections
 - Post-mortem reveals work that should have been spawned
 
 **NOT the fix:** Adding more ABSOLUTE DELEGATION RULE warnings. The agent already knows. The problem is framing, not awareness.
@@ -159,13 +158,13 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 ### 2. Self-Termination Attempts
 
-**What happens:** Spawned orchestrator tries to run `orch session end` or `/exit` instead of waiting for completion.
+**What happens:** Spawned orchestrator tries to run `/exit` instead of waiting for completion.
 
 **Root cause:** ORCHESTRATOR_CONTEXT.md template contradicted the hierarchical completion model (told orchestrator to self-terminate).
 
 **Why it's wrong:** Breaks the "completed by level above" invariant. Orchestrator can't verify its own work from meta perspective.
 
-**Fix:** Template updated Jan 2026 to instruct "write SESSION_HANDOFF.md and WAIT".
+**Fix:** Template updated Jan 2026 to instruct "write SYNTHESIS.md and WAIT".
 
 ### 3. Session Registry Drift
 
@@ -310,44 +309,77 @@ Meta frame:          "What is the orchestrator struggling with?"
 
 **Reference:** Line 75 of this document explains skill-type:policy detection; this clarifies the mechanism.
 
-### Status: Resume Protocol Implementation (Jan 13, 2026)
+### Phase 7: Session Handoff Machinery Removal (Jan 2026)
 
-**Current implementation status:** Resume protocol is partially implemented with two distinct commands:
+**What changed:** Removed entire session handoff system (orch session start/end commands, .orch/session/ directories, session-resume plugin, global session store).
 
-| Command | Purpose | Status |
-|---------|---------|--------|
-| `orch session resume` | Display SESSION_HANDOFF.md for NEW session context | ✅ Implemented (Jan 13) |
-| `orch resume <id>` | Resume PAUSED agent by sending continuation prompt | ✅ Implemented (Dec 2025) |
+**Rationale:** Session handoff was a buffer for un-externalized knowledge that should have been captured in kb/beads during work. System became overengineered and brittle with multiple patches (cross-window scan, staleness detection, active/ cleanup). Reminders fail under cognitive load - orchestrators couldn't maintain session hygiene reliably.
 
-**What exists:**
-- Session registry supports workspace/session lookups
-- ORCHESTRATOR_CONTEXT.md template includes resume guidance
-- `orch session resume` discovers and displays handoffs (with --for-injection mode for hooks)
-- `orch resume` can resume workers (beads ID) or orchestrators (--workspace flag)
+**New model:** Context continuity relies on kb/beads capture during work, not session handoffs. New sessions start fresh from durable state: `kb context` for knowledge, `bd ready` for work state, `orch status` for agent state.
 
-**What's pending:**
-- Auto-resume on session start (Dylan says "let's resume" without specifying which)
-- Smart discovery across multiple potential resume candidates
-- Tracked in backlog (specific issue TBD)
+**Orchestrator artifact change:** Spawned orchestrators now produce SYNTHESIS.md (same as workers), not SESSION_HANDOFF.md. Unified completion verification across tiers.
 
-**Reference:** `.kb/guides/session-resume-protocol.md` - Complete protocol documentation
+**Key decision:** Pressure Over Compensation - removing the buffer creates pressure to capture learnings properly during work rather than deferring to end-of-session handoff that often wasn't filled.
+
+**Reference:** `.kb/decisions/2026-01-19-remove-session-handoff-machinery.md`
+
+### Status: Resume Protocol Implementation (Jan 13-19, 2026)
+
+**Implementation status:** Resume protocol was implemented Jan 13-15, then **deprecated and removed Jan 19-21** as part of session handoff machinery removal.
+
+**What was removed:**
+- `orch session start/end/resume` commands
+- `.orch/session/` directory structure (window-scoped active/ directories, latest/ symlinks)
+- Session-resume OpenCode plugin (`~/.config/opencode/plugin/session-resume.js`)
+- Global session store (`~/.orch/session.json`)
+
+**What remains:**
+- Session registry (`~/.orch/sessions.json`) - still used for spawned orchestrator workspace tracking
+- `orch resume <id>` command - for resuming paused agents (unrelated to session handoff)
+
+**Reference:** `.kb/guides/session-resume-protocol.md` - Historical documentation (now deprecated)
+
+### Capability: OpenCode Session Inspection (Jan 2026)
+
+**What added:** Ability to inspect and tail non-orch-spawned OpenCode sessions.
+
+**Commands:**
+- `orch tail --session <session-id>` - Tail messages from any OpenCode session by ID
+- `orch status --all` - Show all sessions including untracked (no beads ID)
+
+**Use case:** Orchestrators can now inspect sessions started outside orch spawn (interactive sessions, manually started agents, cross-project work) without requiring beads integration.
+
+**Key insight:** Gap was UI, not infrastructure - OpenCode API always supported direct session access, CLI just needed flags to expose it.
+
+**Reference:** `.kb/investigations/2026-01-29-inv-orch-cannot-inspect-opencode-sessions.md`
 
 ---
 
 ## References
 
-**Investigations:**
+**Investigations (Foundational):**
 - `.kb/investigations/2025-12-21-inv-orchestrator-session-boundaries.md` - Session boundary patterns
 - `.kb/investigations/2026-01-04-design-orchestrator-skill-spawnable-agent-gap.md` - Spawnable infrastructure
 - `.kb/investigations/2026-01-04-inv-meta-orchestrator-level-collapse-spawned.md` - Frame collapse analysis
 - `.kb/investigations/2026-01-06-inv-checkpoint-discipline-orchestrator-sessions.md` - Checkpoint thresholds
 
+**Investigations (Session Handoff - Jan 2026):**
+- `.kb/investigations/2026-01-19-inv-stale-session-handoffs-injected-after.md` - Stale handoff injection issue
+- `.kb/investigations/2026-01-21-inv-remove-session-handoff-machinery-remove.md` - Implementation of removal
+- `.kb/investigations/2026-01-15-inv-session-handoff-content-injected-into.md` - Plugin bug causing worker contamination
+- `.kb/investigations/2026-01-18-inv-documentation-add-session-handoff-location.md` - Active directory documentation
+
+**Investigations (OpenCode Integration - Jan 2026):**
+- `.kb/investigations/2026-01-29-inv-orch-cannot-inspect-opencode-sessions.md` - Non-orch-spawned session inspection
+
 **Decisions:**
 - `.kb/decisions/2026-01-04-meta-orchestrator-frame-shift.md` - Frame shift concept
 - `.kb/decisions/2026-01-04-orchestrator-session-lifecycle.md` - Hierarchical completion model
+- `.kb/decisions/2026-01-19-remove-session-handoff-machinery.md` - Session handoff removal rationale
 
 **Guides:**
 - `.kb/guides/orchestrator-session-management.md` - Procedural guide (commands, debugging, workflows)
+- `.kb/guides/session-resume-protocol.md` - Session resume protocol (deprecated Jan 2026)
 
 **Models:**
 - `.kb/models/agent-lifecycle-state-model.md` - Worker lifecycle (related but different tier)

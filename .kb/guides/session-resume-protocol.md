@@ -1,10 +1,22 @@
 # Session Resume Protocol
 
+**⚠️ DEPRECATED:** This entire protocol was removed Jan 19-21, 2026. Session handoff machinery (orch session start/end, .orch/session/ directories, auto-resume plugin) is no longer part of the system. This document is preserved for historical reference only.
+
+**Replacement:** Context continuity now relies on kb/beads capture during work, not session handoffs. New sessions start fresh from durable state via `kb context`, `bd ready`, `orch status`.
+
+**See:** `.kb/decisions/2026-01-19-remove-session-handoff-machinery.md` for removal rationale.
+
+---
+
+# Session Resume Protocol (Historical - Removed Jan 2026)
+
 **Purpose:** Single authoritative reference for session handoff and automatic resume system.
 
-**Scope:** This protocol applies ONLY to **interactive orchestrator sessions** (when Dylan starts Claude Code or OpenCode directly). Spawned worker agents use SPAWN_CONTEXT.md instead and do NOT use this resume system.
+**Scope:** This protocol applied ONLY to **interactive orchestrator sessions** (when Dylan starts Claude Code or OpenCode directly). Spawned worker agents use SPAWN_CONTEXT.md instead and did NOT use this resume system.
 
 **Synthesized from:** Design doc (2026-01-11) + Implementation findings (2026-01-13)
+
+**Removed:** Jan 19-21, 2026
 
 ---
 
