@@ -113,6 +113,7 @@ func checkConcurrencyLimit() error {
 	}
 	var sessionList []sessionData
 	var beadsIDs []string
+	beadsIDToProjectDir := make(map[string]string)
 
 	for _, s := range sessions {
 		// Only count sessions with parseable beadsID (orch-spawned agents)
@@ -143,12 +144,20 @@ func checkConcurrencyLimit() error {
 			status:    status,
 		})
 		beadsIDs = append(beadsIDs, beadsID)
+
+		// Use session.Directory for cross-project resolution.
+		// Skip "/" as it's not a valid project directory.
+		if s.Directory != "" && s.Directory != "/" {
+			beadsIDToProjectDir[beadsID] = s.Directory
+		}
 	}
 
-	// Phase 2: Batch check which beads issues are closed
+	// Phase 2: Batch check which beads issues are closed using session.Directory
 	// This prevents counting agents whose work is already complete
-	// (issue closed) but whose OpenCode session is still lingering
-	closedIssues := daemon.GetClosedIssuesBatch(beadsIDs)
+	// (issue closed) but whose OpenCode session is still lingering.
+	// Using session.Directory avoids cross-project lookup failures that would
+	// otherwise be suppressed as "issue not found" errors.
+	closedIssues := daemon.GetClosedIssuesBatchWithProjectDirs(beadsIDs, beadsIDToProjectDir)
 
 	// Phase 3: Count active agents, excluding closed issues
 	activeCount := 0
