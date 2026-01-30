@@ -66,23 +66,33 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: 237 Investigations Have Actionable Recommendations
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Search for investigations with actionable "Next:" fields (starting with Implement, Add, Create, Fix, Build) found 237 matches out of 702 total investigation files. Sample shows patterns like:
+- "Implement `orch tail --session` flag"
+- "Add usage caching (30-60s TTL)"
+- "Implement in 3 phases: prompt-based action space restriction..."
+- "Create issues for both optimizations"
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** `rg "^\*\*Next:\*\* (Implement|Add|Create|Fix|Build)" .kb/investigations/ --type md -l | wc -l` returned 237 files
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Large corpus of recommendations exists, but need to distinguish between:
+1. Recommendations that were acted upon (implementation completed)
+2. Recommendations that spawned tracked issues/work
+3. Recommendations that remain completely unactioned
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: Investigation Status Doesn't Indicate Action Taken
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** Examined three sample investigations:
+1. 2026-01-29-inv-orch-cannot-inspect-opencode-sessions.md - Status: Complete, Next: "Implement...", Investigation History shows "Implementation completed and verified" - recommendation WAS acted upon
+2. 2026-01-28-inv-analyze-memory-usage-patterns.md - Status: Complete, Next: "Create issues for both optimizations" - unclear if issues were created
+3. 2026-01-27-inv-design-information-hiding-tool-restriction.md - Status: Complete, Next: "Implement in 3 phases" - unclear if implementation happened
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:** Direct file reading of sample investigations
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** Investigation Status: Complete doesn't mean recommendation was acted upon - it only means the investigation concluded. Some investigations include implementation (like #1), while others just provide recommendations (like #2, #3). Need to cross-reference with beads issues, git commits, or subsequent work artifacts to determine which recommendations remain unactioned.
 
 ---
 
