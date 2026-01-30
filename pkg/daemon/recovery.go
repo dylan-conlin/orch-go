@@ -382,6 +382,33 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 	var orphaned []OrphanedSession
 	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
 
+	// Build a map of beadsID -> workspace for efficient lookup
+	// This is more accurate than matching directory names, which may not contain the full beads ID
+	workspacesByBeadsID := make(map[string]struct {
+		path    string
+		name    string
+		session string
+	})
+	entries, err := os.ReadDir(workspaceBase)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				workspacePath := filepath.Join(workspaceBase, entry.Name())
+				// Read beads ID from .beads_id file (accurate) instead of matching directory name
+				workspaceBeadsID := spawn.ReadBeadsID(workspacePath)
+				if workspaceBeadsID != "" {
+					sessionID := spawn.ReadSessionID(workspacePath)
+					workspacesByBeadsID[workspaceBeadsID] = struct {
+						path    string
+						name    string
+						session string
+					}{workspacePath, entry.Name(), sessionID}
+				}
+			}
+		}
+	}
+	fmt.Printf("[DEBUG] FindOrphanedSessions: indexed %d workspaces by beads ID\n", len(workspacesByBeadsID))
+
 	for beadsID, issue := range candidateIssues {
 		// Check if this issue has Phase: Complete (skip it)
 		comments := commentMap[beadsID]
@@ -391,42 +418,30 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 			continue // Skip - agent finished but issue not closed yet
 		}
 
-		// Find workspace for this beads ID
-		entries, err := os.ReadDir(workspaceBase)
-		if err != nil {
-			fmt.Printf("[DEBUG] FindOrphanedSessions: skipping %s - cannot read workspace dir: %v\n", beadsID, err)
-			continue // No workspace dir
-		}
-
+		// Find workspace for this beads ID using the pre-built map
 		foundInWorkspace := false
-		for _, entry := range entries {
-			if entry.IsDir() && strings.Contains(entry.Name(), beadsID) {
-				workspacePath := filepath.Join(workspaceBase, entry.Name())
-				sessionID := spawn.ReadSessionID(workspacePath)
-				if sessionID == "" {
-					fmt.Printf("[DEBUG] FindOrphanedSessions: %s - workspace %s has no session_id\n", beadsID, entry.Name())
-					continue // No session ID in workspace
-				}
-
+		if ws, exists := workspacesByBeadsID[beadsID]; exists {
+			sessionID := ws.session
+			if sessionID == "" {
+				fmt.Printf("[DEBUG] FindOrphanedSessions: %s - workspace %s has no session_id\n", beadsID, ws.name)
+			} else {
 				// Check if session is in memory
 				if inMemorySessionIDs[sessionID] {
 					fmt.Printf("[DEBUG] FindOrphanedSessions: %s - session %s is in memory (not orphaned)\n", beadsID, sessionID)
 					foundInWorkspace = true
-					break // Session is still active - not orphaned
+				} else {
+					// Found an orphaned session
+					fmt.Printf("[DEBUG] FindOrphanedSessions: %s - ORPHANED session %s found via workspace %s\n", beadsID, sessionID, ws.name)
+					orphaned = append(orphaned, OrphanedSession{
+						BeadsID:       beadsID,
+						SessionID:     sessionID,
+						WorkspacePath: ws.path,
+						AgentID:       ws.name,
+						Phase:         phaseStatus.Phase,
+						ProjectDir:    projectDir,
+					})
+					foundInWorkspace = true
 				}
-
-				// Found an orphaned session
-				fmt.Printf("[DEBUG] FindOrphanedSessions: %s - ORPHANED session %s found\n", beadsID, sessionID)
-				orphaned = append(orphaned, OrphanedSession{
-					BeadsID:       beadsID,
-					SessionID:     sessionID,
-					WorkspacePath: workspacePath,
-					AgentID:       entry.Name(),
-					Phase:         phaseStatus.Phase,
-					ProjectDir:    projectDir,
-				})
-				foundInWorkspace = true
-				break // Found workspace for this beadsID
 			}
 		}
 

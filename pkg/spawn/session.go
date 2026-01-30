@@ -55,6 +55,25 @@ func SessionIDPath(workspacePath string) string {
 	return filepath.Join(workspacePath, SessionIDFilename)
 }
 
+// BeadsIDFilename is the name of the file storing the beads ID in the workspace.
+const BeadsIDFilename = ".beads_id"
+
+// ReadBeadsID reads the beads issue ID from the workspace directory.
+// Returns empty string if the file doesn't exist or is empty.
+func ReadBeadsID(workspacePath string) string {
+	beadsFile := filepath.Join(workspacePath, BeadsIDFilename)
+	data, err := os.ReadFile(beadsFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// BeadsIDPath returns the path to the beads ID file for a workspace.
+func BeadsIDPath(workspacePath string) string {
+	return filepath.Join(workspacePath, BeadsIDFilename)
+}
+
 // TierFilename is the name of the file storing the spawn tier in the workspace.
 const TierFilename = ".tier"
 

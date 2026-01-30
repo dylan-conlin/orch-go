@@ -77,6 +77,52 @@ func TestSessionIDPath(t *testing.T) {
 	}
 }
 
+func TestReadBeadsID(t *testing.T) {
+	// Create temp directory as workspace
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	beadsID := "orch-go-20985"
+
+	// Write beads ID file
+	beadsFile := filepath.Join(tmpDir, BeadsIDFilename)
+	if err := os.WriteFile(beadsFile, []byte(beadsID+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write beads ID file: %v", err)
+	}
+
+	// Read beads ID
+	readID := ReadBeadsID(tmpDir)
+	if readID != beadsID {
+		t.Errorf("ReadBeadsID returned %q, want %q", readID, beadsID)
+	}
+}
+
+func TestReadBeadsID_NoFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Reading from non-existent file should return empty string
+	readID := ReadBeadsID(tmpDir)
+	if readID != "" {
+		t.Errorf("ReadBeadsID returned %q for non-existent file, want empty string", readID)
+	}
+}
+
+func TestBeadsIDPath(t *testing.T) {
+	workspace := "/some/workspace/path"
+	expected := filepath.Join(workspace, BeadsIDFilename)
+	got := BeadsIDPath(workspace)
+	if got != expected {
+		t.Errorf("BeadsIDPath returned %q, want %q", got, expected)
+	}
+}
+
 func TestWriteReadTier(t *testing.T) {
 	// Create temp directory as workspace
 	tmpDir, err := os.MkdirTemp("", "spawn-test-*")
