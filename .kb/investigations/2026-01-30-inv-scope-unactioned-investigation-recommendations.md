@@ -96,6 +96,45 @@ Guidelines:
 
 ---
 
+### Finding 4: Some Recommendations Become Beads Issues, Others Don't
+
+**Evidence:** Cross-referenced investigation recommendations with open beads issues. Found matches:
+- 2026-01-23-inv-gastown investigation recommended "Create beads issue to evaluate GUPP-style hooks" → became orch-go-0ns2e
+- Investigation recommended "Investigate Strategic Center dashboard" → became orch-go-21022
+- Investigation recommended "Auto-resume agents after OpenCode/server restart" → became orch-go-21032
+
+However, many recommendations do NOT have corresponding beads issues. Example recommendations without visible tracking:
+- "Add usage caching (30-60s TTL)" from 2026-01-28-inv-analyze-memory-usage-patterns.md
+- "Implement in 3 phases: prompt-based action space restriction..." from 2026-01-27-inv-design-information-hiding-tool-restriction.md
+- "Implement `orch servers` subcommands" from 2025-12-23-inv-explore-options-centralized-server-management.md
+
+**Source:** `bd list --status open --limit 0 | rg -i "GUPP|Strategic Center|auto-resume"` found 3 matches; manual review of other recommendations found no corresponding issues
+
+**Significance:** There's an inconsistent pattern of converting investigation recommendations into tracked work. Some get issues created, others remain as recommendations in completed investigation files. Need systematic approach to identify untracked recommendations.
+
+---
+
+### Finding 5: Verification Shows Mixed Implementation Status
+
+**Evidence:** Tested three specific recommendations from investigations:
+1. "Implement `orch servers` subcommands" (2025-12-23-inv-explore-options-centralized-server-management.md) - IMPLEMENTED: `orch servers --help` shows working command with all recommended subcommands
+2. "Implement action space restriction" (2026-01-27-inv-design-information-hiding-tool-restriction.md) - IMPLEMENTED: `~/.claude/skills/meta/orchestrator/SKILL.md` contains exact "You CAN (meta-actions)" and "You CANNOT (primitive actions)" sections
+3. "Add usage caching (30-60s TTL)" (2026-01-28-inv-analyze-memory-usage-patterns.md) - NOT IMPLEMENTED: `rg -i "cache.*usage" pkg/usage/` returns no results
+
+**Source:** 
+- `orch servers --help` command execution
+- `rg "You CAN \(meta-actions\)" ~/.claude/skills/meta/orchestrator/` search
+- `rg -i "cache.*usage" pkg/usage/` search
+
+**Significance:** This confirms that investigation recommendations have three possible states:
+1. Implemented directly (without beads issue tracking)
+2. Tracked via beads issue (may be open or in-progress)
+3. Completely unactioned (no implementation, no issue)
+
+Need methodology to identify category 3 (unactioned) recommendations systematically.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
