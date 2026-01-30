@@ -1,7 +1,7 @@
 # Model: Decidability Graph
 
 **Domain:** Work Coordination / Authority Boundaries / Daemon Operation
-**Last Updated:** 2026-01-19
+**Last Updated:** 2026-01-29
 **Synthesized From:** Strategic Orchestrator Model, Questions as First-Class Entities decision, daemon overnight run observations, Petri net / HTN / Active Learning analogies
 
 ---
@@ -211,6 +211,34 @@ Frontier Report:
 
 This is richer than current `orch status` which shows agent states, not graph topology.
 
+### Stuck Agent Detection
+
+**Implementation (as of 2026-01-29):** `orch frontier` includes stuck agent detection using time-based heuristics.
+
+**Stuck agent criteria:**
+1. Agent runtime > 2 hours (configurable threshold)
+2. Beads issue status is open (not closed)
+3. OpenCode session still exists
+
+**Why this matters for decidability:**
+
+Stuck agents represent execution failure, not decidability state. But they're reported in frontier because:
+- They occupy daemon capacity (can't spawn new work if stuck agents hold slots)
+- They may indicate Work nodes that should be Question nodes (premise unclear, agent can't converge)
+- They signal orchestrator intervention needed (not just daemon cleanup)
+
+**Key fix (2026-01-29):** Filter out agents whose beads issues are closed. Sessions persist after work completes; a 20h-old session for a closed issue isn't stuck, it's just leftover infrastructure.
+
+**Filtering implementation:**
+1. Discover agents from OpenCode sessions + tmux windows
+2. Extract beads IDs from session titles / window names
+3. Batch-check beads status via `bd show ... --json`
+4. Exclude agents where `status == "closed"`
+
+**False positive prevention:** Session age alone is insufficient. Must validate work context (beads status) to avoid reporting completed work as stuck.
+
+**Related constraint:** `orch status can show phantom agents (tmux windows where OpenCode exited)` - similar visibility issue at execution layer.
+
 ---
 
 ## Why This Fails (Without Explicit Modeling)
@@ -322,10 +350,30 @@ bd ready --type question             # Show only questions (for orchestrator)
 - Closing question unblocks dependent work (`bd ready` includes it)
 - Questions excluded from default `bd ready` (correct - they're not daemon work)
 
-**Current gaps:**
+**Decidability fields now exposed (as of 2026-01-23):**
+
+```bash
+# Create issues with decidability metadata
+bd create --type question --resolution-type factual --domain "auth"
+bd create --type question --resolution-type judgment --domain "architecture"
+
+# Add dependencies with authority constraints
+bd dep add <epic-id> <question-id> --authority orchestrator
+
+# Filter ready work by authority level
+bd ready --authority daemon           # Show only daemon-traversable work
+bd ready --authority orchestrator     # Show orchestrator-level work
+```
+
+**Implementation status:**
+- ✅ ResolutionType field (factual/judgment/framing) exposed via `--resolution-type`
+- ✅ Domain field (categorization) exposed via `--domain`
+- ✅ Authority field (daemon/orchestrator/human) on dependencies via `--authority`
+- ✅ Authority filtering in `bd ready` to show only work within authority level
+
+**Remaining gaps:**
 - `bd close` requires "Phase: Complete" but questions aren't agent work (need `--force`)
 - `answered` status doesn't unblock dependencies - only `closed` does
-- Decidability typing (factual/judgment/framing) not yet encoded
 
 ### With Daemon
 
@@ -346,10 +394,32 @@ Decidability graph makes this structural, not just role guidance.
 ### With Dashboard
 
 Current views: agent states, ready queue, blocked issues.
-Decidability-aware views would add:
-- **Frontier view:** What's immediately traversable vs blocked-on-what
-- **Question view:** Open questions with blocking scope
-- **Gate view:** Accumulated options awaiting Dylan
+
+**Frontier view now implemented (as of 2026-01-29):**
+
+The `orch frontier` command provides the decidability-aware view described in this model:
+
+```bash
+orch frontier           # Show decidability state
+orch frontier --json    # Output as JSON for scripting
+```
+
+**Output sections:**
+- **READY TO RELEASE:** Issues ready to work on (no blockers) - daemon-traversable Work nodes
+- **BLOCKED:** Issues blocked, sorted by leverage (what would unblock the most) - shows Question/Gate blocking scope
+- **ACTIVE:** Agents currently working on issues - execution state
+- **STUCK (>2h):** Agents that may be stalled - health warnings
+
+**Key features:**
+- Leverage calculation: Shows which blockers, if resolved, would unblock the most downstream work
+- Stuck agent detection: Identifies agents >2h runtime (filters out closed issues as of 2026-01-29)
+- Authority-aware: Ready issues respect dependency authority constraints (via `bd ready --authority`)
+
+**Still needed:**
+- **Question view:** Dedicated view for open questions with resolution type and blocking scope
+- **Gate view:** Accumulated options awaiting Dylan-level judgment
+
+**Dashboard integration:** Frontier state is exposed via HTTP endpoint (`/frontier`) for dashboard consumption.
 
 ---
 
@@ -408,6 +478,10 @@ Decidability-aware views would add:
 
 **2026-01-19 (discussion):** Major refinement - discovered that hierarchy is about context-scoping, not reasoning capability. Workers can answer framing questions if given right context. The irreducible orchestrator function is deciding what context to load. See "The Irreducible Function: Context Scoping" section. Captured as `kb-227b01`.
 
+**2026-01-23:** Decidability fields exposed via CLI - `--resolution-type`, `--domain`, `--authority` flags added to beads. Authority filtering implemented in `bd ready --authority <level>`. See `.kb/investigations/2026-01-23-inv-expose-decidability-fields-beads-cli.md`.
+
+**2026-01-29:** Frontier command implementation validated. Added stuck agent detection with beads status filtering to prevent false positives. Fixed skill inference alignment between frontier and status commands. See "Stuck Agent Detection" section and `.kb/guides/status.md` for integration details.
+
 ---
 
 ## Empirical Validation (Dogfooding 2026-01-19)
@@ -451,15 +525,17 @@ The Question lifecycle (Open → Investigating → Answered → Closed) isn't fu
 
 ## Open Questions
 
-1. **Resolution typing implementation:** How should question subtypes (factual/judgment/framing) be encoded? Labels? Separate field? Inferred from context?
+1. ~~**Resolution typing implementation:**~~ **RESOLVED (2026-01-23)** - Question subtypes encoded via labels with convention `subtype:{factual|judgment|framing}`. See `.kb/decisions/2026-01-28-question-subtype-encoding-labels.md`.
 
-2. **Graph visualization:** What would a decidability graph look like in the dashboard? How to show authority edges?
+2. ~~**Graph visualization:**~~ **PARTIALLY RESOLVED (2026-01-29)** - `orch frontier` provides text-based frontier view with ready/blocked/active sections. Full graph visualization in dashboard still pending. Authority edges not yet visualized.
 
-3. **Automatic escalation detection:** Can the system detect when a factual question has become a framing question? (Evidence gathered but no convergence)
+3. **Automatic escalation detection:** Can the system detect when a factual question has become a framing question? (Evidence gathered but no convergence). Current approach: manual escalation via orchestrator synthesis.
 
-4. **Gate accumulation:** How should options be gathered at Gate nodes? Current pattern is ad-hoc. Should there be structure?
+4. **Gate accumulation:** How should options be gathered at Gate nodes? Current pattern is ad-hoc. Should there be structure? (No standard pattern established yet)
 
-5. **Subgraph provisioning:** When work is created past a Question, how explicit should the "provisional" status be?
+5. **Subgraph provisioning:** When work is created past a Question, how explicit should the "provisional" status be? (No mechanism currently - work appears ready even if premise is uncertain)
+
+6. **Stuck agent recovery:** When frontier detects stuck agents (>2h), what automated recovery mechanisms should trigger? Manual intervention only, or auto-abandon/respawn? (Currently manual only)
 
 ---
 

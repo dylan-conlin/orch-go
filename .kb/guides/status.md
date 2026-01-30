@@ -2,9 +2,9 @@
 
 **Purpose:** Single authoritative reference for the `orch status` CLI command. Read this before debugging status issues, understanding agent detection, or interpreting output.
 
-**Last verified:** 2026-01-08
+**Last verified:** 2026-01-29
 
-**Synthesized from:** 12 investigations (Dec 20, 2025 - Jan 7, 2026) addressing stale sessions, performance, liveness detection, cross-project visibility, session cleanup, and drift metrics.
+**Synthesized from:** 15+ investigations (Dec 20, 2025 - Jan 29, 2026) addressing stale sessions, performance, liveness detection, cross-project visibility, session cleanup, drift metrics, frontier vs status disagreement, and stuck agent reporting.
 
 ---
 
@@ -18,6 +18,36 @@ orch status --all        # Include phantom and completed agents
 orch status --project X  # Filter by project
 orch status --json       # Output as JSON for scripting
 ```
+
+---
+
+## Orch Status vs Orch Frontier
+
+**Two commands with distinct purposes:**
+
+| Command | Purpose | Primary Data Source | View |
+|---------|---------|---------------------|------|
+| `orch status` | Monitor agent **execution state** | OpenCode sessions, tmux windows | Running agents, runtime, tokens, processing state |
+| `orch frontier` | Monitor **work decidability state** | Beads issues, dependencies | Ready work, blocked work (with leverage), active/stuck agents |
+
+**Key distinctions:**
+
+- **orch status** answers: "What agents are running? How long? What resources are they using?"
+- **orch frontier** answers: "What work is ready? What's blocking the most work? Are agents stuck?"
+
+**When to use which:**
+
+- **Use `orch status`** when debugging agent issues, checking resource usage, or monitoring swarm health
+- **Use `orch frontier`** when deciding what to work on next, identifying high-leverage blockers, or detecting stuck agents
+
+**Overlap:** Both show active agents, but with different perspectives:
+- `orch status` shows agents from OpenCode/tmux perspective (execution infrastructure)
+- `orch frontier` shows agents from beads perspective (work tracking), including stuck agent detection (>2h runtime)
+
+**Known issues (as of 2026-01-29):**
+- ~~Frontier and status could show different skills for same agent~~ (FIXED: aligned skill inference functions)
+- ~~Frontier reported agents for closed issues as stuck~~ (FIXED: now filters by beads status)
+- Different time windows: frontier uses 3h for active agents, status uses 30min for idle sessions
 
 ---
 
@@ -161,6 +191,52 @@ Without coordinated cleanup, these can become out of sync.
 - Spawn count (number of agents spawned in current session)
 
 **Key insight:** Core drift signals (time, spawns) are derivable from existing `SpawnRecord` infrastructure. File reads tracking deferred - requires OpenCode plugin event infrastructure.
+
+### 8. Observability Gaps (Jan 17)
+
+**Problem:** MODE column (tmux vs headless) was omitted in narrow terminal format, reducing visibility into escape hatch usage.
+
+**Root cause:** Narrow format (<120 chars) drops MODE to fit smaller terminals.
+
+**Gaps identified:**
+- Narrow format shows: SOURCE, BEADS ID, MODEL, STATUS, PHASE, SKILL, RUNTIME, TOKENS (no MODE)
+- No `--mode` or `--backend` filter flag in `orch status`
+- Escape hatch stats tracked in `orch stats` but not filterable in status view
+
+**Evidence:** 
+- Wide format shows MODE at position 3 (`status_cmd.go:1049`)
+- Narrow format omits MODE column (`status_cmd.go:1132`)
+- Stats show escape hatch usage (50% spawn rate in Jan 2026)
+
+**Mitigation:** Use `orch status --json | jq '.agents[] | select(.mode=="claude")'` for filtering, or widen terminal.
+
+**Related:** `.kb/investigations/2026-01-17-inv-analyze-orch-status-observability-gaps.md`
+
+### 9. Frontier vs Status Disagreement (Jan 29)
+
+**Problem:** `orch frontier` showed different skill than `orch status` for same agent.
+
+**Root cause:** Two separate skill inference functions had conflicting mappings:
+- `pkg/daemon/skill_inference.go` mapped bug→systematic-debugging
+- `cmd/orch/spawn_skill_inference.go` mapped bug→architect (stale)
+
+**Fix:** Aligned both functions to use bug→systematic-debugging per decision 2026-01-23.
+
+**Key insight:** Workspace name is "ground truth" for skill used. Frontier extracts skill from workspace name, so it showed actual skill, while daemon printed its own (incorrect) inference.
+
+**Related:** `.kb/investigations/2026-01-29-inv-orch-frontier-disagrees-orch-status.md`
+
+### 10. Stuck Agent False Positives (Jan 29)
+
+**Problem:** `orch frontier` reported agents for closed issues as "stuck" (e.g., `orch-go-20997` showing as stuck after 20h despite being closed).
+
+**Root cause:** Frontier's stuck agent detection only checked OpenCode session age (>2h threshold), not beads issue status. Sessions persist after issues close.
+
+**Fix:** Added filtering step in `getActiveAndStuckAgents()` to batch-check beads status via `bd show ... --json` and exclude agents whose issues are closed.
+
+**Key insight:** Session lifetime ≠ issue lifetime. OpenCode sessions can outlive completed work. Stuck detection must validate issue context, not just session age.
+
+**Related:** `.kb/investigations/2026-01-29-inv-orch-frontier-reports-stuck-agents.md`
 
 ---
 
@@ -321,6 +397,9 @@ These are settled. Don't re-investigate:
 | 2026-01-05 | `debug-fix-orch-status-showing-different.md` | Cross-project directory resolution |
 | 2026-01-06 | `inv-orch-status-shows-completed-agents.md` | Session cleanup in orch complete |
 | 2026-01-07 | `inv-orch-status-surface-drift-metrics.md` | Session drift metrics display |
+| 2026-01-17 | `inv-analyze-orch-status-observability-gaps.md` | MODE column omission, filter gaps |
+| 2026-01-29 | `inv-orch-frontier-disagrees-orch-status.md` | Skill inference alignment |
+| 2026-01-29 | `inv-orch-frontier-reports-stuck-agents.md` | Stuck agent false positives fix |
 
 ---
 
