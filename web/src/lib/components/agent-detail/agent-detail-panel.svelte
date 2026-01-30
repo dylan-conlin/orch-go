@@ -14,24 +14,49 @@
 	// Active tab state - will be determined by agent status
 	let activeTab: TabType = $state('activity');
 	
-	// Determine which tabs are visible based on agent status
+	// Screenshot count state - fetched asynchronously to determine tab visibility
+	let screenshotCount: number = $state(0);
+	let screenshotsLoading: boolean = $state(true);
+	
+	// Determine which tabs are visible based on agent status AND content availability
 	function getVisibleTabs(agent: Agent | null): TabType[] {
 		if (!agent) return [];
-		switch (agent.status) {
-			case 'active':
-				return ['activity', 'screenshots'];
-			case 'completed':
-				return ['synthesis', 'investigation', 'screenshots'];
-			case 'abandoned':
-				return ['investigation', 'screenshots'];
-			default:
-				return ['activity', 'screenshots'];
+		
+		const tabs: TabType[] = [];
+		
+		// Activity tab - only for active agents
+		if (agent.status === 'active') {
+			tabs.push('activity');
 		}
+		
+		// Synthesis tab - only show if content exists
+		if (agent.synthesis_content) {
+			tabs.push('synthesis');
+		}
+		
+		// Investigation tab - only show if content exists
+		if (agent.investigation_content) {
+			tabs.push('investigation');
+		}
+		
+		// Screenshots tab - only show if screenshots exist (and not loading)
+		if (!screenshotsLoading && screenshotCount > 0) {
+			tabs.push('screenshots');
+		}
+		
+		return tabs;
 	}
 	
-	// Get default tab for agent status
+	// Get default tab - prioritize first available tab with content
 	function getDefaultTab(agent: Agent | null): TabType {
 		if (!agent) return 'activity';
+		
+		const visibleTabs = getVisibleTabs(agent);
+		if (visibleTabs.length > 0) {
+			return visibleTabs[0];
+		}
+		
+		// Fallback based on status (should rarely happen)
 		switch (agent.status) {
 			case 'active':
 				return 'activity';
@@ -44,7 +69,44 @@
 		}
 	}
 	
-	// Visible tabs derived from agent
+	// Fetch screenshot count for visibility determination
+	async function fetchScreenshotCount(agent: Agent) {
+		if (!agent.project_dir || !agent.id) {
+			screenshotCount = 0;
+			screenshotsLoading = false;
+			return;
+		}
+
+		try {
+			const response = await fetch(
+				`https://localhost:3348/api/screenshots?agent_id=${encodeURIComponent(agent.id)}&project_dir=${encodeURIComponent(agent.project_dir)}`
+			);
+
+			if (!response.ok) {
+				screenshotCount = 0;
+				screenshotsLoading = false;
+				return;
+			}
+
+			const data = await response.json();
+			screenshotCount = data.screenshots?.length || 0;
+		} catch (err) {
+			console.error('Failed to fetch screenshot count:', err);
+			screenshotCount = 0;
+		} finally {
+			screenshotsLoading = false;
+		}
+	}
+
+	// Load screenshot count when agent changes
+	$effect(() => {
+		if ($selectedAgent) {
+			screenshotsLoading = true;
+			fetchScreenshotCount($selectedAgent);
+		}
+	});
+
+	// Visible tabs derived from agent - reset to default tab if current isn't visible
 	$effect(() => {
 		if ($selectedAgent) {
 			const visibleTabs = getVisibleTabs($selectedAgent);
