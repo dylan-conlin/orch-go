@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/events"
 )
 
 // SessionState tracks the current state of a session.
@@ -21,24 +23,30 @@ type CompletionHandler func(sessionID string)
 
 // Monitor watches SSE events and detects session completions.
 type Monitor struct {
-	sseClient *SSEClient
-	sessions  map[string]*SessionState
-	handlers  []CompletionHandler
-	mu        sync.RWMutex
+	sseClient   *SSEClient
+	sessions    map[string]*SessionState
+	handlers    []CompletionHandler
+	mu          sync.RWMutex
+	eventLogger *events.Logger
 
 	// For graceful shutdown
 	cancel context.CancelFunc
 	done   chan struct{}
+
+	// Track reconnection attempts
+	reconnectAttempt int
 }
 
 // NewMonitor creates a new SSE monitor for the given server URL.
 func NewMonitor(serverURL string) *Monitor {
 	sseURL := serverURL + "/event"
 	return &Monitor{
-		sseClient: NewSSEClient(sseURL),
-		sessions:  make(map[string]*SessionState),
-		handlers:  make([]CompletionHandler, 0),
-		done:      make(chan struct{}),
+		sseClient:        NewSSEClient(sseURL),
+		sessions:         make(map[string]*SessionState),
+		handlers:         make([]CompletionHandler, 0),
+		done:             make(chan struct{}),
+		eventLogger:      events.NewDefaultLogger(),
+		reconnectAttempt: 0,
 	}
 }
 
@@ -93,7 +101,16 @@ func (m *Monitor) run(ctx context.Context) {
 			default:
 			}
 
-			fmt.Printf("SSE connection error: %v, reconnecting in %v\n", err, reconnectDelay)
+			// Log connection lost
+			_ = m.eventLogger.LogSSEConnectionLost(err.Error())
+
+			// Increment reconnection attempt counter
+			m.reconnectAttempt++
+
+			fmt.Printf("SSE connection error: %v, reconnecting in %v (attempt %d)\n", err, reconnectDelay, m.reconnectAttempt)
+
+			// Log reconnection attempt
+			_ = m.eventLogger.LogSSEReconnectionAttempt(m.reconnectAttempt, int(reconnectDelay.Milliseconds()))
 
 			// Wait before reconnecting
 			select {
@@ -111,6 +128,7 @@ func (m *Monitor) run(ctx context.Context) {
 func (m *Monitor) connectAndProcess(ctx context.Context) error {
 	events := make(chan SSEEvent, 100)
 	errChan := make(chan error, 1)
+	connected := make(chan struct{}, 1)
 
 	// Start SSE connection in a goroutine
 	go func() {
@@ -119,18 +137,51 @@ func (m *Monitor) connectAndProcess(ctx context.Context) error {
 			case errChan <- err:
 			default:
 			}
+		} else {
+			// Signal successful connection
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
 		}
 		close(events)
 	}()
+
+	connectionEstablished := false
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-connected:
+			// Connection established
+			if m.reconnectAttempt > 0 {
+				// This was a reconnection
+				_ = m.eventLogger.LogSSEReconnectionSuccess(m.reconnectAttempt)
+				fmt.Printf("SSE reconnection successful after %d attempts\n", m.reconnectAttempt)
+				m.reconnectAttempt = 0 // Reset counter
+			} else {
+				// First connection
+				_ = m.eventLogger.LogSSEConnectionEstablished()
+			}
+			connectionEstablished = true
 		case event, ok := <-events:
 			if !ok {
 				// Connection closed, return to trigger reconnection
 				return fmt.Errorf("SSE connection closed")
+			}
+			// First event means connection is established
+			if !connectionEstablished {
+				if m.reconnectAttempt > 0 {
+					// This was a reconnection
+					_ = m.eventLogger.LogSSEReconnectionSuccess(m.reconnectAttempt)
+					fmt.Printf("SSE reconnection successful after %d attempts\n", m.reconnectAttempt)
+					m.reconnectAttempt = 0 // Reset counter
+				} else {
+					// First connection
+					_ = m.eventLogger.LogSSEConnectionEstablished()
+				}
+				connectionEstablished = true
 			}
 			m.handleEvent(event)
 		case err := <-errChan:

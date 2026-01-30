@@ -474,3 +474,99 @@ func TestVerificationBypassedDataSerialization(t *testing.T) {
 		t.Errorf("BeadsID = %v, want %v", parsed.BeadsID, data.BeadsID)
 	}
 }
+
+// Test SSE connection logging
+func TestLogSSEConnectionEstablished(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEConnectionEstablished()
+	if err != nil {
+		t.Fatalf("LogSSEConnectionEstablished() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEConnectionEstablished) {
+		t.Error("LogSSEConnectionEstablished() should log sse.connection_established event type")
+	}
+}
+
+// Test SSE connection lost logging
+func TestLogSSEConnectionLost(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEConnectionLost("connection timeout")
+	if err != nil {
+		t.Fatalf("LogSSEConnectionLost() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEConnectionLost) {
+		t.Error("LogSSEConnectionLost() should log sse.connection_lost event type")
+	}
+	if !strings.Contains(string(data), "connection timeout") {
+		t.Error("LogSSEConnectionLost() should include error in data")
+	}
+}
+
+// Test SSE reconnection attempt logging
+func TestLogSSEReconnectionAttempt(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEReconnectionAttempt(3, 5000)
+	if err != nil {
+		t.Fatalf("LogSSEReconnectionAttempt() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEReconnectionAttempt) {
+		t.Error("LogSSEReconnectionAttempt() should log sse.reconnection_attempt event type")
+	}
+	if !strings.Contains(string(data), "\"attempt\":3") {
+		t.Error("LogSSEReconnectionAttempt() should include attempt number in data")
+	}
+	if !strings.Contains(string(data), "\"delay_ms\":5000") {
+		t.Error("LogSSEReconnectionAttempt() should include delay in data")
+	}
+}
+
+// Test SSE reconnection success logging
+func TestLogSSEReconnectionSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "events.jsonl")
+	logger := NewLogger(logPath)
+
+	err := logger.LogSSEReconnectionSuccess(2)
+	if err != nil {
+		t.Fatalf("LogSSEReconnectionSuccess() error = %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	if !strings.Contains(string(data), EventTypeSSEReconnectionSuccess) {
+		t.Error("LogSSEReconnectionSuccess() should log sse.reconnection_success event type")
+	}
+	if !strings.Contains(string(data), "\"attempts\":2") {
+		t.Error("LogSSEReconnectionSuccess() should include attempt count in data")
+	}
+}

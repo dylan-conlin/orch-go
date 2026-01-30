@@ -38,6 +38,14 @@ const (
 	EventTypeAgentAbandoned = "agent.abandoned"
 	// EventTypeDedupBlocked indicates a spawn was blocked by a deduplication layer.
 	EventTypeDedupBlocked = "daemon.dedup_blocked"
+	// EventTypeSSEConnectionEstablished indicates an SSE connection was successfully established.
+	EventTypeSSEConnectionEstablished = "sse.connection_established"
+	// EventTypeSSEConnectionLost indicates an SSE connection was lost.
+	EventTypeSSEConnectionLost = "sse.connection_lost"
+	// EventTypeSSEReconnectionAttempt indicates an SSE reconnection is being attempted.
+	EventTypeSSEReconnectionAttempt = "sse.reconnection_attempt"
+	// EventTypeSSEReconnectionSuccess indicates an SSE reconnection succeeded.
+	EventTypeSSEReconnectionSuccess = "sse.reconnection_success"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -443,5 +451,48 @@ func (l *Logger) LogDedupBlocked(data interface{}) error {
 		SessionID: beadsID,
 		Timestamp: time.Now().Unix(),
 		Data:      eventData,
+	})
+}
+
+// LogSSEConnectionEstablished logs when an SSE connection is successfully established.
+func (l *Logger) LogSSEConnectionEstablished() error {
+	return l.Log(Event{
+		Type:      EventTypeSSEConnectionEstablished,
+		Timestamp: time.Now().Unix(),
+		Data:      map[string]interface{}{},
+	})
+}
+
+// LogSSEConnectionLost logs when an SSE connection is lost.
+func (l *Logger) LogSSEConnectionLost(err string) error {
+	return l.Log(Event{
+		Type:      EventTypeSSEConnectionLost,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"error": err,
+		},
+	})
+}
+
+// LogSSEReconnectionAttempt logs when an SSE reconnection is being attempted.
+func (l *Logger) LogSSEReconnectionAttempt(attempt int, delayMs int) error {
+	return l.Log(Event{
+		Type:      EventTypeSSEReconnectionAttempt,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"attempt":  attempt,
+			"delay_ms": delayMs,
+		},
+	})
+}
+
+// LogSSEReconnectionSuccess logs when an SSE reconnection succeeds.
+func (l *Logger) LogSSEReconnectionSuccess(attempts int) error {
+	return l.Log(Event{
+		Type:      EventTypeSSEReconnectionSuccess,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"attempts": attempts,
+		},
 	})
 }
