@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
+	import MarkdownContent from '$lib/components/markdown-content/markdown-content.svelte';
 	import type { Agent, SSEEvent } from '$lib/stores/agents';
 	import { sseEvents, sessionHistory } from '$lib/stores/agents';
 	import { onMount, tick } from 'svelte';
@@ -713,20 +714,20 @@
 						<!-- Non-tool events: render with hierarchy based on type -->
 						<div class="flex flex-col gap-1 py-1">
 							{#if part.type === 'reasoning'}
-								<!-- Reasoning: muted color, bullet prefix, standard font (not monospace) -->
+								<!-- Reasoning: muted color, bullet prefix, standard font (not monospace), markdown rendered -->
 								<div class="flex items-start gap-2 text-muted-foreground/50">
 									<span class="shrink-0">•</span>
-									<span class="flex-1 break-words leading-relaxed font-sans text-sm">
-										{part.text || part.state?.title || part.type}
-									</span>
+									<div class="flex-1 break-words leading-relaxed font-sans text-sm activity-reasoning">
+										<MarkdownContent content={part.text || part.state?.title || part.type || ''} />
+									</div>
 								</div>
 							{:else}
-								<!-- Text and other events: highest contrast, standard font -->
+								<!-- Text and other events: highest contrast, standard font, markdown rendered -->
 								<div class="flex items-start gap-2 text-foreground">
 									<span class="shrink-0 opacity-50">{getActivityIcon(part.type)}</span>
-									<span class="flex-1 break-words leading-relaxed font-sans">
-										{part.text || part.state?.title || part.type}
-									</span>
+									<div class="flex-1 break-words leading-relaxed font-sans activity-text">
+										<MarkdownContent content={part.text || part.state?.title || part.type || ''} />
+									</div>
 								</div>
 							{/if}
 						</div>
@@ -811,3 +812,52 @@
 		</p>
 	</div>
 </div>
+
+<style>
+	/* Compact markdown styles for activity feed - override default MarkdownContent spacing */
+	.activity-text :global(.markdown-content p),
+	.activity-reasoning :global(.markdown-content p) {
+		margin-bottom: 0.25rem;
+	}
+	
+	.activity-text :global(.markdown-content p:last-child),
+	.activity-reasoning :global(.markdown-content p:last-child) {
+		margin-bottom: 0;
+	}
+	
+	.activity-text :global(.markdown-content ul),
+	.activity-text :global(.markdown-content ol),
+	.activity-reasoning :global(.markdown-content ul),
+	.activity-reasoning :global(.markdown-content ol) {
+		margin-top: 0.25rem;
+		margin-bottom: 0.25rem;
+		padding-left: 1.25rem;
+	}
+	
+	.activity-text :global(.markdown-content li),
+	.activity-reasoning :global(.markdown-content li) {
+		margin-bottom: 0.125rem;
+	}
+	
+	.activity-text :global(.markdown-content pre),
+	.activity-reasoning :global(.markdown-content pre) {
+		margin-top: 0.25rem;
+		margin-bottom: 0.25rem;
+		padding: 0.5rem;
+		font-size: 0.75rem;
+	}
+	
+	.activity-text :global(.markdown-content code),
+	.activity-reasoning :global(.markdown-content code) {
+		font-size: 0.75rem;
+		padding: 0.125rem 0.25rem;
+	}
+	
+	/* Muted styles for reasoning content */
+	.activity-reasoning :global(.markdown-content),
+	.activity-reasoning :global(.markdown-content p),
+	.activity-reasoning :global(.markdown-content li),
+	.activity-reasoning :global(.markdown-content span) {
+		color: inherit;
+	}
+</style>
