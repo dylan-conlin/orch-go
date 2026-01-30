@@ -15,6 +15,10 @@
         "edit": "deny",
         "write": "deny",
         "notebookedit": "deny",
+        "external_directory": {
+          "~/.kb/**": "allow",
+          "~/.claude/**": "allow"
+        },
         "bash": {
           "*": "deny",
           "orch": "allow",
@@ -35,7 +39,9 @@
           "CLAUDE.md": "allow",
           ".kb/**": "allow",
           ".orch/**": "allow",
-          "*.md": "allow"
+          "*.md": "allow",
+          "~/.kb/**": "allow",
+          "~/.claude/**": "allow"
         }
       }
     }
