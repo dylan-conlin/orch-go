@@ -1,7 +1,7 @@
 # Model: Spawn Architecture
 
 **Domain:** Agent Spawning / Workspace Creation
-**Last Updated:** 2026-01-12
+**Last Updated:** 2026-01-29
 **Synthesized From:** 36 investigations (Dec 2025 - Jan 2026) into spawn implementation, context generation, tier system, and triage friction
 
 ---
@@ -42,9 +42,16 @@ orch spawn <skill> "task"
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. WORKSPACE CREATION                                          │
+│  4. BLOAT DETECTION                                             │
+│     Extract file paths from task → check line counts           │
+│     Warn if any files >800 lines (test files exempt)           │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  5. WORKSPACE CREATION                                          │
 │     .orch/workspace/{name}/                                     │
-│     ├── SPAWN_CONTEXT.md   (skill + task + context)            │
+│     ├── SPAWN_CONTEXT.md   (skill + task + context + bloat)    │
 │     ├── .tier              (light/full)                        │
 │     ├── .session_id        (OpenCode session ID)               │
 │     ├── .beads_id          (beads issue ID)                    │
@@ -54,7 +61,7 @@ orch spawn <skill> "task"
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  5. OPENCODE SESSION                                            │
+│  6. OPENCODE SESSION                                            │
 │     opencode run --model {model} --title "{name} [{beads-id}]"  │
 │     Headless by default (HTTP API), --tmux for TUI             │
 └─────────────────────────────────────────────────────────────────┘
@@ -65,6 +72,8 @@ orch spawn <skill> "task"
 **SPAWN_CONTEXT.md structure:**
 ```markdown
 # TASK: {task description}
+
+⚠️ BLOAT DETECTED: {warnings for files >800 lines, if any}
 
 # SKILL CONTEXT:
 {full SKILL.md content embedded}
@@ -250,6 +259,12 @@ Agent works in: ~/target-project/
 - Daemon-driven workflow as default
 - Event logging for bypass analysis
 
+**Phase 6: Context Quality & Observability (Jan 22-29, 2026)**
+- Bloat detection warns agents about files >800 lines (Jan 24)
+- Cross-project beads lookup failures documented as expected behavior (Jan 29)
+- OpenCode native integration analysis - confirmed pragmatic bolt-on approach (Jan 28)
+- Backend-dependent dedup coverage documented (Jan 22)
+
 ---
 
 ## References
@@ -260,7 +275,11 @@ Agent works in: ~/target-project/
 - `2025-12-22-inv-implement-tiered-spawn-protocol.md` - Tier system design
 - `2026-01-03-inv-spawn-dependency-gating-design.md` - Dependency checking
 - `2026-01-06-inv-add-bypass-triage-friction-manual.md` - Triage friction
-- ...and 31 others
+- `2026-01-22-inv-analyze-spawn-reliability-pattern-multiple.md` - Backend-dependent dedup coverage
+- `2026-01-24-inv-spawn-time-bloat-context-injection.md` - Bloat detection implementation
+- `2026-01-28-inv-investigate-opencode-native-agent-spawn.md` - OpenCode integration analysis
+- `2026-01-29-inv-orch-spawn-shows-beads-lookup.md` - Cross-project beads behavior
+- ...and 35+ others
 
 **Decisions Informed by This Model:**
 - Headless default (enables daemon automation)
@@ -269,6 +288,7 @@ Agent works in: ~/target-project/
 - KB context gathering (prevent duplicate work)
 
 **Related Models:**
+- `.kb/models/context-injection.md` - How SPAWN_CONTEXT.md is assembled and injected
 - `.kb/models/opencode-session-lifecycle.md` - How sessions work after spawn creates them
 - `.kb/models/dashboard-agent-status.md` - How spawned agents' status is calculated
 

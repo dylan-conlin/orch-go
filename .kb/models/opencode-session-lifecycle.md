@@ -1,8 +1,8 @@
 # Model: OpenCode Session Lifecycle
 
 **Domain:** OpenCode Integration / Session Management
-**Last Updated:** 2026-01-12
-**Synthesized From:** 24 investigations (2025-12-19 to 2026-01-08) into OpenCode HTTP API, session persistence, SSE monitoring, and plugin system
+**Last Updated:** 2026-01-29
+**Synthesized From:** 30 investigations (2025-12-19 to 2026-01-29) into OpenCode HTTP API, session persistence, SSE monitoring, plugin system, and native agent spawn
 
 ---
 
@@ -89,6 +89,32 @@ session.status { status: "idle" }    ← Agent finished
 - Can't poll for completion (need SSE)
 - `orch wait` blocks on SSE stream until idle event
 
+### Session Hierarchy (Native Support)
+
+**OpenCode has native session trees via parentID:**
+
+```
+Root Session (orchestrator)
+    ├── Child Session (worker A) - parentID: orchestrator
+    ├── Child Session (worker B) - parentID: orchestrator
+    └── Child Session (worker C) - parentID: orchestrator
+```
+
+**API support:**
+- `Session.Info` schema includes optional `parentID` field
+- `Session.fork()` creates child sessions by copying message history
+- `Session.children()` retrieves all child sessions of a parent
+- `Session list` API has `roots=true` filter to get only root sessions
+- Task tool creates sessions with `parentID: ctx.sessionID` automatically
+
+**orch-go integration:**
+- **Current:** orch-go does NOT use parentID (external registry tracks workers)
+- **Status quo rationale:** External orchestration model, cross-project spawning, decoupling from OpenCode
+- **Potential:** Could set parentID on spawned sessions for UI visibility
+- **Trade-off:** Unclear if parentID works cross-project; adds tracking mechanism alongside registry
+
+**Reference:** `.kb/investigations/2026-01-28-inv-investigate-opencode-native-agent-spawn.md`
+
 ### Critical Invariants
 
 1. **Sessions persist across restarts** - Disk storage at `~/.local/share/opencode/storage/`
@@ -96,6 +122,7 @@ session.status { status: "idle" }    ← Agent finished
 3. **Completion is event-based** - Must watch SSE, can't infer from session state polling
 4. **Sessions never expire** - No TTL, cleanup is manual (`orch clean --sessions`)
 5. **Session directory is set at spawn** - Cross-project spawn bug: sessions get orchestrator's directory instead of `--workdir` target
+6. **Session hierarchy is optional** - parentID field exists but orch-go uses external registry instead
 
 ---
 
@@ -202,6 +229,14 @@ session.status { status: "idle" }    ← Agent finished
 - Plugin capabilities explored (gates, context injection, observation)
 - Event reliability tested
 - `session.idle` deprecation handled
+
+**Jan 14-29, 2026: Native Agent Model & Context Architecture**
+- Plugin v2 API migration (function exports vs object exports)
+- Context loading distinction (instructions vs injection)
+- Native agent spawn model discovered (parentID hierarchy, task tool, agent modes)
+- Auth precedence understood (env var > auth.json > plugins)
+- Binary resolution patterns identified
+- TUI "mode" clarified as deprecated agent selection field
 
 ---
 

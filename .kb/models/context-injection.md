@@ -77,6 +77,8 @@ The primary mechanism for distinguishing between levels:
 | 2026-01-16 | Probe 1 Audit | Found 25K token bloat in manual sessions. |
 | 2026-01-17 | Model Created | Strategic shift to role-aware filtering and daemon-first execution. |
 | 2026-01-17 | Primed Daemon | Created issues `vzo9u`, `8dhhg`, `y1ikp` to implement the role-aware forks. |
+| 2026-01-24 | Bloat Detection | Added spawn-time bloat detection that warns agents about files >800 lines in SPAWN_CONTEXT.md. |
+| 2026-01-29 | Cross-Project Awareness | Documented expected beads lookup failures for cross-project sessions as normal behavior. |
 
 ---
 

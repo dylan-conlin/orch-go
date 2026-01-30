@@ -2,7 +2,7 @@
 
 **Purpose:** Single authoritative reference for how `orch spawn` creates and configures agents. Read this before debugging spawn issues.
 
-**Last verified:** Jan 21, 2026
+**Last verified:** Jan 29, 2026
 
 ---
 
@@ -132,6 +132,13 @@ orch spawn --backend opencode --model sonnet feature-impl "task"
 **Use for:** Cost tracking, batch automation, when dashboard visibility needed
 
 **Constraint:** Cannot use Opus via OpenCode (Anthropic fingerprinting blocks it)
+
+**Integration depth:** orch-go uses pragmatic bolt-on approach with `ORCH_WORKER=1` environment variable (converted to `x-opencode-env-ORCH_WORKER` header). OpenCode has comprehensive native agent support (Agent.Info with mode, Session.Info with parentID, task tool for spawning), but orch-go intentionally uses external orchestration model for:
+- Decoupling from OpenCode's agent model (runtime portability)
+- Cross-project orchestration (OpenCode sessions are project-scoped)
+- Full control over worker lifecycle
+
+**Alternative:** Could use OpenCode's native session hierarchy (parentID) for better UI visibility. See `.kb/investigations/2026-01-28-inv-investigate-opencode-native-agent-spawn.md` for integration options analysis.
 
 ### Docker Escape Hatch
 
@@ -268,6 +275,39 @@ Active count excludes:
 - Stale sessions (>30m inactive)
 - Non-orch sessions (manual OpenCode sessions)
 - Completed agents (Phase: Complete reported)
+
+---
+
+## Bloat Detection
+
+Spawn performs automatic bloat detection when generating SPAWN_CONTEXT.md.
+
+### How It Works
+
+1. **File path extraction** - Parses task description for file references (e.g., `pkg/spawn/context.go`)
+2. **Line counting** - Checks each mentioned file against 800-line threshold
+3. **Warning injection** - Adds warnings to SPAWN_CONTEXT.md for bloated files
+4. **Test file exemption** - Skips files matching `*_test.go`, `*.test.ts`, etc.
+
+### Example Warning
+
+```markdown
+⚠️ BLOAT DETECTED:
+
+The following files mentioned in your task exceed the 800-line coherence threshold:
+
+- pkg/spawn/context.go (1,247 lines)
+
+Before modifying these files, consider extraction. See .kb/guides/code-extraction-patterns.md.
+```
+
+### Why This Matters
+
+- **Coherence** - Files over 800 lines are hard to understand and modify
+- **Agent success** - Agents struggle with large files (multiple concerns, deep nesting)
+- **Technical debt** - Bloat indicates missing abstractions
+
+**Related:** `orch hotspot` shows all files over threshold across project.
 
 ---
 
@@ -428,6 +468,25 @@ orch spawn feature-impl "add feature" --workdir ~/Documents/personal/kb-cli
 
 **Gotcha:** `bd comment` from the agent uses target directory, but issue is in orchestrator's repo. This can cause "issue not found" errors. Use `--no-track` for cross-repo work, or manually track.
 
+### Cross-Project Beads Lookup Behavior
+
+When spawning, orch checks ALL active sessions for concurrency limiting, including sessions from other projects:
+
+```bash
+# Example: Sessions from multiple projects
+og-feat-something [orch-go-21012]      # orch-go project
+sp-feat-something [specs-platform-36]  # specs-platform project
+```
+
+**Expected behavior:** When spawning from orch-go, beads lookups for `specs-platform-36` will fail with "issue not found". This is **normal and expected** - the issue exists in a different project's beads database.
+
+**Why this happens:**
+- OpenCode sessions persist across projects
+- Concurrency limiting checks all sessions
+- Cross-project beads IDs won't exist in current project's database
+
+**Impact:** You may see warnings like "beads lookup failed for specs-platform-36" - these are informational, not errors. The spawn continues normally.
+
 ---
 
 ## Key Decisions (from kb quick)
@@ -449,6 +508,7 @@ orch spawn feature-impl "add feature" --workdir ~/Documents/personal/kb-cli
 ### Safety & Limits
 - **Proactive rate limits** - warn at 80%, block at 95% with auto-switch attempt
 - **Duplicate prevention** - checks for active agents before respawning same issue
+- **Dedup coverage is backend-dependent** - OpenCode has session dedup; Claude CLI and Docker rely on status update + Phase: Complete check only (lighter protection)
 - **Agents limited to 3 iterations** - without human review to prevent runaway loops
 - **Abandon after service crashes** - stale sessions don't reconnect, need re-triage
 - **Don't spawn multiple agents for same file** - causes merge conflicts
@@ -492,7 +552,18 @@ If those don't answer your question, then investigate. But update this doc with 
 
 ## Related Documentation
 
+### Guides
 - **Model Selection:** `.kb/guides/model-selection.md` - Which model for which task
-- **Model Access & Spawn Paths:** `.kb/models/model-access-spawn-paths.md` - Detailed mechanics
 - **Triple Spawn Implementation:** `.kb/guides/dual-spawn-mode-implementation.md` - Implementation details
 - **Daemon Guide:** `.kb/guides/daemon.md` - Autonomous spawning via daemon
+
+### Models
+- **Spawn Architecture:** `.kb/models/spawn-architecture.md` - Architectural overview and evolution
+- **Context Injection:** `.kb/models/context-injection.md` - How SPAWN_CONTEXT.md is assembled
+- **Model Access & Spawn Paths:** `.kb/models/model-access-spawn-paths.md` - Detailed mechanics
+
+### Recent Investigations (Jan 2026)
+- **Bloat Detection:** `.kb/investigations/2026-01-24-inv-spawn-time-bloat-context-injection.md` - Implementation of spawn-time bloat warnings
+- **Cross-Project Beads:** `.kb/investigations/2026-01-29-inv-orch-spawn-shows-beads-lookup.md` - Expected cross-project lookup failures
+- **OpenCode Integration:** `.kb/investigations/2026-01-28-inv-investigate-opencode-native-agent-spawn.md` - Analysis of native vs bolt-on integration
+- **Reliability Patterns:** `.kb/investigations/2026-01-22-inv-analyze-spawn-reliability-pattern-multiple.md` - Backend-dependent dedup coverage
