@@ -316,10 +316,14 @@ func (s *ServerRecoveryState) MarkRecovered(beadsID string) {
 
 // FindOrphanedSessions finds sessions that were orphaned by server restart.
 // It queries:
-// 1. Beads for in_progress issues
+// 1. Beads for open and in_progress issues (agents may be killed before status update)
 // 2. Workspaces for session IDs
 // 3. Compares against OpenCode's current in-memory sessions
 // Returns sessions that exist on disk but aren't in memory.
+//
+// Note: We check BOTH "open" and "in_progress" issues because an agent may be
+// killed by server restart before it has a chance to update its beads status
+// to "in_progress". The workspace existence is the key indicator of work started.
 func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 	fmt.Printf("[DEBUG] FindOrphanedSessions: starting with serverURL=%s\n", serverURL)
 
@@ -329,31 +333,34 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 	}
 	fmt.Printf("[DEBUG] FindOrphanedSessions: projectDir=%s\n", projectDir)
 
-	// Get in_progress beads issues
+	// Get ALL open issues (both "open" and "in_progress")
+	// Agents killed early may still have "open" status but have workspaces
 	openIssues, err := verify.ListOpenIssues()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list open issues: %w", err)
 	}
-	fmt.Printf("[DEBUG] FindOrphanedSessions: found %d open issues\n", len(openIssues))
+	fmt.Printf("[DEBUG] FindOrphanedSessions: found %d open/in_progress issues\n", len(openIssues))
 
-	// Filter to in_progress issues
-	var inProgressIDs []string
-	inProgressIssues := make(map[string]*verify.Issue)
+	// Include both open and in_progress issues for recovery consideration
+	// The workspace check below filters to only those with actual spawned sessions
+	var candidateIDs []string
+	candidateIssues := make(map[string]*verify.Issue)
 	for id, issue := range openIssues {
-		if strings.EqualFold(issue.Status, "in_progress") {
-			inProgressIDs = append(inProgressIDs, id)
-			inProgressIssues[id] = issue
+		// Include both "open" and "in_progress" - workspace existence determines recovery
+		if strings.EqualFold(issue.Status, "in_progress") || strings.EqualFold(issue.Status, "open") {
+			candidateIDs = append(candidateIDs, id)
+			candidateIssues[id] = issue
 		}
 	}
-	fmt.Printf("[DEBUG] FindOrphanedSessions: %d issues are in_progress\n", len(inProgressIDs))
+	fmt.Printf("[DEBUG] FindOrphanedSessions: %d candidate issues (open or in_progress)\n", len(candidateIDs))
 
-	if len(inProgressIDs) == 0 {
-		fmt.Printf("[DEBUG] FindOrphanedSessions: no in_progress issues, returning nil\n")
-		return nil, nil // No in-progress issues means no orphaned sessions
+	if len(candidateIDs) == 0 {
+		fmt.Printf("[DEBUG] FindOrphanedSessions: no candidate issues, returning nil\n")
+		return nil, nil
 	}
 
 	// Get beads comments to check phase (skip Phase: Complete)
-	commentMap := verify.GetCommentsBatch(inProgressIDs)
+	commentMap := verify.GetCommentsBatch(candidateIDs)
 
 	// Get current in-memory sessions from OpenCode
 	client := opencode.NewClient(serverURL)
@@ -375,7 +382,7 @@ func FindOrphanedSessions(serverURL string) ([]OrphanedSession, error) {
 	var orphaned []OrphanedSession
 	workspaceBase := filepath.Join(projectDir, ".orch", "workspace")
 
-	for beadsID, issue := range inProgressIssues {
+	for beadsID, issue := range candidateIssues {
 		// Check if this issue has Phase: Complete (skip it)
 		comments := commentMap[beadsID]
 		phaseStatus := verify.ParsePhaseFromComments(comments)

@@ -2,4 +2,84 @@
 /Users/dylanconlin/Documents/personal/orch-go/.opencode/plugins
 * we created the 'strategic center', but it appears incomplete: /Users/dylanconlin/Screenshots/screenshot_2026-01-29_10-05-58.png
 
-what happened with the implementation? was this the intended result? 
+what happened with the implementation? was this the intended result?
+* disk cleanup script isn't working:
+/opt/homebrew/Library/Homebrew/help.sh: line 38: cannot create temp file for here document: No space left on device
+/Users/dylanconlin/bin/disk-cleanup.sh✘ JSON API formula.jws.json
+Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
+✘ JSON API formula_tap_migrations.jws.json
+Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
+✘ JSON API cask.jws.json
+Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
+✘ JSON API cask_tap_migrations.jws.json
+Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
+✘ JSON API cask_tap_migrations.jws.json
+Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
+Error: No space left on device @ dir_s_mkdir - /Users/dylanconlin/Library/Caches/Homebrew
+/Users/dylanconlin/.zshrc:.:318: no such file or directory: /libexec/asdf.sh
+zsh: locking failed for /Users/dylanconlin/.zsh_history: no space left on device: reading anyway
+
+~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com
+❯ /Users/dylanconlin/bin/disk-cleanup.sh
+[2026-01-29 14:26:32] Starting daily cleanup
+[2026-01-29 14:26:32] Available before: 170Mi
+[2026-01-29 14:26:32] Pruning Docker build cache...
+Total:  0B
+Total reclaimed space: 0B
+[2026-01-29 14:26:32] Cleaning Go cache...
+[2026-01-29 14:26:32] Cleaning old Playwright browsers...
+[2026-01-29 14:26:32] Available after: 620Mi (recovered 0GB)
+[2026-01-29 14:26:32] Cleanup complete
+
+~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com took 10s
+❯
+ 
+
+so i started running these:
+
+~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com
+❯ /Users/dylanconlin/bin/disk-cleanup.sh
+[2026-01-29 14:26:32] Starting daily cleanup
+[2026-01-29 14:26:32] Available before: 170Mi
+[2026-01-29 14:26:32] Pruning Docker build cache...
+Total:  0B
+Total reclaimed space: 0B
+[2026-01-29 14:26:32] Cleaning Go cache...
+[2026-01-29 14:26:32] Cleaning old Playwright browsers...
+[2026-01-29 14:26:32] Available after: 620Mi (recovered 0GB)
+[2026-01-29 14:26:32] Cleanup complete
+
+~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com took 10s
+❯ /Users/dylanconlin/bin/disk-threshold-cleanup.sh
+
+~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com
+❯ /Users/dylanconlin/bin/disk-deep-clean
+=== Deep Disk Cleanup ===
+Current usage:
+/dev/disk1s1s1   460Gi    17Gi   623Mi    97%    426k  6.4M    6%   /
+
+This will clean:
+  - All npm cache (~12GB)
+  - All bun install cache (~7GB)
+  - All uv/pip cache (~6GB)
+  - Docker: all unused images/volumes/containers (~13GB)
+  - Puppeteer/Playwright browsers (~2.5GB)
+  - Go build cache
+
+Continue? [y/N] y
+
+Cleaning npm cache...
+Cleaning bun cache...
+Cleaning uv cache...
+Cleaning pip cache...
+Cleaning Go cache...
+Cleaning Puppeteer browsers...
+Cleaning Playwright browsers...
+
+Docker cleanup (if running)...
+Error response from daemon: 2 errors occurred:
+        * rpc error: code = Unknown desc = blob sha256:b03f24430d7631a8278e2b5bfa87eff22630f61810215acf48e468be4286a557 expected at /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/b03f24430d7631a8278e2b5bfa87eff22630f61810215acf48e468be4286a557: open /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/b03f24430d7631a8278e2b5bfa87eff22630f61810215acf48e468be4286a557: input/output error
+        * rpc error: code = Unknown desc = blob sha256:cf6e88074ddab3a982792d6adfcd56e887f0d33054a6acb9f977650c0985eda9 expected at /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/cf6e88074ddab3a982792d6adfcd56e887f0d33054a6acb9f977650c0985eda9: open /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/cf6e88074ddab3a982792d6adfcd56e887f0d33054a6acb9f977650c0985eda9: input/output error
+
+~ via 🥟 v1.3.5 via  v20.19.2 via 🐍 v3.9.6 on ☁️  dylan.conlin@sendcutsend.com took 9s
+❯

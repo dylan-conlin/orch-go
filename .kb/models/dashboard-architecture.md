@@ -1,8 +1,8 @@
 # Model: Dashboard Architecture
 
 **Domain:** Dashboard / Web UI
-**Last Updated:** 2026-01-14
-**Synthesized From:** 62 investigations (Dec 21, 2025 - Jan 8, 2026) into dashboard performance, UX, and architectural issues
+**Last Updated:** 2026-01-29
+**Synthesized From:** 82+ investigations (Dec 21, 2025 - Jan 29, 2026) into dashboard performance, UX, and architectural issues
 
 ---
 
@@ -261,6 +261,27 @@ Plugin error → OpenCode internal 500 → orch status fails → API can't get a
 - Fixed session-resume.js v1→v2 API migration
 - Documented ONE process manager rule (overmind exclusive)
 - Created infrastructure complexity decision (keep architecture, fix gaps)
+- Follow-orchestrator multi-project filtering fix (comma-separated projects param)
+
+**Jan 17-18, 2026: Screenshot Artifacts and Tmux Visibility**
+- Screenshot artifacts feature completed (thumbnails, click-to-expand modal, responsive grid)
+- `/api/screenshots` endpoint scans `.orch/workspace/{agent_id}/screenshots/`
+- Tmux session visibility architecture designed for Claude CLI escape hatch agents
+- Beads Phase lookup, activity detection via transcript file mtime or pane content
+- Runtime from `.spawn_time` file in workspace
+
+**Jan 27-28, 2026: Strategic Center / Decision Center Redesign**
+- Major UX shift: status-oriented → action-oriented dashboard
+- Decision Center with 4 categories: Absorb Knowledge, Give Approvals, Answer Questions, Handle Failures
+- Strategic Center design adds 5th category: Tend Knowledge (knowledge hygiene signals)
+- Manifests 5-tier escalation model (EscalationNone → EscalationFailed) in user-facing UI
+- Backend `/api/decisions` aggregation; frontend `decision-center.svelte` component
+- Replaces NeedsAttention with action-oriented decision hub for meta-orchestrator
+
+**Jan 29, 2026: Model Synthesis Update**
+- 82+ investigations synthesized (20 added since Jan 14)
+- Guide and model updated with Strategic Center, screenshot artifacts, tmux visibility
+- Architecture stable with clear paths for Decision Center implementation
 
 ---
 

@@ -45,11 +45,11 @@ credits_used = ceil(input_tokens × input_rate + output_tokens × output_rate)
 ```
 
 Per-model credit rates:
-| Model | Input Rate | Output Rate |
-|-------|------------|-------------|
-| Haiku | 2/15 (0.133) | 10/15 (0.667) |
-| Sonnet | 6/15 (0.4) | 30/15 (2.0) |
-| Opus | 10/15 (0.667) | 50/15 (3.333) |
+| Model  | Input Rate    | Output Rate   |
+|--------|---------------|---------------|
+| Haiku  | 2/15 (0.133)  | 10/15 (0.667) |
+| Sonnet | 6/15 (0.4)    | 30/15 (2.0)   |
+| Opus   | 10/15 (0.667) | 50/15 (3.333) |
 
 **Source:** https://she-llac.com/claude-limits (WebFetch extraction)
 
@@ -61,11 +61,11 @@ Per-model credit rates:
 
 **Evidence:** The article provides specific credit limits:
 
-| Plan | Marketing Claim | 5-Hour Session | Weekly Limit | Actual Ratio |
-|------|-----------------|----------------|--------------|--------------|
-| Pro ($20) | 1× | 550,000 | 5,000,000 | baseline |
-| Max 5× ($100) | 5× | 3,300,000 | 41,666,700 | **6× session, 8.33× weekly** |
-| Max 20× ($200) | 20× | 11,000,000 | 83,333,300 | **20× session, 16.67× weekly** |
+| Plan           | Marketing Claim | 5-Hour Session | Weekly Limit | Actual Ratio                   |
+|----------------|-----------------|----------------|--------------|--------------------------------|
+| Pro ($20)      | 1×              | 550,000        | 5,000,000    | baseline                       |
+| Max 5× ($100)  | 5×              | 3,300,000      | 41,666,700   | **6× session, 8.33× weekly**   |
+| Max 20× ($200) | 20×             | 11,000,000     | 83,333,300   | **20× session, 16.67× weekly** |
 
 The Max 5× plan actually **overdelivers** on session limits (6× instead of 5×) while Max 20× **underdelivers** on weekly limits (16.67× instead of 20×).
 
@@ -79,11 +79,11 @@ The Max 5× plan actually **overdelivers** on session limits (6× instead of 5×
 
 **Evidence:** Critical pricing difference for cache operations:
 
-| Operation | API Cost | Subscription Cost |
-|-----------|----------|-------------------|
-| Cache read | 10% of input rate | **FREE** |
-| Cache write (5-min) | 1.25× input rate | Regular input price |
-| Cache write (1-hour) | 2× input rate | Regular input price |
+| Operation            | API Cost          | Subscription Cost   |
+|----------------------|-------------------|---------------------|
+| Cache read           | 10% of input rate | **FREE**            |
+| Cache write (5-min)  | 1.25× input rate  | Regular input price |
+| Cache write (1-hour) | 2× input rate     | Regular input price |
 
 Article quote: "In an agentic loop (e.g. Claude Code), the model makes dozens of tool calls per turn" - cache reads accumulate rapidly.
 
@@ -97,11 +97,11 @@ Article quote: "In an agentic loop (e.g. Claude Code), the model makes dozens of
 
 **Evidence:** Calculated API-equivalent values:
 
-| Plan | Monthly Cost | API Equivalent Value | Multiplier |
-|------|-------------|---------------------|------------|
-| Pro | $20 | $163 | 8.1× |
-| Max 5× | $100 | $1,354 | 13.5× |
-| Max 20× | $200 | $2,708 | 13.5× |
+| Plan    | Monthly Cost | API Equivalent Value | Multiplier |
+|---------|--------------|----------------------|------------|
+| Pro     | $20          | $163                 | 8.1×       |
+| Max 5×  | $100         | $1,354               | 13.5×      |
+| Max 20× | $200         | $2,708               | 13.5×      |
 
 **Source:** https://she-llac.com/claude-limits (WebFetch extraction)
 
@@ -128,14 +128,14 @@ Author caveat: "I expect if this post gets any attention, that might not last ve
 
 **Evidence:** Comparing article scope vs our kb scope:
 
-| Concern | Article Addresses | Our kb Addresses |
-|---------|------------------|------------------|
-| Usage limits (credits/tokens) | ✅ Yes | ✅ Yes (less detail) |
-| OAuth access restrictions | ❌ No | ✅ Yes |
-| Fingerprinting/detection | ❌ No | ✅ Yes |
-| Stealth mode headers | ❌ No | ✅ Yes |
-| Cache pricing economics | ✅ Yes (detailed) | ⚠️ Partial |
-| Credit formula internals | ✅ Yes | ❌ No |
+| Concern                       | Article Addresses | Our kb Addresses     |
+|-------------------------------|-------------------|----------------------|
+| Usage limits (credits/tokens) | ✅ Yes            | ✅ Yes (less detail) |
+| OAuth access restrictions     | ❌ No             | ✅ Yes               |
+| Fingerprinting/detection      | ❌ No             | ✅ Yes               |
+| Stealth mode headers          | ❌ No             | ✅ Yes               |
+| Cache pricing economics       | ✅ Yes (detailed) | ⚠️ Partial            |
+| Credit formula internals      | ✅ Yes            | ❌ No                |
 
 **Source:** Comparison of https://she-llac.com/claude-limits vs `.kb/decisions/2026-01-26-claude-max-oauth-stealth-mode-viable.md`, `.kb/investigations/2026-01-26-inv-analyze-pi-ai-anthropic-oauth.md`, `.kb/models/model-access-spawn-paths.md`
 

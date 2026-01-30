@@ -490,23 +490,27 @@ func runStatus(serverURL string) error {
 		// 1. Running (processing) agents
 		// 2. RECENT agents with Phase: Complete (need review)
 		// 3. Agents with Phase: BLOCKED or QUESTION (need attention)
+		// 4. Untracked sessions (operational visibility for all active work)
 		if !statusAll {
-			isRunning := agentItem.IsProcessing
+			// Untracked sessions always shown (kb-cdc9e4: need visibility for context exhaustion monitoring)
+			if !agentItem.IsUntracked {
+				isRunning := agentItem.IsProcessing
 
-			isComplete := strings.EqualFold(agentItem.Phase, "Complete")
-			isRecent := true
-			if isComplete && agentItem.PhaseReportedAt != nil {
-				if time.Since(*agentItem.PhaseReportedAt) > compactCompletedAgentsMaxAge {
-					isRecent = false
+				isComplete := strings.EqualFold(agentItem.Phase, "Complete")
+				isRecent := true
+				if isComplete && agentItem.PhaseReportedAt != nil {
+					if time.Since(*agentItem.PhaseReportedAt) > compactCompletedAgentsMaxAge {
+						isRecent = false
+					}
 				}
-			}
 
-			needsAttention := (isComplete && isRecent) ||
-				strings.EqualFold(agentItem.Phase, "BLOCKED") ||
-				strings.EqualFold(agentItem.Phase, "QUESTION")
+				needsAttention := (isComplete && isRecent) ||
+					strings.EqualFold(agentItem.Phase, "BLOCKED") ||
+					strings.EqualFold(agentItem.Phase, "QUESTION")
 
-			if !isRunning && !needsAttention {
-				continue // Skip idle or stale complete agents in compact mode
+				if !isRunning && !needsAttention {
+					continue // Skip idle or stale complete agents in compact mode
+				}
 			}
 		}
 
@@ -520,11 +524,8 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
-		// Filter untracked sessions unless --all is set
-		// Untracked sessions are those started outside orch (no beads ID)
-		if agentItem.IsUntracked && !statusAll {
-			continue
-		}
+		// Untracked sessions are now shown by default for better operational visibility
+		// (see kb-cdc9e4: untracked sessions can have critical context state that needs monitoring)
 
 		filteredAgents = append(filteredAgents, agentItem)
 	}
@@ -875,9 +876,7 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 	}
 	if output.Swarm.Untracked > 0 {
 		fmt.Printf(", Untracked: %d", output.Swarm.Untracked)
-		if !showAll {
-			fmt.Printf(" (use --all to show)")
-		}
+		// Untracked sessions are now shown by default (no --all needed)
 	}
 	fmt.Println()
 	// In compact mode, add hint about hidden idle agents

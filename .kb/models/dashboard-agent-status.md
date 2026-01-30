@@ -1,8 +1,8 @@
 # Model: Dashboard Agent Status Calculation
 
 **Domain:** Dashboard / Agent Lifecycle
-**Last Updated:** 2026-01-12
-**Synthesized From:** 11 investigations (Jan 4-8, 2026) into completion verification, status display, and registry behavior
+**Last Updated:** 2026-01-29
+**Synthesized From:** 11 investigations (Jan 4-8, 2026) into completion verification, status display, and registry behavior; extended Jan 18, 2026 with tmux visibility architecture
 
 ---
 
@@ -67,6 +67,41 @@ Dashboard shows abandoned (override Phase)
 2. **Registry is source of truth for abandonment** - Human judgment, can't be inferred
 3. **Session may outlive completion** - Session existence ≠ agent still working
 4. **Status checks don't mutate state** - Calculation is read-only, no side effects
+
+### Tmux Agent Status (Escape Hatch / Claude CLI)
+
+**Extension to Priority Cascade (Jan 18, 2026):**
+
+Claude CLI agents spawned with `--backend claude --tmux` use the same Priority Cascade but with different data sources:
+
+```
+1. Phase check (highest priority)
+   - Extract beads ID from tmux window name: `{emoji} {workspace-name} [{beads-id}]`
+   - Fetch Phase from beads comments (already implemented in batch fetch)
+   - If Phase: Complete → status = completed
+
+2. Registry state check
+   - If Status: abandoned → status = abandoned
+
+3. Activity detection (replaces session existence)
+   - Monitor Claude Code transcript file mtime: `~/.claude/projects/.../[session_id].jsonl`
+   - Fallback: Parse tmux pane content for TUI activity indicators
+   - No activity for 3+ minutes → status = dead
+   - Otherwise → status = active
+```
+
+**Key differences from OpenCode agents:**
+
+| Data Point | OpenCode Agents | Claude CLI (tmux) |
+|------------|-----------------|-------------------|
+| Session API | Yes (OpenCode HTTP) | No (architectural constraint) |
+| Token usage | Available | **Not available** (Max subscription, no per-session API) |
+| Activity signal | session.last_updated | Transcript file mtime or pane content |
+| Runtime | session.created_at | `.spawn_time` file in workspace |
+
+**Why token usage is unavailable:** Claude CLI (Max subscription) doesn't expose per-session token usage via API. This is an **architectural constraint, not a fixable gap**. Progress tracking via Phase comments is more valuable anyway.
+
+**Reference:** `.kb/investigations/2026-01-18-design-dashboard-add-tmux-session-visibility.md`
 
 ---
 
