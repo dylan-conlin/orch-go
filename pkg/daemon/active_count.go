@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -213,6 +214,10 @@ func groupBeadsIDsByProject(beadsIDs []string, projectPaths map[string]string) m
 // If we can't confirm a session is active, we don't count it toward capacity.
 // This is conservative: better to potentially allow extra spawns than to get
 // permanently stuck at capacity (which requires manual daemon restart).
+//
+// Note: "Issue not found" errors are expected when cross-project sessions exist
+// (e.g., specs-platform-36 when running from orch-go). These are silently treated
+// as closed without logging warnings, since they're expected behavior not errors.
 func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string]bool {
 	closed := make(map[string]bool)
 	if len(beadsIDs) == 0 {
@@ -238,7 +243,12 @@ func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string
 					// - RPC connection timeout
 					// - Wrong project directory
 					// - Beads daemon not running
-					log.Printf("Warning: beads lookup failed for %s (via RPC): %v - treating as closed", id, err)
+					//
+					// Only log warning for unexpected errors, not "issue not found"
+					// which is expected for cross-project sessions.
+					if !errors.Is(err, beads.ErrIssueNotFound) {
+						log.Printf("Warning: beads lookup failed for %s (via RPC): %v - treating as closed", id, err)
+					}
 					closed[id] = true
 					continue
 				}
@@ -256,7 +266,12 @@ func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string
 		if err != nil {
 			// Treat lookup failures as "closed" to prevent capacity leaks.
 			// Same rationale as RPC path above.
-			log.Printf("Warning: beads lookup failed for %s (via CLI): %v - treating as closed", id, err)
+			//
+			// Only log warning for unexpected errors, not "issue not found"
+			// which is expected for cross-project sessions.
+			if !errors.Is(err, beads.ErrIssueNotFound) {
+				log.Printf("Warning: beads lookup failed for %s (via CLI): %v - treating as closed", id, err)
+			}
 			closed[id] = true
 			continue
 		}

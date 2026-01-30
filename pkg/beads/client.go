@@ -3,6 +3,7 @@ package beads
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -12,6 +13,12 @@ import (
 	"sync"
 	"time"
 )
+
+// ErrIssueNotFound is returned when a beads issue lookup fails because the issue doesn't exist.
+// This is distinct from RPC errors or other failures - it means the issue ID was not found
+// in the beads database. Callers can use errors.Is(err, ErrIssueNotFound) to distinguish
+// between "not found" and other error conditions.
+var ErrIssueNotFound = errors.New("issue not found")
 
 // ClientVersion is the version of this RPC client.
 // Should match the bd CLI version for compatibility.
@@ -421,19 +428,29 @@ func (c *Client) Ready(args *ReadyArgs) ([]Issue, error) {
 // Note: bd show --json returns an array even for a single issue.
 // The RPC daemon may return either format (array or single object) depending on version.
 // We try array format first (CLI behavior), then fall back to single object (RPC daemon).
+// Returns ErrIssueNotFound if the issue doesn't exist.
 func (c *Client) Show(id string) (*Issue, error) {
 	args := ShowArgs{ID: id}
 
 	resp, err := c.execute(OpShow, args)
 	if err != nil {
+		// Check if error message indicates issue not found
+		if strings.Contains(err.Error(), "no issue found") || strings.Contains(err.Error(), "issue not found") {
+			return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
+		}
 		return nil, err
+	}
+
+	// Handle empty or nil data - issue not found
+	if len(resp.Data) == 0 || string(resp.Data) == "null" {
+		return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
 	}
 
 	// Try array format first (bd show --json CLI returns array)
 	var issues []Issue
 	if err := json.Unmarshal(resp.Data, &issues); err == nil {
 		if len(issues) == 0 {
-			return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
+			return nil, fmt.Errorf("%w: %s (empty array)", ErrIssueNotFound, id)
 		}
 		return &issues[0], nil
 	}
@@ -749,6 +766,7 @@ func FallbackReady() ([]Issue, error) {
 // We unmarshal the array and return the first element.
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
+// Returns ErrIssueNotFound if the issue doesn't exist.
 func FallbackShow(id string) (*Issue, error) {
 	cmd := exec.Command(getBdPath(), "show", id, "--json")
 	setupFallbackEnv(cmd)
@@ -758,9 +776,20 @@ func FallbackShow(id string) (*Issue, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("bd show failed: %w: %s", err, string(exitErr.Stderr))
+			// Check if stderr contains "no issue found" message
+			stderr := string(exitErr.Stderr)
+			if strings.Contains(stderr, "no issue found") {
+				return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
+			}
+			return nil, fmt.Errorf("bd show failed: %w: %s", err, stderr)
 		}
 		return nil, fmt.Errorf("bd show failed: %w", err)
+	}
+
+	// Handle empty output - bd show returns exit code 0 but empty output
+	// when issue is not found (this is a bd CLI bug but we handle it gracefully)
+	if len(output) == 0 || strings.TrimSpace(string(output)) == "" {
+		return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
 	}
 
 	// bd show returns an array even for a single issue
@@ -770,7 +799,7 @@ func FallbackShow(id string) (*Issue, error) {
 	}
 
 	if len(issues) == 0 {
-		return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
+		return nil, fmt.Errorf("%w: %s (empty array)", ErrIssueNotFound, id)
 	}
 
 	return &issues[0], nil
@@ -792,9 +821,20 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("bd show failed: %w: %s", err, string(exitErr.Stderr))
+			// Check if stderr contains "no issue found" message
+			stderr := string(exitErr.Stderr)
+			if strings.Contains(stderr, "no issue found") {
+				return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
+			}
+			return nil, fmt.Errorf("bd show failed: %w: %s", err, stderr)
 		}
 		return nil, fmt.Errorf("bd show failed: %w", err)
+	}
+
+	// Handle empty output - bd show returns exit code 0 but empty output
+	// when issue is not found (this is a bd CLI bug but we handle it gracefully)
+	if len(output) == 0 || strings.TrimSpace(string(output)) == "" {
+		return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
 	}
 
 	// bd show returns an array even for a single issue
@@ -804,7 +844,7 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 	}
 
 	if len(issues) == 0 {
-		return nil, fmt.Errorf("bd show returned empty array for id: %s", id)
+		return nil, fmt.Errorf("%w: %s (empty array)", ErrIssueNotFound, id)
 	}
 
 	return &issues[0], nil

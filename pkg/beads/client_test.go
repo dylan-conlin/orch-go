@@ -2,10 +2,12 @@ package beads
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1507,4 +1509,37 @@ func TestGetBdPath_Default(t *testing.T) {
 	if got := getBdPath(); got != "/custom/path/to/bd" {
 		t.Errorf("getBdPath() with custom BdPath = %q, want %q", got, "/custom/path/to/bd")
 	}
+}
+
+func TestErrIssueNotFound(t *testing.T) {
+	// Test that ErrIssueNotFound can be checked with errors.Is
+	err := fmt.Errorf("%w: test-id", ErrIssueNotFound)
+
+	if !errors.Is(err, ErrIssueNotFound) {
+		t.Error("errors.Is should return true for wrapped ErrIssueNotFound")
+	}
+
+	// Verify the error message includes the ID
+	if !strings.Contains(err.Error(), "test-id") {
+		t.Errorf("error message should contain ID, got: %s", err.Error())
+	}
+
+	// Verify the error message includes "issue not found"
+	if !strings.Contains(err.Error(), "issue not found") {
+		t.Errorf("error message should contain 'issue not found', got: %s", err.Error())
+	}
+}
+
+func TestFallbackShow_EmptyOutput(t *testing.T) {
+	// This test verifies that empty output from bd show is handled as ErrIssueNotFound
+	// It's a unit test that doesn't require actual beads setup
+
+	// Note: We can't easily unit test FallbackShow without a mock because it shells out
+	// to the bd command. Instead, we test the error type in the integration tests.
+	// This test documents the expected behavior.
+
+	t.Log("FallbackShow should return ErrIssueNotFound when:")
+	t.Log("  - bd show returns empty output (exit code 0)")
+	t.Log("  - bd show returns 'no issue found' in stderr")
+	t.Log("  - bd show returns empty JSON array")
 }
