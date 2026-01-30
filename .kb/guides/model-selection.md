@@ -16,12 +16,12 @@
 | **Sonnet 4.5** | API or Claude CLI | $3/$15/MTok or $200/mo | General work, feature implementation |
 | **DeepSeek V3** | API (OpenCode) | $0.25/$0.38/MTok | Cost-sensitive work, standard investigations |
 | **Gemini Flash** | API (OpenCode) | Free tier available | Large context (>200K), but 2K req/min limit |
-| **GPT-5.2** | OpenCode (ChatGPT Pro) | $200/mo flat | Worker tasks only - **unsuitable for orchestration** |
+| **GPT-5.2** | OpenCode (ChatGPT Pro) | $200/mo flat | Worker tasks + **interactive orchestrator-assist** (human-in-loop); **unsuitable for autonomous orchestration** |
 
 ### Key Constraints
 
 1. **Opus requires Claude CLI** - Anthropic fingerprinting blocks API access since Jan 9
-2. **GPT-5.2 unsuitable for orchestration** - Role boundary collapse, reactive gate handling, excessive deliberation
+2. **GPT-5.2 unsuitable for autonomous orchestration** - Role boundary collapse, reactive gate handling, excessive deliberation. *Allowed* for interactive orchestrator-assist with human supervision (see 2026-01-30 decision)
 3. **Gemini Flash has TPM limits** - 2,000 req/min blocks tool-heavy agents
 4. **DeepSeek V3 function calling works** - Confirmed Jan 19, despite "unstable" warning in docs
 
@@ -69,19 +69,37 @@ Model selection is now coupled to spawn backend due to Anthropic's OAuth blockin
 
 ### Orchestration / Meta-Work
 
-**Required: Opus 4.5 via Claude CLI**
+**Autonomous orchestration - Required: Opus 4.5 via Claude CLI**
 
-Orchestration requires:
+Autonomous orchestration requires:
 - Gate anticipation (synthesize flags upfront, not learn by hitting)
 - Role boundary maintenance (delegate, don't collapse to worker)
 - Failure adaptation (change strategy, not repeat)
 - Confident execution (minimal deliberation)
 
-**GPT-5.2 tested and failed** (Jan 21):
+**GPT-5.2 tested and failed for autonomous use** (Jan 21):
 - 3 spawn attempts for multi-gate scenario
 - Role boundary collapse (started debugging instead of delegating)
 - 6+ identical timeout failures without strategy change
 - 200+ second thinking blocks
+
+**Interactive orchestrator-assist - GPT-5.2 allowed with human supervision** (Jan 30):
+
+GPT-5.2 may be used for orchestrator-assist when a human is actively supervising and can intervene:
+- Requires strict tool gating (spawn, close, push require approval)
+- Human provides gate anticipation and strategic direction
+- Human redirects when role boundaries blur
+- Use when cost optimization or multi-model comparison is valuable
+
+```bash
+# Interactive orchestrator-assist with GPT-5.2 (human-in-loop required)
+orch spawn --backend opencode --model gpt-5.2 --interactive orchestrator "coordinate feature work"
+```
+
+**Never use GPT-5.2 for:**
+- Daemon orchestration (background services)
+- Autonomous orchestrator spawns (unattended operation)
+- Default orchestration mode
 
 ### Complex Reasoning / Architecture
 
@@ -236,7 +254,8 @@ orch spawn --backend docker investigation "task"
 ### Decisions
 - `.kb/decisions/2026-01-09-abandon-claude-max-oauth-use-gemini-primary.md` - Anthropic blocking response
 - `.kb/decisions/2026-01-18-max-subscription-primary-spawn-path.md` - Switch to Claude CLI default
-- `.kb/decisions/2026-01-21-gpt-unsuitable-for-orchestration.md` - GPT-5.2 findings
+- `.kb/decisions/2026-01-21-gpt-unsuitable-for-orchestration.md` - GPT-5.2 autonomous orchestration findings
+- `.kb/decisions/2026-01-30-gpt-interactive-orchestrator-assist-allowed.md` - GPT-5.2 allowed for interactive/human-in-loop
 
 ### Models
 - `.kb/models/model-access-spawn-paths.md` - Detailed spawn path mechanics

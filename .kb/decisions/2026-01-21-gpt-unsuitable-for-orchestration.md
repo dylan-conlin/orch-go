@@ -10,7 +10,8 @@ blocks:
 # Decision: GPT-5.2 Unsuitable for Orchestration Role
 
 **Date:** 2026-01-21
-**Status:** Accepted
+**Status:** Active (scope narrowed by 2026-01-30 decision)
+**Superseded-By:** Partially superseded by `.kb/decisions/2026-01-30-gpt-interactive-orchestrator-assist-allowed.md` (allows interactive/human-in-loop use cases; autonomous use remains prohibited)
 **Context:** Model selection for orchestrator agents
 
 ## Problem
