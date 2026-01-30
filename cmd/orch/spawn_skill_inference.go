@@ -10,12 +10,18 @@ import (
 
 // InferSkillFromIssueType infers the appropriate skill based on the issue type.
 // Returns an error for issue types that cannot be spawned (e.g., epics).
+//
+// Bug handling: Defaults to "systematic-debugging" for direct action on bugs.
+// Use explicit skill:architect label for complex/recurring bugs that need
+// architectural understanding before fixing.
+//
+// See: .kb/decisions/2026-01-23-investigation-overhead-firefighting-mode.md
 func InferSkillFromIssueType(issueType string) (string, error) {
 	switch issueType {
 	case "bug":
-		// Default to architect: understand before fixing
-		// Use skill:systematic-debugging label for clear, isolated bugs
-		return "architect", nil
+		// Default to systematic-debugging: direct action on bugs
+		// Use skill:architect label for complex/recurring bugs
+		return "systematic-debugging", nil
 	case "feature":
 		return "feature-impl", nil
 	case "task":

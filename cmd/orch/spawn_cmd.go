@@ -215,10 +215,11 @@ var workCmd = &cobra.Command{
 	Long: `Start work on a beads issue by inferring the skill from the issue type.
 
 The skill is automatically determined from the issue type:
-  - bug         → architect (understand before fixing; use skill:systematic-debugging label for clear bugs)
+  - bug         → systematic-debugging (direct action; use skill:architect label for complex bugs)
   - feature     → feature-impl
   - task        → feature-impl
   - investigation → investigation
+  - question    → investigation
 
 The issue description becomes the task prompt for the spawned agent.
 
