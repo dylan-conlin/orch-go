@@ -200,22 +200,17 @@ func (c *investigationDirCache) getEntries(dirPath string) []string {
 // Without the cache, this function would call os.ReadDir() for each agent, causing
 // massive slowdowns with 300+ agents and 500+ investigation files.
 //
-// TIMESTAMP FILTERING: If spawnTime is provided and not zero, only investigations
-// created on or after the spawn date are considered. This prevents matching stale
-// investigations from previous work on similar topics.
-//
 // Fallback chain:
 // 1. Search .kb/investigations/ for files matching beads ID (most specific)
-// 2. Search .kb/investigations/ for files matching workspace name pattern (with timestamp filter)
-// 3. Check workspace directory for investigation .md files (excluding SPAWN_CONTEXT.md and SYNTHESIS.md)
-func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache *investigationDirCache, spawnTime time.Time) string {
+// 2. Check workspace directory for investigation .md files (excluding SPAWN_CONTEXT.md and SYNTHESIS.md)
+//
+// NOTE: Keyword-based matching was REMOVED (Jan 2026) because it caused wrong investigations
+// to be shown (e.g., "epic-auto-close" matching "audit-opencode-plugin" on common words).
+// Agents should report investigation_path via beads comments for explicit linking.
+func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache *investigationDirCache) string {
 	if projectDir == "" {
 		return ""
 	}
-
-	// Extract keywords from workspace name for matching (e.g., "og-inv-skillc-deploy-06jan-ed96" -> "skillc-deploy")
-	// Workspace names follow pattern: {project}-{skill}-{topic}-{date}-{hash}
-	workspaceKeywords := extractWorkspaceKeywords(workspaceName)
 
 	investigationsDir := filepath.Join(projectDir, ".kb", "investigations")
 
@@ -251,81 +246,13 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 		}
 	}
 
-	// 2. Search .kb/investigations/ for files matching workspace name pattern
-	// Workspace names are specific to the agent's task.
-	// We reverse the entries list to find the most recent files first (since they are date-prefixed).
-	//
-	// TIMESTAMP FILTERING: For keyword-based matching (less specific than beads ID),
-	// we require the investigation to be created on or after the spawn date.
-	// This prevents matching stale investigations from previous work on similar topics.
-	reversedEntries := make([]string, len(entries))
-	for i, name := range entries {
-		reversedEntries[len(entries)-1-i] = name
-	}
+	// NOTE: Keyword-based fallback matching was REMOVED (Jan 2026) because it caused
+	// wrong investigations to be shown. Example: an agent working on "epic-auto-close"
+	// would match "audit-opencode-plugin" because both contain common words.
+	// Now we only match by beads ID (explicit) or workspace directory files (implicit).
+	// Agents should report investigation_path via beads comments for explicit linking.
 
-	// First pass: look for exact topic match (highest confidence)
-	// We now require at least one keyword match, but we prefer files that match MORE keywords.
-	var bestMatch string
-	maxMatches := 0
-
-	for _, name := range reversedEntries {
-		// Skip investigations that predate the spawn time
-		if !isInvestigationFromSpawnDate(name, spawnTime) {
-			continue
-		}
-
-		matches := 0
-		for _, keyword := range workspaceKeywords {
-			if keyword != "" && strings.Contains(strings.ToLower(name), strings.ToLower(keyword)) {
-				matches++
-			}
-		}
-
-		if matches > maxMatches {
-			maxMatches = matches
-			bestMatch = filepath.Join(investigationsDir, name)
-			// If we match all keywords, return immediately (highest confidence)
-			if matches == len(workspaceKeywords) && len(workspaceKeywords) > 0 {
-				return bestMatch
-			}
-		}
-	}
-
-	if bestMatch != "" {
-		return bestMatch
-	}
-
-	// 3. Search for simpler investigations or workspace-specific ones
-	if beadsID != "" {
-		// Also check .kb/investigations/simple/ (for simpler investigations)
-		simpleDir := filepath.Join(investigationsDir, "simple")
-		simpleEntries := cache.getEntries(simpleDir)
-		if simpleEntries == nil {
-			// Fallback to direct read if not cached
-			if dirEntries, err := os.ReadDir(simpleDir); err == nil {
-				for _, entry := range dirEntries {
-					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-						simpleEntries = append(simpleEntries, entry.Name())
-					}
-				}
-			}
-		}
-
-		for _, name := range simpleEntries {
-			// Skip investigations that predate the spawn time
-			if !isInvestigationFromSpawnDate(name, spawnTime) {
-				continue
-			}
-
-			for _, keyword := range workspaceKeywords {
-				if keyword != "" && strings.Contains(strings.ToLower(name), strings.ToLower(keyword)) {
-					return filepath.Join(simpleDir, name)
-				}
-			}
-		}
-	}
-
-	// 4. Check workspace directory for investigation .md files
+	// 2. Check workspace directory for investigation .md files
 	// This is per-workspace so not cached (each workspace is different)
 	workspaceDir := filepath.Join(projectDir, ".orch", "workspace", workspaceName)
 	if wsEntries, err := os.ReadDir(workspaceDir); err == nil {
@@ -348,100 +275,6 @@ func discoverInvestigationPath(workspaceName, beadsID, projectDir string, cache 
 	}
 
 	return ""
-}
-
-// extractWorkspaceKeywords extracts meaningful keywords from a workspace name for investigation matching.
-// Workspace names follow pattern: {project}-{skill}-{topic}-{date}-{hash}
-// Example: "og-inv-skillc-deploy-06jan-ed96" -> ["skillc", "deploy"]
-func extractWorkspaceKeywords(workspaceName string) []string {
-	parts := strings.Split(workspaceName, "-")
-	if len(parts) < 3 {
-		return nil
-	}
-
-	var keywords []string
-
-	// Skip prefix parts that are likely project or skill markers
-	skipPrefixes := []string{"og", "inv", "feat", "fix", "debug", "audit", "impl", "arch", "research"}
-	prefixSet := make(map[string]bool)
-	for _, p := range skipPrefixes {
-		prefixSet[p] = true
-	}
-
-	for _, part := range parts {
-		// Skip short parts (likely hash or date)
-		if len(part) <= 2 {
-			continue
-		}
-		// Skip parts that look like dates (e.g., "06jan", "2026")
-		if len(part) == 5 && strings.Contains(part, "jan") || strings.Contains(part, "feb") ||
-			strings.Contains(part, "mar") || strings.Contains(part, "apr") ||
-			strings.Contains(part, "may") || strings.Contains(part, "jun") ||
-			strings.Contains(part, "jul") || strings.Contains(part, "aug") ||
-			strings.Contains(part, "sep") || strings.Contains(part, "oct") ||
-			strings.Contains(part, "nov") || strings.Contains(part, "dec") {
-			continue
-		}
-		// Skip common prefixes
-		if prefixSet[strings.ToLower(part)] {
-			continue
-		}
-		// Skip parts that look like short hashes (4 hex chars at end)
-		if len(part) == 4 && isHexLike(part) {
-			continue
-		}
-		keywords = append(keywords, part)
-	}
-
-	return keywords
-}
-
-// isHexLike returns true if the string looks like a short hex hash (all lowercase letters/digits).
-func isHexLike(s string) bool {
-	for _, c := range s {
-		if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
-			return false
-		}
-	}
-	return true
-}
-
-// parseInvestigationDate extracts the date from an investigation filename.
-// Investigation files use the format YYYY-MM-DD-... (e.g., "2026-01-16-inv-dashboard.md").
-// Returns zero time if the filename doesn't have a parseable date prefix.
-func parseInvestigationDate(filename string) time.Time {
-	// Need at least 10 chars for "YYYY-MM-DD"
-	if len(filename) < 10 {
-		return time.Time{}
-	}
-
-	dateStr := filename[:10]
-	t, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
-
-// isInvestigationFromSpawnDate returns true if the investigation was created on or after
-// the spawn date. Used to filter out stale investigations from previous work on similar topics.
-func isInvestigationFromSpawnDate(filename string, spawnTime time.Time) bool {
-	if spawnTime.IsZero() {
-		// If no spawn time, allow all investigations (backwards compatibility)
-		return true
-	}
-
-	invDate := parseInvestigationDate(filename)
-	if invDate.IsZero() {
-		// If investigation date can't be parsed, exclude it (likely not a valid investigation file)
-		return false
-	}
-
-	// Compare dates only (not time), allowing investigations created on the same day
-	spawnDate := time.Date(spawnTime.Year(), spawnTime.Month(), spawnTime.Day(), 0, 0, 0, 0, time.UTC)
-	invDateNormalized := time.Date(invDate.Year(), invDate.Month(), invDate.Day(), 0, 0, 0, 0, time.UTC)
-
-	return !invDateNormalized.Before(spawnDate)
 }
 
 // handleAgents returns JSON list of active agents from OpenCode/tmux and completed workspaces.
@@ -972,12 +805,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				if idx := strings.Index(workspaceName, " ["); idx != -1 {
 					workspaceName = workspaceName[:idx]
 				}
-				// Parse spawn time for timestamp filtering (prevents matching stale investigations)
-				var spawnTime time.Time
-				if agents[i].SpawnedAt != "" {
-					spawnTime, _ = time.Parse(time.RFC3339, agents[i].SpawnedAt)
-				}
-				discoveredPath := discoverInvestigationPath(workspaceName, agents[i].BeadsID, agents[i].ProjectDir, invDirCache, spawnTime)
+				discoveredPath := discoverInvestigationPath(workspaceName, agents[i].BeadsID, agents[i].ProjectDir, invDirCache)
 				if discoveredPath != "" {
 					agents[i].InvestigationPath = discoveredPath
 				}
