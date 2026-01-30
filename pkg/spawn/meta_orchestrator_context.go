@@ -163,6 +163,17 @@ orch complete <session-id>
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .GitLogContext}}
+## Recent Activity
+
+Recent commits in this project (last 7 days):
+
+{{.GitLogContext}}
+
+Use this context to avoid duplicate work and understand recent changes.
+
+---
+{{end}}
 {{if .ServerContext}}
 {{.ServerContext}}
 {{end}}
@@ -197,7 +208,8 @@ type metaOrchestratorContextData struct {
 	KBContext          string
 	ServerContext      string
 	RegisteredProjects string
-	PriorSynthesisPath   string // Path to prior meta-orchestrator's SYNTHESIS.md
+	GitLogContext      string
+	PriorSynthesisPath string // Path to prior meta-orchestrator's SYNTHESIS.md
 }
 
 // GenerateMetaOrchestratorContext generates the META_ORCHESTRATOR_CONTEXT.md content.
@@ -235,7 +247,8 @@ func GenerateMetaOrchestratorContext(cfg *Config) (string, error) {
 		KBContext:          cfg.KBContext,
 		ServerContext:      serverContext,
 		RegisteredProjects: registeredProjects,
-		PriorSynthesisPath:   priorSynthesisPath,
+		GitLogContext:      GenerateGitLogContext(cfg.ProjectDir),
+		PriorSynthesisPath: priorSynthesisPath,
 	}
 
 	var buf bytes.Buffer
@@ -331,7 +344,7 @@ func FindPriorMetaOrchestratorSynthesis(projectDir string) string {
 func findPriorMetaOrchestratorSynthesisExcluding(projectDir, excludeWorkspace string) string {
 	type workspaceInfo struct {
 		synthesisPath string
-		spawnTime   time.Time
+		spawnTime     time.Time
 	}
 
 	var candidates []workspaceInfo
@@ -379,7 +392,7 @@ func findPriorMetaOrchestratorSynthesisExcluding(projectDir, excludeWorkspace st
 
 			candidates = append(candidates, workspaceInfo{
 				synthesisPath: synthesisPath,
-				spawnTime:   spawnTime,
+				spawnTime:     spawnTime,
 			})
 		}
 	}

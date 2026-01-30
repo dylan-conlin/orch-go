@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ Test skill content.
 		"**Skill:** orchestrator",
 		"**Project:** /Users/test/orch-go",
 		"spawned orchestrator",
-		
+
 		"SYNTHESIS.md",
 		"## Skill Guidance",
 		"# Orchestrator Skill",
@@ -562,12 +563,12 @@ This is a project-specific template.
 func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 	t.Run("context mentions template when it was copied", func(t *testing.T) {
 		cfg := &Config{
-			Task:                      "orchestrate work",
-			SessionGoal:               "Complete the feature epic",
-			SkillName:                 "orchestrator",
-			ProjectDir:                "/tmp/test",
-			WorkspaceName:             "og-orch-test-04jan",
-			IsOrchestrator:            true,
+			Task:                 "orchestrate work",
+			SessionGoal:          "Complete the feature epic",
+			SkillName:            "orchestrator",
+			ProjectDir:           "/tmp/test",
+			WorkspaceName:        "og-orch-test-04jan",
+			IsOrchestrator:       true,
 			HasSynthesisTemplate: true, // This flag should be set by WriteOrchestratorContext
 		}
 
@@ -584,12 +585,12 @@ func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 
 	t.Run("context does not mention template when not copied", func(t *testing.T) {
 		cfg := &Config{
-			Task:                      "orchestrate work",
-			SessionGoal:               "Complete the feature epic",
-			SkillName:                 "orchestrator",
-			ProjectDir:                "/tmp/test",
-			WorkspaceName:             "og-orch-test-04jan",
-			IsOrchestrator:            true,
+			Task:                 "orchestrate work",
+			SessionGoal:          "Complete the feature epic",
+			SkillName:            "orchestrator",
+			ProjectDir:           "/tmp/test",
+			WorkspaceName:        "og-orch-test-04jan",
+			IsOrchestrator:       true,
 			HasSynthesisTemplate: false,
 		}
 
@@ -764,5 +765,163 @@ func TestOrchestratorContext_HasProgressiveHandoffInstruction(t *testing.T) {
 	// Check it mentions progressive handoff
 	if !strings.Contains(content, "Progressive Handoff") {
 		t.Error("context should mention progressive handoff pattern")
+	}
+}
+
+func TestGenerateGitLogContext(t *testing.T) {
+	t.Run("generates git log context in git repository", func(t *testing.T) {
+		// Use the current project directory (orch-go) which is a git repo
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("failed to get working directory: %v", err)
+		}
+
+		// Navigate up to project root if we're in pkg/spawn
+		projectDir := wd
+		if strings.HasSuffix(wd, "pkg/spawn") {
+			projectDir = filepath.Join(wd, "../..")
+		}
+
+		gitLogContext := GenerateGitLogContext(projectDir)
+
+		// Should return non-empty string for a git repository
+		if gitLogContext == "" {
+			t.Skip("skipping test - not in a git repository or no commits in last 7 days")
+		}
+
+		// Should contain git log output (hash + message + time)
+		// Example: "7b7b91c investigation: SPAWN_CONTEXT generation issues (2 hours ago)"
+		if !strings.Contains(gitLogContext, "(") || !strings.Contains(gitLogContext, "ago)") {
+			t.Errorf("git log context should contain relative time, got: %s", gitLogContext)
+		}
+	})
+
+	t.Run("highlights beads IDs when present", func(t *testing.T) {
+		// Use the current project directory
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("failed to get working directory: %v", err)
+		}
+
+		projectDir := wd
+		if strings.HasSuffix(wd, "pkg/spawn") {
+			projectDir = filepath.Join(wd, "../..")
+		}
+
+		gitLogContext := GenerateGitLogContext(projectDir)
+
+		if gitLogContext == "" {
+			t.Skip("skipping test - not in a git repository or no commits in last 7 days")
+		}
+
+		// If any commits contain beads IDs (like orch-go-21074), they should be bolded
+		// We can't guarantee they exist, so we'll just check the format is reasonable
+		lines := strings.Split(gitLogContext, "\n")
+		if len(lines) == 0 {
+			t.Error("git log context should contain at least one line")
+		}
+
+		// Each line should match the expected format: hash + message + (time ago)
+		for _, line := range lines {
+			if line == "" {
+				continue
+			}
+			// Lines should contain relative time format
+			if !strings.Contains(line, "ago)") {
+				t.Errorf("each line should contain relative time, got: %s", line)
+			}
+		}
+	})
+
+	t.Run("returns empty string for non-git directory", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		gitLogContext := GenerateGitLogContext(tempDir)
+
+		// Should return empty string for non-git directory
+		if gitLogContext != "" {
+			t.Errorf("expected empty string for non-git directory, got: %s", gitLogContext)
+		}
+	})
+
+	t.Run("returns message when no recent commits", func(t *testing.T) {
+		// Create a temporary git repo with no recent commits
+		tempDir := t.TempDir()
+
+		// Initialize git repo
+		cmd := exec.Command("git", "init")
+		cmd.Dir = tempDir
+		if err := cmd.Run(); err != nil {
+			t.Skip("git not available for testing")
+		}
+
+		// Don't create any commits - git log should return empty
+		gitLogContext := GenerateGitLogContext(tempDir)
+
+		// Should return a message about no recent commits
+		if gitLogContext != "No recent commits in the last 7 days." {
+			t.Errorf("expected 'No recent commits' message, got: %s", gitLogContext)
+		}
+	})
+}
+
+func TestGenerateOrchestratorContext_WithGitLogContext(t *testing.T) {
+	// Use a temporary directory that's a git repo
+	tempDir := t.TempDir()
+
+	// Initialize git repo and create a commit
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tempDir
+	if err := cmd.Run(); err != nil {
+		t.Skip("git not available for testing")
+	}
+
+	// Configure git user for the test
+	exec.Command("git", "config", "user.email", "test@example.com").Dir = tempDir
+	exec.Command("git", "config", "user.name", "Test User").Dir = tempDir
+
+	// Create a commit with a beads ID
+	testFile := filepath.Join(tempDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	exec.Command("git", "add", "test.txt").Dir = tempDir
+	commitCmd := exec.Command("git", "commit", "-m", "fix: test commit for orch-go-12345")
+	commitCmd.Dir = tempDir
+	if err := commitCmd.Run(); err != nil {
+		t.Skip("failed to create test commit")
+	}
+
+	cfg := &Config{
+		Task:           "Ship feature",
+		SessionGoal:    "Ship feature end-to-end",
+		SkillName:      "orchestrator",
+		ProjectDir:     tempDir,
+		WorkspaceName:  "og-orch-test-30jan",
+		IsOrchestrator: true,
+	}
+
+	content, err := GenerateOrchestratorContext(cfg)
+	if err != nil {
+		t.Fatalf("GenerateOrchestratorContext failed: %v", err)
+	}
+
+	// Should contain git log context section
+	if !strings.Contains(content, "## Recent Activity") {
+		t.Error("expected content to contain Recent Activity section")
+	}
+	if !strings.Contains(content, "Recent commits in this project") {
+		t.Error("expected content to contain git log context header")
+	}
+
+	// Should contain the test commit message
+	if !strings.Contains(content, "test commit") {
+		t.Error("expected content to contain commit message")
+	}
+
+	// Should highlight the beads ID
+	if !strings.Contains(content, "**orch-go-12345**") {
+		t.Error("expected content to highlight beads ID in bold")
 	}
 }

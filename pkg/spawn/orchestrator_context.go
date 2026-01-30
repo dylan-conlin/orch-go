@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"text/template"
 	"time"
 )
@@ -102,6 +105,17 @@ When you've accomplished your session goal:
 {{if .KBContext}}
 {{.KBContext}}
 {{end}}
+{{if .GitLogContext}}
+## Recent Activity
+
+Recent commits in this project (last 7 days):
+
+{{.GitLogContext}}
+
+Use this context to avoid duplicate work and understand recent changes.
+
+---
+{{end}}
 {{if .ServerContext}}
 {{.ServerContext}}
 {{end}}
@@ -128,17 +142,70 @@ Your workspace is: {{.WorkspacePath}}
 
 // orchestratorContextData holds template data for ORCHESTRATOR_CONTEXT.md.
 type orchestratorContextData struct {
-	SessionGoal               string
-	SkillName                 string
-	SkillContent              string
-	ProjectDir                string
-	WorkspacePath             string
-	WorkspaceName             string
-	StartTime                 string
-	KBContext                 string
-	ServerContext             string
-	RegisteredProjects        string
+	SessionGoal          string
+	SkillName            string
+	SkillContent         string
+	ProjectDir           string
+	WorkspacePath        string
+	WorkspaceName        string
+	StartTime            string
+	KBContext            string
+	ServerContext        string
+	RegisteredProjects   string
+	GitLogContext        string
 	HasSynthesisTemplate bool
+}
+
+// GenerateGitLogContext generates a summary of recent git commits.
+// Returns a formatted string with 15 recent commits from the last 7 days,
+// with beads issue IDs highlighted if present in commit messages.
+// Returns empty string if not in a git repository or on error.
+func GenerateGitLogContext(projectDir string) string {
+	// Run git log command
+	cmd := exec.Command(
+		"git", "log",
+		"--oneline",
+		"--since=7 days ago",
+		"-15",
+		"--format=%h %s (%ar)",
+	)
+	cmd.Dir = projectDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		// Not in a git repo or git command failed - return empty string
+		return ""
+	}
+
+	if len(output) == 0 {
+		return "No recent commits in the last 7 days."
+	}
+
+	// Extract and highlight beads issue IDs
+	// Pattern: proj-XXXXX or orch-go-XXXXX (project name followed by dash and issue number)
+	beadsIDPattern := regexp.MustCompile(`\b([a-z][a-z0-9-]*)-([0-9a-f]{5})\b`)
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	var formattedLines []string
+
+	for _, line := range lines {
+		// Find beads IDs in the commit message
+		matches := beadsIDPattern.FindAllString(line, -1)
+
+		if len(matches) > 0 {
+			// Highlight the line with beads IDs
+			formattedLine := line
+			for _, match := range matches {
+				// Add bold markers around beads ID for visibility
+				formattedLine = strings.Replace(formattedLine, match, "**"+match+"**", 1)
+			}
+			formattedLines = append(formattedLines, formattedLine)
+		} else {
+			formattedLines = append(formattedLines, line)
+		}
+	}
+
+	return strings.Join(formattedLines, "\n")
 }
 
 // GenerateOrchestratorContext generates the ORCHESTRATOR_CONTEXT.md content.
@@ -161,16 +228,17 @@ func GenerateOrchestratorContext(cfg *Config) (string, error) {
 	}
 
 	data := orchestratorContextData{
-		SessionGoal:               cfg.SessionGoal,
-		SkillName:                 cfg.SkillName,
-		SkillContent:              cfg.SkillContent,
-		ProjectDir:                cfg.ProjectDir,
-		WorkspacePath:             cfg.WorkspacePath(),
-		WorkspaceName:             cfg.WorkspaceName,
-		StartTime:                 time.Now().Format("2006-01-02 15:04"),
-		KBContext:                 cfg.KBContext,
-		ServerContext:             serverContext,
-		RegisteredProjects:        registeredProjects,
+		SessionGoal:          cfg.SessionGoal,
+		SkillName:            cfg.SkillName,
+		SkillContent:         cfg.SkillContent,
+		ProjectDir:           cfg.ProjectDir,
+		WorkspacePath:        cfg.WorkspacePath(),
+		WorkspaceName:        cfg.WorkspaceName,
+		StartTime:            time.Now().Format("2006-01-02 15:04"),
+		KBContext:            cfg.KBContext,
+		ServerContext:        serverContext,
+		RegisteredProjects:   registeredProjects,
+		GitLogContext:        GenerateGitLogContext(cfg.ProjectDir),
 		HasSynthesisTemplate: cfg.HasSynthesisTemplate,
 	}
 
