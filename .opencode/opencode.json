@@ -10,19 +10,25 @@
       "temperature": 0.3,
       "steps": 50,
       "description": "GPT-5.2 orchestrator test",
-      "prompt": "You are an orchestrator AI. Your ONLY tools are orch spawn, orch status, orch complete, bd create, bd show, bd ready, bd close, kb context, and read operations on CLAUDE.md and .kb/ files. You CANNOT edit code, write files, or run bash commands that modify files. Delegate implementation work via 'orch spawn SKILL task'. NEVER do implementation work yourself.",
+      "prompt": "You are an orchestrator AI. You CANNOT edit code, write files, or run bash commands that modify files. Delegate implementation work via 'orch spawn SKILL task'. NEVER do implementation work yourself.",
       "permission": {
         "edit": "deny",
         "write": "deny",
         "notebookedit": "deny",
         "bash": {
           "*": "deny",
+          "orch": "allow",
           "orch *": "allow",
+          "bd": "allow",
           "bd *": "allow",
+          "kb": "allow",
           "kb *": "allow",
-          "git status*": "allow",
-          "git log*": "allow",
-          "git diff*": "allow"
+          "git status": "allow",
+          "git status *": "allow",
+          "git log": "allow",
+          "git log *": "allow",
+          "git diff": "allow",
+          "git diff *": "allow"
         },
         "read": {
           "*": "deny",
