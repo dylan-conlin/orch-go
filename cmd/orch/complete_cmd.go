@@ -1468,6 +1468,17 @@ func rebuildGoProjectsIfNeeded(beadsProjectDir, workspacePath string) {
 			continue
 		}
 
+		// Check if binary is already up-to-date (skip redundant rebuilds)
+		upToDate, err := isBinaryUpToDate(projectDir)
+		if err != nil {
+			// Log warning but continue with rebuild on check failure
+			fmt.Fprintf(os.Stderr, "Warning: failed to check binary freshness: %v\n", err)
+		}
+		if upToDate {
+			// Binary is current, no rebuild needed
+			continue
+		}
+
 		projectName := filepath.Base(projectDir)
 		fmt.Printf("Detected Go changes in %s, auto-rebuilding...\n", projectName)
 
@@ -1502,6 +1513,54 @@ func runAutoRebuild(projectDir string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// isBinaryUpToDate checks if the binary is newer than the most recent Go source change.
+// It compares the binary's modification time against the Git commit timestamp of the
+// most recent commit that modified Go files. Returns true if the binary is current
+// (no rebuild needed), false if a rebuild is needed, and an error if the check fails.
+func isBinaryUpToDate(projectDir string) (bool, error) {
+	// Find the binary path (check build/ directory first, then ~/bin symlink target)
+	binaryPath := filepath.Join(projectDir, "build", "orch")
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		// Binary doesn't exist, definitely needs rebuild
+		return false, nil
+	}
+
+	// Get binary modification time
+	binaryInfo, err := os.Stat(binaryPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to stat binary: %w", err)
+	}
+	binaryMtime := binaryInfo.ModTime()
+
+	// Get the timestamp of the most recent commit that modified Go files
+	// Using: git log -1 --format=%ct -- "*.go" "**/*.go"
+	cmd := exec.Command("git", "log", "-1", "--format=%ct", "--", "*.go", "**/*.go")
+	cmd.Dir = projectDir
+	output, err := cmd.Output()
+	if err != nil {
+		// If git command fails, assume rebuild is needed
+		return false, nil
+	}
+
+	// Parse the Unix timestamp
+	timestampStr := strings.TrimSpace(string(output))
+	if timestampStr == "" {
+		// No Go files in history, no rebuild needed
+		return true, nil
+	}
+
+	unixTimestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse commit timestamp: %w", err)
+	}
+
+	lastGoCommitTime := time.Unix(unixTimestamp, 0)
+
+	// Binary is up-to-date if its mtime is after the last Go commit time
+	// Add a small buffer (1 second) to handle timing edge cases
+	return binaryMtime.After(lastGoCommitTime.Add(-time.Second)), nil
 }
 
 // restartOrchServe checks if orch serve is running and restarts it.
