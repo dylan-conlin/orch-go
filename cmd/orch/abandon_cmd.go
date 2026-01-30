@@ -331,6 +331,14 @@ func runAbandon(beadsID, reason, workdir string) error {
 		} else {
 			fmt.Printf("Reset beads status: in_progress → open\n")
 		}
+
+		// Remove triage:ready label to prevent daemon from immediately respawning abandoned work
+		// If user wants to retry later, they can manually re-add the label with: bd label <id> triage:ready
+		if err := verify.RemoveTriageReadyLabel(beadsID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove triage:ready label: %v\n", err)
+		} else {
+			fmt.Printf("Removed triage:ready label (use 'bd label %s triage:ready' to re-queue)\n", beadsID)
+		}
 	}
 
 	// Log abandonment with telemetry for model performance tracking
