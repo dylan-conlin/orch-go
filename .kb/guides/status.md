@@ -104,6 +104,7 @@ orch status --json       # Output as JSON for scripting
 | **Active** | Running OpenCode session (tmux or headless) | Yes |
 | **Running** | Actively generating response (finish=null) | Yes (subset of active) |
 | **Idle** | Has session but not currently generating | Yes (subset of active) |
+| **Untracked** | OpenCode session without beads ID tracking | Yes (as of 2026-01-30) |
 | **Phantom** | Beads issue open but no running session | No (use `--all`) |
 | **Completed** | Beads issue closed | No (use `--all`) |
 
@@ -237,6 +238,24 @@ Without coordinated cleanup, these can become out of sync.
 **Key insight:** Session lifetime ≠ issue lifetime. OpenCode sessions can outlive completed work. Stuck detection must validate issue context, not just session age.
 
 **Related:** `.kb/investigations/2026-01-29-inv-orch-frontier-reports-stuck-agents.md`
+
+### 11. Untracked Sessions Default Visibility (Jan 30)
+
+**Problem:** Untracked sessions (OpenCode sessions without beads IDs) were hidden by default, creating inconsistency where swarm status showed "Untracked: N" but sessions weren't visible in agent list.
+
+**Root cause:** Two separate filters:
+1. Compact mode filter (lines 494-516) excluded non-processing agents
+2. Untracked filter (lines 528-534) excluded untracked unless --all
+
+**Fix:** 
+- Removed explicit untracked filter (was: `if agentItem.IsUntracked && !statusAll`)
+- Exempted untracked sessions from compact mode filtering (added `&& !agentItem.IsUntracked`)
+
+**Key insight:** Untracked sessions represent real OpenCode resource usage (can be long-running with significant token consumption). Orchestrators need visibility for resource monitoring and health checks. Typically 0-2 sessions, not significant noise.
+
+**Evidence:** Found untracked session with 2h+ runtime, 27K output tokens, 10M+ cache reads - operationally significant resource usage worth surfacing.
+
+**Related:** `orch-go-20988`, `orch-go-21028`
 
 ---
 
