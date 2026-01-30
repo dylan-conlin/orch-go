@@ -190,6 +190,9 @@ type AgentManifest struct {
 
 	// SpawnMode is the spawn backend: "opencode" or "claude"
 	SpawnMode string `json:"spawn_mode,omitempty"`
+
+	// Model is the model ID used for this agent (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-5-20250929")
+	Model string `json:"model,omitempty"`
 }
 
 // WriteAgentManifest writes the agent manifest JSON to the workspace directory.

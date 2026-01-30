@@ -28,6 +28,7 @@ type AgentAPIResponse struct {
 	BeadsTitle           string               `json:"beads_title,omitempty"`
 	BeadsLabels          []string             `json:"beads_labels,omitempty"` // Labels from beads issue
 	Skill                string               `json:"skill,omitempty"`
+	Model                string               `json:"model,omitempty"`        // Model ID from session messages (e.g., "claude-opus-4-5-20251101")
 	Status               string               `json:"status"`                 // "active", "idle", "dead", "completed", "awaiting-cleanup"
 	DeathReason          string               `json:"death_reason,omitempty"` // Reason for death: "server_restart", "context_exhausted", "auth_failed", "error", "timeout", "unknown"
 	Phase                string               `json:"phase,omitempty"`        // "Planning", "Implementing", "Complete", etc.
@@ -41,7 +42,7 @@ type AgentAPIResponse struct {
 	SpawnedAt            string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
 	UpdatedAt            string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis            *SynthesisResponse   `json:"synthesis,omitempty"`
-	CloseReason          string               `json:"close_reason,omitempty"`          // Beads close reason, fallback when synthesis is null
+	CloseReason          string               `json:"close_reason,omitempty"`          // Beads close reason, fallback for completed agents without synthesis
 	GapAnalysis          *GapAPIResponse      `json:"gap_analysis,omitempty"`          // Context gap analysis from spawn time
 	Tokens               *opencode.TokenStats `json:"tokens,omitempty"`                // Token usage for the session
 	InvestigationPath    string               `json:"investigation_path,omitempty"`    // Path to investigation file from beads comments
@@ -1018,14 +1019,15 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	// in determineAgentStatus() handles all status determination in one place.
 	// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
 
-	// Fetch token usage and last activity for agents with valid session IDs
+	// Fetch token usage, last activity, and model for agents with valid session IDs
 	// Parallelized to avoid sequential HTTP calls causing ~20s delays with 200+ agents.
 	// Uses goroutines with semaphore to limit concurrent requests.
-	// Both tokens and activity are extracted from the same GetMessages call for efficiency.
+	// Tokens, activity, and model are extracted from the same GetMessages call for efficiency.
 	type sessionResult struct {
 		index    int
 		tokens   *opencode.TokenStats
 		activity *opencode.LastActivity
+		model    string
 	}
 	resultChan := make(chan sessionResult, len(agents))
 
@@ -1048,7 +1050,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			sem <- struct{}{}        // Acquire semaphore
 			defer func() { <-sem }() // Release semaphore
 
-			// Fetch messages once and extract both tokens and activity
+			// Fetch messages once and extract tokens, activity, and model
 			messages, err := client.GetMessages(sessionID)
 			if err != nil || len(messages) == 0 {
 				return
@@ -1062,6 +1064,14 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 			// Extract last activity from messages
 			result.activity = extractLastActivityFromMessages(messages)
+
+			// Extract model from most recent assistant message
+			for j := len(messages) - 1; j >= 0; j-- {
+				if messages[j].Info.Role == "assistant" && messages[j].Info.ModelID != "" {
+					result.model = messages[j].Info.ModelID
+					break
+				}
+			}
 
 			resultChan <- result
 		}(i, agents[i].SessionID)
@@ -1081,6 +1091,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 		if result.activity != nil {
 			agents[result.index].CurrentActivity = result.activity.Text
 			agents[result.index].LastActivityAt = time.Unix(result.activity.Timestamp/1000, 0).Format(time.RFC3339)
+		}
+		if result.model != "" {
+			agents[result.index].Model = result.model
 		}
 	}
 

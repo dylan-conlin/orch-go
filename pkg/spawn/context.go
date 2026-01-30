@@ -460,30 +460,30 @@ func StripBeadsInstructions(content string) string {
 
 // contextData holds template data for SPAWN_CONTEXT.md.
 type contextData struct {
-	Task               string
-	BeadsID            string
-	ProjectDir         string
-	WorkspaceName      string
-	SkillName          string
-	SkillContent       string
-	InvestigationSlug  string
-	Phases             string
-	Mode               string
-	Validation         string
-	InvestigationType  string
-	KBContext          string
-	Tier               string
-	ServerContext      string
-	BloatWarnings      string         // Bloat warnings for files mentioned in task exceeding 800 lines
-	NoTrack            bool           // When true, omit beads instructions from spawn context
-	IsBug              bool           // When true, this is a bug issue with reproduction info
-	ReproSteps         string         // Reproduction steps from bug issue
-	DesignWorkspace    string         // Design workspace name for ui-design-session handoff
-	DesignMockupPath   string         // Path to approved mockup
-	DesignPromptPath   string         // Path to design prompt
-	DesignNotes        string         // Notes from design session
-	IssueComments      []IssueComment // Orchestrator comments from beads issue
-	IsInvestigationSkill bool         // When true, mandate investigation file creation
+	Task                 string
+	BeadsID              string
+	ProjectDir           string
+	WorkspaceName        string
+	SkillName            string
+	SkillContent         string
+	InvestigationSlug    string
+	Phases               string
+	Mode                 string
+	Validation           string
+	InvestigationType    string
+	KBContext            string
+	Tier                 string
+	ServerContext        string
+	BloatWarnings        string         // Bloat warnings for files mentioned in task exceeding 800 lines
+	NoTrack              bool           // When true, omit beads instructions from spawn context
+	IsBug                bool           // When true, this is a bug issue with reproduction info
+	ReproSteps           string         // Reproduction steps from bug issue
+	DesignWorkspace      string         // Design workspace name for ui-design-session handoff
+	DesignMockupPath     string         // Path to approved mockup
+	DesignPromptPath     string         // Path to design prompt
+	DesignNotes          string         // Notes from design session
+	IssueComments        []IssueComment // Orchestrator comments from beads issue
+	IsInvestigationSkill bool           // When true, mandate investigation file creation
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -635,6 +635,7 @@ func WriteContext(cfg *Config) error {
 		SpawnTime:     spawnTime.Format(time.RFC3339),
 		Tier:          cfg.Tier,
 		SpawnMode:     cfg.SpawnMode,
+		Model:         cfg.Model,
 	}
 	if err := WriteAgentManifest(workspacePath, manifest); err != nil {
 		return fmt.Errorf("failed to write agent manifest: %w", err)

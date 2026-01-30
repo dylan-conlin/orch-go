@@ -266,6 +266,9 @@ func runStatus(serverURL string) error {
 					if manifest.SpawnMode != "" {
 						info.Mode = manifest.SpawnMode
 					}
+					if manifest.Model != "" {
+						info.Model = manifest.Model
+					}
 				}
 			}
 
@@ -304,6 +307,7 @@ func runStatus(serverURL string) error {
 			Skill:        extractSkillFromTitle(s.Title),
 			Project:      extractProjectFromBeadsID(beadsID),
 			IsProcessing: isSessionLikelyProcessing(client, s.ID, updatedAt, now),
+			Model:        client.GetSessionModel(s.ID),
 		})
 
 		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
@@ -358,6 +362,7 @@ func runStatus(serverURL string) error {
 			ProjectDir:   s.Directory,
 			IsUntracked:  true,
 			IsProcessing: isSessionLikelyProcessing(client, s.ID, updatedAt, now),
+			Model:        client.GetSessionModel(s.ID),
 		})
 
 		seenSessionIDs[s.ID] = true
@@ -1365,6 +1370,7 @@ type AgentManifest struct {
 	ProjectDir    string `json:"project_dir"`
 	SpawnMode     string `json:"spawn_mode"`
 	Tier          string `json:"tier"`
+	Model         string `json:"model,omitempty"`
 }
 
 // readAgentManifest reads AGENT_MANIFEST.json from a workspace directory.

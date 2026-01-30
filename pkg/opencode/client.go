@@ -678,6 +678,23 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	return messages, nil
 }
 
+// GetSessionModel extracts the model ID from a session's most recent assistant message.
+// Returns empty string if no assistant messages exist or if the model is not set.
+func (c *Client) GetSessionModel(sessionID string) string {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil || len(messages) == 0 {
+		return ""
+	}
+
+	// Find the most recent assistant message (iterate from end)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role == "assistant" && messages[i].Info.ModelID != "" {
+			return messages[i].Info.ModelID
+		}
+	}
+	return ""
+}
+
 // FindRecentSession finds the most recent session for a given project directory.
 // It matches by directory and creation time only (within 30 seconds).
 // Title matching is not used because OpenCode session titles are set to the first
