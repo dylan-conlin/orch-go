@@ -233,7 +233,7 @@
 											{item.topic || 'Unknown topic'}
 										</div>
 										<div class="text-[10px] text-muted-foreground mt-0.5">
-											{item.investigation_count} investigations, oldest {item.oldest_days}d
+											{item.count} investigations
 										</div>
 									</div>
 								{/each}
@@ -263,7 +263,7 @@
 											{item.title || item.path}
 										</div>
 										<div class="text-[10px] text-muted-foreground mt-0.5">
-											{item.days_old}d without citations
+											{item.age_days}d without citations
 										</div>
 									</div>
 								{/each}
@@ -280,7 +280,7 @@
 											{item.title || item.path}
 										</div>
 										<Badge variant="outline" class="h-4 px-1 text-[10px] mt-0.5 border-green-500/30 text-green-600">
-											{item.recommendation}
+											{item.suggestion}
 										</Badge>
 									</div>
 								{/each}
