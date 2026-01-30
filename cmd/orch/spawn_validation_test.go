@@ -298,7 +298,7 @@ This blocks the feature.
 	}{
 		{
 			name:                 "no conflict",
-			task:                 "allowed feature",
+			task:                 "implement user authentication",
 			acknowledgedDecision: "",
 			wantErr:              false,
 			wantConflictFound:    false,
@@ -345,4 +345,57 @@ This blocks the feature.
 			}
 		})
 	}
+}
+
+// TestCheckDecisionConflictsFailsClosed verifies that the decision gate
+// blocks spawns (fails closed) when the decision checking itself fails.
+// This is a security/safety-critical behavior - if we can't verify no
+// conflicts exist, we must assume they might.
+func TestCheckDecisionConflictsFailsClosed(t *testing.T) {
+	// Create temp directory with .kb/decisions but make it unreadable
+	tmpDir := t.TempDir()
+	kbDir := filepath.Join(tmpDir, ".kb", "decisions")
+	if err := os.MkdirAll(kbDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a valid decision file first
+	decision := `---
+blocks:
+  - keywords: ["test keyword"]
+---
+
+# Decision: Test
+
+This is a test decision.
+`
+	if err := os.WriteFile(filepath.Join(kbDir, "2026-01-28-test.md"), []byte(decision), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the decisions directory unreadable to trigger an error
+	if err := os.Chmod(kbDir, 0000); err != nil {
+		t.Skip("Cannot make directory unreadable on this filesystem")
+	}
+	// Restore permissions after test
+	defer os.Chmod(kbDir, 0755)
+
+	result, err := checkDecisionConflicts("any task", tmpDir, "")
+
+	// The gate should BLOCK spawn (fail closed) when decision checking fails
+	if err == nil {
+		t.Errorf("Expected error when decision check fails (fail-closed behavior), but got nil")
+	}
+
+	// The result should still be valid (not nil)
+	if result == nil {
+		t.Fatalf("Expected result to be non-nil even on error")
+	}
+
+	// ConflictFound should be false since we couldn't check
+	if result.ConflictFound {
+		t.Errorf("Expected ConflictFound to be false when check fails, got true")
+	}
+
+	t.Logf("Decision gate correctly blocked spawn when check failed: %v", err)
 }

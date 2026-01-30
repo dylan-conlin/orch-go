@@ -418,13 +418,18 @@ func BuildWindowName(workspaceName, skillName, beadsID string) string {
 // Note: Does NOT include --format json because tmux spawn should show the TUI.
 // Inline spawn uses --format json separately to parse session ID.
 func BuildSpawnCommand(cfg *SpawnConfig) *exec.Cmd {
+	opencodeBin := "opencode"
+	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
+		opencodeBin = bin
+	}
+
 	args := []string{
 		"run",
 		"--attach", cfg.ServerURL,
 		"--title", cfg.Title,
 		cfg.Prompt,
 	}
-	cmd := exec.Command("opencode", args...)
+	cmd := exec.Command(opencodeBin, args...)
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")

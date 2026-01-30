@@ -53,10 +53,17 @@ func ensureOpenCodeRunning() error {
 
 	fmt.Fprintf(os.Stderr, "OpenCode not running, starting it...\n")
 
+	// Resolve opencode binary path (handles minimal PATH environments like launchd)
+	opencodePath, err := opencode.ResolveOpencodePath()
+	if err != nil {
+		return fmt.Errorf("opencode executable not found: %w", err)
+	}
+
 	// Start OpenCode server in background, fully detached via shell
 	// This ensures the process survives even if the parent is killed
 	// Set ORCH_WORKER=1 so agents spawned by this server know they are orch-managed workers
-	cmd := exec.Command("sh", "-c", "ORCH_WORKER=1 opencode serve --port 4096 </dev/null >/dev/null 2>&1 &")
+	shellCmd := fmt.Sprintf("ORCH_WORKER=1 %s serve --port 4096 </dev/null >/dev/null 2>&1 &", opencodePath)
+	cmd := exec.Command("sh", "-c", shellCmd)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to start OpenCode: %w", err)
 	}

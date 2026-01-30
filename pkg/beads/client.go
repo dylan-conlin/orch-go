@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/binutil"
 )
 
 // ErrIssueNotFound is returned when a beads issue lookup fails because the issue doesn't exist.
@@ -35,56 +37,24 @@ var DefaultDir string
 // If empty, defaults to "bd" (relies on PATH lookup).
 var BdPath string
 
-// bdSearchPaths are common locations where bd might be installed.
-// These are checked in order when ResolveBdPath can't find bd in PATH.
-var bdSearchPaths = []string{
-	"$HOME/bin/bd",
-	"$HOME/go/bin/bd",
-	"$HOME/.bun/bin/bd",
-	"$HOME/.local/bin/bd",
-	"/usr/local/bin/bd",
-	"/opt/homebrew/bin/bd",
-}
-
 // ResolveBdPath attempts to find the bd executable and stores its absolute path
 // in BdPath. This should be called at startup by processes that may run under
 // launchd or other environments with minimal PATH.
 //
 // Search order:
-// 1. Current PATH (via exec.LookPath)
-// 2. Common installation locations (~/bin, ~/go/bin, ~/.bun/bin, etc.)
+// 1. BD_BIN environment variable (if set)
+// 2. Current PATH (via exec.LookPath)
+// 3. Common installation locations (~/bin, ~/go/bin, ~/.bun/bin, etc.)
 //
 // If bd is found, returns the absolute path and sets BdPath.
 // If not found, returns an error but BdPath remains empty (fallback to "bd").
 func ResolveBdPath() (string, error) {
-	// First, try to find bd in current PATH
-	path, err := exec.LookPath("bd")
-	if err == nil {
-		// Got it from PATH - store absolute path
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			absPath = path // Use as-is if Abs fails
-		}
-		BdPath = absPath
-		return BdPath, nil
+	path, err := binutil.ResolveBinary("bd", "BD_BIN", binutil.CommonSearchPaths("bd"))
+	if err != nil {
+		return "", err
 	}
-
-	// Not in PATH - check common installation locations
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = os.Getenv("USERPROFILE") // Windows fallback
-	}
-
-	for _, searchPath := range bdSearchPaths {
-		// Expand $HOME
-		expanded := strings.Replace(searchPath, "$HOME", home, 1)
-		if _, err := os.Stat(expanded); err == nil {
-			BdPath = expanded
-			return BdPath, nil
-		}
-	}
-
-	return "", fmt.Errorf("bd executable not found in PATH or common locations")
+	BdPath = path
+	return BdPath, nil
 }
 
 // getBdPath returns the bd executable path to use.

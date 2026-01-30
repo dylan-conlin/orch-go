@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/binutil"
 )
 
 // DefaultServerURL is the default OpenCode server URL.
@@ -67,7 +69,38 @@ func NewClientWithTimeout(serverURL string, timeout time.Duration) *Client {
 	}
 }
 
+// OpencodePath is the resolved absolute path to the opencode executable.
+// Set this at startup via ResolveOpencodePath() to ensure spawning works
+// correctly when running under launchd with minimal PATH.
+// If empty, defaults to "opencode" (relies on PATH lookup).
+var OpencodePath string
+
+// ResolveOpencodePath attempts to find the opencode executable and stores its absolute path
+// in OpencodePath. This should be called at startup by processes that may run under
+// launchd or other environments with minimal PATH.
+//
+// Search order:
+// 1. OPENCODE_BIN environment variable (if set)
+// 2. Current PATH (via exec.LookPath)
+// 3. Common installation locations (~/bin, ~/go/bin, ~/.bun/bin, etc.)
+//
+// If opencode is found, returns the absolute path and sets OpencodePath.
+// If not found, returns an error but OpencodePath remains empty (fallback to "opencode").
+func ResolveOpencodePath() (string, error) {
+	path, err := binutil.ResolveBinary("opencode", "OPENCODE_BIN", binutil.CommonSearchPaths("opencode"))
+	if err != nil {
+		return "", err
+	}
+	OpencodePath = path
+	return OpencodePath, nil
+}
+
+// getOpencodeBin returns the opencode executable path to use.
+// Returns OpencodePath if set, otherwise checks OPENCODE_BIN env var, otherwise "opencode".
 func (c *Client) getOpencodeBin() string {
+	if OpencodePath != "" {
+		return OpencodePath
+	}
 	if bin := os.Getenv("OPENCODE_BIN"); bin != "" {
 		return bin
 	}

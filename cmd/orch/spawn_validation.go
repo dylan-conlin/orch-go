@@ -404,9 +404,12 @@ func checkDecisionConflicts(task, projectDir, acknowledgedDecision string) (*Dec
 
 	conflicts, err := findBlockingDecisions(task, projectDir)
 	if err != nil {
-		// Don't fail spawn on decision check errors - log and continue
-		fmt.Fprintf(os.Stderr, "Warning: decision check failed: %v\n", err)
-		return result, nil
+		// FAIL-CLOSED: Block spawn when decision checking fails.
+		// Security/safety-critical gates should fail closed, not open.
+		// If we can't verify no conflicts exist, we must assume they might.
+		fmt.Fprintf(os.Stderr, "Error: decision check failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Spawn blocked due to decision check failure (fail-closed).\n")
+		return result, fmt.Errorf("spawn blocked: decision check failed: %w", err)
 	}
 
 	if len(conflicts) == 0 {
