@@ -75,6 +75,7 @@ type SwarmStatus struct {
 	Processing int `json:"processing,omitempty"` // Agents actively generating response
 	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
 	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
+	Untracked  int `json:"untracked,omitempty"`  // Sessions not spawned via orch (no beads ID)
 	Queued     int `json:"queued"`
 	Completed  int `json:"completed_today"`
 }
@@ -107,6 +108,7 @@ type AgentInfo struct {
 	IsPhantom       bool                          `json:"is_phantom,omitempty"`        // True if beads issue open but agent not running
 	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
+	IsUntracked     bool                          `json:"is_untracked,omitempty"`      // True if session was not spawned via orch (no beads ID)
 	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
 	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
 	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
@@ -150,7 +152,6 @@ type InfrastructureHealth struct {
 	Services   []InfraServiceStatus `json:"services"`
 	Daemon     *DaemonStatus        `json:"daemon,omitempty"`
 }
-
 
 // StatusOutput represents the full status output for JSON serialization.
 type StatusOutput struct {
@@ -307,6 +308,59 @@ func runStatus(serverURL string) error {
 
 		beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
 		seenBeadsIDs[beadsID] = true
+	}
+
+	// Phase 3: Discovery - Collect UNTRACKED OpenCode sessions (no beads ID in title)
+	// These are sessions started directly through OpenCode, not via orch spawn
+	// Track seen session IDs to avoid duplicates
+	seenSessionIDs := make(map[string]bool)
+	for _, agent := range agents {
+		if agent.SessionID != "" {
+			seenSessionIDs[agent.SessionID] = true
+		}
+	}
+
+	for _, s := range sessions {
+		// Skip if already tracked
+		if seenSessionIDs[s.ID] {
+			continue
+		}
+
+		// Skip sessions with beads ID (already handled in Phase 2)
+		if extractBeadsIDFromTitle(s.Title) != "" {
+			continue
+		}
+
+		updatedAt := time.Unix(s.Time.Updated/1000, 0)
+		// For untracked sessions, use a longer idle threshold since they may be
+		// orchestrator conversations or long-running interactive sessions
+		untrackedMaxIdleTime := 2 * time.Hour
+		if now.Sub(updatedAt) > untrackedMaxIdleTime {
+			continue
+		}
+
+		createdAt := time.Unix(s.Time.Created/1000, 0)
+
+		// Extract project name from directory (e.g., /Users/.../orch-go -> orch-go)
+		projectName := ""
+		if s.Directory != "" && s.Directory != "/" {
+			projectName = filepath.Base(s.Directory)
+		}
+
+		agents = append(agents, AgentInfo{
+			SessionID:    s.ID,
+			BeadsID:      "", // No beads ID - this is an untracked session
+			Mode:         "opencode",
+			Title:        s.Title,
+			Runtime:      formatDuration(now.Sub(createdAt)),
+			LastActivity: updatedAt,
+			Project:      projectName,
+			ProjectDir:   s.Directory,
+			IsUntracked:  true,
+			IsProcessing: isSessionLikelyProcessing(client, s.ID, updatedAt, now),
+		})
+
+		seenSessionIDs[s.ID] = true
 	}
 
 	// Build beadsProjectDirs map for cross-project agents.
@@ -466,16 +520,32 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
+		// Filter untracked sessions unless --all is set
+		// Untracked sessions are those started outside orch (no beads ID)
+		if agentItem.IsUntracked && !statusAll {
+			continue
+		}
+
 		filteredAgents = append(filteredAgents, agentItem)
 	}
 
-	// Phase 4: Build swarm status (counts before filtering)
+	// Phase 5: Build swarm status (counts before filtering)
 	activeCount := 0
 	processingCount := 0
 	idleCount := 0
 	phantomCount := 0
 	completedCount := 0
+	untrackedCount := 0
 	for _, agent := range agents {
+		if agent.IsUntracked {
+			// Untracked sessions are counted separately
+			untrackedCount++
+			// But still count as active/processing for running status
+			if agent.IsProcessing {
+				processingCount++
+			}
+			continue
+		}
 		if agent.IsPhantom {
 			phantomCount++
 		} else if agent.IsCompleted {
@@ -496,6 +566,7 @@ func runStatus(serverURL string) error {
 		Processing: processingCount,
 		Idle:       idleCount,
 		Phantom:    phantomCount,
+		Untracked:  untrackedCount,
 		Queued:     0,              // TODO: implement queuing system
 		Completed:  completedCount, // Agents with closed beads issues
 	}
@@ -802,6 +873,12 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 			fmt.Printf(" (use --all to show)")
 		}
 	}
+	if output.Swarm.Untracked > 0 {
+		fmt.Printf(", Untracked: %d", output.Swarm.Untracked)
+		if !showAll {
+			fmt.Printf(" (use --all to show)")
+		}
+	}
 	fmt.Println()
 	// In compact mode, add hint about hidden idle agents
 	if !showAll && output.Swarm.Idle > 0 && output.Swarm.Idle > len(output.Agents) {
@@ -936,7 +1013,12 @@ func printAgentsWideFormat(agents []AgentInfo) {
 		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
-			beadsID = "-"
+			// For untracked sessions, show truncated session ID to enable `orch tail --session`
+			if agent.IsUntracked && agent.SessionID != "" {
+				beadsID = truncateSessionIDForStatus(agent.SessionID)
+			} else {
+				beadsID = "-"
+			}
 		}
 		mode := agent.Mode
 		if mode == "" {
@@ -1015,7 +1097,12 @@ func printAgentsNarrowFormat(agents []AgentInfo) {
 		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
-			beadsID = "-"
+			// For untracked sessions, show truncated session ID
+			if agent.IsUntracked && agent.SessionID != "" {
+				beadsID = truncateSessionIDForStatus(agent.SessionID)
+			} else {
+				beadsID = "-"
+			}
 		}
 		mode := agent.Mode
 		if mode == "" {
@@ -1059,7 +1146,12 @@ func printAgentsCardFormat(agents []AgentInfo) {
 		}
 		beadsID := formatBeadsIDForDisplay(agent.BeadsID)
 		if beadsID == "" {
-			beadsID = "-"
+			// For untracked sessions, show truncated session ID
+			if agent.IsUntracked && agent.SessionID != "" {
+				beadsID = truncateSessionIDForStatus(agent.SessionID)
+			} else {
+				beadsID = "-"
+			}
 		}
 		modelDisplay := formatModelForDisplay(agent.Model)
 		phase := agent.Phase
@@ -1110,6 +1202,12 @@ func getAgentStatus(agent AgentInfo) string {
 	}
 	if agent.IsPhantom {
 		return "phantom"
+	}
+	if agent.IsUntracked {
+		if agent.IsProcessing {
+			return "untracked*" // Running untracked session
+		}
+		return "untracked"
 	}
 	if agent.IsProcessing {
 		return "running"
@@ -1173,6 +1271,15 @@ func abbreviateSkill(skill string) string {
 		return abbr
 	}
 	return skill
+}
+
+// truncateSessionIDForStatus shortens a session ID for status display (ses_xxx... format).
+// Shows first 16 chars to enable copy-paste for `orch tail --session`.
+func truncateSessionIDForStatus(id string) string {
+	if len(id) <= 16 {
+		return id
+	}
+	return id[:16] + "..."
 }
 
 // formatModelForDisplay formats a model spec for compact display.
