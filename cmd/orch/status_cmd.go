@@ -495,7 +495,8 @@ func runStatus(serverURL string) error {
 		// 1. Running (processing) agents
 		// 2. RECENT agents with Phase: Complete (need review)
 		// 3. Agents with Phase: BLOCKED or QUESTION (need attention)
-		if !statusAll {
+		// 4. Untracked sessions (always visible for resource monitoring)
+		if !statusAll && !agentItem.IsUntracked {
 			isRunning := agentItem.IsProcessing
 
 			isComplete := strings.EqualFold(agentItem.Phase, "Complete")
@@ -525,13 +526,10 @@ func runStatus(serverURL string) error {
 			continue
 		}
 
-		// Filter untracked sessions (interactive orchestrator sessions) unless --all is set
-		// Untracked sessions are OpenCode sessions without beads ID tracking - these are
-		// typically interactive human-to-AI conversations, not spawned agents.
-		// Spawned agents have: beads ID in title, workspace in .orch/workspace/, SPAWN_CONTEXT.md
-		if agentItem.IsUntracked && !statusAll {
-			continue
-		}
+		// Untracked sessions are shown by default for operational visibility.
+		// These are OpenCode sessions without beads ID tracking - typically interactive
+		// human-to-AI conversations or sessions started outside orch spawn.
+		// They represent real OpenCode resource usage and should be visible for monitoring.
 
 		filteredAgents = append(filteredAgents, agentItem)
 	}
