@@ -463,8 +463,12 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 		for _, line := range strings.Split(contentStr, "\n") {
 			lineTrimmed := strings.TrimSpace(line)
 
-			// Extract beads ID from "spawned from beads issue: **xxx**" or "bd comment xxx"
-			if strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
+			// Extract beads ID from "spawned from beads issue: **xxx**" (authoritative source)
+			// This line is the authoritative declaration of the agent's beads ID.
+			// IMPORTANT: We must stop parsing beads ID after finding this line to prevent
+			// template examples like "bd comment <beads-id>" from overwriting the correct value.
+			// See .kb/investigations/2026-01-29-inv-dashboard-follow-mode-doesn-show.md
+			if beadsID == "" && strings.Contains(strings.ToLower(line), "spawned from beads issue:") {
 				// Pattern: "spawned from beads issue: **orch-go-xxxx**"
 				// Extract the beads ID between ** markers or after the colon
 				if idx := strings.Index(line, "**"); idx != -1 {
@@ -472,12 +476,6 @@ func buildWorkspaceCache(projectDir string) *workspaceCache {
 					if endIdx := strings.Index(rest, "**"); endIdx != -1 {
 						beadsID = rest[:endIdx]
 					}
-				}
-			} else if strings.HasPrefix(lineTrimmed, "bd comment ") {
-				// Pattern: "bd comment orch-go-xxxx ..."
-				parts := strings.Fields(lineTrimmed)
-				if len(parts) >= 3 {
-					beadsID = parts[2]
 				}
 			}
 

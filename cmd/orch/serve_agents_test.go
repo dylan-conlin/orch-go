@@ -484,6 +484,66 @@ AUTHORITY: Standard
 	}
 }
 
+// TestBuildWorkspaceCacheWithTemplatePlaceholders verifies that template placeholders
+// like `<beads-id>` in SPAWN_CONTEXT.md don't overwrite the correct beads ID.
+// This regression test prevents the bug documented in:
+// .kb/investigations/2026-01-29-inv-dashboard-follow-mode-doesn-show.md
+func TestBuildWorkspaceCacheWithTemplatePlaceholders(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace")
+	wsPath := filepath.Join(workspaceDir, "sp-feat-test-29jan")
+	if err := os.MkdirAll(wsPath, 0755); err != nil {
+		t.Fatalf("Failed to create workspace dir: %v", err)
+	}
+
+	// SPAWN_CONTEXT.md with the authoritative beads ID followed by template examples
+	// that contain `<beads-id>` placeholders. The authoritative line should be used.
+	spawnContext := `TASK: Test task
+
+PROJECT_DIR: /home/user/specs-platform
+
+## BEADS PROGRESS TRACKING
+
+You were spawned from beads issue: **specs-platform-36**
+
+**Use bd comment for progress updates:**
+
+` + "```bash" + `
+# Report progress at phase transitions
+bd comment <beads-id> "Phase: Planning - Analyzing codebase structure"
+bd comment <beads-id> "Phase: Implementing - Adding authentication middleware"
+bd comment <beads-id> "Phase: Complete - All tests passing, ready for review"
+` + "```" + `
+`
+	if err := os.WriteFile(filepath.Join(wsPath, "SPAWN_CONTEXT.md"), []byte(spawnContext), 0644); err != nil {
+		t.Fatalf("Failed to create SPAWN_CONTEXT.md: %v", err)
+	}
+
+	// Build the cache
+	cache := buildWorkspaceCache(tmpDir)
+
+	// Verify that the correct beads ID was extracted (not the template placeholder)
+	if beadsID, ok := cache.beadsToWorkspace["specs-platform-36"]; !ok {
+		// Check what was actually cached
+		for key := range cache.beadsToWorkspace {
+			t.Errorf("Unexpected beads ID in cache: %s", key)
+		}
+		t.Errorf("Expected specs-platform-36 in beadsToWorkspace, but it was not found. Cache has %d entries.", len(cache.beadsToWorkspace))
+	} else {
+		t.Logf("Correctly cached specs-platform-36 -> %s", beadsID)
+	}
+
+	// Verify template placeholder was NOT cached
+	if _, ok := cache.beadsToWorkspace["<beads-id>"]; ok {
+		t.Error("Template placeholder <beads-id> should NOT be in beadsToWorkspace")
+	}
+
+	// Verify PROJECT_DIR was extracted correctly
+	if projDir := cache.beadsToProjectDir["specs-platform-36"]; projDir != "/home/user/specs-platform" {
+		t.Errorf("Expected projectDir /home/user/specs-platform, got %s", projDir)
+	}
+}
+
 func TestBuildMultiProjectWorkspaceCache(t *testing.T) {
 	// Create two temporary project directories
 	tmpDir1 := t.TempDir()

@@ -789,6 +789,10 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 				agent.BeadsID = extractBeadsIDFromTitle(entry.Name())
 			}
 			agent.Skill = extractSkillFromTitle(entry.Name())
+			// Extract Project from beadsID for proper filtering
+			// Without this, completed workspaces have project:null and won't match project filters.
+			// See .kb/investigations/2026-01-29-inv-dashboard-follow-mode-doesn-show.md
+			agent.Project = extractProjectFromBeadsID(agent.BeadsID)
 
 			// NOTE: We intentionally DON'T extract PROJECT_DIR or fetch beads data for completed workspaces.
 			// Completed workspaces have already done their work - they don't need phase updates.
