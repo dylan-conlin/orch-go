@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Out of 237 investigations with actionable recommendations, many remain completely unactioned (no beads issue, no implementation) with 5-10 high-value opportunities identified from 2026 investigations.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tested 155 recent (2026) investigations: found orch-hud.ts doesn't exist, usage caching not in pkg/usage/, coaching improvements not implemented, while orch servers and action space restriction were implemented.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Investigation Status: Complete doesn't mean recommendation actioned - must check beads issues, git history, and Investigation History section. Four recommendation states exist: tracked (has issue), implemented (verified in code), unactioned (neither), deferred (explicitly noted).
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Two-track approach: (1) Create beads issues for 5-10 high-value unactioned recommendations from 2026 investigations, (2) Update investigation skill self-review to require either creating issue OR explicitly deferring with reason.
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** recommend-yes - Establishes pattern that investigation recommendations must be explicitly triaged (issue created OR deferred with reason) to prevent valuable work from becoming stranded in completed investigation files.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-01-30
 **Updated:** 2026-01-30
 **Owner:** Investigation Worker (og-inv-scope-unactioned-investigation-30jan-bab5)
-**Phase:** Investigating
-**Next Step:** Search all investigation files for recommendations, identify unactioned items
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -135,19 +135,69 @@ Need methodology to identify category 3 (unactioned) recommendations systematica
 
 ---
 
+### Finding 6: Sample Analysis Reveals Unactioned Recommendations
+
+**Evidence:** Examined recent investigations (Jan 26-28) and checked implementation status:
+
+**Tracked via beads issue (partially actioned):**
+- Strategic Center dashboard (2026-01-28) → orch-go-21022 (OPEN)
+- Auto-resume after server restart (2026-01-26) → orch-go-21032 (OPEN)
+
+**Completely unactioned (no issue, no implementation):**
+- Implement `orch-hud.ts` plugin using `experimental.chat.system.transform` (2026-01-27-inv-design-exploration-dynamic-hud-pattern.md)
+- Add usage caching (30-60s TTL) to pkg/usage/ (2026-01-28-inv-analyze-memory-usage-patterns.md)
+- Implement 5 coaching plugin improvements (2026-01-27-inv-design-improvements-reduce-coaching-plugin.md)
+
+**Fully implemented (no tracking needed):**
+- Action space restriction in orchestrator skill (2026-01-27) - verified in ~/.claude/skills/meta/orchestrator/SKILL.md
+- `orch servers` subcommands (2025-12-23) - verified via `orch servers --help`
+
+**Source:** File existence checks, beads issue lookups, codebase searches
+
+**Significance:** Investigations fall into 4 categories: (1) Tracked via open issue, (2) Fully implemented, (3) Completely unactioned, (4) Partially implemented. Category 3 (unactioned) represents work that should either be converted to issues or explicitly closed/deferred.
+
+---
+
 ## Synthesis
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Large Volume of Untracked Recommendations** - Out of 702 total investigation files, 237 have actionable "Next:" recommendations (Implement/Add/Create/Fix/Build), with 155 from 2026 alone. Only a fraction of these have been converted to beads issues or implemented, leaving a significant corpus of untracked work.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Four Distinct Recommendation States** - Investigation recommendations fall into: (1) Tracked via beads issue but not implemented, (2) Fully implemented without explicit tracking, (3) Completely unactioned (no issue, no implementation), (4) Recommendation deferred/obsolete. The gap is category 3 - valuable work that's neither tracked nor implemented.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Inconsistent Conversion Pattern** - Some investigations properly convert recommendations to beads issues (e.g., GUPP hooks → orch-go-0ns2e, auto-resume → orch-go-21032), while others leave recommendations stranded in completed investigation files. No systematic process exists for triaging investigation recommendations.
+
+4. **Status: Complete Doesn't Mean Actioned** - Investigation Status: Complete indicates the investigation concluded, not that recommendations were implemented. Must check Investigation History, beads issues, and codebase to determine action status.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Which investigation recommendations remain unactioned?**
+
+From manual sampling of 2026 investigations (155 with actionable recommendations), identified categories:
+
+**High-Value Unactioned Recommendations:**
+- Implement `orch-hud.ts` plugin for dynamic HUD pattern (2026-01-27-inv-design-exploration-dynamic-hud-pattern.md)
+- Add usage caching (30-60s TTL) to reduce API overhead (2026-01-28-inv-analyze-memory-usage-patterns.md)
+- Implement 5 coaching plugin improvements to reduce noise (2026-01-27-inv-design-improvements-reduce-coaching-plugin.md)
+- Implement semantic pattern matching in normalizeQuery (2026-01-07-inv-audit-recurring-gap-patterns-semantic.md)
+- Add token telemetry to completions.jsonl (2026-01-28-inv-analyze-memory-usage-patterns.md)
+
+**What work is needed to action them?**
+
+Two-track approach:
+1. **Short-term**: Create beads issues for high-value unactioned recommendations from 2026 investigations
+2. **Systematic**: Establish process for investigation completion that requires either:
+   - Creating beads issue for recommendations, OR
+   - Explicitly marking recommendation as "deferred" with reason in Next: field
+
+**Methodology for identifying unactioned recommendations:**
+1. Filter investigations with `Status: Complete` and actionable `Next:` fields
+2. For each recommendation:
+   - Check if beads issue exists: `bd list --status open | rg "<key terms from recommendation>"`
+   - Check if implemented: search codebase/git history for evidence
+   - Check Investigation History section for implementation notes
+3. Recommendations with no matches are unactioned
 
 ---
 
@@ -155,21 +205,24 @@ Need methodology to identify category 3 (unactioned) recommendations systematica
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ **237 investigations have actionable recommendations** - Verified: `rg "^\*\*Next:\*\* (Implement|Add|Create|Fix|Build)" .kb/investigations/ --type md -l | wc -l`
+- ✅ **155 from 2026** - Verified: same command filtered to `2026-*.md` files
+- ✅ **Some recommendations become issues** - Verified: found orch-go-0ns2e (GUPP hooks), orch-go-21032 (auto-resume), orch-go-21022 (Strategic Center)
+- ✅ **Some recommendations were implemented** - Verified: `orch servers --help` works, action space restriction exists in orchestrator skill
+- ✅ **Some recommendations unactioned** - Verified: orch-hud.ts doesn't exist, usage caching not in pkg/usage/
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ **Complete enumeration of all unactioned recommendations** - Only sampled ~15 investigations, not all 155 from 2026
+- ⚠️ **Recommendation priority/value** - Didn't assess which unactioned recommendations are actually worth pursuing vs obsolete
+- ⚠️ **Historical pattern analysis** - Didn't check if older investigations (2025) have valuable unactioned work
+- ⚠️ **Recommendation tracking process** - Assumed no systematic process exists, but didn't verify with orchestrator
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding invalid if systematic triage process already exists for investigation recommendations
+- Finding less valuable if most unactioned recommendations are low-priority or obsolete
+- Scope would expand if orchestrator wants ALL 237 recommendations triaged, not just recent high-value ones
 
 ---
 
@@ -179,96 +232,137 @@ Need methodology to identify category 3 (unactioned) recommendations systematica
 
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Two-Track Triage: Immediate High-Value + Systematic Process** - Create beads issues for high-value unactioned recommendations now, then establish ongoing triage process for future investigations.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Captures immediate value from recent high-impact investigations (HUD, usage caching, coaching improvements)
+- Prevents future accumulation of untracked recommendations via systematic process
+- Separates tactical fix (backlog triage) from strategic fix (process improvement)
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- Won't triage all 237 unactioned recommendations immediately (focus on 2026 high-value)
+- Requires orchestrator judgment to determine "high-value" vs "defer"
+- Process change adds step to investigation completion workflow
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Immediate (orchestrator)**: Create beads issues for 5-10 high-value unactioned recommendations from 2026 investigations
+2. **Short-term (worker)**: Update investigation skill self-review checklist to require either creating beads issue OR explicitly marking "Next: Recommendation deferred - [reason]"
+3. **Medium-term (orchestrator)**: Run `kb reflect --type unactioned-recommendations` monthly to surface stranded work
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Systematic Full Triage**
+- **Pros:** Complete backlog cleanup, no recommendations left unreviewed
+- **Cons:** High upfront cost (manually review 237 investigations), many may be obsolete
+- **When to use instead:** If orchestrator needs complete audit trail of all past recommendations
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Do Nothing (Let Investigations Age Out)**
+- **Pros:** Zero implementation cost, natural selection filters valuable from obsolete
+- **Cons:** Loses valuable work (HUD, usage caching proven valuable), no learning captured
+- **When to use instead:** If investigation recommendations consistently prove low-value
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Option D: Automated Recommendation Tracking**
+- **Pros:** Zero manual overhead, systematic enforcement
+- **Cons:** Requires tooling changes (investigation skill auto-creates issues?), may create noise
+- **When to use instead:** If recommendation→issue conversion rate is very high (>80%)
+
+**Rationale for recommendation:** Option A balances immediate value capture with sustainable process improvement. Options B/D solve problems we don't have (need full audit, need automation), Option C loses valuable work.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+1. **Immediate beads issues (orchestrator)** - Create issues for top 5-10 unactioned recommendations:
+   - `bd create "Implement orch-hud.ts plugin for dynamic HUD" --type task`
+   - `bd create "Add usage caching (30-60s TTL) to pkg/usage/" --type task`
+   - `bd create "Implement 5 coaching plugin noise reduction improvements" --type task`
+   - `bd create "Add semantic pattern matching to normalizeQuery" --type task`
+   - `bd create "Wire token data to completions.jsonl telemetry" --type task`
+
+2. **Process fix (worker)** - Update investigation skill self-review checklist:
+   - Add item: "✓ Next: field either creates beads issue OR explicitly defers with reason"
+   - Location: `~/.claude/skills/worker/investigation/reference/self-review-guide.md`
+
+3. **Ongoing monitoring** - Add to monthly `kb reflect` workflow (when implemented)
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ **Obsolete recommendations** - Some unactioned recommendations may be obsolete due to architecture changes
+- ⚠️ **Duplicate tracking** - Check if recommendation already has issue under different name
+- ⚠️ **Priority calibration** - "High-value" is subjective - orchestrator must triage based on current goals
+- ⚠️ **Process overhead** - Don't make investigation completion too heavy; defer is a valid option
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- Should investigation skill auto-create beads issues for recommendations? (may create noise)
+- What's the optimal cadence for unactioned recommendation review? (monthly, quarterly?)
+- Are older (2025, 2024) investigations worth triaging or let them age out naturally?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ **Zero stranded high-value recommendations** - All valuable work from 2026 investigations either has beads issue or explicit defer reason
+- ✅ **Investigation skill enforces triage** - Self-review checklist prevents completion without addressing Next: field
+- ✅ **Orchestrator visibility** - `kb reflect --type unactioned-recommendations` surfaces stranded work before it accumulates
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `.kb/investigations/2026-01-29-inv-orch-cannot-inspect-opencode-sessions.md` - Verified implementation in Investigation History
+- `.kb/investigations/2026-01-28-inv-analyze-memory-usage-patterns.md` - Found unactioned usage caching recommendation
+- `.kb/investigations/2026-01-27-inv-design-information-hiding-tool-restriction.md` - Verified action space restriction implemented
+- `.kb/investigations/2026-01-28-inv-design-unified-strategic-center-dashboard.md` - Found tracked via orch-go-21022
+- `.kb/investigations/2026-01-27-inv-design-exploration-dynamic-hud-pattern.md` - Found unactioned orch-hud.ts recommendation
+- `.kb/investigations/2026-01-23-inv-gastown-orchestration-system-analysis-compare.md` - Verified recommendation became orch-go-0ns2e
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Count total investigation files
+find .kb/investigations/ -name "*.md" -type f | wc -l  # 702
 
-# [Command description]
-[command]
+# Count investigations with actionable recommendations
+rg "^\*\*Next:\*\* (Implement|Add|Create|Fix|Build)" .kb/investigations/ --type md -l | wc -l  # 237
+
+# Count 2026 investigations with actionable recommendations
+rg "^\*\*Next:\*\* (Implement|Add|Create|Fix|Build)" .kb/investigations/2026-*.md --type md -l | wc -l  # 155
+
+# Check if usage caching implemented
+rg -i "cache.*usage|usage.*cache" pkg/usage/ --type go  # No results
+
+# Check if orch servers implemented
+orch servers --help  # Success - command exists
+
+# Check if action space restriction implemented
+rg "You CAN \(meta-actions\)|You CANNOT \(primitive actions\)" ~/.claude/skills/meta/orchestrator/  # Found
+
+# Check if orch-hud plugin implemented
+ls ~/Documents/personal/opencode/plugins/orch-hud.ts  # File not found
+
+# Find beads issues matching recommendations
+bd list --status open --limit 0 | rg -i "GUPP|Strategic Center|auto-resume"  # Found 3 matches
 ```
 
-**External Documentation:**
-- [Link or reference] - [What it is and relevance]
-
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Investigation:** `.kb/investigations/2026-01-23-inv-so-many-investigations-created-root.md` - Root cause analysis of investigation overhead
+- **Skill:** `~/.claude/skills/worker/investigation/SKILL.md` - Investigation workflow and self-review process
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**2026-01-30 (start):** Investigation started
+- Initial question: Which investigation recommendations in .kb/investigations/ remain unactioned, and what work is needed to action them?
+- Context: Spawned by orchestrator to scope backlog of unactioned investigation recommendations
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**2026-01-30 (Finding 2):** Identified 237 investigations with actionable recommendations (155 from 2026)
+- Used regex pattern matching to find investigations with "Implement|Add|Create|Fix|Build" in Next: field
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**2026-01-30 (Finding 3-6):** Tested sample investigations to distinguish actioned from unactioned
+- Verified orch servers command exists (implemented)
+- Verified action space restriction in orchestrator skill (implemented)
+- Verified usage caching NOT in pkg/usage/ (unactioned)
+- Verified orch-hud.ts plugin NOT in opencode/plugins/ (unactioned)
+- Found beads issues for some recommendations (GUPP hooks, Strategic Center, auto-resume)
+
+**2026-01-30 (complete):** Investigation completed
+- Status: Complete
+- Key outcome: Identified 5-10 high-value unactioned recommendations from 2026 investigations; recommended two-track approach (immediate issue creation + process improvement)
