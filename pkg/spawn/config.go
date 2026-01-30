@@ -219,6 +219,11 @@ type Config struct {
 	// These are orchestrator notes added after issue creation that provide additional
 	// context, clarifications, or guidance for the spawned agent.
 	IssueComments []IssueComment
+
+	// DaemonDriven indicates whether this spawn was initiated by the daemon.
+	// When true, skip focus-stealing behaviors like tmux select-window
+	// to avoid interrupting the orchestrator's workflow.
+	DaemonDriven bool
 }
 
 // IssueComment represents a comment on a beads issue.

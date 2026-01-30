@@ -769,6 +769,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		DesignMockupPath:   designMockupPath,
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,
+		DaemonDriven:       daemonDriven,
 	}
 
 	// Pre-spawn token estimation and validation
@@ -1220,11 +1221,13 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Focus the newly created window
-	selectCmd := exec.Command("tmux", "select-window", "-t", windowTarget)
-	if err := selectCmd.Run(); err != nil {
-		// Non-fatal - window was created successfully
-		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+	// Focus the newly created window (skip for daemon-driven spawns to avoid interrupting orchestrator)
+	if !cfg.DaemonDriven {
+		selectCmd := exec.Command("tmux", "select-window", "-t", windowTarget)
+		if err := selectCmd.Run(); err != nil {
+			// Non-fatal - window was created successfully
+			fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+		}
 	}
 
 	// Print spawn summary with prominent gap warning if needed
@@ -1296,11 +1299,13 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Focus the newly created window
-	selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
-	if err := selectCmd.Run(); err != nil {
-		// Non-fatal
-		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+	// Focus the newly created window (skip for daemon-driven spawns to avoid interrupting orchestrator)
+	if !cfg.DaemonDriven {
+		selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
+		if err := selectCmd.Run(); err != nil {
+			// Non-fatal
+			fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+		}
 	}
 
 	// Print spawn summary with prominent gap warning if needed
@@ -1411,11 +1416,13 @@ func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
 
-	// Focus the newly created window
-	selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
-	if err := selectCmd.Run(); err != nil {
-		// Non-fatal
-		fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+	// Focus the newly created window (skip for daemon-driven spawns to avoid interrupting orchestrator)
+	if !cfg.DaemonDriven {
+		selectCmd := exec.Command("tmux", "select-window", "-t", result.Window)
+		if err := selectCmd.Run(); err != nil {
+			// Non-fatal
+			fmt.Fprintf(os.Stderr, "Warning: failed to focus window: %v\n", err)
+		}
 	}
 
 	// Print spawn summary with prominent gap warning if needed
