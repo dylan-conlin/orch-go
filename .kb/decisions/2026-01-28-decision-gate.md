@@ -1,5 +1,6 @@
 ---
-status: active
+status: superseded
+superseded_by: "Disabled due to high false positive rate (2026-01-30)"
 ---
 
 # Decision: Decision Gate for Architect Decisions

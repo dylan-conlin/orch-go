@@ -200,7 +200,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnForce, "force", false, "Force tactical spawn in hotspot areas (bypasses strategic-first gate - requires justification)")
 	spawnCmd.Flags().BoolVar(&spawnBypassTriage, "bypass-triage", false, "Acknowledge manual spawn bypasses daemon-driven triage workflow (required for manual spawns)")
 	spawnCmd.Flags().StringVar(&spawnDesignWorkspace, "design-workspace", "", "Design workspace name from ui-design-session for handoff to feature-impl (e.g., 'og-design-ready-queue-08jan')")
-	spawnCmd.Flags().StringVar(&spawnAcknowledgeDecision, "acknowledge-decision", "", "Acknowledge decision conflict (decision ID to override)")
+	spawnCmd.Flags().StringVar(&spawnAcknowledgeDecision, "acknowledge-decision", "", "[DEPRECATED] Decision gate disabled - this flag has no effect")
 }
 
 var (
@@ -526,22 +526,26 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Parse skill requirements to determine what context to gather
 	requires := spawn.ParseSkillRequires(skillContent)
 
-	// Check for decision conflicts - may block spawn if decisions prohibit this work
-	// Skip for daemon-driven spawns: decidability graph handles authority boundaries.
-	// Issues labeled triage:ready have already been validated by orchestrator.
-	// See: .kb/models/decidability-graph.md
-	var decisionResult *DecisionCheckResult
-	if !daemonDriven {
-		decisionResult, err = checkDecisionConflicts(task, projectDir, spawnAcknowledgeDecision)
-		if err != nil {
-			return err
-		}
-
-		// Log decision override if conflict was found and acknowledged
-		if decisionResult != nil && decisionResult.ConflictFound && decisionResult.Acknowledged {
-			logDecisionOverride(task, decisionResult.DecisionID, decisionResult.MatchedOn, skillName, beadsID)
-		}
-	}
+	// DISABLED: Decision gate removed due to high false positive rate
+	// See: .kb/decisions/2026-01-28-decision-gate.md (superseded)
+	// Previously: checkDecisionConflicts() blocked spawns when decisions prohibited work
+	//
+	// // Check for decision conflicts - may block spawn if decisions prohibit this work
+	// // Skip for daemon-driven spawns: decidability graph handles authority boundaries.
+	// // Issues labeled triage:ready have already been validated by orchestrator.
+	// // See: .kb/models/decidability-graph.md
+	// var decisionResult *DecisionCheckResult
+	// if !daemonDriven {
+	// 	decisionResult, err = checkDecisionConflicts(task, projectDir, spawnAcknowledgeDecision)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	//
+	// 	// Log decision override if conflict was found and acknowledged
+	// 	if decisionResult != nil && decisionResult.ConflictFound && decisionResult.Acknowledged {
+	// 		logDecisionOverride(task, decisionResult.DecisionID, decisionResult.MatchedOn, skillName, beadsID)
+	// 	}
+	// }
 
 	// Gather context based on skill requirements (or fall back to default behavior)
 	var kbContext string
