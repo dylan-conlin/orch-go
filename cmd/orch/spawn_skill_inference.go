@@ -28,6 +28,9 @@ func InferSkillFromIssueType(issueType string) (string, error) {
 		return "feature-impl", nil
 	case "investigation":
 		return "investigation", nil
+	case "question":
+		// Questions spawn investigation skill to answer them
+		return "investigation", nil
 	case "epic":
 		return "", fmt.Errorf("cannot spawn work on epic issues - epics are decomposed into sub-issues")
 	case "":
