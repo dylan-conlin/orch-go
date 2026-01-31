@@ -135,6 +135,54 @@ func ListOpenIssues() ([]Issue, error) {
 	return ListReadyIssues()
 }
 
+// ListReadyIssuesWithLabel returns ready issues filtered by a specific label.
+// Uses the beads RPC daemon if available, falling back to CLI if not.
+// If label is empty, behaves like ListReadyIssues (no filter).
+func ListReadyIssuesWithLabel(label string) ([]Issue, error) {
+	if label == "" {
+		return ListReadyIssues()
+	}
+
+	// Try to use the beads RPC client first
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			// Use Labels filter to only get issues with the specified label
+			beadsIssues, err := client.Ready(&beads.ReadyArgs{
+				Limit:  0,
+				Labels: []string{label},
+			})
+			if err == nil {
+				return convertBeadsIssues(beadsIssues), nil
+			}
+			// Fall through to CLI fallback on Ready() error
+		}
+		// Fall through to CLI fallback on Connect() error
+	}
+
+	// Fallback to CLI if daemon unavailable
+	return listReadyIssuesWithLabelCLI(label)
+}
+
+// listReadyIssuesWithLabelCLI retrieves ready issues with a label by shelling out to bd CLI.
+func listReadyIssuesWithLabelCLI(label string) ([]Issue, error) {
+	cmd := exec.Command("bd", "ready", "--json", "--limit", "0", "--label", label)
+	cmd.Env = os.Environ()
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run bd ready: %w", err)
+	}
+
+	var issues []Issue
+	if err := json.Unmarshal(output, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse issues: %w", err)
+	}
+
+	return issues, nil
+}
+
 // ListEpicChildren retrieves children of an epic by its ID.
 // Uses the beads RPC client if available, falling back to CLI.
 func ListEpicChildren(epicID string) ([]Issue, error) {

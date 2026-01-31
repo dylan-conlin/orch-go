@@ -269,3 +269,91 @@ func TestHasPhaseComplete_InvalidBeadsID(t *testing.T) {
 		t.Error("HasPhaseComplete(invalid) should return false for invalid ID")
 	}
 }
+
+func TestListReadyIssuesWithLabel_EmptyLabel(t *testing.T) {
+	// Empty label should behave like ListReadyIssues (no filter)
+	// Skip if not in a beads project or bd unavailable
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Skipf("Cannot get working directory: %v", err)
+	}
+
+	// Walk up to find .beads
+	dir := cwd
+	for {
+		beadsDir := filepath.Join(dir, ".beads")
+		if _, err := os.Stat(beadsDir); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skip("Not in a beads project, skipping integration test")
+		}
+		dir = parent
+	}
+
+	issues, err := ListReadyIssuesWithLabel("")
+	if err != nil {
+		// CLI fallback may fail if bd not in PATH, skip in that case
+		t.Skipf("ListReadyIssuesWithLabel(\"\") returned error (bd may not be in PATH): %v", err)
+	}
+	// Should return all ready issues (at least as many as with label)
+	t.Logf("Found %d ready issues with no label filter", len(issues))
+}
+
+func TestListReadyIssuesWithLabel_TriageReady(t *testing.T) {
+	// Integration test: verify filtering by triage:ready label
+	// Skip if not in a beads project
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Skipf("Cannot get working directory: %v", err)
+	}
+
+	// Walk up to find .beads
+	dir := cwd
+	for {
+		beadsDir := filepath.Join(dir, ".beads")
+		if _, err := os.Stat(beadsDir); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skip("Not in a beads project, skipping integration test")
+		}
+		dir = parent
+	}
+
+	// Get all ready issues
+	allIssues, err := ListReadyIssues()
+	if err != nil {
+		t.Skipf("Cannot list ready issues: %v", err)
+	}
+
+	// Get only triage:ready issues
+	labeledIssues, err := ListReadyIssuesWithLabel("triage:ready")
+	if err != nil {
+		t.Errorf("ListReadyIssuesWithLabel(\"triage:ready\") returned error: %v", err)
+	}
+
+	// Labeled issues should be <= all issues
+	if len(labeledIssues) > len(allIssues) {
+		t.Errorf("Labeled issues (%d) > all issues (%d), filter not working", len(labeledIssues), len(allIssues))
+	}
+
+	t.Logf("Found %d ready issues total, %d with triage:ready label", len(allIssues), len(labeledIssues))
+
+	// Verify all returned issues actually have the label
+	for _, issue := range labeledIssues {
+		hasLabel := false
+		for _, label := range issue.Labels {
+			if label == "triage:ready" {
+				hasLabel = true
+				break
+			}
+		}
+		if !hasLabel {
+			t.Errorf("Issue %s returned by ListReadyIssuesWithLabel but doesn't have triage:ready label (labels: %v)",
+				issue.ID, issue.Labels)
+		}
+	}
+}

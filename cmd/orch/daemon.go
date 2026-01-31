@@ -521,8 +521,8 @@ func runDaemonLoop() error {
 			}
 		}
 
-		// Get ready issues count for status
-		readyIssues, _ := daemon.ListReadyIssues()
+		// Get ready issues count for status (filtered by configured label)
+		readyIssues, _ := daemon.ListReadyIssuesWithLabel(config.Label)
 		readyCount := len(readyIssues)
 
 		// Write daemon status file AFTER reconciliation and completions so counts are accurate
