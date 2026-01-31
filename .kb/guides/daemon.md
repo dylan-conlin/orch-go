@@ -400,6 +400,66 @@ orch daemon run --reflect  # Run kb reflect when daemon exits (default: true)
 
 ---
 
+## Periodic Cleanup
+
+**From 2026-01-31 implementation:** The daemon runs comprehensive cleanup operations every 6 hours (configurable).
+
+### What Gets Cleaned
+
+| Operation | Default | Flag | Description |
+|-----------|---------|------|-------------|
+| **Sessions** | Enabled | `--cleanup-sessions` | Delete OpenCode sessions older than N days |
+| **Workspaces** | Enabled | `--cleanup-workspaces` | Archive completed workspaces older than N days |
+| **Investigations** | Enabled | `--cleanup-investigations` | Archive empty investigation files (unfilled templates) |
+
+### Configuration
+
+```bash
+# Enable/disable cleanup
+orch daemon run --cleanup-enabled=false  # Disable all cleanup
+
+# Set cleanup interval
+orch daemon run --cleanup-interval 180  # Run every 3 hours (minutes)
+
+# Configure session cleanup
+orch daemon run --cleanup-sessions=false           # Disable session cleanup
+orch daemon run --cleanup-sessions-age 14          # Delete sessions >14 days old
+
+# Configure workspace cleanup
+orch daemon run --cleanup-workspaces=false         # Disable workspace archival
+orch daemon run --cleanup-workspaces-age 14        # Archive workspaces >14 days old
+
+# Configure investigation cleanup
+orch daemon run --cleanup-investigations=false     # Disable investigation archival
+
+# Preserve orchestrator sessions/workspaces
+orch daemon run --cleanup-preserve-orchestrator=false  # Clean orchestrator workspaces too
+```
+
+### Cleanup Criteria
+
+**Sessions (age-based):**
+- Older than N days (default: 7)
+- Not currently processing
+- Skips orchestrator sessions by default
+
+**Workspaces (age-based + completion):**
+- Older than N days (default: 7) AND completed
+- Completed = SYNTHESIS.md exists OR light tier OR has .beads_id
+- Skips orchestrator workspaces by default
+- Archives to `.orch/workspace/archived/`
+
+**Investigations (content-based):**
+- Contains 2+ template placeholders (e.g., `[Brief, descriptive title]`)
+- Indicates agent died before filling in investigation
+- Archives to `.kb/investigations/archived/`
+
+### Why This Matters
+
+**From 2026-01-07 investigation:** 132 stale workspaces accumulated because cleanup was manual only. Periodic daemon cleanup prevents this accumulation automatically.
+
+---
+
 ## Cross-Project Daemon
 
 **From 2026-01-06 investigation + 2026-01-21 implementation:** A single daemon can poll all registered projects.
