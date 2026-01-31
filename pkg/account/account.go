@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"gopkg.in/yaml.v3"
 )
 
@@ -403,6 +404,9 @@ func SwitchAccount(name string) (email string, err error) {
 	if err := SaveOpenCodeAuth(auth); err != nil {
 		return "", fmt.Errorf("failed to update OpenCode auth: %w", err)
 	}
+
+	// Invalidate usage cache to ensure fresh data from new account
+	usage.InvalidateUsageCache()
 
 	if acc.Email != "" {
 		return acc.Email, nil

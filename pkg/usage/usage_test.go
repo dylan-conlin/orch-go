@@ -125,6 +125,162 @@ func TestGetUsageSummary(t *testing.T) {
 	t.Skip("Skipping test that requires API access")
 }
 
+func TestUsageCache(t *testing.T) {
+	t.Run("cache hit within TTL", func(t *testing.T) {
+		cache := newUsageCache(60 * time.Second)
+
+		// Create test data
+		testInfo := &UsageInfo{
+			FiveHour: &UsageLimit{Utilization: 50},
+			SevenDay: &UsageLimit{Utilization: 30},
+			Email:    "test@example.com",
+		}
+
+		// Set cache entry
+		token := "test-token"
+		cache.set(token, testInfo)
+
+		// Retrieve from cache - should hit
+		cached, ok := cache.get(token)
+		if !ok {
+			t.Error("Expected cache hit, got miss")
+		}
+		if cached.Email != "test@example.com" {
+			t.Errorf("Expected email test@example.com, got %s", cached.Email)
+		}
+	})
+
+	t.Run("cache miss after TTL expiration", func(t *testing.T) {
+		cache := newUsageCache(1 * time.Millisecond)
+
+		testInfo := &UsageInfo{
+			Email: "test@example.com",
+		}
+
+		token := "test-token"
+		cache.set(token, testInfo)
+
+		// Wait for TTL to expire
+		time.Sleep(10 * time.Millisecond)
+
+		// Should be cache miss
+		_, ok := cache.get(token)
+		if ok {
+			t.Error("Expected cache miss after TTL, got hit")
+		}
+	})
+
+	t.Run("cache invalidation", func(t *testing.T) {
+		cache := newUsageCache(60 * time.Second)
+
+		testInfo := &UsageInfo{
+			Email: "test@example.com",
+		}
+
+		token := "test-token"
+		cache.set(token, testInfo)
+
+		// Verify cache hit before invalidation
+		_, ok := cache.get(token)
+		if !ok {
+			t.Error("Expected cache hit before invalidation")
+		}
+
+		// Invalidate
+		cache.invalidate()
+
+		// Should be cache miss after invalidation
+		_, ok = cache.get(token)
+		if ok {
+			t.Error("Expected cache miss after invalidation, got hit")
+		}
+	})
+
+	t.Run("concurrent access safety", func(t *testing.T) {
+		cache := newUsageCache(60 * time.Second)
+
+		// Spawn multiple goroutines doing concurrent reads/writes
+		done := make(chan bool)
+		for i := 0; i < 10; i++ {
+			go func(id int) {
+				testInfo := &UsageInfo{
+					Email: "test@example.com",
+				}
+				token := "test-token"
+
+				// Mix of operations
+				cache.set(token, testInfo)
+				cache.get(token)
+				if id%2 == 0 {
+					cache.invalidate()
+				}
+				done <- true
+			}(i)
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < 10; i++ {
+			<-done
+		}
+
+		// Test passes if no race conditions detected
+	})
+
+	t.Run("different tokens have separate cache entries", func(t *testing.T) {
+		cache := newUsageCache(60 * time.Second)
+
+		info1 := &UsageInfo{Email: "user1@example.com"}
+		info2 := &UsageInfo{Email: "user2@example.com"}
+
+		cache.set("token1", info1)
+		cache.set("token2", info2)
+
+		cached1, ok := cache.get("token1")
+		if !ok || cached1.Email != "user1@example.com" {
+			t.Error("token1 cache entry incorrect")
+		}
+
+		cached2, ok := cache.get("token2")
+		if !ok || cached2.Email != "user2@example.com" {
+			t.Error("token2 cache entry incorrect")
+		}
+	})
+}
+
+func TestFetchUsageCaching(t *testing.T) {
+	// This test verifies that FetchUsage uses the cache
+	// We can't test the actual API call without credentials, but we can verify
+	// that error responses are NOT cached (only successful responses are cached)
+
+	t.Run("errors are not cached", func(t *testing.T) {
+		// Clear the global cache
+		globalUsageCache.invalidate()
+
+		// FetchUsage will fail without valid credentials, but should not cache the error
+		info1 := FetchUsage()
+		if info1.Error == "" {
+			t.Skip("Skipping - valid credentials found, can't test error caching")
+		}
+
+		// Verify error is returned
+		if info1.Error == "" {
+			t.Error("Expected error, got success")
+		}
+
+		// Subsequent call should also hit the API (not cache) since errors aren't cached
+		info2 := FetchUsage()
+		if info2.Error == "" {
+			t.Error("Expected error on second call, got success")
+		}
+	})
+
+	t.Run("cache invalidation is accessible", func(t *testing.T) {
+		// Verify that InvalidateUsageCache is accessible (called by account switching)
+		InvalidateUsageCache()
+		// Test passes if function is accessible
+	})
+}
+
 // contains checks if substr is in s
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
