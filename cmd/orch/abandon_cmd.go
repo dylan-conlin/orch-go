@@ -12,6 +12,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
@@ -252,6 +253,17 @@ func runAbandon(beadsID, reason, workdir string) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to delete OpenCode session: %v\n", err)
 		} else {
 			fmt.Printf("Deleted OpenCode session\n")
+		}
+	}
+
+	// Terminate the OpenCode process if it's still running
+	// This prevents orphaned processes when agents are abandoned
+	if workspacePath != "" {
+		pid := spawn.ReadProcessID(workspacePath)
+		if pid > 0 {
+			if process.Terminate(pid, "opencode") {
+				// Process was terminated (logged by process.Terminate)
+			}
 		}
 	}
 

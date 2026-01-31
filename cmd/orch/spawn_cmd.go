@@ -897,6 +897,9 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		}
 	}
 
+	// Note: Inline mode is synchronous and blocks until completion,
+	// so process ID tracking is not needed (process exits before cleanup)
+
 	// Register agent in general registry
 	registerAgent(cfg, result.SessionID, "", registry.ModeHeadless, cfg.Model)
 
@@ -981,6 +984,14 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	// Write session ID to workspace file for later lookups
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
+	}
+
+	// Write process ID to workspace file for explicit cleanup
+	// This enables killing the process during orch complete/abandon and daemon cleanup
+	if result.cmd != nil && result.cmd.Process != nil {
+		if err := spawn.WriteProcessID(cfg.WorkspacePath(), result.cmd.Process.Pid); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write process ID: %v\n", err)
+		}
 	}
 
 	// Start background cleanup goroutine

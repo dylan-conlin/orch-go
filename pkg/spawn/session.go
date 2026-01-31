@@ -266,3 +266,58 @@ func ReadAgentManifest(workspacePath string) (*AgentManifest, error) {
 func AgentManifestPath(workspacePath string) string {
 	return filepath.Join(workspacePath, AgentManifestFilename)
 }
+
+// ProcessIDFilename is the name of the file storing the process ID in the workspace.
+const ProcessIDFilename = ".process_id"
+
+// WriteProcessID writes the process ID to the workspace directory.
+// This enables explicit process termination during cleanup (orch complete, orch abandon,
+// daemon session cleanup).
+// Uses atomic write (temp file + rename) to prevent partial reads.
+// The workspace directory must already exist.
+func WriteProcessID(workspacePath string, pid int) error {
+	if pid <= 0 {
+		return nil // Nothing to write
+	}
+
+	processFile := filepath.Join(workspacePath, ProcessIDFilename)
+	tmpFile := processFile + ".tmp"
+
+	// Write PID as string
+	content := strconv.Itoa(pid) + "\n"
+
+	// Write to temp file first
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write process ID temp file: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpFile, processFile); err != nil {
+		os.Remove(tmpFile) // Clean up temp file on error
+		return fmt.Errorf("failed to rename process ID file: %w", err)
+	}
+
+	return nil
+}
+
+// ReadProcessID reads the process ID from the workspace directory.
+// Returns 0 if the file doesn't exist or is invalid.
+func ReadProcessID(workspacePath string) int {
+	processFile := filepath.Join(workspacePath, ProcessIDFilename)
+	data, err := os.ReadFile(processFile)
+	if err != nil {
+		return 0 // Return 0 if file doesn't exist
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0 // Return 0 if parse fails
+	}
+
+	return pid
+}
+
+// ProcessIDPath returns the path to the process ID file for a workspace.
+func ProcessIDPath(workspacePath string) string {
+	return filepath.Join(workspacePath, ProcessIDFilename)
+}

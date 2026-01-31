@@ -4,10 +4,13 @@ package cleanup
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/process"
+	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
 // CleanStaleSessionsOptions configures the session cleanup behavior.
@@ -117,6 +120,21 @@ func CleanStaleSessions(opts CleanStaleSessionsOptions) (int, error) {
 			continue
 		}
 
+		// Terminate the OpenCode process if it's still running
+		// This prevents orphaned processes from accumulating
+		// Try to find workspace by parsing session title (format: "workspace-name [beads-id]")
+		if workspace := extractWorkspaceFromTitle(title); workspace != "" {
+			// Try to find the workspace directory
+			workspacePath := findWorkspacePath(workspace)
+			if workspacePath != "" {
+				pid := spawn.ReadProcessID(workspacePath)
+				if pid > 0 {
+					process.Terminate(pid, "opencode")
+					// Note: errors are logged by process.Terminate
+				}
+			}
+		}
+
 		if !opts.Quiet {
 			fmt.Printf("    Deleted: %s (%s) - %.0f days old\n", session.ID[:12], title, age)
 		}
@@ -142,4 +160,45 @@ func IsOrchestratorSessionTitle(title string) bool {
 		return true
 	}
 	return false
+}
+
+// extractWorkspaceFromTitle extracts the workspace name from a session title.
+// Session titles are formatted as "workspace-name [beads-id]" or just "workspace-name".
+// Returns empty string if title doesn't match the expected format.
+func extractWorkspaceFromTitle(title string) string {
+	// Remove the beads ID suffix if present: "workspace-name [beads-id]" -> "workspace-name"
+	if idx := strings.Index(title, " ["); idx != -1 {
+		return strings.TrimSpace(title[:idx])
+	}
+	// Return the full title if no beads ID suffix
+	return strings.TrimSpace(title)
+}
+
+// findWorkspacePath attempts to find the workspace directory for a given workspace name.
+// Returns empty string if not found.
+// Searches in both active (.orch/workspace/) and archived (.orch/workspace/archived/) directories.
+func findWorkspacePath(workspaceName string) string {
+	if workspaceName == "" {
+		return ""
+	}
+
+	// Try current directory first (most common case)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	// Check active workspaces
+	activePath := filepath.Join(cwd, ".orch", "workspace", workspaceName)
+	if _, err := os.Stat(activePath); err == nil {
+		return activePath
+	}
+
+	// Check archived workspaces
+	archivedPath := filepath.Join(cwd, ".orch", "workspace", "archived", workspaceName)
+	if _, err := os.Stat(archivedPath); err == nil {
+		return archivedPath
+	}
+
+	return ""
 }
