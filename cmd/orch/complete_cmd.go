@@ -1021,9 +1021,18 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Collect telemetry (duration and tokens) for model performance tracking
+	// IMPORTANT: This MUST happen BEFORE DeleteSession() because GetSessionTokens()
+	// requires the session to still exist in OpenCode.
+	var durationSecs, tokensIn, tokensOut int
+	var outcome string
+	if workspacePath != "" {
+		durationSecs, tokensIn, tokensOut, outcome = collectCompletionTelemetry(workspacePath, completeForce, verificationPassed)
+	}
+
 	// Delete OpenCode session to prevent ghost agents in orch status
-	// This is done after closing the beads issue but before cleanup, so if
-	// deletion fails, the issue is still properly closed.
+	// This is done after collecting telemetry (which needs session data) but before
+	// cleanup. If deletion fails, the issue is still properly closed.
 	if workspacePath != "" {
 		// Try to get session ID from workspace .session_id file
 		sessionFile := filepath.Join(workspacePath, ".session_id")
@@ -1177,14 +1186,9 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
-	// Collect telemetry (duration and tokens) for model performance tracking
-	var durationSecs, tokensIn, tokensOut int
-	var outcome string
-	if workspacePath != "" {
-		durationSecs, tokensIn, tokensOut, outcome = collectCompletionTelemetry(workspacePath, completeForce, verificationPassed)
-	}
-
 	// Log the completion with verification metadata
+	// Note: Telemetry (durationSecs, tokensIn, tokensOut, outcome) was collected earlier,
+	// before session deletion, to ensure token data is available.
 	logger := events.NewLogger(events.DefaultLogPath())
 	completedData := events.AgentCompletedData{
 		Reason:             reason,
