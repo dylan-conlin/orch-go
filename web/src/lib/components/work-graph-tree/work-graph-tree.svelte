@@ -103,8 +103,8 @@
 			case 'ArrowRight':
 			case 'Enter':
 				event.preventDefault();
-				// Always toggle expansion (for both L1 details and children)
-				current.expanded = !current.expanded;
+				// Toggle L1 details expansion
+				current.details_expanded = !current.details_expanded;
 				tree = tree; // Trigger reactivity
 				break;
 
@@ -112,8 +112,9 @@
 			case 'ArrowLeft':
 			case 'Escape':
 				event.preventDefault();
-				if (current.expanded) {
-					current.expanded = false;
+				if (current.details_expanded) {
+					// Close L1 details
+					current.details_expanded = false;
 					tree = tree; // Trigger reactivity
 				} else if (current.parent_id) {
 					// Jump to parent
@@ -235,7 +236,7 @@
 			</div>
 
 			<!-- L1: Expanded details -->
-			{#if node.expanded}
+			{#if node.details_expanded}
 				<div
 					class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
 					style="margin-left: {node.depth * 24 + 48}px"

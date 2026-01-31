@@ -37,7 +37,8 @@ export interface WorkGraphResponse {
 export interface TreeNode extends GraphNode {
 	children: TreeNode[];
 	depth: number;
-	expanded: boolean;
+	expanded: boolean; // Children expanded in tree
+	details_expanded: boolean; // L1 details expanded
 	blocked_by: string[];
 	blocks: string[];
 	parent_id?: string;
@@ -105,7 +106,8 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 			...node,
 			children: [],
 			depth: 0,
-			expanded: false,
+			expanded: true, // Children expanded by default for Phase 1
+			details_expanded: false, // L1 details collapsed by default
 			blocked_by: [],
 			blocks: [],
 			parent_id: parentId
