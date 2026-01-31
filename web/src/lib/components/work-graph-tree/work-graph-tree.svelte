@@ -99,32 +99,32 @@
 				scrollToSelected();
 				break;
 
-			case 'l':
-			case 'ArrowRight':
-			case 'Enter':
-				event.preventDefault();
-				// Toggle L1 details expansion
-				current.details_expanded = !current.details_expanded;
-				tree = tree; // Trigger reactivity
-				break;
+		case 'l':
+		case 'ArrowRight':
+		case 'Enter':
+			event.preventDefault();
+			// Toggle L1 details expansion
+			current.details_expanded = !current.details_expanded;
+			tree = [...tree]; // Create new reference to trigger reactivity
+			break;
 
-			case 'h':
-			case 'ArrowLeft':
-			case 'Escape':
-				event.preventDefault();
-				if (current.details_expanded) {
-					// Close L1 details
-					current.details_expanded = false;
-					tree = tree; // Trigger reactivity
-				} else if (current.parent_id) {
-					// Jump to parent
-					const parentIdx = flattenedNodes.findIndex(n => n.id === current.parent_id);
-					if (parentIdx !== -1) {
-						selectedIndex = parentIdx;
-						scrollToSelected();
-					}
+		case 'h':
+		case 'ArrowLeft':
+		case 'Escape':
+			event.preventDefault();
+			if (current.details_expanded) {
+				// Close L1 details
+				current.details_expanded = false;
+				tree = [...tree]; // Create new reference to trigger reactivity
+			} else if (current.parent_id) {
+				// Jump to parent
+				const parentIdx = flattenedNodes.findIndex(n => n.id === current.parent_id);
+				if (parentIdx !== -1) {
+					selectedIndex = parentIdx;
+					scrollToSelected();
 				}
-				break;
+			}
+			break;
 
 			case 'g':
 				event.preventDefault();
@@ -152,13 +152,16 @@
 	let containerElement: HTMLDivElement;
 
 	onMount(() => {
-		containerElement?.focus();
+		// Use setTimeout to ensure DOM is fully rendered
+		setTimeout(() => {
+			containerElement?.focus();
+		}, 100);
 	});
 
 	// Toggle expansion
 	function toggleExpansion(node: TreeNode) {
 		node.expanded = !node.expanded;
-		tree = tree; // Trigger reactivity
+		tree = [...tree]; // Create new reference to trigger reactivity
 	}
 
 	// Select node on click
