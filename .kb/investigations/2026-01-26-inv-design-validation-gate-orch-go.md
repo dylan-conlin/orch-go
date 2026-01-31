@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** (1) Add behavioral validation tier to feature-impl validation phase, (2) Add validation_evidence prompt to orch complete for behavior-changing work, (3) Create three-tier validation evidence taxonomy.
 
-**Promote to Decision:** recommend-yes - Establishes the principle that behavior-changing work requires demonstrated behavior, not just test passage.
+**Promote to Decision:** Actioned - decision exists (verification-bottleneck-principle)
 
 ---
 

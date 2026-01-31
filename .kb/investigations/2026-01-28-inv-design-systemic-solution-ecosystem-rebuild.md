@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Add version commands to glass and agentlog (trivial - ~30 lines each), then extend `orch doctor` to verify all ecosystem binaries.
 
-**Promote to Decision:** recommend-yes (architectural choice establishing patterns for ecosystem CLI consistency)
+**Promote to Decision:** Issue created: orch-go-21091 (ecosystem rebuild decision)
 
 ---
 

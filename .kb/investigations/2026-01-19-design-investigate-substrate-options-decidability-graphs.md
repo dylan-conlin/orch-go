@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Extend beads fork with 3 targeted changes: (1) wire `answered` status to unblock, (2) add authority field to dependency edges, (3) add resolution_type to questions. Implementation estimate: 2-3 days.
 
-**Promote to Decision:** recommend-yes - This establishes substrate direction for decidability graphs
+**Promote to Decision:** Issue created: orch-go-21088 (decidability decision)
 
 ---
 

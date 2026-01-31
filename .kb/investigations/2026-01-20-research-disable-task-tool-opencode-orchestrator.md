@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement `permission.task` configuration in orch-go `.opencode/opencode.json` to disable Task tool for orchestrators.
 
-**Promote to Decision:** recommend-yes - This establishes a configuration pattern for controlling agent tool access.
+**Promote to Decision:** Actioned - Task tool disabled in .opencode.json
 
 <!--
 Example D.E.K.N.:

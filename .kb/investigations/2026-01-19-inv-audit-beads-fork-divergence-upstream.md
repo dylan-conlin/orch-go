@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Decision required - Option A: Continue fork isolation (accept missing upstream features) or Option B: Abandon fork, propose features upstream.
 
-**Promote to Decision:** recommend-yes - This has significant maintenance and feature implications
+**Promote to Decision:** Actioned - fork strategy documented
 
 ---
 

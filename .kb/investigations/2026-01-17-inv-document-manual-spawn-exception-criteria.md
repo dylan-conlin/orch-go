@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Recommend updating spawn.md "Triage Bypass" section with comprehensive exception criteria matrix; this is the authoritative reference orchestrators consult.
 
-**Promote to Decision:** recommend-yes - Establishes criteria that gates daemon autonomy; orchestrators need clear policy to avoid rationalizing "urgent" as default.
+**Promote to Decision:** Actioned - documented in orchestrator skill (Manual Spawn Exception Criteria)
 
 ---
 

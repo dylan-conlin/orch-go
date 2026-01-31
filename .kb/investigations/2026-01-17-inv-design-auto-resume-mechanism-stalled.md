@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement in three phases: (1) Server restart detection, (2) Extend recovery loop with restart-aware resume, (3) Add recovery context injection to resume prompts.
 
-**Promote to Decision:** recommend-yes - Establishes "server recovery as distinct failure mode" with specific detection and resume behavior, applicable to any system with persistent storage + ephemeral memory.
+**Promote to Decision:** Actioned - patterns in daemon auto-resume
 
 ---
 

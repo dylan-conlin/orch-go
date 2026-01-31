@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement Active Directory Pattern - modify session start to create {project}/.orch/session/{window}/active/SESSION_HANDOFF.md with PreFilledSessionHandoffTemplate, modify session end to archive active/ to timestamped directory, update session resume to check active/ as fallback, remove unused global ~/.orch workspace creation.
 
-**Promote to Decision:** recommend-yes - Establishes architectural pattern for session lifecycle (start creates progressive template, end archives it) and constrains implementation (no stdin prompts, project-specific location only).
+**Promote to Decision:** Superseded - session handoff machinery removed (2026-01-19-remove-session-handoff-machinery.md)
 
 <!--
 Example D.E.K.N.:

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement feature-impl for Replay UI starting with stepping controls, then filtering enhancement, then activity-aware API endpoint.
 
-**Promote to Decision:** recommend-yes - Establishes the pattern for how agents consume predecessor activity (API-based, not context-embedded).
+**Promote to Decision:** Actioned - patterns in dashboard guide
 
 ---
 

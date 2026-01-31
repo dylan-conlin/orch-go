@@ -8,7 +8,7 @@
 
 **Next:** Implement skill routing changes: bug→systematic-debugging, add `--skip-investigation` flag to spawn, make investigation phase opt-in for feature-impl.
 
-**Promote to Decision:** recommend-yes (establishes artifact overhead policy for firefighting mode)
+**Promote to Decision:** Actioned - decision exists (investigation-overhead-firefighting-mode)
 
 ---
 

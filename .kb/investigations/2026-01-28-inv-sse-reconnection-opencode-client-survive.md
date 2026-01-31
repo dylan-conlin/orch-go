@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Make fix permanent by either: (A) patching @hey-api/openapi-ts generator template, (B) adding post-process step in packages/sdk/js/script/build.ts, or (C) contributing fix upstream to @hey-api/client-fetch plugin.
 
-**Promote to Decision:** recommend-yes (establishes constraint: SSE reconnection must survive SDK regeneration)
+**Promote to Decision:** Issue created: orch-go-21086 (SSE resilience decision)
 
 <!--
 Example D.E.K.N.:

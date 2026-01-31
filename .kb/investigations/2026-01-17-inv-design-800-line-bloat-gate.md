@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement `bloat-size` hotspot type in `cmd/orch/hotspot.go` with severity thresholds.
 
-**Promote to Decision:** recommend-yes - Establishes that bloat detection belongs in hotspot system, not learning system.
+**Promote to Decision:** Issue created: orch-go-21084 (bloat control decision)
 
 ---
 

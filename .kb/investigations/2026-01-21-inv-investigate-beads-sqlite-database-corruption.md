@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement beads detection of sandbox environment to disable daemon auto-start and force direct mode. Consider adding periodic integrity checks.
 
-**Promote to Decision:** recommend-yes - This is an architectural constraint: sandbox environments must use direct mode, not daemon mode.
+**Promote to Decision:** Actioned - constraint documented (sandbox must use direct mode)
 
 ---
 

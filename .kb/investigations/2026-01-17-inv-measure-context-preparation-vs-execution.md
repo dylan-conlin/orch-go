@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Close investigation - no implementation needed. System is already operating at optimal context preparation efficiency. Optional: Document the 7%/93% split as a known-good baseline for future reference.
 
-**Promote to Decision:** recommend-yes - Quantifies baseline context preparation cost (7%) and confirms automatic optimization enforcement pattern.
+**Promote to Decision:** Actioned - metrics documented in model selection patterns
 
 <!--
 Example D.E.K.N.:

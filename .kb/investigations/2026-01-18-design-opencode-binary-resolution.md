@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement pkg/binutil with ResolveBinary(name, envVar, searchPaths) following env var → PATH → known locations order; migrate all opencode and bd resolution to use it; fix shell commands to interpolate resolved path.
 
-**Promote to Decision:** recommend-yes - This establishes the binary resolution pattern for orch-go (architectural constraint: never rely on PATH alone in orchestration context)
+**Promote to Decision:** Issue created: orch-go-21087 (binary resolution decision)
 
 <!--
 Example D.E.K.N.:

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement 3 structural fixes: (1) Add CLI argument validation with helpful examples, (2) Create orchestrator skill "quick reference" header with top 10 rules, (3) Add model-skill compatibility check before spawn.
 
-**Promote to Decision:** recommend-yes - This establishes the principle that skill templates must be model-aware and critical guidance must appear in first 100 lines.
+**Promote to Decision:** Actioned - model-aware skill patterns documented
 
 ---
 

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** File issue to fix fail-open error handling in decision gate (change lines 405-408 to block spawn on errors); investigate what error findBlockingDecisions() encountered; add monitoring for decision gate bypass events.
 
-**Promote to Decision:** recommend-yes (fail-closed vs fail-open for security gates is architectural principle worth documenting)
+**Promote to Decision:** Actioned - decision exists (decision-gate)
 
 <!--
 Example D.E.K.N.:

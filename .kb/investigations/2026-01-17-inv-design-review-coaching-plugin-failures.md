@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Fix detectWorkerSession() to (1) only cache `true` results, not `false`, (2) restore filePath-based detection for any .orch/workspace/ path, and (3) remove the broken bash workdir check.
 
-**Promote to Decision:** recommend-yes - Establishes pattern: "never cache negative results in per-session detection" - applies to any future session-type detection logic.
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28-coaching-plugin-disabled.md)
 
 ---
 

@@ -17,7 +17,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Propose updating the `opencode` fork plugin version to Dylan, noting the associated ban risks.
 
-**Promote to Decision:** recommend-yes (updating the plugin establishes a new spoofing-based auth pattern)
+**Promote to Decision:** Actioned - patterns documented in auth workarounds
 
 <!--
 Example D.E.K.N.:

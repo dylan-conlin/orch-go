@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Present candidates to orchestrator/Dylan for promotion decision; if approved, add to ~/.kb/.principlec/ and rebuild with principlec build.
 
-**Promote to Decision:** recommend-yes - establishes criteria for constraint→principle promotion and identifies specific candidates
+**Promote to Decision:** Actioned - candidates integrated into principles.md
 
 ---
 

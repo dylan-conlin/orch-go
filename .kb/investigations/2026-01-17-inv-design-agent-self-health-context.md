@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement in phases: (1) Extend coaching.ts with agent-side metric visibility, (2) Add health context section to SPAWN_CONTEXT.md template, (3) Add recovery loop to daemon with tiered escalation.
 
-**Promote to Decision:** recommend-yes - Establishes "Pain as Signal" as an architectural pattern for agent self-awareness and recovery.
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28)
 
 ---
 

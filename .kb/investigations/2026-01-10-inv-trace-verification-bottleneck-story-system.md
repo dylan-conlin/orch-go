@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Blog narrative ready for review/publication; teaching framework extracted (warning signs, checkpoints, pacing); meta-level insight added (understanding lag); recommend creating follow-up decision document formalizing Verification Bottleneck principle with teeth.
 
-**Promote to Decision:** recommend-yes - This establishes a foundational principle for human-AI collaboration that applies beyond this codebase; principle has teeth (violated = rollback); tested across three cases (Dec 21 spiral, Dec 27-Jan 2 spiral, launchd patches); meta-level insight shows principle applies to human cognition too.
+**Promote to Decision:** Actioned - decision exists (verification-bottleneck-principle)
 
 <!--
 Example D.E.K.N.:

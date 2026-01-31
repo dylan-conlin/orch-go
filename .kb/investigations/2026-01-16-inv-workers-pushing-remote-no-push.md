@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Add explicit "NEVER push to remote" section to SpawnContextTemplate in pkg/spawn/context.go.
 
-**Promote to Decision:** recommend-yes - This establishes a clear constraint that workers must not push to remote
+**Promote to Decision:** Actioned - constraint documented in CLAUDE.md (Push Requires User Approval)
 
 <!--
 Example D.E.K.N.:

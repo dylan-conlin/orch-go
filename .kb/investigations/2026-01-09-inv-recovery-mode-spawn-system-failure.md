@@ -4,7 +4,7 @@
 **Evidence:** 4/5 spawned agents had 0 messages despite running processes. `ps aux` showed stuck `opencode run` process. Killing processes and deleting sessions restored system.
 **Knowledge:** The delegation system itself was failing - agents spawned to fix bugs were themselves stuck with the same bug. This triggered RECOVERY MODE (orchestrator directly fixes system-level blockers).
 **Next:** Investigate opencode fork at ~/Documents/personal/opencode for bug in `run --attach` mode.
-**Promote to Decision:** recommend-yes (recovery mode criteria)
+**Promote to Decision:** Actioned - patterns in resilient infrastructure guide
 
 ---
 

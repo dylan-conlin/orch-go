@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement backward-compatible discovery that checks window-scoped path first, falls back to non-window-scoped path if not found, with optional migration command to move old handoffs to window-scoped structure.
 
-**Promote to Decision:** recommend-yes - This establishes a pattern for schema migrations in orch-go: always provide backward-compatible discovery + optional migration tooling, never break existing data.
+**Promote to Decision:** Superseded - session handoff machinery removed (2026-01-19-remove-session-handoff-machinery.md)
 
 <!--
 Example D.E.K.N.:

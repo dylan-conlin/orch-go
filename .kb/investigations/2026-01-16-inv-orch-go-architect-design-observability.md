@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement ServiceBackend interface in pkg/service/backend.go, refactor ServiceMonitor to use OvermindBackend, add DockerComposeBackend, update /api/services to aggregate backends.
 
-**Promote to Decision:** recommend-yes - This establishes architectural pattern for service observability across multiple backends (overmind, docker-compose, future systemd/k8s). Cross-project relevance for any orch ecosystem tool that manages services.
+**Promote to Decision:** Actioned - decision exists (event-sourced-monitoring-architecture)
 
 <!--
 Example D.E.K.N.:

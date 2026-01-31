@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Create decision record codifying the three-level recommendation classification and question generation as explicit architect output.
 
-**Promote to Decision:** recommend-yes - Establishes authority classification for investigation outputs and formalizes question generation as architect phase, addressing systemic gap in architect→decision flow.
+**Promote to Decision:** Actioned - decision exists (recommendation-authority-classification)
 
 <!--
 Example D.E.K.N.:

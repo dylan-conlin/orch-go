@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Consider implementing a `--backend native` spawn mode in orch-go that enables the swarm gate and uses native TeammateTool when appropriate. Preserves beads integration as external state layer.
 
-**Promote to Decision:** recommend-yes - This reveals Anthropic's native multi-agent architecture which has significant implications for orch-go's spawn system.
+**Promote to Decision:** Actioned - decision exists (claude-specific-orchestration-accepted)
 
 ---
 

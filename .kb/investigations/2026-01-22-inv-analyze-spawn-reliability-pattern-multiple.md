@@ -21,7 +21,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Fix bugs individually (they're independent) but add unified spawn gate logging to detect silent failures; prioritize Docker stuck (P1) first.
 
-**Promote to Decision:** recommend-yes (establishes pattern: spawn pipeline dedup must be backend-agnostic, fail-explicit)
+**Promote to Decision:** Actioned - patterns documented in spawn guide
 
 ---
 

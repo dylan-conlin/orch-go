@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement the frame gate detection in coaching.ts using the design below, test with debug session.
 
-**Promote to Decision:** recommend-yes (establishes architectural pattern for frame collapse prevention)
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28)
 
 ---
 

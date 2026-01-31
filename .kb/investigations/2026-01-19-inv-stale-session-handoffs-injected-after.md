@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement fix in `discoverSessionHandoff()` - only return archived handoffs if there's an active/ directory in some window, indicating a session is in progress.
 
-**Promote to Decision:** recommend-yes - establishes the principle that explicit `orch session end` means "don't auto-resume"
+**Promote to Decision:** Superseded - session handoff machinery removed (2026-01-19-remove-session-handoff-machinery.md)
 
 ---
 

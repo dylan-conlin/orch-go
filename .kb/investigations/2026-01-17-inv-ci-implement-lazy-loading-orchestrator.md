@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Orchestrator should manually test with ORCH_PLUGIN_DEBUG=1 for both worker and orchestrator sessions to verify lazy-loading behavior, then close issue.
 
-**Promote to Decision:** recommend-yes - Establishes lazy-loading pattern for large skills using progressive detection + system.transform hooks; architectural choice worth preserving.
+**Promote to Decision:** Actioned - patterns documented in role-aware hook filtering
 
 <!--
 Example D.E.K.N.:

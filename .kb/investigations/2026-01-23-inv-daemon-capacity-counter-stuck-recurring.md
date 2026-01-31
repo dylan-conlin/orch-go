@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement two-part fix: (1) Release slots immediately when daemon auto-completes agents, (2) Make beads lookup errors non-fatal for reconciliation.
 
-**Promote to Decision:** recommend-yes (establishes pattern for external lookup error handling in capacity systems)
+**Promote to Decision:** Actioned - capacity fixes implemented
 
 ---
 

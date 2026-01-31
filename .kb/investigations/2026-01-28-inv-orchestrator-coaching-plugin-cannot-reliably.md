@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Accept current title-based detection as "good enough" (verified working), create upstream issue for OpenCode to reliably expose session.metadata.role, and document this as a known limitation rather than continuing heuristic churn.
 
-**Promote to Decision:** recommend-yes - Establishes constraint: "Worker/orchestrator detection must be first-class in OpenCode, not plugin heuristics; accept imperfect detection until upstream fix lands"
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28-coaching-plugin-disabled.md)
 
 ---
 

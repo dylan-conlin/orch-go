@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Adopt label convention `subtype:{factual|judgment|framing}` for questions; extend daemon to optionally spawn factual questions.
 
-**Promote to Decision:** recommend-yes - Establishes encoding convention for the decidability graph model.
+**Promote to Decision:** Actioned - decision exists (questions-as-first-class-entities)
 
 ---
 

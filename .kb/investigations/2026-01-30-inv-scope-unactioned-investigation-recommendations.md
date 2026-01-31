@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Two-track approach: (1) Create beads issues for 5-10 high-value unactioned recommendations from 2026 investigations, (2) Update investigation skill self-review to require either creating issue OR explicitly deferring with reason.
 
-**Promote to Decision:** recommend-yes - Establishes pattern that investigation recommendations must be explicitly triaged (issue created OR deferred with reason) to prevent valuable work from becoming stranded in completed investigation files.
+**Promote to Decision:** Meta - this investigation prompted the current triage
 
 <!--
 Example D.E.K.N.:

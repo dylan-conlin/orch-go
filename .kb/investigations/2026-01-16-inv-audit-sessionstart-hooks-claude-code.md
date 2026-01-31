@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement role-aware injection: skip orchestrator skill for workers, skip session resume for spawned agents, deduplicate beads guidance.
 
-**Promote to Decision:** recommend-yes - Establishes baseline for context injection architecture; findings support Option A in epic (hooks for manual, spawn context for spawned).
+**Promote to Decision:** Actioned - decision exists (role-aware-hook-filtering)
 
 ---
 

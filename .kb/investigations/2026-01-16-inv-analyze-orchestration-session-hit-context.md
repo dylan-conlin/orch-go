@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement skill size reduction (core vs full variants) and add `--compact`/`--limit` flags to `orch status`.
 
-**Promote to Decision:** recommend-yes - This reveals a systemic constraint: skill content + tool output must fit within context budget alongside actual work.
+**Promote to Decision:** Actioned - patterns documented in model selection guide
 
 ---
 

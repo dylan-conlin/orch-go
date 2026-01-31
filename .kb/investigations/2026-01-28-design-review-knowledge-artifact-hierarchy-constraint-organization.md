@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Keep current architecture. Add visibility mechanism (`kb quick list --type constraint --priority high`) rather than new storage location. Update Knowledge Placement table to clarify constraint hierarchy.
 
-**Promote to Decision:** recommend-yes - establishes constraint organization pattern and rejects separate `.kb/constraints/` directory
+**Promote to Decision:** Issue created: orch-go-21090 (constraint organization decision)
 
 ---
 

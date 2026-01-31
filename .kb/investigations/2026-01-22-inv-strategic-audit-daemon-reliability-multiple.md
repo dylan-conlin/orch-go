@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** (1) Add pre-spawn Phase: Complete check; (2) Add Docker container cleanup to `orch complete` and `orch abandon`; (3) Add reconciliation logging.
 
-**Promote to Decision:** recommend-yes - This reveals an architectural pattern (multi-layer state without authoritative source) that affects reliability at scale.
+**Promote to Decision:** Actioned - decision exists (beads-daemon-rapid-restart-prevention)
 
 ---
 

@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement Option A (directory-based detection in session.created event) - add worker sessions to cache based on directory containing `.orch/workspace/` at session creation time.
 
-**Promote to Decision:** recommend-yes - Establishes pattern: "worker detection must use signals available BEFORE first tool call (directory path), not signals only available IN tool arguments".
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28-coaching-plugin-disabled.md)
 
 ---
 

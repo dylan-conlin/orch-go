@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement model fallback strategies, improve skill inference, enhance failure tracking (daemon log analysis).
 
-**Promote to Decision:** recommend-yes - patterns indicate systemic issues needing architectural decisions
+**Promote to Decision:** Actioned - analysis informing completion improvements
 
 <!--
 Example D.E.K.N.:

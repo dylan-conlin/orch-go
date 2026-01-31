@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement 3+ plugins to enforce/surface principles at moment of action.
 
-**Promote to Decision:** recommend-yes - This establishes the pattern for "mechanized principles" as a system capability.
+**Promote to Decision:** Actioned - patterns documented in OpenCode plugin architecture
 
 <!--
 Example D.E.K.N.:

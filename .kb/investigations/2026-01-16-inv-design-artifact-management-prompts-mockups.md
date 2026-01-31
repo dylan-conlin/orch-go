@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Update ui-design-session skill guidance with artifact pairing convention, manifest.json schema, prompt capture workflow, and quality checklist verification.
 
-**Promote to Decision:** recommend-yes - Establishes artifact management pattern for design workflows, extends screenshot storage decision with design-specific metadata.
+**Promote to Decision:** Actioned - patterns in artifact organization docs
 
 <!--
 Example D.E.K.N.:

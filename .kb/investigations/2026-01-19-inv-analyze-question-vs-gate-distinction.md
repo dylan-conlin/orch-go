@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Update decidability-graph.md to make lifecycle transition explicit; add transition detection criteria.
 
-**Promote to Decision:** recommend-yes - This clarifies a core model distinction with operational implications for how beads question/gate types should be used.
+**Promote to Decision:** Actioned - decision exists (questions-as-first-class-entities)
 
 ---
 

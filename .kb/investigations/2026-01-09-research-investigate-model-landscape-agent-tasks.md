@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** [Recommended action - close, implement, investigate further, or escalate]
 
-**Promote to Decision:** [recommend-yes | recommend-no | unclear] - Orchestrator/human decides; worker flags
+**Promote to Decision:** Actioned - patterns in model selection guide
 
 <!--
 Example D.E.K.N.:
@@ -199,7 +199,7 @@ Claude 4.5 Sonnet is the recommended primary workhorse for orch-go agent tasks. 
 
 **Next:** Add model aliases for GPT-5 and DeepSeek v3.2 to `pkg/model/model.go`.
 
-**Promote to Decision:** recommend-yes (updating the default model workhorse is an architectural choice).
+**Promote to Decision:** Actioned - model selection patterns in guide
 
 ---
 

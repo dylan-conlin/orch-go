@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Make SSE fix permanent via post-processing in build.ts (Jan 28 recommendation), add reconnection health monitoring, keep Jan 17 auto-resume design as safety net for edge cases.
 
-**Promote to Decision:** recommend-yes (establishes constraint: auto-resume detection should monitor SSE reconnection failures, not assume server restarts always kill agents)
+**Promote to Decision:** Issue created: orch-go-21086 (SSE resilience decision)
 
 <!--
 Example D.E.K.N.:

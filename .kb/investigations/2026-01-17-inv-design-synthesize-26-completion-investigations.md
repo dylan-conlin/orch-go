@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Recommend Agent Manifest pattern (spawn-time metadata snapshot), git-commit-based change detection, and evidence collection phase before gate verification. Update model at `.kb/models/completion-verification.md`.
 
-**Promote to Decision:** recommend-yes - This identifies architectural patterns that should guide future verification work and prevent churn.
+**Promote to Decision:** Actioned - decision exists (five-tier-completion-escalation-model)
 
 ---
 

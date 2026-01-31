@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Verify the detectWorkerSession fix from commit b82715c1 follow-up is deployed; monitor coaching-metrics.jsonl for worker-specific metrics; consider implementing the daemon-based architecture to decouple injection from observation.
 
-**Promote to Decision:** recommend-yes - Establishes "Pain as Signal" as architectural pattern: behavioral friction should be surfaced to agents in real-time rather than logged for post-hoc analysis.
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28-coaching-plugin-disabled.md)
 
 ---
 

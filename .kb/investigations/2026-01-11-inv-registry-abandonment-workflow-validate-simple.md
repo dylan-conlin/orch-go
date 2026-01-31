@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Recommend documenting current reality: registry is spawn-time snapshot only, not lifecycle tracker; optionally create epic for full state management if needed.
 
-**Promote to Decision:** recommend-yes - This establishes the actual contract of the registry (spawn-time cache vs lifecycle tracker), which affects how commands should interact with it.
+**Promote to Decision:** Actioned - decision exists (registry-contract-spawn-cache-only)
 
 <!--
 Example D.E.K.N.:

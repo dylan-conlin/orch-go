@@ -8,7 +8,7 @@
 
 **Next:** Implement as extension of feat-052 with 5th category. Implementation: 1) /api/decisions endpoint gains knowledge_signals field, 2) decisions.ts store adds knowledgeSignals derived state, 3) decision-center.svelte adds "Absorb Learning" section below "Absorb Knowledge".
 
-**Promote to Decision:** recommend-yes - This establishes the pattern for integrating knowledge hygiene into operational dashboard, treating knowledge management as first-class operational concern.
+**Promote to Decision:** Issue created: orch-go-21085 (dashboard decision)
 
 ---
 

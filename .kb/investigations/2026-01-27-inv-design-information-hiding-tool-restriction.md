@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement in 3 phases: (1) Prompt-based action space restriction now, (2) Information hiding via output filtering short-term, (3) Registry-level tool restriction medium-term.
 
-**Promote to Decision:** recommend-yes - This establishes architectural constraints ("orchestrators operate in meta-action space, not primitive action space") that should persist across the system.
+**Promote to Decision:** Actioned - decision exists (orchestrator-action-space-architectural-constraint)
 
 ---
 

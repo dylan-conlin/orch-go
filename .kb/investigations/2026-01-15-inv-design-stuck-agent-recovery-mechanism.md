@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement tiered recovery in daemon poll loop: (1) detect stuck agents, (2) attempt resume with rate limiting, (3) surface in Needs Attention if resume fails.
 
-**Promote to Decision:** recommend-yes - Establishes the principle "advisory recovery over automatic recovery" for agent lifecycle management.
+**Promote to Decision:** Actioned - patterns in agent lifecycle guide (advisory recovery)
 
 ---
 

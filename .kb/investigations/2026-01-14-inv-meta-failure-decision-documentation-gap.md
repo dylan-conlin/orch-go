@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** (1) Add `kb reflect --type investigation-promotion` to kb-cli, (2) Clean up 10+ empty templates from archive, (3) Create beads issues for ~10 investigations flagged recommend-yes, (4) Update dashboard model with Jan 7 entry.
 
-**Promote to Decision:** recommend-yes - Establishes pattern that investigation promotion requires tooling support, not just template fields.
+**Promote to Decision:** Actioned - kb reflect tool addresses this gap
 
 <!--
 Example D.E.K.N.:

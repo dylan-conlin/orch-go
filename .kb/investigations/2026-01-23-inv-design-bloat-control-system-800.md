@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement spawn-time bloat context injection in pkg/spawn/context.go, then add GitHub Actions bloat check workflow.
 
-**Promote to Decision:** recommend-yes - Establishes constraint that bloat enforcement uses CI gates, not beads hooks.
+**Promote to Decision:** Issue created: orch-go-21084 (bloat control decision)
 
 ---
 

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Execute test protocol with GPT-5.2 modal orchestrator agent. If >50% success on 5-scenario test, update decision. If fails same patterns, confirms Jan 21 decision is model-level, not injection-level.
 
-**Promote to Decision:** recommend-yes - If test succeeds, creates new decision superseding 2026-01-21. If test fails, strengthens existing decision with experimental evidence.
+**Promote to Decision:** Actioned - decision exists (gpt-unsuitable-for-orchestration)
 
 ---
 

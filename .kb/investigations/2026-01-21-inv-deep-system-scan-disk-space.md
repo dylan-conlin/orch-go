@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement tiered cleanup rules: Tier 1 (safe automated) for logs and caches; Tier 2 (manual) for Docker/Ollama prune; Tier 3 (one-time) for git history rewrite and old node_modules.
 
-**Promote to Decision:** recommend-yes (establishes cleanup strategy for recurring disk pressure issue)
+**Promote to Decision:** Actioned - decision exists (two-tier-disk-cleanup-infrastructure)
 
 ---
 

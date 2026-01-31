@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Recommend moving worker detection to OpenCode core (upstream contribution), with title-based detection as interim solution that already works.
 
-**Promote to Decision:** recommend-yes - Establishes pattern: "worker/orchestrator distinction should be a first-class concept in OpenCode, not a plugin heuristic"
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28-coaching-plugin-disabled.md)
 
 ---
 

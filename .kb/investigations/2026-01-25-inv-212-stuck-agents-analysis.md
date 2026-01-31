@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Either (A) remove registry from frontier stuck calculation, or (B) add registry cleanup to `orch complete`/`orch clean --stale`.
 
-**Promote to Decision:** recommend-yes - This affects observability accuracy and warrants an architectural decision on registry's role.
+**Promote to Decision:** Actioned - decision exists (registry-contract-spawn-cache-only)
 
 ---
 

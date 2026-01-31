@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Recommend architectural separation: extract injection into independent daemon that reads persistent metrics file and injects via OpenCode API, completely decoupled from plugin's observation code path - this eliminates the entire class of restart/state bugs and aligns with "Coherence Over Patches" principle.
 
-**Promote to Decision:** recommend-yes - This establishes an architectural pattern: "separate observation from intervention" that should apply to any future behavioral monitoring/coaching features, preventing similar coupling bugs from emerging elsewhere in the system.
+**Promote to Decision:** Superseded - coaching plugin disabled (2026-01-28-coaching-plugin-disabled.md)
 
 <!--
 Example D.E.K.N.:

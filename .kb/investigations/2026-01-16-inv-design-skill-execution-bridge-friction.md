@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement incrementally starting with Skill Parser, validate with real sessions before building full analyzer.
 
-**Promote to Decision:** recommend-yes - This establishes architectural approach for skill quality feedback loop.
+**Promote to Decision:** Actioned - patterns in skill system guide
 
 <!--
 Example D.E.K.N.:

@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement minimal viable integration: `--backend docker` flag that wraps claude CLI spawn in Docker container with fresh fingerprint.
 
-**Promote to Decision:** recommend-yes - Establishes Docker as third backend option with specific architectural constraints and use cases.
+**Promote to Decision:** Actioned - decision exists (dual-spawn-mode-architecture)
 
 ---
 

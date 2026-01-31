@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement `orch-hud.ts` plugin using `experimental.chat.system.transform` as primary injection mechanism.
 
-**Promote to Decision:** recommend-yes - Establishes architectural pattern for agent context injection that will guide future development.
+**Promote to Decision:** Issue created: orch-go-21089 (HUD decision)
 
 ---
 

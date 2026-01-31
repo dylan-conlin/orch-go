@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Consider hybrid approach - use native TeammateTool for simple swarms, orch-go for complex orchestration with visibility and beads integration.
 
-**Promote to Decision:** recommend-yes - This establishes how to unlock hidden features and provides fingerprint isolation pattern for rate limiting.
+**Promote to Decision:** Actioned - patterns documented in spawn modes (Docker escape hatch)
 
 ---
 

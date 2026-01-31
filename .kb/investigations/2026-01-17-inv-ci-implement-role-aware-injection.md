@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Create decision record to formalize the design, then close issue as verified-correct.
 
-**Promote to Decision:** recommend-yes - Establishes role-aware filtering pattern for hooks; documents why all three roles exit early (they all use SPAWN_CONTEXT.md).
+**Promote to Decision:** Actioned - decision exists (role-aware-hook-filtering)
 
 <!--
 Example D.E.K.N.:

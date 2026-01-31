@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement progressive disclosure for investigation skill - create reference/ directory, extract examples/error-recovery/templates, condense Core to essential workflow with reference links.
 
-**Promote to Decision:** recommend-yes - Four-dimension test (Frequency, Stage, Type, Complexity) is a generalizable pattern for future skill optimization, worth capturing as decision.
+**Promote to Decision:** Actioned - patterns in orchestrator skill structure
 
 <!--
 Example D.E.K.N.:

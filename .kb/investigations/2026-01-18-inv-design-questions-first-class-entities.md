@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** If approved, implement `question` beads entity type for strategic questions, with Answered state triggering understanding gates.
 
-**Promote to Decision:** recommend-yes - This is an architectural choice about entity taxonomy that will shape how work flows through the system.
+**Promote to Decision:** Actioned - decision exists (questions-as-first-class-entities)
 
 ---
 

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Present findings to orchestrator for architectural decision. If choosing Option B (incremental), test cross-project parentID behavior first. If staying with Option A (status quo), document that OpenCode hierarchy exists but orch-go intentionally uses external model for decoupling.
 
-**Promote to Decision:** recommend-yes - This investigation reveals architectural trade-off (tight OpenCode integration vs decoupled orchestration) that should be recorded as decision with explicit reasoning.
+**Promote to Decision:** Issue created: orch-go-21092 (native spawn decision)
 
 <!--
 Example D.E.K.N.:

@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Install updated kb binary and restart daemon to apply fix.
 
-**Promote to Decision:** recommend-yes - This establishes a pattern for error handling in idempotency checks.
+**Promote to Decision:** Actioned - bug fixed in kb reflect
 
 ---
 

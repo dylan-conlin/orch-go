@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement feat-051: resolveBackend() function with clean priority chain and warning-only infrastructure detection.
 
-**Promote to Decision:** recommend-yes - establishes architectural pattern for config precedence and advisory safety mechanisms
+**Promote to Decision:** Actioned - decision exists (dual-spawn-mode-architecture)
 
 <!--
 Example D.E.K.N.:

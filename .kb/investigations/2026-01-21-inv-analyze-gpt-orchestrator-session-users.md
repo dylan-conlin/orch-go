@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Use Claude Opus for orchestration; GPT models may be suitable for constrained worker tasks with clear boundaries.
 
-**Promote to Decision:** recommend-yes - Establishes model selection constraint for orchestrator role
+**Promote to Decision:** Actioned - decision exists (gpt-unsuitable-for-orchestration)
 
 ---
 

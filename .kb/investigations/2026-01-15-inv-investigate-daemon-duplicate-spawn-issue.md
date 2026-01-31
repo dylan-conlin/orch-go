@@ -17,7 +17,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement one of three fixes: (A) call ReconcileWithIssues with actual beads status, (B) extend TTL to match agent work duration (~6h), (C) add session-level dedup by checking existing OpenCode sessions.
 
-**Promote to Decision:** recommend-yes (architectural pattern: spawn tracking needs status-based reconciliation, not just TTL)
+**Promote to Decision:** Actioned - patterns documented in daemon guide
 
 ---
 

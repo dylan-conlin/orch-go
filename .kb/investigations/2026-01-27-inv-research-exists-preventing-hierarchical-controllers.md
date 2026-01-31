@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement action space restriction in orchestrator system prompt as explicit "You can / You CANNOT" section; add trigger phrase detection for "quick fix" patterns; hide detailed outputs (show only beads comments, worker phase, high-level outcomes); validate that frame collapse incidents drop to zero.
 
-**Promote to Decision:** recommend-yes - This establishes an architectural constraint ("orchestrators cannot perform worker actions") that should persist across the system and influence future design decisions.
+**Promote to Decision:** Actioned - decision exists (orchestrator-action-space-architectural-constraint)
 
 <!--
 Example D.E.K.N.:

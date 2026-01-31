@@ -8,7 +8,7 @@
 
 **Next:** Implement as new feature with phased approach: 1) API endpoint /api/decisions, 2) decisions.ts store, 3) decision-center.svelte component, 4) integrate into +page.svelte replacing NeedsAttention.
 
-**Promote to Decision:** recommend-yes - This establishes the pattern for decision-oriented dashboard design, maps escalation model to UX, and creates architectural constraint that new agent completion flows should integrate with decision queue.
+**Promote to Decision:** Issue created: orch-go-21085 (dashboard decision)
 
 ---
 

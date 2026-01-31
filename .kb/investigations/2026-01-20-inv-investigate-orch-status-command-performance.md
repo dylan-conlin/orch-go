@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Spawn feature-impl to optimize status command to work without registry dependency, using primary sources (OpenCode sessions + tmux windows + beads).
 
-**Promote to Decision:** recommend-yes - This reveals systemic issue where design decision (registry as cache) conflicts with operational reality (status treats it as authoritative), requiring architectural consideration.
+**Promote to Decision:** Actioned - performance improvements implemented
 
 <!--
 Example D.E.K.N.:

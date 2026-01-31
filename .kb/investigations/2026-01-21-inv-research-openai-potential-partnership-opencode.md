@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Consider adding OpenAI/Codex as backend option in orch-go. Test opencode-openai-codex-auth plugin reliability before production use.
 
-**Promote to Decision:** recommend-yes (strategic choice: multi-vendor model access affects spawn architecture)
+**Promote to Decision:** Actioned - informational research, no architectural decision needed
 
 ---
 

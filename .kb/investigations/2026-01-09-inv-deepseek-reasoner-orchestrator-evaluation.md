@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Use DeepSeek Reasoner as worker only; continue using Opus for orchestration via Claude Code.
 
-**Promote to Decision:** recommend-yes (establishes model selection constraint for orchestration)
+**Promote to Decision:** Actioned - decision exists (gpt-unsuitable-for-orchestration)
 
 ---
 

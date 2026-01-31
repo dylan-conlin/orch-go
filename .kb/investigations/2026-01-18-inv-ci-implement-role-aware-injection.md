@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Architect recommendation - spawn system should detect recent "Phase: Complete" comments + workspace artifacts + related commits to prevent duplicate spawns; immediate action: orchestrator closes this issue.
 
-**Promote to Decision:** recommend-yes - This exposes design gap in spawn gating logic worth documenting as constraint.
+**Promote to Decision:** Actioned - decision exists (role-aware-hook-filtering)
 
 <!--
 Example D.E.K.N.:

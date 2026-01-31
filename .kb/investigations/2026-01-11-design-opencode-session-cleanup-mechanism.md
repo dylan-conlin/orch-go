@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement automatic periodic cleanup by extracting cleanStaleSessions to pkg/cleanup, adding scheduler to daemon, and making it configurable via config.yaml.
 
-**Promote to Decision:** recommend-yes - This establishes the "two-tier cleanup pattern" (event-based + periodic background) as the standard approach for managing external resources with unpredictable lifecycles.
+**Promote to Decision:** Actioned - decision exists (two-tier-cleanup-pattern)
 
 <!--
 Example D.E.K.N.:

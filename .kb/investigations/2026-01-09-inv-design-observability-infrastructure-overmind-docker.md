@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement Phase 1 MVP (service monitoring daemon with crash notifications) to validate polling approach and notification UX, then iterate to Phase 2 (dashboard) and Phase 3 (events) based on usage.
 
-**Promote to Decision:** recommend-yes - This establishes the architectural pattern for service observability (polling + notifications + dashboard integration) that should guide future docker-compose integration and other service managers.
+**Promote to Decision:** Actioned - decision exists (event-sourced-monitoring-architecture)
 
 <!--
 Example D.E.K.N.:

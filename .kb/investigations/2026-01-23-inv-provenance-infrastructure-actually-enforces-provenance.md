@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Recommend implementing Provenance Tracker plugin from Jan 8 investigation design. This would observe evidence-gathering patterns (read/grep/bash) and flag sessions that conclude without gathering evidence.
 
-**Promote to Decision:** recommend-yes - Reveals an architectural gap: the foundational principle has no enforcement mechanism.
+**Promote to Decision:** Actioned - gap analysis, enforcement patterns in principles.md
 
 ---
 

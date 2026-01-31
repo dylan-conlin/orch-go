@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Implement in pkg/spawn/context.go: add model discovery, extract key sections, include in new "## DOMAIN MODELS" section.
 
-**Promote to Decision:** recommend-yes - Establishes pattern for how models integrate with spawn system
+**Promote to Decision:** Actioned - patterns in spawn guide (model inclusion)
 
 ---
 

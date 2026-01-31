@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Close investigation - cleanup complete, documentation created (guide + decision doc).
 
-**Promote to Decision:** recommend-yes - `.kb/decisions/2026-01-10-dev-vs-prod-architecture.md` already created documenting dev vs prod separation.
+**Promote to Decision:** Actioned - decision exists (dev-vs-prod-architecture)
 
 <!--
 Example D.E.K.N.:

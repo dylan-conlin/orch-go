@@ -13,7 +13,7 @@ Fill this at the END of your investigation, before marking Complete.
 
 **Next:** Implement completion-time ACTIVITY.json export in orch complete/clean commands; enhance visual hierarchy in activity-tab.svelte.
 
-**Promote to Decision:** recommend-yes - Establishes the pattern that workspace artifacts are for archival, OpenCode is for live data.
+**Promote to Decision:** Actioned - dashboard patterns documented in dashboard guide
 
 ---
 

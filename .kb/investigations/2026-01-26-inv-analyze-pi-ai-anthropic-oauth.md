@@ -12,7 +12,7 @@ D.E.K.N. Summary - 30-second handoff for fresh Claude
 
 **Next:** Consider adopting pi-ai's OAuth implementation for orch-go, or reference their stealth mode patterns in our existing account management.
 
-**Promote to Decision:** recommend-yes - This represents a significant architectural pattern for accessing Max subscriptions from third-party tools.
+**Promote to Decision:** Actioned - decision exists (claude-max-oauth-stealth-mode-viable)
 
 ---
 
