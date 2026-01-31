@@ -138,6 +138,9 @@ func runFrontier() error {
 // then splits them into active (< 2h) and stuck (>= 2h) categories.
 // This uses authoritative sources (live runtime state) instead of the registry.
 func getActiveAndStuckAgents() (active, stuck []ActiveOutput) {
+	// Initialize as empty slices (not nil) to ensure JSON encodes as [] not null
+	active = []ActiveOutput{}
+	stuck = []ActiveOutput{}
 	now := time.Now()
 	seenBeadsIDs := make(map[string]bool)
 
