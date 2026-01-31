@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Case File: Coaching Plugin Worker Detection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            margin-bottom: 40px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: 14px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 32px 0;
+        }
+        
+        .stat-card {
+            background: #161616;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .stat-number {
+            font-size: 36px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .outcome {
+            background: #1a1212;
+            border: 1px solid #3a2222;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 32px 0;
+        }
+        
+        .outcome-label {
+            color: #ff6b6b;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        
+        .outcome-text {
+            font-size: 18px;
+            color: #fff;
+        }
+        
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+            margin: 40px 0;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 16px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #2a2a2a;
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin-bottom: 32px;
+            padding-bottom: 32px;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .timeline-item:last-child {
+            border-bottom: none;
+        }
+        
+        .timeline-dot {
+            position: absolute;
+            left: -30px;
+            top: 6px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #3a3a3a;
+            border: 2px solid #0a0a0a;
+        }
+        
+        .timeline-dot.investigation {
+            background: #4a9eff;
+        }
+        
+        .timeline-dot.commit {
+            background: #6b7280;
+        }
+        
+        .timeline-dot.decision {
+            background: #ff6b6b;
+        }
+        
+        .timeline-dot.contradiction {
+            background: #fbbf24;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .timeline-date {
+            color: #666;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .timeline-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        
+        .timeline-content {
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .tag {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            color: #888;
+        }
+        
+        .tag.approach {
+            background: #1a1f2e;
+            border-color: #2a3f5f;
+            color: #6b9bd1;
+        }
+        
+        .tag.fix {
+            background: #1a2e1a;
+            border-color: #2a4f2a;
+            color: #6bd16b;
+        }
+        
+        .tag.revert {
+            background: #2e1a1a;
+            border-color: #4f2a2a;
+            color: #d16b6b;
+        }
+        
+        .contradiction-section {
+            background: #1f1a12;
+            border: 2px solid #3a3020;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 32px 0;
+        }
+        
+        .contradiction-header {
+            color: #fbbf24;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .contradiction-icon {
+            font-size: 20px;
+        }
+        
+        .contradiction-item {
+            background: #161612;
+            border-left: 3px solid #fbbf24;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .contradiction-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .contradiction-label {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        
+        .contradiction-text {
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        
+        .human-observations {
+            background: #12121a;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 32px 0;
+        }
+        
+        .human-header {
+            color: #8b8bf5;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+        
+        .human-quote {
+            border-left: 3px solid #8b8bf5;
+            padding-left: 16px;
+            margin: 16px 0;
+            font-style: italic;
+            color: #ccc;
+        }
+        
+        .evidence-section {
+            margin: 32px 0;
+        }
+        
+        .evidence-header {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+        
+        .evidence-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        
+        .evidence-card {
+            background: #161616;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        
+        .evidence-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        
+        .evidence-list {
+            list-style: none;
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .evidence-list li {
+            padding: 4px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .evidence-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .link {
+            color: #6b9bd1;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        
+        .link:hover {
+            text-decoration: underline;
+        }
+        
+        .insights-section {
+            background: #121218;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 32px 0;
+        }
+        
+        .insights-header {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 16px;
+        }
+        
+        .insight {
+            padding: 12px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .insight:last-child {
+            border-bottom: none;
+        }
+        
+        .insight-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+        }
+        
+        .insight-text {
+            font-size: 13px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Case File: Coaching Plugin Worker Detection</h1>
+            <div class="subtitle">A chronicle of 19 investigations, 34 commits, and 3 weeks spent chasing a moving target</div>
+        </header>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">19</div>
+                <div class="stat-label">Investigations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">34+</div>
+                <div class="stat-label">Commits</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">3</div>
+                <div class="stat-label">Weeks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">4</div>
+                <div class="stat-label">Detection Approaches</div>
+            </div>
+        </div>
+        
+        <div class="outcome">
+            <div class="outcome-label">Final Outcome</div>
+            <div class="outcome-text">Plugin disabled on January 28, 2026. Never worked reliably.</div>
+        </div>
+        
+        <div class="contradiction-section">
+            <div class="contradiction-header">
+                <span class="contradiction-icon">⚠️</span>
+                Contradictions on January 28, 2026
+            </div>
+            <div class="contradiction-item">
+                <div class="contradiction-label">Investigation A (13:35)</div>
+                <div class="contradiction-text">"Title-based detection IS working. Zero coaching metrics for verified worker sessions. No changes needed."</div>
+            </div>
+            <div class="contradiction-item">
+                <div class="contradiction-label">Investigation B (13:39)</div>
+                <div class="contradiction-text">"OpenCode fix exists in source code. Just needs rebuild and restart to work."</div>
+            </div>
+            <div class="contradiction-item">
+                <div class="contradiction-label">Investigation C (13:43)</div>
+                <div class="contradiction-text">"Metadata-based detection broken. session.created events don't include metadata field. Revert to title-based."</div>
+            </div>
+            <div class="contradiction-item">
+                <div class="contradiction-label">Investigation D (14:59)</div>
+                <div class="contradiction-text">"Plugin disabled because metadata approach doesn't work. Needs fix + rename to re-enable."</div>
+            </div>
+            <div class="contradiction-item">
+                <div class="contradiction-label">Investigation E (18:45)</div>
+                <div class="contradiction-text">"Accept title-based detection as 'good enough.' Create upstream OpenCode issue for proper fix."</div>
+            </div>
+        </div>
+        
+        <div class="human-observations">
+            <div class="human-header">Human Observations (Dylan)</div>
+            <div class="human-quote">
+                "I'm still getting alerts on workers."
+            </div>
+            <div class="human-quote">
+                "I've lost faith that this is actually possible. I've lost trust in what workers say and what orchestrators say."
+            </div>
+        </div>
+        
+        <div class="insights-section">
+            <div class="insights-header">What The Case File Reveals</div>
+            <div class="insight">
+                <div class="insight-title">1. Each agent started fresh</div>
+                <div class="insight-text">No synthesis of prior work. Investigations contradict each other within hours.</div>
+            </div>
+            <div class="insight">
+                <div class="insight-title">2. Contradictions piled up unnoticed</div>
+                <div class="insight-text">Jan 28: 5 investigations, 5 different conclusions. Agent A: "working", Agent B: "just rebuild", Agent C: "revert", Agent D: "disabled", Agent E: "accept as-is".</div>
+            </div>
+            <div class="insight">
+                <div class="insight-title">3. Each agent self-certified "fixed" without e2e verification</div>
+                <div class="insight-text">Agents checked that their slice looked correct (code paths, grep logs) but never verified the actual user experience.</div>
+            </div>
+            <div class="insight">
+                <div class="insight-title">4. Dylan's evidence vanished into chat</div>
+                <div class="insight-text">"Still broken" observations had no permanent record. No screenshot evidence. No case file to track the saga.</div>
+            </div>
+        </div>
+        
+        <div class="timeline">
+            <h2 style="margin-bottom: 32px; color: #fff;">Timeline</h2>
+            
+            <!-- Jan 10 - The Beginning -->
+            <div class="timeline-item">
+                <div class="timeline-dot investigation"></div>
+                <div class="timeline-date">Jan 10, 2026</div>
+                <div class="timeline-title">Prototype Created</div>
+                <div class="timeline-content">
+                    Initial coaching plugin implemented with 8 behavioral pattern detections.
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Tool-level hooks</span>
+                    <span class="tag approach">JSONL metrics</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 10</div>
+                <div class="timeline-title">Commit: Worker filtering added</div>
+                <div class="timeline-content">
+                    <code>ddca8a36</code> - First attempt: env var approach
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Failed: plugin runs in server process</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 10</div>
+                <div class="timeline-title">Commit: Per-session detection</div>
+                <div class="timeline-content">
+                    <code>6e6503ae</code> - Move detection to tool hooks
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Failed: fires same time as coaching</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 10</div>
+                <div class="timeline-title">Commit: Message content detection</div>
+                <div class="timeline-content">
+                    <code>05859f38</code> - Detect from message content
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Failed: fires after coaching</span>
+                </div>
+            </div>
+            
+            <!-- Jan 17 - Deep Architecture Analysis -->
+            <div class="timeline-item">
+                <div class="timeline-dot investigation"></div>
+                <div class="timeline-date">Jan 17, 2026</div>
+                <div class="timeline-title">Investigation: Deep Architecture Analysis</div>
+                <div class="timeline-content">
+                    Comprehensive analysis of coaching plugin. Identified "nervous system" architecture with 8 behavioral patterns. Discovered detectWorkerSession caching bug - caching false results permanently misclassified workers.
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Caching bug identified</span>
+                    <span class="tag">421 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 17</div>
+                <div class="timeline-title">Commit: Cache positive results only</div>
+                <div class="timeline-content">
+                    <code>aea09aaf</code> - Fixed caching bug
+                </div>
+                <div class="tags">
+                    <span class="tag fix">Caching fixed</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 17</div>
+                <div class="timeline-title">Commit: session.metadata.role approach</div>
+                <div class="timeline-content">
+                    <code>37b9b0b0</code> - Use metadata for detection
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Later reverted: unreliable</span>
+                </div>
+            </div>
+            
+            <!-- Jan 23 - Directory-Based Detection -->
+            <div class="timeline-item">
+                <div class="timeline-dot investigation"></div>
+                <div class="timeline-date">Jan 23, 2026</div>
+                <div class="timeline-title">Investigation: Review Worker Detection</div>
+                <div class="timeline-content">
+                    Identified race condition: detection and coaching both run in tool.execute.after. Recommended directory-based detection in session.created event to detect workers BEFORE any tool calls.
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Directory-based detection</span>
+                    <span class="tag">306 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 23</div>
+                <div class="timeline-title">Commit: session.created event detection</div>
+                <div class="timeline-content">
+                    <code>65793caa</code> - Add early detection via session.created
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Early detection</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 23</div>
+                <div class="timeline-title">Commit: Title pattern detection</div>
+                <div class="timeline-content">
+                    <code>da067161</code> - Detect by session title pattern
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Title-based</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 24</div>
+                <div class="timeline-title">Commit: File-path detection (revert metadata)</div>
+                <div class="timeline-content">
+                    <code>7c01ddef</code> - Revert to file-path approach
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Metadata unreliable</span>
+                </div>
+            </div>
+            
+            <!-- Jan 27 - Pattern Recognition -->
+            <div class="timeline-item">
+                <div class="timeline-dot investigation"></div>
+                <div class="timeline-date">Jan 27, 2026</div>
+                <div class="timeline-title">Investigation: Why Does Detection Keep Failing?</div>
+                <div class="timeline-content">
+                    Discovered 13+ fix attempts, each addressing different edge cases. Found session.created directory is always PROJECT root, not workspace - invalidating Jan 23 recommendation. Identified root cause: missing first-class worker identity in OpenCode.
+                </div>
+                <div class="tags">
+                    <span class="tag">13+ commits analyzed</span>
+                    <span class="tag approach">Architectural gap identified</span>
+                    <span class="tag">307 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 27</div>
+                <div class="timeline-title">Commit: Directory-based early detection</div>
+                <div class="timeline-content">
+                    <code>b6301a28</code> - Attempt directory detection
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Failed: directory is project root</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 27</div>
+                <div class="timeline-title">Commit: Distinguish spawned orchestrators</div>
+                <div class="timeline-content">
+                    <code>389e2041</code> - Fix false positives
+                </div>
+                <div class="tags">
+                    <span class="tag fix">Edge case fix</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 27</div>
+                <div class="timeline-title">Commit: Three false positive fixes</div>
+                <div class="timeline-content">
+                    <code>9ed47c17</code> - Tuning detection
+                </div>
+                <div class="tags">
+                    <span class="tag fix">Tuning</span>
+                </div>
+            </div>
+            
+            <!-- Jan 28 - The Contradictory Day -->
+            <div class="timeline-item">
+                <div class="timeline-dot investigation contradiction"></div>
+                <div class="timeline-date">Jan 28, 2026 - 11:56</div>
+                <div class="timeline-title">Investigation A: Verify Detection</div>
+                <div class="timeline-content">
+                    Tested TWO worker sessions. Both had zero coaching alerts. Title-based detection working correctly. Conclusion: "No changes needed - verification complete."
+                </div>
+                <div class="tags">
+                    <span class="tag fix">Working ✓</span>
+                    <span class="tag">237 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 28</div>
+                <div class="timeline-title">Commit: Expose ORCH_WORKER in metadata</div>
+                <div class="timeline-content">
+                    <code>1de2e1e7</code> - Add metadata exposure
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Metadata approach</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot investigation contradiction"></div>
+                <div class="timeline-date">Jan 28, 2026 - 13:39</div>
+                <div class="timeline-title">Investigation B: Still Fires Workers</div>
+                <div class="timeline-content">
+                    Traced full chain: spawn → env → header → metadata → plugin. Found fix EXISTS in OpenCode source but running server uses old code. Conclusion: "Restart OpenCode to pick up fix."
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Deployment gap</span>
+                    <span class="tag">253 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 28 - 13:39</div>
+                <div class="timeline-title">Plugin Disabled</div>
+                <div class="timeline-content">
+                    <code>coaching.ts → coaching.ts.disabled</code>
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Disabled</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot investigation contradiction"></div>
+                <div class="timeline-date">Jan 28, 2026 - 13:43</div>
+                <div class="timeline-title">Investigation C: Debug Still Fires</div>
+                <div class="timeline-content">
+                    Found metadata field does NOT exist in session.created events. Plugin checks sessionMetadata.role but it's always empty object. Conclusion: "Metadata-based detection cannot work. Revert to title-based."
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Metadata broken</span>
+                    <span class="tag">307 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot investigation contradiction"></div>
+                <div class="timeline-date">Jan 28, 2026 - 14:59</div>
+                <div class="timeline-title">Investigation D: Debug Worker Detection</div>
+                <div class="timeline-content">
+                    Found plugin file is disabled (.ts.disabled). Current code uses broken metadata-based detection. Conclusion: "Replace line 2028 with title-based pattern, rename to .ts to enable."
+                </div>
+                <div class="tags">
+                    <span class="tag">Fix defined</span>
+                    <span class="tag">277 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot investigation contradiction"></div>
+                <div class="timeline-date">Jan 28, 2026 - 18:45</div>
+                <div class="timeline-title">Investigation E: Cannot Reliably Detect Workers</div>
+                <div class="timeline-content">
+                    Architectural analysis: plugin runs in server process, can't see env vars. Title-based detection IS working for this session (verified zero metrics). Conclusion: "Accept title-based as 'good enough', create upstream OpenCode issue for metadata exposure."
+                </div>
+                <div class="tags">
+                    <span class="tag approach">Accept limitation</span>
+                    <span class="tag">319 lines</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot commit"></div>
+                <div class="timeline-date">Jan 28</div>
+                <div class="timeline-title">Commit: Simplify to metadata.role</div>
+                <div class="timeline-content">
+                    <code>be0c07b8</code> - Refactor to use session.metadata.role
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Based on broken approach</span>
+                </div>
+            </div>
+            
+            <div class="timeline-item">
+                <div class="timeline-dot decision"></div>
+                <div class="timeline-date">Jan 28, 2026 - End of Day</div>
+                <div class="timeline-title">Decision: Disable Coaching Plugin</div>
+                <div class="timeline-content">
+                    Final decision to disable plugin rather than continue investigation churn. Human (Dylan) lost faith: "I've lost trust in what workers say and what orchestrators say."
+                </div>
+                <div class="tags">
+                    <span class="tag revert">Disabled permanently</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="evidence-section">
+            <div class="evidence-header">Evidence Trail</div>
+            <div class="evidence-grid">
+                <div class="evidence-card">
+                    <div class="evidence-title">Investigations (19)</div>
+                    <ul class="evidence-list">
+                        <li>2026-01-28: 5 investigations, contradictory</li>
+                        <li>2026-01-27: 3 investigations</li>
+                        <li>2026-01-23: 1 investigation</li>
+                        <li>2026-01-17-18: 6 investigations</li>
+                        <li>2026-01-10-11: 4 investigations</li>
+                    </ul>
+                </div>
+                <div class="evidence-card">
+                    <div class="evidence-title">Commits (34+)</div>
+                    <ul class="evidence-list">
+                        <li>Jan 28: 5 commits (final day)</li>
+                        <li>Jan 27: 3 commits (false positives)</li>
+                        <li>Jan 23-24: 3 commits (detection approaches)</li>
+                        <li>Jan 17: 12+ commits (architecture work)</li>
+                        <li>Jan 10-11: 11+ commits (prototype)</li>
+                    </ul>
+                </div>
+                <div class="evidence-card">
+                    <div class="evidence-title">Detection Approaches</div>
+                    <ul class="evidence-list">
+                        <li>Env var (failed: wrong process)</li>
+                        <li>session.metadata.role (failed: unreliable)</li>
+                        <li>Directory path (failed: wrong directory)</li>
+                        <li>Title pattern (worked, but had edge cases)</li>
+                        <li>File path args (too late)</li>
+                    </ul>
+                </div>
+                <div class="evidence-card">
+                    <div class="evidence-title">Decision Record</div>
+                    <ul class="evidence-list">
+                        <li><a href="../decisions/2026-01-28-coaching-plugin-disabled.md" class="link">2026-01-28-coaching-plugin-disabled.md</a></li>
+                        <li>Status: Active (blocking future work)</li>
+                        <li>Constraints: kb-4ee4e1, kb-9c8c38</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</body>
+</html>
