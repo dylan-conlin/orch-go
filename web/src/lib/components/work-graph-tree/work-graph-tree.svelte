@@ -8,6 +8,9 @@
 	// Flatten tree for keyboard navigation
 	let flattenedNodes: TreeNode[] = [];
 	let selectedIndex = 0;
+	
+	// Track expanded details separately (fixes reactivity issues)
+	let expandedDetails = new Set<string>();
 
 	// Flatten tree respecting expansion state
 	function flattenTree(nodes: TreeNode[], result: TreeNode[] = []): TreeNode[] {
@@ -104,18 +107,22 @@
 		case 'Enter':
 			event.preventDefault();
 			// Toggle L1 details expansion
-			current.details_expanded = !current.details_expanded;
-			tree = [...tree]; // Create new reference to trigger reactivity
+			if (expandedDetails.has(current.id)) {
+				expandedDetails.delete(current.id);
+			} else {
+				expandedDetails.add(current.id);
+			}
+			expandedDetails = expandedDetails; // Trigger reactivity
 			break;
 
 		case 'h':
 		case 'ArrowLeft':
 		case 'Escape':
 			event.preventDefault();
-			if (current.details_expanded) {
+			if (expandedDetails.has(current.id)) {
 				// Close L1 details
-				current.details_expanded = false;
-				tree = [...tree]; // Create new reference to trigger reactivity
+				expandedDetails.delete(current.id);
+				expandedDetails = expandedDetails; // Trigger reactivity
 			} else if (current.parent_id) {
 				// Jump to parent
 				const parentIdx = flattenedNodes.findIndex(n => n.id === current.parent_id);
@@ -239,7 +246,7 @@
 			</div>
 
 			<!-- L1: Expanded details -->
-			{#if node.details_expanded}
+			{#if expandedDetails.has(node.id)}
 				<div
 					class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
 					style="margin-left: {node.depth * 24 + 48}px"
