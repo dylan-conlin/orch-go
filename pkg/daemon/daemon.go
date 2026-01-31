@@ -437,12 +437,19 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			}
 			continue
 		}
-		// Skip in_progress issues (already being worked on)
+		// Skip in_progress issues ONLY if there's an active session working on them.
+		// If no active session exists, the user may have marked it in_progress to release it TO the daemon.
 		if issue.Status == "in_progress" {
-			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Skipping %s (already in_progress)\n", issue.ID)
+			if HasExistingSessionForBeadsID(issue.ID) {
+				if d.Config.Verbose {
+					fmt.Printf("  DEBUG: Skipping %s (in_progress with active session)\n", issue.ID)
+				}
+				continue
 			}
-			continue
+			// No active session - issue was likely released to daemon, proceed with spawn
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Including %s (in_progress but no active session)\n", issue.ID)
+			}
 		}
 		// Skip issues without required label (if filter is set)
 		// BUT: Children of triage:ready epics are exempt from this check
@@ -808,9 +815,12 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 		return "status is blocked"
 	}
 
-	// Check for in_progress status
+	// Check for in_progress status - only reject if there's an active session
 	if issue.Status == "in_progress" {
-		return "status is in_progress (already being worked on)"
+		if HasExistingSessionForBeadsID(issue.ID) {
+			return "status is in_progress (active session found)"
+		}
+		// No active session - issue was likely released to daemon, spawnable
 	}
 
 	// Check for missing required label

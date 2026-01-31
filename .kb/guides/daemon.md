@@ -326,8 +326,10 @@ The daemon polls beads for `Phase: Complete` comments instead of relying on sess
 
 The daemon skips issues with:
 - Status `blocked`
-- Status `in_progress` (already being worked)
+- Status `in_progress` WITH an active OpenCode session (already being worked on)
 - Unresolved blocking dependencies
+
+**Note (Jan 2026):** Issues with status `in_progress` but NO active session are spawnable. This allows users to mark issues `in_progress` to release them to the daemon (e.g., after abandoning work or when no agent is attached).
 
 ---
 
@@ -595,6 +597,7 @@ From investigations, these design decisions were made:
 | No beads daemon auto-start | Caching solves API latency; daemons are per-project | Jan 2026 |
 | Cross-project uses global capacity | Prevents runaway spawning (N projects × M agents) | Jan 2026 |
 | Cross-project uses kb projects registry | Reuses existing infrastructure, no new config file | Jan 2026 |
+| in_progress + no session = spawnable | Allows releasing issues to daemon without changing status | Jan 2026 |
 
 ---
 

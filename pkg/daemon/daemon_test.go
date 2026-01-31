@@ -93,9 +93,13 @@ func TestNextIssue_SkipsBlockedIssues(t *testing.T) {
 	}
 }
 
-func TestNextIssue_SkipsInProgressIssues(t *testing.T) {
-	// This test verifies that in_progress issues are SKIPPED to prevent duplicate spawns.
-	// Even though bd ready returns both open and in_progress issues, we only spawn for open ones.
+func TestNextIssue_InProgressWithNoSession_IsSpawnable(t *testing.T) {
+	// This test verifies that in_progress issues WITHOUT an active session ARE spawnable.
+	// The daemon now checks for active OpenCode sessions before rejecting in_progress issues.
+	// If no session exists, the user may have marked it in_progress to release it TO the daemon.
+	//
+	// Since tests run without OpenCode, HasExistingSessionForBeadsID returns false,
+	// so in_progress issues are treated as spawnable.
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
@@ -113,12 +117,12 @@ func TestNextIssue_SkipsInProgressIssues(t *testing.T) {
 	if issue == nil {
 		t.Fatal("NextIssue() expected issue, got nil")
 	}
-	// Should skip in_progress and return the open issue
-	if issue.ID != "proj-2" {
-		t.Errorf("NextIssue() = %q, want 'proj-2' (should skip in_progress)", issue.ID)
+	// With no active session, in_progress issue is spawnable (higher priority wins)
+	if issue.ID != "proj-1" {
+		t.Errorf("NextIssue() = %q, want 'proj-1' (in_progress with no session is spawnable)", issue.ID)
 	}
-	if issue.Status != "open" {
-		t.Errorf("NextIssue() status = %q, want 'open'", issue.Status)
+	if issue.Status != "in_progress" {
+		t.Errorf("NextIssue() status = %q, want 'in_progress'", issue.Status)
 	}
 }
 
@@ -325,14 +329,16 @@ func TestDaemon_Preview_HasIssues(t *testing.T) {
 }
 
 func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
-	// Test that Preview returns rejection reasons for non-spawnable issues
+	// Test that Preview returns rejection reasons for non-spawnable issues.
+	// Note: in_progress issues are only rejected if there's an active session.
+	// Since tests run without OpenCode, in_progress issues (with no session) are spawnable.
 	d := &Daemon{
 		listIssuesFunc: func() ([]Issue, error) {
 			return []Issue{
 				{ID: "proj-1", Title: "Missing type", Priority: 0, IssueType: "", Status: "open"},
 				{ID: "proj-2", Title: "Epic type", Priority: 1, IssueType: "epic", Status: "open"},
 				{ID: "proj-3", Title: "Blocked", Priority: 2, IssueType: "feature", Status: "blocked"},
-				{ID: "proj-4", Title: "In progress", Priority: 3, IssueType: "feature", Status: "in_progress"},
+				{ID: "proj-4", Title: "In progress (no session)", Priority: 3, IssueType: "feature", Status: "in_progress"},
 				{ID: "proj-5", Title: "Spawnable", Priority: 4, IssueType: "bug", Status: "open"},
 			}, nil
 		},
@@ -343,17 +349,19 @@ func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
 		t.Fatalf("Preview() unexpected error: %v", err)
 	}
 
-	// Should have one spawnable issue
+	// Should have one spawnable issue - proj-4 (in_progress without active session is spawnable)
+	// proj-4 has higher priority (3) than proj-5 (4)
 	if result.Issue == nil {
 		t.Fatal("Preview() expected spawnable issue, got nil")
 	}
-	if result.Issue.ID != "proj-5" {
-		t.Errorf("Preview() spawnable issue ID = %q, want 'proj-5'", result.Issue.ID)
+	if result.Issue.ID != "proj-4" {
+		t.Errorf("Preview() spawnable issue ID = %q, want 'proj-4' (in_progress with no session is spawnable)", result.Issue.ID)
 	}
 
-	// Should have 4 rejected issues with reasons
-	if len(result.RejectedIssues) != 4 {
-		t.Errorf("Preview() rejected count = %d, want 4", len(result.RejectedIssues))
+	// Should have 3 rejected issues (proj-1: missing type, proj-2: epic, proj-3: blocked)
+	// proj-4 is NOT rejected because it's in_progress without an active session
+	if len(result.RejectedIssues) != 3 {
+		t.Errorf("Preview() rejected count = %d, want 3", len(result.RejectedIssues))
 	}
 
 	// Check rejection reasons
@@ -380,10 +388,9 @@ func TestDaemon_Preview_ShowsRejectionReasons(t *testing.T) {
 		t.Errorf("Preview() proj-3 reason = %q, want to contain 'blocked'", r)
 	}
 
-	if r, ok := rejectedByID["proj-4"]; !ok {
-		t.Error("Preview() missing rejection for proj-4 (in_progress)")
-	} else if !strings.Contains(r, "in_progress") {
-		t.Errorf("Preview() proj-4 reason = %q, want to contain 'in_progress'", r)
+	// proj-4 should NOT be in rejected list - it's spawnable (in_progress without active session)
+	if _, ok := rejectedByID["proj-4"]; ok {
+		t.Error("Preview() should NOT reject proj-4 (in_progress with no session is spawnable)")
 	}
 }
 
