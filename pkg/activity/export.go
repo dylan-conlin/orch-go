@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -14,10 +15,10 @@ import (
 
 // ActivityFile represents the structure of ACTIVITY.json.
 type ActivityFile struct {
-	Version    int                    `json:"version"`
-	SessionID  string                 `json:"session_id"`
-	ExportedAt string                 `json:"exported_at"`
-	Events     []MessagePartResponse  `json:"events"`
+	Version    int                   `json:"version"`
+	SessionID  string                `json:"session_id"`
+	ExportedAt string                `json:"exported_at"`
+	Events     []MessagePartResponse `json:"events"`
 }
 
 // MessagePartResponse represents a single activity event in SSE-compatible format.
@@ -178,4 +179,100 @@ func LoadFromWorkspace(workspacePath string) ([]MessagePartResponse, error) {
 	}
 
 	return activityFile.Events, nil
+}
+
+// PhaseCompleteAttempt represents evidence of an agent attempting to report Phase: Complete.
+type PhaseCompleteAttempt struct {
+	Found           bool   // Whether a Phase: Complete attempt was found
+	CommandOutput   string // The output of the bd comment command
+	CommandInput    string // The command that was executed
+	ReportedSuccess bool   // Whether bd reported success ("Comment added")
+	Timestamp       int64  // When the attempt occurred
+}
+
+// DetectPhaseCompleteAttempt scans ACTIVITY.json for evidence that the agent
+// attempted to report "Phase: Complete" via bd comment.
+//
+// This is used as a fallback when Phase: Complete is not found in beads comments.
+// It handles the case where bd comment reports success but the comment fails to
+// persist (a known beads bug).
+//
+// Returns the attempt details if found, or an empty struct with Found=false if not.
+func DetectPhaseCompleteAttempt(workspacePath string) PhaseCompleteAttempt {
+	events, err := LoadFromWorkspace(workspacePath)
+	if err != nil || events == nil {
+		return PhaseCompleteAttempt{}
+	}
+
+	return DetectPhaseCompleteAttemptFromEvents(events)
+}
+
+// DetectPhaseCompleteAttemptFromEvents scans activity events for Phase: Complete attempts.
+// This is separated from DetectPhaseCompleteAttempt for easier testing.
+func DetectPhaseCompleteAttemptFromEvents(events []MessagePartResponse) PhaseCompleteAttempt {
+	// Scan for bash tool calls that contain "Phase: Complete" in the command
+	for _, event := range events {
+		part := event.Properties.Part
+		if part.Type != "tool" || part.Tool != "bash" {
+			continue
+		}
+		if part.State == nil {
+			continue
+		}
+
+		// Check if the command contains "bd comment" and "Phase: Complete"
+		command, ok := part.State.Input["command"].(string)
+		if !ok {
+			continue
+		}
+
+		// Look for bd comment commands with Phase: Complete
+		if !containsPhaseComplete(command) {
+			continue
+		}
+
+		// Check if bd reported success
+		output := part.State.Output
+		reportedSuccess := strings.Contains(output, "Comment added")
+
+		return PhaseCompleteAttempt{
+			Found:           true,
+			CommandInput:    command,
+			CommandOutput:   output,
+			ReportedSuccess: reportedSuccess,
+			Timestamp:       event.Timestamp,
+		}
+	}
+
+	return PhaseCompleteAttempt{}
+}
+
+// containsPhaseComplete checks if a command string appears to be reporting Phase: Complete.
+// Matches patterns like:
+//   - bd comment <id> "Phase: Complete - ..."
+//   - bd comments add <id> "Phase: Complete - ..."
+//
+// Returns true only when "Phase: Complete" appears at the start of the quoted comment,
+// not when it's mentioned within a larger description or in a grep/list command.
+func containsPhaseComplete(command string) bool {
+	lowerCmd := strings.ToLower(command)
+
+	// Must be a bd comment or bd comments add command
+	// Exclude: bd comments <id> (list), bd comments <id> | grep (piped list)
+	isBdCommentAdd := false
+	if strings.Contains(lowerCmd, "bd comment ") && !strings.Contains(lowerCmd, "bd comments") {
+		// Simple "bd comment <id> <text>" - this is an add operation
+		isBdCommentAdd = true
+	} else if strings.Contains(lowerCmd, "bd comments add") {
+		// Explicit "bd comments add <id> <text>"
+		isBdCommentAdd = true
+	}
+
+	if !isBdCommentAdd {
+		return false
+	}
+
+	// Look for Phase: Complete at the start of the quoted text
+	// Matches: "Phase: Complete" or 'Phase: Complete'
+	return strings.Contains(lowerCmd, `"phase: complete`) || strings.Contains(lowerCmd, `'phase: complete`)
 }

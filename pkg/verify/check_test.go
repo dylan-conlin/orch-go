@@ -1515,3 +1515,186 @@ Done.
 		}
 	})
 }
+
+// TestPhaseCompleteRecoveryFromActivity tests the ACTIVITY.json fallback
+// when Phase: Complete fails to persist to beads.
+// This addresses bug orch-go-21112 where bd comment reports success but
+// the comment silently fails to persist.
+func TestPhaseCompleteRecoveryFromActivity(t *testing.T) {
+	t.Run("recovers Phase: Complete from ACTIVITY.json when missing from beads", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Write a .tier file so we can test with light tier (no SYNTHESIS.md required)
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		// Write ACTIVITY.json with a successful bd comment Phase: Complete
+		activityJSON := `{
+			"version": 1,
+			"session_id": "ses_test123",
+			"exported_at": "2026-01-30T18:00:00Z",
+			"events": [
+				{
+					"id": "part_1",
+					"type": "message.part",
+					"properties": {
+						"sessionID": "ses_test123",
+						"messageID": "msg_1",
+						"part": {
+							"id": "part_1",
+							"type": "tool",
+							"tool": "bash",
+							"sessionID": "ses_test123",
+							"state": {
+								"title": "Report Phase: Complete",
+								"status": "completed",
+								"input": {"command": "bd comment test-123 \"Phase: Complete - All done\""},
+								"output": "Command \"comment\" is deprecated, use 'bd comments add' instead\nComment added to test-123\n"
+							}
+						}
+					},
+					"timestamp": 1737146700000
+				}
+			]
+		}`
+		activityPath := filepath.Join(tmpDir, "ACTIVITY.json")
+		if err := os.WriteFile(activityPath, []byte(activityJSON), 0644); err != nil {
+			t.Fatalf("failed to write activity file: %v", err)
+		}
+
+		// Verify with empty comments (simulating bd comment not persisting)
+		// The function should recover Phase: Complete from ACTIVITY.json
+		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", []Comment{})
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		// Should pass because ACTIVITY.json shows the agent attempted to report Phase: Complete
+		if !result.Passed {
+			t.Errorf("expected verification to pass with ACTIVITY.json fallback, got errors: %v", result.Errors)
+		}
+
+		// Should have a warning about the recovery
+		if len(result.Warnings) == 0 {
+			t.Error("expected warning about Phase: Complete recovery from ACTIVITY.json")
+		}
+
+		warningFound := false
+		for _, w := range result.Warnings {
+			if contains(w, "recovered from ACTIVITY.json") {
+				warningFound = true
+				break
+			}
+		}
+		if !warningFound {
+			t.Errorf("expected warning about recovery, got warnings: %v", result.Warnings)
+		}
+
+		// Phase should show as Complete
+		if result.Phase.Phase != "Complete" {
+			t.Errorf("expected Phase = Complete, got %s", result.Phase.Phase)
+		}
+	})
+
+	t.Run("does not recover when bd comment failed", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Write a .tier file
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		// Write ACTIVITY.json with a FAILED bd comment Phase: Complete
+		// (no "Comment added" in output)
+		activityJSON := `{
+			"version": 1,
+			"session_id": "ses_test123",
+			"exported_at": "2026-01-30T18:00:00Z",
+			"events": [
+				{
+					"id": "part_1",
+					"type": "message.part",
+					"properties": {
+						"sessionID": "ses_test123",
+						"messageID": "msg_1",
+						"part": {
+							"id": "part_1",
+							"type": "tool",
+							"tool": "bash",
+							"sessionID": "ses_test123",
+							"state": {
+								"title": "Report Phase: Complete",
+								"status": "completed",
+								"input": {"command": "bd comment test-123 \"Phase: Complete - All done\""},
+								"output": "error: database locked\n"
+							}
+						}
+					},
+					"timestamp": 1737146700000
+				}
+			]
+		}`
+		activityPath := filepath.Join(tmpDir, "ACTIVITY.json")
+		if err := os.WriteFile(activityPath, []byte(activityJSON), 0644); err != nil {
+			t.Fatalf("failed to write activity file: %v", err)
+		}
+
+		// Verify with empty comments
+		// Should NOT recover because bd reported failure (no "Comment added")
+		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", []Comment{})
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		// Should NOT pass - bd command failed
+		if result.Passed {
+			t.Error("expected verification to fail when bd comment reported error")
+		}
+
+		// Should have phase_complete in failed gates
+		gateFound := false
+		for _, g := range result.GatesFailed {
+			if g == GatePhaseComplete {
+				gateFound = true
+				break
+			}
+		}
+		if !gateFound {
+			t.Errorf("expected phase_complete gate to fail, got gates: %v", result.GatesFailed)
+		}
+	})
+
+	t.Run("normal verification still works when Phase: Complete is in beads", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Write a .tier file
+		tierPath := filepath.Join(tmpDir, ".tier")
+		if err := os.WriteFile(tierPath, []byte("light\n"), 0644); err != nil {
+			t.Fatalf("failed to write tier file: %v", err)
+		}
+
+		// Verify with Phase: Complete in comments (normal case)
+		comments := []Comment{
+			{Text: "Phase: Complete - All done"},
+		}
+		result, err := VerifyCompletionWithTierAndComments("test-123", tmpDir, "light", comments)
+		if err != nil {
+			t.Fatalf("verification failed: %v", err)
+		}
+
+		// Should pass normally
+		if !result.Passed {
+			t.Errorf("expected verification to pass, got errors: %v", result.Errors)
+		}
+
+		// Should NOT have recovery warning (normal path, no recovery needed)
+		for _, w := range result.Warnings {
+			if contains(w, "recovered from ACTIVITY.json") {
+				t.Errorf("unexpected recovery warning in normal case: %s", w)
+			}
+		}
+	})
+}

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dylan-conlin/orch-go/pkg/activity"
 )
 
 // Gate names for verification tracking.
@@ -59,10 +61,10 @@ func VerifySynthesis(workspacePath string) (bool, error) {
 
 // HandoffContentValidation contains the results of validating handoff content.
 type HandoffContentValidation struct {
-	Valid    bool     // Whether the handoff has actual content
-	Errors   []string // Specific validation failures
-	TLDRFilled    bool // Whether TLDR section has actual content
-	OutcomeFilled bool // Whether Outcome field has a valid value
+	Valid         bool     // Whether the handoff has actual content
+	Errors        []string // Specific validation failures
+	TLDRFilled    bool     // Whether TLDR section has actual content
+	OutcomeFilled bool     // Whether Outcome field has a valid value
 }
 
 // ValidateHandoffContent checks if SYNTHESIS.md has actual content,
@@ -473,15 +475,37 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 	result.Phase = status
 
 	// Check if Phase: Complete was reported
-	if !status.Found {
-		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
-		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
-		return result, nil
+	phaseComplete := status.Found && strings.EqualFold(status.Phase, "Complete")
+
+	// Fallback: Check ACTIVITY.json for Phase: Complete attempts
+	// This handles the case where bd comment reports success but the comment
+	// fails to persist (a known beads bug - see orch-go-21112).
+	if !phaseComplete && workspacePath != "" {
+		attempt := activity.DetectPhaseCompleteAttempt(workspacePath)
+		if attempt.Found && attempt.ReportedSuccess {
+			// Agent attempted to report Phase: Complete and bd said it succeeded,
+			// but the comment didn't persist. This is a beads bug, not agent fault.
+			// Treat as Phase: Complete with a warning.
+			result.Phase = PhaseStatus{
+				Phase:   "Complete",
+				Summary: "(recovered from ACTIVITY.json - bd comment failed to persist)",
+				Found:   true,
+			}
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Phase: Complete recovered from ACTIVITY.json - bd comment reported success but failed to persist to beads. Agent attempted at timestamp %d.", attempt.Timestamp))
+			phaseComplete = true
+		}
 	}
 
-	if !strings.EqualFold(status.Phase, "Complete") {
+	if !phaseComplete {
+		if !status.Found {
+			result.Passed = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
+			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
+			return result, nil
+		}
+
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))

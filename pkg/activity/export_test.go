@@ -214,3 +214,209 @@ func TestLoadFromWorkspace_InvalidJSON(t *testing.T) {
 		t.Errorf("expected nil events for invalid JSON, got: %v", events)
 	}
 }
+
+func TestDetectPhaseCompleteAttemptFromEvents(t *testing.T) {
+	tests := []struct {
+		name            string
+		events          []MessagePartResponse
+		wantFound       bool
+		wantSuccess     bool
+		wantInputSubstr string
+	}{
+		{
+			name:      "no events",
+			events:    nil,
+			wantFound: false,
+		},
+		{
+			name: "no Phase: Complete attempt",
+			events: []MessagePartResponse{
+				{
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								Input:  map[string]interface{}{"command": "ls -la"},
+								Output: "files...",
+							},
+						},
+					},
+				},
+			},
+			wantFound: false,
+		},
+		{
+			name: "Phase: Complete with success",
+			events: []MessagePartResponse{
+				{
+					Timestamp: 1737146700000,
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								Input:  map[string]interface{}{"command": `bd comment orch-go-123 "Phase: Complete - All done"`},
+								Output: "Command \"comment\" is deprecated, use 'bd comments add' instead\nComment added to orch-go-123\n",
+							},
+						},
+					},
+				},
+			},
+			wantFound:       true,
+			wantSuccess:     true,
+			wantInputSubstr: "Phase: Complete",
+		},
+		{
+			name: "Phase: Complete with bd comments add",
+			events: []MessagePartResponse{
+				{
+					Timestamp: 1737146700000,
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								Input:  map[string]interface{}{"command": `bd comments add orch-go-123 "Phase: Complete - All done"`},
+								Output: "Comment added to orch-go-123\n",
+							},
+						},
+					},
+				},
+			},
+			wantFound:       true,
+			wantSuccess:     true,
+			wantInputSubstr: "Phase: Complete",
+		},
+		{
+			name: "Phase: Complete with failure (no Comment added)",
+			events: []MessagePartResponse{
+				{
+					Timestamp: 1737146700000,
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								Input:  map[string]interface{}{"command": `bd comment orch-go-123 "Phase: Complete - All done"`},
+								Output: "error: database locked\n",
+							},
+						},
+					},
+				},
+			},
+			wantFound:       true,
+			wantSuccess:     false,
+			wantInputSubstr: "Phase: Complete",
+		},
+		{
+			name: "does not match Phase: Complete mentioned in description",
+			events: []MessagePartResponse{
+				{
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								// This command mentions Phase: Complete but it's in a description, not reporting it
+								Input:  map[string]interface{}{"command": `bd comment orch-go-123 "Scope: 1. Detect sessions without Phase: Complete 2. Mark as failed"`},
+								Output: "Comment added to orch-go-123\n",
+							},
+						},
+					},
+				},
+			},
+			wantFound: false, // Should NOT match - Phase: Complete is mentioned but not being reported
+		},
+		{
+			name: "does not match bd comments list command",
+			events: []MessagePartResponse{
+				{
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								// This is listing comments, not adding one
+								Input:  map[string]interface{}{"command": `bd comments orch-go-123 | grep "Phase: Complete"`},
+								Output: "",
+							},
+						},
+					},
+				},
+			},
+			wantFound: false,
+		},
+		{
+			name: "case insensitive Phase: complete",
+			events: []MessagePartResponse{
+				{
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "bash",
+							State: &ToolState{
+								Input:  map[string]interface{}{"command": `bd comment orch-go-123 "phase: complete - done"`},
+								Output: "Comment added to orch-go-123\n",
+							},
+						},
+					},
+				},
+			},
+			wantFound:   true,
+			wantSuccess: true,
+		},
+		{
+			name: "not a bash tool",
+			events: []MessagePartResponse{
+				{
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type: "tool",
+							Tool: "read", // not bash
+							State: &ToolState{
+								Input:  map[string]interface{}{"command": `Phase: Complete`},
+								Output: "some output",
+							},
+						},
+					},
+				},
+			},
+			wantFound: false,
+		},
+		{
+			name: "nil state",
+			events: []MessagePartResponse{
+				{
+					Properties: MessagePartProperties{
+						Part: PartDetails{
+							Type:  "tool",
+							Tool:  "bash",
+							State: nil,
+						},
+					},
+				},
+			},
+			wantFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetectPhaseCompleteAttemptFromEvents(tt.events)
+
+			if result.Found != tt.wantFound {
+				t.Errorf("Found = %v, want %v", result.Found, tt.wantFound)
+			}
+
+			if tt.wantFound {
+				if result.ReportedSuccess != tt.wantSuccess {
+					t.Errorf("ReportedSuccess = %v, want %v", result.ReportedSuccess, tt.wantSuccess)
+				}
+				if tt.wantInputSubstr != "" && !containsPhaseComplete(result.CommandInput) {
+					t.Errorf("CommandInput should contain Phase: Complete, got: %s", result.CommandInput)
+				}
+			}
+		})
+	}
+}
