@@ -18,31 +18,52 @@ During a specs-platform session, we attempted to release 3 issues to the daemon 
 
 ## Findings
 
-### Finding 1: Visibility is Poor
+### Finding 1: Cross-Project Workers Invisible in orch status
 
-**Evidence:** Workers spawn headless. To determine if they're running, stuck, or dead requires:
+**Evidence:** Workers spawned for specs-platform don't appear in `orch status` at all when run from orch-go (or any other project).
+
+```bash
+$ orch status --all | grep specs-platform
+# (no output)
+```
+
+Yet events.jsonl confirms they were spawned:
+```bash
+$ cat ~/.orch/events.jsonl | grep specs-platform | grep "session.spawned" | tail -3
+{"type":"session.spawned","session_id":"ses_3eeeb8508ffe...","data":{"beads_id":"specs-platform-38",...}}
+{"type":"session.spawned","session_id":"ses_3eeeb27b3ffe...","data":{"beads_id":"specs-platform-19",...}}
+{"type":"session.spawned","session_id":"ses_3eedefcdaffe...","data":{"beads_id":"specs-platform-10.1",...}}
+```
+
+`orch status` only shows workers from the current project (orch-go). Cross-project workers are invisible.
+
+**Significance:** If you spawn workers for project A while in project B, you can't see them. This is the primary visibility gap.
+
+---
+
+### Finding 2: Even Within Project, Visibility Requires Spelunking
+
+**Evidence:** To determine if workers are running, stuck, or dead requires:
 - Checking `~/.orch/events.jsonl` for spawn/complete events
 - Inspecting workspace directories for STATUS.md or SPAWN_CONTEXT.md
 - Querying the OpenCode API for session status
 - Running `orch status --all` and grepping for specific beads IDs
-
-No single command shows "here's what's happening with my workers."
 
 **Example session:**
 ```bash
 # Had to run all of these to understand state:
 cat ~/.orch/events.jsonl | grep specs-platform | grep "session.spawned" | tail -5
 cat ~/.orch/events.jsonl | grep specs-platform | grep "agent.completed" | tail -5
-orch status --all 2>/dev/null | grep -E "specs-platform-(38|10\.1|19)"
 ls -la .orch/workspace/sp-feat-fix-test-critical-30jan-5cd6/
 bd show specs-platform-38
+curl -s "http://127.0.0.1:4096/sessions/ses_3eeeb8508ffe..."
 ```
 
-**Significance:** Orchestrator (human or Claude) can't quickly assess swarm health.
+**Significance:** No single command shows "here's what's happening with my workers."
 
 ---
 
-### Finding 2: Beads Status Decoupled from Session State
+### Finding 3: Beads Status Decoupled from Session State
 
 **Evidence:** `bd show specs-platform-38` shows `Status: in_progress` but this doesn't indicate:
 - Whether an agent is actively working
@@ -56,7 +77,7 @@ The beads status is set when spawned but not updated if the session fails silent
 
 ---
 
-### Finding 3: Daemon Spawn Workflow Has Multiple Gates
+### Finding 4: Daemon Spawn Workflow Has Multiple Gates
 
 **Evidence:** Releasing issues to daemon required 3 fix-and-push cycles:
 
@@ -74,7 +95,7 @@ Each gate is reasonable in isolation, but the feedback loop is slow (edit → co
 
 ---
 
-### Finding 4: No Progress Feedback During Execution
+### Finding 5: No Progress Feedback During Execution
 
 **Evidence:** Workers spawned 30+ minutes ago. No way to know:
 - Current phase (Planning? Implementation? Validation?)
@@ -88,7 +109,7 @@ The only feedback is eventual completion or silence.
 
 ---
 
-### Finding 5: Task Review Happens After Spawn, Not Before
+### Finding 6: Task Review Happens After Spawn, Not Before
 
 **Evidence:** `specs-platform-19` (sheet export) was spawned before Dylan could review what it would do. He had to pause it mid-flight after seeing the phase comments:
 
@@ -103,7 +124,7 @@ The task was premature - admin-ETL coexistence wasn't even implemented yet.
 
 ---
 
-### Finding 6: Epic Children Auto-Depend on Epic
+### Finding 7: Epic Children Auto-Depend on Epic
 
 **Evidence:** Creating tasks with `--parent specs-platform-10` automatically added a dependency on the epic. This blocked spawning because the epic was open.
 
@@ -138,9 +159,10 @@ The daemon efficiently processes queues and spawns workers, but the human/orches
 
 ### Short-term (UX improvements)
 
-1. **`orch workers` command** - Show all active workers with beads ID, phase, runtime, last activity
-2. **`bd show` enhancement** - Include session status (active/idle/dead) when in_progress
-3. **`orch daemon preview --verbose`** - Show all gates and why each issue passes/fails upfront
+1. **`orch status` cross-project visibility** - Show workers from ALL projects, not just current. This is the primary gap.
+2. **`orch workers` command** - Show all active workers with beads ID, phase, runtime, last activity
+3. **`bd show` enhancement** - Include session status (active/idle/dead) when in_progress
+4. **`orch daemon preview --verbose`** - Show all gates and why each issue passes/fails upfront
 
 ### Medium-term (workflow changes)
 
@@ -161,6 +183,7 @@ The daemon efficiently processes queues and spawns workers, but the human/orches
 | Issue | Priority | Summary |
 |-------|----------|---------|
 | orch-go-21070 | P2 | Daemon rejects in_progress without checking session (already filed) |
+| NEW | P1 | `orch status` doesn't show cross-project workers - primary visibility gap |
 | NEW | P2 | `--parent` creates blocking dependency, should be hierarchy only |
 | NEW | P3 | Add `orch workers` command for active worker visibility |
 | NEW | P3 | Dead session detection - mark abandoned workers as failed |
