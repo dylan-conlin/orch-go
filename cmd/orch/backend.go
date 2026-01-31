@@ -28,6 +28,7 @@ type BackendResolution struct {
 func resolveBackend(
 	backendFlag string, // --backend flag value ("claude", "opencode", or "")
 	opusFlag bool, // --opus flag
+	infraFlag bool, // --infra flag (implies claude+tmux)
 	modelFlag string, // --model flag (for compatibility warnings)
 	projCfg *config.Config, // .orch/config.yaml in project
 	globalCfg *userconfig.Config, // ~/.orch/config.yaml
@@ -69,6 +70,18 @@ func resolveBackend(
 	if opusFlag && isDisabled("claude") {
 		result.Warnings = append(result.Warnings,
 			"--opus flag ignored: claude backend is disabled")
+	}
+
+	// Priority 2.5: Explicit --infra flag (implies claude backend for infrastructure work)
+	// Skip if claude is disabled
+	if infraFlag && !isDisabled("claude") {
+		result.Backend = "claude"
+		result.Reason = "--infra flag (infrastructure work needs crash-resistant backend)"
+		return addInfrastructureWarning(result, task, beadsID)
+	}
+	if infraFlag && isDisabled("claude") {
+		result.Warnings = append(result.Warnings,
+			"--infra flag ignored: claude backend is disabled")
 	}
 
 	// Priority 3: Project config (.orch/config.yaml in project directory)

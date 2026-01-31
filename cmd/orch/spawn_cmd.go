@@ -42,6 +42,7 @@ var (
 	spawnMode                string // Implementation mode: tdd or direct
 	spawnBackendFlag         string // Spawn backend: claude or opencode (overrides config and auto-selection)
 	spawnOpus                bool   // Use Opus via Claude CLI in tmux (implies claude mode)
+	spawnInfra               bool   // Infrastructure work: implies claude+tmux (survives service crashes)
 	spawnValidation          string
 	spawnInline              bool   // Run inline (blocking) with TUI
 	spawnHeadless            bool   // Run headless via HTTP API (automation/scripting)
@@ -78,16 +79,20 @@ To proceed with manual spawn, you must acknowledge this with --bypass-triage.
 This creates friction to encourage the preferred daemon-driven workflow.
 
 Backend Modes (--backend):
-  claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus) (default)
-  opencode: Uses OpenCode HTTP API (DeepSeek, etc.)
+  opencode: Uses OpenCode HTTP API (DeepSeek, etc.) - DEFAULT
+            Dashboard visibility, cost tracking, headless batch work
+  claude:   Uses Claude Code CLI in tmux (Max subscription, unlimited Opus)
+            Survives service crashes, for infrastructure work
   docker:   Uses Claude CLI in Docker container for Statsig fingerprint isolation
             (Rate limit escape hatch - fresh fingerprint per spawn)
 
-  Priority: --backend flag > --opus flag > config (spawn_mode) > --model auto > default
+  Priority: --backend flag > --opus flag > --infra flag > config (spawn_mode) > default (opencode)
   Config can set default mode: spawn_mode: opencode in .orch/config.yaml
 
-  Critical infrastructure work (serve.go, pkg/opencode) triggers an advisory warning
-  but respects your config. Use --backend claude --tmux for escape hatch when needed.
+  Infrastructure Work:
+    Use --infra flag for work on critical services (opencode, daemon, spawn itself).
+    Implies: --backend claude --tmux (crash-resistant backend with visible TUI)
+    Example: orch spawn --bypass-triage --infra investigation "fix opencode crash"
 
 Spawn Modes:
   Default (headless): Spawns via HTTP API - no TUI, automation-friendly, returns immediately
@@ -157,6 +162,9 @@ Examples:
   # Claude CLI inline mode - interactive orchestrator session in current terminal
   orch spawn --bypass-triage --backend claude --inline orchestrator "coordinate work"
 
+  # Infrastructure work - crash-resistant backend (implies claude+tmux)
+  orch spawn --bypass-triage --infra investigation "fix opencode server crash"
+
   # Gap gating - block spawn on poor context quality
   orch spawn --bypass-triage --gate-on-gap investigation "important task"
   
@@ -180,6 +188,7 @@ func init() {
 	spawnCmd.Flags().StringVar(&spawnMode, "mode", "tdd", "Implementation mode: tdd or direct")
 	spawnCmd.Flags().StringVar(&spawnBackendFlag, "backend", "", "Spawn backend: claude (tmux + Claude CLI), opencode (HTTP API), or docker (containerized for fingerprint isolation). Overrides config and auto-selection.")
 	spawnCmd.Flags().BoolVar(&spawnOpus, "opus", false, "Use Opus via Claude CLI in tmux (Max subscription, implies claude backend + tmux mode)")
+	spawnCmd.Flags().BoolVar(&spawnInfra, "infra", false, "Infrastructure work: use claude+tmux backend (survives service crashes)")
 	spawnCmd.Flags().StringVar(&spawnValidation, "validation", "tests", "Validation level: none, tests, smoke-test")
 	spawnCmd.Flags().BoolVar(&spawnInline, "inline", false, "Run inline (blocking) with TUI")
 	spawnCmd.Flags().BoolVar(&spawnHeadless, "headless", false, "Run headless via HTTP API (default behavior, flag is redundant)")
@@ -673,6 +682,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	resolution := resolveBackend(
 		spawnBackendFlag,
 		spawnOpus,
+		spawnInfra,
 		spawnModel,
 		projCfg,
 		globalCfg,
@@ -828,7 +838,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 
 	// Orchestrator-type skills default to tmux mode (visible interaction)
 	// Workers default to headless mode (automation-friendly)
-	useTmux := tmux || attach || cfg.IsOrchestrator
+	// Infrastructure work (--infra) uses tmux for crash resistance
+	useTmux := tmux || attach || cfg.IsOrchestrator || spawnInfra
 	if useTmux {
 		// Tmux mode - visible, interruptible
 		// Default for orchestrator skills, opt-in for workers

@@ -74,8 +74,8 @@ orch supports three backends for redundancy and different use cases.
 
 | Backend | Flag | CLI Used | Cost Model | Dashboard | Use When |
 |---------|------|----------|------------|-----------|----------|
-| **Claude** (default) | `--backend claude` | `claude` CLI | $200/mo Max | No | Primary work, Opus quality |
-| **OpenCode** | `--backend opencode` | OpenCode API | Pay-per-token | Yes | Cost tracking, headless batch |
+| **OpenCode** (default) | `--backend opencode` | OpenCode API | Pay-per-token | Yes | Normal work, dashboard visibility, cost tracking |
+| **Claude** | `--backend claude` | `claude` CLI | $200/mo Max | No | Infrastructure work, survives crashes, Opus quality |
 | **Docker** | `--backend docker` | Docker + `claude` | $200/mo Max | No | Rate limit escape (fresh fingerprint) |
 
 ### Backend Selection Priority
@@ -84,23 +84,27 @@ When spawning, backend is determined by (in order):
 
 1. **Explicit `--backend` flag** (claude, opencode, or docker)
 2. **`--opus` flag** (implies claude backend)
-3. **Project config** (`.orch/config.yaml spawn_mode`)
-4. **Global config** (`~/.orch/config.yaml backend`)
-5. **Default:** claude
+3. **`--infra` flag** (implies claude backend + tmux mode for infrastructure work)
+4. **Project config** (`.orch/config.yaml spawn_mode`)
+5. **Global config** (`~/.orch/config.yaml backend`)
+6. **Default:** opencode (dashboard visibility, cost tracking)
 
 **Example priority cascade:**
 ```bash
 # Explicit flag wins
-orch spawn --backend opencode investigation "task"   # → OpenCode
+orch spawn --backend claude investigation "task"     # → Claude
 
 # --opus implies claude
 orch spawn --opus investigation "task"               # → Claude
 
-# Project config (if .orch/config.yaml has spawn_mode: opencode)
-orch spawn investigation "task"                      # → OpenCode
+# --infra implies claude + tmux
+orch spawn --infra investigation "task"              # → Claude (tmux mode)
+
+# Project config (if .orch/config.yaml has spawn_mode: claude)
+orch spawn investigation "task"                      # → Claude
 
 # Default (no config)
-orch spawn investigation "task"                      # → Claude
+orch spawn investigation "task"                      # → OpenCode
 ```
 
 ### Primary Path: Claude CLI
@@ -162,19 +166,44 @@ orch spawn --backend docker investigation "task"
 
 **Important:** Docker bypasses **device-level rate throttling** only. The weekly usage quota is **account-level** and cannot be bypassed with fingerprint isolation.
 
-### Infrastructure Work Detection
+### Infrastructure Work and the `--infra` Flag
 
-When spawning work that mentions "opencode", "spawn", "daemon", "registry", "orch serve", "overmind", or "dashboard", orch **warns** that claude+tmux is recommended but does NOT auto-override.
+**Problem:** Infrastructure work (opencode server, daemon, spawn system) can kill its own execution path if using opencode backend (e.g., restarting OpenCode server kills OpenCode-spawned agents).
 
-**Why:** Infrastructure work can kill its own execution path (e.g., restarting OpenCode server kills OpenCode-spawned agents).
+**Solution:** Use `--infra` flag for critical infrastructure work.
+
+```bash
+# Infrastructure work - automatic backend selection
+orch spawn --bypass-triage --infra investigation "fix opencode server crash"
+# → Uses claude backend with tmux mode (survives service crashes)
+
+# Equivalent to:
+orch spawn --bypass-triage --backend claude --tmux investigation "fix opencode"
+```
+
+**When to use `--infra`:**
+- Work on opencode server (`pkg/opencode`, `serve.go`)
+- Work on spawn system (`cmd/orch/spawn_*.go`, `pkg/spawn`)
+- Work on daemon (`pkg/daemon`)
+- Work on registry or core infrastructure
+- Any work that may restart critical services
+
+**What `--infra` does:**
+1. Sets backend to `claude` (uses Claude CLI instead of OpenCode API)
+2. Enables tmux mode (visible TUI, survives crashes)
+3. Skips infrastructure detection warning (you already acknowledged the risk)
+
+**Advisory Detection:**
+
+When spawning work that mentions "opencode", "spawn", "daemon", "registry", "orch serve", "overmind", or "dashboard", orch warns but does NOT auto-override:
 
 ```bash
 # System warns about infrastructure keywords
 orch spawn --bypass-triage investigation "fix opencode server crash"
-# Warning: Infrastructure keywords detected. Consider --backend claude --tmux
+# Warning: Infrastructure keywords detected. Consider --infra flag
 
-# Explicitly use escape hatch for critical work
-orch spawn --bypass-triage --backend claude --tmux investigation "fix opencode"
+# Use --infra to acknowledge and auto-select safe backend
+orch spawn --bypass-triage --infra investigation "fix opencode"
 ```
 
 ---
@@ -328,6 +357,14 @@ Before modifying these files, consider extraction. See .kb/guides/code-extractio
 | `--model <alias>` | Model selection: opus, sonnet, haiku, flash, pro |
 | `--mcp <server>` | Add MCP server (e.g., `--mcp playwright`) |
 | `--workdir <path>` | Run agent in different directory |
+
+### Backend Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--backend <name>` | Explicit backend: `claude`, `opencode`, or `docker` |
+| `--opus` | Use Opus via Claude CLI in tmux (implies `--backend claude --tmux`) |
+| `--infra` | Infrastructure work: use claude+tmux (survives service crashes) |
 
 ### Mode Flags
 
@@ -499,11 +536,12 @@ sp-feat-something [specs-platform-36]  # specs-platform project
 - **Triage bypass required** - manual spawns need `--bypass-triage` to encourage daemon workflow
 
 ### Backend Architecture
-- **Claude CLI is default backend** - Opus access, $200/mo flat (Jan 18, 2026 decision)
+- **OpenCode is default backend** - Dashboard visibility, cost tracking, headless batch work (Jan 30, 2026)
+- **Claude backend for infrastructure** - Use `--infra` flag for work that may restart services
 - **Only two viable API paths** - claude+opus or opencode+sonnet (Opus blocked via API)
 - **Docker provides fingerprint isolation** - for device-level rate limit bypass only
 - **Weekly quota is account-level** - Docker cannot bypass weekly usage limits
-- **Infrastructure detection is advisory** - warns but doesn't auto-override backend
+- **Infrastructure detection is advisory** - warns but doesn't auto-override backend (use `--infra` to acknowledge)
 
 ### Safety & Limits
 - **Proactive rate limits** - warn at 80%, block at 95% with auto-switch attempt
