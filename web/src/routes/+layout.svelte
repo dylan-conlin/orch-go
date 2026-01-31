@@ -14,7 +14,8 @@
 
 	// Navigation items
 	const navItems = [
-		{ href: '/', label: 'Dashboard' }
+		{ href: '/', label: 'Dashboard' },
+		{ href: '/work-graph', label: 'Work Graph' }
 	];
 
 	function getUsageColor(percent: number | null): 'green' | 'yellow' | 'red' | 'unavailable' {
