@@ -70,149 +70,79 @@
             letter-spacing: 0.5px;
         }
         
-        .outcome {
+        .section {
+            margin: 48px 0;
+        }
+        
+        .section-header {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #333;
+        }
+        
+        .section-note {
+            font-size: 13px;
+            color: #888;
+            font-style: italic;
+            margin-bottom: 16px;
+        }
+        
+        .verdict {
             background: #1a1212;
-            border: 1px solid #3a2222;
+            border: 3px solid #3a2222;
             border-radius: 8px;
-            padding: 24px;
+            padding: 32px;
             margin: 32px 0;
         }
         
-        .outcome-label {
+        .verdict-label {
             color: #ff6b6b;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: 14px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
+            letter-spacing: 1.5px;
+            margin-bottom: 16px;
         }
         
-        .outcome-text {
-            font-size: 18px;
+        .verdict-outcome {
+            font-size: 24px;
+            font-weight: 600;
             color: #fff;
+            margin-bottom: 24px;
+            line-height: 1.4;
         }
         
-        .timeline {
-            position: relative;
-            padding-left: 40px;
-            margin: 40px 0;
+        .verdict-item {
+            margin: 20px 0;
+            padding-left: 20px;
+            border-left: 3px solid #ff6b6b;
         }
         
-        .timeline::before {
-            content: '';
-            position: absolute;
-            left: 16px;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: #2a2a2a;
-        }
-        
-        .timeline-item {
-            position: relative;
-            margin-bottom: 32px;
-            padding-bottom: 32px;
-            border-bottom: 1px solid #1a1a1a;
-        }
-        
-        .timeline-item:last-child {
-            border-bottom: none;
-        }
-        
-        .timeline-dot {
-            position: absolute;
-            left: -30px;
-            top: 6px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #3a3a3a;
-            border: 2px solid #0a0a0a;
-        }
-        
-        .timeline-dot.investigation {
-            background: #4a9eff;
-        }
-        
-        .timeline-dot.commit {
-            background: #6b7280;
-        }
-        
-        .timeline-dot.decision {
-            background: #ff6b6b;
-        }
-        
-        .timeline-dot.contradiction {
-            background: #fbbf24;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .timeline-date {
-            color: #666;
-            font-size: 12px;
+        .verdict-item-label {
+            font-size: 13px;
+            color: #ff6b6b;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         
-        .timeline-title {
+        .verdict-item-text {
             font-size: 16px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 8px;
-        }
-        
-        .timeline-content {
-            color: #aaa;
-            font-size: 14px;
-            margin-bottom: 12px;
-        }
-        
-        .tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        
-        .tag {
-            font-size: 11px;
-            padding: 4px 10px;
-            border-radius: 4px;
-            background: #1a1a1a;
-            border: 1px solid #2a2a2a;
-            color: #888;
-        }
-        
-        .tag.approach {
-            background: #1a1f2e;
-            border-color: #2a3f5f;
-            color: #6b9bd1;
-        }
-        
-        .tag.fix {
-            background: #1a2e1a;
-            border-color: #2a4f2a;
-            color: #6bd16b;
-        }
-        
-        .tag.revert {
-            background: #2e1a1a;
-            border-color: #4f2a2a;
-            color: #d16b6b;
+            color: #e0e0e0;
+            line-height: 1.5;
         }
         
         .contradiction-section {
             background: #1f1a12;
-            border: 2px solid #3a3020;
+            border: 3px solid #3a3020;
             border-radius: 8px;
-            padding: 24px;
+            padding: 32px;
             margin: 32px 0;
         }
         
@@ -221,73 +151,294 @@
             font-size: 14px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 16px;
+            letter-spacing: 1.5px;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
             gap: 8px;
         }
         
         .contradiction-icon {
-            font-size: 20px;
+            font-size: 24px;
+        }
+        
+        .contradiction-intro {
+            font-size: 16px;
+            color: #e0e0e0;
+            margin-bottom: 24px;
+            padding: 16px;
+            background: rgba(251, 191, 36, 0.1);
+            border-radius: 6px;
+            border-left: 4px solid #fbbf24;
+        }
+        
+        .contradiction-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
         }
         
         .contradiction-item {
             background: #161612;
-            border-left: 3px solid #fbbf24;
-            padding: 16px;
-            margin-bottom: 12px;
-        }
-        
-        .contradiction-item:last-child {
-            margin-bottom: 0;
+            border: 2px solid #fbbf24;
+            padding: 20px;
+            border-radius: 6px;
         }
         
         .contradiction-label {
             font-size: 12px;
-            color: #888;
-            margin-bottom: 4px;
+            color: #fbbf24;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
         }
         
         .contradiction-text {
             color: #e0e0e0;
             font-size: 14px;
+            line-height: 1.5;
         }
         
-        .human-observations {
+        .ground-truth {
             background: #12121a;
-            border: 1px solid #2a2a3a;
+            border: 2px solid #2a2a3a;
             border-radius: 8px;
-            padding: 24px;
+            padding: 32px;
             margin: 32px 0;
         }
         
-        .human-header {
+        .ground-truth-header {
             color: #8b8bf5;
             font-size: 14px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
+            margin-bottom: 20px;
+        }
+        
+        .ground-truth-item {
+            margin: 20px 0;
+        }
+        
+        .ground-truth-label {
+            font-size: 13px;
+            color: #8b8bf5;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .ground-truth-quote {
+            border-left: 4px solid #8b8bf5;
+            padding-left: 20px;
+            font-style: italic;
+            color: #e0e0e0;
+            font-size: 16px;
+            line-height: 1.6;
+            margin: 8px 0;
+        }
+        
+        .ground-truth-context {
+            font-size: 14px;
+            color: #999;
+            margin-top: 8px;
+        }
+        
+        .timeline {
+            position: relative;
+            padding: 0;
+            margin: 32px 0;
+        }
+        
+        .week-group {
+            margin-bottom: 40px;
+            background: #0f0f0f;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 24px;
+        }
+        
+        .week-header {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 12px;
+        }
+        
+        .week-stats {
+            font-size: 13px;
+            color: #888;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+        
+        .timeline-compact {
+            margin-top: 16px;
+        }
+        
+        .timeline-compact-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .timeline-compact-item:last-child {
+            border-bottom: none;
+        }
+        
+        .timeline-compact-date {
+            font-size: 11px;
+            color: #666;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        
+        .timeline-compact-title {
+            font-size: 14px;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+        }
+        
+        .timeline-compact-content {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .failure-mode {
+            background: #1a1515;
+            border: 2px solid #3a2525;
+            border-radius: 8px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .failure-mode-name {
+            font-size: 28px;
+            font-weight: 700;
+            color: #ff6b6b;
             margin-bottom: 16px;
         }
         
-        .human-quote {
-            border-left: 3px solid #8b8bf5;
-            padding-left: 16px;
-            margin: 16px 0;
-            font-style: italic;
-            color: #ccc;
+        .failure-mode-subtitle {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 24px;
+        }
+        
+        .failure-mode-item {
+            margin: 20px 0;
+            padding-left: 20px;
+            border-left: 3px solid #ff6b6b;
+        }
+        
+        .failure-mode-label {
+            font-size: 13px;
+            color: #ff6b6b;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        
+        .failure-mode-text {
+            font-size: 15px;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        
+        .should-have-happened {
+            background: #121a1a;
+            border: 2px solid #2a3a3a;
+            border-radius: 8px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .should-have-header {
+            color: #6bd16b;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 20px;
+        }
+        
+        .intervention {
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(107, 209, 107, 0.05);
+            border-left: 4px solid #6bd16b;
+            border-radius: 6px;
+        }
+        
+        .intervention-when {
+            font-size: 12px;
+            color: #6bd16b;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        
+        .intervention-action {
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        
+        .intervention-why {
+            font-size: 14px;
+            color: #aaa;
+            line-height: 1.5;
+        }
+        
+        .lessons {
+            background: #1a1a12;
+            border: 2px solid #3a3a2a;
+            border-radius: 8px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .lessons-header {
+            color: #d1b16b;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 20px;
+        }
+        
+        .lesson {
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(209, 177, 107, 0.05);
+            border-left: 4px solid #d1b16b;
+            border-radius: 6px;
+        }
+        
+        .lesson-number {
+            font-size: 12px;
+            color: #d1b16b;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        
+        .lesson-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        
+        .lesson-text {
+            font-size: 14px;
+            color: #aaa;
+            line-height: 1.6;
         }
         
         .evidence-section {
             margin: 32px 0;
-        }
-        
-        .evidence-header {
-            font-size: 18px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 16px;
         }
         
         .evidence-grid {
@@ -300,24 +451,24 @@
             background: #161616;
             border: 1px solid #2a2a2a;
             border-radius: 8px;
-            padding: 16px;
+            padding: 20px;
         }
         
         .evidence-title {
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
             color: #fff;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
         
         .evidence-list {
             list-style: none;
-            font-size: 12px;
+            font-size: 13px;
             color: #888;
         }
         
         .evidence-list li {
-            padding: 4px 0;
+            padding: 6px 0;
             border-bottom: 1px solid #1a1a1a;
         }
         
@@ -335,40 +486,15 @@
             text-decoration: underline;
         }
         
-        .insights-section {
-            background: #121218;
-            border: 1px solid #2a2a3a;
-            border-radius: 8px;
-            padding: 24px;
-            margin: 32px 0;
-        }
-        
-        .insights-header {
-            font-size: 18px;
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 16px;
-        }
-        
-        .insight {
-            padding: 12px 0;
-            border-bottom: 1px solid #1a1a1a;
-        }
-        
-        .insight:last-child {
-            border-bottom: none;
-        }
-        
-        .insight-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #e0e0e0;
-            margin-bottom: 4px;
-        }
-        
-        .insight-text {
-            font-size: 13px;
-            color: #999;
+        .tag {
+            display: inline-block;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            color: #888;
+            margin-right: 8px;
         }
     </style>
 </head>
@@ -376,7 +502,7 @@
     <div class="container">
         <header>
             <h1>Case File: Coaching Plugin Worker Detection</h1>
-            <div class="subtitle">A chronicle of 19 investigations, 34 commits, and 3 weeks spent chasing a moving target</div>
+            <div class="subtitle">The Verification Gap: When agents self-certify fixes without end-to-end validation</div>
         </header>
         
         <div class="stats">
@@ -398,419 +524,468 @@
             </div>
         </div>
         
-        <div class="outcome">
-            <div class="outcome-label">Final Outcome</div>
-            <div class="outcome-text">Plugin disabled on January 28, 2026. Never worked reliably.</div>
-        </div>
-        
-        <div class="contradiction-section">
-            <div class="contradiction-header">
-                <span class="contradiction-icon">⚠️</span>
-                Contradictions on January 28, 2026
-            </div>
-            <div class="contradiction-item">
-                <div class="contradiction-label">Investigation A (13:35)</div>
-                <div class="contradiction-text">"Title-based detection IS working. Zero coaching metrics for verified worker sessions. No changes needed."</div>
-            </div>
-            <div class="contradiction-item">
-                <div class="contradiction-label">Investigation B (13:39)</div>
-                <div class="contradiction-text">"OpenCode fix exists in source code. Just needs rebuild and restart to work."</div>
-            </div>
-            <div class="contradiction-item">
-                <div class="contradiction-label">Investigation C (13:43)</div>
-                <div class="contradiction-text">"Metadata-based detection broken. session.created events don't include metadata field. Revert to title-based."</div>
-            </div>
-            <div class="contradiction-item">
-                <div class="contradiction-label">Investigation D (14:59)</div>
-                <div class="contradiction-text">"Plugin disabled because metadata approach doesn't work. Needs fix + rename to re-enable."</div>
-            </div>
-            <div class="contradiction-item">
-                <div class="contradiction-label">Investigation E (18:45)</div>
-                <div class="contradiction-text">"Accept title-based detection as 'good enough.' Create upstream OpenCode issue for proper fix."</div>
-            </div>
-        </div>
-        
-        <div class="human-observations">
-            <div class="human-header">Human Observations (Dylan)</div>
-            <div class="human-quote">
-                "I'm still getting alerts on workers."
-            </div>
-            <div class="human-quote">
-                "I've lost faith that this is actually possible. I've lost trust in what workers say and what orchestrators say."
-            </div>
-        </div>
-        
-        <div class="insights-section">
-            <div class="insights-header">What The Case File Reveals</div>
-            <div class="insight">
-                <div class="insight-title">1. Each agent started fresh</div>
-                <div class="insight-text">No synthesis of prior work. Investigations contradict each other within hours.</div>
-            </div>
-            <div class="insight">
-                <div class="insight-title">2. Contradictions piled up unnoticed</div>
-                <div class="insight-text">Jan 28: 5 investigations, 5 different conclusions. Agent A: "working", Agent B: "just rebuild", Agent C: "revert", Agent D: "disabled", Agent E: "accept as-is".</div>
-            </div>
-            <div class="insight">
-                <div class="insight-title">3. Each agent self-certified "fixed" without e2e verification</div>
-                <div class="insight-text">Agents checked that their slice looked correct (code paths, grep logs) but never verified the actual user experience.</div>
-            </div>
-            <div class="insight">
-                <div class="insight-title">4. Dylan's evidence vanished into chat</div>
-                <div class="insight-text">"Still broken" observations had no permanent record. No screenshot evidence. No case file to track the saga.</div>
-            </div>
-        </div>
-        
-        <div class="timeline">
-            <h2 style="margin-bottom: 32px; color: #fff;">Timeline</h2>
-            
-            <!-- Jan 10 - The Beginning -->
-            <div class="timeline-item">
-                <div class="timeline-dot investigation"></div>
-                <div class="timeline-date">Jan 10, 2026</div>
-                <div class="timeline-title">Prototype Created</div>
-                <div class="timeline-content">
-                    Initial coaching plugin implemented with 8 behavioral pattern detections.
+        <!-- Section 1: THE VERDICT -->
+        <div class="section">
+            <div class="section-header">The Verdict (Read This First)</div>
+            <div class="verdict">
+                <div class="verdict-label">Final Outcome</div>
+                <div class="verdict-outcome">
+                    Plugin disabled on January 28, 2026. Never worked reliably despite 19 investigations and 34+ commits over 3 weeks.
                 </div>
-                <div class="tags">
-                    <span class="tag approach">Tool-level hooks</span>
-                    <span class="tag approach">JSONL metrics</span>
+                
+                <div class="verdict-item">
+                    <div class="verdict-item-label">Root Cause</div>
+                    <div class="verdict-item-text">
+                        Agents verified their code changes looked correct (grepped logs, checked code paths, tested their slice) but never verified the actual end-to-end user experience. Each agent self-certified "fixed" while Dylan continued seeing "I'm still getting alerts on workers."
+                    </div>
                 </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 10</div>
-                <div class="timeline-title">Commit: Worker filtering added</div>
-                <div class="timeline-content">
-                    <code>ddca8a36</code> - First attempt: env var approach
+                
+                <div class="verdict-item">
+                    <div class="verdict-item-label">The Pattern</div>
+                    <div class="verdict-item-text">
+                        <strong>Verification Gap</strong> - Agents conclude success based on local evidence without human confirmation of the symptom being resolved. Technical correctness ≠ problem solved.
+                    </div>
                 </div>
-                <div class="tags">
-                    <span class="tag revert">Failed: plugin runs in server process</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 10</div>
-                <div class="timeline-title">Commit: Per-session detection</div>
-                <div class="timeline-content">
-                    <code>6e6503ae</code> - Move detection to tool hooks
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Failed: fires same time as coaching</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 10</div>
-                <div class="timeline-title">Commit: Message content detection</div>
-                <div class="timeline-content">
-                    <code>05859f38</code> - Detect from message content
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Failed: fires after coaching</span>
-                </div>
-            </div>
-            
-            <!-- Jan 17 - Deep Architecture Analysis -->
-            <div class="timeline-item">
-                <div class="timeline-dot investigation"></div>
-                <div class="timeline-date">Jan 17, 2026</div>
-                <div class="timeline-title">Investigation: Deep Architecture Analysis</div>
-                <div class="timeline-content">
-                    Comprehensive analysis of coaching plugin. Identified "nervous system" architecture with 8 behavioral patterns. Discovered detectWorkerSession caching bug - caching false results permanently misclassified workers.
-                </div>
-                <div class="tags">
-                    <span class="tag approach">Caching bug identified</span>
-                    <span class="tag">421 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 17</div>
-                <div class="timeline-title">Commit: Cache positive results only</div>
-                <div class="timeline-content">
-                    <code>aea09aaf</code> - Fixed caching bug
-                </div>
-                <div class="tags">
-                    <span class="tag fix">Caching fixed</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 17</div>
-                <div class="timeline-title">Commit: session.metadata.role approach</div>
-                <div class="timeline-content">
-                    <code>37b9b0b0</code> - Use metadata for detection
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Later reverted: unreliable</span>
-                </div>
-            </div>
-            
-            <!-- Jan 23 - Directory-Based Detection -->
-            <div class="timeline-item">
-                <div class="timeline-dot investigation"></div>
-                <div class="timeline-date">Jan 23, 2026</div>
-                <div class="timeline-title">Investigation: Review Worker Detection</div>
-                <div class="timeline-content">
-                    Identified race condition: detection and coaching both run in tool.execute.after. Recommended directory-based detection in session.created event to detect workers BEFORE any tool calls.
-                </div>
-                <div class="tags">
-                    <span class="tag approach">Directory-based detection</span>
-                    <span class="tag">306 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 23</div>
-                <div class="timeline-title">Commit: session.created event detection</div>
-                <div class="timeline-content">
-                    <code>65793caa</code> - Add early detection via session.created
-                </div>
-                <div class="tags">
-                    <span class="tag approach">Early detection</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 23</div>
-                <div class="timeline-title">Commit: Title pattern detection</div>
-                <div class="timeline-content">
-                    <code>da067161</code> - Detect by session title pattern
-                </div>
-                <div class="tags">
-                    <span class="tag approach">Title-based</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 24</div>
-                <div class="timeline-title">Commit: File-path detection (revert metadata)</div>
-                <div class="timeline-content">
-                    <code>7c01ddef</code> - Revert to file-path approach
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Metadata unreliable</span>
-                </div>
-            </div>
-            
-            <!-- Jan 27 - Pattern Recognition -->
-            <div class="timeline-item">
-                <div class="timeline-dot investigation"></div>
-                <div class="timeline-date">Jan 27, 2026</div>
-                <div class="timeline-title">Investigation: Why Does Detection Keep Failing?</div>
-                <div class="timeline-content">
-                    Discovered 13+ fix attempts, each addressing different edge cases. Found session.created directory is always PROJECT root, not workspace - invalidating Jan 23 recommendation. Identified root cause: missing first-class worker identity in OpenCode.
-                </div>
-                <div class="tags">
-                    <span class="tag">13+ commits analyzed</span>
-                    <span class="tag approach">Architectural gap identified</span>
-                    <span class="tag">307 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 27</div>
-                <div class="timeline-title">Commit: Directory-based early detection</div>
-                <div class="timeline-content">
-                    <code>b6301a28</code> - Attempt directory detection
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Failed: directory is project root</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 27</div>
-                <div class="timeline-title">Commit: Distinguish spawned orchestrators</div>
-                <div class="timeline-content">
-                    <code>389e2041</code> - Fix false positives
-                </div>
-                <div class="tags">
-                    <span class="tag fix">Edge case fix</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 27</div>
-                <div class="timeline-title">Commit: Three false positive fixes</div>
-                <div class="timeline-content">
-                    <code>9ed47c17</code> - Tuning detection
-                </div>
-                <div class="tags">
-                    <span class="tag fix">Tuning</span>
-                </div>
-            </div>
-            
-            <!-- Jan 28 - The Contradictory Day -->
-            <div class="timeline-item">
-                <div class="timeline-dot investigation contradiction"></div>
-                <div class="timeline-date">Jan 28, 2026 - 11:56</div>
-                <div class="timeline-title">Investigation A: Verify Detection</div>
-                <div class="timeline-content">
-                    Tested TWO worker sessions. Both had zero coaching alerts. Title-based detection working correctly. Conclusion: "No changes needed - verification complete."
-                </div>
-                <div class="tags">
-                    <span class="tag fix">Working ✓</span>
-                    <span class="tag">237 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 28</div>
-                <div class="timeline-title">Commit: Expose ORCH_WORKER in metadata</div>
-                <div class="timeline-content">
-                    <code>1de2e1e7</code> - Add metadata exposure
-                </div>
-                <div class="tags">
-                    <span class="tag approach">Metadata approach</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot investigation contradiction"></div>
-                <div class="timeline-date">Jan 28, 2026 - 13:39</div>
-                <div class="timeline-title">Investigation B: Still Fires Workers</div>
-                <div class="timeline-content">
-                    Traced full chain: spawn → env → header → metadata → plugin. Found fix EXISTS in OpenCode source but running server uses old code. Conclusion: "Restart OpenCode to pick up fix."
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Deployment gap</span>
-                    <span class="tag">253 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 28 - 13:39</div>
-                <div class="timeline-title">Plugin Disabled</div>
-                <div class="timeline-content">
-                    <code>coaching.ts → coaching.ts.disabled</code>
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Disabled</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot investigation contradiction"></div>
-                <div class="timeline-date">Jan 28, 2026 - 13:43</div>
-                <div class="timeline-title">Investigation C: Debug Still Fires</div>
-                <div class="timeline-content">
-                    Found metadata field does NOT exist in session.created events. Plugin checks sessionMetadata.role but it's always empty object. Conclusion: "Metadata-based detection cannot work. Revert to title-based."
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Metadata broken</span>
-                    <span class="tag">307 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot investigation contradiction"></div>
-                <div class="timeline-date">Jan 28, 2026 - 14:59</div>
-                <div class="timeline-title">Investigation D: Debug Worker Detection</div>
-                <div class="timeline-content">
-                    Found plugin file is disabled (.ts.disabled). Current code uses broken metadata-based detection. Conclusion: "Replace line 2028 with title-based pattern, rename to .ts to enable."
-                </div>
-                <div class="tags">
-                    <span class="tag">Fix defined</span>
-                    <span class="tag">277 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot investigation contradiction"></div>
-                <div class="timeline-date">Jan 28, 2026 - 18:45</div>
-                <div class="timeline-title">Investigation E: Cannot Reliably Detect Workers</div>
-                <div class="timeline-content">
-                    Architectural analysis: plugin runs in server process, can't see env vars. Title-based detection IS working for this session (verified zero metrics). Conclusion: "Accept title-based as 'good enough', create upstream OpenCode issue for metadata exposure."
-                </div>
-                <div class="tags">
-                    <span class="tag approach">Accept limitation</span>
-                    <span class="tag">319 lines</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot commit"></div>
-                <div class="timeline-date">Jan 28</div>
-                <div class="timeline-title">Commit: Simplify to metadata.role</div>
-                <div class="timeline-content">
-                    <code>be0c07b8</code> - Refactor to use session.metadata.role
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Based on broken approach</span>
-                </div>
-            </div>
-            
-            <div class="timeline-item">
-                <div class="timeline-dot decision"></div>
-                <div class="timeline-date">Jan 28, 2026 - End of Day</div>
-                <div class="timeline-title">Decision: Disable Coaching Plugin</div>
-                <div class="timeline-content">
-                    Final decision to disable plugin rather than continue investigation churn. Human (Dylan) lost faith: "I've lost trust in what workers say and what orchestrators say."
-                </div>
-                <div class="tags">
-                    <span class="tag revert">Disabled permanently</span>
+                
+                <div class="verdict-item">
+                    <div class="verdict-item-label">Trust Erosion</div>
+                    <div class="verdict-item-text">
+                        Dylan: "I've lost faith that this is actually possible. I've lost trust in what workers say and what orchestrators say." When humans stop trusting agent conclusions, the system breaks.
+                    </div>
                 </div>
             </div>
         </div>
         
-        <div class="evidence-section">
-            <div class="evidence-header">Evidence Trail</div>
-            <div class="evidence-grid">
-                <div class="evidence-card">
-                    <div class="evidence-title">Investigations (19)</div>
-                    <ul class="evidence-list">
-                        <li>2026-01-28: 5 investigations, contradictory</li>
-                        <li>2026-01-27: 3 investigations</li>
-                        <li>2026-01-23: 1 investigation</li>
-                        <li>2026-01-17-18: 6 investigations</li>
-                        <li>2026-01-10-11: 4 investigations</li>
-                    </ul>
+        <!-- Section 2: THE CONTRADICTION -->
+        <div class="section">
+            <div class="section-header">The Contradiction (These Cannot All Be True)</div>
+            <div class="section-note">On January 28, 2026, five agents investigated the same problem. They produced five different conclusions within 7 hours.</div>
+            
+            <div class="contradiction-section">
+                <div class="contradiction-header">
+                    <span class="contradiction-icon">⚠️</span>
+                    Five Agents, Five Conclusions, Same Day
                 </div>
-                <div class="evidence-card">
-                    <div class="evidence-title">Commits (34+)</div>
-                    <ul class="evidence-list">
-                        <li>Jan 28: 5 commits (final day)</li>
-                        <li>Jan 27: 3 commits (false positives)</li>
-                        <li>Jan 23-24: 3 commits (detection approaches)</li>
-                        <li>Jan 17: 12+ commits (architecture work)</li>
-                        <li>Jan 10-11: 11+ commits (prototype)</li>
-                    </ul>
+                
+                <div class="contradiction-intro">
+                    <strong>The signal:</strong> When multiple agents reach contradictory conclusions about the same system on the same day, at least some are wrong. Yet each agent verified their conclusion and moved on.
                 </div>
-                <div class="evidence-card">
-                    <div class="evidence-title">Detection Approaches</div>
-                    <ul class="evidence-list">
-                        <li>Env var (failed: wrong process)</li>
-                        <li>session.metadata.role (failed: unreliable)</li>
-                        <li>Directory path (failed: wrong directory)</li>
-                        <li>Title pattern (worked, but had edge cases)</li>
-                        <li>File path args (too late)</li>
-                    </ul>
+                
+                <div class="contradiction-grid">
+                    <div class="contradiction-item">
+                        <div class="contradiction-label">Investigation A (11:56)</div>
+                        <div class="contradiction-text">
+                            "Title-based detection IS working. Zero coaching metrics for verified worker sessions. <strong>No changes needed - verification complete.</strong>"
+                        </div>
+                    </div>
+                    
+                    <div class="contradiction-item">
+                        <div class="contradiction-label">Investigation B (13:39)</div>
+                        <div class="contradiction-text">
+                            "OpenCode fix exists in source code. Running server uses old code. <strong>Just needs rebuild and restart to work.</strong>"
+                        </div>
+                    </div>
                 </div>
-                <div class="evidence-card">
-                    <div class="evidence-title">Decision Record</div>
-                    <ul class="evidence-list">
-                        <li><a href="../decisions/2026-01-28-coaching-plugin-disabled.md" class="link">2026-01-28-coaching-plugin-disabled.md</a></li>
-                        <li>Status: Active (blocking future work)</li>
-                        <li>Constraints: kb-4ee4e1, kb-9c8c38</li>
-                    </ul>
+                
+                <div class="contradiction-grid">
+                    <div class="contradiction-item">
+                        <div class="contradiction-label">Investigation C (13:43)</div>
+                        <div class="contradiction-text">
+                            "Metadata field does NOT exist in session.created events. session.metadata.role is always empty object. <strong>Metadata-based detection cannot work. Revert to title-based.</strong>"
+                        </div>
+                    </div>
+                    
+                    <div class="contradiction-item">
+                        <div class="contradiction-label">Investigation D (14:59)</div>
+                        <div class="contradiction-text">
+                            "Plugin file is disabled (.ts.disabled). Current code uses broken metadata-based detection. <strong>Replace line 2028 with title-based pattern, rename to .ts.</strong>"
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="contradiction-grid">
+                    <div class="contradiction-item" style="grid-column: 1 / -1;">
+                        <div class="contradiction-label">Investigation E (18:45)</div>
+                        <div class="contradiction-text">
+                            "Title-based detection IS working for this session (verified zero metrics). Plugin runs in server process, can't see env vars. <strong>Accept title-based as 'good enough', create upstream OpenCode issue for metadata exposure.</strong>"
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="contradiction-intro" style="margin-top: 20px; background: rgba(255, 107, 107, 0.1); border-left-color: #ff6b6b;">
+                    <strong>Meanwhile:</strong> Dylan kept seeing coaching alerts in worker sessions. The symptom never changed. The agents were debating what SHOULD work, not verifying what DID work.
                 </div>
             </div>
         </div>
         
+        <!-- Section 3: THE GROUND TRUTH -->
+        <div class="section">
+            <div class="section-header">The Ground Truth (What Dylan Actually Saw)</div>
+            <div class="section-note">Human observations are the ground truth. Agent conclusions are hypotheses.</div>
+            
+            <div class="ground-truth">
+                <div class="ground-truth-header">Human Observations</div>
+                
+                <div class="ground-truth-item">
+                    <div class="ground-truth-label">Observation 1: The symptom persisted</div>
+                    <div class="ground-truth-quote">
+                        "I'm still getting alerts on workers."
+                    </div>
+                    <div class="ground-truth-context">
+                        Repeated observation across multiple investigations. Agents kept claiming "fixed" while Dylan kept seeing the bug.
+                    </div>
+                </div>
+                
+                <div class="ground-truth-item">
+                    <div class="ground-truth-label">Observation 2: Screenshot evidence</div>
+                    <div class="ground-truth-quote">
+                        Dylan pasted screenshots showing orchestrator coaching alerts appearing in worker activity windows.
+                    </div>
+                    <div class="ground-truth-context">
+                        This was the clearest evidence the bug existed. Screenshots went into chat messages, not persisted to any artifact. Subsequent agents couldn't see them. The best evidence was invisible to investigators.
+                    </div>
+                </div>
+                
+                <div class="ground-truth-item">
+                    <div class="ground-truth-label">Observation 3: Trust erosion</div>
+                    <div class="ground-truth-quote">
+                        "I've lost faith that this is actually possible. I've lost trust in what workers say and what orchestrators say."
+                    </div>
+                    <div class="ground-truth-context">
+                        After 19 investigations and 3 weeks, Dylan stopped believing agent conclusions. When human trust breaks, the human-agent loop breaks.
+                    </div>
+                </div>
+                
+                <div class="ground-truth-item">
+                    <div class="ground-truth-label">Observation 4: Evidence hierarchy violated</div>
+                    <div class="ground-truth-context">
+                        <strong>Evidence hierarchy:</strong> Human observation > reproducible test > agent grep > agent conclusion.<br><br>
+                        <strong>What happened:</strong> Agents treated their grep results as ground truth and concluded "fixed" when those results matched their hypothesis. Dylan's persistent "still broken" observations were dismissed as stale or edge cases.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 4: THE TIMELINE -->
+        <div class="section">
+            <div class="section-header">The Timeline (What Was Tried)</div>
+            <div class="section-note">Compressed view grouped by week. Full chronology available in original timeline.</div>
+            
+            <div class="timeline">
+                <div class="week-group">
+                    <div class="week-header">Week 1: Jan 10-11 (Prototype Phase)</div>
+                    <div class="week-stats">4 investigations • 11+ commits • 4 detection approaches tried</div>
+                    
+                    <div class="timeline-compact">
+                        <div class="timeline-compact-item">
+                            <div class="timeline-compact-date">Jan 10</div>
+                            <div class="timeline-compact-title">Prototype created with 8 behavioral patterns</div>
+                            <div class="timeline-compact-content">Tried: env var approach (failed: plugin in server process), per-session detection (failed: same timing as coaching), message content detection (failed: fires after coaching)</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="week-group">
+                    <div class="week-header">Week 2: Jan 17-18 (Architecture Deep Dive)</div>
+                    <div class="week-stats">7 investigations • 12+ commits • Caching bug found and fixed</div>
+                    
+                    <div class="timeline-compact">
+                        <div class="timeline-compact-item">
+                            <div class="timeline-compact-date">Jan 17</div>
+                            <div class="timeline-compact-title">Deep architecture analysis (421 lines)</div>
+                            <div class="timeline-compact-content">Discovered caching bug: caching false results permanently misclassified workers. Fixed caching, moved to session.metadata.role approach.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="week-group">
+                    <div class="week-header">Week 3: Jan 23-24 (Race Condition)</div>
+                    <div class="week-stats">1 investigation • 3 commits • Directory-based detection</div>
+                    
+                    <div class="timeline-compact">
+                        <div class="timeline-compact-item">
+                            <div class="timeline-compact-date">Jan 23</div>
+                            <div class="timeline-compact-title">Race condition identified</div>
+                            <div class="timeline-compact-content">Detection and coaching both run in tool.execute.after. Recommended directory-based detection in session.created to detect workers BEFORE tool calls. Implemented early detection + title pattern matching.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="week-group">
+                    <div class="week-header">Week 3: Jan 27 (Pattern Recognition)</div>
+                    <div class="week-stats">3 investigations • 3 commits • Architectural gap identified</div>
+                    
+                    <div class="timeline-compact">
+                        <div class="timeline-compact-item">
+                            <div class="timeline-compact-date">Jan 27</div>
+                            <div class="timeline-compact-title">13+ fix attempts analyzed</div>
+                            <div class="timeline-compact-content">Found session.created directory is always PROJECT root, not workspace - invalidating Jan 23 approach. Root cause: missing first-class worker identity in OpenCode. Each fix addressed different edge case without solving core problem.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="week-group">
+                    <div class="week-header">Week 3: Jan 28 (The Contradictory Day)</div>
+                    <div class="week-stats">5 investigations • 5 commits • Plugin disabled</div>
+                    
+                    <div class="timeline-compact">
+                        <div class="timeline-compact-item">
+                            <div class="timeline-compact-date">Jan 28 (11:56-18:45)</div>
+                            <div class="timeline-compact-title">Five contradictory conclusions</div>
+                            <div class="timeline-compact-content">"Working" vs "just rebuild" vs "revert to title" vs "replace line 2028" vs "accept as-is". Each agent verified their slice. None verified end-to-end experience.</div>
+                        </div>
+                        
+                        <div class="timeline-compact-item">
+                            <div class="timeline-compact-date">Jan 28 (end of day)</div>
+                            <div class="timeline-compact-title">Decision: Disable plugin</div>
+                            <div class="timeline-compact-content">Dylan: "I've lost faith that this is actually possible." Plugin disabled rather than continue investigation churn.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 24px; padding: 16px; background: rgba(107, 107, 107, 0.1); border-left: 4px solid #6b6b6b; border-radius: 6px; font-size: 13px; color: #999;">
+                <strong>Cumulative pattern:</strong> 4 detection approaches (env var → session.metadata.role → directory path → title pattern). Each approach worked in testing, each failed in production. Each agent fixed their slice without verifying the whole.
+            </div>
+        </div>
+        
+        <!-- Section 5: THE FAILURE MODE -->
+        <div class="section">
+            <div class="section-header">The Failure Mode</div>
+            
+            <div class="failure-mode">
+                <div class="failure-mode-name">The Verification Gap</div>
+                <div class="failure-mode-subtitle">When agents self-certify fixes based on local evidence without validating the end-to-end symptom resolution</div>
+                
+                <div class="failure-mode-item">
+                    <div class="failure-mode-label">What Was Missing</div>
+                    <div class="failure-mode-text">
+                        <strong>Human-in-the-loop symptom validation.</strong> Agents treated "grep shows zero metrics" as proof of fix, but never asked Dylan "are you still seeing alerts?" Each investigation concluded with technical verification (code paths, log analysis) instead of symptom verification (is the bug Dylan reported actually gone?).
+                    </div>
+                </div>
+                
+                <div class="failure-mode-item">
+                    <div class="failure-mode-label">Why It Kept Failing</div>
+                    <div class="failure-mode-text">
+                        Agents optimized for "my change looks correct" instead of "the original symptom is resolved." Technical correctness became the goal. Symptom resolution became secondary. This created a churn loop: fix code → verify code looks right → conclude "fixed" → Dylan still sees bug → new agent spawned → repeat.
+                    </div>
+                </div>
+                
+                <div class="failure-mode-item">
+                    <div class="failure-mode-label">Where We Should Have Stopped</div>
+                    <div class="failure-mode-text">
+                        <strong>After investigation #3 (Jan 17).</strong> Three investigations with different conclusions is a signal. The system should have triggered: <em>"Multiple contradictory hypotheses exist. Escalate for arbitration or end-to-end validation before continuing."</em> Instead, we spawned 16 more investigations over 11 days.
+                    </div>
+                </div>
+                
+                <div class="failure-mode-item">
+                    <div class="failure-mode-label">The Dangerous Assumption</div>
+                    <div class="failure-mode-text">
+                        <strong>"If the code looks right, the fix is complete."</strong> Agents assumed technical correctness implied symptom resolution. This works for deterministic systems. It fails for distributed systems, race conditions, caching, deployment gaps, and environmental differences between dev and production.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 6: THE EVIDENCE TRAIL -->
+        <div class="section">
+            <div class="section-header">The Evidence Trail</div>
+            
+            <div class="evidence-section">
+                <div class="evidence-grid">
+                    <div class="evidence-card">
+                        <div class="evidence-title">Investigations (19)</div>
+                        <ul class="evidence-list">
+                            <li>2026-01-28: 5 investigations (contradictory conclusions)</li>
+                            <li>2026-01-27: 3 investigations (architectural gap identified)</li>
+                            <li>2026-01-23: 1 investigation (race condition found)</li>
+                            <li>2026-01-17-18: 6 investigations (caching bug fixed)</li>
+                            <li>2026-01-10-11: 4 investigations (prototype phase)</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="evidence-card">
+                        <div class="evidence-title">Commits (34+)</div>
+                        <ul class="evidence-list">
+                            <li>Jan 28: 5 commits (final day, metadata approach)</li>
+                            <li>Jan 27: 3 commits (false positive fixes, tuning)</li>
+                            <li>Jan 23-24: 3 commits (early detection, title patterns)</li>
+                            <li>Jan 17: 12+ commits (architecture work, caching fix)</li>
+                            <li>Jan 10-11: 11+ commits (prototype, 4 approaches tried)</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="evidence-card">
+                        <div class="evidence-title">Detection Approaches Tried</div>
+                        <ul class="evidence-list">
+                            <li>1. Env var (ORCH_WORKER=1) - Failed: plugin in server process</li>
+                            <li>2. session.metadata.role - Failed: unreliable, not in session.created</li>
+                            <li>3. Directory path - Failed: directory is project root, not workspace</li>
+                            <li>4. Title pattern - Worked in testing, failed in edge cases</li>
+                            <li>5. File path args - Failed: too late, after coaching fired</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="evidence-card">
+                        <div class="evidence-title">Decision & Constraints</div>
+                        <ul class="evidence-list">
+                            <li><a href="../decisions/2026-01-28-coaching-plugin-disabled.md" class="link">2026-01-28-coaching-plugin-disabled.md</a></li>
+                            <li>Status: Active (blocking future coaching plugin work)</li>
+                            <li>kb-4ee4e1: Failed attempt - coaching plugin worker detection</li>
+                            <li>kb-9c8c38: Constraint - agent "fixed" claims require e2e verification</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="evidence-card">
+                        <div class="evidence-title">Key Investigation Files</div>
+                        <ul class="evidence-list">
+                            <li>2026-01-28-inv-orchestrator-coaching-plugin-cannot-reliably.md</li>
+                            <li>2026-01-28-inv-verify-coaching-plugin-worker-detection.md</li>
+                            <li>2026-01-27-inv-coaching-plugin-worker-detection-keep.md</li>
+                            <li>2026-01-17-inv-design-deep-analysis-opencode-coaching-plugin.md</li>
+                            <li>...and 15 more in .kb/investigations/*coaching*</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 7: WHAT SHOULD HAVE HAPPENED -->
+        <div class="section">
+            <div class="section-header">What Should Have Happened (Intervention Points)</div>
+            
+            <div class="should-have-happened">
+                <div class="should-have-header">Specific Moments Where Different Actions Would Have Changed The Outcome</div>
+                
+                <div class="intervention">
+                    <div class="intervention-when">After Investigation #1 (Jan 10)</div>
+                    <div class="intervention-action">Require symptom validation before marking complete</div>
+                    <div class="intervention-why">
+                        Investigation concluded "detection added" without verifying Dylan stopped seeing alerts. Should have required: <em>"Dylan, are you still seeing coaching alerts in worker sessions? If yes, investigation continues. If no, verified fixed."</em>
+                    </div>
+                </div>
+                
+                <div class="intervention">
+                    <div class="intervention-when">After Investigation #3 (Jan 17)</div>
+                    <div class="intervention-action">Trigger contradiction detection and arbitration</div>
+                    <div class="intervention-why">
+                        Three investigations with different conclusions (env var failed, caching bug, metadata approach). System should flag: <em>"Multiple contradictory hypotheses. Escalate for synthesis or pivot strategy."</em> Instead, 16 more investigations followed.
+                    </div>
+                </div>
+                
+                <div class="intervention">
+                    <div class="intervention-when">After 5 commits in one week (Jan 17)</div>
+                    <div class="intervention-action">Recognize churn loop and change strategy</div>
+                    <div class="intervention-why">
+                        12+ commits in one day is a signal: the problem is not well-understood. Should have stopped and asked: <em>"Why are we iterating so fast? What's the underlying uncertainty? Do we need a different approach (spike, upstream fix, disable feature)?"</em>
+                    </div>
+                </div>
+                
+                <div class="intervention">
+                    <div class="intervention-when">Jan 28 at 13:39 (Investigation B)</div>
+                    <div class="intervention-action">Surface human evidence to agent</div>
+                    <div class="intervention-why">
+                        Dylan had pasted screenshots showing the bug. Investigation B didn't reference them - only looked at code. Evidence locker would have preserved Dylan's observations and made them visible to all subsequent agents: <em>"Human reported symptom on Jan 27. Screenshot evidence: [link]. Has this been validated as resolved?"</em>
+                    </div>
+                </div>
+                
+                <div class="intervention">
+                    <div class="intervention-when">Jan 28 at 18:45 (Investigation E)</div>
+                    <div class="intervention-action">Recognize trust erosion as terminal signal</div>
+                    <div class="intervention-why">
+                        Dylan: "I've lost faith that this is actually possible." This is not a technical signal - it's a relationship signal. When human stops trusting agent conclusions, the loop is broken. Should have immediately escalated: <em>"Human trust degraded. Pause technical work. Discuss: continue with different validation strategy, or disable and pivot?"</em>
+                    </div>
+                </div>
+                
+                <div class="intervention">
+                    <div class="intervention-when">System-Level (Ongoing)</div>
+                    <div class="intervention-action">Implement case files from investigation #1</div>
+                    <div class="intervention-why">
+                        If each agent had seen a persistent case file showing: prior approaches tried, contradictions flagged, human observations preserved, cumulative commit count - they would have known to change strategy instead of repeating patterns. Case files make the saga visible.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 8: LESSONS FOR NEXT TIME -->
+        <div class="section">
+            <div class="section-header">Lessons For Next Time (Actionable Takeaways)</div>
+            
+            <div class="lessons">
+                <div class="lessons-header">What The System Should Learn From This Failure</div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 1</div>
+                    <div class="lesson-title">Technical correctness ≠ problem solved</div>
+                    <div class="lesson-text">
+                        Agent investigations must validate <strong>symptom resolution</strong>, not just technical correctness. "Code looks right" is a hypothesis. "Dylan stopped seeing alerts" is verification. Require human confirmation before marking bug investigations complete.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 2</div>
+                    <div class="lesson-title">Contradictions are signals, not noise</div>
+                    <div class="lesson-text">
+                        When Investigation A says "working" and Investigation B says "revert", that conflict is information. System should detect contradictions and trigger synthesis or arbitration. <strong>Threshold:</strong> 3+ investigations with different conclusions = escalate before spawning more agents.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 3</div>
+                    <div class="lesson-title">Human observations are ground truth</div>
+                    <div class="lesson-text">
+                        Dylan's screenshots and "still broken" reports should be preserved in an evidence locker, visible to all subsequent agents. <strong>Evidence hierarchy:</strong> Human observation > reproducible test > agent grep > agent conclusion. Never dismiss human observations as edge cases without investigation.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 4</div>
+                    <div class="lesson-title">Churn loops need circuit breakers</div>
+                    <div class="lesson-text">
+                        5+ commits in a day or 3+ investigations in a week on the same issue = system doesn't understand the problem. <strong>Circuit breaker:</strong> After threshold, require different strategy (architectural spike, upstream fix, disable feature) instead of spawning more fix attempts.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 5</div>
+                    <div class="lesson-title">Case files prevent amnesia</div>
+                    <div class="lesson-text">
+                        Each agent started fresh. If they had seen: 18 prior investigations, 4 failed approaches, cumulative 34 commits, contradictory conclusions - they would have known to change strategy. <strong>Action:</strong> Build case files that accumulate investigations and flag when an issue becomes a saga.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 6</div>
+                    <div class="lesson-title">Trust erosion is a terminal signal</div>
+                    <div class="lesson-text">
+                        "I've lost faith" is not a technical problem - it's a relationship breakdown. When human stops trusting agent conclusions, pause technical work and discuss strategy. <strong>System should detect:</strong> Human overrides agent conclusion 3+ times = trust signal degraded, escalate to human-agent strategy discussion.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 7</div>
+                    <div class="lesson-title">Agent self-certification needs gates</div>
+                    <div class="lesson-text">
+                        Agents verified "my change looks correct" and concluded fixed. <strong>Gate requirement:</strong> For user-reported bugs, completion requires either (a) reproducible test showing symptom resolved, or (b) human confirmation: "I'm no longer seeing [original symptom]." Code review alone is insufficient.
+                    </div>
+                </div>
+                
+                <div class="lesson">
+                    <div class="lesson-number">Lesson 8</div>
+                    <div class="lesson-title">Architectural gaps need upstream fixes, not workarounds</div>
+                    <div class="lesson-text">
+                        The core issue was OpenCode lacking first-class worker identity. We tried 4 detection workarounds instead of addressing the architectural gap. <strong>Recognition trigger:</strong> When 3+ different approaches all fail due to same missing primitive, escalate for upstream fix or feature disable instead of inventing more workarounds.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 60px; padding: 24px; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 8px; text-align: center;">
+            <div style="color: #888; font-size: 13px; margin-bottom: 8px;">This case file is part of an investigation into how agents can build on each other's work</div>
+            <div style="color: #666; font-size: 12px;">
+                Design session: <a href="../investigations/2026-01-31-design-case-files-and-arbitration.md" class="link">2026-01-31-design-case-files-and-arbitration.md</a>
+            </div>
+        </div>
     </div>
 </body>
 </html>
