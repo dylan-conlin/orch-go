@@ -64,19 +64,35 @@ type Config struct {
 	// for synthesis opportunities (topics with 10+ investigations).
 	ReflectCreateIssues bool
 
-	// CleanupEnabled controls whether periodic session cleanup is enabled.
-	// When enabled, the daemon will run session cleanup periodically.
+	// CleanupEnabled controls whether periodic cleanup is enabled.
+	// When enabled, the daemon will run cleanup operations periodically.
 	CleanupEnabled bool
 
-	// CleanupInterval is how often to run session cleanup (0 = disabled).
+	// CleanupInterval is how often to run cleanup (0 = disabled).
 	// Default is 6 hours.
 	CleanupInterval time.Duration
 
-	// CleanupAgeDays is the age threshold in days for session cleanup.
-	// Sessions older than this will be deleted. Default is 7 days.
-	CleanupAgeDays int
+	// CleanupSessions if true, cleans stale OpenCode sessions.
+	// Default is true.
+	CleanupSessions bool
 
-	// CleanupPreserveOrchestrator if true, skips orchestrator sessions.
+	// CleanupSessionsAgeDays is the age threshold in days for session cleanup.
+	// Sessions older than this will be deleted. Default is 7 days.
+	CleanupSessionsAgeDays int
+
+	// CleanupWorkspaces if true, archives stale completed workspaces.
+	// Default is true.
+	CleanupWorkspaces bool
+
+	// CleanupWorkspacesAgeDays is the age threshold in days for workspace cleanup.
+	// Workspaces older than this will be archived. Default is 7 days.
+	CleanupWorkspacesAgeDays int
+
+	// CleanupInvestigations if true, archives empty investigation files.
+	// Default is true.
+	CleanupInvestigations bool
+
+	// CleanupPreserveOrchestrator if true, skips orchestrator sessions and workspaces.
 	// Default is true to avoid disrupting orchestrator sessions.
 	CleanupPreserveOrchestrator bool
 
@@ -163,7 +179,11 @@ func DefaultConfig() Config {
 		ReflectCreateIssues:              true,
 		CleanupEnabled:                   true,
 		CleanupInterval:                  6 * time.Hour, // Every 6 hours by default
-		CleanupAgeDays:                   7,             // 7 days threshold
+		CleanupSessions:                  true,          // Clean sessions by default
+		CleanupSessionsAgeDays:           7,             // 7 days threshold for sessions
+		CleanupWorkspaces:                true,          // Archive stale workspaces by default
+		CleanupWorkspacesAgeDays:         7,             // 7 days threshold for workspaces
+		CleanupInvestigations:            true,          // Archive empty investigations by default
 		CleanupPreserveOrchestrator:      true,          // Preserve orchestrator sessions
 		CleanupServerURL:                 "http://127.0.0.1:4096",
 		RecoveryEnabled:                  true,
@@ -1298,36 +1318,86 @@ func (d *Daemon) ShouldRunCleanup() bool {
 
 // CleanupResult contains the result of a cleanup operation.
 type CleanupResult struct {
-	Deleted int
-	Error   error
-	Message string
+	SessionsDeleted        int
+	WorkspacesArchived     int
+	InvestigationsArchived int
+	Error                  error
+	Message                string
 }
 
-// RunPeriodicCleanup runs the periodic session cleanup if due.
+// RunPeriodicCleanup runs the periodic cleanup operations if due.
+// This includes: sessions, workspaces, and investigations (based on config).
 // Returns the result if cleanup was run, or nil if it wasn't due.
 func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 	if !d.ShouldRunCleanup() {
 		return nil
 	}
 
-	// Import cleanup package functions via helper
-	deleted, err := runSessionCleanup(d.Config.CleanupServerURL, d.Config.CleanupAgeDays, d.Config.CleanupPreserveOrchestrator)
-	if err != nil {
-		return &CleanupResult{
-			Deleted: 0,
-			Error:   err,
-			Message: fmt.Sprintf("Session cleanup failed: %v", err),
+	result := &CleanupResult{}
+	var messages []string
+
+	// Get project directory for workspace/investigation cleanup
+	projectDir := getProjectDir()
+
+	// Run session cleanup if enabled
+	if d.Config.CleanupSessions {
+		deleted, err := runSessionCleanup(d.Config.CleanupServerURL, d.Config.CleanupSessionsAgeDays, d.Config.CleanupPreserveOrchestrator)
+		if err != nil {
+			return &CleanupResult{
+				Error:   err,
+				Message: fmt.Sprintf("Session cleanup failed: %v", err),
+			}
+		}
+		result.SessionsDeleted = deleted
+		if deleted > 0 {
+			messages = append(messages, fmt.Sprintf("%d sessions", deleted))
+		}
+	}
+
+	// Run workspace cleanup if enabled
+	if d.Config.CleanupWorkspaces && projectDir != "" {
+		archived, err := runWorkspaceCleanup(projectDir, d.Config.CleanupWorkspacesAgeDays, d.Config.CleanupPreserveOrchestrator)
+		if err != nil {
+			return &CleanupResult{
+				SessionsDeleted: result.SessionsDeleted,
+				Error:           err,
+				Message:         fmt.Sprintf("Workspace cleanup failed: %v", err),
+			}
+		}
+		result.WorkspacesArchived = archived
+		if archived > 0 {
+			messages = append(messages, fmt.Sprintf("%d workspaces", archived))
+		}
+	}
+
+	// Run investigation cleanup if enabled
+	if d.Config.CleanupInvestigations && projectDir != "" {
+		archived, err := runInvestigationCleanup(projectDir)
+		if err != nil {
+			return &CleanupResult{
+				SessionsDeleted:    result.SessionsDeleted,
+				WorkspacesArchived: result.WorkspacesArchived,
+				Error:              err,
+				Message:            fmt.Sprintf("Investigation cleanup failed: %v", err),
+			}
+		}
+		result.InvestigationsArchived = archived
+		if archived > 0 {
+			messages = append(messages, fmt.Sprintf("%d investigations", archived))
 		}
 	}
 
 	// Update last cleanup time on success
 	d.lastCleanup = time.Now()
 
-	return &CleanupResult{
-		Deleted: deleted,
-		Error:   nil,
-		Message: fmt.Sprintf("Deleted %d stale sessions (age >%d days)", deleted, d.Config.CleanupAgeDays),
+	// Build summary message
+	if len(messages) == 0 {
+		result.Message = "No stale items found"
+	} else {
+		result.Message = fmt.Sprintf("Cleaned: %s", strings.Join(messages, ", "))
 	}
+
+	return result
 }
 
 // LastCleanupTime returns when cleanup was last run.

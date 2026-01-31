@@ -123,9 +123,13 @@ var (
 	daemonReflectInterval              int    // Periodic reflection interval in minutes (0 = disabled)
 	daemonReflectIssues                bool   // Create beads issues for synthesis opportunities
 	daemonCleanupEnabled               bool   // Enable periodic session cleanup
-	daemonCleanupInterval              int    // Session cleanup interval in minutes (0 = disabled)
-	daemonCleanupAge                   int    // Session age threshold in days for cleanup
-	daemonCleanupPreserveOrch          bool   // Preserve orchestrator sessions during cleanup
+	daemonCleanupInterval              int    // Cleanup interval in minutes (0 = disabled)
+	daemonCleanupSessions              bool   // Clean stale OpenCode sessions
+	daemonCleanupSessionsAge           int    // Session age threshold in days
+	daemonCleanupWorkspaces            bool   // Archive stale completed workspaces
+	daemonCleanupWorkspacesAge         int    // Workspace age threshold in days
+	daemonCleanupInvestigations        bool   // Archive empty investigation files
+	daemonCleanupPreserveOrch          bool   // Preserve orchestrator sessions/workspaces during cleanup
 	daemonCrossProject                 bool   // Poll all kb-registered projects for issues
 	daemonSpawnFactualQuestions        bool   // Spawn investigations for factual questions (subtype:factual label)
 	daemonDeadSessionDetectionEnabled  bool   // Enable dead session detection
@@ -151,10 +155,14 @@ func init() {
 	daemonRunCmd.Flags().BoolVar(&daemonReflect, "reflect", true, "Run kb reflect analysis on exit (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonReflectInterval, "reflect-interval", 60, "Periodic reflection interval in minutes (0 = disabled, default: 60)")
 	daemonRunCmd.Flags().BoolVar(&daemonReflectIssues, "reflect-issues", true, "Create beads issues for synthesis opportunities (default: true)")
-	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic session cleanup (default: true)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Session cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
-	daemonRunCmd.Flags().IntVar(&daemonCleanupAge, "cleanup-age", 7, "Session age threshold in days for cleanup (default: 7)")
-	daemonRunCmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions during cleanup (default: true)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupEnabled, "cleanup-enabled", true, "Enable periodic cleanup (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupInterval, "cleanup-interval", 360, "Cleanup interval in minutes (0 = disabled, default: 360 = 6 hours)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupSessions, "cleanup-sessions", true, "Clean stale OpenCode sessions (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupSessionsAge, "cleanup-sessions-age", 7, "Session age threshold in days (default: 7)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupWorkspaces, "cleanup-workspaces", true, "Archive stale completed workspaces (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonCleanupWorkspacesAge, "cleanup-workspaces-age", 7, "Workspace age threshold in days (default: 7)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupInvestigations, "cleanup-investigations", true, "Archive empty investigation files (default: true)")
+	daemonRunCmd.Flags().BoolVar(&daemonCleanupPreserveOrch, "cleanup-preserve-orchestrator", true, "Preserve orchestrator sessions/workspaces during cleanup (default: true)")
 	// Mark max-agents as hidden since --concurrency is the preferred name
 	daemonRunCmd.Flags().MarkHidden("max-agents")
 
@@ -211,7 +219,11 @@ func runDaemonLoop() error {
 	config.ReflectCreateIssues = daemonReflectIssues
 	config.CleanupEnabled = daemonCleanupEnabled && daemonCleanupInterval > 0
 	config.CleanupInterval = time.Duration(daemonCleanupInterval) * time.Minute
-	config.CleanupAgeDays = daemonCleanupAge
+	config.CleanupSessions = daemonCleanupSessions
+	config.CleanupSessionsAgeDays = daemonCleanupSessionsAge
+	config.CleanupWorkspaces = daemonCleanupWorkspaces
+	config.CleanupWorkspacesAgeDays = daemonCleanupWorkspacesAge
+	config.CleanupInvestigations = daemonCleanupInvestigations
 	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
 	config.CleanupServerURL = serverURL // Use global serverURL from root command
 	config.SpawnFactualQuestions = daemonSpawnFactualQuestions
@@ -271,8 +283,16 @@ func runDaemonLoop() error {
 	}
 	if config.CleanupEnabled {
 		fmt.Printf("  Cleanup interval:  %s\n", formatDaemonDuration(config.CleanupInterval))
-		fmt.Printf("  Cleanup age:       %d days\n", config.CleanupAgeDays)
-		fmt.Printf("  Cleanup preserve:  %v (orchestrator sessions)\n", config.CleanupPreserveOrchestrator)
+		if config.CleanupSessions {
+			fmt.Printf("  Cleanup sessions:  enabled (age: %d days)\n", config.CleanupSessionsAgeDays)
+		}
+		if config.CleanupWorkspaces {
+			fmt.Printf("  Cleanup workspaces: enabled (age: %d days)\n", config.CleanupWorkspacesAgeDays)
+		}
+		if config.CleanupInvestigations {
+			fmt.Printf("  Cleanup investigations: enabled\n")
+		}
+		fmt.Printf("  Cleanup preserve:  %v (orchestrator sessions/workspaces)\n", config.CleanupPreserveOrchestrator)
 	} else {
 		fmt.Println("  Cleanup interval:  disabled")
 	}
@@ -341,7 +361,7 @@ func runDaemonLoop() error {
 			}
 		}
 
-		// Run periodic session cleanup if due
+		// Run periodic cleanup if due
 		if result := d.RunPeriodicCleanup(); result != nil {
 			if result.Error != nil {
 				fmt.Fprintf(os.Stderr, "[%s] Cleanup error: %v\n", timestamp, result.Error)
@@ -350,30 +370,34 @@ func runDaemonLoop() error {
 					Type:      "daemon.cleanup",
 					Timestamp: time.Now().Unix(),
 					Data: map[string]interface{}{
-						"deleted": 0,
-						"error":   result.Error.Error(),
-						"message": result.Message,
+						"sessions_deleted":        result.SessionsDeleted,
+						"workspaces_archived":     result.WorkspacesArchived,
+						"investigations_archived": result.InvestigationsArchived,
+						"error":                   result.Error.Error(),
+						"message":                 result.Message,
 					},
 				}
 				if err := logger.Log(event); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup error event: %v\n", err)
 				}
-			} else if result.Deleted > 0 {
+			} else if result.SessionsDeleted > 0 || result.WorkspacesArchived > 0 || result.InvestigationsArchived > 0 {
 				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
 				// Log the successful cleanup
 				event := events.Event{
 					Type:      "daemon.cleanup",
 					Timestamp: time.Now().Unix(),
 					Data: map[string]interface{}{
-						"deleted": result.Deleted,
-						"message": result.Message,
+						"sessions_deleted":        result.SessionsDeleted,
+						"workspaces_archived":     result.WorkspacesArchived,
+						"investigations_archived": result.InvestigationsArchived,
+						"message":                 result.Message,
 					},
 				}
 				if err := logger.Log(event); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup event: %v\n", err)
 				}
 			} else if daemonVerbose {
-				fmt.Printf("[%s] Cleanup: no stale sessions found\n", timestamp)
+				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
 			}
 		}
 
