@@ -693,7 +693,8 @@ func (d *Daemon) CheckServerHealth() bool {
 // - "docker": counts running Docker containers with claude-code-mcp image
 // - "opencode" or others: queries OpenCode API for active sessions
 //
-// Also cleans up stale entries from the spawned issue tracker.
+// Also cleans up stale entries from the spawned issue tracker, and clears
+// entries for issues that have been abandoned (allowing them to be respawned).
 //
 // Should be called at the start of each poll cycle.
 // Returns the number of slots freed due to reconciliation, or 0 if no pool.
@@ -701,6 +702,19 @@ func (d *Daemon) ReconcileWithOpenCode() int {
 	// Clean up stale spawned issue entries (older than TTL)
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.CleanStale()
+
+		// Clear entries for issues that were abandoned via `orch abandon`.
+		// This allows the daemon to respawn issues after they're abandoned and
+		// re-labeled with triage:ready. We look at abandon events from the last
+		// 7 hours (slightly longer than the 6h TTL) to ensure we catch all
+		// abandons that occurred within the tracker's TTL window.
+		abandonedIDs, err := GetRecentlyAbandonedIssues(7)
+		if err == nil && len(abandonedIDs) > 0 {
+			cleared := d.SpawnedIssues.ClearAbandoned(abandonedIDs)
+			if cleared > 0 && d.Config.Verbose {
+				fmt.Printf("  DEBUG: Cleared %d abandoned issues from spawn tracker\n", cleared)
+			}
+		}
 	}
 
 	if d.Pool == nil {

@@ -57,10 +57,10 @@ func TestComputeUtilization(t *testing.T) {
 		{
 			name: "events outside window excluded",
 			events: []UtilizationEvent{
-				{Type: "session.spawned", Timestamp: now - 3600},      // within 7 days
-				{Type: "session.spawned", Timestamp: now - 864000},    // outside 7 days (10 days ago)
-				{Type: "daemon.spawn", Timestamp: now - 3600},         // within 7 days
-				{Type: "daemon.spawn", Timestamp: now - 864000},       // outside 7 days
+				{Type: "session.spawned", Timestamp: now - 3600},         // within 7 days
+				{Type: "session.spawned", Timestamp: now - 864000},       // outside 7 days (10 days ago)
+				{Type: "daemon.spawn", Timestamp: now - 3600},            // within 7 days
+				{Type: "daemon.spawn", Timestamp: now - 864000},          // outside 7 days
 				{Type: "spawn.triage_bypassed", Timestamp: now - 864000}, // outside 7 days
 			},
 			days:               7,
@@ -204,5 +204,146 @@ func TestDaemonSpawnsCannotExceedTotal(t *testing.T) {
 	// Daemon spawns should be capped at total spawns (0)
 	if result.DaemonSpawns > result.TotalSpawns {
 		t.Errorf("DaemonSpawns (%d) > TotalSpawns (%d)", result.DaemonSpawns, result.TotalSpawns)
+	}
+}
+
+func TestFilterRecentlyAbandoned(t *testing.T) {
+	now := time.Now().Unix()
+
+	tests := []struct {
+		name      string
+		events    []UtilizationEvent
+		hours     int
+		wantCount int
+		wantIDs   []string
+	}{
+		{
+			name: "recent abandons within window",
+			events: []UtilizationEvent{
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-1"}},
+				{Type: "agent.abandoned", Timestamp: now - 7200, Data: map[string]interface{}{"beads_id": "test-2"}},
+			},
+			hours:     7,
+			wantCount: 2,
+			wantIDs:   []string{"test-1", "test-2"},
+		},
+		{
+			name: "old abandons outside window excluded",
+			events: []UtilizationEvent{
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-1"}},       // 1h ago - included
+				{Type: "agent.abandoned", Timestamp: now - (8 * 3600), Data: map[string]interface{}{"beads_id": "test-2"}}, // 8h ago - excluded
+			},
+			hours:     7,
+			wantCount: 1,
+			wantIDs:   []string{"test-1"},
+		},
+		{
+			name: "deduplicates same beads_id",
+			events: []UtilizationEvent{
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-1"}},
+				{Type: "agent.abandoned", Timestamp: now - 7200, Data: map[string]interface{}{"beads_id": "test-1"}}, // Same ID abandoned twice
+				{Type: "agent.abandoned", Timestamp: now - 10800, Data: map[string]interface{}{"beads_id": "test-2"}},
+			},
+			hours:     7,
+			wantCount: 2,
+			wantIDs:   []string{"test-1", "test-2"},
+		},
+		{
+			name: "ignores non-abandoned events",
+			events: []UtilizationEvent{
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-1"}},
+				{Type: "session.spawned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-2"}},
+				{Type: "daemon.spawn", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-3"}},
+			},
+			hours:     7,
+			wantCount: 1,
+			wantIDs:   []string{"test-1"},
+		},
+		{
+			name:      "empty events list",
+			events:    []UtilizationEvent{},
+			hours:     7,
+			wantCount: 0,
+			wantIDs:   nil,
+		},
+		{
+			name: "missing beads_id in data",
+			events: []UtilizationEvent{
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"reason": "stuck"}}, // No beads_id
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": ""}},    // Empty beads_id
+				{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-1"}},
+			},
+			hours:     7,
+			wantCount: 1,
+			wantIDs:   []string{"test-1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterRecentlyAbandoned(tt.events, tt.hours)
+
+			if len(result) != tt.wantCount {
+				t.Errorf("filterRecentlyAbandoned() returned %d IDs, want %d", len(result), tt.wantCount)
+			}
+
+			// Check that expected IDs are present
+			resultSet := make(map[string]bool)
+			for _, id := range result {
+				resultSet[id] = true
+			}
+			for _, wantID := range tt.wantIDs {
+				if !resultSet[wantID] {
+					t.Errorf("filterRecentlyAbandoned() missing expected ID %q", wantID)
+				}
+			}
+		})
+	}
+}
+
+func TestGetRecentlyAbandonedIssues(t *testing.T) {
+	// Create a temp file with test events
+	tmpDir := t.TempDir()
+	eventsPath := filepath.Join(tmpDir, "events.jsonl")
+
+	now := time.Now().Unix()
+	events := []UtilizationEvent{
+		{Type: "agent.abandoned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-abandon-1"}},
+		{Type: "agent.abandoned", Timestamp: now - 7200, Data: map[string]interface{}{"beads_id": "test-abandon-2"}},
+		{Type: "session.spawned", Timestamp: now - 3600, Data: map[string]interface{}{"beads_id": "test-spawn-1"}},
+	}
+
+	f, err := os.Create(eventsPath)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	for _, e := range events {
+		data, _ := json.Marshal(e)
+		f.Write(append(data, '\n'))
+	}
+	f.Close()
+
+	// Temporarily override getEventsPath for testing
+	// Note: This test works by directly calling filterRecentlyAbandoned since
+	// GetRecentlyAbandonedIssues uses getEventsPath() which returns the user's real path.
+	// In a real integration test, we'd inject the path or use dependency injection.
+	parsedEvents, err := parseUtilizationEvents(eventsPath)
+	if err != nil {
+		t.Fatalf("parseUtilizationEvents failed: %v", err)
+	}
+
+	result := filterRecentlyAbandoned(parsedEvents, 7)
+	if len(result) != 2 {
+		t.Errorf("Expected 2 abandoned IDs, got %d", len(result))
+	}
+}
+
+func TestGetRecentlyAbandonedIssues_MissingFile(t *testing.T) {
+	// When events file doesn't exist, should return empty slice, not error
+	// Test filterRecentlyAbandoned with empty events (simulating missing file)
+	result := filterRecentlyAbandoned([]UtilizationEvent{}, 7)
+	if len(result) != 0 {
+		t.Errorf("Expected empty slice for missing file scenario, got %d events", len(result))
 	}
 }

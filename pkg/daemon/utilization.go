@@ -185,3 +185,58 @@ func formatDays(days int) string {
 	}
 	return fmt.Sprintf("%d days", days)
 }
+
+// GetRecentlyAbandonedIssues returns the beads IDs of issues that were abandoned
+// within the last `hours` hours. This is used to clear the SpawnedIssueTracker
+// so that abandoned issues can be respawned by the daemon.
+//
+// The issue is: when an agent is abandoned via `orch abandon`, the daemon's
+// SpawnedIssueTracker still has the issue marked as "recently spawned" (6h TTL).
+// This blocks the daemon from respawning the issue even after triage:ready is re-added.
+//
+// This function reads agent.abandoned events from events.jsonl and returns
+// the beads IDs that were abandoned recently.
+func GetRecentlyAbandonedIssues(hours int) ([]string, error) {
+	eventsPath := getEventsPath()
+
+	events, err := parseUtilizationEvents(eventsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return filterRecentlyAbandoned(events, hours), nil
+}
+
+// filterRecentlyAbandoned extracts beads IDs from recent agent.abandoned events.
+func filterRecentlyAbandoned(events []UtilizationEvent, hours int) []string {
+	// Time window cutoff (convert hours to seconds)
+	now := time.Now().Unix()
+	cutoff := now - int64(hours*3600)
+
+	var abandonedIDs []string
+	seen := make(map[string]bool) // Dedupe in case of multiple abandons for same issue
+
+	for _, event := range events {
+		// Only look at agent.abandoned events
+		if event.Type != "agent.abandoned" {
+			continue
+		}
+
+		// Skip events outside the time window
+		if event.Timestamp < cutoff {
+			continue
+		}
+
+		// Extract beads_id from event data
+		if data := event.Data; data != nil {
+			if beadsID, ok := data["beads_id"].(string); ok && beadsID != "" {
+				if !seen[beadsID] {
+					seen[beadsID] = true
+					abandonedIDs = append(abandonedIDs, beadsID)
+				}
+			}
+		}
+	}
+
+	return abandonedIDs
+}

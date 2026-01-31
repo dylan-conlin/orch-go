@@ -148,3 +148,24 @@ func (t *SpawnedIssueTracker) TrackedIDs() []string {
 	}
 	return ids
 }
+
+// ClearAbandoned removes issues from the tracker that have been abandoned.
+// This allows the daemon to respawn an issue after it was abandoned via `orch abandon`.
+// Returns the number of issues cleared.
+func (t *SpawnedIssueTracker) ClearAbandoned(abandonedIDs []string) int {
+	if len(abandonedIDs) == 0 {
+		return 0
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	cleared := 0
+	for _, id := range abandonedIDs {
+		if _, exists := t.spawned[id]; exists {
+			delete(t.spawned, id)
+			cleared++
+		}
+	}
+	return cleared
+}
