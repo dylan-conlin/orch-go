@@ -103,17 +103,16 @@
 			case 'ArrowRight':
 			case 'Enter':
 				event.preventDefault();
-				if (current.children.length > 0) {
-					current.expanded = !current.expanded;
-					tree = tree; // Trigger reactivity
-				}
+				// Always toggle expansion (for both L1 details and children)
+				current.expanded = !current.expanded;
+				tree = tree; // Trigger reactivity
 				break;
 
 			case 'h':
 			case 'ArrowLeft':
 			case 'Escape':
 				event.preventDefault();
-				if (current.expanded && current.children.length > 0) {
+				if (current.expanded) {
 					current.expanded = false;
 					tree = tree; // Trigger reactivity
 				} else if (current.parent_id) {
@@ -223,7 +222,7 @@
 				</span>
 
 				<!-- Type badge -->
-				<Badge variant="outline" class="{getTypeBadge(node.type)} text-xs">
+				<Badge data-testid="type-badge" variant="outline" class="{getTypeBadge(node.type)} text-xs">
 					{node.type}
 				</Badge>
 
@@ -241,11 +240,13 @@
 					class="expanded-details ml-12 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm"
 					style="margin-left: {node.depth * 24 + 48}px"
 				>
-					<!-- Description preview (placeholder - would need description from API) -->
-					<div class="text-muted-foreground mb-2">
-						<span class="text-xs font-semibold uppercase text-foreground">Description:</span>
-						<p class="mt-1 text-xs">No description available (needs API enhancement)</p>
-					</div>
+					<!-- Description preview -->
+					{#if node.description}
+						<div class="text-muted-foreground mb-2">
+							<span class="text-xs font-semibold uppercase text-foreground">Description:</span>
+							<p class="mt-1 text-xs">{node.description}</p>
+						</div>
+					{/if}
 
 					<!-- Blocking relationships -->
 					{#if node.blocked_by.length > 0}
