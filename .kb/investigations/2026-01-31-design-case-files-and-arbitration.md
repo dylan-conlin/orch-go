@@ -6,7 +6,7 @@
 
 **Knowledge:** The pattern is case management - legal, medical, and insurance systems all converge on: persistent case files, evidence lockers, prior work citation, contradiction detection, and authoritative arbitration. Novel for AI agents: the system self-generates volume that humans can't review, so it must synthesize itself.
 
-**Next:** Spike first - build case file view for coaching plugin saga to learn schema/detection needs (orch-go-21124). If valuable, build the full system.
+**Next:** Rebuild case file with diagnosis-first structure (orch-go-21125). Spike (orch-go-21124) validated that case files help but revealed timeline isn't enough - diagnosis is the point.
 
 **Authority:** architectural - Cross-system design affecting knowledge management, agent coordination, and dashboard architecture.
 
@@ -20,7 +20,7 @@
 **Updated:** 2026-01-31
 **Owner:** Dylan + Claude (design session)
 **Phase:** Complete
-**Next Step:** Execute spike orch-go-21124
+**Next Step:** Execute orch-go-21125 (rebuild with diagnosis-first structure)
 **Status:** Complete
 
 ---
@@ -276,3 +276,41 @@ Embed in existing views (badges) + summary in Strategic Center:
 - Status: Complete
 - Key outcome: Spike-first approach, build case file view for coaching plugin saga
 - Issue created: orch-go-21124
+
+**2026-01-31 ~12:00:** Spike completed and reviewed
+- Agent built timeline-based HTML case file
+- Dylan's feedback: "still not immediately clear what went wrong"
+- Key learning: **Timeline isn't enough. Diagnosis is the point.**
+
+**2026-01-31 ~12:15:** Spike learnings captured
+- Case file needs to answer: verdict, contradiction, ground truth, failure mode, lessons
+- Structure revised: diagnosis-first, not chronology-first
+- Issue created: orch-go-21125 (rebuild with new structure)
+
+---
+
+## Spike Learnings (orch-go-21124)
+
+**What the spike built:** Timeline-based HTML showing 19 investigations chronologically
+
+**What was missing:**
+1. Contradictions weren't visually confrontational - just entries in a timeline
+2. Human evidence (screenshots) wasn't shown, just mentioned
+3. Failure mode wasn't diagnosed - showed *what* but not *why*
+4. No "what should have happened" - not actionable
+
+**Key insight:** Timeline shows what happened. Diagnosis explains why it kept failing.
+
+**Revised case file structure:**
+
+| Section | Purpose |
+|---------|---------|
+| THE VERDICT | Read this first - outcome, root cause, pattern |
+| THE CONTRADICTION | Side-by-side conflicting conclusions - impossible to miss |
+| THE GROUND TRUTH | What Dylan actually saw (screenshots, quotes) |
+| THE TIMELINE | Compressed, grouped by week (not the centerpiece) |
+| THE FAILURE MODE | Named pattern, what was missing, where to stop |
+| WHAT SHOULD HAVE HAPPENED | Specific intervention points |
+| LESSONS FOR NEXT TIME | Actionable takeaways |
+
+**Principle validated:** Spike-driven design works. Building against real data revealed what mattered (diagnosis) vs what we assumed mattered (chronology).
