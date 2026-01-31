@@ -1299,6 +1299,7 @@ func TestParseDependencies(t *testing.T) {
 func TestGetBlockingDependencies(t *testing.T) {
 	tests := []struct {
 		name          string
+		issueID       string // optional, defaults to "test-issue"
 		deps          json.RawMessage
 		wantCount     int
 		wantBlockerID string
@@ -1401,12 +1402,37 @@ func TestGetBlockingDependencies(t *testing.T) {
 			deps:      json.RawMessage(`[{"id":"dep-1","title":"Regular Issue","status":"answered","issue_type":"task","dependency_type":"blocks"}]`),
 			wantCount: 1, // Regular issues only unblock when closed, not answered
 		},
+		// Inferred parent-child tests (workaround for beads JSONL mode bug where dependency_type is empty)
+		// When dependency_type is empty but issue ID follows child pattern (parent.N), infer parent-child
+		{
+			name:      "inferred parent-child: empty type with child ID pattern does NOT block",
+			issueID:   "specs-platform-10.1", // Child of specs-platform-10
+			deps:      json.RawMessage(`[{"id":"specs-platform-10","title":"Parent Epic","status":"open","dependency_type":""}]`),
+			wantCount: 0, // Inferred as parent-child, doesn't block
+		},
+		{
+			name:          "inferred parent-child: empty type without child pattern DOES block",
+			issueID:       "specs-platform-99", // Not a child of specs-platform-10
+			deps:          json.RawMessage(`[{"id":"specs-platform-10","title":"Unrelated Issue","status":"open","dependency_type":""}]`),
+			wantCount:     1, // Not a parent-child pattern, blocks
+			wantBlockerID: "specs-platform-10",
+		},
+		{
+			name:      "inferred parent-child: deeper child hierarchy (parent.1.2) with grandparent does NOT block",
+			issueID:   "specs-platform-10.1", // Child of specs-platform-10
+			deps:      json.RawMessage(`[{"id":"specs-platform-10","title":"Parent Epic","status":"open","dependency_type":""}]`),
+			wantCount: 0, // Inferred as parent-child, doesn't block
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			issueID := tt.issueID
+			if issueID == "" {
+				issueID = "test-issue"
+			}
 			issue := Issue{
-				ID:           "test-issue",
+				ID:           issueID,
 				Dependencies: tt.deps,
 			}
 
@@ -1422,6 +1448,37 @@ func TestGetBlockingDependencies(t *testing.T) {
 }
 
 // TestBlockingDependencyError tests the error message formatting.
+// TestIsInferredParentChild tests the parent-child detection heuristic for JSONL mode.
+func TestIsInferredParentChild(t *testing.T) {
+	tests := []struct {
+		issueID string
+		depID   string
+		want    bool
+	}{
+		{"bd-123.1", "bd-123", true},                       // Standard child
+		{"bd-123.2", "bd-123", true},                       // Another child
+		{"bd-123.1.1", "bd-123.1", true},                   // Nested child
+		{"specs-platform-10.1", "specs-platform-10", true}, // Real-world case
+		{"bd-123", "bd-123", false},                        // Same ID (not child)
+		{"bd-456", "bd-123", false},                        // Different IDs (not child)
+		{"bd-123.1", "bd-456", false},                      // Child of different parent
+		{"bd-1234", "bd-123", false},                       // Similar prefix but not child
+		{"bd-123-task", "bd-123", false},                   // Dash, not dot
+		{"", "bd-123", false},                              // Empty issue ID
+		{"bd-123.1", "", false},                            // Empty dep ID
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.issueID+"_dep_"+tt.depID, func(t *testing.T) {
+			got := isInferredParentChild(tt.issueID, tt.depID)
+			if got != tt.want {
+				t.Errorf("isInferredParentChild(%q, %q) = %v, want %v",
+					tt.issueID, tt.depID, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBlockingDependencyError(t *testing.T) {
 	err := &BlockingDependencyError{
 		IssueID: "proj-xyz",

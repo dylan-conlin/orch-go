@@ -113,21 +113,23 @@ Examples:
 
 var (
 	// Daemon flags
-	daemonDelay                 int    // Delay between spawns in seconds
-	daemonDryRun                bool   // Preview mode - show what would be processed without spawning
-	daemonPollInterval          int    // Poll interval in seconds (0 = run once)
-	daemonMaxAgents             int    // Maximum concurrent agents (0 = no limit)
-	daemonLabel                 string // Filter issues by label
-	daemonVerbose               bool   // Enable verbose output
-	daemonReflect               bool   // Run reflection analysis after processing (on exit)
-	daemonReflectInterval       int    // Periodic reflection interval in minutes (0 = disabled)
-	daemonReflectIssues         bool   // Create beads issues for synthesis opportunities
-	daemonCleanupEnabled        bool   // Enable periodic session cleanup
-	daemonCleanupInterval       int    // Session cleanup interval in minutes (0 = disabled)
-	daemonCleanupAge            int    // Session age threshold in days for cleanup
-	daemonCleanupPreserveOrch   bool   // Preserve orchestrator sessions during cleanup
-	daemonCrossProject          bool   // Poll all kb-registered projects for issues
-	daemonSpawnFactualQuestions bool   // Spawn investigations for factual questions (subtype:factual label)
+	daemonDelay                        int    // Delay between spawns in seconds
+	daemonDryRun                       bool   // Preview mode - show what would be processed without spawning
+	daemonPollInterval                 int    // Poll interval in seconds (0 = run once)
+	daemonMaxAgents                    int    // Maximum concurrent agents (0 = no limit)
+	daemonLabel                        string // Filter issues by label
+	daemonVerbose                      bool   // Enable verbose output
+	daemonReflect                      bool   // Run reflection analysis after processing (on exit)
+	daemonReflectInterval              int    // Periodic reflection interval in minutes (0 = disabled)
+	daemonReflectIssues                bool   // Create beads issues for synthesis opportunities
+	daemonCleanupEnabled               bool   // Enable periodic session cleanup
+	daemonCleanupInterval              int    // Session cleanup interval in minutes (0 = disabled)
+	daemonCleanupAge                   int    // Session age threshold in days for cleanup
+	daemonCleanupPreserveOrch          bool   // Preserve orchestrator sessions during cleanup
+	daemonCrossProject                 bool   // Poll all kb-registered projects for issues
+	daemonSpawnFactualQuestions        bool   // Spawn investigations for factual questions (subtype:factual label)
+	daemonDeadSessionDetectionEnabled  bool   // Enable dead session detection
+	daemonDeadSessionDetectionInterval int    // Dead session detection interval in minutes (0 = disabled)
 )
 
 func init() {
@@ -161,6 +163,10 @@ func init() {
 
 	// Factual questions spawning
 	daemonRunCmd.Flags().BoolVar(&daemonSpawnFactualQuestions, "spawn-factual-questions", false, "Spawn investigations for factual questions (subtype:factual label)")
+
+	// Dead session detection
+	daemonRunCmd.Flags().BoolVar(&daemonDeadSessionDetectionEnabled, "dead-session-detection", true, "Enable dead session detection (default: true)")
+	daemonRunCmd.Flags().IntVar(&daemonDeadSessionDetectionInterval, "dead-session-interval", 10, "Dead session detection interval in minutes (0 = disabled, default: 10)")
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
@@ -209,6 +215,8 @@ func runDaemonLoop() error {
 	config.CleanupPreserveOrchestrator = daemonCleanupPreserveOrch
 	config.CleanupServerURL = serverURL // Use global serverURL from root command
 	config.SpawnFactualQuestions = daemonSpawnFactualQuestions
+	config.DeadSessionDetectionEnabled = daemonDeadSessionDetectionEnabled && daemonDeadSessionDetectionInterval > 0
+	config.DeadSessionDetectionInterval = time.Duration(daemonDeadSessionDetectionInterval) * time.Minute
 
 	d := daemon.NewWithConfig(config)
 
@@ -286,6 +294,11 @@ func runDaemonLoop() error {
 		fmt.Println("  Factual questions: enabled (spawning investigations for subtype:factual)")
 	} else {
 		fmt.Println("  Factual questions: disabled")
+	}
+	if config.DeadSessionDetectionEnabled {
+		fmt.Printf("  Dead session det:  %s\n", formatDaemonDuration(config.DeadSessionDetectionInterval))
+	} else {
+		fmt.Println("  Dead session det:  disabled")
 	}
 	fmt.Println()
 
@@ -449,6 +462,46 @@ func runDaemonLoop() error {
 				}
 			} else if daemonVerbose {
 				fmt.Printf("[%s] Server recovery: %s\n", timestamp, serverRecoveryResult.Message)
+			}
+		}
+
+		// Run periodic dead session detection if due
+		if result := d.RunPeriodicDeadSessionDetection(); result != nil {
+			if result.Error != nil {
+				fmt.Fprintf(os.Stderr, "[%s] Dead session detection error: %v\n", timestamp, result.Error)
+				// Log the error
+				event := events.Event{
+					Type:      "daemon.dead_session_detection",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"detected": 0,
+						"marked":   0,
+						"skipped":  result.SkippedCount,
+						"error":    result.Error.Error(),
+						"message":  result.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log dead session detection error event: %v\n", err)
+				}
+			} else if result.MarkedCount > 0 {
+				fmt.Printf("[%s] Dead session detection: %s\n", timestamp, result.Message)
+				// Log the successful detection
+				event := events.Event{
+					Type:      "daemon.dead_session_detection",
+					Timestamp: time.Now().Unix(),
+					Data: map[string]interface{}{
+						"detected": result.DetectedCount,
+						"marked":   result.MarkedCount,
+						"skipped":  result.SkippedCount,
+						"message":  result.Message,
+					},
+				}
+				if err := logger.Log(event); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log dead session detection event: %v\n", err)
+				}
+			} else if daemonVerbose {
+				fmt.Printf("[%s] Dead session detection: no dead sessions found\n", timestamp)
 			}
 		}
 

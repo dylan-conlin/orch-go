@@ -3,7 +3,10 @@
 // and provides operations for issue management.
 package beads
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // RPC operation constants matching beads internal/rpc/protocol.go
 const (
@@ -185,6 +188,22 @@ type BlockingDependency struct {
 	Status string
 }
 
+// isInferredParentChild detects parent-child relationships when dependency_type is missing.
+// This is a workaround for a bug in beads where bd show --json doesn't return dependency_type
+// in JSONL-only mode (non-SQLite). The heuristic checks if:
+//  1. The issue ID follows child pattern (e.g., "project-123.1" is child of "project-123")
+//  2. The dependency ID matches the parent pattern
+//
+// Example: issue "specs-platform-10.1" with dependency on "specs-platform-10" is parent-child.
+func isInferredParentChild(issueID, depID string) bool {
+	// Check if issueID is a child of depID
+	// Child IDs have format: parentID.N (e.g., "bd-a3f8.1", "bd-a3f8.2")
+	if strings.HasPrefix(issueID, depID+".") {
+		return true
+	}
+	return false
+}
+
 // GetBlockingDependencies returns a list of dependencies that are blocking this issue.
 // Blocking behavior depends on dependency type and issue type:
 //   - "blocks": blocks if not closed (open or in_progress)
@@ -208,7 +227,13 @@ func (i *Issue) GetBlockingDependencies() []BlockingDependency {
 	for _, dep := range deps {
 		isBlocking := false
 
-		switch dep.DependencyType {
+		// Determine dependency type, using inference as fallback
+		depType := dep.DependencyType
+		if depType == "" && isInferredParentChild(i.ID, dep.ID) {
+			depType = "parent-child"
+		}
+
+		switch depType {
 		case "parent-child":
 			// Parent-child: NEVER blocks - children are independently spawnable
 			// Epic closes when children complete, so children can't wait for parent

@@ -137,6 +137,15 @@ type Config struct {
 	// and spawns investigation skill for matching questions.
 	// Default is false (opt-in feature).
 	SpawnFactualQuestions bool
+
+	// DeadSessionDetectionEnabled controls whether dead session detection is enabled.
+	// When enabled, the daemon will periodically check for in_progress issues with
+	// no active session and no Phase: Complete comment, marking them as failed.
+	DeadSessionDetectionEnabled bool
+
+	// DeadSessionDetectionInterval is how often to check for dead sessions (0 = disabled).
+	// Default is 10 minutes.
+	DeadSessionDetectionInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -168,6 +177,8 @@ func DefaultConfig() Config {
 		MaxResumeAttempts:                3,                // Escalate after 3 failed attempts
 		AutoAbandonAfterHours:            24,               // Auto-abandon after 24h dead
 		SpawnFactualQuestions:            false,            // Opt-in feature
+		DeadSessionDetectionEnabled:      true,             // Enabled by default
+		DeadSessionDetectionInterval:     10 * time.Minute, // Check every 10 minutes
 	}
 }
 
@@ -246,6 +257,9 @@ type Daemon struct {
 
 	// lastRecovery tracks when recovery was last run for periodic recovery.
 	lastRecovery time.Time
+
+	// lastDeadSessionDetection tracks when dead session detection was last run.
+	lastDeadSessionDetection time.Time
 
 	// resumeAttempts tracks when we last attempted to resume each agent (by beads ID).
 	// Prevents infinite resume loops by rate-limiting to 1 attempt per hour per agent.
@@ -1515,6 +1529,102 @@ func (d *Daemon) NextRecoveryTime() time.Time {
 		return time.Now() // Due immediately
 	}
 	return d.lastRecovery.Add(d.Config.RecoveryInterval)
+}
+
+// ShouldRunDeadSessionDetection returns true if dead session detection should run.
+// This checks if detection is enabled and enough time has elapsed since the last run.
+func (d *Daemon) ShouldRunDeadSessionDetection() bool {
+	if !d.Config.DeadSessionDetectionEnabled || d.Config.DeadSessionDetectionInterval <= 0 {
+		return false
+	}
+	// Run immediately if we've never run before
+	if d.lastDeadSessionDetection.IsZero() {
+		return true
+	}
+	return time.Since(d.lastDeadSessionDetection) >= d.Config.DeadSessionDetectionInterval
+}
+
+// DeadSessionDetectionResult contains the result of a dead session detection operation.
+type DeadSessionDetectionResult struct {
+	DetectedCount int
+	MarkedCount   int
+	SkippedCount  int
+	Error         error
+	Message       string
+}
+
+// RunPeriodicDeadSessionDetection runs dead session detection if due.
+// Returns the result if detection was run, or nil if it wasn't due.
+func (d *Daemon) RunPeriodicDeadSessionDetection() *DeadSessionDetectionResult {
+	if !d.ShouldRunDeadSessionDetection() {
+		return nil
+	}
+
+	// Configure detection
+	config := DeadSessionDetectionConfig{
+		Verbose: d.Config.Verbose,
+	}
+
+	// Find dead sessions
+	deadSessions, err := FindDeadSessions(config)
+	if err != nil {
+		return &DeadSessionDetectionResult{
+			DetectedCount: 0,
+			MarkedCount:   0,
+			SkippedCount:  0,
+			Error:         err,
+			Message:       fmt.Sprintf("Dead session detection failed: %v", err),
+		}
+	}
+
+	detected := len(deadSessions)
+	marked := 0
+	skipped := 0
+
+	// Mark each dead session
+	for _, dead := range deadSessions {
+		if err := MarkSessionAsDead(dead.BeadsID, dead.Reason); err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Failed to mark %s as dead: %v\n", dead.BeadsID, err)
+			}
+			skipped++
+			continue
+		}
+		marked++
+		if d.Config.Verbose {
+			fmt.Printf("  Marked %s as dead: %s\n", dead.BeadsID, dead.Reason)
+		}
+	}
+
+	// Update last detection time on success
+	d.lastDeadSessionDetection = time.Now()
+
+	message := fmt.Sprintf("Dead session detection: %d detected, %d marked, %d skipped", detected, marked, skipped)
+	return &DeadSessionDetectionResult{
+		DetectedCount: detected,
+		MarkedCount:   marked,
+		SkippedCount:  skipped,
+		Error:         nil,
+		Message:       message,
+	}
+}
+
+// LastDeadSessionDetectionTime returns when dead session detection was last run.
+// Returns zero time if detection has never run.
+func (d *Daemon) LastDeadSessionDetectionTime() time.Time {
+	return d.lastDeadSessionDetection
+}
+
+// NextDeadSessionDetectionTime returns when the next dead session detection is scheduled.
+// Returns zero time if detection is disabled.
+func (d *Daemon) NextDeadSessionDetectionTime() time.Time {
+	if !d.Config.DeadSessionDetectionEnabled || d.Config.DeadSessionDetectionInterval <= 0 {
+		return time.Time{}
+	}
+	if d.lastDeadSessionDetection.IsZero() {
+		return time.Now() // Due immediately
+	}
+	return d.lastDeadSessionDetection.Add(d.Config.DeadSessionDetectionInterval)
 }
 
 // addNeedsHumanLabel adds the needs:human label to a beads issue.
