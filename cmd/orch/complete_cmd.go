@@ -891,6 +891,27 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Detect knowledge gaps - cross-check agent questions against existing kb
+	// This helps identify when agents surface questions that kb already answers,
+	// revealing gaps in knowledge surfacing mechanisms.
+	if workspacePath != "" && !completeForce {
+		gapResult, err := verify.DetectKnowledgeGaps(workspacePath, beadsID, skillName, beadsProjectDir)
+		if err != nil {
+			// Non-critical - warn but don't fail completion
+			fmt.Fprintf(os.Stderr, "Warning: failed to detect knowledge gaps: %v\n", err)
+		} else if gapResult != nil && gapResult.GapsDetected > 0 {
+			// Log gaps to ~/.orch/knowledge-gaps.jsonl
+			if err := verify.LogKnowledgeGaps(gapResult.Gaps); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log knowledge gaps: %v\n", err)
+			} else {
+				// Inform user about detected gaps (informational, not blocking)
+				fmt.Printf("\nℹ️  Knowledge Gap Detection: %d gap(s) detected and logged\n", gapResult.GapsDetected)
+				fmt.Printf("   Agent surfaced questions that kb already answers.\n")
+				fmt.Printf("   Review: cat ~/.orch/knowledge-gaps.jsonl | jq 'select(.workspace==\"%s\")'\n", agentName)
+			}
+		}
+	}
+
 	// TODO: Update synthesis with spawn completion info (Capture at Context principle)
 	// This is only for worker agents, not orchestrator sessions (which manage their own handoffs)
 	// UpdateHandoffAfterComplete was planned but never implemented - see:
