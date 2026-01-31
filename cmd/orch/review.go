@@ -27,6 +27,7 @@ var (
 	reviewAll         bool
 	reviewNoPrompt    bool
 	reviewLimit       int
+	reviewWorkdir     string
 )
 
 // StaleThreshold defines how long an agent must be in a non-Complete phase to be considered stale.
@@ -50,6 +51,9 @@ Single-agent review shows:
   - Beads comments history
   - Artifacts produced (investigations, design docs)
 
+For cross-project review (agents spawned with --workdir in another project),
+use --workdir to specify the target project directory.
+
 Examples:
   orch review                       # Actionable completions only (excludes stale/untracked)
   orch review --limit 5             # Show at most 5 completions
@@ -57,14 +61,15 @@ Examples:
   orch review --stale               # Show only stale/untracked agents
   orch review orch-go-3anf          # Single agent: detailed review
   orch review -p orch-cli           # Filter by project
-  orch review --needs               # Show failures only (shorthand for --needs-review)`,
+  orch review --needs               # Show failures only (shorthand for --needs-review)
+  orch review --workdir ~/projects/kb-cli     # Cross-project review`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Single-agent mode if beads ID provided
 		if len(args) > 0 {
-			return runReviewSingle(args[0])
+			return runReviewSingle(args[0], reviewWorkdir)
 		}
 		// Batch mode
-		return runReview(reviewProject, reviewNeedsReview, reviewStale, reviewAll, reviewLimit)
+		return runReview(reviewProject, reviewNeedsReview, reviewStale, reviewAll, reviewLimit, reviewWorkdir)
 	},
 }
 
@@ -86,13 +91,17 @@ Use --no-prompt to skip all recommendation prompts (for automation/scripting).
 
 Agents that fail verification (no Phase: Complete) will be skipped.
 
+For cross-project completion (agents spawned with --workdir in another project),
+use --workdir to specify the target project directory.
+
 Examples:
   orch-go review done orch-cli           # Complete with recommendation prompts
   orch-go review done orch-cli -y        # Skip initial confirmation
-  orch-go review done orch-cli --no-prompt  # Skip recommendation prompts`,
+  orch-go review done orch-cli --no-prompt  # Skip recommendation prompts
+  orch-go review done kb-cli --workdir ~/projects/kb-cli  # Cross-project completion`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runReviewDone(args[0])
+		return runReviewDone(args[0], reviewWorkdir)
 	},
 }
 
@@ -103,8 +112,10 @@ func init() {
 	reviewCmd.Flags().BoolVar(&reviewStale, "stale", false, "Show stale/untracked agents only")
 	reviewCmd.Flags().BoolVar(&reviewAll, "all", false, "Show all agents including stale/untracked")
 	reviewCmd.Flags().IntVarP(&reviewLimit, "limit", "l", 0, "Maximum number of completions to show (0 = no limit)")
+	reviewCmd.Flags().StringVar(&reviewWorkdir, "workdir", "", "Target project directory (for cross-project review)")
 	reviewDoneCmd.Flags().BoolVarP(&reviewDoneYes, "yes", "y", false, "Skip confirmation prompt")
 	reviewDoneCmd.Flags().BoolVar(&reviewNoPrompt, "no-prompt", false, "Skip recommendation prompts (auto-close without reviewing synthesis)")
+	reviewDoneCmd.Flags().StringVar(&reviewWorkdir, "workdir", "", "Target project directory (for cross-project review)")
 	reviewCmd.AddCommand(reviewDoneCmd)
 }
 
@@ -136,11 +147,23 @@ type CompletionInfo struct {
 // Previously, each workspace with SYNTHESIS.md would call VerifyCompletionFull which called
 // GetComments multiple times (for phase verification, test evidence, visual verification, etc.).
 // Now, all comments are fetched in a single batch call, then passed to verification functions.
-func getCompletionsForReview() ([]CompletionInfo, error) {
-	projectDir, err := os.Getwd()
+//
+// The workdir parameter allows cross-project review by specifying a different project directory.
+func getCompletionsForReview(workdir string) ([]CompletionInfo, error) {
+	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	// Resolve project directory using shared helper
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return nil, err
+	}
+	projectDir := projectResult.ProjectDir
+
+	// Set beads.DefaultDir for cross-project operations
+	projectResult.SetBeadsDefaultDir()
 
 	// Phase 1: Scan workspaces and collect candidates with beads IDs
 	type candidateWorkspace struct {
@@ -432,14 +455,22 @@ func groupByProject(completions []CompletionInfo) map[string][]CompletionInfo {
 }
 
 // runReviewSingle displays detailed review information for a single agent.
-func runReviewSingle(beadsID string) error {
+func runReviewSingle(beadsID, workdir string) error {
 	// Try to find workspace from current directory
-	cwd, err := os.Getwd()
+	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	projectDir := cwd
+	// Resolve project directory using shared helper
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
+
+	// Set beads.DefaultDir for cross-project operations
+	projectResult.SetBeadsDefaultDir()
 
 	// Find workspace by beads ID (searches SPAWN_CONTEXT.md, not just directory name)
 	workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
@@ -484,8 +515,8 @@ func runReviewSingle(beadsID string) error {
 	return nil
 }
 
-func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showAll bool, limit int) error {
-	completions, err := getCompletionsForReview()
+func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showAll bool, limit int, workdir string) error {
+	completions, err := getCompletionsForReview(workdir)
 	if err != nil {
 		return err
 	}
@@ -682,8 +713,8 @@ func runReview(projectFilter string, needsReviewOnly bool, staleOnly bool, showA
 	return nil
 }
 
-func runReviewDone(project string) error {
-	completions, err := getCompletionsForReview()
+func runReviewDone(project, workdir string) error {
+	completions, err := getCompletionsForReview(workdir)
 	if err != nil {
 		return err
 	}
@@ -766,10 +797,20 @@ func runReviewDone(project string) error {
 		fmt.Println("(Skipping recommendation prompts - stdin is not a terminal)")
 	}
 
-	projectDir, err := os.Getwd()
+	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
+
+	// Resolve project directory using shared helper
+	projectResult, err := resolveProjectDir(workdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+	projectDir := projectResult.ProjectDir
+
+	// Set beads.DefaultDir for cross-project operations
+	projectResult.SetBeadsDefaultDir()
 
 	logger := events.NewLogger(events.DefaultLogPath())
 	reader := bufio.NewReader(os.Stdin)
