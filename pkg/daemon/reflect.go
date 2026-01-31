@@ -29,6 +29,12 @@ type ReflectSuggestions struct {
 
 	// Refine suggestions for kn entries that refine existing principles.
 	Refine []RefineSuggestion `json:"refine,omitempty"`
+
+	// InvestigationPromotion suggestions for investigations marked recommend-yes.
+	InvestigationPromotion []InvestigationPromotionSuggestion `json:"investigation_promotion,omitempty"`
+
+	// InvestigationAuthority suggestions for investigations grouped by authority level.
+	InvestigationAuthority []InvestigationAuthoritySuggestion `json:"investigation_authority,omitempty"`
 }
 
 // SynthesisSuggestion represents a topic with multiple investigations.
@@ -69,13 +75,33 @@ type RefineSuggestion struct {
 	Suggestion string   `json:"suggestion"`
 }
 
+// InvestigationPromotionSuggestion represents an investigation with recommend-yes awaiting decision creation.
+type InvestigationPromotionSuggestion struct {
+	File       string `json:"file"`
+	Title      string `json:"title"`
+	AgeDays    int    `json:"age_days"`
+	Suggestion string `json:"suggestion"`
+}
+
+// InvestigationAuthoritySuggestion represents an investigation with unactioned recommendations grouped by authority level.
+type InvestigationAuthoritySuggestion struct {
+	File       string `json:"file"`
+	Title      string `json:"title"`
+	Authority  string `json:"authority"`
+	NextAction string `json:"next_action"`
+	AgeDays    int    `json:"age_days"`
+	Suggestion string `json:"suggestion"`
+}
+
 // kbReflectOutput represents the raw output from kb reflect --format json.
 type kbReflectOutput struct {
-	Synthesis []SynthesisSuggestion `json:"synthesis,omitempty"`
-	Promote   []PromoteSuggestion   `json:"promote,omitempty"`
-	Stale     []StaleSuggestion     `json:"stale,omitempty"`
-	Drift     []DriftSuggestion     `json:"drift,omitempty"`
-	Refine    []kbRefineOutput      `json:"refine,omitempty"`
+	Synthesis              []SynthesisSuggestion              `json:"synthesis,omitempty"`
+	Promote                []PromoteSuggestion                `json:"promote,omitempty"`
+	Stale                  []StaleSuggestion                  `json:"stale,omitempty"`
+	Drift                  []DriftSuggestion                  `json:"drift,omitempty"`
+	Refine                 []kbRefineOutput                   `json:"refine,omitempty"`
+	InvestigationPromotion []InvestigationPromotionSuggestion `json:"investigation_promotion,omitempty"`
+	InvestigationAuthority []InvestigationAuthoritySuggestion `json:"investigation_authority,omitempty"`
 }
 
 // kbRefineOutput represents the raw refine entry from kb reflect.
@@ -137,12 +163,14 @@ func RunReflectionWithOptions(createIssues bool) (*ReflectSuggestions, error) {
 	}
 
 	suggestions := &ReflectSuggestions{
-		Timestamp: time.Now().UTC(),
-		Synthesis: rawOutput.Synthesis,
-		Promote:   rawOutput.Promote,
-		Stale:     rawOutput.Stale,
-		Drift:     rawOutput.Drift,
-		Refine:    refine,
+		Timestamp:              time.Now().UTC(),
+		Synthesis:              rawOutput.Synthesis,
+		Promote:                rawOutput.Promote,
+		Stale:                  rawOutput.Stale,
+		Drift:                  rawOutput.Drift,
+		Refine:                 refine,
+		InvestigationPromotion: rawOutput.InvestigationPromotion,
+		InvestigationAuthority: rawOutput.InvestigationAuthority,
 	}
 
 	return suggestions, nil
@@ -202,7 +230,7 @@ func (s *ReflectSuggestions) HasSuggestions() bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0
+	return len(s.Synthesis) > 0 || len(s.Promote) > 0 || len(s.Stale) > 0 || len(s.Drift) > 0 || len(s.Refine) > 0 || len(s.InvestigationPromotion) > 0 || len(s.InvestigationAuthority) > 0
 }
 
 // TotalCount returns the total number of suggestions across all categories.
@@ -210,7 +238,7 @@ func (s *ReflectSuggestions) TotalCount() int {
 	if s == nil {
 		return 0
 	}
-	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine)
+	return len(s.Synthesis) + len(s.Promote) + len(s.Stale) + len(s.Drift) + len(s.Refine) + len(s.InvestigationPromotion) + len(s.InvestigationAuthority)
 }
 
 // Summary returns a human-readable summary of suggestions.
@@ -234,6 +262,12 @@ func (s *ReflectSuggestions) Summary() string {
 	}
 	if len(s.Refine) > 0 {
 		parts = append(parts, fmt.Sprintf("%d principle refinements", len(s.Refine)))
+	}
+	if len(s.InvestigationPromotion) > 0 {
+		parts = append(parts, fmt.Sprintf("%d investigation promotions", len(s.InvestigationPromotion)))
+	}
+	if len(s.InvestigationAuthority) > 0 {
+		parts = append(parts, fmt.Sprintf("%d recommendations by authority", len(s.InvestigationAuthority)))
 	}
 
 	result := ""

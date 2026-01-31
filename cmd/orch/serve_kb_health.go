@@ -16,6 +16,7 @@ type KBHealthResponse struct {
 	Promote                KBHealthCategory `json:"promote"`
 	Stale                  KBHealthCategory `json:"stale"`
 	InvestigationPromotion KBHealthCategory `json:"investigation_promotion"`
+	InvestigationAuthority KBHealthCategory `json:"investigation_authority"`
 	Total                  int              `json:"total"`
 	LastUpdated            string           `json:"last_updated"`
 	Error                  string           `json:"error,omitempty"`
@@ -96,6 +97,10 @@ func fetchKBHealth(projectDir string) (*KBHealthResponse, error) {
 			Count: 0,
 			Items: []map[string]interface{}{},
 		},
+		InvestigationAuthority: KBHealthCategory{
+			Count: 0,
+			Items: []map[string]interface{}{},
+		},
 		Total:       0,
 		LastUpdated: time.Now().Format(time.RFC3339),
 	}
@@ -110,6 +115,7 @@ func fetchKBHealth(projectDir string) (*KBHealthResponse, error) {
 		{"promote", &response.Promote},
 		{"stale", &response.Stale},
 		{"investigation-promotion", &response.InvestigationPromotion},
+		{"investigation-authority", &response.InvestigationAuthority},
 	}
 
 	for _, t := range types {
@@ -151,10 +157,13 @@ func fetchKBReflect(projectDir, reflectType string) ([]map[string]interface{}, e
 
 	// Extract the array for this reflection type
 	// The key matches the reflectType (synthesis, promote, stale, investigation-promotion)
-	// But investigation-promotion uses underscore in JSON: investigation_promotion
+	// But investigation-promotion and investigation-authority use underscore in JSON
 	jsonKey := reflectType
 	if reflectType == "investigation-promotion" {
 		jsonKey = "investigation_promotion"
+	}
+	if reflectType == "investigation-authority" {
+		jsonKey = "investigation_authority"
 	}
 
 	itemsRaw, ok := result[jsonKey]
