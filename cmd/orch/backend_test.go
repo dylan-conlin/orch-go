@@ -12,6 +12,7 @@ func TestResolveBackend(t *testing.T) {
 		name            string
 		backendFlag     string
 		opusFlag        bool
+		infraFlag       bool
 		modelFlag       string
 		projCfg         *config.Config
 		globalCfg       *userconfig.Config
@@ -144,6 +145,7 @@ func TestResolveBackend(t *testing.T) {
 			result := resolveBackend(
 				tt.backendFlag,
 				tt.opusFlag,
+				tt.infraFlag,
 				tt.modelFlag,
 				tt.projCfg,
 				tt.globalCfg,
@@ -237,13 +239,13 @@ func TestResolveBackendPriorityChain(t *testing.T) {
 	globalCfg := &userconfig.Config{Backend: "claude"}
 
 	// Priority 1: --backend beats everything
-	result := resolveBackend("opencode", true, "", projCfg, globalCfg, "", "")
+	result := resolveBackend("opencode", true, false, "", projCfg, globalCfg, "", "")
 	if result.Backend != "opencode" {
 		t.Errorf("Priority 1 failed: --backend should beat --opus and configs, got %s", result.Backend)
 	}
 
 	// Priority 2: --opus beats configs
-	result = resolveBackend("", true, "", projCfg, globalCfg, "", "")
+	result = resolveBackend("", true, false, "", projCfg, globalCfg, "", "")
 	if result.Backend != "claude" {
 		t.Errorf("Priority 2 failed: --opus should beat configs, got %s", result.Backend)
 	}
@@ -251,19 +253,19 @@ func TestResolveBackendPriorityChain(t *testing.T) {
 	// Priority 3: project config beats global config
 	projCfg.SpawnMode = "opencode"
 	globalCfg.Backend = "claude"
-	result = resolveBackend("", false, "", projCfg, globalCfg, "", "")
+	result = resolveBackend("", false, false, "", projCfg, globalCfg, "", "")
 	if result.Backend != "opencode" {
 		t.Errorf("Priority 3 failed: project config should beat global config, got %s", result.Backend)
 	}
 
 	// Priority 4: global config beats default
-	result = resolveBackend("", false, "", nil, globalCfg, "", "")
+	result = resolveBackend("", false, false, "", nil, globalCfg, "", "")
 	if result.Backend != "claude" {
 		t.Errorf("Priority 4 failed: global config should be used when no project config, got %s", result.Backend)
 	}
 
 	// Priority 5: default is opencode
-	result = resolveBackend("", false, "", nil, nil, "", "")
+	result = resolveBackend("", false, false, "", nil, nil, "", "")
 	if result.Backend != "opencode" {
 		t.Errorf("Priority 5 failed: default should be opencode, got %s", result.Backend)
 	}
@@ -274,6 +276,7 @@ func TestResolveBackendDisabledBackends(t *testing.T) {
 		name            string
 		backendFlag     string
 		opusFlag        bool
+		infraFlag       bool
 		projCfg         *config.Config
 		globalCfg       *userconfig.Config
 		expectedBackend string
@@ -369,6 +372,7 @@ func TestResolveBackendDisabledBackends(t *testing.T) {
 			result := resolveBackend(
 				tt.backendFlag,
 				tt.opusFlag,
+				tt.infraFlag,
 				"",
 				tt.projCfg,
 				tt.globalCfg,

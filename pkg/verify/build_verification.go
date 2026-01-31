@@ -11,12 +11,12 @@ import (
 
 // BuildVerificationResult represents the result of checking if the project builds.
 type BuildVerificationResult struct {
-	Passed       bool     // Whether the build succeeded
-	HasGoFiles   bool     // Whether Go files exist in the project
-	BuildOutput  string   // Output from the build command (truncated if long)
-	Errors       []string // Error messages (blocking)
-	Warnings     []string // Warning messages (non-blocking)
-	SkillName    string   // Skill that was used
+	Passed      bool     // Whether the build succeeded
+	HasGoFiles  bool     // Whether Go files exist in the project
+	BuildOutput string   // Output from the build command (truncated if long)
+	Errors      []string // Error messages (blocking)
+	Warnings    []string // Warning messages (non-blocking)
+	SkillName   string   // Skill that was used
 }
 
 // Skills that require build verification before completion.
@@ -130,6 +130,9 @@ func hasGoChangesInFiles(gitOutput string) bool {
 
 // RunGoBuild runs 'go build ./...' in the project directory.
 // Returns the build output and any error that occurred.
+//
+// DEPRECATED: Use RunGoTestCompile instead - it also compiles test files
+// which catches signature mismatches between production code and tests.
 func RunGoBuild(projectDir string) (string, error) {
 	cmd := exec.Command("go", "build", "./...")
 	cmd.Dir = projectDir
@@ -146,15 +149,48 @@ func RunGoBuild(projectDir string) (string, error) {
 	return output, err
 }
 
-// VerifyBuild checks if the Go project builds successfully.
+// RunGoTestCompile compiles all Go code including test files without running tests.
+// Uses 'go test -run=^$' which compiles test binaries but runs no tests
+// (the pattern '^$' matches no test names).
+//
+// This is preferred over RunGoBuild because 'go build' only compiles production
+// code - it doesn't compile *_test.go files. This means changes to function
+// signatures can break tests without being caught by 'go build'.
+//
+// Returns the output and any error that occurred.
+func RunGoTestCompile(projectDir string) (string, error) {
+	// Use 'go test -run=^$ ./...' to compile all packages including tests
+	// The -run=^$ flag matches no test names, so it compiles but runs nothing
+	// This catches compilation errors in both production and test code
+	cmd := exec.Command("go", "test", "-run=^$", "./...")
+	cmd.Dir = projectDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	// Combine stdout and stderr
+	output := stdout.String() + stderr.String()
+
+	return output, err
+}
+
+// VerifyBuild checks if the Go project builds successfully, including test files.
 // This is a gate that blocks completion if Go files were modified
-// but the project fails to build.
+// but the project fails to compile.
 //
 // The verification passes if:
 // 1. The project is not a Go project (no go.mod or .go files), OR
 // 2. No Go files were modified in recent commits, OR
 // 3. The skill is not an implementation-focused skill, OR
-// 4. The project builds successfully with 'go build ./...'
+// 4. The project compiles successfully (both production and test code)
+//
+// IMPORTANT: This uses 'go test -c' instead of 'go build' because 'go build'
+// does NOT compile test files (*_test.go). This means function signature changes
+// can break tests without being caught. Using 'go test -c' ensures both
+// production code AND test code compile correctly.
 func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 	result := BuildVerificationResult{Passed: true}
 
@@ -184,18 +220,19 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		return result
 	}
 
-	// Run go build
-	output, err := RunGoBuild(projectDir)
+	// Run go test -c to compile both production code and test files
+	// This catches signature mismatches that 'go build' would miss
+	output, err := RunGoTestCompile(projectDir)
 	result.BuildOutput = truncateOutput(output, 500)
 
 	if err != nil {
 		result.Passed = false
 		result.Errors = append(result.Errors,
-			"'go build ./...' failed",
-			"Build must pass before completion",
+			"'go test -c ./...' failed (compilation error in production or test code)",
+			"Both production and test code must compile before completion",
 		)
 		if output != "" {
-			result.Errors = append(result.Errors, "Build output: "+result.BuildOutput)
+			result.Errors = append(result.Errors, "Compilation output: "+result.BuildOutput)
 		}
 	}
 
