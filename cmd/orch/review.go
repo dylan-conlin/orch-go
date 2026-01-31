@@ -405,29 +405,6 @@ func extractBeadsIDFromWorkspace(workspacePath string) string {
 	return ""
 }
 
-// extractProjectDirFromWorkspace extracts the PROJECT_DIR from SPAWN_CONTEXT.md
-// This is used to determine which project's beads database to query for cross-project agents.
-func extractProjectDirFromWorkspace(workspacePath string) string {
-	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
-	content, err := os.ReadFile(spawnContextPath)
-	if err != nil {
-		return ""
-	}
-
-	// Look for "PROJECT_DIR: /path/to/project" pattern
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "PROJECT_DIR:") {
-			// Extract path after "PROJECT_DIR:"
-			path := strings.TrimPrefix(line, "PROJECT_DIR:")
-			path = strings.TrimSpace(path)
-			return path
-		}
-	}
-	return ""
-}
-
 // extractProject gets project name from project directory.
 func extractProject(projectDir string) string {
 	if projectDir == "" {

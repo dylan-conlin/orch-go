@@ -360,6 +360,100 @@ func resolveShortBeadsID(id string) (string, error) {
 	return resolveShortBeadsIDWithDir(id, "")
 }
 
+// ProjectDirResult contains the result of resolving a project directory.
+type ProjectDirResult struct {
+	// ProjectDir is the resolved project directory path.
+	ProjectDir string
+	// IsCrossProject indicates whether the resolved directory differs from currentDir.
+	IsCrossProject bool
+	// Source indicates how the project directory was resolved:
+	// "workdir" (explicit flag), "workspace" (auto-detected from SPAWN_CONTEXT.md), "current" (fallback)
+	Source string
+}
+
+// resolveProjectDir resolves the project directory for beads operations.
+//
+// Resolution order:
+//  1. If workdir is provided (explicit --workdir flag), use that
+//  2. If workspacePath is provided, try to extract PROJECT_DIR from SPAWN_CONTEXT.md
+//  3. Fall back to currentDir
+//
+// Returns the resolved project directory and metadata about how it was resolved.
+// Call SetBeadsDefaultDir() on the result if you need to configure beads.DefaultDir.
+func resolveProjectDir(workdir, workspacePath, currentDir string) (*ProjectDirResult, error) {
+	result := &ProjectDirResult{
+		ProjectDir: currentDir,
+		Source:     "current",
+	}
+
+	if workdir != "" {
+		// Explicit --workdir flag provided
+		absPath, err := filepath.Abs(workdir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve workdir path: %w", err)
+		}
+		// Verify directory exists
+		stat, err := os.Stat(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("workdir does not exist: %s", absPath)
+		}
+		if !stat.IsDir() {
+			return nil, fmt.Errorf("workdir is not a directory: %s", absPath)
+		}
+		result.ProjectDir = absPath
+		result.IsCrossProject = absPath != currentDir
+		result.Source = "workdir"
+		return result, nil
+	}
+
+	if workspacePath != "" {
+		// Try to extract PROJECT_DIR from workspace SPAWN_CONTEXT.md
+		projectDirFromWorkspace := extractProjectDirFromWorkspace(workspacePath)
+		if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
+			result.ProjectDir = projectDirFromWorkspace
+			result.IsCrossProject = true
+			result.Source = "workspace"
+			return result, nil
+		}
+	}
+
+	// Fall back to current directory
+	return result, nil
+}
+
+// SetBeadsDefaultDir sets beads.DefaultDir if this result indicates a cross-project directory.
+// Returns true if beads.DefaultDir was set.
+func (r *ProjectDirResult) SetBeadsDefaultDir() bool {
+	if r.IsCrossProject {
+		beads.DefaultDir = r.ProjectDir
+		return true
+	}
+	return false
+}
+
+// extractProjectDirFromWorkspace extracts the PROJECT_DIR from SPAWN_CONTEXT.md.
+// This is used to determine which project's beads database to query for cross-project agents.
+func extractProjectDirFromWorkspace(workspacePath string) string {
+	spawnContextPath := filepath.Join(workspacePath, "SPAWN_CONTEXT.md")
+	content, err := os.ReadFile(spawnContextPath)
+	if err != nil {
+		return ""
+	}
+
+	// Look for "PROJECT_DIR: /path/to/project" pattern
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "PROJECT_DIR:") {
+			// Extract path after "PROJECT_DIR:"
+			path := strings.TrimPrefix(line, "PROJECT_DIR:")
+			path = strings.TrimSpace(path)
+			return path
+		}
+	}
+	return ""
+}
+
 // resolveShortBeadsIDWithDir resolves a beads ID in a specific project directory.
 // This is used for cross-project operations where the issue belongs to a different
 // project than the current working directory.

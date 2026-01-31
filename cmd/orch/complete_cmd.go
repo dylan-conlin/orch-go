@@ -416,43 +416,23 @@ func runComplete(identifier, workdir string) error {
 		workspacePath, agentName = findWorkspaceByBeadsID(searchDir, beadsID)
 	}
 
-	// Determine beads project directory:
-	// 1. If --workdir provided, use that
-	// 2. Otherwise, try to auto-detect from workspace SPAWN_CONTEXT.md
-	// 3. Fall back to current directory
-	var beadsProjectDir string
+	// Determine beads project directory using the shared helper
+	projectResult, err := resolveProjectDir(workdir, workspacePath, currentDir)
+	if err != nil {
+		return err
+	}
+	beadsProjectDir := projectResult.ProjectDir
 
-	if workdir != "" {
-		// Explicit --workdir flag provided
-		beadsProjectDir, err = filepath.Abs(workdir)
-		if err != nil {
-			return fmt.Errorf("failed to resolve workdir path: %w", err)
-		}
-		// Verify directory exists
-		if stat, err := os.Stat(beadsProjectDir); err != nil {
-			return fmt.Errorf("workdir does not exist: %s", beadsProjectDir)
-		} else if !stat.IsDir() {
-			return fmt.Errorf("workdir is not a directory: %s", beadsProjectDir)
-		}
+	// Log resolution source for transparency
+	switch projectResult.Source {
+	case "workdir":
 		fmt.Printf("Using explicit workdir: %s\n", beadsProjectDir)
-	} else if workspacePath != "" {
-		// Try to extract PROJECT_DIR from workspace SPAWN_CONTEXT.md
-		projectDirFromWorkspace := extractProjectDirFromWorkspace(workspacePath)
-		if projectDirFromWorkspace != "" && projectDirFromWorkspace != currentDir {
-			// Cross-project agent detected
-			beadsProjectDir = projectDirFromWorkspace
-			fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(beadsProjectDir))
-		} else {
-			beadsProjectDir = currentDir
-		}
-	} else {
-		beadsProjectDir = currentDir
+	case "workspace":
+		fmt.Printf("Auto-detected cross-project: %s\n", filepath.Base(beadsProjectDir))
 	}
 
 	// Set beads.DefaultDir for cross-project operations BEFORE any beads operations
-	if beadsProjectDir != currentDir {
-		beads.DefaultDir = beadsProjectDir
-	}
+	projectResult.SetBeadsDefaultDir()
 
 	// Check if this is an untracked agent (no beads issue exists)
 	// Orchestrator sessions are implicitly untracked (they skip beads entirely)
