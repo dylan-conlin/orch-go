@@ -15,6 +15,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
@@ -285,6 +286,60 @@ func runStatus(serverURL string) error {
 						info.Model = manifest.Model
 					}
 				}
+			}
+
+			agents = append(agents, info)
+			beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
+			seenBeadsIDs[beadsID] = true
+		}
+	}
+
+	// Phase 1.5: Discovery - Collect agents from registry (claude-mode agents not visible via tmux)
+	// This catches:
+	// - Claude inline mode agents (no tmux window)
+	// - Claude agents whose tmux window closed but are still running
+	// - Docker mode agents without active tmux windows
+	agentReg, _ := registry.New("")
+	if agentReg != nil {
+		for _, regAgent := range agentReg.ListActive() {
+			// Only process claude and docker mode agents (opencode mode is handled in Phase 2)
+			if regAgent.Mode != registry.ModeTmux && regAgent.Mode != registry.ModeDocker {
+				continue
+			}
+
+			beadsID := regAgent.BeadsID
+			if beadsID == "" {
+				continue
+			}
+
+			// Skip if already discovered via tmux windows
+			if seenBeadsIDs[beadsID] {
+				continue
+			}
+
+			// Build agent info from registry
+			info := AgentInfo{
+				BeadsID:    beadsID,
+				Mode:       regAgent.Mode,
+				Skill:      regAgent.Skill,
+				Project:    extractProjectFromBeadsID(beadsID),
+				ProjectDir: regAgent.ProjectDir,
+				Title:      regAgent.ID, // Workspace name as title
+				Model:      regAgent.Model,
+			}
+
+			// If registry has tmux window info, try to verify it's still valid
+			if regAgent.TmuxWindow != "" {
+				// Check if window exists
+				if tmux.WindowExists(regAgent.TmuxWindow) {
+					info.Window = regAgent.TmuxWindow
+				}
+				// Note: If window doesn't exist, agent is a phantom (will be handled later)
+			}
+
+			// Set project directory for cross-project lookups
+			if info.ProjectDir != "" {
+				beadsProjectDirs[beadsID] = info.ProjectDir
 			}
 
 			agents = append(agents, info)
@@ -1308,20 +1363,24 @@ func formatModelForDisplay(model string) string {
 	}
 
 	// Map full model IDs to short display names
+	// Includes both bare and prefixed versions (e.g., "anthropic/claude-...")
 	modelAbbreviations := map[string]string{
-		"gemini-3-flash-preview":     "flash3",
-		"gemini-2.5-flash":           "flash-2.5",
-		"gemini-2.5-pro":             "pro-2.5",
-		"claude-opus-4-5-20251101":   "opus-4.5",
-		"claude-sonnet-4-5-20250929": "sonnet-4.5",
-		"claude-haiku-4-5-20251001":  "haiku-4.5",
-		"gpt-5":                      "gpt5",
-		"gpt-5.2":                    "gpt5-latest",
-		"gpt-5-mini":                 "gpt5-mini",
-		"o3":                         "o3",
-		"o3-mini":                    "o3-mini",
-		"deepseek-chat":              "deepseek",
-		"deepseek-reasoner":          "deepseek-r1",
+		"gemini-3-flash-preview":               "flash3",
+		"gemini-2.5-flash":                     "flash-2.5",
+		"gemini-2.5-pro":                       "pro-2.5",
+		"claude-opus-4-5-20251101":             "opus-4.5",
+		"claude-sonnet-4-5-20250929":           "sonnet-4.5",
+		"claude-haiku-4-5-20251001":            "haiku-4.5",
+		"anthropic/claude-opus-4-5-20251101":   "opus-4.5",
+		"anthropic/claude-sonnet-4-5-20250929": "sonnet-4.5",
+		"anthropic/claude-haiku-4-5-20251001":  "haiku-4.5",
+		"gpt-5":                                "gpt5",
+		"gpt-5.2":                              "gpt5-latest",
+		"gpt-5-mini":                           "gpt5-mini",
+		"o3":                                   "o3",
+		"o3-mini":                              "o3-mini",
+		"deepseek-chat":                        "deepseek",
+		"deepseek-reasoner":                    "deepseek-r1",
 	}
 
 	if abbr, ok := modelAbbreviations[model]; ok {

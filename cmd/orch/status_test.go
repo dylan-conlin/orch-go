@@ -36,20 +36,27 @@ func TestFormatDurationForStatus(t *testing.T) {
 	}
 }
 
-// TestStatusUsesOpenCodeAPI verifies that status command uses OpenCode API.
-// This is a design test - the actual implementation uses ListSessions() from the API.
-func TestStatusUsesOpenCodeAPI(t *testing.T) {
-	// The status command uses OpenCode API (ListSessions) for session data.
-	// There is no agent registry file - all state comes from OpenCode + beads.
+// TestStatusUsesMultipleSources verifies that status command uses all agent sources.
+// This is a design test - the actual implementation combines data from:
+// - OpenCode API (ListSessions) for opencode-mode agents
+// - Agent registry for claude-mode and docker-mode agents
+// - Tmux window discovery for running tmux-based agents
+func TestStatusUsesMultipleSources(t *testing.T) {
+	// The status command uses multiple sources for complete agent discovery:
 	//
 	// The runStatus function:
-	// 1. Creates an OpenCode client
-	// 2. Calls client.ListSessions()
-	// 3. Filters for active sessions
-	// 4. Enriches with tmux window info if available
+	// 1. Creates an OpenCode client and fetches sessions (opencode-mode agents)
+	// 2. Scans tmux workers sessions for running windows (claude-mode with windows)
+	// 3. Checks agent registry for claude/docker-mode agents not visible via tmux
+	// 4. Enriches with beads comments and workspace metadata
 	// 5. Displays results
 	//
-	// Integration testing requires a running OpenCode server.
+	// This ensures all agent types are visible:
+	// - opencode-mode: via OpenCode API
+	// - claude-mode: via tmux windows + registry fallback
+	// - docker-mode: via registry
+	//
+	// Integration testing requires a running OpenCode server and tmux.
 }
 
 // TestExtractSkillFromTitle_StatusContext tests skill extraction for status display.
