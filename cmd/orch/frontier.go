@@ -4,6 +4,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -15,7 +16,8 @@ import (
 )
 
 var (
-	frontierJSON bool
+	frontierJSON    bool
+	frontierWorkdir string
 )
 
 const (
@@ -36,8 +38,9 @@ Output is grouped by "who needs to act":
 - ACTIVE: Agents currently working on issues
 
 Examples:
-  orch frontier           # Show decidability state
-  orch frontier --json    # Output as JSON for scripting`,
+  orch frontier                           # Show decidability state
+  orch frontier --json                    # Output as JSON for scripting
+  orch frontier --workdir ~/projects/foo  # Show frontier for another project`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runFrontier()
 	},
@@ -45,6 +48,7 @@ Examples:
 
 func init() {
 	frontierCmd.Flags().BoolVar(&frontierJSON, "json", false, "Output as JSON for scripting")
+	frontierCmd.Flags().StringVar(&frontierWorkdir, "workdir", "", "Target project directory for cross-project frontier view")
 }
 
 // FrontierOutput represents the full frontier output for JSON serialization.
@@ -89,6 +93,25 @@ type ActiveOutput struct {
 }
 
 func runFrontier() error {
+	// Resolve project directory for beads operations
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	projectResult, err := resolveProjectDir(frontierWorkdir, "", currentDir)
+	if err != nil {
+		return err
+	}
+
+	// Set beads.DefaultDir for cross-project operations
+	projectResult.SetBeadsDefaultDir()
+
+	// Log if using explicit workdir
+	if projectResult.Source == "workdir" {
+		fmt.Printf("Project: %s\n\n", projectResult.ProjectDir)
+	}
+
 	// Calculate frontier state from beads
 	state, err := frontier.CalculateFrontier()
 	if err != nil {

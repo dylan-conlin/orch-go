@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -124,3 +125,52 @@ func TestGetClosedIssueIDs_NilInput(t *testing.T) {
 
 // Note: Integration tests that actually call bd would go in a separate file
 // or require mocking the exec.Command call.
+
+func TestFrontierCmdHasWorkdirFlag(t *testing.T) {
+	// Verify the --workdir flag is registered on the frontier command
+	flag := frontierCmd.Flags().Lookup("workdir")
+	if flag == nil {
+		t.Fatal("frontier command should have a --workdir flag")
+	}
+	if flag.DefValue != "" {
+		t.Errorf("--workdir default value should be empty string, got %q", flag.DefValue)
+	}
+}
+
+func TestFrontierWorkdirResolution(t *testing.T) {
+	// Save and restore original value
+	originalWorkdir := frontierWorkdir
+	defer func() {
+		frontierWorkdir = originalWorkdir
+	}()
+
+	// Test that an invalid workdir path returns an error
+	frontierWorkdir = "/nonexistent/path/that/does/not/exist"
+
+	// The runFrontier function should validate the workdir before proceeding
+	// We can't fully test runFrontier without mocking bd commands,
+	// but we can verify the workdir is validated
+	currentDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current directory: %v", err)
+	}
+
+	// Test resolveProjectDir with invalid path
+	_, err = resolveProjectDir(frontierWorkdir, "", currentDir)
+	if err == nil {
+		t.Error("resolveProjectDir should return error for nonexistent workdir")
+	}
+
+	// Test resolveProjectDir with valid path (current directory)
+	frontierWorkdir = currentDir
+	result, err := resolveProjectDir(frontierWorkdir, "", currentDir)
+	if err != nil {
+		t.Fatalf("resolveProjectDir should succeed for valid path: %v", err)
+	}
+	if result.ProjectDir != currentDir {
+		t.Errorf("ProjectDir = %q, want %q", result.ProjectDir, currentDir)
+	}
+	if result.Source != "workdir" {
+		t.Errorf("Source = %q, want %q", result.Source, "workdir")
+	}
+}
