@@ -242,17 +242,32 @@ func runStatus(serverURL string) error {
 			}
 
 			// Build agent info from tmux window
+			agentProject := extractProjectFromBeadsID(beadsID)
 			info := AgentInfo{
 				BeadsID: beadsID,
 				Mode:    "claude", // tmux agents are claude mode
 				Skill:   extractSkillFromWindowName(w.Name),
-				Project: extractProjectFromBeadsID(beadsID),
+				Project: agentProject,
 				Window:  w.Target,
 				Title:   w.Name,
 			}
 
+			// Determine the correct project directory for workspace lookup
+			// For cross-project agents, we need to look in the agent's project, not cwd
+			agentProjectDir := projectDir
+			if agentProject != "" && agentProject != filepath.Base(projectDir) {
+				// Cross-project agent: look up the actual project directory
+				if derivedDir := findProjectDirByName(agentProject); derivedDir != "" {
+					agentProjectDir = derivedDir
+					info.ProjectDir = derivedDir
+					// Always set beadsProjectDirs for cross-project agents
+					// This ensures beads comments are fetched from the correct project
+					beadsProjectDirs[beadsID] = derivedDir
+				}
+			}
+
 			// Try to enrich with workspace metadata (skill, projectDir, model)
-			workspacePath, _ := findWorkspaceByBeadsID(projectDir, beadsID)
+			workspacePath, _ := findWorkspaceByBeadsID(agentProjectDir, beadsID)
 			if workspacePath != "" {
 				manifest := readAgentManifest(workspacePath)
 				if manifest != nil {
