@@ -1,0 +1,285 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]: 8%(2h 17m)
+          - generic [ref=e16]: "|"
+          - generic [ref=e17]: 32%(4d 16h)
+          - generic [ref=e18]: "@dylan.conlin"
+        - generic [ref=e20]: 🟢 $0.00
+        - generic [ref=e21]: connected
+        - button "Select theme" [active] [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - button "⚡ Ops" [ref=e29] [cursor=pointer]
+          - button "📦 History" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32]: "Since:"
+          - combobox [ref=e33] [cursor=pointer]:
+            - option "12h" [selected]
+            - option "24h"
+            - option "48h"
+            - option "7d"
+            - option "All"
+        - button "👁️ Following" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]: 👁️
+          - generic [ref=e36]: Following
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: ❌
+            - generic [ref=e40]:
+              - generic [ref=e41]: "0"
+              - generic [ref=e42]: errors
+          - generic [ref=e43]:
+            - generic [ref=e44]: 🟢
+            - generic [ref=e45]:
+              - generic [ref=e46]: "0"
+              - generic [ref=e47]: active
+          - button "📋 60 ready (1 blocked)" [ref=e48] [cursor=pointer]:
+            - generic [ref=e49]: 📋
+            - generic [ref=e50]:
+              - generic [ref=e51]: "60"
+              - generic [ref=e52]: ready
+            - generic [ref=e53]: (1 blocked)
+        - generic [ref=e54]:
+          - button "Settings" [ref=e55] [cursor=pointer]:
+            - img [ref=e56]
+          - button "Disconnect" [ref=e59] [cursor=pointer]
+      - generic [ref=e62]:
+        - generic [ref=e63]: 🔴
+        - generic [ref=e64]: Orchestrator doing worker work
+        - generic [ref=e65]: "Last coaching: 2:13:55 PM"
+      - generic [ref=e66]:
+        - button "O Orchestrator Sessions 4" [expanded] [ref=e67] [cursor=pointer]:
+          - generic [ref=e68]:
+            - generic [ref=e69]: O
+            - generic [ref=e70]: Orchestrator Sessions
+            - generic [ref=e71]: "4"
+          - img [ref=e73]
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - button "O" [ref=e79] [cursor=pointer]
+            - generic [ref=e80]:
+              - generic [ref=e81]:
+                - generic [ref=e82]: 🎯
+                - generic [ref=e83]: active
+              - button "23h 47m" [ref=e85] [cursor=pointer]
+            - paragraph [ref=e87]: Continue strategic guidance. Prior session cleared backlogs...
+            - generic [ref=e88]:
+              - button "Continue Strategic Guidance 30jan 9f12" [ref=e89] [cursor=pointer]
+              - generic [ref=e90]: "|"
+              - generic [ref=e91]: orch-go
+            - button "↳ 1 active agent" [ref=e94] [cursor=pointer]:
+              - generic [ref=e95]:
+                - generic [ref=e96]: ↳
+                - text: 1 active agent
+          - generic [ref=e97]:
+            - button "O" [ref=e99] [cursor=pointer]
+            - generic [ref=e100]:
+              - generic [ref=e101]:
+                - generic [ref=e102]: 🎯
+                - generic [ref=e103]: active
+              - button "20h 1m" [ref=e105] [cursor=pointer]
+            - paragraph [ref=e107]: Continue lifecycle-aware orchestration work. Prior session:...
+            - generic [ref=e108]:
+              - button "Continue Lifecycle Aware 30jan" [ref=e109] [cursor=pointer]
+              - generic [ref=e110]: "|"
+              - generic [ref=e111]: orch-go
+            - button "↳ 1 active agent" [ref=e114] [cursor=pointer]:
+              - generic [ref=e115]:
+                - generic [ref=e116]: ↳
+                - text: 1 active agent
+          - generic [ref=e117]:
+            - button "O" [ref=e119] [cursor=pointer]
+            - generic [ref=e120]:
+              - generic [ref=e121]:
+                - generic [ref=e122]: 🎯
+                - generic [ref=e123]: active
+              - button "19h 51m" [ref=e125] [cursor=pointer]
+            - paragraph [ref=e127]: "Complete observability block: close orch-go-21116 (claude..."
+            - generic [ref=e128]:
+              - button "Complete Observability Block 30jan E103" [ref=e129] [cursor=pointer]
+              - generic [ref=e130]: "|"
+              - generic [ref=e131]: orch-go
+            - button "↳ 1 active agent" [ref=e134] [cursor=pointer]:
+              - generic [ref=e135]:
+                - generic [ref=e136]: ↳
+                - text: 1 active agent
+          - generic [ref=e137]:
+            - button "O" [ref=e139] [cursor=pointer]
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - generic [ref=e142]: 🎯
+                - generic [ref=e143]: active
+              - button "19h 3m" [ref=e145] [cursor=pointer]
+            - paragraph [ref=e147]: "Complete decision batch block: close orch-go-21084 (bloat..."
+            - generic [ref=e148]:
+              - button "Complete Decision Batch 30jan D868" [ref=e149] [cursor=pointer]
+              - generic [ref=e150]: "|"
+              - generic [ref=e151]: orch-go
+            - button "↳ 1 active agent" [ref=e154] [cursor=pointer]:
+              - generic [ref=e155]:
+                - generic [ref=e156]: ↳
+                - text: 1 active agent
+      - generic [ref=e157]:
+        - button "S Services 2 2 running" [expanded] [ref=e158] [cursor=pointer]:
+          - generic [ref=e159]:
+            - generic [ref=e160]: S
+            - generic [ref=e161]: Services
+            - generic [ref=e162]: "2"
+            - generic [ref=e163]: 2 running
+          - img [ref=e165]
+        - generic [ref=e168]:
+          - generic [ref=e169]:
+            - button "S" [ref=e171] [cursor=pointer]
+            - generic [ref=e172]:
+              - generic [ref=e173]:
+                - generic [ref=e174]: 🎯
+                - generic [ref=e175]:
+                  - generic [ref=e176]: ●
+                  - text: running
+              - button "6s" [ref=e178] [cursor=pointer]
+            - paragraph [ref=e180]: web
+            - generic [ref=e181]:
+              - 'button "PID: 81877" [ref=e182] [cursor=pointer]'
+              - generic [ref=e183]: "|"
+              - generic [ref=e184]: orch-go
+            - button "📊 Events" [ref=e187] [cursor=pointer]
+          - generic [ref=e188]:
+            - button "S" [ref=e190] [cursor=pointer]
+            - generic [ref=e191]:
+              - generic [ref=e192]:
+                - generic [ref=e193]: 🎯
+                - generic [ref=e194]:
+                  - generic [ref=e195]: ●
+                  - text: running
+              - button "6s" [ref=e197] [cursor=pointer]
+            - paragraph [ref=e199]: api
+            - generic [ref=e200]:
+              - 'button "PID: 81876" [ref=e201] [cursor=pointer]'
+              - generic [ref=e202]: "|"
+              - generic [ref=e203]: orch-go
+            - button "📊 Events" [ref=e206] [cursor=pointer]
+      - generic [ref=e207]:
+        - button "🎯 Up Next 5 2 urgent" [expanded] [ref=e208] [cursor=pointer]:
+          - generic [ref=e209]:
+            - generic [ref=e210]: 🎯
+            - generic [ref=e211]: Up Next
+            - generic [ref=e212]: "5"
+            - generic [ref=e213]: 2 urgent
+          - img [ref=e215]
+        - generic [ref=e217]:
+          - generic [ref=e218]:
+            - generic [ref=e219]:
+              - generic [ref=e220]: P1
+              - generic "orch spawn --attach hijacks orchestrator window instead of attaching in workers window" [ref=e221]
+              - generic "Age" [ref=e222]: 3h
+              - generic [ref=e223]: orch-go-21138
+            - generic [ref=e224]:
+              - generic [ref=e225]: P1
+              - 'generic "Epic: Governance Infrastructure for Human-AI Systems" [ref=e226]'
+              - generic "Age" [ref=e227]: 9d
+              - generic [ref=e228]: orch-go-kz7zr
+            - generic [ref=e229]:
+              - generic [ref=e230]: P2
+              - generic "Work Graph Dashboard Tab" [ref=e231]
+              - generic "Age" [ref=e232]: 16h
+              - generic [ref=e233]: orch-go-21121
+            - generic [ref=e234]:
+              - generic [ref=e235]: P2
+              - 'generic "Topic extraction: strip skill prefixes from keyword extraction" [ref=e236]'
+              - generic "Age" [ref=e237]: 4h
+              - generic [ref=e238]: orch-go-21129
+            - generic [ref=e239]:
+              - generic [ref=e240]: P2
+              - generic "Add Evidence Hierarchy warning to SPAWN_CONTEXT kb context section" [ref=e241]
+              - generic "Age" [ref=e242]: 4h
+              - generic [ref=e243]: orch-go-21130
+          - paragraph [ref=e244]: +56 more in queue
+      - generic [ref=e245]:
+        - generic [ref=e246]:
+          - generic [ref=e247]: 🟢
+          - generic [ref=e248]: Active Agents
+          - generic [ref=e249]: "0"
+        - generic [ref=e251]:
+          - paragraph [ref=e252]: No active agents
+          - paragraph [ref=e253]:
+            - text: Spawn with
+            - code [ref=e254]: orch spawn
+      - generic [ref=e255]:
+        - button "🎯 Strategic Center 11" [expanded] [ref=e256] [cursor=pointer]:
+          - generic [ref=e257]:
+            - generic [ref=e258]: 🎯
+            - generic [ref=e259]: Strategic Center
+            - generic [ref=e260]: "11"
+          - img [ref=e262]
+        - generic [ref=e264]:
+          - generic [ref=e265]:
+            - generic [ref=e266]:
+              - generic [ref=e267]: ❓
+              - generic [ref=e268]: Answer Questions
+              - generic [ref=e269]: "1"
+            - generic [ref=e274]: Reduce friction for Docker Claude ↔ macOS host operations
+          - generic [ref=e275]:
+            - generic [ref=e276]:
+              - generic [ref=e277]: 🌱
+              - generic [ref=e278]: Tend Knowledge
+              - generic [ref=e279]: "10"
+            - generic [ref=e280]:
+              - generic [ref=e281]: Synthesis (5)
+              - generic [ref=e282]:
+                - generic [ref=e283]: feature
+                - generic [ref=e284]: 5 investigations
+              - generic [ref=e285]:
+                - generic [ref=e286]: reflection
+                - generic [ref=e287]: 4 investigations
+              - generic [ref=e288]:
+                - generic [ref=e289]: quick
+                - generic [ref=e290]: 4 investigations
+              - generic [ref=e291]:
+                - generic [ref=e292]: untracked
+                - generic [ref=e293]: 4 investigations
+              - generic [ref=e294]:
+                - generic [ref=e295]: rebuild
+                - generic [ref=e296]: 4 investigations
+              - generic [ref=e297]: Stale (5)
+              - generic [ref=e298]:
+                - generic [ref=e299]: verification bottleneck principle
+                - generic [ref=e300]: 17d without citations
+              - generic [ref=e301]:
+                - generic [ref=e302]: separate observation from intervention
+                - generic [ref=e303]: 17d without citations
+              - generic [ref=e304]:
+                - generic [ref=e305]: trust calibration assert knowledge
+                - generic [ref=e306]: 17d without citations
+              - generic [ref=e307]:
+                - generic [ref=e308]: two tier cleanup pattern
+                - generic [ref=e309]: 17d without citations
+              - generic [ref=e310]:
+                - generic [ref=e311]: understanding lag pattern
+                - generic [ref=e312]: 17d without citations
+      - button "📋 Ready Queue 61 — orch spawn --attach hijacks or..., Work Graph Dashboard Tab +59" [ref=e314] [cursor=pointer]:
+        - generic [ref=e315]:
+          - generic [ref=e316]: 📋
+          - generic [ref=e317]: Ready Queue
+          - generic [ref=e318]: "61"
+          - generic [ref=e319]: — orch spawn --attach hijacks or..., Work Graph Dashboard Tab +59
+        - img [ref=e321]
+```

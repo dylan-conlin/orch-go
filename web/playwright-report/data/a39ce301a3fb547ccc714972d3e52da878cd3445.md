@@ -1,0 +1,401 @@
+# Page snapshot
+
+```yaml
+- generic:
+  - generic:
+    - generic:
+      - banner:
+        - generic:
+          - generic:
+            - link "🐝 Swarm":
+              - /url: /
+              - generic: 🐝
+              - generic: Swarm
+            - navigation:
+              - link "Dashboard":
+                - /url: /
+              - link "Work Graph":
+                - /url: /work-graph
+          - generic:
+            - generic:
+              - generic: 8%(2h 17m)
+              - generic: "|"
+              - generic: 32%(4d 16h)
+              - generic: "@dylan.conlin"
+            - generic:
+              - generic: 🟢 $0.00
+            - generic: connecting
+            - button "Select theme" [expanded]:
+              - img
+      - main:
+        - generic:
+          - generic:
+            - generic:
+              - button "⚡ Ops"
+              - button "📦 History"
+            - generic:
+              - generic: "Since:"
+              - combobox:
+                - option "12h" [selected]
+                - option "24h"
+                - option "48h"
+                - option "7d"
+                - option "All"
+            - button "👁️ Following":
+              - generic: 👁️
+              - generic: Following
+            - generic:
+              - generic:
+                - generic: ❌
+                - generic:
+                  - generic: "0"
+                  - generic: errors
+              - generic:
+                - generic: 🟢
+                - generic:
+                  - generic: "0"
+                  - generic: active
+              - button "📋 60 ready (1 blocked)":
+                - generic: 📋
+                - generic:
+                  - generic: "60"
+                  - generic: ready
+                - generic: (1 blocked)
+            - generic:
+              - button "Settings":
+                - img
+              - button "..."
+          - generic:
+            - generic:
+              - generic:
+                - generic: 🔴
+                - generic: Orchestrator doing worker work
+                - generic: "Last coaching: 2:13:55 PM"
+          - generic:
+            - button "O Orchestrator Sessions 4" [expanded]:
+              - generic:
+                - generic: O
+                - generic: Orchestrator Sessions
+                - generic: "4"
+              - generic:
+                - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - button "O"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic: active
+                    - generic:
+                      - button "23h 47m"
+                  - generic:
+                    - paragraph: Continue strategic guidance. Prior session cleared backlogs...
+                  - generic:
+                    - button "Continue Strategic Guidance 30jan 9f12"
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "↳ 1 active agent":
+                        - generic:
+                          - generic: ↳
+                          - text: 1 active agent
+                - generic:
+                  - generic:
+                    - button "O"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic: active
+                    - generic:
+                      - button "20h 1m"
+                  - generic:
+                    - paragraph: Continue lifecycle-aware orchestration work. Prior session:...
+                  - generic:
+                    - button "Continue Lifecycle Aware 30jan"
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "↳ 1 active agent":
+                        - generic:
+                          - generic: ↳
+                          - text: 1 active agent
+                - generic:
+                  - generic:
+                    - button "O"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic: active
+                    - generic:
+                      - button "19h 51m"
+                  - generic:
+                    - paragraph: "Complete observability block: close orch-go-21116 (claude..."
+                  - generic:
+                    - button "Complete Observability Block 30jan E103"
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "↳ 1 active agent":
+                        - generic:
+                          - generic: ↳
+                          - text: 1 active agent
+                - generic:
+                  - generic:
+                    - button "O"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic: active
+                    - generic:
+                      - button "19h 3m"
+                  - generic:
+                    - paragraph: "Complete decision batch block: close orch-go-21084 (bloat..."
+                  - generic:
+                    - button "Complete Decision Batch 30jan D868"
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "↳ 1 active agent":
+                        - generic:
+                          - generic: ↳
+                          - text: 1 active agent
+          - generic:
+            - button "S Services 2 2 running" [expanded]:
+              - generic:
+                - generic: S
+                - generic: Services
+                - generic: "2"
+                - generic: 2 running
+              - generic:
+                - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - button "S"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic:
+                        - generic: ●
+                        - text: running
+                    - generic:
+                      - button "1s"
+                  - generic:
+                    - paragraph: api
+                  - generic:
+                    - 'button "PID: 81876"'
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "📊 Events"
+                - generic:
+                  - generic:
+                    - button "S"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic:
+                        - generic: ●
+                        - text: running
+                    - generic:
+                      - button "1s"
+                  - generic:
+                    - paragraph: web
+                  - generic:
+                    - 'button "PID: 81877"'
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "📊 Events"
+          - generic:
+            - button "🎯 Up Next 5 2 urgent" [expanded]:
+              - generic:
+                - generic: 🎯
+                - generic: Up Next
+                - generic: "5"
+                - generic: 2 urgent
+              - generic:
+                - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic: P1
+                  - generic "orch spawn --attach hijacks orchestrator window instead of attaching in workers window"
+                  - generic "Age": 3h
+                  - generic: orch-go-21138
+                - generic:
+                  - generic: P1
+                  - 'generic "Epic: Governance Infrastructure for Human-AI Systems"'
+                  - generic "Age": 9d
+                  - generic: orch-go-kz7zr
+                - generic:
+                  - generic: P2
+                  - generic "Work Graph Dashboard Tab"
+                  - generic "Age": 16h
+                  - generic: orch-go-21121
+                - generic:
+                  - generic: P2
+                  - 'generic "Topic extraction: strip skill prefixes from keyword extraction"'
+                  - generic "Age": 4h
+                  - generic: orch-go-21129
+                - generic:
+                  - generic: P2
+                  - generic "Add Evidence Hierarchy warning to SPAWN_CONTEXT kb context section"
+                  - generic "Age": 4h
+                  - generic: orch-go-21130
+              - paragraph: +56 more in queue
+          - generic:
+            - generic:
+              - generic: 🟢
+              - generic: Active Agents
+              - generic: "0"
+            - generic:
+              - generic:
+                - paragraph: No active agents
+                - paragraph:
+                  - text: Spawn with
+                  - code: orch spawn
+          - generic:
+            - button "🎯 Strategic Center 10" [expanded]:
+              - generic:
+                - generic: 🎯
+                - generic: Strategic Center
+                - generic: "10"
+              - generic:
+                - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic: 🌱
+                  - generic: Tend Knowledge
+                  - generic: "10"
+                - generic:
+                  - generic: Synthesis (5)
+                  - generic:
+                    - generic: feature
+                    - generic: 5 investigations
+                  - generic:
+                    - generic: reflection
+                    - generic: 4 investigations
+                  - generic:
+                    - generic: quick
+                    - generic: 4 investigations
+                  - generic:
+                    - generic: untracked
+                    - generic: 4 investigations
+                  - generic:
+                    - generic: rebuild
+                    - generic: 4 investigations
+                  - generic: Stale (5)
+                  - generic:
+                    - generic: verification bottleneck principle
+                    - generic: 17d without citations
+                  - generic:
+                    - generic: separate observation from intervention
+                    - generic: 17d without citations
+                  - generic:
+                    - generic: trust calibration assert knowledge
+                    - generic: 17d without citations
+                  - generic:
+                    - generic: two tier cleanup pattern
+                    - generic: 17d without citations
+                  - generic:
+                    - generic: understanding lag pattern
+                    - generic: 17d without citations
+          - generic:
+            - button "📋 Ready Queue 61 — orch spawn --attach hijacks or..., Work Graph Dashboard Tab +59":
+              - generic:
+                - generic: 📋
+                - generic: Ready Queue
+                - generic: "61"
+                - generic: — orch spawn --attach hijacks or..., Work Graph Dashboard Tab +59
+              - generic:
+                - img
+  - menu [active] [ref=e2]:
+    - group "Mode" [ref=e3]:
+      - group [ref=e4]: Mode
+    - group [ref=e5]:
+      - menuitemradio "Light" [ref=e6]:
+        - img [ref=e8]
+        - generic [ref=e9]: Light
+      - menuitemradio "Dark" [ref=e10]:
+        - img [ref=e12]
+        - generic [ref=e13]: Dark
+      - menuitemradio "System" [checked] [ref=e14]:
+        - img [ref=e16]
+        - img [ref=e17]
+        - generic [ref=e18]: System
+    - group [ref=e19]
+    - group "Theme" [ref=e20]:
+      - group [ref=e21]:
+        - generic [ref=e22]:
+          - img [ref=e23]
+          - generic [ref=e24]: Theme
+    - group [ref=e25]:
+      - menuitemradio "aura" [ref=e26]:
+        - generic [ref=e28]: aura
+      - menuitemradio "ayu" [ref=e29]:
+        - generic [ref=e31]: ayu
+      - menuitemradio "catppuccin" [ref=e32]:
+        - generic [ref=e34]: catppuccin
+      - menuitemradio "catppuccin macchiato" [ref=e35]:
+        - generic [ref=e37]: catppuccin macchiato
+      - menuitemradio "cobalt2" [ref=e38]:
+        - generic [ref=e40]: cobalt2
+      - menuitemradio "dracula" [ref=e41]:
+        - generic [ref=e43]: dracula
+      - menuitemradio "everforest" [ref=e44]:
+        - generic [ref=e46]: everforest
+      - menuitemradio "flexoki" [ref=e47]:
+        - generic [ref=e49]: flexoki
+      - menuitemradio "github" [ref=e50]:
+        - generic [ref=e52]: github
+      - menuitemradio "gruvbox" [ref=e53]:
+        - generic [ref=e55]: gruvbox
+      - menuitemradio "kanagawa" [ref=e56]:
+        - generic [ref=e58]: kanagawa
+      - menuitemradio "material" [ref=e59]:
+        - generic [ref=e61]: material
+      - menuitemradio "matrix" [ref=e62]:
+        - generic [ref=e64]: matrix
+      - menuitemradio "mercury" [ref=e65]:
+        - generic [ref=e67]: mercury
+      - menuitemradio "monokai" [ref=e68]:
+        - generic [ref=e70]: monokai
+      - menuitemradio "nightowl" [ref=e71]:
+        - generic [ref=e73]: nightowl
+      - menuitemradio "nord" [ref=e74]:
+        - generic [ref=e76]: nord
+      - menuitemradio "one dark" [ref=e77]:
+        - generic [ref=e79]: one dark
+      - menuitemradio "opencode" [checked] [ref=e80]:
+        - img [ref=e82]
+        - generic [ref=e83]: opencode
+      - menuitemradio "orng" [ref=e84]:
+        - generic [ref=e86]: orng
+      - menuitemradio "palenight" [ref=e87]:
+        - generic [ref=e89]: palenight
+      - menuitemradio "rosepine" [ref=e90]:
+        - generic [ref=e92]: rosepine
+      - menuitemradio "solarized" [ref=e93]:
+        - generic [ref=e95]: solarized
+      - menuitemradio "synthwave84" [ref=e96]:
+        - generic [ref=e98]: synthwave84
+      - menuitemradio "tokyonight" [ref=e99]:
+        - generic [ref=e101]: tokyonight
+      - menuitemradio "vercel" [ref=e102]:
+        - generic [ref=e104]: vercel
+      - menuitemradio "vesper" [ref=e105]:
+        - generic [ref=e107]: vesper
+      - menuitemradio "zenburn" [ref=e108]:
+        - generic [ref=e110]: zenburn
+```

@@ -150,7 +150,7 @@ test.describe('Work Graph Keyboard Navigation', () => {
 		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
 	});
 
-	test('should support l/enter to expand items', async ({ page }) => {
+	test('should support Enter to expand L1 details', async ({ page }) => {
 		await page.route('**/api/beads/graph**', async (route) => {
 			await route.fulfill({
 				status: 200,
@@ -179,14 +179,14 @@ test.describe('Work Graph Keyboard Navigation', () => {
 		// Expanded details should not be visible initially
 		await expect(page.getByText('Test description')).not.toBeVisible();
 		
-		// Press l to expand
-		await page.keyboard.press('l');
+		// Press Enter to expand L1 details
+		await page.keyboard.press('Enter');
 		
 		// L1 details should now be visible
 		await expect(page.getByText('Test description')).toBeVisible();
 	});
 
-	test('should support h/esc to collapse items', async ({ page }) => {
+	test('should support Escape to collapse L1 details', async ({ page }) => {
 		await page.route('**/api/beads/graph**', async (route) => {
 			await route.fulfill({
 				status: 200,
@@ -212,12 +212,12 @@ test.describe('Work Graph Keyboard Navigation', () => {
 
 		await page.goto('/work-graph');
 		
-		// Expand first
-		await page.keyboard.press('l');
+		// Expand first with Enter
+		await page.keyboard.press('Enter');
 		await expect(page.getByText('Test description')).toBeVisible();
 		
-		// Press h to collapse
-		await page.keyboard.press('h');
+		// Press Escape to collapse L1 details
+		await page.keyboard.press('Escape');
 		await expect(page.getByText('Test description')).not.toBeVisible();
 	});
 

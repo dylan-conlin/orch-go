@@ -8,6 +8,7 @@
 	// Flatten tree for keyboard navigation
 	let flattenedNodes: TreeNode[] = [];
 	let selectedIndex = 0;
+	let expansionVersion = 0; // Counter to force reactivity on expansion changes
 	
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
@@ -25,6 +26,8 @@
 
 	// Rebuild flattened list when tree or expansion state changes
 	$: {
+		// Force re-evaluation when expansionVersion changes
+		expansionVersion;
 		flattenedNodes = flattenTree(tree);
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
@@ -189,7 +192,7 @@
 	// Toggle expansion
 	function toggleExpansion(node: TreeNode) {
 		node.expanded = !node.expanded;
-		tree = [...tree]; // Create new reference to trigger reactivity
+		expansionVersion++; // Trigger reactivity
 	}
 
 	// Select node on click
