@@ -90,12 +90,15 @@
 			<!-- Daemon status -->
 			{#if $daemon}
 				<div class="flex items-center gap-2 text-xs text-muted-foreground">
-					{#if $daemon.running}
-						<span class="text-green-500">●</span>
-						<span>{$daemon.capacity_used}/{$daemon.capacity_max} slots</span>
-					{:else}
+					{#if !$daemon.running}
 						<span class="text-yellow-500">●</span>
 						<span>daemon stopped</span>
+					{:else if $daemon.capacity_free === 0}
+						<span class="text-orange-500">●</span>
+						<span class="text-orange-500">{$daemon.capacity_used}/{$daemon.capacity_max} at capacity</span>
+					{:else}
+						<span class="text-green-500">●</span>
+						<span>{$daemon.capacity_used}/{$daemon.capacity_max} slots</span>
 					{/if}
 				</div>
 			{/if}
@@ -181,6 +184,9 @@
 						</div>
 					</div>
 				{:else}
+					{@const queuedItems = $wipItems.filter(i => i.type === 'queued')}
+					{@const queuePosition = queuedItems.findIndex(i => i === item) + 1}
+					{@const isAtCapacity = $daemon?.running && $daemon.capacity_free === 0}
 					<!-- Queued Issue - matches tree row structure -->
 					<div class="flex items-center gap-3 py-2 px-3 rounded opacity-60">
 						<!-- Status icon -->
@@ -199,6 +205,15 @@
 						<!-- Title -->
 						<span class="flex-1 text-sm font-medium text-foreground truncate">
 							{item.issue.title}
+						</span>
+						
+						<!-- Queue reason -->
+						<span class="text-xs text-muted-foreground italic min-w-[80px]">
+							{#if queuePosition === 1}
+								{isAtCapacity ? 'at capacity' : 'next'}
+							{:else}
+								#{queuePosition} in queue
+							{/if}
 						</span>
 						
 						<!-- Type badge -->
