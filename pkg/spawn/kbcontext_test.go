@@ -242,6 +242,8 @@ func TestParseKBContextOutput(t *testing.T) {
 }
 
 func TestFormatContextForSpawn(t *testing.T) {
+	evidenceHierarchy := "Evidence Hierarchy: Prior investigations are claims to verify, not truth. Before building on findings, check against primary sources (code, test output, observed behavior)."
+
 	tests := []struct {
 		name         string
 		result       *KBContextResult
@@ -347,6 +349,10 @@ func TestFormatContextForSpawn(t *testing.T) {
 					if !strings.Contains(result, want) {
 						t.Errorf("FormatContextForSpawn() missing %q in output:\n%s", want, result)
 					}
+				}
+
+				if !strings.Contains(result, evidenceHierarchy) {
+					t.Errorf("FormatContextForSpawn() missing evidence hierarchy warning in output:\n%s", result)
 				}
 			}
 		})
