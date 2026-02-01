@@ -251,3 +251,177 @@ test.describe('Work Graph Keyboard Navigation', () => {
 		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
 	});
 });
+
+// Bug fixes for Phase 1.1
+test.describe('Bug Fixes - Phase 1.1', () => {
+	// Bug 1: orch-go-21144 - Highlight makes text unreadable
+	test('should use border-only selection for better readability', async ({ page }) => {
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-1',
+							title: 'Test Issue',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 1,
+					edge_count: 0
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		const issueRow = page.locator('[data-testid="issue-row-orch-go-1"]');
+		const rowContent = issueRow.locator('.flex.items-center').first();
+		
+		// Selected item should have a visible border (not solid background)
+		const borderStyle = await rowContent.evaluate((el) => {
+			const styles = window.getComputedStyle(el);
+			return {
+				borderWidth: styles.borderWidth,
+				borderColor: styles.borderColor,
+				// Check that border is visible (not transparent or rgba(0,0,0,0))
+				hasBorder: styles.borderWidth !== '0px' && !styles.borderColor.includes('rgba(0, 0, 0, 0)')
+			};
+		});
+		
+		expect(borderStyle.hasBorder).toBe(true);
+	});
+
+	// Bug 2: orch-go-21145 - Border and highlight out of sync
+	test('should unify selection state between click and keyboard navigation', async ({ page }) => {
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-1',
+							title: 'First Issue',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-2',
+							title: 'Second Issue',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 2,
+					edge_count: 0
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Click on second item
+		await page.locator('[data-testid="issue-row-orch-go-2"]').click();
+		
+		// Should have both focused and selected classes
+		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).toHaveClass(/selected/);
+		
+		// Navigate with keyboard
+		await page.keyboard.press('k');
+		
+		// First item should now have both classes
+		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/selected/);
+		
+		// Second item should no longer have either class
+		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).not.toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).not.toHaveClass(/selected/);
+	});
+
+	// Bug 3: orch-go-21146 - Can't collapse epics with children
+	test('should collapse/expand tree nodes with h/l keys', async ({ page }) => {
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-1',
+							title: 'Parent Epic',
+							type: 'epic',
+							status: 'in_progress',
+							priority: 1,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-1.1',
+							title: 'Child Task 1',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-1.2',
+							title: 'Child Task 2',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [
+						{
+							from: 'orch-go-1',
+							to: 'orch-go-1.1',
+							type: 'parent-child'
+						},
+						{
+							from: 'orch-go-1',
+							to: 'orch-go-1.2',
+							type: 'parent-child'
+						}
+					],
+					node_count: 3,
+					edge_count: 2
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Children should be visible initially (expanded by default)
+		await expect(page.getByText('Child Task 1')).toBeVisible();
+		await expect(page.getByText('Child Task 2')).toBeVisible();
+		
+		// Collapse with h key
+		await page.keyboard.press('h');
+		
+		// Children should now be hidden
+		await expect(page.getByText('Child Task 1')).not.toBeVisible();
+		await expect(page.getByText('Child Task 2')).not.toBeVisible();
+		
+		// Parent should still be visible
+		await expect(page.getByText('Parent Epic')).toBeVisible();
+		
+		// Expand with l key
+		await page.keyboard.press('l');
+		
+		// Children should be visible again
+		await expect(page.getByText('Child Task 1')).toBeVisible();
+		await expect(page.getByText('Child Task 2')).toBeVisible();
+	});
+});
