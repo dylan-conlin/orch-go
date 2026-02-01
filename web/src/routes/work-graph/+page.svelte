@@ -2,16 +2,21 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { workGraph, buildTree, type TreeNode } from '$lib/stores/work-graph';
 	import { orchestratorContext } from '$lib/stores/context';
+	import { agents } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
+	import { WIPSection } from '$lib/components/wip-section';
 
 	let tree: TreeNode[] = [];
 	let loading = true;
 	let error: string | null = null;
 
-	// Fetch work graph on mount
+	// Fetch work graph and agents on mount
 	onMount(async () => {
 		const projectDir = $orchestratorContext?.project_dir;
-		await workGraph.fetch(projectDir, 'open');
+		await Promise.all([
+			workGraph.fetch(projectDir, 'open'),
+			agents.fetch()
+		]);
 		loading = false;
 	});
 
@@ -45,6 +50,9 @@
 			{/if}
 		</div>
 	</div>
+
+	<!-- WIP Section (pinned at top) -->
+	<WIPSection />
 
 	<!-- Content -->
 	<div class="flex-1 overflow-hidden">
