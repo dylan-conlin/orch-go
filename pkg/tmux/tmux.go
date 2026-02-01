@@ -775,6 +775,30 @@ func WindowExists(windowTarget string) bool {
 	return false
 }
 
+// ListAllWindowTargets returns a set of all existing window targets across all sessions.
+// Returns targets in "session:index" format for fast O(1) existence checks.
+// This is much more efficient than calling WindowExists() multiple times.
+func ListAllWindowTargets() map[string]bool {
+	result := make(map[string]bool)
+
+	cmd, err := tmuxCommand("list-windows", "-a", "-F", "#{session_name}:#{window_index}")
+	if err != nil {
+		return result
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return result
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			result[line] = true
+		}
+	}
+	return result
+}
+
 // KillWindow closes a tmux window by target (session:window format).
 func KillWindow(windowTarget string) error {
 	cmd, err := tmuxCommand("kill-window", "-t", windowTarget)

@@ -301,6 +301,9 @@ func runStatus(serverURL string) error {
 	// - Docker mode agents without active tmux windows
 	agentReg, _ := registry.New("")
 	if agentReg != nil {
+		// Batch fetch all existing tmux window targets once (O(1) vs O(n) subprocess calls)
+		existingWindows := tmux.ListAllWindowTargets()
+
 		for _, regAgent := range agentReg.ListActive() {
 			// Only process claude and docker mode agents (opencode mode is handled in Phase 2)
 			if regAgent.Mode != registry.ModeTmux && regAgent.Mode != registry.ModeDocker {
@@ -328,10 +331,9 @@ func runStatus(serverURL string) error {
 				Model:      regAgent.Model,
 			}
 
-			// If registry has tmux window info, try to verify it's still valid
+			// If registry has tmux window info, verify it still exists using batch lookup
 			if regAgent.TmuxWindow != "" {
-				// Check if window exists
-				if tmux.WindowExists(regAgent.TmuxWindow) {
+				if existingWindows[regAgent.TmuxWindow] {
 					info.Window = regAgent.TmuxWindow
 				}
 				// Note: If window doesn't exist, agent is a phantom (will be handled later)
