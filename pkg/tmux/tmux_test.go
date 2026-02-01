@@ -339,7 +339,7 @@ func TestBuildAttachCommand(t *testing.T) {
 			name:         "outside tmux",
 			windowTarget: "session:1",
 			insideTmux:   false,
-			wantArgs:     []string{"tmux", "attach-session", "-t", "session:1"},
+			wantArgs:     []string{"tmux", "select-window", "-t", "session:1"},
 		},
 	}
 
