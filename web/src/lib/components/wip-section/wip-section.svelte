@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { wip, wipItems, wipStats, type WIPItem } from '$lib/stores/wip';
-	import { agents } from '$lib/stores/agents';
+	import { wip, wipItems, wipStats, getExpressiveStatus, computeAgentHealth, type WIPItem } from '$lib/stores/wip';
+	import { agents, type Agent } from '$lib/stores/agents';
 	import { daemon } from '$lib/stores/daemon';
 	import { Badge } from '$lib/components/ui/badge';
 
@@ -31,13 +31,25 @@
 	// Sync running agents from the agents store
 	$: wip.setRunningAgents($agents);
 
-	// Get status icon for running agents
-	function getAgentStatusIcon(status: string): string {
-		switch (status) {
-			case 'active': return '▶';
-			case 'idle': return '⏸';
-			default: return '•';
+	// Get status icon for running agents based on health
+	function getAgentStatusIcon(agent: Agent): { icon: string; color: string } {
+		const health = computeAgentHealth(agent);
+		
+		if (health.status === 'critical') {
+			return { icon: '🚨', color: 'text-red-500' };
 		}
+		if (health.status === 'warning') {
+			return { icon: '⚠️', color: 'text-yellow-500' };
+		}
+		
+		// Healthy - show activity-based icon
+		if (agent.is_processing) {
+			return { icon: '◉', color: 'text-blue-500 animate-pulse' };
+		}
+		if (agent.status === 'idle') {
+			return { icon: '⏸', color: 'text-muted-foreground' };
+		}
+		return { icon: '▶', color: 'text-blue-500' };
 	}
 
 	// Get priority badge variant
@@ -93,10 +105,12 @@
 		<div class="px-6 py-4">
 			{#each $wipItems as item}
 				{#if item.type === 'running'}
+					{@const statusIcon = getAgentStatusIcon(item.agent)}
+					{@const health = computeAgentHealth(item.agent)}
 					<!-- Running Agent - matches tree row structure -->
 					<div class="flex items-center gap-3 py-2 px-3 rounded">
-						<!-- Status icon (w-5 matches tree) -->
-						<span class="text-blue-500 w-5">{getAgentStatusIcon(item.agent.status)}</span>
+						<!-- Status icon with health indication -->
+						<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
 						
 						<!-- Priority placeholder (w-8 matches tree badge width) -->
 						<span class="w-8"></span>
@@ -111,11 +125,16 @@
 							{item.agent.task || item.agent.skill || 'Unknown task'}
 						</span>
 						
-						<!-- Phase badge -->
-						{#if item.agent.phase}
-							<Badge variant="outline" class="text-xs bg-blue-500/10 text-blue-500">
-								{item.agent.phase}
-							</Badge>
+						<!-- Expressive status (replaces phase badge) -->
+						<span class="text-xs text-muted-foreground italic min-w-[120px]">
+							{getExpressiveStatus(item.agent)}
+						</span>
+						
+						<!-- Health warning tooltip -->
+						{#if health.status !== 'healthy'}
+							<span class="text-xs {health.status === 'critical' ? 'text-red-500' : 'text-yellow-500'}" title={health.reasons.join(', ')}>
+								{health.status === 'critical' ? '!' : '?'}
+							</span>
 						{/if}
 						
 						<!-- Runtime -->

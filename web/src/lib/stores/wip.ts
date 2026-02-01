@@ -109,3 +109,100 @@ export const wipStats = derived(wip, ($wip) => ({
 	queued: $wip.queuedIssues.length,
 	total: $wip.runningAgents.length + $wip.queuedIssues.length
 }));
+
+// Health status for running agents
+export type HealthStatus = 'healthy' | 'warning' | 'critical';
+
+export interface AgentHealth {
+	status: HealthStatus;
+	reasons: string[];
+}
+
+/**
+ * Compute health status for an agent based on various signals
+ */
+export function computeAgentHealth(agent: Agent): AgentHealth {
+	const reasons: string[] = [];
+	let status: HealthStatus = 'healthy';
+
+	// Critical: stalled for 15+ minutes (from API)
+	if (agent.is_stalled) {
+		status = 'critical';
+		reasons.push('Stalled (same phase 15+ min)');
+	}
+
+	// Warning: high context usage (if we have token data)
+	// Note: tokens field may not always be present
+	
+	// Warning: long runtime without phase change
+	// Parse runtime like "5m 30s" or "1h 20m"
+	const runtimeMinutes = parseRuntimeMinutes(agent.runtime);
+	if (runtimeMinutes && runtimeMinutes > 30 && !agent.phase?.toLowerCase().includes('complete')) {
+		if (status !== 'critical') status = 'warning';
+		reasons.push(`Long runtime (${agent.runtime})`);
+	}
+
+	return { status, reasons };
+}
+
+/**
+ * Parse runtime string to minutes (e.g., "5m 30s" -> 5, "1h 20m" -> 80)
+ */
+function parseRuntimeMinutes(runtime?: string): number | null {
+	if (!runtime) return null;
+	
+	let minutes = 0;
+	const hourMatch = runtime.match(/(\d+)h/);
+	const minMatch = runtime.match(/(\d+)m/);
+	
+	if (hourMatch) minutes += parseInt(hourMatch[1]) * 60;
+	if (minMatch) minutes += parseInt(minMatch[1]);
+	
+	return minutes || null;
+}
+
+/**
+ * Get expressive status text for an agent
+ * Shows what the agent is currently doing in human-readable form
+ */
+export function getExpressiveStatus(agent: Agent): string {
+	// If we have current activity, use it
+	if (agent.current_activity?.text) {
+		const text = agent.current_activity.text;
+		// Truncate long activity text
+		if (text.length > 40) {
+			return text.slice(0, 37) + '...';
+		}
+		return text;
+	}
+
+	// Fall back to phase-based status
+	if (agent.is_processing) {
+		return 'Thinking...';
+	}
+
+	// Use phase if available
+	if (agent.phase) {
+		switch (agent.phase.toLowerCase()) {
+			case 'planning':
+				return 'Planning approach...';
+			case 'implementation':
+			case 'implementing':
+				return 'Writing code...';
+			case 'validation':
+			case 'validating':
+				return 'Running tests...';
+			case 'complete':
+				return 'Ready for review';
+			default:
+				return agent.phase;
+		}
+	}
+
+	// Default based on status
+	if (agent.status === 'idle') {
+		return 'Waiting for input...';
+	}
+
+	return 'Working...';
+}
