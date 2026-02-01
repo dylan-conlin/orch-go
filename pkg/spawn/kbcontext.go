@@ -67,6 +67,32 @@ type KBContextFormatResult struct {
 // ExtractKeywords extracts meaningful keywords from a task description for kb context query.
 // Uses the same stop word filtering as generateSlug but returns more words for better search.
 func ExtractKeywords(task string, maxWords int) string {
+	// Strip common skill prefixes before extraction
+	// This prevents titles like "Investigation: Server Crash" from matching
+	// investigations ABOUT investigation tooling instead of server crashes
+	skillPrefixes := []string{
+		"## investigation:",
+		"investigation:",
+		"## design:",
+		"design:",
+		"## decision:",
+		"decision:",
+		"## guide:",
+		"guide:",
+		"## model:",
+		"model:",
+	}
+
+	taskLower := strings.ToLower(task)
+	for _, prefix := range skillPrefixes {
+		if strings.HasPrefix(taskLower, prefix) {
+			// Remove prefix and any leading whitespace
+			task = strings.TrimSpace(task[len(prefix):])
+			taskLower = strings.ToLower(task)
+			break
+		}
+	}
+
 	// Stop words to exclude
 	stopWords := map[string]bool{
 		"the": true, "a": true, "an": true, "and": true, "or": true,
@@ -78,7 +104,7 @@ func ExtractKeywords(task string, maxWords int) string {
 	}
 
 	// Extract words (lowercase, alphanumeric only)
-	matches := regexAlphanumeric.FindAllString(strings.ToLower(task), -1)
+	matches := regexAlphanumeric.FindAllString(taskLower, -1)
 
 	var words []string
 	for _, word := range matches {

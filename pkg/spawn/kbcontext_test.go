@@ -45,6 +45,41 @@ func TestExtractKeywords(t *testing.T) {
 			wantWords: []string{"spawn", "context", "generation"},
 			notWords:  []string{"fix", "the", "to"}, // "include" is not a stop word
 		},
+		{
+			name:      "strips Investigation: prefix",
+			task:      "Investigation: Server Crash Patterns",
+			maxWords:  6,
+			wantWords: []string{"server", "crash", "patterns"},
+			notWords:  []string{"investigation"}, // Should be stripped
+		},
+		{
+			name:      "strips Design: prefix",
+			task:      "Design: Authentication Flow",
+			maxWords:  6,
+			wantWords: []string{"authentication", "flow"},
+			notWords:  []string{"design"}, // Should be stripped
+		},
+		{
+			name:      "strips ## Investigation: prefix",
+			task:      "## Investigation: Performance Issues in Dashboard",
+			maxWords:  6,
+			wantWords: []string{"performance", "issues", "dashboard"},
+			notWords:  []string{"investigation"}, // Should be stripped
+		},
+		{
+			name:      "strips ## Design: prefix",
+			task:      "## Design: Database Schema Migration",
+			maxWords:  6,
+			wantWords: []string{"database", "schema", "migration"},
+			notWords:  []string{"design"}, // Should be stripped
+		},
+		{
+			name:      "does not strip investigation when not a prefix",
+			task:      "Root cause investigation of memory leaks",
+			maxWords:  6,
+			wantWords: []string{"investigation", "memory", "leaks"},
+			notWords:  []string{}, // investigation should be included since it's not a prefix
+		},
 	}
 
 	for _, tt := range tests {
