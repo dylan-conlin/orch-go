@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import type { ArtifactFeedItem } from '$lib/stores/kb-artifacts';
+	import { fetchArtifactContent, type ArtifactFeedItem } from '$lib/stores/kb-artifacts';
+	import { orchestratorContext } from '$lib/stores/context';
 	import { MarkdownContent } from '$lib/components/markdown-content';
 
 	export let artifact: ArtifactFeedItem;
@@ -10,14 +11,36 @@
 	let loading = true;
 	let error: string | null = null;
 
-	// React to artifact prop changes - generates content immediately
-	// This handles both initial mount and subsequent artifact changes
+	// React to artifact prop changes - fetch full content from API
 	$: if (artifact) {
-		content = generateArtifactMarkdown(artifact);
-		loading = false;
+		loadArtifactContent(artifact);
 	}
 
-	function generateArtifactMarkdown(artifact: ArtifactFeedItem): string {
+	async function loadArtifactContent(artifact: ArtifactFeedItem) {
+		loading = true;
+		error = null;
+
+		try {
+			const projectDir = $orchestratorContext?.project_dir;
+			const response = await fetchArtifactContent(artifact.path, projectDir);
+
+			if (response.error) {
+				error = response.error;
+				// Fall back to metadata-only view
+				content = generateFallbackMarkdown(artifact);
+			} else {
+				content = response.content;
+			}
+		} catch (e) {
+			error = String(e);
+			content = generateFallbackMarkdown(artifact);
+		} finally {
+			loading = false;
+		}
+	}
+
+	// Generate fallback content when API fails
+	function generateFallbackMarkdown(artifact: ArtifactFeedItem): string {
 		let md = `# ${artifact.title}\n\n`;
 
 		md += `**Type:** ${artifact.type}\n\n`;
@@ -43,7 +66,7 @@
 		}
 
 		md += `---\n\n`;
-		md += `_To view the full content, open: \`${artifact.path}\`_\n`;
+		md += `_Could not load full content. Open file directly: \`${artifact.path}\`_\n`;
 
 		return md;
 	}

@@ -64,3 +64,34 @@ function createKBArtifactsStore() {
 }
 
 export const kbArtifacts = createKBArtifactsStore();
+
+// Artifact content response from /api/kb/artifact/content
+export interface ArtifactContentResponse {
+	path: string;
+	content: string;
+	error?: string;
+}
+
+// Fetch full content of a specific artifact
+export async function fetchArtifactContent(path: string, projectDir?: string): Promise<ArtifactContentResponse> {
+	try {
+		const params = new URLSearchParams();
+		params.set('path', path);
+		if (projectDir) {
+			params.set('project_dir', projectDir);
+		}
+		const url = `${API_BASE}/api/kb/artifact/content?${params.toString()}`;
+		const response = await fetch(url);
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+		}
+		return await response.json();
+	} catch (error) {
+		console.error('Failed to fetch artifact content:', error);
+		return {
+			path,
+			content: '',
+			error: String(error)
+		};
+	}
+}

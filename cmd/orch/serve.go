@@ -345,6 +345,9 @@ func runServe(portNum int) error {
 	// GET /api/kb/artifacts - returns knowledge base artifacts for Work Graph Artifact Feed
 	mux.HandleFunc("/api/kb/artifacts", corsHandler(handleKBArtifacts))
 
+	// GET /api/kb/artifact/content - returns full content of a specific artifact
+	mux.HandleFunc("/api/kb/artifact/content", corsHandler(handleKBArtifactContent))
+
 	// GET /api/errors - returns error pattern analysis
 	mux.HandleFunc("/api/errors", corsHandler(handleErrors))
 

@@ -391,7 +391,8 @@ func extractDateFromFilename(filename string) string {
 	return ""
 }
 
-// extractFirstParagraph extracts the first non-empty paragraph after frontmatter/headings.
+// extractFirstParagraph extracts a meaningful summary from artifact content.
+// Priority: 1) **Delta:** line (D.E.K.N. format), 2) First non-comment paragraph
 func extractFirstParagraph(content string) string {
 	lines := strings.Split(content, "\n")
 
@@ -406,28 +407,69 @@ func extractFirstParagraph(content string) string {
 		}
 	}
 
-	// Find first non-empty, non-heading paragraph
+	// First pass: Look for **Delta:** line (D.E.K.N. format summary)
+	for i := startIndex; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "**Delta:**") {
+			// Extract content after "**Delta:**"
+			delta := strings.TrimPrefix(line, "**Delta:**")
+			delta = strings.TrimSpace(delta)
+			if delta != "" {
+				if len(delta) > 300 {
+					delta = delta[:300] + "..."
+				}
+				return delta
+			}
+		}
+	}
+
+	// Second pass: Find first non-empty, non-heading, non-comment paragraph
+	inHTMLComment := false
 	for i := startIndex; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 
-		// Skip empty lines and headings
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Track HTML comment blocks
+		if strings.Contains(line, "<!--") {
+			inHTMLComment = true
+		}
+		if strings.Contains(line, "-->") {
+			inHTMLComment = false
+			continue // Skip the closing comment line
+		}
+		if inHTMLComment {
 			continue
+		}
+
+		// Skip empty lines, headings, and standalone comment markers
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "<!--") {
+			continue
+		}
+
+		// Skip metadata lines (e.g., **Date:**, **Status:**, etc.)
+		if strings.HasPrefix(line, "**") && strings.Contains(line, ":**") {
+			// But not Delta - we already handled that above
+			if !strings.HasPrefix(line, "**Delta:**") {
+				continue
+			}
 		}
 
 		// Found first paragraph - collect until empty line or heading
 		var paragraph []string
 		for j := i; j < len(lines); j++ {
-			line := strings.TrimSpace(lines[j])
-			if line == "" || strings.HasPrefix(line, "#") {
+			pline := strings.TrimSpace(lines[j])
+			if pline == "" || strings.HasPrefix(pline, "#") {
 				break
 			}
-			paragraph = append(paragraph, line)
+			// Stop at HTML comments
+			if strings.HasPrefix(pline, "<!--") {
+				break
+			}
+			paragraph = append(paragraph, pline)
 		}
 
 		result := strings.Join(paragraph, " ")
-		if len(result) > 200 {
-			result = result[:200] + "..."
+		if len(result) > 300 {
+			result = result[:300] + "..."
 		}
 		return result
 	}
@@ -537,4 +579,80 @@ func groupByType(artifacts []ArtifactFeedItem) map[string][]ArtifactFeedItem {
 	}
 
 	return byType
+}
+
+// ArtifactContentResponse is the JSON structure returned by /api/kb/artifact/content.
+type ArtifactContentResponse struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleKBArtifactContent returns the full content of a specific artifact.
+// Query params:
+//   - path: Relative path to the artifact (e.g., ".kb/investigations/2026-01-31-design-example.md")
+//   - project_dir: Project directory (defaults to sourceDir)
+func handleKBArtifactContent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get query params
+	artifactPath := r.URL.Query().Get("path")
+	if artifactPath == "" {
+		resp := ArtifactContentResponse{
+			Error: "Missing required 'path' parameter",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	projectDir := r.URL.Query().Get("project_dir")
+	if projectDir == "" {
+		projectDir = sourceDir
+	}
+
+	// Construct full path and validate it's within project
+	fullPath := filepath.Join(projectDir, artifactPath)
+	fullPath = filepath.Clean(fullPath)
+
+	// Security: Ensure path is within project directory
+	if !strings.HasPrefix(fullPath, projectDir) {
+		resp := ArtifactContentResponse{
+			Path:  artifactPath,
+			Error: "Invalid path: must be within project directory",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		resp := ArtifactContentResponse{
+			Path:  artifactPath,
+			Error: fmt.Sprintf("Failed to read file: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := ArtifactContentResponse{
+		Path:    artifactPath,
+		Content: string(content),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
