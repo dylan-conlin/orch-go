@@ -225,7 +225,7 @@
 		>
 		<!-- L0: Row -->
 		<div
-			class="flex items-center gap-3 py-2 px-3 rounded hover:bg-accent/50 transition-colors border-2 {index === selectedIndex ? 'border-primary bg-accent/30' : 'border-transparent'}"
+			class="flex items-center gap-3 py-2 px-3 rounded transition-colors border-2 {index === selectedIndex ? 'border-primary bg-accent/30' : 'border-transparent'}"
 			style="padding-left: {node.depth * 24 + 12}px"
 		>
 				<!-- Expansion indicator -->
