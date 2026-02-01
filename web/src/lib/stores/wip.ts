@@ -165,6 +165,34 @@ function parseRuntimeMinutes(runtime?: string): number | null {
  * Get expressive status text for an agent
  * Shows what the agent is currently doing in human-readable form
  */
+/**
+ * Calculate context usage percentage from token stats
+ * Claude's context window is ~200k tokens, we show usage as percentage
+ */
+export function getContextPercent(agent: Agent): number | null {
+	// Check if we have token data (may come from different sources)
+	const tokens = (agent as any).tokens;
+	if (!tokens) return null;
+	
+	const totalTokens = tokens.total_tokens || 
+		(tokens.input_tokens || 0) + (tokens.output_tokens || 0) + (tokens.cache_read_tokens || 0);
+	
+	if (!totalTokens) return null;
+	
+	// Claude context window is ~200k tokens
+	const contextWindow = 200000;
+	return Math.round((totalTokens / contextWindow) * 100);
+}
+
+/**
+ * Get context usage color based on percentage
+ */
+export function getContextColor(percent: number): string {
+	if (percent >= 80) return 'text-red-500';
+	if (percent >= 60) return 'text-yellow-500';
+	return 'text-muted-foreground';
+}
+
 export function getExpressiveStatus(agent: Agent): string {
 	// If we have current activity, use it
 	if (agent.current_activity?.text) {

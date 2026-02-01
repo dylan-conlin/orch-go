@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { wip, wipItems, wipStats, getExpressiveStatus, computeAgentHealth, type WIPItem } from '$lib/stores/wip';
+	import { wip, wipItems, wipStats, getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor, type WIPItem } from '$lib/stores/wip';
 	import { agents, type Agent } from '$lib/stores/agents';
 	import { daemon } from '$lib/stores/daemon';
 	import { Badge } from '$lib/components/ui/badge';
@@ -107,40 +107,78 @@
 				{#if item.type === 'running'}
 					{@const statusIcon = getAgentStatusIcon(item.agent)}
 					{@const health = computeAgentHealth(item.agent)}
-					<!-- Running Agent - matches tree row structure -->
-					<div class="flex items-center gap-3 py-2 px-3 rounded">
-						<!-- Status icon with health indication -->
-						<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
-						
-						<!-- Priority placeholder (w-8 matches tree badge width) -->
-						<span class="w-8"></span>
-						
-						<!-- ID (min-w-[120px] matches tree) -->
-						<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
-							{item.agent.beads_id || item.agent.id.slice(0, 15)}
-						</span>
-						
-						<!-- Title (text-sm font-medium matches tree) -->
-						<span class="flex-1 text-sm font-medium text-foreground truncate">
-							{item.agent.task || item.agent.skill || 'Unknown task'}
-						</span>
-						
-						<!-- Expressive status (replaces phase badge) -->
-						<span class="text-xs text-muted-foreground italic min-w-[120px]">
-							{getExpressiveStatus(item.agent)}
-						</span>
-						
-						<!-- Health warning tooltip -->
-						{#if health.status !== 'healthy'}
-							<span class="text-xs {health.status === 'critical' ? 'text-red-500' : 'text-yellow-500'}" title={health.reasons.join(', ')}>
-								{health.status === 'critical' ? '!' : '?'}
+					{@const contextPct = getContextPercent(item.agent)}
+					<!-- Running Agent - L0 row -->
+					<div class="running-agent">
+						<div class="flex items-center gap-3 py-2 px-3 rounded">
+							<!-- Status icon with health indication -->
+							<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
+							
+							<!-- Priority placeholder (w-8 matches tree badge width) -->
+							<span class="w-8"></span>
+							
+							<!-- ID (min-w-[120px] matches tree) -->
+							<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
+								{item.agent.beads_id || item.agent.id.slice(0, 15)}
 							</span>
-						{/if}
+							
+							<!-- Title (text-sm font-medium matches tree) -->
+							<span class="flex-1 text-sm font-medium text-foreground truncate">
+								{item.agent.task || item.agent.skill || 'Unknown task'}
+							</span>
+							
+							<!-- Expressive status (replaces phase badge) -->
+							<span class="text-xs text-muted-foreground italic min-w-[120px]">
+								{getExpressiveStatus(item.agent)}
+							</span>
+							
+							<!-- Health warning tooltip -->
+							{#if health.status !== 'healthy'}
+								<span class="text-xs {health.status === 'critical' ? 'text-red-500' : 'text-yellow-500'}" title={health.reasons.join(', ')}>
+									{health.status === 'critical' ? '!' : '?'}
+								</span>
+							{/if}
+							
+							<!-- Runtime -->
+							{#if item.agent.runtime}
+								<span class="text-xs text-muted-foreground min-w-[40px] text-right">{item.agent.runtime}</span>
+							{/if}
+						</div>
 						
-						<!-- Runtime -->
-						{#if item.agent.runtime}
-							<span class="text-xs text-muted-foreground min-w-[40px] text-right">{item.agent.runtime}</span>
-						{/if}
+						<!-- L1: Auto-expanded details for running agents -->
+						<div class="ml-14 pb-2 px-3 flex items-center gap-4 text-xs text-muted-foreground">
+							<!-- Phase -->
+							{#if item.agent.phase}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Phase:</span>
+									<span class="text-foreground">{item.agent.phase}</span>
+								</span>
+							{/if}
+							
+							<!-- Context % -->
+							{#if contextPct !== null}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Context:</span>
+									<span class="{getContextColor(contextPct)}">{contextPct}%</span>
+								</span>
+							{/if}
+							
+							<!-- Skill -->
+							{#if item.agent.skill}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Skill:</span>
+									<span>{item.agent.skill}</span>
+								</span>
+							{/if}
+							
+							<!-- Model (short form) -->
+							{#if item.agent.model}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Model:</span>
+									<span>{item.agent.model.split('/').pop()?.split('-').slice(0, 2).join('-') || item.agent.model}</span>
+								</span>
+							{/if}
+						</div>
 					</div>
 				{:else}
 					<!-- Queued Issue - matches tree row structure -->
