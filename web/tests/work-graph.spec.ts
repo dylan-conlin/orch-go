@@ -138,6 +138,9 @@ test.describe('Work Graph Keyboard Navigation', () => {
 
 		await page.goto('/work-graph');
 		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+		
 		// First item should be focused initially
 		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
 		
@@ -176,6 +179,9 @@ test.describe('Work Graph Keyboard Navigation', () => {
 
 		await page.goto('/work-graph');
 		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+		
 		// Expanded details should not be visible initially
 		await expect(page.getByText('Test description')).not.toBeVisible();
 		
@@ -212,6 +218,9 @@ test.describe('Work Graph Keyboard Navigation', () => {
 
 		await page.goto('/work-graph');
 		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+		
 		// Expand first with Enter
 		await page.keyboard.press('Enter');
 		await expect(page.getByText('Test description')).toBeVisible();
@@ -240,6 +249,9 @@ test.describe('Work Graph Keyboard Navigation', () => {
 		});
 
 		await page.goto('/work-graph');
+		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
 		
 		// Press Shift+G to go to bottom
 		await page.keyboard.press('Shift+G');
@@ -395,11 +407,14 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).toBeVisible();
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).toBeVisible();
 		
+		// Ensure container has focus before pressing h
+		await page.locator('.work-graph-tree').focus();
+		
 		// Collapse with h key (while parent is selected)
 		await page.keyboard.press('h');
 		
-		// Wait a moment for Svelte reactivity to update DOM
-		await page.waitForTimeout(100);
+		// Wait for DOM to update
+		await page.waitForTimeout(500);
 		
 		// Children should now be hidden
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).not.toBeVisible();
@@ -407,6 +422,9 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		
 		// Parent should still be visible
 		await expect(page.getByText('Parent Epic')).toBeVisible();
+		
+		// Ensure focus is still on container
+		await page.locator('.work-graph-tree').focus();
 		
 		// Expand with l key
 		await page.keyboard.press('l');

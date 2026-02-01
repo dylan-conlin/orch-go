@@ -29,28 +29,28 @@
           - generic [ref=e28]: 3 issues
           - generic [ref=e29]: 0 edges
       - tree [active] [ref=e31]:
-        - treeitem "▼ ▶ P1 orch-go-1 Parent Epic epic" [selected] [ref=e32] [cursor=pointer]:
+        - treeitem "• ○ P2 orch-go-1 First task" [selected] [ref=e32] [cursor=pointer]:
           - generic [ref=e33]:
-            - generic [ref=e34]: ▼
-            - generic [ref=e35]: ▶
-            - generic [ref=e36]: P1
+            - generic [ref=e34]: •
+            - generic [ref=e35]: ○
+            - generic [ref=e36]: P2
             - generic [ref=e37]: orch-go-1
-            - generic [ref=e38]: Parent Epic
-            - generic [ref=e39]: epic
-        - treeitem "• ○ P2 orch-go-1.1 Child Task 1 task" [ref=e40] [cursor=pointer]:
+            - generic [ref=e38]: First
+            - generic [ref=e39]: task
+        - treeitem "• ○ P2 orch-go-2 Second task" [ref=e40] [cursor=pointer]:
           - generic [ref=e41]:
             - generic [ref=e42]: •
             - generic [ref=e43]: ○
             - generic [ref=e44]: P2
-            - generic [ref=e45]: orch-go-1.1
-            - generic [ref=e46]: Child Task 1
+            - generic [ref=e45]: orch-go-2
+            - generic [ref=e46]: Second
             - generic [ref=e47]: task
-        - treeitem "• ○ P2 orch-go-1.2 Child Task 2 task" [ref=e48] [cursor=pointer]:
+        - treeitem "• ○ P2 orch-go-3 Third task" [ref=e48] [cursor=pointer]:
           - generic [ref=e49]:
             - generic [ref=e50]: •
             - generic [ref=e51]: ○
             - generic [ref=e52]: P2
-            - generic [ref=e53]: orch-go-1.2
-            - generic [ref=e54]: Child Task 2
+            - generic [ref=e53]: orch-go-3
+            - generic [ref=e54]: Third
             - generic [ref=e55]: task
 ```
