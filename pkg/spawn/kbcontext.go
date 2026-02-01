@@ -751,6 +751,7 @@ func formatKBContextContent(query string, constraints, decisions, models, guides
 	}
 
 	sb.WriteString("**IMPORTANT:** The above context represents existing knowledge and decisions. Do not contradict constraints. Reference models and guides for established patterns. Reference investigations for prior findings.\n\n")
+	sb.WriteString("> **Evidence Hierarchy:** Prior investigations are claims to verify, not truth. Before building on findings, check against primary sources (code, test output, observed behavior).\n\n")
 
 	return sb.String()
 }
