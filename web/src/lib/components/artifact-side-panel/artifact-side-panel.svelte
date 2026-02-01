@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount } from 'svelte';
+	import { createEventDispatcher } from 'svelte';
 	import type { ArtifactFeedItem } from '$lib/stores/kb-artifacts';
 	import { MarkdownContent } from '$lib/components/markdown-content';
-	import { orchestratorContext } from '$lib/stores/context';
 
 	export let artifact: ArtifactFeedItem;
 
@@ -11,29 +10,11 @@
 	let loading = true;
 	let error: string | null = null;
 
-	// Fetch artifact content
-	onMount(async () => {
-		await loadArtifact();
-	});
-
-	async function loadArtifact() {
-		loading = true;
-		error = null;
-
-		try {
-			// Construct full path
-			const projectDir = $orchestratorContext?.project_dir || '';
-			const fullPath = `${projectDir}/${artifact.path}`;
-
-			// Read file content via file system (for now, we'll just show path)
-			// In a real implementation, you might need an API endpoint to fetch file content
-			// For now, we'll display the artifact metadata
-			content = generateArtifactMarkdown(artifact);
-			loading = false;
-		} catch (e) {
-			error = String(e);
-			loading = false;
-		}
+	// React to artifact prop changes - generates content immediately
+	// This handles both initial mount and subsequent artifact changes
+	$: if (artifact) {
+		content = generateArtifactMarkdown(artifact);
+		loading = false;
 	}
 
 	function generateArtifactMarkdown(artifact: ArtifactFeedItem): string {
@@ -108,7 +89,7 @@
 		{:else if error}
 			<div class="text-red-500">Error: {error}</div>
 		{:else}
-			<MarkdownContent markdown={content} />
+			<MarkdownContent content={content} />
 		{/if}
 	</div>
 
