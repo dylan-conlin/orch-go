@@ -433,4 +433,43 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).toBeVisible();
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).toBeVisible();
 	});
+
+	// Bug 4: orch-go-21150 - Selection highlight barely visible (regression fix)
+	test('should have clearly visible selection with background + border', async ({ page }) => {
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-1',
+							title: 'Test Issue',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 1,
+					edge_count: 0
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for the row to be visible
+		const issueRow = page.locator('[data-testid="issue-row-orch-go-1"]');
+		await expect(issueRow).toBeVisible();
+		
+		const rowContent = issueRow.locator('> div').first();
+		
+		// Should have BOTH subtle background AND border for clear visibility
+		// Background for visibility, border for definition
+		await expect(rowContent).toHaveClass(/bg-accent\/30/);
+		await expect(rowContent).toHaveClass(/border-primary/);
+		await expect(rowContent).toHaveClass(/border-2/);
+	});
 });
