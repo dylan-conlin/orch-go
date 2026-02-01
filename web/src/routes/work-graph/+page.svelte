@@ -1,14 +1,18 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { workGraph, buildTree, type TreeNode } from '$lib/stores/work-graph';
+	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { WIPSection } from '$lib/components/wip-section';
+	import { ViewToggle } from '$lib/components/view-toggle';
+	import { ArtifactFeed } from '$lib/components/artifact-feed';
 
 	let tree: TreeNode[] = [];
 	let loading = true;
 	let error: string | null = null;
+	let currentView: 'issues' | 'artifacts' = 'issues';
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
@@ -37,47 +41,97 @@
 		tree = [];
 	}
 
-	// Keyboard navigation is handled by WorkGraphTree component
+	// Handle view toggle
+	async function handleViewToggle(view: 'issues' | 'artifacts') {
+		currentView = view;
+		
+		// Fetch artifacts when switching to artifacts view
+		if (view === 'artifacts' && !$kbArtifacts) {
+			const projectDir = $orchestratorContext?.project_dir;
+			await kbArtifacts.fetch(projectDir, '7d');
+		}
+	}
+
+	// Keyboard navigation for Tab to toggle views
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Tab' && !event.shiftKey) {
+			event.preventDefault();
+			currentView = currentView === 'issues' ? 'artifacts' : 'issues';
+			handleViewToggle(currentView);
+		}
+	}
 </script>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <div class="work-graph-container flex flex-col h-screen bg-background">
 	<!-- Header -->
 	<div class="border-b border-border px-6 py-4">
 		<div class="flex items-center justify-between">
-			<div>
-				<h1 class="text-2xl font-semibold text-foreground">Work Graph</h1>
-				<p class="text-sm text-muted-foreground mt-1">
-					Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
-				</p>
+			<div class="flex items-center gap-4">
+				<div>
+					<h1 class="text-2xl font-semibold text-foreground">Work Graph</h1>
+					<p class="text-sm text-muted-foreground mt-1">
+						{#if currentView === 'issues'}
+							Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
+						{:else}
+							Artifact view - Navigate with j/k, open with l/enter, Tab to toggle
+						{/if}
+					</p>
+				</div>
+				<ViewToggle {currentView} onToggle={handleViewToggle} />
 			</div>
-			{#if $workGraph}
-				<div class="flex gap-4 text-sm text-muted-foreground">
+			<div class="flex gap-4 text-sm text-muted-foreground">
+				{#if currentView === 'issues' && $workGraph}
 					<span>{$workGraph.node_count} issues</span>
 					<span>{$workGraph.edge_count} edges</span>
-				</div>
-			{/if}
+				{:else if currentView === 'artifacts' && $kbArtifacts}
+					<span>
+						{($kbArtifacts.needs_decision?.length ?? 0) + ($kbArtifacts.recent?.length ?? 0)} artifacts
+					</span>
+				{/if}
+				{#if $orchestratorContext?.project_dir}
+					<span class="truncate max-w-xs">
+						{$orchestratorContext.project_dir.split('/').pop()}
+					</span>
+				{/if}
+			</div>
 		</div>
 	</div>
 
-	<!-- WIP Section (pinned at top) -->
+	<!-- WIP Section (pinned at top, visible in both views) -->
 	<WIPSection />
 
 	<!-- Content -->
 	<div class="flex-1 overflow-hidden">
-		{#if loading}
-			<div class="flex items-center justify-center h-full">
-				<div class="text-muted-foreground">Loading work graph...</div>
-			</div>
-		{:else if error}
-			<div class="flex items-center justify-center h-full">
-				<div class="text-red-500">Error: {error}</div>
-			</div>
-		{:else if tree.length === 0}
-			<div class="flex items-center justify-center h-full">
-				<div class="text-muted-foreground">No open issues found</div>
-			</div>
+		{#if currentView === 'issues'}
+			{#if loading}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-muted-foreground">Loading work graph...</div>
+				</div>
+			{:else if error}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-red-500">Error: {error}</div>
+				</div>
+			{:else if tree.length === 0}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-muted-foreground">No open issues found</div>
+				</div>
+			{:else}
+				<WorkGraphTree {tree} />
+			{/if}
 		{:else}
-			<WorkGraphTree {tree} />
+			{#if $kbArtifacts?.error}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-red-500">Error: {$kbArtifacts.error}</div>
+				</div>
+			{:else if !$kbArtifacts}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-muted-foreground">Loading artifacts...</div>
+				</div>
+			{:else}
+				<ArtifactFeed />
+			{/if}
 		{/if}
 	</div>
 </div>

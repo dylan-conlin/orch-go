@@ -342,6 +342,9 @@ func runServe(portNum int) error {
 	// GET /api/kb-health - returns knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
 	mux.HandleFunc("/api/kb-health", corsHandler(handleKBHealth))
 
+	// GET /api/kb/artifacts - returns knowledge base artifacts for Work Graph Artifact Feed
+	mux.HandleFunc("/api/kb/artifacts", corsHandler(handleKBArtifacts))
+
 	// GET /api/errors - returns error pattern analysis
 	mux.HandleFunc("/api/errors", corsHandler(handleErrors))
 
