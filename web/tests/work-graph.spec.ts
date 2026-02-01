@@ -398,6 +398,9 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		// Collapse with h key (while parent is selected)
 		await page.keyboard.press('h');
 		
+		// Wait a moment for Svelte reactivity to update DOM
+		await page.waitForTimeout(100);
+		
 		// Children should now be hidden
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).not.toBeVisible();
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).not.toBeVisible();
