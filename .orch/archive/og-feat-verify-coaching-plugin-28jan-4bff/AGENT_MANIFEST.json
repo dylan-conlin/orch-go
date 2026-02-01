@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-verify-coaching-plugin-28jan-4bff",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-untracked-1769626926",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "be0c07b8d2d2cd2ba95b08c35409159b434bf585",
+  "spawn_time": "2026-01-28T11:02:08-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode"
+}

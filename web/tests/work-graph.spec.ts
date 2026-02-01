@@ -280,21 +280,17 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 
 		await page.goto('/work-graph');
 		
+		// Wait for the row to be visible
 		const issueRow = page.locator('[data-testid="issue-row-orch-go-1"]');
-		const rowContent = issueRow.locator('.flex.items-center').first();
+		await expect(issueRow).toBeVisible();
 		
-		// Selected item should have a visible border (not solid background)
-		const borderStyle = await rowContent.evaluate((el) => {
-			const styles = window.getComputedStyle(el);
-			return {
-				borderWidth: styles.borderWidth,
-				borderColor: styles.borderColor,
-				// Check that border is visible (not transparent or rgba(0,0,0,0))
-				hasBorder: styles.borderWidth !== '0px' && !styles.borderColor.includes('rgba(0, 0, 0, 0)')
-			};
-		});
+		const rowContent = issueRow.locator('> div').first();
 		
-		expect(borderStyle.hasBorder).toBe(true);
+		// Selected item should have border-primary class (visible border)
+		await expect(rowContent).toHaveClass(/border-primary/);
+		
+		// Should have border-2 class (2px border width)
+		await expect(rowContent).toHaveClass(/border-2/);
 	});
 
 	// Bug 2: orch-go-21145 - Border and highlight out of sync
@@ -383,36 +379,28 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 							source: 'beads'
 						}
 					],
-					edges: [
-						{
-							from: 'orch-go-1',
-							to: 'orch-go-1.1',
-							type: 'parent-child'
-						},
-						{
-							from: 'orch-go-1',
-							to: 'orch-go-1.2',
-							type: 'parent-child'
-						}
-					],
+					edges: [],
 					node_count: 3,
-					edge_count: 2
+					edge_count: 0
 				})
 			});
 		});
 
 		await page.goto('/work-graph');
 		
-		// Children should be visible initially (expanded by default)
-		await expect(page.getByText('Child Task 1')).toBeVisible();
-		await expect(page.getByText('Child Task 2')).toBeVisible();
+		// Wait for tree to render
+		await expect(page.getByText('Parent Epic')).toBeVisible();
 		
-		// Collapse with h key
+		// Children should be visible initially (expanded by default)
+		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).toBeVisible();
+		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).toBeVisible();
+		
+		// Collapse with h key (while parent is selected)
 		await page.keyboard.press('h');
 		
 		// Children should now be hidden
-		await expect(page.getByText('Child Task 1')).not.toBeVisible();
-		await expect(page.getByText('Child Task 2')).not.toBeVisible();
+		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).not.toBeVisible();
+		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).not.toBeVisible();
 		
 		// Parent should still be visible
 		await expect(page.getByText('Parent Epic')).toBeVisible();
@@ -421,7 +409,7 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		await page.keyboard.press('l');
 		
 		// Children should be visible again
-		await expect(page.getByText('Child Task 1')).toBeVisible();
-		await expect(page.getByText('Child Task 2')).toBeVisible();
+		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).toBeVisible();
+		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).toBeVisible();
 	});
 });

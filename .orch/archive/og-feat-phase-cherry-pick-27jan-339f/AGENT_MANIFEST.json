@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-phase-cherry-pick-27jan-339f",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-untracked-1769556533",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "a5c3fb3c7cfbd7b16f31ab7fc3d5aada448c8a20",
+  "spawn_time": "2026-01-27T15:28:54-08:00",
+  "tier": "light",
+  "spawn_mode": "claude"
+}

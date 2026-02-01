@@ -104,6 +104,13 @@
 
 		case 'l':
 		case 'ArrowRight':
+			event.preventDefault();
+			// Expand tree node if it has children
+			if (current.children.length > 0) {
+				toggleExpansion(current);
+			}
+			break;
+
 		case 'Enter':
 			event.preventDefault();
 			// Toggle L1 details expansion
@@ -117,6 +124,20 @@
 
 		case 'h':
 		case 'ArrowLeft':
+			event.preventDefault();
+			// Collapse tree node if it has children and is expanded
+			if (current.children.length > 0 && current.expanded) {
+				toggleExpansion(current);
+			} else if (current.parent_id) {
+				// Jump to parent if no children to collapse
+				const parentIdx = flattenedNodes.findIndex(n => n.id === current.parent_id);
+				if (parentIdx !== -1) {
+					selectedIndex = parentIdx;
+					scrollToSelected();
+				}
+			}
+			break;
+
 		case 'Escape':
 			event.preventDefault();
 			if (expandedDetails.has(current.id)) {
@@ -199,8 +220,8 @@
 		>
 			<!-- L0: Row -->
 			<div
-				class="flex items-center gap-3 py-2 px-3 rounded hover:bg-accent/50 transition-colors"
-				class:bg-accent={index === selectedIndex}
+				class="flex items-center gap-3 py-2 px-3 rounded hover:bg-accent/50 transition-colors border-2 border-transparent"
+				class:border-primary={index === selectedIndex}
 				style="padding-left: {node.depth * 24 + 12}px"
 			>
 				<!-- Expansion indicator -->

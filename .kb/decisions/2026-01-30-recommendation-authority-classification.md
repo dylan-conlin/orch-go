@@ -23,11 +23,11 @@ This created a failure mode where 237 investigations had actionable recommendati
 
 All investigation and architect recommendations must specify authority level using labels:
 
-| Authority Level | Label | Who Decides | Criteria |
-|-----------------|-------|-------------|----------|
-| **Implementation** | `authority:implementation` | Worker (within scope) | Reversible, single-scope, clear criteria, no cross-boundary impact |
-| **Architectural** | `authority:architectural` | Orchestrator | Cross-boundary, multiple valid approaches, requires synthesis across contexts |
-| **Strategic** | `authority:strategic` | Dylan | Irreversible, resource commitment, value judgment, premise-level question |
+| Authority Level    | Label                      | Who Decides           | Criteria                                                                      |
+|--------------------|----------------------------|-----------------------|-------------------------------------------------------------------------------|
+| **Implementation** | `authority:implementation` | Worker (within scope) | Reversible, single-scope, clear criteria, no cross-boundary impact            |
+| **Architectural**  | `authority:architectural`  | Orchestrator          | Cross-boundary, multiple valid approaches, requires synthesis across contexts |
+| **Strategic**      | `authority:strategic`      | Dylan                 | Irreversible, resource commitment, value judgment, premise-level question     |
 
 **Classification test:** "Does this decision stay inside my scoped context, or does it reach out?"
 - Stays inside → `authority:implementation`
@@ -38,11 +38,11 @@ All investigation and architect recommendations must specify authority level usi
 
 Authority is orthogonal to question subtype. Use both dimensions:
 
-| | `subtype:factual` | `subtype:judgment` | `subtype:framing` |
-|---|---|---|---|
-| **`authority:implementation`** | "What's the current timeout value?" (worker checks code) | "Should timeout be 30s or 60s?" (worker decides within scope) | N/A - framing implies strategic |
-| **`authority:architectural`** | "How does auth flow across services?" (spawn investigation) | "Should we use JWT or sessions?" (orchestrator synthesizes tradeoffs) | "Is auth the right abstraction?" (orchestrator may escalate) |
-| **`authority:strategic`** | N/A - factual doesn't require Dylan | "Accept eventual consistency tradeoff?" (Dylan judges value) | "Should we build this at all?" (Dylan reframes direction) |
+|                                | `subtype:factual`                                           | `subtype:judgment`                                                    | `subtype:framing`                                            |
+|--------------------------------|-------------------------------------------------------------|-----------------------------------------------------------------------|--------------------------------------------------------------|
+| **`authority:implementation`** | "What's the current timeout value?" (worker checks code)    | "Should timeout be 30s or 60s?" (worker decides within scope)         | N/A - framing implies strategic                              |
+| **`authority:architectural`**  | "How does auth flow across services?" (spawn investigation) | "Should we use JWT or sessions?" (orchestrator synthesizes tradeoffs) | "Is auth the right abstraction?" (orchestrator may escalate) |
+| **`authority:strategic`**      | N/A - factual doesn't require Dylan                         | "Accept eventual consistency tradeoff?" (Dylan judges value)          | "Should we build this at all?" (Dylan reframes direction)    |
 
 **Note:** `authority:strategic + subtype:framing` is what the decidability graph calls a "Gate" - but we don't create a separate entity type. Use `--type question` with these labels; gate-ness is inferred.
 

@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-extend-daemon-optionally-28jan-cf6b",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-20974",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "965fb2adc5147beb1e08619604ce965738108fd0",
+  "spawn_time": "2026-01-28T13:19:28-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode"
+}

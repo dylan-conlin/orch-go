@@ -1,0 +1,10 @@
+{
+  "workspace_name": "og-feat-expose-orch-worker-28jan-230c",
+  "skill": "feature-impl",
+  "beads_id": "orch-go-20977",
+  "project_dir": "/Users/dylanconlin/Documents/personal/orch-go",
+  "git_baseline": "e019b8b00632440b8dcd66bd9b02bfb011b9bd17",
+  "spawn_time": "2026-01-28T10:13:38-08:00",
+  "tier": "light",
+  "spawn_mode": "opencode"
+}
