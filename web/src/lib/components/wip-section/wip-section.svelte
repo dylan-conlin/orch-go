@@ -89,41 +89,62 @@
 			{/if}
 		</div>
 
-		<!-- Items -->
-		<div class="px-6 py-2 space-y-1">
+		<!-- Items - matching work-graph-tree row styling -->
+		<div class="px-6 py-4">
 			{#each $wipItems as item}
 				{#if item.type === 'running'}
-					<!-- Running Agent -->
-					<div class="flex items-center gap-3 py-1.5 px-2 rounded text-sm">
-						<span class="text-blue-500 w-4">{getAgentStatusIcon(item.agent.status)}</span>
-						<span class="font-mono text-xs text-muted-foreground min-w-[100px]">
+					<!-- Running Agent - matches tree row structure -->
+					<div class="flex items-center gap-3 py-2 px-3 rounded">
+						<!-- Status icon (w-5 matches tree) -->
+						<span class="text-blue-500 w-5">{getAgentStatusIcon(item.agent.status)}</span>
+						
+						<!-- Priority placeholder (w-8 matches tree badge width) -->
+						<span class="w-8"></span>
+						
+						<!-- ID (min-w-[120px] matches tree) -->
+						<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
 							{item.agent.beads_id || item.agent.id.slice(0, 15)}
 						</span>
-						<span class="flex-1 text-foreground truncate">
+						
+						<!-- Title (text-sm font-medium matches tree) -->
+						<span class="flex-1 text-sm font-medium text-foreground truncate">
 							{item.agent.task || item.agent.skill || 'Unknown task'}
 						</span>
+						
+						<!-- Phase badge -->
 						{#if item.agent.phase}
 							<Badge variant="outline" class="text-xs bg-blue-500/10 text-blue-500">
 								{item.agent.phase}
 							</Badge>
 						{/if}
+						
+						<!-- Runtime -->
 						{#if item.agent.runtime}
-							<span class="text-xs text-muted-foreground">{item.agent.runtime}</span>
+							<span class="text-xs text-muted-foreground min-w-[40px] text-right">{item.agent.runtime}</span>
 						{/if}
 					</div>
 				{:else}
-					<!-- Queued Issue -->
-					<div class="flex items-center gap-3 py-1.5 px-2 rounded text-sm opacity-60">
-						<span class="text-muted-foreground w-4">○</span>
+					<!-- Queued Issue - matches tree row structure -->
+					<div class="flex items-center gap-3 py-2 px-3 rounded opacity-60">
+						<!-- Status icon -->
+						<span class="text-muted-foreground w-5">○</span>
+						
+						<!-- Priority badge -->
 						<Badge variant={getPriorityVariant(item.issue.priority)} class="w-8 justify-center text-xs">
 							P{item.issue.priority}
 						</Badge>
-						<span class="font-mono text-xs text-muted-foreground min-w-[100px]">
+						
+						<!-- ID -->
+						<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
 							{item.issue.id}
 						</span>
-						<span class="flex-1 text-foreground truncate">
+						
+						<!-- Title -->
+						<span class="flex-1 text-sm font-medium text-foreground truncate">
 							{item.issue.title}
 						</span>
+						
+						<!-- Type badge -->
 						<Badge variant="outline" class="{getTypeBadge(item.issue.issue_type)} text-xs">
 							{item.issue.issue_type}
 						</Badge>
