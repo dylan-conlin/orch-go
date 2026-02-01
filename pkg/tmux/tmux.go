@@ -800,23 +800,27 @@ func BuildAttachCommand(windowTarget string, insideTmux bool) (*exec.Cmd, error)
 		// Inside tmux: switch client to the new window
 		return tmuxCommand("switch-client", "-t", windowTarget)
 	}
-	// Outside tmux: attach to the session/window
-	return tmuxCommand("attach-session", "-t", windowTarget)
+	// Outside tmux: select the window in the existing session
+	// This makes the window active without taking over the current terminal
+	return tmuxCommand("select-window", "-t", windowTarget)
 }
 
 // Attach attaches the current terminal to a tmux window.
 // If already inside tmux, it switches the client to the target window.
-// If outside tmux, it attaches to the session/window.
+// If outside tmux, it selects the window without taking over the current terminal.
 func Attach(windowTarget string) error {
 	cmd, err := BuildAttachCommand(windowTarget, os.Getenv("TMUX") != "")
 	if err != nil {
 		return err
 	}
 
-	// Connect stdin/stdout/stderr so tmux can take over the terminal
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// When inside tmux, connect stdin/stdout/stderr so tmux can take over the terminal
+	// When outside tmux, just run select-window (doesn't need terminal takeover)
+	if os.Getenv("TMUX") != "" {
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
 	return cmd.Run()
 }

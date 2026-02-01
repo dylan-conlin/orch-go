@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { workGraph, buildTree, type TreeNode } from '$lib/stores/work-graph';
 	import { orchestratorContext } from '$lib/stores/context';
-	import { agents } from '$lib/stores/agents';
+	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { WIPSection } from '$lib/components/wip-section';
 
@@ -10,7 +10,7 @@
 	let loading = true;
 	let error: string | null = null;
 
-	// Fetch work graph and agents on mount
+	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
 		const projectDir = $orchestratorContext?.project_dir;
 		await Promise.all([
@@ -18,6 +18,14 @@
 			agents.fetch()
 		]);
 		loading = false;
+		
+		// Connect to SSE for real-time agent updates (WIP section)
+		connectSSE();
+	});
+
+	// Disconnect SSE on unmount
+	onDestroy(() => {
+		disconnectSSE();
 	});
 
 	// Rebuild tree whenever graph data changes
