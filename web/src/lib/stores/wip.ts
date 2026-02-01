@@ -83,6 +83,7 @@ function createWIPStore() {
 export const wip = createWIPStore();
 
 // Derived store that combines running agents + queued issues into a single list
+// Only shows queued issues when there are running agents (otherwise tree below has same info)
 export const wipItems = derived(wip, ($wip): WIPItem[] => {
 	const items: WIPItem[] = [];
 	
@@ -91,9 +92,12 @@ export const wipItems = derived(wip, ($wip): WIPItem[] => {
 		items.push({ type: 'running', agent });
 	}
 	
-	// Then queued issues (up to 5)
-	for (const issue of $wip.queuedIssues) {
-		items.push({ type: 'queued', issue });
+	// Only show queued issues if there are running agents
+	// (otherwise the tree below already shows the same info)
+	if ($wip.runningAgents.length > 0) {
+		for (const issue of $wip.queuedIssues) {
+			items.push({ type: 'queued', issue });
+		}
 	}
 	
 	return items;

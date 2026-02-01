@@ -2,18 +2,23 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { wip, wipItems, wipStats, type WIPItem } from '$lib/stores/wip';
 	import { agents } from '$lib/stores/agents';
+	import { daemon } from '$lib/stores/daemon';
 	import { Badge } from '$lib/components/ui/badge';
 
-	// Refresh interval for queued issues (30s)
+	// Refresh interval for queued issues and daemon status (30s)
 	let refreshInterval: ReturnType<typeof setInterval>;
 
 	onMount(async () => {
-		// Initial fetch of queued issues
-		await wip.fetchQueued();
+		// Initial fetch of queued issues and daemon status
+		await Promise.all([
+			wip.fetchQueued(),
+			daemon.fetch()
+		]);
 		
 		// Set up refresh interval
 		refreshInterval = setInterval(() => {
 			wip.fetchQueued();
+			daemon.fetch();
 		}, 30000);
 	});
 
@@ -55,23 +60,33 @@
 	}
 </script>
 
-{#if $wipStats.running > 0 || $wipStats.queued > 0}
+{#if $wipStats.running > 0}
 	<div class="wip-section border-b-2 border-primary/30 bg-primary/5">
 		<!-- Header -->
 		<div class="flex items-center justify-between px-6 py-2 border-b border-border/50">
 			<div class="flex items-center gap-2">
 				<span class="text-sm font-medium text-foreground">Work in Progress</span>
-				{#if $wipStats.running > 0}
-					<Badge variant="secondary" class="text-xs">
-						{$wipStats.running} running
-					</Badge>
-				{/if}
+				<Badge variant="secondary" class="text-xs">
+					{$wipStats.running} running
+				</Badge>
 				{#if $wipStats.queued > 0}
 					<Badge variant="outline" class="text-xs">
-						{$wipStats.queued} queued
+						+{$wipStats.queued} queued
 					</Badge>
 				{/if}
 			</div>
+			<!-- Daemon status -->
+			{#if $daemon}
+				<div class="flex items-center gap-2 text-xs text-muted-foreground">
+					{#if $daemon.running}
+						<span class="text-green-500">●</span>
+						<span>{$daemon.capacity_used}/{$daemon.capacity_max} slots</span>
+					{:else}
+						<span class="text-yellow-500">●</span>
+						<span>daemon stopped</span>
+					{/if}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Items -->
