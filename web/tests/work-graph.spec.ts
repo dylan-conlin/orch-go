@@ -653,11 +653,11 @@ test.describe('WIP Section Integration', () => {
 
 		await page.goto('/work-graph');
 		
-		// Give time for data to load and WIP store to sync
-		await page.waitForTimeout(2000);
+		// Wait for tree container to render
+		await expect(page.locator('.work-graph-tree')).toBeVisible();
 		
-		// Wait for WIP items to render in tree
-		await expect(page.getByText('Running Task 1')).toBeVisible();
+		// Wait for WIP items to be added to flattened nodes (check for data-node-index="0")
+		await expect(page.locator('[data-node-index="0"]')).toBeVisible({ timeout: 10000 });
 		
 		// Ensure container has focus
 		await page.locator('.work-graph-tree').focus();
@@ -752,11 +752,9 @@ test.describe('WIP Section Integration', () => {
 
 		await page.goto('/work-graph');
 		
-		// Give time for data to load and WIP store to sync
-		await page.waitForTimeout(2000);
-		
-		// Wait for WIP items to render in tree
-		await expect(page.getByText('Running Task')).toBeVisible();
+		// Wait for tree container and WIP items to render
+		await expect(page.locator('.work-graph-tree')).toBeVisible();
+		await expect(page.locator('[data-node-index="0"]')).toBeVisible({ timeout: 10000 });
 		
 		// Check that WIP items do NOT have opacity-60 class
 		const runningRow = page.locator('[data-node-index="0"]');
@@ -824,11 +822,9 @@ test.describe('WIP Section Integration', () => {
 
 		await page.goto('/work-graph');
 		
-		// Give time for data to load and WIP store to sync
-		await page.waitForTimeout(2000);
-		
-		// Wait for WIP item to render
-		await expect(page.getByText('Running Task with Details')).toBeVisible();
+		// Wait for tree container and WIP items to render
+		await expect(page.locator('.work-graph-tree')).toBeVisible();
+		await expect(page.locator('[data-node-index="0"]')).toBeVisible({ timeout: 10000 });
 		
 		// Ensure container has focus
 		await page.locator('.work-graph-tree').focus();

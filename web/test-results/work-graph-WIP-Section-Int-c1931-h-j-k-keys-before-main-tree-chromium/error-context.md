@@ -32,6 +32,6 @@
         - generic [ref=e31]:
           - generic [ref=e32]: 1 issues
           - generic [ref=e33]: 0 edges
-          - generic [ref=e34]: specs-platform
+          - generic [ref=e34]: orch-go
       - generic [ref=e37]: Loading work graph...
 ```

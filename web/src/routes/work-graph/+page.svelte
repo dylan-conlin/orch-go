@@ -27,10 +27,13 @@
 		const projectDir = $orchestratorContext?.project_dir;
 		await Promise.all([
 			workGraph.fetch(projectDir, 'open'),
-			agents.fetch(),
-			wip.fetchQueued(),
-			daemon.fetch()
+			agents.fetch()
 		]);
+		
+		// Fetch WIP and daemon data (non-blocking)
+		wip.fetchQueued().catch(console.error);
+		daemon.fetch().catch(console.error);
+		
 		loading = false;
 		
 		// Initialize previousIssueIds from initial fetch
