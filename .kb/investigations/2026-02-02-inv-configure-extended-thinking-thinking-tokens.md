@@ -56,7 +56,7 @@ Guidelines:
 
 ## Findings
 
-### Finding 1: Beta header for interleaved-thinking is already enabled
+### Finding 1: Beta header for interleaved-thinking is already enabled in orch-go
 
 **Evidence:** Both `pkg/usage/usage.go:32` and `pkg/account/account.go:429` include `"interleaved-thinking-2025-05-14"` in the `AnthropicBetaHeaders` sent with every API request to Anthropic.
 
@@ -64,17 +64,56 @@ Guidelines:
 - `pkg/usage/usage.go:29-34`
 - `pkg/account/account.go:428-429`
 
-**Significance:** Extended thinking is already enabled at the API level - the beta header is being sent with all requests. This means Claude models should already be using interleaved thinking mode by default.
+**Significance:** Extended thinking is already enabled at the API level in orch-go's direct API usage (for usage tracking). This means Claude models accessing the API should already be using interleaved thinking mode by default.
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: OpenCode has thinking budget configuration via variants
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:** OpenCode's `transform.ts` shows Anthropic models support thinking configuration with `{ type: "enabled", budgetTokens: X }`. Two variants are defined: "high" (16000 tokens) and "max" (31999 tokens).
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- `~/Documents/personal/opencode/packages/opencode/src/provider/transform.ts:427-440`
+- Variants: `high: { thinking: { type: "enabled", budgetTokens: 16000 } }` and `max: { thinking: { type: "enabled", budgetTokens: 31999 } }`
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** OpenCode provides explicit control over thinking token budgets through variants, but there's no "none" or "disabled" variant visible, and no evidence of a default variant when none is specified.
+
+---
+
+### Finding 3: orch-go CreateSession does not specify thinking parameters
+
+**Evidence:** The `CreateSession` function in `pkg/opencode/client.go` only passes `title`, `directory`, and `model` parameters when creating an OpenCode session. No thinking configuration or variant is specified.
+
+**Source:**
+- `pkg/opencode/client.go:399-427`
+- `CreateSessionRequest` struct at line 387
+
+**Significance:** When orch-go spawns OpenCode agents, it doesn't explicitly configure thinking behavior. This means agents use OpenCode's default behavior for the selected model.
+
+---
+
+### Finding 4: Reasoning tokens ARE being tracked and used in production
+
+**Evidence:** Running `orch tokens --all --json` shows actual reasoning token usage. Session `ses_3e65254b5ffeDv4X6m8UOEL5TU` (orch-go-21130) shows: `input_tokens: 154976`, `output_tokens: 10113`, `reasoning_tokens: 7553`. This is the only session in the sample with non-zero reasoning tokens.
+
+**Source:**
+- Command: `orch tokens --all --json`
+- Found reasoning_tokens: 7553 for one session out of 17 sampled sessions
+
+**Significance:** Extended thinking/reasoning tokens ARE actually being generated and tracked for Claude models. However, only 1 out of 17 sessions showed reasoning tokens, suggesting that either: (a) reasoning is enabled by default but rarely triggered, or (b) a specific configuration or model was used for that session that enabled extended thinking.
+
+---
+
+### Finding 5: Token tracking infrastructure supports reasoning tokens
+
+**Evidence:** The codebase has full support for reasoning tokens: `pkg/opencode/types.go` defines `Reasoning int`, `pkg/cost/cost.go` includes `ReasoningPerMillion: 3.00` pricing at $3/million (same as input tokens), and token aggregation in `pkg/opencode/client.go` sums reasoning tokens into total.
+
+**Source:**
+- `pkg/opencode/types.go:45` - Token struct with Reasoning field
+- `pkg/cost/cost.go:19-21` - Pricing structure
+- `pkg/opencode/client.go:601-609` - Token aggregation
+
+**Significance:** The system is fully instrumented to track, cost, and display reasoning tokens. This isn't aspirational code - it's production-ready infrastructure that's actively capturing reasoning token usage when it occurs.
 
 ---
 
