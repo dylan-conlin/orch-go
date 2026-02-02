@@ -117,6 +117,17 @@ Guidelines:
 
 ---
 
+### Finding 6: Default behavior is NO extended thinking - variants must be explicitly selected
+
+**Evidence:** OpenCode's LLM invocation code shows: `const variant = !input.small && input.model.variants && input.user.variant ? input.model.variants[input.user.variant] : {}`. This means if no variant is specified by the user, an empty object is used (no thinking config).
+
+**Source:**
+- `~/Documents/personal/opencode/packages/opencode/src/session/llm.ts` (line with variant assignment)
+
+**Significance:** Extended thinking is NOT enabled by default - it requires explicit variant selection. The session with 7553 reasoning tokens (Finding 4) must have had a variant explicitly selected (either "high" or "max"). This explains why 16 out of 17 sampled sessions had zero reasoning tokens.
+
+---
+
 ### Finding 3: [Brief, descriptive title]
 
 **Evidence:** [Concrete observations, data, examples]
