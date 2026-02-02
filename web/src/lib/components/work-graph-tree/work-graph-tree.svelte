@@ -266,7 +266,6 @@
 			aria-selected={index === selectedIndex}
 			tabindex="-1"
 			on:click={() => selectNode(index)}
-			on:keydown={(e) => e.key === 'Enter' && selectNode(index)}
 		>
 		{#if isWIP}
 			{#if item.type === 'running'}
