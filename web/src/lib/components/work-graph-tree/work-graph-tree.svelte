@@ -46,9 +46,16 @@
 	$: {
 		const treeNodes = flattenTree(tree);
 		// Filter completed issues: only show unverified or needs_fix (verified = truly done)
-		const pendingVerification = completedIssues.filter(
-			issue => issue.verificationStatus !== 'verified'
-		);
+		// Sort by urgency: needs_fix first (broken), then unverified (just needs review)
+		const pendingVerification = completedIssues
+			.filter(issue => issue.verificationStatus !== 'verified')
+			.sort((a, b) => {
+				// needs_fix before unverified
+				if (a.verificationStatus === 'needs_fix' && b.verificationStatus !== 'needs_fix') return -1;
+				if (b.verificationStatus === 'needs_fix' && a.verificationStatus !== 'needs_fix') return 1;
+				// then by priority
+				return a.priority - b.priority;
+			});
 		// Order: WIP items first, then pending verification, then main tree
 		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
 		// Clamp selected index to valid range
