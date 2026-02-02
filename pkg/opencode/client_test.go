@@ -297,7 +297,7 @@ func TestNewClient(t *testing.T) {
 
 func TestBuildSpawnCommand(t *testing.T) {
 	client := NewClient("http://localhost:4096")
-	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
+	cmd := client.BuildSpawnCommand("say hello", "test-title", "", "")
 
 	expectedArgs := []string{
 		"run",
@@ -314,7 +314,7 @@ func TestBuildSpawnCommand(t *testing.T) {
 
 func TestBuildSpawnCommandWithModel(t *testing.T) {
 	client := NewClient("http://localhost:4096")
-	cmd := client.BuildSpawnCommand("say hello", "test-title", "anthropic/claude-opus-4")
+	cmd := client.BuildSpawnCommand("say hello", "test-title", "anthropic/claude-opus-4", "")
 
 	expectedArgs := []string{
 		"run",
@@ -355,7 +355,7 @@ func TestBuildSpawnCommandWithModel(t *testing.T) {
 
 func TestBuildSpawnCommandWithoutModel(t *testing.T) {
 	client := NewClient("http://localhost:4096")
-	cmd := client.BuildSpawnCommand("say hello", "test-title", "")
+	cmd := client.BuildSpawnCommand("say hello", "test-title", "", "")
 
 	// Verify --model flag is NOT included when model is empty
 	for i, arg := range cmd.Args {
@@ -1297,7 +1297,8 @@ func TestCreateSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	resp, err := client.CreateSession(title, directory, model, true)
+	variant := "high"
+	resp, err := client.CreateSession(title, directory, model, variant, true)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -1351,7 +1352,8 @@ func TestCreateSessionWithoutModel(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	_, err := client.CreateSession(title, directory, model, false)
+	variant := ""
+	_, err := client.CreateSession(title, directory, model, variant, false)
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}

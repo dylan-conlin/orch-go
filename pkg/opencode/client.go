@@ -267,7 +267,8 @@ func ProcessOutputWithStreaming(r io.Reader, streamTo io.Writer) (*Result, error
 }
 
 // BuildSpawnCommand builds the opencode spawn command.
-func (c *Client) BuildSpawnCommand(prompt, title, model string) *exec.Cmd {
+// variant specifies extended thinking mode: "high" (16k tokens), "max" (32k tokens), or "" (disabled).
+func (c *Client) BuildSpawnCommand(prompt, title, model, variant string) *exec.Cmd {
 	args := []string{
 		"run",
 		"--attach", c.ServerURL,
@@ -277,6 +278,11 @@ func (c *Client) BuildSpawnCommand(prompt, title, model string) *exec.Cmd {
 	// Add --model flag only if model is provided
 	if model != "" {
 		args = append(args, "--model", model)
+	}
+
+	// Add --variant flag only if variant is provided
+	if variant != "" {
+		args = append(args, "--variant", variant)
 	}
 
 	args = append(args, "--title", title, prompt)
@@ -588,6 +594,7 @@ type CreateSessionRequest struct {
 	Title     string `json:"title,omitempty"`
 	Directory string `json:"directory,omitempty"`
 	Model     string `json:"model,omitempty"`
+	Variant   string `json:"variant,omitempty"` // Extended thinking variant: "high" (16k tokens) or "max" (32k tokens)
 }
 
 // CreateSessionResponse represents the response from creating a new session.
@@ -600,11 +607,13 @@ type CreateSessionResponse struct {
 // CreateSession creates a new OpenCode session via HTTP API.
 // This is used for headless spawns (no tmux window).
 // Set isWorker=true for worker spawns to enable ORCH_WORKER detection.
-func (c *Client) CreateSession(title, directory, model string, isWorker bool) (*CreateSessionResponse, error) {
+// variant specifies extended thinking mode: "high" (16k tokens), "max" (32k tokens), or "" (disabled).
+func (c *Client) CreateSession(title, directory, model, variant string, isWorker bool) (*CreateSessionResponse, error) {
 	payload := CreateSessionRequest{
 		Title:     title,
 		Directory: directory,
 		Model:     model,
+		Variant:   variant,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

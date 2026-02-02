@@ -47,6 +47,44 @@ func DefaultTierForSkill(skillName string) string {
 	return TierFull // Conservative default for unknown skills
 }
 
+// SkillVariantDefaults maps skills to their default extended thinking variant.
+// Extended thinking enables reasoning tokens for complex tasks.
+// Variants: "high" (16k tokens), "max" (32k tokens), "" (disabled).
+var SkillVariantDefaults = map[string]string{
+	// High variant (16k tokens): Complex reasoning tasks
+	"investigation":        "high",
+	"feature-impl":         "high",
+	"systematic-debugging": "high",
+	"reliability-testing":  "high",
+	"research":             "high",
+
+	// Max variant (32k tokens): Deep strategic reasoning
+	"architect":      "max",
+	"design-session": "max",
+
+	// No extended thinking: Simple tasks
+	// (unlisted skills default to empty string)
+}
+
+// DefaultVariantForSkill returns the default extended thinking variant for a skill.
+// Returns empty string for unknown skills (no extended thinking).
+func DefaultVariantForSkill(skillName string) string {
+	if variant, ok := SkillVariantDefaults[skillName]; ok {
+		return variant
+	}
+	return "" // No extended thinking for unknown skills
+}
+
+// DefaultVariantForRole returns the default extended thinking variant based on role flags.
+// Orchestrators and meta-orchestrators use "high" for strategic decisions.
+// Workers default to skill-based variant.
+func DefaultVariantForRole(isOrchestrator, isMetaOrchestrator bool, skillName string) string {
+	if isMetaOrchestrator || isOrchestrator {
+		return "high" // Orchestrators need extended thinking for strategic decisions
+	}
+	return DefaultVariantForSkill(skillName)
+}
+
 // SkillIncludesServers maps skills to whether they should include server context.
 // UI-focused skills get server info by default to save discovery time.
 var SkillIncludesServers = map[string]bool{
@@ -122,6 +160,9 @@ type Config struct {
 
 	// Model to use for standalone spawns
 	Model string
+
+	// Variant specifies extended thinking mode: "high" (16k tokens), "max" (32k tokens), or "" (disabled)
+	Variant string
 
 	// MCP server configuration (e.g., "playwright" for browser automation)
 	MCP string

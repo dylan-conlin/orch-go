@@ -49,6 +49,7 @@ var (
 	spawnTmux                bool   // Run in tmux window (opt-in, overrides default headless)
 	spawnAttach              bool   // Attach to tmux window after spawning
 	spawnModel               string // Model to use for standalone spawns
+	spawnVariant             string // Extended thinking variant: high, max, or none
 	spawnNoTrack             bool   // Opt-out of beads tracking
 	spawnMCP                 string // MCP server config (e.g., "playwright")
 	spawnSkipArtifactCheck   bool   // Bypass pre-spawn kb context check
@@ -195,6 +196,7 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnTmux, "tmux", false, "Run in tmux window (opt-in for visual monitoring)")
 	spawnCmd.Flags().BoolVar(&spawnAttach, "attach", false, "Attach to tmux window after spawning (implies --tmux)")
 	spawnCmd.Flags().StringVar(&spawnModel, "model", "", "Model alias (opus, sonnet, haiku, flash, pro) or provider/model format")
+	spawnCmd.Flags().StringVar(&spawnVariant, "variant", "", "Extended thinking variant: high (16k tokens), max (32k tokens), or none (disable). Defaults based on skill type.")
 	spawnCmd.Flags().BoolVar(&spawnNoTrack, "no-track", false, "Opt-out of beads issue tracking (ad-hoc work)")
 	spawnCmd.Flags().StringVar(&spawnMCP, "mcp", "", "MCP server config (e.g., 'playwright' for browser automation)")
 	spawnCmd.Flags().BoolVar(&spawnSkipArtifactCheck, "skip-artifact-check", false, "Bypass pre-spawn kb context check")
@@ -749,6 +751,17 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
+	// Determine extended thinking variant
+	// Priority: --variant flag > role-based default > skill-based default
+	variant := spawnVariant
+	if variant == "" {
+		variant = spawn.DefaultVariantForRole(isOrchestrator, isMetaOrchestrator, skillName)
+	}
+	// Normalize "none" to empty string (no extended thinking)
+	if variant == "none" {
+		variant = ""
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:               task,
@@ -762,6 +775,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		Mode:               spawnMode,
 		Validation:         spawnValidation,
 		Model:              resolvedModel.Format(),
+		Variant:            variant,
 		MCP:                spawnMCP,
 		Tier:               tier,
 		NoTrack:            spawnNoTrack || skipBeadsForOrchestrator,
@@ -866,7 +880,7 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	client := opencode.NewClient(serverURL)
 	// Format title with beads ID so orch status can match sessions
 	sessionTitle := formatSessionTitle(cfg.WorkspaceName, beadsID)
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
+	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
 	cmd.Stderr = os.Stderr
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
@@ -1088,7 +1102,7 @@ func stripANSI(s string) string {
 // CLI mode correctly honors the --model flag.
 // See: .kb/investigations/2025-12-23-inv-model-selection-issue-architect-agent.md
 func startHeadlessSession(client *opencode.Client, serverURL, sessionTitle, minimalPrompt string, cfg *spawn.Config) (*headlessSpawnResult, error) {
-	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model)
+	cmd := client.BuildSpawnCommand(minimalPrompt, sessionTitle, cfg.Model, cfg.Variant)
 	cmd.Dir = cfg.ProjectDir
 	// Set ORCH_WORKER=1 so agents know they are orch-managed workers
 	cmd.Env = append(os.Environ(), "ORCH_WORKER=1")
