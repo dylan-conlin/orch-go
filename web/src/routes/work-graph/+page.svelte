@@ -8,6 +8,8 @@
 	import { WIPSection } from '$lib/components/wip-section';
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
+	import { wip, wipItems } from '$lib/stores/wip';
+	import { daemon } from '$lib/stores/daemon';
 
 	let tree: TreeNode[] = [];
 	let loading = true;
@@ -25,7 +27,9 @@
 		const projectDir = $orchestratorContext?.project_dir;
 		await Promise.all([
 			workGraph.fetch(projectDir, 'open'),
-			agents.fetch()
+			agents.fetch(),
+			wip.fetchQueued(),
+			daemon.fetch()
 		]);
 		loading = false;
 		
@@ -41,12 +45,17 @@
 		refreshInterval = setInterval(() => {
 			const projectDir = $orchestratorContext?.project_dir;
 			workGraph.fetch(projectDir, 'open').catch(console.error);
+			wip.fetchQueued().catch(console.error);
+			daemon.fetch().catch(console.error);
 			// Also poll kbArtifacts if in artifacts view
 			if (currentView === 'artifacts' && $kbArtifacts) {
 				kbArtifacts.fetch(projectDir, '7d').catch(console.error);
 			}
 		}, 60000);
 	});
+
+	// Sync running agents from agents store to WIP store
+	$: wip.setRunningAgents($agents);
 
 	// Disconnect SSE and stop polling on unmount
 	onDestroy(() => {
@@ -58,14 +67,22 @@
 		}
 	});
 
-	// Rebuild tree whenever graph data changes
+	// Rebuild tree whenever graph data changes, filtering out queued issues
 	$: if ($workGraph && !$workGraph.error) {
-		tree = buildTree($workGraph.nodes, $workGraph.edges);
+		// Build set of queued issue IDs for fast lookup
+		// Handle case where queuedIssues might not be loaded yet
+		const queuedIds = new Set(($wip.queuedIssues || []).map(issue => issue.id));
+		
+		// Filter out queued issues from nodes before building tree
+		// Main tree shows 'everything NOT currently in the pipeline'
+		const filteredNodes = $workGraph.nodes.filter(node => !queuedIds.has(node.id));
+		
+		tree = buildTree(filteredNodes, $workGraph.edges);
 		error = null;
 		
-		// Track newly appeared issues for highlighting
-		if ($workGraph.nodes) {
-			const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
+		// Track newly appeared issues for highlighting (using filtered nodes)
+		if (filteredNodes) {
+			const currentIssueIds = new Set(filteredNodes.map(n => n.id));
 			newIssueIds = new Set();
 			
 			// Find issues that are new (in current but not in previous)
@@ -176,7 +193,7 @@
 					<div class="text-muted-foreground">No open issues found</div>
 				</div>
 			{:else}
-				<WorkGraphTree {tree} {newIssueIds} />
+				<WorkGraphTree {tree} {newIssueIds} wipItems={$wipItems} />
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}
