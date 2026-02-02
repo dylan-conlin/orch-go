@@ -70,8 +70,9 @@
 		}
 	});
 
-	// Rebuild tree whenever graph data changes, filtering out queued issues
-	$: if ($workGraph && !$workGraph.error) {
+	// Rebuild tree whenever graph data OR wip data changes, filtering out queued issues
+	// Note: $wip dependency ensures filter re-runs when queued issues load
+	$: if ($workGraph && !$workGraph.error && $wip) {
 		// Build set of queued issue IDs for fast lookup
 		// Handle case where queuedIssues might not be loaded yet
 		const queuedIds = new Set(($wip.queuedIssues || []).map(issue => issue.id));

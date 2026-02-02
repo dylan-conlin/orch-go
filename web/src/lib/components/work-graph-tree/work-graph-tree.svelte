@@ -260,8 +260,7 @@
 		<div
 			data-testid="issue-row-{itemId}"
 			data-node-index={index}
-			class="node-row cursor-pointer select-none"
-			class:selected={index === selectedIndex}
+			class="node-row cursor-pointer select-none focus:outline-none"
 			class:new-issue-highlight={!isWIP && newIssueIds.has(itemId)}
 			role="treeitem"
 			aria-selected={index === selectedIndex}
@@ -276,7 +275,10 @@
 				{@const health = computeAgentHealth(agent)}
 				{@const contextPct = getContextPercent(agent)}
 				<!-- Running Agent - WIP Item -->
-				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}">
+				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}" style="padding-left: 12px">
+					<!-- Expansion indicator placeholder (matches tree nodes) -->
+					<span class="w-4"></span>
+					
 					<!-- Status icon with health indication -->
 					<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
 					
@@ -350,7 +352,10 @@
 			{:else}
 				{@const issue = item.issue}
 				<!-- Queued Issue - WIP Item (NO opacity-60) -->
-				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}">
+				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}" style="padding-left: 12px">
+					<!-- Expansion indicator placeholder (matches tree nodes) -->
+					<span class="w-4"></span>
+					
 					<!-- Status icon -->
 					<span class="text-muted-foreground w-5">○</span>
 					

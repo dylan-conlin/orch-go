@@ -1,0 +1,106 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+      - generic [ref=e13]:
+        - generic [ref=e15]: 🟢 $0.00
+        - generic [ref=e16]: connected
+        - button "Select theme" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+  - main [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - heading "Work Graph" [level=1] [ref=e26]
+            - paragraph [ref=e27]: Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
+          - generic [ref=e28]:
+            - button "Issues" [ref=e29] [cursor=pointer]
+            - button "Artifacts" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32]: 1 issues
+          - generic [ref=e33]: 0 edges
+          - generic [ref=e34]: orch-go
+      - tree [active] [ref=e36]:
+        - 'treeitem "🚨 orch-go-21169 Work Graph: WIP section should be navigable and visually ... Using bash ! 2m 10s Phase: Validation Context: 1% Skill: feature-impl Model: claude-sonnet" [selected] [ref=e37] [cursor=pointer]':
+          - generic [ref=e38]:
+            - generic [ref=e39]: 🚨
+            - generic [ref=e40]: orch-go-21169
+            - generic [ref=e41]: "Work Graph: WIP section should be navigable and visually ..."
+            - generic [ref=e42]: Using bash
+            - generic "Stalled (same phase 15+ min)" [ref=e43]: "!"
+            - generic [ref=e44]: 2m 10s
+          - generic [ref=e45]:
+            - generic [ref=e46]:
+              - generic [ref=e47]: "Phase:"
+              - generic [ref=e48]: Validation
+            - generic [ref=e49]:
+              - generic [ref=e50]: "Context:"
+              - generic [ref=e51]: 1%
+            - generic [ref=e52]:
+              - generic [ref=e53]: "Skill:"
+              - generic [ref=e54]: feature-impl
+            - generic [ref=e55]:
+              - generic [ref=e56]: "Model:"
+              - generic [ref=e57]: claude-sonnet
+        - 'treeitem "○ P1 orch-go-21164 Work Graph: Follow active tmux orchestrator context queued bug" [ref=e58] [cursor=pointer]':
+          - generic [ref=e59]:
+            - generic [ref=e60]: ○
+            - generic [ref=e61]: P1
+            - generic [ref=e62]: orch-go-21164
+            - generic [ref=e63]: "Work Graph: Follow active tmux orchestrator context"
+            - generic [ref=e64]: queued
+            - generic [ref=e65]: bug
+        - 'treeitem "○ P1 orch-go-21169 Work Graph: WIP section should be navigable and visually integrated queued bug" [ref=e66] [cursor=pointer]':
+          - generic [ref=e67]:
+            - generic [ref=e68]: ○
+            - generic [ref=e69]: P1
+            - generic [ref=e70]: orch-go-21169
+            - generic [ref=e71]: "Work Graph: WIP section should be navigable and visually integrated"
+            - generic [ref=e72]: queued
+            - generic [ref=e73]: bug
+        - 'treeitem "○ P1 orch-go-21170 Design Session: Work Graph intelligent surfacing and sorting queued task" [ref=e74] [cursor=pointer]':
+          - generic [ref=e75]:
+            - generic [ref=e76]: ○
+            - generic [ref=e77]: P1
+            - generic [ref=e78]: orch-go-21170
+            - generic [ref=e79]: "Design Session: Work Graph intelligent surfacing and sorting"
+            - generic [ref=e80]: queued
+            - generic [ref=e81]: task
+        - 'treeitem "○ P1 orch-go-21171 Work Graph: Auto-refresh and highlight newly created issues queued bug" [ref=e82] [cursor=pointer]':
+          - generic [ref=e83]:
+            - generic [ref=e84]: ○
+            - generic [ref=e85]: P1
+            - generic [ref=e86]: orch-go-21171
+            - generic [ref=e87]: "Work Graph: Auto-refresh and highlight newly created issues"
+            - generic [ref=e88]: queued
+            - generic [ref=e89]: bug
+        - 'treeitem "○ P1 orch-go-21172 Work Graph: Recently completed issues section queued feature" [ref=e90] [cursor=pointer]':
+          - generic [ref=e91]:
+            - generic [ref=e92]: ○
+            - generic [ref=e93]: P1
+            - generic [ref=e94]: orch-go-21172
+            - generic [ref=e95]: "Work Graph: Recently completed issues section"
+            - generic [ref=e96]: queued
+            - generic [ref=e97]: feature
+        - treeitem "• ○ P2 orch-go-1 Test Issue task" [ref=e98] [cursor=pointer]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: •
+            - generic [ref=e101]: ○
+            - generic [ref=e102]: P2
+            - generic [ref=e103]: orch-go-1
+            - generic [ref=e104]: Test Issue
+            - generic [ref=e105]: task
+```
