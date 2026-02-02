@@ -342,19 +342,26 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		// Click on second item
 		await page.locator('[data-testid="issue-row-orch-go-2"]').click();
 		
-		// Should have both focused and selected classes
-		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).toHaveClass(/focused/);
+		// Should have selected class (unified state)
 		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).toHaveClass(/selected/);
+		
+		// Should have bg-accent styling (no border)
+		const row2Content = page.locator('[data-testid="issue-row-orch-go-2"] > div').first();
+		await expect(row2Content).toHaveClass(/bg-accent/);
+		await expect(row2Content).not.toHaveClass(/border-primary/);
 		
 		// Navigate with keyboard
 		await page.keyboard.press('k');
 		
-		// First item should now have both classes
-		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
+		// First item should now have selected class
 		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/selected/);
 		
-		// Second item should no longer have either class
-		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).not.toHaveClass(/focused/);
+		// Should have same bg-accent styling
+		const row1Content = page.locator('[data-testid="issue-row-orch-go-1"] > div').first();
+		await expect(row1Content).toHaveClass(/bg-accent/);
+		await expect(row1Content).not.toHaveClass(/border-primary/);
+		
+		// Second item should no longer have selected class
 		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).not.toHaveClass(/selected/);
 	});
 
@@ -435,7 +442,7 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 	});
 
 	// Bug 4: orch-go-21150 - Selection highlight barely visible (regression fix)
-	test('should have clearly visible selection with background + border', async ({ page }) => {
+	test('should have clearly visible selection with background highlight', async ({ page }) => {
 		await page.route('**/api/beads/graph**', async (route) => {
 			await route.fulfill({
 				status: 200,
@@ -466,11 +473,9 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		
 		const rowContent = issueRow.locator('> div').first();
 		
-		// Should have BOTH subtle background AND border for clear visibility
-		// Background for visibility, border for definition
-		await expect(rowContent).toHaveClass(/bg-accent\/30/);
-		await expect(rowContent).toHaveClass(/border-primary/);
-		await expect(rowContent).toHaveClass(/border-2/);
+		// Should have bg-accent for clear visibility (no border)
+		await expect(rowContent).toHaveClass(/bg-accent/);
+		await expect(rowContent).not.toHaveClass(/border-primary/);
 	});
 
 	// Bug 5: orch-go-21168 - Filter queued issues from main tree
@@ -563,5 +568,275 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 
 		// Queued issue should NOT appear in the main tree (filtered out)
 		await expect(page.locator('[data-testid="issue-row-orch-go-21164"]')).not.toBeVisible();
+	});
+});
+
+// WIP Section Integration (Bug: orch-go-21169)
+test.describe('WIP Section Integration', () => {
+	test('should navigate WIP items with j/k keys before main tree', async ({ page }) => {
+		// Mock beads/ready API for queued issues
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					issues: [
+						{
+							id: 'orch-go-queued-1',
+							title: 'Queued Issue 1',
+							priority: 0,
+							issue_type: 'bug',
+							created_at: '2026-02-02T10:00:00Z'
+						}
+					]
+				})
+			});
+		});
+
+		// Mock agents API for running agents
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					agents: [
+						{
+							id: 'agent-1',
+							beads_id: 'orch-go-running-1',
+							task: 'Running Task 1',
+							status: 'active',
+							phase: 'Implementation',
+							runtime: '5m 30s',
+							is_processing: true,
+							is_stalled: false,
+							spawned_at: '2026-02-02T10:00:00Z',
+							updated_at: '2026-02-02T10:05:00Z'
+						}
+					]
+				})
+			});
+		});
+
+		// Mock graph API for main tree
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-tree-1',
+							title: 'Tree Issue 1',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 1,
+					edge_count: 0
+				})
+			});
+		});
+
+		// Mock daemon API
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					running: true,
+					capacity_max: 3,
+					capacity_used: 1,
+					capacity_free: 2
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for WIP section to render
+		await expect(page.getByText('Work in Progress')).toBeVisible();
+		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+		
+		// First WIP item (running agent) should be focused initially
+		let focusedRow = page.locator('[data-node-index="0"].focused');
+		await expect(focusedRow).toBeVisible();
+		await expect(focusedRow.getByText('Running Task 1')).toBeVisible();
+		
+		// Press j to move to second WIP item (queued issue)
+		await page.keyboard.press('j');
+		focusedRow = page.locator('[data-node-index="1"].focused');
+		await expect(focusedRow).toBeVisible();
+		await expect(focusedRow.getByText('Queued Issue 1')).toBeVisible();
+		
+		// Press j again to move to main tree
+		await page.keyboard.press('j');
+		focusedRow = page.locator('[data-node-index="2"].focused');
+		await expect(focusedRow).toBeVisible();
+		await expect(focusedRow.getByText('Tree Issue 1')).toBeVisible();
+		
+		// Press k to move back to WIP item
+		await page.keyboard.press('k');
+		focusedRow = page.locator('[data-node-index="1"].focused');
+		await expect(focusedRow).toBeVisible();
+		await expect(focusedRow.getByText('Queued Issue 1')).toBeVisible();
+	});
+
+	test('should NOT apply greyed-out styling to WIP items', async ({ page }) => {
+		// Mock APIs
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					issues: [
+						{
+							id: 'orch-go-queued-1',
+							title: 'Queued Issue',
+							priority: 0,
+							issue_type: 'bug',
+							created_at: '2026-02-02T10:00:00Z'
+						}
+					]
+				})
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					agents: [
+						{
+							id: 'agent-1',
+							beads_id: 'orch-go-running-1',
+							task: 'Running Task',
+							status: 'active',
+							phase: 'Implementation',
+							runtime: '5m',
+							is_processing: true,
+							is_stalled: false,
+							spawned_at: '2026-02-02T10:00:00Z',
+							updated_at: '2026-02-02T10:05:00Z'
+						}
+					]
+				})
+			});
+		});
+
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ nodes: [], edges: [], node_count: 0, edge_count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					running: true,
+					capacity_max: 3,
+					capacity_used: 1,
+					capacity_free: 2
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for WIP items to render
+		await expect(page.getByText('Work in Progress')).toBeVisible();
+		
+		// Check that WIP items do NOT have opacity-60 class
+		const runningRow = page.locator('[data-node-index="0"]');
+		await expect(runningRow).not.toHaveClass(/opacity-60/);
+		
+		const queuedRow = page.locator('[data-node-index="1"]');
+		await expect(queuedRow).not.toHaveClass(/opacity-60/);
+	});
+
+	test('should toggle L1 details for WIP items with Enter key', async ({ page }) => {
+		// Mock APIs
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					agents: [
+						{
+							id: 'agent-1',
+							beads_id: 'orch-go-running-1',
+							task: 'Running Task with Details',
+							status: 'active',
+							phase: 'Implementation',
+							skill: 'feature-impl',
+							model: 'anthropic/claude-sonnet-4',
+							runtime: '5m',
+							is_processing: true,
+							is_stalled: false,
+							spawned_at: '2026-02-02T10:00:00Z',
+							updated_at: '2026-02-02T10:05:00Z'
+						}
+					]
+				})
+			});
+		});
+
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ nodes: [], edges: [], node_count: 0, edge_count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					running: true,
+					capacity_max: 3,
+					capacity_used: 1,
+					capacity_free: 2
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for WIP section
+		await expect(page.getByText('Work in Progress')).toBeVisible();
+		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+		
+		// L1 details should not be visible initially
+		const expandedDetails = page.locator('.expanded-details');
+		await expect(expandedDetails).not.toBeVisible();
+		
+		// Press Enter to expand L1 details
+		await page.keyboard.press('Enter');
+		
+		// L1 details should now be visible with agent info
+		await expect(expandedDetails).toBeVisible();
+		await expect(expandedDetails.getByText(/Phase:/)).toBeVisible();
+		await expect(expandedDetails.getByText(/Skill:/)).toBeVisible();
 	});
 });
