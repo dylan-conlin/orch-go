@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { workGraph, buildTree, type TreeNode } from '$lib/stores/work-graph';
+	import { workGraph, buildTree, type TreeNode, type AttentionBadgeType } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
@@ -10,6 +10,7 @@
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon } from '$lib/stores/daemon';
+	import { attention, type CompletedIssue } from '$lib/stores/attention';
 
 	let tree: TreeNode[] = [];
 	let loading = true;
@@ -18,18 +19,20 @@
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 	let previousIssueIds = new Set<string>();
 	let newIssueIds = new Set<string>();
+	let completedIssues: CompletedIssue[] = [];
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
 		// Start orchestratorContext polling (2 seconds like old dashboard)
 		orchestratorContext.startPolling(2000);
-		
+
 		const projectDir = $orchestratorContext?.project_dir;
 		await Promise.all([
 			workGraph.fetch(projectDir, 'open'),
-			agents.fetch()
+			agents.fetch(),
+			attention.fetch() // Fetch attention signals and completed issues
 		]);
-		
+
 		// Fetch WIP and daemon data (non-blocking)
 		wip.fetchQueued().catch(console.error);
 		daemon.fetch().catch(console.error);
@@ -70,18 +73,41 @@
 		}
 	});
 
-	// Rebuild tree whenever graph data OR wip data changes, filtering out queued issues
+	// Subscribe to attention store for completed issues
+	$: if ($attention) {
+		completedIssues = $attention.completedIssues;
+	}
+
+	// Rebuild tree whenever graph data OR wip data OR attention changes, filtering out queued issues
 	// Note: $wip dependency ensures filter re-runs when queued issues load
 	$: if ($workGraph && !$workGraph.error && $wip) {
 		// Build set of queued issue IDs for fast lookup
 		// Handle case where queuedIssues might not be loaded yet
 		const queuedIds = new Set(($wip.queuedIssues || []).map(issue => issue.id));
-		
+
 		// Filter out queued issues from nodes before building tree
 		// Main tree shows 'everything NOT currently in the pipeline'
 		const filteredNodes = $workGraph.nodes.filter(node => !queuedIds.has(node.id));
-		
+
 		tree = buildTree(filteredNodes, $workGraph.edges);
+
+		// Attach attention badges to tree nodes
+		if ($attention?.signals) {
+			const attachBadges = (nodes: TreeNode[]) => {
+				for (const node of nodes) {
+					const signal = $attention.signals.get(node.id);
+					if (signal) {
+						node.attentionBadge = signal.badge;
+						node.attentionReason = signal.reason;
+					}
+					if (node.children.length > 0) {
+						attachBadges(node.children);
+					}
+				}
+			};
+			attachBadges(tree);
+		}
+
 		error = null;
 		
 		// Track newly appeared issues for highlighting (using filtered nodes)
@@ -194,7 +220,7 @@
 					<div class="text-muted-foreground">No open issues found</div>
 				</div>
 			{:else}
-				<WorkGraphTree {tree} {newIssueIds} wipItems={$wipItems} />
+				<WorkGraphTree {tree} {newIssueIds} wipItems={$wipItems} {completedIssues} />
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}
