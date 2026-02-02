@@ -654,7 +654,7 @@ test.describe('WIP Section Integration', () => {
 		await page.goto('/work-graph');
 		
 		// Give time for data to load and WIP store to sync
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 		
 		// Wait for WIP items to render in tree
 		await expect(page.getByText('Running Task 1')).toBeVisible();
@@ -753,7 +753,7 @@ test.describe('WIP Section Integration', () => {
 		await page.goto('/work-graph');
 		
 		// Give time for data to load and WIP store to sync
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 		
 		// Wait for WIP items to render in tree
 		await expect(page.getByText('Running Task')).toBeVisible();
@@ -825,7 +825,7 @@ test.describe('WIP Section Integration', () => {
 		await page.goto('/work-graph');
 		
 		// Give time for data to load and WIP store to sync
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 		
 		// Wait for WIP item to render
 		await expect(page.getByText('Running Task with Details')).toBeVisible();
