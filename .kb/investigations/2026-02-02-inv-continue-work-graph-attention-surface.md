@@ -6,7 +6,7 @@
 
 **Knowledge:** Verification is an attention signal, not a phase transition. Issues bounce between states, so hard section boundaries don't match reality.
 
-**Next:** Test in browser with mock data, then wire up real API when backend is ready.
+**Next:** Wire up real API when backend is ready. Prototype validated.
 
 **Authority:** implementation - Design iteration within existing prototype code.
 
