@@ -92,12 +92,9 @@ export const wipItems = derived(wip, ($wip): WIPItem[] => {
 		items.push({ type: 'running', agent });
 	}
 	
-	// Only show queued issues if there are running agents
-	// (otherwise the tree below already shows the same info)
-	if ($wip.runningAgents.length > 0) {
-		for (const issue of $wip.queuedIssues) {
-			items.push({ type: 'queued', issue });
-		}
+	// Always include queued issues (they're now rendered in WorkGraphTree)
+	for (const issue of $wip.queuedIssues) {
+		items.push({ type: 'queued', issue });
 	}
 	
 	return items;

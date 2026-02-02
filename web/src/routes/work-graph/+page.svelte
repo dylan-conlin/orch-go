@@ -177,9 +177,6 @@
 		</div>
 	</div>
 
-	<!-- WIP Section (pinned at top, visible in both views) -->
-	<WIPSection />
-
 	<!-- Content -->
 	<div class="flex-1 overflow-hidden">
 		{#if currentView === 'issues'}
