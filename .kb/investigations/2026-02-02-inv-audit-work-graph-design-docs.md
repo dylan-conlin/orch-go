@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Phase 1 (tree view) and Phase 3 (artifact feed) are fully implemented; Phase 2 (lifecycle tracking) is missing DeliverableChecklist, IssueSidePanel, AttemptHistory components and 3 API endpoints.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Verified all components exist in web/src/lib/components/, checked stores and API handlers in cmd/orch/, tested API endpoints respond correctly, searched for missing components confirmed they don't exist.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Work Graph feature is production-ready for structure browsing and artifact management, but lacks the deeper lifecycle observability (attempt history, deliverables tracking) needed to understand why issues take multiple attempts or get stuck.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Created 4 new beads issues (orch-go-21121.2-4 plus existing 21157) for Phase 2 gaps; closed 4 stale issues (21154, 21155, 21159, 21160) where work is complete; kept 2 issues open (21157, 21158) that remain valid.
 
-**Authority:** [implementation | architectural | strategic] - [Brief rationale for authority level - see Recommendation Authority section below]
+**Authority:** implementation - Creating issues for missing components per design spec, closing issues verified complete, staying within existing Work Graph feature scope.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-02-02
 **Updated:** 2026-02-02
 **Owner:** Claude (spawned agent)
-**Phase:** Investigating
-**Next Step:** Audit Phase 1 design components against web/src/lib/components/
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
