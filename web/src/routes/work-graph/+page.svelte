@@ -13,9 +13,15 @@
 	let loading = true;
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' = 'issues';
+	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+	let previousIssueIds = new Set<string>();
+	let newIssueIds = new Set<string>();
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
+		// Start orchestratorContext polling (2 seconds like old dashboard)
+		orchestratorContext.startPolling(2000);
+		
 		const projectDir = $orchestratorContext?.project_dir;
 		await Promise.all([
 			workGraph.fetch(projectDir, 'open'),
@@ -23,22 +29,74 @@
 		]);
 		loading = false;
 		
+		// Initialize previousIssueIds from initial fetch
+		if ($workGraph?.nodes) {
+			previousIssueIds = new Set($workGraph.nodes.map(n => n.id));
+		}
+		
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
+		
+		// Poll workGraph periodically (60 seconds)
+		refreshInterval = setInterval(() => {
+			const projectDir = $orchestratorContext?.project_dir;
+			workGraph.fetch(projectDir, 'open').catch(console.error);
+			// Also poll kbArtifacts if in artifacts view
+			if (currentView === 'artifacts' && $kbArtifacts) {
+				kbArtifacts.fetch(projectDir, '7d').catch(console.error);
+			}
+		}, 60000);
 	});
 
-	// Disconnect SSE on unmount
+	// Disconnect SSE and stop polling on unmount
 	onDestroy(() => {
 		disconnectSSE();
+		orchestratorContext.stopPolling();
+		if (refreshInterval) {
+			clearInterval(refreshInterval);
+			refreshInterval = null;
+		}
 	});
 
 	// Rebuild tree whenever graph data changes
 	$: if ($workGraph && !$workGraph.error) {
 		tree = buildTree($workGraph.nodes, $workGraph.edges);
 		error = null;
+		
+		// Track newly appeared issues for highlighting
+		if ($workGraph.nodes) {
+			const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
+			newIssueIds = new Set();
+			
+			// Find issues that are new (in current but not in previous)
+			for (const id of currentIssueIds) {
+				if (!previousIssueIds.has(id)) {
+					newIssueIds.add(id);
+					// Remove highlight after 3 seconds
+					setTimeout(() => {
+						newIssueIds.delete(id);
+						newIssueIds = newIssueIds; // Trigger reactivity
+					}, 3000);
+				}
+			}
+			
+			// Update previousIssueIds for next comparison
+			previousIssueIds = currentIssueIds;
+		}
 	} else if ($workGraph?.error) {
 		error = $workGraph.error;
 		tree = [];
+	}
+	
+	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
+	$: {
+		if (typeof window !== 'undefined' && $orchestratorContext.project_dir) {
+			workGraph.fetch($orchestratorContext.project_dir, 'open').catch(console.error);
+			// Also re-fetch kbArtifacts if we're in artifacts view
+			if (currentView === 'artifacts' && $kbArtifacts) {
+				kbArtifacts.fetch($orchestratorContext.project_dir, '7d').catch(console.error);
+			}
+		}
 	}
 
 	// Handle view toggle
@@ -118,7 +176,7 @@
 					<div class="text-muted-foreground">No open issues found</div>
 				</div>
 			{:else}
-				<WorkGraphTree {tree} />
+				<WorkGraphTree {tree} {newIssueIds} />
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}

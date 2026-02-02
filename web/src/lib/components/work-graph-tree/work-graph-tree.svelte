@@ -4,6 +4,7 @@
 	import type { TreeNode } from '$lib/stores/work-graph';
 
 	export let tree: TreeNode[] = [];
+	export let newIssueIds: Set<string> = new Set();
 
 	// Flatten tree for keyboard navigation
 	let flattenedNodes: TreeNode[] = [];
@@ -216,7 +217,7 @@
 			data-node-index={index}
 			class="node-row cursor-pointer select-none"
 			class:selected={index === selectedIndex}
-			class:focused={index === selectedIndex}
+			class:new-issue-highlight={newIssueIds.has(node.id)}
 			role="treeitem"
 			aria-selected={index === selectedIndex}
 			tabindex="-1"
@@ -225,7 +226,7 @@
 		>
 		<!-- L0: Row -->
 		<div
-			class="flex items-center gap-3 py-2 px-3 rounded transition-colors border-2 {index === selectedIndex ? 'border-primary bg-accent/30' : 'border-transparent'}"
+			class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}"
 			style="padding-left: {node.depth * 24 + 12}px"
 		>
 				<!-- Expansion indicator -->
@@ -317,12 +318,23 @@
 </div>
 
 <style>
-	.node-row.selected {
-		/* Selected row is already highlighted with bg-accent */
-	}
-
 	.work-graph-tree {
 		/* Ensure keyboard focus works */
 		min-height: 100%;
+	}
+	
+	.new-issue-highlight {
+		animation: highlight-fade 3s ease-out;
+	}
+	
+	@keyframes highlight-fade {
+		0% {
+			background-color: rgba(59, 130, 246, 0.3); /* blue-500 with opacity */
+			box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+		}
+		100% {
+			background-color: transparent;
+			box-shadow: 0 0 0 0 transparent;
+		}
 	}
 </style>

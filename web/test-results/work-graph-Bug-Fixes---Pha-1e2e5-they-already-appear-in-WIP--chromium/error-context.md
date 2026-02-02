@@ -23,18 +23,15 @@
     - generic [ref=e21]:
       - generic [ref=e23]:
         - generic [ref=e24]:
-          - heading "Work Graph" [level=1] [ref=e25]
-          - paragraph [ref=e26]: Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
-        - generic [ref=e27]:
-          - generic [ref=e28]: 1 issues
-          - generic [ref=e29]: 0 edges
-      - tree [active] [ref=e31]:
-        - treeitem "• ○ P2 orch-go-1 Test Issue task" [selected] [ref=e32] [cursor=pointer]:
-          - generic [ref=e33]:
-            - generic [ref=e34]: •
-            - generic [ref=e35]: ○
-            - generic [ref=e36]: P2
-            - generic [ref=e37]: orch-go-1
-            - generic [ref=e38]: Test Issue
-            - generic [ref=e39]: task
+          - generic [ref=e25]:
+            - heading "Work Graph" [level=1] [ref=e26]
+            - paragraph [ref=e27]: Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
+          - generic [ref=e28]:
+            - button "Issues" [ref=e29] [cursor=pointer]
+            - button "Artifacts" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32]: 2 issues
+          - generic [ref=e33]: 0 edges
+          - generic [ref=e34]: orch-go
+      - generic [ref=e37]: Loading work graph...
 ```

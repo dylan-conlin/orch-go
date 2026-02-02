@@ -141,16 +141,16 @@ test.describe('Work Graph Keyboard Navigation', () => {
 		// Ensure container has focus
 		await page.locator('.work-graph-tree').focus();
 		
-		// First item should be focused initially
-		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
+		// First item should be selected initially
+		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/selected/);
 		
 		// Press j to move down
 		await page.keyboard.press('j');
-		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-2"]')).toHaveClass(/selected/);
 		
 		// Press k to move up
 		await page.keyboard.press('k');
-		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/selected/);
 	});
 
 	test('should support Enter to expand L1 details', async ({ page }) => {
@@ -255,19 +255,19 @@ test.describe('Work Graph Keyboard Navigation', () => {
 		
 		// Press Shift+G to go to bottom
 		await page.keyboard.press('Shift+G');
-		await expect(page.locator('[data-testid="issue-row-orch-go-3"]')).toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-3"]')).toHaveClass(/selected/);
 		
 		// Press g twice to go to top
 		await page.keyboard.press('g');
 		await page.keyboard.press('g');
-		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/focused/);
+		await expect(page.locator('[data-testid="issue-row-orch-go-1"]')).toHaveClass(/selected/);
 	});
 });
 
 // Bug fixes for Phase 1.1
 test.describe('Bug Fixes - Phase 1.1', () => {
 	// Bug 1: orch-go-21144 - Highlight makes text unreadable
-	test('should use border-only selection for better readability', async ({ page }) => {
+	test('should use background highlight for selection', async ({ page }) => {
 		await page.route('**/api/beads/graph**', async (route) => {
 			await route.fulfill({
 				status: 200,
@@ -298,11 +298,11 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		
 		const rowContent = issueRow.locator('> div').first();
 		
-		// Selected item should have border-primary class (visible border)
-		await expect(rowContent).toHaveClass(/border-primary/);
+		// Selected item should have bg-accent class (background highlight)
+		await expect(rowContent).toHaveClass(/bg-accent/);
 		
-		// Should have border-2 class (2px border width)
-		await expect(rowContent).toHaveClass(/border-2/);
+		// Should NOT have border-primary (no border)
+		await expect(rowContent).not.toHaveClass(/border-primary/);
 	});
 
 	// Bug 2: orch-go-21145 - Border and highlight out of sync
@@ -471,5 +471,97 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		await expect(rowContent).toHaveClass(/bg-accent\/30/);
 		await expect(rowContent).toHaveClass(/border-primary/);
 		await expect(rowContent).toHaveClass(/border-2/);
+	});
+
+	// Bug 5: orch-go-21168 - Filter queued issues from main tree
+	test('should filter queued issues from main tree (they already appear in WIP)', async ({ page }) => {
+		// Mock the beads/ready API (queued issues)
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					issues: [
+						{
+							id: 'orch-go-21164',
+							title: 'Queued Issue',
+							priority: 0,
+							issue_type: 'task',
+							created_at: '2026-02-02T10:00:00Z'
+						}
+					]
+				})
+			});
+		});
+
+		// Mock the beads/graph API (all issues)
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-21164',
+							title: 'Queued Issue',
+							type: 'task',
+							status: 'open',
+							priority: 0,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-100',
+							title: 'Regular Issue',
+							type: 'task',
+							status: 'open',
+							priority: 1,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 2,
+					edge_count: 0
+				})
+			});
+		});
+
+		// Mock agents API (no running agents)
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					agents: [],
+					count: 0
+				})
+			});
+		});
+
+		// Mock SSE endpoint (no events)
+		await page.route('**/api/agents/stream**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				headers: {
+					'Content-Type': 'text/event-stream',
+					'Cache-Control': 'no-cache',
+					'Connection': 'keep-alive'
+				},
+				body: ''
+			});
+		});
+
+		await page.goto('/work-graph');
+
+		// Wait for page to load
+		await page.waitForLoadState('networkidle');
+
+		// Debug: Take screenshot
+		await page.screenshot({ path: 'test-results/queued-filter-debug.png' });
+
+		// Regular issue should appear in the main tree
+		await expect(page.locator('[data-testid="issue-row-orch-go-100"]')).toBeVisible();
+
+		// Queued issue should NOT appear in the main tree (filtered out)
+		await expect(page.locator('[data-testid="issue-row-orch-go-21164"]')).not.toBeVisible();
 	});
 });
