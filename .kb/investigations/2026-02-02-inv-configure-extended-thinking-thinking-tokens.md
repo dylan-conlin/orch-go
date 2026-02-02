@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Extended thinking (reasoning tokens) is supported and instrumented but disabled by default - requires explicit variant selection ("high" or "max") which orch-go spawns don't currently set.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** (1) Found 1 session with 7553 reasoning_tokens out of 17 samples via `orch tokens --all`, (2) OpenCode variant code shows default is empty object (no thinking config), (3) orch-go CreateSession doesn't pass variant parameter.
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Extended thinking is opt-in via OpenCode's variant system - "high" (16k tokens, ~$0.048/session) and "max" (32k tokens, ~$0.096/session) variants available for Anthropic models but not enabled without explicit selection.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** **STRATEGIC DECISION REQUIRED:** Choose between Status Quo (no thinking, current behavior), Selective Thinking (workers only with "high" variant, ~15% cost increase), or Full Thinking (all agents with "high" variant, ~25% cost increase).
 
-**Authority:** [implementation | architectural | strategic] - [Brief rationale for authority level - see Recommendation Authority section below]
+**Authority:** strategic - Cost/value tradeoff affects all agent operations, requires orchestrator/Dylan input on whether quality improvements justify overhead.
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-02-02
 **Updated:** 2026-02-02
 **Owner:** og-inv-configure-extended-thinking-02feb-764c
-**Phase:** Investigating
-**Next Step:** Test API calls to understand current behavior
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None (awaiting strategic decision from orchestrator/Dylan)
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
@@ -142,15 +142,29 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Infrastructure is ready, but not enabled** - The full stack for extended thinking is in place (beta headers, token tracking, cost calculation, variant system) but the default behavior is to NOT enable thinking. This is an opt-in feature that requires explicit configuration.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Variant selection is the control mechanism** - OpenCode uses "reasoning variants" to enable extended thinking. For Anthropic models, two variants exist: "high" (16k thinking tokens) and "max" (32k thinking tokens). When no variant is specified, thinking is disabled.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Current orch-go spawns use default (no thinking)** - The CreateSession API in orch-go doesn't specify variants, meaning all spawned agents currently run WITHOUT extended thinking. This explains why only 1 out of 17 sessions showed reasoning tokens (that session likely had manual variant selection in the UI).
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**Current settings:**
+- **Claude Code:** Uses interleaved-thinking beta header, but actual behavior depends on client implementation (not directly configurable in our code)
+- **OpenCode:** Default is NO extended thinking. Variants must be explicitly selected via UI (Ctrl+T to cycle) or API parameter
+
+**Configuration options:**
+- OpenCode supports variants: "high" (16k thinking budget) and "max" (32k thinking budget) for Anthropic models
+- These are set per-session via `input.user.variant` field
+- orch-go's CreateSession API doesn't currently support setting variants
+
+**Orchestrator vs Worker recommendation:**
+This is a STRATEGIC decision requiring orchestrator/Dylan input. Key tradeoffs:
+- **Cost:** Reasoning tokens cost $3/million (same as input tokens), adding ~15-25% overhead for thinking-enabled sessions
+- **Speed:** Extended thinking adds latency (model must think before responding)
+- **Quality:** Extended thinking may improve complex reasoning tasks but adds no value for simple tasks
+- **Current behavior:** No agents currently use extended thinking by default - represents significant change
 
 ---
 
@@ -158,21 +172,24 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ Beta header is present in orch-go code (verified: read pkg/usage/usage.go:32 and pkg/account/account.go:429)
+- ✅ Reasoning tokens are tracked in production (verified: `orch tokens --all --json` showed session with 7553 reasoning_tokens)
+- ✅ OpenCode defines variants for Anthropic (verified: read transform.ts, found "high" and "max" with budgetTokens)
+- ✅ Default behavior uses empty variant object (verified: read session/llm.ts variant assignment logic)
+- ✅ orch-go CreateSession doesn't pass variants (verified: read pkg/opencode/client.go CreateSessionRequest struct)
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ Whether extended thinking improves worker quality (not benchmarked - only 1 session with reasoning tokens found)
+- ⚠️ Whether extended thinking slows orchestrator delegation (not measured - hypothesis based on model behavior)
+- ⚠️ Exact cost overhead percentage (estimated ~15-25% based on typical reasoning token ratios, not measured in production)
+- ⚠️ Whether "max" variant (32k tokens) is ever needed (no sessions found using it)
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- Finding would be wrong if recent sessions show high reasoning token usage (would indicate default behavior changed or manual variant selection is common)
+- Finding would be wrong if CreateSession API actually passes variants via a different mechanism (would mean agents DO have extended thinking enabled)
+- Cost estimates would be wrong if reasoning token ratios differ significantly from the 7553/172642 ratio observed (4.4% of total tokens)
 
 ---
 
@@ -182,114 +199,168 @@ Guidelines:
 
 ### Recommendation Authority
 
-Classify each recommendation by authority level to route to the appropriate decision-maker:
-
 | Recommendation | Authority | Rationale |
 |----------------|-----------|-----------|
-| [Primary recommendation from investigation] | implementation / architectural / strategic | [Why this authority level - stays inside scope? reaches across boundaries? involves irreversible choice?] |
+| Whether to enable extended thinking for orchestrator/worker agents | strategic | Cost/value tradeoff, affects all agent operations, unclear if benefits justify overhead |
+| How to implement variant passing in spawn code | implementation | Technical implementation within established patterns, reversible change |
 
-**Authority Levels:**
-- **implementation**: Worker decides within scope (reversible, single-scope, clear criteria, no cross-boundary impact)
-- **architectural**: Orchestrator decides across boundaries (cross-component, multiple valid approaches, requires synthesis)
-- **strategic**: Dylan decides on direction (irreversible, resource commitment, value judgment, premise-level question)
+### Three Options for Extended Thinking Configuration
 
-**Classification test:** "Does this decision stay inside my scoped context, or does it reach out?"
-- Stays inside → implementation
-- Reaches to other components/agents → architectural
-- Reaches to values/direction/irreversibility → strategic
+**Option A: Status Quo (No Extended Thinking) ⭐**
 
-### Recommended Approach ⭐
-
-**[Approach Name]** - [One sentence stating the recommended implementation]
+Current behavior - no variants specified, extended thinking disabled by default.
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- Zero cost increase - reasoning tokens cost $3/million same as input
+- No latency overhead - models respond immediately without thinking phase
+- Works well for current operations - 16 out of 17 sessions had no reasoning needs
+- Simple - no code changes required
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- May miss quality improvements on complex tasks (investigations, architecture, debugging)
+- Can't evaluate if extended thinking would help orchestrator decisions
+- One session DID use 7553 reasoning tokens - suggests some tasks benefit
 
-**Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+**When to choose:** If current quality is acceptable and cost/speed are priorities.
 
-### Alternative Approaches Considered
+---
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Selective Extended Thinking (Workers Only - "high" variant)**
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+Enable extended thinking for worker agents (investigations, features, debugging) with 16k token budget.
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Why this approach:**
+- Workers handle complex reasoning tasks most likely to benefit
+- Orchestrators stay fast for delegation decisions
+- 16k budget balances quality vs cost (~15% overhead)
+- Can measure impact before expanding
+
+**Trade-offs accepted:**
+- Adds ~$0.045 per 15k reasoning tokens (~$0.03 input equivalent)
+- Workers may be slower to respond (thinking phase)
+- Requires code change to pass variant parameter
+
+**When to choose:** If worker quality/thoroughness is worth modest cost increase.
+
+**Implementation:**
+1. Add `variant` parameter to `CreateSessionRequest` struct
+2. Pass `variant: "high"` when spawning investigation/debugging agents
+3. Leave orchestrators and simple tasks with no variant
+4. Monitor token usage and quality changes
+
+---
+
+**Option C: Full Extended Thinking (All Agents - "high" variant)**
+
+Enable extended thinking for both orchestrators and workers with 16k token budget.
+
+**Why this approach:**
+- Orchestrators may benefit for strategic/architectural decisions
+- Consistent behavior across all agents
+- Maximum potential quality improvement
+- Simple rule: always use thinking
+
+**Trade-offs accepted:**
+- Highest cost increase (~15-25% overhead on all sessions)
+- Orchestrators may be too slow for rapid delegation
+- May not need thinking for simple "spawn this task" decisions
+- Over-engineering for tasks that don't need deep reasoning
+
+**When to choose:** If orchestrator quality/strategic decisions are critical and cost is secondary.
+
+**Implementation:**
+1. Add `variant` parameter to `CreateSessionRequest` struct
+2. Pass `variant: "high"` for ALL OpenCode spawns
+3. Monitor for orchestrator slowdown in delegation loops
+4. Consider "max" variant for long-running strategic work
+
+---
+
+**Rationale for recommendation:** Option A (Status Quo) is recommended unless there's evidence that current quality is insufficient. The single session with reasoning tokens suggests some tasks DO benefit, but 16/17 sessions working fine without it indicates extended thinking isn't necessary for most work. Option B is the natural next step if we want to experiment - target workers where complex reasoning is most valuable.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+- Add `variant` field to `CreateSessionRequest` struct in `pkg/opencode/client.go`
+- Add `variant` parameter to `CreateSession` function signature
+- Update spawn callers to pass variant (or empty string for default)
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ OpenCode API may reject unknown variant names - verify "high" and "max" are the only valid values
+- ⚠️ Variant selection is per-session, not per-message - can't toggle mid-session
+- ⚠️ Cost increase may be higher if agents use thinking frequently (the 4.4% ratio from one session may not be representative)
+- ⚠️ Reasoning tokens count toward context limits (thinking budget + output must fit within model's max tokens)
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- How does thinking token usage correlate with task complexity? (need more samples with variants enabled)
+- What's the latency impact of thinking phase? (not measured)
+- Can orchestrators benefit from thinking for strategic decisions? (unclear - fast delegation may be more valuable)
+- Is there a way to enable thinking conditionally based on task type? (would require orchestrator intelligence)
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ Variant parameter successfully passed to OpenCode API
+- ✅ Sessions created with variant show reasoning_tokens in `orch tokens` output
+- ✅ Cost increase matches expectations (~15-25% for thinking-enabled sessions)
+- ✅ Worker quality improves or stays same (subjective - need qualitative eval)
 
 ---
 
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `pkg/usage/usage.go` - Checked for Anthropic beta headers (interleaved-thinking)
+- `pkg/account/account.go` - Verified beta headers in account switching code
+- `pkg/opencode/client.go` - Analyzed CreateSession API and token tracking
+- `pkg/opencode/types.go` - Found Reasoning token field definition
+- `pkg/cost/cost.go` - Checked reasoning token pricing ($3/million)
+- `~/Documents/personal/opencode/packages/opencode/src/provider/transform.ts` - Found variant definitions for Anthropic
+- `~/Documents/personal/opencode/packages/opencode/src/session/llm.ts` - Discovered default variant behavior
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check for thinking-related code
+rg "thinking|reasoning" pkg --type go
 
-# [Command description]
-[command]
+# Get actual token usage from production sessions
+orch tokens --all --json
+
+# Examine session with reasoning tokens
+orch tokens ses_3e65254b5ffeDv4X6m8UOEL5TU --json
+
+# Search OpenCode source for variant logic
+rg "variant|thinking" ~/Documents/personal/opencode/packages/opencode/src --type ts
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- Anthropic API beta headers - interleaved-thinking feature flag
+- OpenCode variant system - reasoning configuration mechanism
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Related issues:** Session with reasoning tokens was orch-go-21130 (Evidence Hierarchy warning task)
 
 ---
 
 ## Investigation History
 
-**[YYYY-MM-DD HH:MM]:** Investigation started
-- Initial question: [Original question as posed]
-- Context: [Why this investigation was initiated]
+**[2026-02-02 14:30]:** Investigation started
+- Initial question: How to configure extended thinking / thinking tokens in Claude Code and OpenCode?
+- Context: Need to understand current settings and determine appropriate configuration for orchestrator vs worker agents
 
-**[YYYY-MM-DD HH:MM]:** [Milestone or significant finding]
-- [Description of what happened or was discovered]
+**[2026-02-02 14:45]:** Found interleaved-thinking beta header
+- Discovered beta header is already enabled in orch-go API code
+- Not clear if this actually enables thinking by default
 
-**[YYYY-MM-DD HH:MM]:** Investigation completed
-- Status: [Complete/Paused with reason]
-- Key outcome: [One sentence summary of result]
+**[2026-02-02 15:10]:** Found evidence of reasoning tokens in production
+- Ran `orch tokens --all` and found session with 7553 reasoning tokens
+- Proved that extended thinking IS being tracked and used (at least sometimes)
+
+**[2026-02-02 15:30]:** Discovered variant system and default behavior
+- Found OpenCode variant definitions: "high" (16k) and "max" (32k) for Anthropic
+- Discovered default behavior is NO extended thinking (empty variant object)
+- Explains why only 1 out of 17 sessions had reasoning tokens
+
+**[2026-02-02 16:00]:** Investigation completed
+- Status: Complete
+- Key outcome: Extended thinking is opt-in via variants, currently NOT enabled by default for orch-go spawns
