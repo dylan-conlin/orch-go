@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** Work Graph and Completion Verification evolved as separate systems with different "anchors" - Work Graph anchors on beads issues (what work exists), while Completion Verification anchors on spawn workspaces (proving work is done). This creates a gap where Work Graph can show "open" issues that are actually done (ad-hoc work), and Completion can't verify work that wasn't spawned.
+**Delta:** The observability gap is narrower than initially framed. It's specifically about **interactive sessions claiming work** - when an agent in an interactive session works on an issue, there's no mechanism to create tracking infrastructure. Spawn creates observability; no spawn = invisible to Work Graph.
 
-**Evidence:** Read all 3 phase designs, the verification gap investigation, both completion models, and the completion guide. Phase 2's DeliverableChecklist/AttemptHistory track spawn-flow history but don't bridge to ad-hoc work. Verification gap investigation already identified this as architectural.
+**Evidence:** Read all 3 phase designs, verification gap investigation, completion models. Dylan clarified: orchestrators working directly on issues is frame collapse (process failure, not a workflow to support), Dylan doesn't make manual fixes. The gap is interactive sessions needing a "claim" mechanism.
 
-**Knowledge:** The conceptual gap is "issue lifecycle vs agent lifecycle" - Work Graph observes issues (static), Completion verifies agents (dynamic), but nothing tracks the full journey from issue creation through work completion to knowledge persistence for non-spawned work.
+**Knowledge:** Spawn creates the observability infrastructure (workspace, phase reporting, deliverables, verification). The gap isn't "should spawn be optional?" - it's "how do interactive sessions get the same observability?" A "claim" mechanism would create tracking without spawning an autonomous agent.
 
-**Next:** Wait for Dylan's input. Three potential directions identified: (1) extend Work Graph to own "likely done" detection, (2) make spawn optional with lightweight verification, (3) accept the gap as a feature boundary. This is a strategic decision about system scope.
+**Next:** Dylan not satisfied with this framing yet - something more to uncover. Future session needed to dig deeper into the concrete pain point.
 
-**Authority:** strategic - This is about what the orchestration system is FOR (scope boundary) and involves irreversible architectural choices about where verification happens
+**Authority:** strategic - This affects what the orchestration system tracks and how, but the specific solution isn't clear yet
 
 ---
 
@@ -24,9 +24,9 @@ Fill this at the END of your investigation, before marking Complete.
 **Started:** 2026-02-02
 **Updated:** 2026-02-02
 **Owner:** Claude (spawned architect)
-**Phase:** Synthesizing
-**Next Step:** Discuss with Dylan before proposing implementation
-**Status:** Active - awaiting discussion
+**Phase:** Complete
+**Next Step:** Future session to dig deeper into concrete pain point - Dylan not satisfied with current framing
+**Status:** Complete (partial - understanding incomplete)
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** N/A
@@ -338,11 +338,49 @@ glob ".kb/models/completion*.md"
 
 ---
 
-## Waiting for Dylan
+## Discussion with Dylan (2026-02-02)
 
-I've synthesized the conceptual gap but am NOT proposing solutions yet per the task: "Wait for Dylan to interact before proposing solutions."
+### Initial Framing (Rejected)
 
-The three blocking questions above capture the strategic decisions needed. Once Dylan provides direction, I can:
-- Update this investigation with recommendations
-- Create SYNTHESIS.md
-- Report Phase: Complete
+My initial framing was too abstract - "Model A (workflow-centric) vs Model B (evidence-centric)" and questions about whether spawn is "a feature or friction." Dylan found this confusing.
+
+### Refined Understanding
+
+After Dylan's feedback, the gap narrowed significantly:
+
+**Not gaps (clarified by Dylan):**
+- "Orchestrator working directly on an issue" → This is frame collapse (process failure), not a legitimate workflow to support
+- "Dylan fixing something manually" → Dylan doesn't make manual fixes
+
+**The actual gap:**
+- **Interactive sessions claiming work** - when an agent in an interactive session decides to work on an issue, there's no mechanism to create tracking infrastructure
+
+**What spawn provides:**
+```
+orch spawn <skill> "task" --issue <id>
+  → Creates: workspace, session, deliverables expectations, phase reporting
+  → Kicks off: autonomous agent
+  → Work Graph: full observability
+```
+
+**What's missing:**
+```
+orch claim <id>  (or similar)
+  → Creates: workspace, deliverables expectations, phase reporting
+  → Does NOT: kick off autonomous agent
+  → Interactive session works, reports phases, provides deliverables
+  → orch complete <id> verifies same as spawned work
+  → Work Graph: full observability
+```
+
+### Dylan's Principles (from discussion)
+
+1. **All work should be observable in Work Graph** - not just spawned agent work
+2. **Workers should be responsible for providing deliverables** - not automated detection/backfill
+3. **Work Graph should reflect completeness** - so orchestrator can verify work
+
+### Unresolved
+
+Dylan said "yeah i guess" to this framing and "not satisfied with this yet" - suggesting there's something more to uncover. The concrete pain point that prompted this review wasn't fully surfaced.
+
+**For future session:** Ask Dylan for the specific scenario that made the gap visible. What did he see in Work Graph that triggered this?
