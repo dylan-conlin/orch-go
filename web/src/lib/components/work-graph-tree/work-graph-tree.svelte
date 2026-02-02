@@ -11,7 +11,6 @@
 	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
 	export let completedIssues: CompletedIssue[] = [];
-	export let showCompleted: boolean = true;
 
 	// Get attention badge config for a badge type
 	function getAttentionBadge(badge: AttentionBadgeType | 'unverified' | 'needs_fix' | undefined) {
@@ -20,9 +19,10 @@
 	}
 
 	// Flatten tree for keyboard navigation
-	let flattenedNodes: (TreeNode | WIPItem)[] = [];
+	// Now includes completed-but-unverified issues as TreeNode-like objects
+	let flattenedNodes: (TreeNode | WIPItem | CompletedIssue)[] = [];
 	let selectedIndex = 0;
-	
+
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
 
@@ -37,11 +37,20 @@
 		return result;
 	}
 
-	// Rebuild flattened list when tree or wipItems change
+	// Type guard to check if item is a CompletedIssue
+	function isCompletedIssue(item: TreeNode | WIPItem | CompletedIssue): item is CompletedIssue {
+		return 'verificationStatus' in item;
+	}
+
+	// Rebuild flattened list when tree, wipItems, or completedIssues change
 	$: {
 		const treeNodes = flattenTree(tree);
-		// Prepend WIP items to flattened list (WIP first, then main tree)
-		flattenedNodes = [...wipItems, ...treeNodes];
+		// Filter completed issues: only show unverified or needs_fix (verified = truly done)
+		const pendingVerification = completedIssues.filter(
+			issue => issue.verificationStatus !== 'verified'
+		);
+		// Order: WIP items first, then pending verification, then main tree
+		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -49,12 +58,12 @@
 	}
 
 	// Type guard to check if item is a WIPItem
-	function isWIPItem(item: TreeNode | WIPItem): item is WIPItem {
+	function isWIPItem(item: TreeNode | WIPItem | CompletedIssue): item is WIPItem {
 		return 'type' in item && (item.type === 'running' || item.type === 'queued');
 	}
 
-	// Get ID from either WIPItem or TreeNode
-	function getItemId(item: TreeNode | WIPItem): string {
+	// Get ID from WIPItem, TreeNode, or CompletedIssue
+	function getItemId(item: TreeNode | WIPItem | CompletedIssue): string {
 		if (isWIPItem(item)) {
 			return item.type === 'running' ? item.agent.id : item.issue.id;
 		}
@@ -264,88 +273,6 @@
 	tabindex="0"
 	on:keydown={handleKeyDown}
 >
-	<!-- Recently Completed Section -->
-	{#if showCompleted && completedIssues.length > 0}
-		<div class="mb-6">
-			<!-- Section Header -->
-			<div class="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-				<span class="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-					Recently Completed
-				</span>
-				<span class="text-xs text-muted-foreground">
-					({completedIssues.length})
-				</span>
-				<span class="text-xs text-muted-foreground/60 ml-1">
-					last 24 hours
-				</span>
-			</div>
-
-			<!-- Completed Items -->
-			{#each completedIssues as issue (issue.id)}
-				{@const badgeConfig = getAttentionBadge(issue.attentionBadge)}
-				<div
-					class={cn(
-						"flex items-center gap-3 py-2 px-3 rounded transition-colors hover:bg-accent/50",
-						issue.verificationStatus === 'verified' && "opacity-60",
-						issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
-					)}
-				>
-					<!-- Checkmark icon with verification state -->
-					<span class="w-5 text-center">
-						{#if issue.verificationStatus === 'verified'}
-							<span class="text-green-500">✓</span>
-						{:else if issue.verificationStatus === 'needs_fix'}
-							<span class="text-red-500">✗</span>
-						{:else}
-							<span class="text-muted-foreground">○</span>
-						{/if}
-					</span>
-
-					<!-- Priority badge -->
-					<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
-						P{issue.priority}
-					</Badge>
-
-					<!-- ID -->
-					<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
-						{issue.id}
-					</span>
-
-					<!-- Title -->
-					<span
-						class="flex-1 text-sm text-foreground truncate"
-						class:line-through={issue.verificationStatus === 'needs_fix'}
-						class:text-muted-foreground={issue.verificationStatus === 'verified'}
-					>
-						{issue.title}
-					</span>
-
-					<!-- Attention badge (if unverified or needs fix) -->
-					{#if badgeConfig}
-						<Badge variant={badgeConfig.variant} class="shrink-0">
-							{badgeConfig.label}
-						</Badge>
-					{/if}
-
-					<!-- Type badge -->
-					<Badge variant="outline" class="{getTypeBadge(issue.type)} text-xs shrink-0">
-						{issue.type}
-					</Badge>
-				</div>
-			{/each}
-		</div>
-
-		<!-- Active Work Section Header -->
-		<div class="flex items-center gap-2 mb-3 pb-2 border-b border-border">
-			<span class="text-xs font-semibold uppercase text-foreground tracking-wider">
-				Active Work
-			</span>
-			<span class="text-xs text-muted-foreground">
-				({flattenedNodes.length})
-			</span>
-		</div>
-	{/if}
-
 	{#each flattenedNodes as item, index (getItemId(item))}
 		{@const itemId = getItemId(item)}
 		{@const isWIP = isWIPItem(item)}
@@ -485,6 +412,62 @@
 					</div>
 				{/if}
 			{/if}
+		{:else if isCompletedIssue(item)}
+			{@const issue = item}
+			{@const badgeConfig = getAttentionBadge(issue.attentionBadge)}
+			<!-- Completed Issue (pending verification) - inline in main list -->
+			<div
+				class={cn(
+					"flex items-center gap-3 py-2 px-3 rounded transition-colors",
+					index === selectedIndex ? 'bg-accent' : '',
+					issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
+				)}
+				style="padding-left: 12px"
+			>
+				<!-- Expansion indicator placeholder -->
+				<span class="w-4"></span>
+
+				<!-- Verification status icon -->
+				<span class="w-5 text-center">
+					{#if issue.verificationStatus === 'needs_fix'}
+						<span class="text-red-500">✗</span>
+					{:else}
+						<span class="text-yellow-500">○</span>
+					{/if}
+				</span>
+
+				<!-- Priority badge -->
+				<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
+					P{issue.priority}
+				</Badge>
+
+				<!-- ID -->
+				<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
+					{issue.id}
+				</span>
+
+				<!-- Title -->
+				<span
+					class="flex-1 text-sm font-medium truncate"
+					class:line-through={issue.verificationStatus === 'needs_fix'}
+					class:text-muted-foreground={issue.verificationStatus === 'needs_fix'}
+					class:text-foreground={issue.verificationStatus !== 'needs_fix'}
+				>
+					{issue.title}
+				</span>
+
+				<!-- Attention badge (UNVERIFIED or NEEDS FIX) -->
+				{#if badgeConfig}
+					<Badge variant={badgeConfig.variant} class="shrink-0">
+						{badgeConfig.label}
+					</Badge>
+				{/if}
+
+				<!-- Type badge -->
+				<Badge variant="outline" class="{getTypeBadge(issue.type)} text-xs shrink-0">
+					{issue.type}
+				</Badge>
+			</div>
 		{:else}
 			{@const node = item as TreeNode}
 			<!-- Tree Node - L0: Row -->

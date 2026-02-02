@@ -1,14 +1,14 @@
 ## Summary (D.E.K.N.)
 
-**Delta:** Attention surface prototype was broken by invalid Svelte syntax (`class:bg-red-950/20`); now builds and renders mock attention signals.
+**Delta:** Attention surface prototype fixed and redesigned - collapsed "Recently Completed" section into unified Active Work list with inline attention badges.
 
-**Evidence:** `npm run build` failed on line 288; after fix, build completes successfully.
+**Evidence:** Build succeeds; completed-but-unverified issues now appear in main list with UNVERIFIED/NEEDS_FIX badges.
 
-**Knowledge:** Svelte's `class:` directive doesn't support class names with `/` characters; use `cn()` utility with conditional logic instead.
+**Knowledge:** Verification is an attention signal, not a phase transition. Issues bounce between states, so hard section boundaries don't match reality.
 
 **Next:** Test in browser with mock data, then wire up real API when backend is ready.
 
-**Authority:** implementation - Bug fix within existing prototype code, no architectural changes.
+**Authority:** implementation - Design iteration within existing prototype code.
 
 ---
 
