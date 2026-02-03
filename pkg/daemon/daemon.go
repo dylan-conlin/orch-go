@@ -259,10 +259,15 @@ type Daemon struct {
 	// If set, Preview will include hotspot warnings.
 	HotspotChecker HotspotChecker
 
-	// SpawnedIssues tracks issue IDs that have been spawned but may not yet
-	// have their beads status updated to in_progress. This prevents the race
-	// condition where the daemon spawns duplicate agents for the same issue
-	// because the status update hasn't propagated yet.
+	// ProcessedCache provides unified deduplication for spawned issues.
+	// Consolidates three fragmented dedup mechanisms:
+	// 1. Persistent cache (survives daemon restart)
+	// 2. Session dedup (checks OpenCode sessions)
+	// 3. Phase Complete check (checks beads comments)
+	ProcessedCache *ProcessedIssueCache
+
+	// SpawnedIssues is deprecated - use ProcessedCache instead.
+	// Kept for backward compatibility during migration.
 	SpawnedIssues *SpawnedIssueTracker
 
 	// EventLogger is used to log deduplication events for telemetry.
@@ -1006,48 +1011,24 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			continue
 		}
 
-		// Session-level dedup: Check if there's an existing OpenCode session for this issue.
-		// This prevents duplicate spawns when:
-		// 1. SpawnedIssueTracker TTL expires (5min/6h) but agent is still running
-		// 2. Status update to "in_progress" failed silently
-		// 3. Multiple daemon instances try to spawn the same issue
-		if HasExistingSessionForBeadsID(issue.ID) {
+		// Unified dedup check: Use ProcessedCache to consolidate three checks:
+		// 1. Persistent cache (survives daemon restart)
+		// 2. Session dedup (checks OpenCode sessions)
+		// 3. Phase Complete (checks beads comments)
+		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(issue.ID) {
 			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+				fmt.Printf("  DEBUG: Skipping %s (blocked by ProcessedCache)\n", issue.ID)
 			}
-			// Emit telemetry event when session dedup blocks spawn
+			// Emit telemetry event when cache blocks spawn
 			if d.EventLogger != nil {
 				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
 					"beads_id":    issue.ID,
-					"dedup_layer": "session_dedup",
-					"reason":      "Existing OpenCode session found via API check",
+					"dedup_layer": "processed_cache",
+					"reason":      "Issue blocked by unified ProcessedCache",
 				})
 			}
 			extendedSkip[issue.ID] = true
-			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: existing session", issue.ID))
-			continue
-		}
-
-		// Pre-spawn completion check: Skip issues where an agent has already reported
-		// Phase: Complete but the orchestrator hasn't closed the issue yet.
-		// This prevents respawning completed work when:
-		// 1. SpawnedIssueTracker TTL expires
-		// 2. OpenCode session was deleted (manual cleanup, server restart)
-		// 3. Beads status is still "open" because orch complete hasn't run
-		if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
-			if d.Config.Verbose {
-				fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
-			}
-			// Emit telemetry event when Phase:Complete blocks spawn
-			if d.EventLogger != nil {
-				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
-					"beads_id":    issue.ID,
-					"dedup_layer": "phase_complete",
-					"reason":      "Phase: Complete comment found in beads issue",
-				})
-			}
-			extendedSkip[issue.ID] = true
-			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: Phase: Complete", issue.ID))
+			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: already processed", issue.ID))
 			continue
 		}
 
@@ -1070,8 +1051,14 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 		slot.BeadsID = issue.ID
 	}
 
-	// Mark issue as spawned BEFORE calling spawnFunc to prevent race condition.
+	// Mark issue as processed BEFORE calling spawnFunc to prevent race condition.
 	// This prevents duplicate spawns if daemon polls again before beads status updates.
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.MarkProcessed(issue.ID); err != nil {
+			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
+		}
+	}
+	// Also mark in legacy tracker for backward compatibility
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(issue.ID)
 	}
@@ -1079,6 +1066,11 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
 		// Unmark on spawn failure so issue can be retried
+		if d.ProcessedCache != nil {
+			if err := d.ProcessedCache.Unmark(issue.ID); err != nil {
+				fmt.Printf("warning: failed to unmark issue: %v\n", err)
+			}
+		}
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(issue.ID)
 		}
@@ -1143,50 +1135,24 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		return nil, nil, fmt.Errorf("failed to infer skill: %w", err)
 	}
 
-	// Session-level dedup: Check if there's an existing OpenCode session for this issue.
-	// This prevents duplicate spawns when:
-	// 1. SpawnedIssueTracker TTL expires but agent is still running
-	// 2. Status update to "in_progress" failed silently
-	// 3. Multiple daemon instances try to spawn the same issue
-	if HasExistingSessionForBeadsID(issue.ID) {
+	// Unified dedup check: Use ProcessedCache to consolidate three checks
+	if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(issue.ID) {
 		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (existing OpenCode session found)\n", issue.ID)
+			fmt.Printf("  DEBUG: Skipping %s (blocked by ProcessedCache)\n", issue.ID)
 		}
-		// Emit telemetry event when session dedup blocks spawn
+		// Emit telemetry event when cache blocks spawn
 		if d.EventLogger != nil {
 			_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
 				"beads_id":    issue.ID,
-				"dedup_layer": "session_dedup",
-				"reason":      "Existing OpenCode session found via API check",
+				"dedup_layer": "processed_cache",
+				"reason":      "Issue blocked by unified ProcessedCache",
 			})
 		}
 		return &OnceResult{
 			Processed: false,
 			Issue:     issue,
 			Skill:     skill,
-			Message:   fmt.Sprintf("Existing session found for %s - skipping to prevent duplicate", issue.ID),
-		}, nil, nil
-	}
-
-	// Pre-spawn completion check: Skip issues where an agent has already reported
-	// Phase: Complete but the orchestrator hasn't closed the issue yet.
-	if hasComplete, _ := HasPhaseComplete(issue.ID); hasComplete {
-		if d.Config.Verbose {
-			fmt.Printf("  DEBUG: Skipping %s (Phase: Complete already reported)\n", issue.ID)
-		}
-		// Emit telemetry event when Phase:Complete blocks spawn
-		if d.EventLogger != nil {
-			_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
-				"beads_id":    issue.ID,
-				"dedup_layer": "phase_complete",
-				"reason":      "Phase: Complete comment found in beads issue",
-			})
-		}
-		return &OnceResult{
-			Processed: false,
-			Issue:     issue,
-			Skill:     skill,
-			Message:   fmt.Sprintf("Skipping %s: already completed (Phase: Complete found in comments)", issue.ID),
+			Message:   fmt.Sprintf("Skipping %s: already processed", issue.ID),
 		}, nil, nil
 	}
 
@@ -1205,8 +1171,14 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 		slot.BeadsID = issue.ID
 	}
 
-	// Mark issue as spawned BEFORE calling spawnFunc to prevent race condition.
+	// Mark issue as processed BEFORE calling spawnFunc to prevent race condition.
 	// This prevents duplicate spawns if daemon polls again before beads status updates.
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.MarkProcessed(issue.ID); err != nil {
+			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
+		}
+	}
+	// Also mark in legacy tracker for backward compatibility
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(issue.ID)
 	}
@@ -1214,6 +1186,11 @@ func (d *Daemon) OnceWithSlot() (*OnceResult, *Slot, error) {
 	// Spawn the work
 	if err := d.spawnFunc(issue.ID); err != nil {
 		// Unmark on spawn failure so issue can be retried
+		if d.ProcessedCache != nil {
+			if err := d.ProcessedCache.Unmark(issue.ID); err != nil {
+				fmt.Printf("warning: failed to unmark issue: %v\n", err)
+			}
+		}
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(issue.ID)
 		}
@@ -2104,43 +2081,22 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 			continue
 		}
 
-		// Session-level dedup: Check if there's an existing OpenCode session for this issue
-		if HasExistingSessionForBeadsID(candidate.Issue.ID) {
+		// Unified dedup check: Use ProcessedCache to consolidate three checks
+		if d.ProcessedCache != nil && !d.ProcessedCache.ShouldProcess(candidate.Issue.ID) {
 			if d.Config.Verbose {
-				fmt.Printf("  [%s] Skipping %s (existing OpenCode session found)\n",
+				fmt.Printf("  [%s] Skipping %s (blocked by ProcessedCache)\n",
 					candidate.Project.Name, candidate.Issue.ID)
 			}
-			// Emit telemetry event when session dedup blocks spawn
+			// Emit telemetry event when cache blocks spawn
 			if d.EventLogger != nil {
 				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
 					"beads_id":    candidate.Issue.ID,
-					"dedup_layer": "session_dedup",
-					"reason":      "Existing OpenCode session found via API check",
+					"dedup_layer": "processed_cache",
+					"reason":      "Issue blocked by unified ProcessedCache",
 				})
 			}
 			skippedReasons = append(skippedReasons,
-				fmt.Sprintf("%s: existing session", candidate.Issue.ID))
-			continue
-		}
-
-		// Pre-spawn completion check: Skip issues where an agent has already reported
-		// Phase: Complete but the orchestrator hasn't closed the issue yet.
-		// Use project path for correct beads socket lookup in cross-project mode.
-		if hasComplete, _ := HasPhaseCompleteForProject(candidate.Issue.ID, candidate.Project.Path); hasComplete {
-			if d.Config.Verbose {
-				fmt.Printf("  [%s] Skipping %s (Phase: Complete already reported)\n",
-					candidate.Project.Name, candidate.Issue.ID)
-			}
-			// Emit telemetry event when Phase:Complete blocks spawn
-			if d.EventLogger != nil {
-				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
-					"beads_id":    candidate.Issue.ID,
-					"dedup_layer": "phase_complete",
-					"reason":      "Phase: Complete comment found in beads issue",
-				})
-			}
-			skippedReasons = append(skippedReasons,
-				fmt.Sprintf("%s: Phase: Complete", candidate.Issue.ID))
+				fmt.Sprintf("%s: already processed", candidate.Issue.ID))
 			continue
 		}
 
@@ -2179,7 +2135,13 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 		slot.BeadsID = selected.Issue.ID
 	}
 
-	// Mark issue as spawned BEFORE calling spawnFunc
+	// Mark issue as processed BEFORE calling spawnFunc
+	if d.ProcessedCache != nil {
+		if err := d.ProcessedCache.MarkProcessed(selected.Issue.ID); err != nil {
+			fmt.Printf("warning: failed to mark issue as processed: %v\n", err)
+		}
+	}
+	// Also mark in legacy tracker for backward compatibility
 	if d.SpawnedIssues != nil {
 		d.SpawnedIssues.MarkSpawned(selected.Issue.ID)
 	}
@@ -2187,6 +2149,11 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 	// Spawn the work with project context
 	if err := d.spawnForProjectFunc(selected.Issue.ID, selected.Project.Path); err != nil {
 		// Unmark on spawn failure
+		if d.ProcessedCache != nil {
+			if err := d.ProcessedCache.Unmark(selected.Issue.ID); err != nil {
+				fmt.Printf("warning: failed to unmark issue: %v\n", err)
+			}
+		}
 		if d.SpawnedIssues != nil {
 			d.SpawnedIssues.Unmark(selected.Issue.ID)
 		}
