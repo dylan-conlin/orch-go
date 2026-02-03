@@ -300,7 +300,7 @@
 				{@const health = computeAgentHealth(agent)}
 				{@const contextPct = getContextPercent(agent)}
 				<!-- Running Agent - WIP Item -->
-				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}" style="padding-left: 12px">
+				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 12px">
 					<!-- Expansion indicator placeholder (matches tree nodes) -->
 					<span class="w-4"></span>
 					
@@ -377,7 +377,7 @@
 			{:else}
 				{@const issue = item.issue}
 				<!-- Queued Issue - WIP Item (NO opacity-60) -->
-				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}" style="padding-left: 12px">
+				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 12px">
 					<!-- Expansion indicator placeholder (matches tree nodes) -->
 					<span class="w-4"></span>
 					
@@ -426,7 +426,7 @@
 			<div
 				class={cn(
 					"flex items-center gap-3 py-2 px-3 rounded transition-colors",
-					index === selectedIndex ? 'bg-accent' : '',
+					index === selectedIndex ? 'bg-zinc-800' : '',
 					issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
 				)}
 				style="padding-left: 12px"
@@ -479,7 +479,7 @@
 			{@const node = item as TreeNode}
 			<!-- Tree Node - L0: Row -->
 			<div
-				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-accent' : ''}"
+				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}"
 				style="padding-left: {node.depth * 24 + 12}px"
 			>
 					<!-- Expansion indicator -->
