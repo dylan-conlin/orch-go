@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
@@ -49,6 +50,10 @@ var (
 	// Protected by serviceMonitorMu for thread-safe access across HTTP handlers.
 	serviceMonitor   *service.ServiceMonitor
 	serviceMonitorMu sync.RWMutex
+
+	// likelyDoneCache caches LIKELY_DONE attention signals.
+	// Initialized at startup with 5-minute TTL to avoid slow git/workspace scans.
+	globalLikelyDoneCache *attention.LikelyDoneCache
 )
 
 var serveCmd = &cobra.Command{
@@ -232,6 +237,10 @@ func runServe(portNum int) error {
 	// kb reflect can be slow with many artifacts, so we cache with 5-minute TTL.
 	globalKBHealthCache = newKBHealthCache()
 
+	// Initialize likely done cache to prevent slow API responses.
+	// Git log scanning and workspace checks can be slow, so we cache with 5-minute TTL.
+	globalLikelyDoneCache = attention.NewLikelyDoneCache()
+
 	// Start service monitoring daemon (Phase 1 MVP: crash detection + auto-restart)
 	// Polls overmind status every 10s, tracks PIDs, emits crash notifications, auto-restarts services
 	notifier := notify.Default()
@@ -344,6 +353,9 @@ func runServe(portNum int) error {
 
 	// GET /api/kb/artifacts - returns knowledge base artifacts for Work Graph Artifact Feed
 	mux.HandleFunc("/api/kb/artifacts", corsHandler(handleKBArtifacts))
+
+	// GET /api/attention/likely-done - returns issues with commits but no active workspace
+	mux.HandleFunc("/api/attention/likely-done", corsHandler(handleLikelyDone))
 
 	// GET /api/kb/artifact/content - returns full content of a specific artifact
 	mux.HandleFunc("/api/kb/artifact/content", corsHandler(handleKBArtifactContent))
