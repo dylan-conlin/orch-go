@@ -158,7 +158,7 @@ test.describe('Work Graph Polling and Refresh', () => {
 		expect(artifactsFetchCount).toBeGreaterThan(initialFetchCount);
 	});
 	
-	test('should poll workGraph periodically', async ({ page }) => {
+	test('should poll workGraph periodically at 5-second intervals', async ({ page }) => {
 		let graphFetchCount = 0;
 		
 		// Mock context API
@@ -193,14 +193,14 @@ test.describe('Work Graph Polling and Refresh', () => {
 		
 		const initialFetchCount = graphFetchCount;
 		
-		// Wait for at least one 60-second polling cycle + buffer
-		await page.waitForTimeout(61000);
+		// Wait for at least one 5-second polling cycle + buffer
+		await page.waitForTimeout(5500);
 		
 		// Should have polled at least once more
 		expect(graphFetchCount).toBeGreaterThan(initialFetchCount);
 	});
 	
-	test('should highlight newly appeared issues with temporary visual signal', async ({ page }) => {
+	test('should highlight newly appeared issues with 30-second visual signal', async ({ page }) => {
 		let returnNewIssue = false;
 		
 		// Mock context API
@@ -263,18 +263,22 @@ test.describe('Work Graph Polling and Refresh', () => {
 		// Trigger new issue to appear
 		returnNewIssue = true;
 		
-		// Wait for polling cycle (60 seconds is too long for tests, we'll implement shorter interval for testing)
-		await page.waitForTimeout(2000);
+		// Wait for polling cycle (5 seconds)
+		await page.waitForTimeout(5500);
 		
 		// New issue should now be visible with highlight class
 		const newIssueRow = page.locator('[data-testid="issue-row-orch-go-2"]');
 		await expect(newIssueRow).toBeVisible();
 		await expect(newIssueRow).toHaveClass(/new-issue-highlight/);
 		
-		// Wait for animation duration (3 seconds)
-		await page.waitForTimeout(3500);
+		// Verify highlight is still present after 15 seconds
+		await page.waitForTimeout(15000);
+		await expect(newIssueRow).toHaveClass(/new-issue-highlight/);
 		
-		// Highlight class should be removed
+		// Wait for animation duration to complete (30 seconds total)
+		await page.waitForTimeout(15500);
+		
+		// Highlight class should be removed after 30 seconds
 		await expect(newIssueRow).not.toHaveClass(/new-issue-highlight/);
 	});
 });
