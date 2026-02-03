@@ -57,18 +57,43 @@ export interface TreeNode extends GraphNode {
 	attentionReason?: string;
 }
 
-// Work graph store
+// Work graph store with AbortController support to prevent race conditions
 function createWorkGraphStore() {
 	const { subscribe, set, update } = writable<WorkGraphResponse | null>(null);
+	
+	// Track in-flight requests to cancel stale ones
+	let currentAbortController: AbortController | null = null;
+	let fetchSequence = 0; // Sequence guard for additional safety
 
 	return {
 		subscribe,
 		set,
 		update,
+		
+		// Cancel any pending fetch - useful when project context changes
+		cancelPending(): void {
+			if (currentAbortController) {
+				currentAbortController.abort();
+				currentAbortController = null;
+			}
+		},
+		
 		// Fetch work graph from orch-go API
 		// projectDir: Optional project directory to query (for following orchestrator context)
 		// scope: "focus" (default) or "open" (all open issues)
 		async fetch(projectDir?: string, scope: string = 'open'): Promise<void> {
+			// Cancel any pending request before starting new one
+			if (currentAbortController) {
+				currentAbortController.abort();
+			}
+			
+			// Create new abort controller for this request
+			const abortController = new AbortController();
+			currentAbortController = abortController;
+			
+			// Increment sequence for this fetch
+			const thisSequence = ++fetchSequence;
+			
 			try {
 				const params = new URLSearchParams();
 				if (projectDir) {
@@ -76,21 +101,44 @@ function createWorkGraphStore() {
 				}
 				params.set('scope', scope);
 				const url = `${API_BASE}/api/beads/graph${params.toString() ? '?' + params.toString() : ''}`;
-				const response = await fetch(url);
+				const response = await fetch(url, { signal: abortController.signal });
+				
+				// Sequence guard: ignore response if newer fetch started
+				if (thisSequence !== fetchSequence) {
+					return; // Stale response, discard
+				}
+				
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
 				const data = await response.json();
-				set(data);
+				
+				// Final sequence check before setting state
+				if (thisSequence === fetchSequence) {
+					set(data);
+				}
 			} catch (error) {
-				console.error('Failed to fetch work graph:', error);
-				set({
-					nodes: [],
-					edges: [],
-					node_count: 0,
-					edge_count: 0,
-					error: String(error)
-				});
+				// Ignore abort errors - they're intentional
+				if (error instanceof Error && error.name === 'AbortError') {
+					return;
+				}
+				
+				// Only set error if this is still the current request
+				if (thisSequence === fetchSequence) {
+					console.error('Failed to fetch work graph:', error);
+					set({
+						nodes: [],
+						edges: [],
+						node_count: 0,
+						edge_count: 0,
+						error: String(error)
+					});
+				}
+			} finally {
+				// Clear controller if this was the current one
+				if (currentAbortController === abortController) {
+					currentAbortController = null;
+				}
 			}
 		}
 	};

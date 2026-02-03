@@ -51,6 +51,7 @@
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
+	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 	let previousIssueIds = new Set<string>();
 	let newIssueIds = new Set<string>();
 	let completedIssues: CompletedIssue[] = [];
@@ -124,6 +125,12 @@
 			clearInterval(refreshInterval);
 			refreshInterval = null;
 		}
+		if (projectChangeDebounceTimeout) {
+			clearTimeout(projectChangeDebounceTimeout);
+			projectChangeDebounceTimeout = null;
+		}
+		// Cancel any pending workGraph fetches
+		workGraph.cancelPending();
 	});
 
 	// Subscribe to attention store for completed issues
@@ -220,12 +227,22 @@
 	}
 	
 	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
+	// Uses debounce + abort to prevent flip-flopping between old/new project data
 	$: {
 		if (typeof window !== 'undefined' && $orchestratorContext.project_dir) {
 			const newProjectDir = $orchestratorContext.project_dir;
 			
-			// If project changed, reset highlight state from localStorage
+			// Only react to actual project changes (not other context changes)
 			if (newProjectDir !== currentProjectDir) {
+				// Cancel any pending debounced fetch
+				if (projectChangeDebounceTimeout) {
+					clearTimeout(projectChangeDebounceTimeout);
+				}
+				
+				// Cancel any in-flight workGraph requests immediately
+				workGraph.cancelPending();
+				
+				// Update state synchronously to prevent stale comparisons
 				currentProjectDir = newProjectDir;
 				
 				// Clear current highlights - they belong to the old project
@@ -238,12 +255,17 @@
 					// New project we haven't seen before - will be populated on first fetch
 					previousIssueIds = new Set<string>();
 				}
-			}
-			
-			workGraph.fetch(newProjectDir, 'open').catch(console.error);
-			// Also re-fetch kbArtifacts if we're in artifacts view
-			if (currentView === 'artifacts' && $kbArtifacts) {
-				kbArtifacts.fetch(newProjectDir, '7d').catch(console.error);
+				
+				// Debounce the actual fetch to wait for stable project value
+				// 300ms prevents rapid flip-flopping while still feeling responsive
+				projectChangeDebounceTimeout = setTimeout(() => {
+					projectChangeDebounceTimeout = null;
+					workGraph.fetch(newProjectDir, 'open').catch(console.error);
+					// Also re-fetch kbArtifacts if we're in artifacts view
+					if (currentView === 'artifacts' && $kbArtifacts) {
+						kbArtifacts.fetch(newProjectDir, '7d').catch(console.error);
+					}
+				}, 300);
 			}
 		}
 	}
