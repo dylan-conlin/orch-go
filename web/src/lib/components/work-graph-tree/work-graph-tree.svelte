@@ -6,6 +6,8 @@
 	import type { WIPItem } from '$lib/stores/wip';
 	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
 	import { ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
+	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
+	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 
 	export let tree: TreeNode[] = [];
 	export let newIssueIds: Set<string> = new Set();
