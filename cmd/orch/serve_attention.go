@@ -25,12 +25,16 @@ func handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get beads client (RPC or CLI fallback)
+	// Note: Must check beadsClient before assigning to interface to avoid
+	// Go's nil interface gotcha (interface with nil data is not == nil)
 	beadsClientMu.RLock()
-	var client beads.BeadsClient = beadsClient
+	rpcClient := beadsClient
 	beadsClientMu.RUnlock()
 
-	// Use CLI fallback if RPC client not available
-	if client == nil {
+	var client beads.BeadsClient
+	if rpcClient != nil {
+		client = rpcClient
+	} else {
 		client = beads.NewCLIClient(beads.WithWorkDir(projectDir))
 	}
 
