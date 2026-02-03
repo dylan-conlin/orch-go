@@ -60,6 +60,7 @@ func init() {
 	rootCmd.AddCommand(questionCmd)
 	rootCmd.AddCommand(abandonCmd)
 	rootCmd.AddCommand(cleanCmd)
+	rootCmd.AddCommand(registryCmd)
 	rootCmd.AddCommand(accountCmd)
 	rootCmd.AddCommand(waitCmd)
 	rootCmd.AddCommand(focusCmd)
