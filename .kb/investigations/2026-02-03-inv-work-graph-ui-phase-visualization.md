@@ -74,23 +74,40 @@ Guidelines:
 
 ---
 
-### Finding 2: [Brief, descriptive title]
+### Finding 2: Layer Calculation Exists in beads CLI
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `bd graph` command performs topological sort to calculate layers (beads/cmd/bd/graph.go:322-419)
+- Layer 0 = nodes with no blocking dependencies (ready to start)
+- Layer N = nodes whose dependencies are all in layers 0 through N-1
+- CLI displays this as "Layer 0 (ready)", "Layer 1", etc.
+- Example output: `bd graph orch-go-21197` shows "Layer 0 (ready)" with the issue
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- /Users/dylanconlin/Documents/personal/beads/cmd/bd/graph.go:322-419 (computeLayout function)
+- `bd graph orch-go-21197` (tested - shows layer visualization)
+- `bd graph --help` (describes execution order: left-to-right, same column can run in parallel)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** The logic for phase/layer calculation already exists and is battle-tested in beads CLI - we don't need to implement it from scratch
 
 ---
 
-### Finding 3: [Brief, descriptive title]
+### Finding 3: API Does NOT Return Layer Information
 
-**Evidence:** [Concrete observations, data, examples]
+**Evidence:**
+- `/api/beads/graph` returns nodes with: id, title, type, status, priority, source
+- Edges have: from, to, type
+- No layer/phase field in node data
+- `bd graph --all --json` also doesn't include layer data in export (tested)
 
-**Source:** [File paths with line numbers, commands run, specific artifacts examined]
+**Source:**
+- cmd/orch/serve_beads.go:600-627 (GraphNode and GraphEdge type definitions)
+- `curl https://localhost:3348/api/beads/graph?scope=open | jq '.nodes[0]'` (tested - no layer field)
+- `bd graph --all --json | jq '.nodes[0] | keys'` (tested - confirmed no layer field)
 
-**Significance:** [Why this matters, what it tells us, implications for the investigation question]
+**Significance:** To add phase visualization, we need EITHER:
+1. Add layer calculation to API response (backend approach)
+2. Calculate layers client-side in the UI (frontend approach)
 
 ---
 
