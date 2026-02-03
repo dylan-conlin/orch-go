@@ -3,6 +3,15 @@ import { writable } from 'svelte/store';
 // API configuration
 const API_BASE = 'https://localhost:3348';
 
+// Connection status
+export type ConnectionStatus = 'connected' | 'disconnected' | 'retrying';
+
+export interface ConnectionState {
+	status: ConnectionStatus;
+	error?: string;
+	lastErrorLogged?: boolean; // Track if we've already logged this error
+}
+
 // Context response from /api/context
 export interface OrchestratorContext {
 	cwd?: string;
@@ -56,11 +65,106 @@ function saveFilterState(state: FilterState) {
 	}
 }
 
-// Context store
+// Connection status store (shared across all API calls)
+function createConnectionStore() {
+	const { subscribe, set, update } = writable<ConnectionState>({
+		status: 'connected',
+		lastErrorLogged: false
+	});
+
+	return {
+		subscribe,
+		
+		setConnected(): void {
+			update(state => ({
+				...state,
+				status: 'connected',
+				error: undefined,
+				lastErrorLogged: false
+			}));
+		},
+		
+		setDisconnected(error: string): void {
+			update(state => {
+				// Only log error once
+				if (!state.lastErrorLogged) {
+					console.error('Backend unavailable:', error);
+				}
+				return {
+					status: 'disconnected',
+					error,
+					lastErrorLogged: true
+				};
+			});
+		},
+		
+		setRetrying(): void {
+			update(state => ({
+				...state,
+				status: 'retrying'
+			}));
+		}
+	};
+}
+
+// Create connection status store first so it can be referenced
+export const connectionStatus = createConnectionStore();
+
+// Context store with exponential backoff
 function createContextStore() {
 	const { subscribe, set } = writable<OrchestratorContext>({});
 
-	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+	let currentBackoff = 1000; // Start at 1s
+	const maxBackoff = 30000; // Cap at 30s
+	const baseBackoff = 1000; // Base backoff 1s
+	let isDisconnected = false; // Track connection state for backoff
+	
+	async function fetchWithRetry(): Promise<void> {
+		try {
+			const response = await fetch(`${API_BASE}/api/context`);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			const data = await response.json();
+			set(data);
+			
+			// Success - reset backoff and mark connected
+			currentBackoff = baseBackoff;
+			isDisconnected = false;
+			connectionStatus.setConnected();
+		} catch (error) {
+			// Connection failed - mark disconnected
+			isDisconnected = true;
+			connectionStatus.setDisconnected(String(error));
+			set({ error: String(error) });
+			
+			// Don't throw - let polling continue with backoff
+		}
+	}
+
+	function scheduleNextPoll(): void {
+		if (pollTimeout) return;
+		
+		pollTimeout = setTimeout(async () => {
+			pollTimeout = null;
+			
+			// If disconnected, mark as retrying before fetch
+			if (isDisconnected) {
+				connectionStatus.setRetrying();
+			}
+			
+			await fetchWithRetry();
+			
+			// If still disconnected after fetch, increase backoff exponentially
+			if (isDisconnected) {
+				currentBackoff = Math.min(currentBackoff * 2, maxBackoff);
+			}
+			
+			// Schedule next poll
+			scheduleNextPoll();
+		}, currentBackoff);
+	}
 
 	return {
 		subscribe,
@@ -68,39 +172,36 @@ function createContextStore() {
 
 		// Fetch current context from API
 		async fetch(): Promise<void> {
-			try {
-				const response = await fetch(`${API_BASE}/api/context`);
-				if (!response.ok) {
-					throw new Error(`HTTP ${response.status}`);
-				}
-				const data = await response.json();
-				set(data);
-			} catch (error) {
-				console.error('Failed to fetch context:', error);
-				set({ error: String(error) });
-			}
+			await fetchWithRetry();
 		},
 
-		// Start polling for context changes (500ms default)
-		startPolling(intervalMs: number = 500): void {
-			if (pollInterval) return;
+		// Start polling for context changes with exponential backoff
+		startPolling(intervalMs: number = 2000): void {
+			if (pollTimeout) return;
+			
+			// Set initial backoff based on interval
+			currentBackoff = intervalMs;
 			
 			// Initial fetch
 			this.fetch();
 			
-			// Poll at interval
-			pollInterval = setInterval(() => {
-				this.fetch();
-			}, intervalMs);
+			// Start polling loop
+			scheduleNextPoll();
 		},
 
 		// Stop polling
 		stopPolling(): void {
-			if (pollInterval) {
-				clearInterval(pollInterval);
-				pollInterval = null;
+			if (pollTimeout) {
+				clearTimeout(pollTimeout);
+				pollTimeout = null;
 			}
 		},
+		
+		// Manual retry - resets backoff
+		async retry(): Promise<void> {
+			currentBackoff = baseBackoff;
+			await fetchWithRetry();
+		}
 	};
 }
 

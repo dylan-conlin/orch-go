@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { workGraph, buildTree, type TreeNode, type AttentionBadgeType } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
-	import { orchestratorContext } from '$lib/stores/context';
+	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { WIPSection } from '$lib/components/wip-section';
@@ -156,6 +156,11 @@
 			await kbArtifacts.fetch(projectDir, '7d');
 		}
 	}
+	
+	// Manual retry handler
+	async function handleRetry() {
+		await orchestratorContext.retry();
+	}
 
 	// Keyboard navigation for Tab to toggle views
 	function handleKeydown(event: KeyboardEvent) {
@@ -170,6 +175,29 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <div class="work-graph-container flex flex-col h-screen bg-background">
+	<!-- Backend Error Banner -->
+	{#if $connectionStatus.status === 'disconnected'}
+		<div 
+			class="bg-red-500/10 border-b border-red-500/20 px-4 py-3 flex items-center justify-between"
+			data-testid="backend-error-banner"
+		>
+			<div class="flex-1 min-w-0">
+				<p class="text-sm text-red-600 dark:text-red-400">
+					<span class="font-semibold">Backend not running.</span>
+					<span class="ml-2">Start with: <code class="bg-red-500/20 px-1 rounded text-xs">orch serve</code></span>
+				</p>
+			</div>
+			<button
+				type="button"
+				onclick={handleRetry}
+				class="ml-4 px-3 py-1 text-xs font-medium text-red-600 dark:text-red-400 border border-red-500/30 rounded hover:bg-red-500/10 transition-colors whitespace-nowrap"
+				data-testid="retry-button"
+			>
+				Retry
+			</button>
+		</div>
+	{/if}
+
 	<!-- Header -->
 	<div class="border-b border-border px-6 py-4">
 		<div class="flex items-center justify-between">
