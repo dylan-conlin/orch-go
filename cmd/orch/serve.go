@@ -80,6 +80,7 @@ Endpoints:
   GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
+  GET /api/attention - Unified attention API (composes beads + git collectors, role-aware)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET /api/frontier  - Decidability frontier (ready, blocked, active, stuck)
@@ -181,6 +182,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/gaps      - Gap tracker stats")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions")
 	fmt.Println("  GET /api/kb-health - Knowledge hygiene signals")
+	fmt.Println("  GET /api/attention - Unified attention API")
 	fmt.Println("  GET /api/errors    - Error pattern analysis")
 	fmt.Println("  GET /api/frontier  - Decidability frontier")
 	fmt.Println("  GET /api/decisions - Decision center items")
@@ -354,6 +356,9 @@ func runServe(portNum int) error {
 	// GET /api/kb/artifacts - returns knowledge base artifacts for Work Graph Artifact Feed
 	mux.HandleFunc("/api/kb/artifacts", corsHandler(handleKBArtifacts))
 
+	// GET /api/attention - unified attention API composing multiple collectors
+	mux.HandleFunc("/api/attention", corsHandler(handleAttention))
+
 	// GET /api/attention/likely-done - returns issues with commits but no active workspace
 	mux.HandleFunc("/api/attention/likely-done", corsHandler(handleLikelyDone))
 
@@ -454,6 +459,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/gaps      - Gap tracker stats (total, recurring, by-skill)")
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
 	fmt.Println("  GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)")
+	fmt.Println("  GET /api/attention - Unified attention API (beads + git collectors, role-aware)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")
