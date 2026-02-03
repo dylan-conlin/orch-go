@@ -111,6 +111,39 @@ Guidelines:
 
 ---
 
+### Finding 4: UI Has No Phase/Layer Logic
+
+**Evidence:**
+- work-graph.ts buildTree() builds parent-child hierarchy only (lines 168-245)
+- Tree structure based on `parseParentId()` from issue ID patterns (orch-go-X.Y) 
+- Blocking dependencies (`blocks` edges) are tracked as `blocked_by`/`blocks` arrays but not used for visualization
+- No layer/phase grouping or calculation in frontend
+
+**Source:**
+- web/src/lib/stores/work-graph.ts:168-245 (buildTree function)
+- web/src/routes/work-graph/+page.svelte:1-441 (no phase grouping logic)
+
+**Significance:** The UI would need NEW logic to:
+1. Calculate layers from blocking dependencies OR receive layer data from API
+2. Group/render nodes by layer (Phase 1, Phase 2, etc.)
+3. Show phase progress and blocking relationships visually
+
+---
+
+### Finding 5: No Blocking Dependencies in Current Graph
+
+**Evidence:**
+- Queried `/api/beads/graph?scope=open` - 69 nodes, 5 edges
+- All 5 edges have empty `type` field (meaning parent-child, not blocks)
+- No `blocks` type edges in current active work
+
+**Source:**
+- `curl 'https://localhost:3348/api/beads/graph?scope=open' | jq '.edges'` (tested)
+
+**Significance:** Cannot test phase visualization with real data currently - would need to create test issues with blocking dependencies or wait for a phased plan to be created
+
+---
+
 ## Synthesis
 
 **Key Insights:**
