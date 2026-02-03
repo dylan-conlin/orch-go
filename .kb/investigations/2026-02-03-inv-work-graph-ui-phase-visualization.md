@@ -180,21 +180,24 @@ Guidelines:
 
 **What's tested:**
 
-- ✅ [Claim with evidence of actual test performed - e.g., "API returns 200 (verified: ran curl command)"]
-- ✅ [Claim with evidence of actual test performed]
-- ✅ [Claim with evidence of actual test performed]
+- ✅ **bd graph calculates layers** - Ran `bd graph orch-go-21202`, confirmed CLI displays "Layer 0 (ready)" with topological sort
+- ✅ **API returns nodes/edges without layers** - Ran `curl https://localhost:3348/api/beads/graph?scope=open | jq '.nodes[0]'`, confirmed no layer field
+- ✅ **bd graph --all --json has no layer data** - Ran `bd graph --all --json | jq '.nodes[0] | has("layer")'`, returned false
+- ✅ **No blocking dependencies in current graph** - Queried `/api/beads/graph`, found 5 edges all with empty type (parent-child), zero `blocks` edges
+- ✅ **buildTree() doesn't use blocking deps** - Read work-graph.ts:168-245, confirmed only parent-child hierarchy, not layer calculation
 
 **What's untested:**
 
-- ⚠️ [Hypothesis without validation - e.g., "Performance should improve (not benchmarked)"]
-- ⚠️ [Hypothesis without validation]
-- ⚠️ [Hypothesis without validation]
+- ⚠️ **computeLayout port will work in Go** - Algorithm is in beads (Go) already, but different package/context. Assume portable but untested in serve_beads.go
+- ⚠️ **Phase grouping UI will be usable** - No mockup or user testing, just conceptual design
+- ⚠️ **Performance with 1000+ nodes** - computeLayout is O(n*m) but haven't benchmarked with real scale
+- ⚠️ **User actually wants this feature** - Inferred from spawn context ("user wants to SEE this") but no direct user interview
 
 **What would change this:**
 
-- [Falsifiability criteria - e.g., "Finding would be wrong if X produces different results"]
-- [Falsifiability criteria]
-- [Falsifiability criteria]
+- **If bd graph shows inconsistent layers across runs** → Algorithm might not be deterministic, would affect API reliability
+- **If API response time >1s with layer calculation** → Would need caching or optimization
+- **If user feedback says "phase view is confusing"** → Would need to reconsider UI pattern (swimlanes vs sections vs badges)
 
 ---
 
@@ -293,25 +296,38 @@ Guidelines:
 ## References
 
 **Files Examined:**
-- [File path] - [What you looked at and why]
-- [File path] - [What you looked at and why]
+- `/Users/dylanconlin/Documents/personal/orch-go/web/src/routes/work-graph/+page.svelte` (441 lines) - Main Work Graph UI page
+- `/Users/dylanconlin/Documents/personal/orch-go/web/src/lib/stores/work-graph.ts` (248 lines) - Store with buildTree() logic
+- `/Users/dylanconlin/Documents/personal/orch-go/cmd/orch/serve_beads.go` (1331 lines) - API endpoint for /api/beads/graph
+- `/Users/dylanconlin/Documents/personal/beads/cmd/bd/graph.go` (651 lines) - Layer calculation algorithm in computeLayout()
 
 **Commands Run:**
 ```bash
-# [Command description]
-[command]
+# Check API structure
+curl -s 'https://localhost:3348/api/beads/graph?scope=open' | jq '{node_count, edge_count, sample_node: .nodes[0], sample_edge: .edges[0]}'
 
-# [Command description]
-[command]
+# Test bd graph layer visualization
+bd graph orch-go-21202
+
+# Check if bd graph JSON includes layers
+bd graph --all --json | jq '{node_count, edge_count, has_layer_info: (.nodes[0] | has("layer"))}'
+
+# Find issues with dependencies
+bd list --json --limit 20 | jq -r '.[] | select(.dependency_count > 0 or .dependent_count > 0) | "\(.id) - deps:\(.dependency_count) blocked_by:\(.dependent_count)"'
+
+# View dependency structure
+bd show orch-go-21202 --json | jq '{id: .[0].id, title: .[0].title, dependencies: .[0].dependencies, dependents: .[0].dependents}'
+
+# Check for blocking edges
+curl -s 'https://localhost:3348/api/beads/graph?scope=open' | jq '.edges[] | select(.type == "blocks")'
 ```
 
 **External Documentation:**
-- [Link or reference] - [What it is and relevance]
+- N/A
 
 **Related Artifacts:**
-- **Decision:** [Path to related decision document] - [How it relates]
-- **Investigation:** [Path to related investigation] - [How it relates]
-- **Workspace:** [Path to related workspace] - [How it relates]
+- **Guide:** `.kb/guides/dashboard.md` - Dashboard architecture guide (work-graph is separate UI, not covered in detail)
+- **Spawn Context:** Referenced "phased plan orchestration" validation and user wanting to SEE phases
 
 ---
 
