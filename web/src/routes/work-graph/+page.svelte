@@ -47,7 +47,7 @@
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
 		
-		// Poll workGraph periodically (60 seconds)
+		// Poll workGraph periodically (5 seconds for faster updates)
 		refreshInterval = setInterval(() => {
 			const projectDir = $orchestratorContext?.project_dir;
 			workGraph.fetch(projectDir, 'open').catch(console.error);
@@ -57,7 +57,7 @@
 			if (currentView === 'artifacts' && $kbArtifacts) {
 				kbArtifacts.fetch(projectDir, '7d').catch(console.error);
 			}
-		}, 60000);
+		}, 5000);
 	});
 
 	// Sync running agents from agents store to WIP store
@@ -119,11 +119,11 @@
 			for (const id of currentIssueIds) {
 				if (!previousIssueIds.has(id)) {
 					newIssueIds.add(id);
-					// Remove highlight after 3 seconds
+					// Remove highlight after 30 seconds
 					setTimeout(() => {
 						newIssueIds.delete(id);
 						newIssueIds = newIssueIds; // Trigger reactivity
-					}, 3000);
+					}, 30000);
 				}
 			}
 			

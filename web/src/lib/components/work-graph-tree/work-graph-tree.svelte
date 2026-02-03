@@ -588,7 +588,7 @@
 	}
 	
 	.new-issue-highlight {
-		animation: highlight-fade 3s ease-out;
+		animation: highlight-fade 30s ease-out;
 	}
 	
 	@keyframes highlight-fade {
