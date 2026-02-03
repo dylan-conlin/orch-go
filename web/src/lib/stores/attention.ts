@@ -60,87 +60,48 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType | 'unverified' | 
 };
 
 // ============================================================================
-// MOCK DATA FOR PROTOTYPING
-// Replace with real API calls when backend is ready
+// API Types - Match backend /api/attention response structure
 // ============================================================================
 
-const MOCK_ATTENTION_SIGNALS: AttentionSignal[] = [
-	{
-		issueId: 'orch-go-21180',
-		badge: 'verify',
-		reason: 'Phase: Complete reported',
-		source: 'beads comment',
-		timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15m ago
-	},
-	{
-		issueId: 'orch-go-20876',
-		badge: 'likely_done',
-		reason: '3 commits reference this issue',
-		source: 'git commits',
-		timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h ago
-	},
-	{
-		issueId: 'orch-go-20999',
-		badge: 'unblocked',
-		reason: 'Blocker orch-go-20888 was closed',
-		source: 'beads dependency',
-		timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
-	},
-	{
-		issueId: 'orch-go-19845',
-		badge: 'verify',
-		reason: 'Phase: Complete reported',
-		source: 'beads comment',
-		timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h ago
-	},
-];
+interface AttentionItemResponse {
+	id: string;
+	source: string;
+	concern: string;
+	signal: string;
+	subject: string;
+	summary: string;
+	priority: number;
+	role: string;
+	action_hint?: string;
+	collected_at: string;
+	metadata?: Record<string, any>;
+}
 
-const MOCK_COMPLETED_ISSUES: CompletedIssue[] = [
-	{
-		id: 'orch-go-20445',
-		title: 'Implement SSE reconnection logic',
-		type: 'task',
-		status: 'closed',
-		priority: 1,
-		source: 'beads',
-		completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
-		verificationStatus: 'needs_fix',
-		attentionBadge: 'needs_fix',
-	},
-	{
-		id: 'orch-go-20512',
-		title: 'Fix agent status polling',
-		type: 'bug',
-		status: 'closed',
-		priority: 2,
-		source: 'beads',
-		completedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // 1h ago
-		verificationStatus: 'unverified',
-		attentionBadge: 'unverified',
-	},
-	{
-		id: 'orch-go-20398',
-		title: 'Add context % to agent display',
-		type: 'task',
-		status: 'closed',
-		priority: 2,
-		source: 'beads',
-		completedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5h ago
-		verificationStatus: 'verified',
-		// No attentionBadge - verified correct
-	},
-	{
-		id: 'orch-go-20401',
-		title: 'Update spawn context template',
-		type: 'task',
-		status: 'closed',
-		priority: 2,
-		source: 'beads',
-		completedAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), // 8h ago
-		verificationStatus: 'verified',
-		// No attentionBadge - verified correct
-	},
-];
+interface AttentionAPIResponse {
+	items: AttentionItemResponse[];
+	total: number;
+	sources: string[];
+	role: string;
+	collected_at: string;
+}
+
+// ============================================================================
+// Mapping Functions
+// ============================================================================
+
+// Map backend signal types to frontend badge types
+function mapSignalToBadge(signal: string): AttentionBadgeType | null {
+	switch (signal) {
+		case 'likely-done':
+			return 'likely_done';
+		case 'issue-ready':
+			// issue-ready doesn't have a direct badge mapping yet
+			// This is for actionable work, not attention needing human review
+			return null;
+		default:
+			return null;
+	}
+}
 
 // ============================================================================
 // Store Implementation
@@ -156,25 +117,63 @@ function createAttentionStore() {
 	return {
 		subscribe,
 
-		// Initialize with mock data (for prototyping)
-		// Replace with real API call when backend is ready
+		// Fetch attention signals from /api/attention endpoint
 		async fetch(): Promise<void> {
 			update(s => ({ ...s, loading: true }));
 
-			// Simulate API delay
-			await new Promise(resolve => setTimeout(resolve, 100));
+			try {
+				// Call /api/attention endpoint
+				const response = await fetch('/api/attention?role=human');
+				
+				if (!response.ok) {
+					console.error('Failed to fetch attention signals:', response.statusText);
+					// Set empty state on error
+					set({
+						signals: new Map(),
+						completedIssues: [],
+						loading: false,
+					});
+					return;
+				}
 
-			// Load mock data
-			const signalsMap = new Map<string, AttentionSignal>();
-			for (const signal of MOCK_ATTENTION_SIGNALS) {
-				signalsMap.set(signal.issueId, signal);
+				const data: AttentionAPIResponse = await response.json();
+
+				// Map API response to store state
+				const signalsMap = new Map<string, AttentionSignal>();
+				
+				for (const item of data.items) {
+					// Map backend signal types to frontend badge types
+					const badge = mapSignalToBadge(item.signal);
+					if (!badge) {
+						// Skip signals that don't map to known badge types
+						continue;
+					}
+
+					const signal: AttentionSignal = {
+						issueId: item.subject,
+						badge: badge,
+						reason: item.metadata?.reason || item.summary,
+						source: item.source,
+						timestamp: item.collected_at,
+					};
+
+					signalsMap.set(signal.issueId, signal);
+				}
+
+				set({
+					signals: signalsMap,
+					completedIssues: [], // TODO: Map completed issues when backend provides them
+					loading: false,
+				});
+			} catch (error) {
+				console.error('Error fetching attention signals:', error);
+				// Set empty state on error
+				set({
+					signals: new Map(),
+					completedIssues: [],
+					loading: false,
+				});
 			}
-
-			set({
-				signals: signalsMap,
-				completedIssues: MOCK_COMPLETED_ISSUES,
-				loading: false,
-			});
 		},
 
 		// Get attention signal for a specific issue
