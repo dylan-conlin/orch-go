@@ -124,28 +124,40 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		role = "human" // Default to human for invalid roles
 	}
 
+	// Get project directory from query parameter (default to sourceDir)
+	projectDir := r.URL.Query().Get("project")
+	if projectDir == "" {
+		projectDir = sourceDir
+	}
+
+	// Get beads client (RPC or CLI fallback)
+	// Note: Must check beadsClient before assigning to interface to avoid
+	// Go's nil interface gotcha (interface with nil data is not == nil)
+	beadsClientMu.RLock()
+	rpcClient := beadsClient
+	beadsClientMu.RUnlock()
+
+	var client beads.BeadsClient
+	if rpcClient != nil {
+		client = rpcClient
+	} else {
+		client = beads.NewCLIClient(beads.WithWorkDir(projectDir))
+	}
+
 	// Initialize collectors
 	collectors := []attention.Collector{}
 	sources := []string{}
 
 	// BeadsCollector - ready issues
-	beadsClientMu.RLock()
-	if beadsClient != nil {
-		beadsCollector := attention.NewBeadsCollector(beadsClient)
-		collectors = append(collectors, beadsCollector)
-		sources = append(sources, "beads")
-	}
-	beadsClientMu.RUnlock()
+	beadsCollector := attention.NewBeadsCollector(client)
+	collectors = append(collectors, beadsCollector)
+	sources = append(sources, "beads")
 
 	// GitCollector - likely-done signals
-	if sourceDir != "" {
-		beadsClientMu.RLock()
-		if beadsClient != nil {
-			gitCollector := attention.NewGitCollector(sourceDir, beadsClient)
-			collectors = append(collectors, gitCollector)
-			sources = append(sources, "git")
-		}
-		beadsClientMu.RUnlock()
+	if projectDir != "" {
+		gitCollector := attention.NewGitCollector(projectDir, client)
+		collectors = append(collectors, gitCollector)
+		sources = append(sources, "git")
 	}
 
 	// Collect from all sources
