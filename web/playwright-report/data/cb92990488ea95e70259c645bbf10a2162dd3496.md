@@ -1,0 +1,116 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+      - generic [ref=e13]:
+        - generic [ref=e15]: 🟢 $0.00
+        - generic [ref=e16]: connected
+        - button "Select theme" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+  - main [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - heading "Work Graph" [level=1] [ref=e26]
+            - paragraph [ref=e27]: Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
+          - generic [ref=e28]:
+            - button "Issues" [ref=e29] [cursor=pointer]
+            - button "Artifacts" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32]: 3 issues
+          - generic [ref=e33]: 0 edges
+          - generic [ref=e34]: orch-go
+      - tree [active] [ref=e36]:
+        - 'treeitem "🚨 orch-go-21203 Phase 3: Store throttling for Work Graph Using tool ! 23m 55s" [selected] [ref=e37] [cursor=pointer]':
+          - generic [ref=e38]:
+            - generic [ref=e39]: 🚨
+            - generic [ref=e40]: orch-go-21203
+            - generic [ref=e41]: "Phase 3: Store throttling for Work Graph"
+            - generic [ref=e42]: Using tool
+            - generic "Stalled (same phase 15+ min)" [ref=e43]: "!"
+            - generic [ref=e44]: 23m 55s
+        - treeitem "▶ pw-8925 architect Planning approach... 1m 56s" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]:
+            - generic [ref=e47]: ▶
+            - generic [ref=e48]: pw-8925
+            - generic [ref=e49]: architect
+            - generic [ref=e50]: Planning approach...
+            - generic [ref=e51]: 1m 56s
+        - 'treeitem "○ P0 orch-go-21203 Phase 3: Store throttling for Work Graph queued task" [ref=e52] [cursor=pointer]':
+          - generic [ref=e53]:
+            - generic [ref=e54]: ○
+            - generic [ref=e55]: P0
+            - generic [ref=e56]: orch-go-21203
+            - generic [ref=e57]: "Phase 3: Store throttling for Work Graph"
+            - generic [ref=e58]: queued
+            - generic [ref=e59]: task
+        - 'treeitem "○ P1 orch-go-21194 Work Graph: expansion state resets on tree rebuild (poll/follow) queued bug" [ref=e60] [cursor=pointer]':
+          - generic [ref=e61]:
+            - generic [ref=e62]: ○
+            - generic [ref=e63]: P1
+            - generic [ref=e64]: orch-go-21194
+            - generic [ref=e65]: "Work Graph: expansion state resets on tree rebuild (poll/follow)"
+            - generic [ref=e66]: queued
+            - generic [ref=e67]: bug
+        - treeitem "○ P1 orch-go-21197 Implement RECENTLY_CLOSED attention signal for Work Graph queued feature" [ref=e68] [cursor=pointer]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: ○
+            - generic [ref=e71]: P1
+            - generic [ref=e72]: orch-go-21197
+            - generic [ref=e73]: Implement RECENTLY_CLOSED attention signal for Work Graph
+            - generic [ref=e74]: queued
+            - generic [ref=e75]: feature
+        - 'treeitem "○ P2 orch-go-21165 feature-impl: require integration test for behavioral acceptance criteria queued task" [ref=e76] [cursor=pointer]':
+          - generic [ref=e77]:
+            - generic [ref=e78]: ○
+            - generic [ref=e79]: P2
+            - generic [ref=e80]: orch-go-21165
+            - generic [ref=e81]: "feature-impl: require integration test for behavioral acceptance criteria"
+            - generic [ref=e82]: queued
+            - generic [ref=e83]: task
+        - treeitem "○ P2 orch-go-21167 Add design-to-issues decomposition step after design sessions queued task" [ref=e84] [cursor=pointer]:
+          - generic [ref=e85]:
+            - generic [ref=e86]: ○
+            - generic [ref=e87]: P2
+            - generic [ref=e88]: orch-go-21167
+            - generic [ref=e89]: Add design-to-issues decomposition step after design sessions
+            - generic [ref=e90]: queued
+            - generic [ref=e91]: task
+        - treeitem "▼ ▶ P1 orch-go-1 Parent Epic epic" [ref=e92] [cursor=pointer]:
+          - generic [ref=e93]:
+            - generic [ref=e94]: ▼
+            - generic [ref=e95]: ▶
+            - generic [ref=e96]: P1
+            - generic [ref=e97]: orch-go-1
+            - generic [ref=e98]: Parent Epic
+            - generic [ref=e99]: epic
+        - treeitem "• ○ P2 orch-go-1.1 Child Task 1 task" [ref=e100] [cursor=pointer]:
+          - generic [ref=e101]:
+            - generic [ref=e102]: •
+            - generic [ref=e103]: ○
+            - generic [ref=e104]: P2
+            - generic [ref=e105]: orch-go-1.1
+            - generic [ref=e106]: Child Task 1
+            - generic [ref=e107]: task
+        - treeitem "• ○ P2 orch-go-1.2 Child Task 2 task" [ref=e108] [cursor=pointer]:
+          - generic [ref=e109]:
+            - generic [ref=e110]: •
+            - generic [ref=e111]: ○
+            - generic [ref=e112]: P2
+            - generic [ref=e113]: orch-go-1.2
+            - generic [ref=e114]: Child Task 2
+            - generic [ref=e115]: task
+```

@@ -1,0 +1,108 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+      - generic [ref=e13]:
+        - generic [ref=e15]: 🟢 $0.00
+        - generic [ref=e16]: connected
+        - button "Select theme" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+  - main [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - heading "Work Graph" [level=1] [ref=e26]
+            - paragraph [ref=e27]: Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
+          - generic [ref=e28]:
+            - button "Issues" [ref=e29] [cursor=pointer]
+            - button "Artifacts" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32]: 2 issues
+          - generic [ref=e33]: 0 edges
+          - generic [ref=e34]: price-watch
+      - tree [active] [ref=e36]:
+        - 'treeitem "🚨 orch-go-21203 Phase 3: Store throttling for Work Graph Using tool ! 23m 48s" [selected] [ref=e37] [cursor=pointer]':
+          - generic [ref=e38]:
+            - generic [ref=e39]: 🚨
+            - generic [ref=e40]: orch-go-21203
+            - generic [ref=e41]: "Phase 3: Store throttling for Work Graph"
+            - generic [ref=e42]: Using tool
+            - generic "Stalled (same phase 15+ min)" [ref=e43]: "!"
+            - generic [ref=e44]: 23m 48s
+        - treeitem "▶ pw-8925 architect Planning approach... 1m 49s" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]:
+            - generic [ref=e47]: ▶
+            - generic [ref=e48]: pw-8925
+            - generic [ref=e49]: architect
+            - generic [ref=e50]: Planning approach...
+            - generic [ref=e51]: 1m 49s
+        - treeitem "○ P2 pw-8924 Create OshCut-only collection config queued task" [ref=e52] [cursor=pointer]:
+          - generic [ref=e53]:
+            - generic [ref=e54]: ○
+            - generic [ref=e55]: P2
+            - generic [ref=e56]: pw-8924
+            - generic [ref=e57]: Create OshCut-only collection config
+            - generic [ref=e58]: queued
+            - generic [ref=e59]: task
+        - 'treeitem "○ P2 pw-8925 [price-watch] architect: Determine minimum and optimal OshCut persona co... queued task" [ref=e60] [cursor=pointer]':
+          - generic [ref=e61]:
+            - generic [ref=e62]: ○
+            - generic [ref=e63]: P2
+            - generic [ref=e64]: pw-8925
+            - generic [ref=e65]: "[price-watch] architect: Determine minimum and optimal OshCut persona co..."
+            - generic [ref=e66]: queued
+            - generic [ref=e67]: task
+        - treeitem "○ P3 pw-cdm Protolabs scraper implementation queued feature" [ref=e68] [cursor=pointer]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: ○
+            - generic [ref=e71]: P3
+            - generic [ref=e72]: pw-cdm
+            - generic [ref=e73]: Protolabs scraper implementation
+            - generic [ref=e74]: queued
+            - generic [ref=e75]: feature
+        - treeitem "○ P3 pw-75d LaserGist evaluation queued task" [ref=e76] [cursor=pointer]:
+          - generic [ref=e77]:
+            - generic [ref=e78]: ○
+            - generic [ref=e79]: P3
+            - generic [ref=e80]: pw-75d
+            - generic [ref=e81]: LaserGist evaluation
+            - generic [ref=e82]: queued
+            - generic [ref=e83]: task
+        - treeitem "○ P3 pw-vhp Rotate part files periodically to avoid detection patterns queued task" [ref=e84] [cursor=pointer]:
+          - generic [ref=e85]:
+            - generic [ref=e86]: ○
+            - generic [ref=e87]: P3
+            - generic [ref=e88]: pw-vhp
+            - generic [ref=e89]: Rotate part files periodically to avoid detection patterns
+            - generic [ref=e90]: queued
+            - generic [ref=e91]: task
+        - treeitem "• ○ P2 orch-go-1 First Issue task" [ref=e92] [cursor=pointer]:
+          - generic [ref=e93]:
+            - generic [ref=e94]: •
+            - generic [ref=e95]: ○
+            - generic [ref=e96]: P2
+            - generic [ref=e97]: orch-go-1
+            - generic [ref=e98]: First Issue
+            - generic [ref=e99]: task
+        - treeitem "• ○ P2 orch-go-2 Second Issue task" [ref=e100] [cursor=pointer]:
+          - generic [ref=e101]:
+            - generic [ref=e102]: •
+            - generic [ref=e103]: ○
+            - generic [ref=e104]: P2
+            - generic [ref=e105]: orch-go-2
+            - generic [ref=e106]: Second Issue
+            - generic [ref=e107]: task
+```

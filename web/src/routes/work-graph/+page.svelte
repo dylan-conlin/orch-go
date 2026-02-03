@@ -66,6 +66,7 @@
 	
 	// Debounce timeout for tree rebuild to batch rapid store updates
 	let rebuildDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+	let hasRenderedTree = false; // Skip debounce until first tree render completes
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
@@ -152,6 +153,7 @@
 
 	// Rebuild tree whenever graph data OR wip data OR attention changes, filtering out queued issues
 	// Debounced to batch rapid updates and reduce CPU during polling
+	// Skip debounce until first tree render completes for immediate display
 	// Note: $wip dependency ensures filter re-runs when queued issues load
 	$: if ($workGraph && !$workGraph.error && $wip) {
 		// Cancel any pending rebuild
@@ -159,8 +161,8 @@
 			clearTimeout(rebuildDebounceTimeout);
 		}
 		
-		// Debounce rebuild to batch rapid updates (100ms is imperceptible to users)
-		rebuildDebounceTimeout = setTimeout(() => {
+		// Debounce rebuild to batch rapid updates (50ms is fast but still batches)
+		const executeRebuild = () => {
 			rebuildDebounceTimeout = null;
 			
 			// Build set of queued issue IDs for fast lookup
@@ -172,6 +174,9 @@
 			const filteredNodes = $workGraph.nodes.filter(node => !queuedIds.has(node.id));
 
 			tree = buildTree(filteredNodes, $workGraph.edges);
+			
+			// Mark that we've completed first render (enable debouncing for subsequent updates)
+			hasRenderedTree = true;
 
 			// Apply stored expansion state to preserve user's collapse/expand choices
 			const applyExpansionState = (nodes: TreeNode[]) => {
@@ -243,7 +248,14 @@
 					saveSeenIssues(seenIssuesState);
 				}
 			}
-		}, 100); // 100ms debounce - imperceptible but batches rapid updates
+		};
+		
+		// Execute immediately until first tree render, then debounce subsequent updates
+		if (hasRenderedTree) {
+			rebuildDebounceTimeout = setTimeout(executeRebuild, 50); // 50ms batches rapid updates
+		} else {
+			executeRebuild(); // Immediate for first render
+		}
 	} else if ($workGraph?.error) {
 		error = $workGraph.error;
 		tree = [];
