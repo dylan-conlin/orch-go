@@ -34,7 +34,7 @@
 		]);
 
 		// Fetch WIP and daemon data (non-blocking)
-		wip.fetchQueued().catch(console.error);
+		wip.fetchQueued(projectDir).catch(console.error);
 		daemon.fetch().catch(console.error);
 		
 		loading = false;
@@ -51,7 +51,7 @@
 		refreshInterval = setInterval(() => {
 			const projectDir = $orchestratorContext?.project_dir;
 			workGraph.fetch(projectDir, 'open').catch(console.error);
-			wip.fetchQueued().catch(console.error);
+			wip.fetchQueued(projectDir).catch(console.error);
 			daemon.fetch().catch(console.error);
 			// Also poll kbArtifacts if in artifacts view
 			if (currentView === 'artifacts' && $kbArtifacts) {

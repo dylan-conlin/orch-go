@@ -39,10 +39,16 @@ function createWIPStore() {
 		subscribe,
 		
 		// Fetch queued issues from beads/ready
-		async fetchQueued(): Promise<void> {
+		// projectDir: Optional project directory to filter issues by project (for following orchestrator context)
+		async fetchQueued(projectDir?: string): Promise<void> {
 			update(s => ({ ...s, loading: true, error: null }));
 			try {
-				const response = await fetch(`${API_BASE}/api/beads/ready`);
+				const params = new URLSearchParams();
+				if (projectDir) {
+					params.set('project_dir', projectDir);
+				}
+				const url = `${API_BASE}/api/beads/ready${params.toString() ? '?' + params.toString() : ''}`;
+				const response = await fetch(url);
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 				}
