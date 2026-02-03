@@ -232,6 +232,19 @@ func runDaemonLoop() error {
 
 	d := daemon.NewWithConfig(config)
 
+	// Initialize ProcessedIssueCache for unified dedup (survives daemon restart)
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		cachePath := filepath.Join(homeDir, ".orch", "processed-issues.jsonl")
+		cache, cacheErr := daemon.NewProcessedIssueCache(cachePath)
+		if cacheErr != nil {
+			fmt.Printf("Warning: failed to initialize ProcessedIssueCache: %v\n", cacheErr)
+			fmt.Println("  Falling back to in-memory dedup only")
+		} else {
+			d.ProcessedCache = cache
+		}
+	}
+
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
