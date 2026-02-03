@@ -20,6 +20,9 @@
 	let previousIssueIds = new Set<string>();
 	let newIssueIds = new Set<string>();
 	let completedIssues: CompletedIssue[] = [];
+	
+	// Track expansion state separately to preserve across tree rebuilds
+	let expansionState = new Map<string, boolean>();
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
@@ -91,6 +94,25 @@
 
 		tree = buildTree(filteredNodes, $workGraph.edges);
 
+		// Apply stored expansion state to preserve user's collapse/expand choices
+		const applyExpansionState = (nodes: TreeNode[]) => {
+			for (const node of nodes) {
+				// If we have stored expansion state for this node, apply it
+				// Otherwise keep the default from buildTree (which is expanded: true)
+				if (expansionState.has(node.id)) {
+					node.expanded = expansionState.get(node.id)!;
+				} else {
+					// First time seeing this node, store its default state
+					expansionState.set(node.id, node.expanded);
+				}
+				// Recursively apply to children
+				if (node.children.length > 0) {
+					applyExpansionState(node.children);
+				}
+			}
+		};
+		applyExpansionState(tree);
+
 		// Attach attention badges to tree nodes
 		if ($attention?.signals) {
 			const attachBadges = (nodes: TreeNode[]) => {
@@ -110,9 +132,10 @@
 
 		error = null;
 		
-		// Track newly appeared issues for highlighting (using filtered nodes)
-		if (filteredNodes) {
-			const currentIssueIds = new Set(filteredNodes.map(n => n.id));
+		// Track newly appeared issues for highlighting (use API nodes, not filtered nodes)
+		// This prevents highlighting children when expanding parents (they were always in the API data)
+		if ($workGraph.nodes) {
+			const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
 			
 			// Find issues that are new (in current but not in previous)
 			for (const id of currentIssueIds) {
@@ -160,6 +183,11 @@
 	// Manual retry handler
 	async function handleRetry() {
 		await orchestratorContext.retry();
+	}
+
+	// Handle expansion state updates from tree component
+	function handleToggleExpansion(nodeId: string, expanded: boolean) {
+		expansionState.set(nodeId, expanded);
 	}
 
 	// Keyboard navigation for Tab to toggle views
@@ -248,7 +276,13 @@
 					<div class="text-muted-foreground">No open issues found</div>
 				</div>
 			{:else}
-				<WorkGraphTree {tree} {newIssueIds} wipItems={$wipItems} {completedIssues} />
+				<WorkGraphTree 
+					{tree} 
+					{newIssueIds} 
+					wipItems={$wipItems} 
+					{completedIssues}
+					onToggleExpansion={handleToggleExpansion}
+				/>
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}

@@ -11,6 +11,7 @@
 	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
 	export let completedIssues: CompletedIssue[] = [];
+	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
 
 	// Get attention badge config for a badge type
 	function getAttentionBadge(badge: AttentionBadgeType | 'unverified' | 'needs_fix' | undefined) {
@@ -258,6 +259,8 @@
 	// Toggle expansion
 	function toggleExpansion(node: TreeNode) {
 		node.expanded = !node.expanded;
+		// Notify parent component to update expansion state
+		onToggleExpansion(node.id, node.expanded);
 		// Manually rebuild flattened nodes (include WIP items)
 		const treeNodes = flattenTree(tree);
 		flattenedNodes = [...wipItems, ...treeNodes];
