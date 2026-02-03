@@ -60,6 +60,8 @@ Examples:
 func init() {
 	abandonCmd.Flags().StringVar(&abandonReason, "reason", "", "Reason for abandonment (generates FAILURE_REPORT.md)")
 	abandonCmd.Flags().StringVar(&abandonWorkdir, "workdir", "", "Target project directory (for cross-project abandonment)")
+	abandonCmd.Flags().StringVar(&abandonWorkdir, "project", "", "Alias for --workdir")
+	abandonCmd.Flags().MarkHidden("project")
 }
 
 func runAbandon(beadsID, reason, workdir string) error {

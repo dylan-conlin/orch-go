@@ -205,6 +205,8 @@ func init() {
 	spawnCmd.Flags().BoolVar(&spawnLight, "light", false, "Light tier spawn (skips SYNTHESIS.md requirement on completion)")
 	spawnCmd.Flags().BoolVar(&spawnFull, "full", false, "Full tier spawn (requires SYNTHESIS.md for knowledge externalization)")
 	spawnCmd.Flags().StringVar(&spawnWorkdir, "workdir", "", "Target project directory (defaults to current directory)")
+	spawnCmd.Flags().StringVar(&spawnWorkdir, "project", "", "Alias for --workdir")
+	spawnCmd.Flags().MarkHidden("project")
 	spawnCmd.Flags().BoolVar(&spawnGateOnGap, "gate-on-gap", false, "Block spawn if context quality is too low (enforces Gate Over Remind)")
 	spawnCmd.Flags().BoolVar(&spawnSkipGapGate, "skip-gap-gate", false, "Explicitly bypass gap gating (documents conscious decision to proceed without context)")
 	spawnCmd.Flags().IntVar(&spawnGapThreshold, "gap-threshold", 0, "Custom gap quality threshold (default 20, only used with --gate-on-gap)")
@@ -252,6 +254,8 @@ Examples:
 func init() {
 	workCmd.Flags().BoolVar(&workInline, "inline", false, "Run inline (blocking) with TUI")
 	workCmd.Flags().StringVar(&workWorkdir, "workdir", "", "Target project directory (defaults to current directory)")
+	workCmd.Flags().StringVar(&workWorkdir, "project", "", "Alias for --workdir")
+	workCmd.Flags().MarkHidden("project")
 }
 
 // resolveModelWithConfig resolves the model specification, checking project and global config

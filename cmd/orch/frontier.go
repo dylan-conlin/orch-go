@@ -49,6 +49,8 @@ Examples:
 func init() {
 	frontierCmd.Flags().BoolVar(&frontierJSON, "json", false, "Output as JSON for scripting")
 	frontierCmd.Flags().StringVar(&frontierWorkdir, "workdir", "", "Target project directory for cross-project frontier view")
+	frontierCmd.Flags().StringVar(&frontierWorkdir, "project", "", "Alias for --workdir")
+	frontierCmd.Flags().MarkHidden("project")
 }
 
 // FrontierOutput represents the full frontier output for JSON serialization.
