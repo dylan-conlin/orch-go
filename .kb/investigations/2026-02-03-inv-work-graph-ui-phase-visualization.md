@@ -5,15 +5,15 @@ Fill this at the END of your investigation, before marking Complete.
 
 ## Summary (D.E.K.N.)
 
-**Delta:** [What was discovered/answered - the key finding in one sentence]
+**Delta:** Layer calculation exists in beads CLI (`bd graph`) but is not exposed via API or Work Graph UI - phased plan visualization requires backend layer field + frontend phase grouping component.
 
-**Evidence:** [Primary evidence that supports the conclusion - test results, observations]
+**Evidence:** Tested `bd graph orch-go-21202` (shows layers), `curl /api/beads/graph` (no layer field), read computeLayout() algorithm in beads/cmd/bd/graph.go:322-419, read work-graph.ts buildTree() (parent-child only, no layer logic).
 
-**Knowledge:** [What was learned - insights, constraints, or decisions made]
+**Knowledge:** Backend calculation + frontend grouping is best approach (reuses proven algorithm, single source of truth, enables future clients). Port ~100 lines from beads graph.go to serve_beads.go, add `layer: int` to GraphNode, render as collapsible phase sections in UI.
 
-**Next:** [Recommended action - close, implement, investigate further, or escalate]
+**Next:** Architectural decision required - Orchestrator should decide whether to implement phase visualization, and if so, which UI pattern (sections vs swimlanes vs badges). Ready for implementation if approved.
 
-**Authority:** [implementation | architectural | strategic] - [Brief rationale for authority level - see Recommendation Authority section below]
+**Authority:** architectural - Cross-component decision (API + UI changes), multiple valid UI patterns, requires synthesis of trade-offs between backend vs frontend calculation
 
 <!--
 Example D.E.K.N.:
@@ -42,9 +42,9 @@ Guidelines:
 **Started:** 2026-02-03
 **Updated:** 2026-02-03
 **Owner:** Investigation Worker
-**Phase:** Investigating
-**Next Step:** Examine API data structure and bd graph layer calculation
-**Status:** In Progress
+**Phase:** Complete
+**Next Step:** None
+**Status:** Complete
 
 <!-- Lineage (fill only when applicable) -->
 **Patches-Decision:** [Path to decision document this investigation patches/extends, if applicable - enables review triggers]
