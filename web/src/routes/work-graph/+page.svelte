@@ -12,11 +12,45 @@
 	import { daemon } from '$lib/stores/daemon';
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
 
+	// Per-project seen issues tracking to prevent false highlights on project switch
+	const SEEN_ISSUES_KEY = 'work-graph-seen-issues';
+	
+	interface SeenIssuesState {
+		byProject: Record<string, {
+			issueIds: string[];
+			firstSeenAt: string; // ISO timestamp
+		}>;
+	}
+	
+	function loadSeenIssues(): SeenIssuesState {
+		if (typeof window === 'undefined') return { byProject: {} };
+		try {
+			const stored = localStorage.getItem(SEEN_ISSUES_KEY);
+			if (stored) {
+				return JSON.parse(stored);
+			}
+		} catch (e) {
+			console.error('Failed to load seen issues from localStorage:', e);
+		}
+		return { byProject: {} };
+	}
+	
+	function saveSeenIssues(state: SeenIssuesState): void {
+		if (typeof window === 'undefined') return;
+		try {
+			localStorage.setItem(SEEN_ISSUES_KEY, JSON.stringify(state));
+		} catch (e) {
+			console.error('Failed to save seen issues to localStorage:', e);
+		}
+	}
+
 	let tree: TreeNode[] = [];
 	let loading = true;
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' = 'issues';
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
+	let seenIssuesState: SeenIssuesState = { byProject: {} };
+	let currentProjectDir: string | undefined = undefined;
 	let previousIssueIds = new Set<string>();
 	let newIssueIds = new Set<string>();
 	let completedIssues: CompletedIssue[] = [];
@@ -26,10 +60,15 @@
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
+		// Load seen issues from localStorage
+		seenIssuesState = loadSeenIssues();
+		
 		// Start orchestratorContext polling (2 seconds like old dashboard)
 		orchestratorContext.startPolling(2000);
 
 		const projectDir = $orchestratorContext?.project_dir;
+		currentProjectDir = projectDir;
+		
 		await Promise.all([
 			workGraph.fetch(projectDir, 'open'),
 			agents.fetch(),
@@ -42,9 +81,20 @@
 		
 		loading = false;
 		
-		// Initialize previousIssueIds from initial fetch
-		if ($workGraph?.nodes) {
+		// Initialize previousIssueIds from stored state OR initial fetch
+		if (projectDir && seenIssuesState.byProject[projectDir]) {
+			// Use stored state for this project
+			previousIssueIds = new Set(seenIssuesState.byProject[projectDir].issueIds);
+		} else if ($workGraph?.nodes) {
+			// First time seeing this project - store all current issues as "seen"
 			previousIssueIds = new Set($workGraph.nodes.map(n => n.id));
+			if (projectDir) {
+				seenIssuesState.byProject[projectDir] = {
+					issueIds: Array.from(previousIssueIds),
+					firstSeenAt: new Date().toISOString()
+				};
+				saveSeenIssues(seenIssuesState);
+			}
 		}
 		
 		// Connect to SSE for real-time agent updates (WIP section)
@@ -136,6 +186,7 @@
 		// This prevents highlighting children when expanding parents (they were always in the API data)
 		if ($workGraph.nodes) {
 			const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
+			const projectDir = $orchestratorContext?.project_dir;
 			
 			// Find issues that are new (in current but not in previous)
 			for (const id of currentIssueIds) {
@@ -152,6 +203,16 @@
 			
 			// Update previousIssueIds for next comparison
 			previousIssueIds = currentIssueIds;
+			
+			// Persist seen issues to localStorage for this project
+			if (projectDir) {
+				const existingFirstSeen = seenIssuesState.byProject[projectDir]?.firstSeenAt;
+				seenIssuesState.byProject[projectDir] = {
+					issueIds: Array.from(currentIssueIds),
+					firstSeenAt: existingFirstSeen || new Date().toISOString()
+				};
+				saveSeenIssues(seenIssuesState);
+			}
 		}
 	} else if ($workGraph?.error) {
 		error = $workGraph.error;
@@ -161,10 +222,28 @@
 	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
 	$: {
 		if (typeof window !== 'undefined' && $orchestratorContext.project_dir) {
-			workGraph.fetch($orchestratorContext.project_dir, 'open').catch(console.error);
+			const newProjectDir = $orchestratorContext.project_dir;
+			
+			// If project changed, reset highlight state from localStorage
+			if (newProjectDir !== currentProjectDir) {
+				currentProjectDir = newProjectDir;
+				
+				// Clear current highlights - they belong to the old project
+				newIssueIds = new Set<string>();
+				
+				// Load seen issues for this project from localStorage
+				if (seenIssuesState.byProject[newProjectDir]) {
+					previousIssueIds = new Set(seenIssuesState.byProject[newProjectDir].issueIds);
+				} else {
+					// New project we haven't seen before - will be populated on first fetch
+					previousIssueIds = new Set<string>();
+				}
+			}
+			
+			workGraph.fetch(newProjectDir, 'open').catch(console.error);
 			// Also re-fetch kbArtifacts if we're in artifacts view
 			if (currentView === 'artifacts' && $kbArtifacts) {
-				kbArtifacts.fetch($orchestratorContext.project_dir, '7d').catch(console.error);
+				kbArtifacts.fetch(newProjectDir, '7d').catch(console.error);
 			}
 		}
 	}
