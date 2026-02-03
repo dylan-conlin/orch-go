@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -599,10 +602,10 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 type GraphNode struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
-	Type     string `json:"type"`     // beads: task, bug, feature, epic, question; kb: investigation, decision
-	Status   string `json:"status"`   // open, in_progress, closed, blocked, Complete, Accepted, etc.
-	Priority int    `json:"priority"` // 0-4 for beads, 0 for kb artifacts
-	Source   string `json:"source"`   // "beads" or "kb"
+	Type     string `json:"type"`           // beads: task, bug, feature, epic, question; kb: investigation, decision
+	Status   string `json:"status"`         // open, in_progress, closed, blocked, Complete, Accepted, etc.
+	Priority int    `json:"priority"`       // 0-4 for beads, 0 for kb artifacts
+	Source   string `json:"source"`         // "beads" or "kb"
 	Date     string `json:"date,omitempty"` // for kb artifacts
 }
 
@@ -960,4 +963,368 @@ func getBdPath() string {
 		return beads.BdPath
 	}
 	return "bd"
+}
+
+// AttemptHistoryEntry represents a single attempt for an issue.
+type AttemptHistoryEntry struct {
+	AttemptNumber int      `json:"attempt_number"`
+	Timestamp     string   `json:"timestamp"`      // ISO 8601 timestamp
+	Outcome       string   `json:"outcome"`        // success, failed, died, closed→reopened, in_progress
+	Phase         string   `json:"phase"`          // last reported phase (e.g., Complete, Implementing, Planning)
+	Artifacts     []string `json:"artifacts"`      // list of artifact paths/names
+	WorkspaceName string   `json:"workspace_name"` // workspace directory name for reference
+}
+
+// AttemptHistoryAPIResponse is the JSON structure returned by /api/beads/{id}/attempts.
+type AttemptHistoryAPIResponse struct {
+	BeadsID  string                `json:"beads_id"`
+	Attempts []AttemptHistoryEntry `json:"attempts"`
+	Count    int                   `json:"count"`
+	Error    string                `json:"error,omitempty"`
+}
+
+// handleBeadsAttempts returns attempt history for a specific beads issue.
+// URL format: /api/beads/{id}/attempts
+// Scans all workspaces (including archived) for the given beads ID and collects:
+// - Attempt number (chronological order based on spawn time)
+// - Timestamp (spawn time)
+// - Outcome (derived from workspace state and beads comments)
+// - Phase (last reported phase from beads comments)
+// - Artifacts (files produced: SYNTHESIS.md, investigations, etc.)
+func handleBeadsAttempts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract beads ID from URL path: /api/beads/{id}/attempts
+	pathPrefix := "/api/beads/"
+	pathSuffix := "/attempts"
+	if !strings.HasPrefix(r.URL.Path, pathPrefix) || !strings.HasSuffix(r.URL.Path, pathSuffix) {
+		resp := AttemptHistoryAPIResponse{Error: "Invalid URL format"}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	beadsID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathPrefix), pathSuffix)
+	if beadsID == "" {
+		resp := AttemptHistoryAPIResponse{Error: "Missing beads ID"}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Scan workspaces for this beads ID
+	attempts, err := collectAttemptHistory(beadsID)
+	if err != nil {
+		resp := AttemptHistoryAPIResponse{
+			BeadsID: beadsID,
+			Error:   fmt.Sprintf("Failed to collect attempt history: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := AttemptHistoryAPIResponse{
+		BeadsID:  beadsID,
+		Attempts: attempts,
+		Count:    len(attempts),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode attempt history: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// collectAttemptHistory scans all workspaces (including archived) for a given beads ID
+// and builds the attempt history.
+func collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
+	workspaceDir := filepath.Join(sourceDir, ".orch", "workspace")
+	if _, err := os.Stat(workspaceDir); os.IsNotExist(err) {
+		return []AttemptHistoryEntry{}, nil // No workspaces exist yet
+	}
+
+	// Collect all workspace paths for this beads ID (including archived)
+	type workspaceInfo struct {
+		path      string
+		spawnTime time.Time
+	}
+	var workspaces []workspaceInfo
+
+	// Scan active workspaces
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read workspace directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Skip archived directory itself
+		if entry.Name() == "archived" {
+			continue
+		}
+
+		dirPath := filepath.Join(workspaceDir, entry.Name())
+
+		// Check if this workspace belongs to our beads ID
+		beadsIDFile := filepath.Join(dirPath, ".beads_id")
+		beadsIDData, err := os.ReadFile(beadsIDFile)
+		if err != nil {
+			continue // No beads ID file
+		}
+
+		wsBeadsID := strings.TrimSpace(string(beadsIDData))
+		if wsBeadsID != beadsID {
+			continue // Different beads ID
+		}
+
+		// Get spawn time
+		spawnTimeFile := filepath.Join(dirPath, ".spawn_time")
+		spawnTimeData, err := os.ReadFile(spawnTimeFile)
+		if err != nil {
+			continue // No spawn time
+		}
+
+		var spawnTimeNs int64
+		if _, err := fmt.Sscanf(string(spawnTimeData), "%d", &spawnTimeNs); err != nil {
+			continue // Invalid spawn time
+		}
+		spawnTime := time.Unix(0, spawnTimeNs)
+
+		workspaces = append(workspaces, workspaceInfo{
+			path:      dirPath,
+			spawnTime: spawnTime,
+		})
+	}
+
+	// Scan archived workspaces
+	archivedDir := filepath.Join(workspaceDir, "archived")
+	if archivedEntries, err := os.ReadDir(archivedDir); err == nil {
+		for _, entry := range archivedEntries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			dirPath := filepath.Join(archivedDir, entry.Name())
+
+			// Check if this workspace belongs to our beads ID
+			beadsIDFile := filepath.Join(dirPath, ".beads_id")
+			beadsIDData, err := os.ReadFile(beadsIDFile)
+			if err != nil {
+				continue
+			}
+
+			wsBeadsID := strings.TrimSpace(string(beadsIDData))
+			if wsBeadsID != beadsID {
+				continue
+			}
+
+			// Get spawn time
+			spawnTimeFile := filepath.Join(dirPath, ".spawn_time")
+			spawnTimeData, err := os.ReadFile(spawnTimeFile)
+			if err != nil {
+				continue
+			}
+
+			var spawnTimeNs int64
+			if _, err := fmt.Sscanf(string(spawnTimeData), "%d", &spawnTimeNs); err != nil {
+				continue
+			}
+			spawnTime := time.Unix(0, spawnTimeNs)
+
+			workspaces = append(workspaces, workspaceInfo{
+				path:      dirPath,
+				spawnTime: spawnTime,
+			})
+		}
+	}
+
+	// Sort workspaces by spawn time (oldest first) to assign attempt numbers
+	sort.Slice(workspaces, func(i, j int) bool {
+		return workspaces[i].spawnTime.Before(workspaces[j].spawnTime)
+	})
+
+	// Build attempt history entries
+	attempts := make([]AttemptHistoryEntry, 0, len(workspaces))
+	for attemptNum, ws := range workspaces {
+		entry := AttemptHistoryEntry{
+			AttemptNumber: attemptNum + 1, // 1-indexed
+			Timestamp:     ws.spawnTime.Format(time.RFC3339),
+			WorkspaceName: filepath.Base(ws.path),
+		}
+
+		// Determine outcome from workspace state
+		entry.Outcome = determineOutcome(ws.path)
+
+		// Find artifacts
+		entry.Artifacts = findArtifacts(ws.path)
+
+		attempts = append(attempts, entry)
+	}
+
+	// Get phase information from beads comments (async to avoid blocking)
+	// We'll do this synchronously for now since we're already in a handler goroutine
+	if len(attempts) > 0 {
+		// Get comments for this issue
+		var comments []beads.Comment
+		socketPath, err := beads.FindSocketPath(sourceDir)
+		if err == nil {
+			client := beads.NewClient(socketPath,
+				beads.WithAutoReconnect(3),
+				beads.WithTimeout(5*time.Second),
+			)
+			comments, err = client.Comments(beadsID)
+			if err != nil {
+				// Fallback to CLI
+				cmd := exec.Command(getBdPath(), "comments", beadsID, "--json")
+				cmd.Dir = sourceDir
+				cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+				if output, cmdErr := cmd.Output(); cmdErr == nil {
+					json.Unmarshal(output, &comments)
+				}
+			}
+		} else {
+			// Use CLI directly
+			cmd := exec.Command(getBdPath(), "comments", beadsID, "--json")
+			cmd.Dir = sourceDir
+			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+			if output, cmdErr := cmd.Output(); cmdErr == nil {
+				json.Unmarshal(output, &comments)
+			}
+		}
+
+		// Match phase comments to attempts based on timestamp proximity
+		// Phase comments should occur shortly after spawn time
+		for i := range attempts {
+			phase := findPhaseForAttempt(attempts[i].Timestamp, comments)
+			if phase != "" {
+				attempts[i].Phase = phase
+
+				// Refine outcome based on phase
+				if strings.EqualFold(phase, "Complete") {
+					// If agent reported Phase: Complete, mark as success
+					attempts[i].Outcome = "success"
+				}
+			}
+		}
+	}
+
+	return attempts, nil
+}
+
+// determineOutcome infers the outcome from workspace state.
+// Returns: success, failed, died, closed→reopened, in_progress
+func determineOutcome(workspacePath string) string {
+	// Check for SYNTHESIS.md (successful completion for full tier)
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	hasSynthesis := false
+	if info, err := os.Stat(synthesisPath); err == nil && info.Size() > 0 {
+		hasSynthesis = true
+	}
+
+	// Check tier
+	tierFile := filepath.Join(workspacePath, ".tier")
+	tier := "full" // default
+	if tierData, err := os.ReadFile(tierFile); err == nil {
+		tier = strings.TrimSpace(string(tierData))
+	}
+
+	// For full tier with SYNTHESIS.md, consider it success
+	if tier == "full" && hasSynthesis {
+		return "success"
+	}
+
+	// For light tier without SYNTHESIS.md requirement, we need to check other signals
+	// Light tier completion is indicated by Phase: Complete comment in beads
+	// (This will be filled in by the phase matching logic)
+
+	// Check if workspace is archived (suggests completion or abandonment)
+	isArchived := strings.Contains(workspacePath, "/archived/")
+	if isArchived && !hasSynthesis && tier == "full" {
+		// Archived full-tier workspace without SYNTHESIS.md suggests failure or death
+		return "died"
+	}
+
+	// Default to in_progress - will be refined by phase information
+	return "in_progress"
+}
+
+// findArtifacts scans the workspace for produced artifacts.
+func findArtifacts(workspacePath string) []string {
+	artifacts := []string{}
+
+	// Check for SYNTHESIS.md
+	synthesisPath := filepath.Join(workspacePath, "SYNTHESIS.md")
+	if _, err := os.Stat(synthesisPath); err == nil {
+		artifacts = append(artifacts, "SYNTHESIS.md")
+	}
+
+	// Check for investigation files in .kb/investigations/
+	kbDir := filepath.Join(sourceDir, ".kb", "investigations")
+	if entries, err := os.ReadDir(kbDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			// Match investigation files by checking if they reference this workspace
+			filePath := filepath.Join(kbDir, entry.Name())
+			if content, err := os.ReadFile(filePath); err == nil {
+				workspaceName := filepath.Base(workspacePath)
+				if strings.Contains(string(content), workspaceName) {
+					artifacts = append(artifacts, filepath.Join(".kb/investigations", entry.Name()))
+				}
+			}
+		}
+	}
+
+	return artifacts
+}
+
+// findPhaseForAttempt finds the phase reported closest to the attempt timestamp.
+// Phase comments are typically posted shortly after spawn (within first few minutes).
+func findPhaseForAttempt(attemptTimestamp string, comments []beads.Comment) string {
+	attemptTime, err := time.Parse(time.RFC3339, attemptTimestamp)
+	if err != nil {
+		return ""
+	}
+
+	// Look for Phase: comments within 2 hours after spawn time
+	// The latest phase within this window is the final phase for this attempt
+	var latestPhase string
+	var latestPhaseTime time.Time
+
+	phaseRegex := regexp.MustCompile(`(?i)Phase:\s*(\w+)`)
+
+	for _, comment := range comments {
+		matches := phaseRegex.FindStringSubmatch(comment.Text)
+		if len(matches) < 2 {
+			continue
+		}
+
+		// Parse comment timestamp
+		commentTime, err := time.Parse(time.RFC3339, comment.CreatedAt)
+		if err != nil {
+			continue
+		}
+
+		// Check if comment is within window after attempt spawn
+		if commentTime.After(attemptTime) && commentTime.Before(attemptTime.Add(2*time.Hour)) {
+			if latestPhase == "" || commentTime.After(latestPhaseTime) {
+				latestPhase = matches[1]
+				latestPhaseTime = commentTime
+			}
+		}
+	}
+
+	return latestPhase
 }

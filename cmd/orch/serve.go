@@ -73,6 +73,7 @@ Endpoints:
   GET /api/focus     - Current focus and drift status
   GET /api/beads     - Beads stats (ready, blocked, open)
   GET /api/beads/ready - List of ready issues for queue visibility
+  GET /api/beads/{id}/attempts - Attempt history for a beads issue
   GET /api/questions - Questions grouped by status (open, investigating, answered)
   GET /api/servers   - Servers status across projects
   GET /api/events/services - Service lifecycle events (supports ?follow=true for SSE)
@@ -172,6 +173,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/beads     - Beads stats")
 	fmt.Println("  GET /api/beads/ready - Ready issues list")
 	fmt.Println("  GET /api/beads/graph - Full dependency graph (nodes + edges)")
+	fmt.Println("  GET /api/beads/{id}/attempts - Attempt history for a beads issue")
 	fmt.Println("  GET /api/questions   - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Project servers status")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
@@ -315,6 +317,16 @@ func runServe(portNum int) error {
 	// GET /api/beads/graph - returns full dependency graph (nodes + edges) for visualization
 	mux.HandleFunc("/api/beads/graph", corsHandler(handleBeadsGraph))
 
+	// GET /api/beads/{id}/attempts - returns attempt history for a specific beads issue
+	mux.HandleFunc("/api/beads/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
+		// Route /api/beads/{id}/attempts to handleBeadsAttempts
+		if strings.HasSuffix(r.URL.Path, "/attempts") {
+			handleBeadsAttempts(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+
 	// GET /api/questions - returns questions grouped by status for dashboard
 	mux.HandleFunc("/api/questions", corsHandler(handleQuestions))
 
@@ -451,6 +463,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
 	fmt.Println("  GET /api/beads/graph - Full dependency graph (nodes + edges)")
+	fmt.Println("  GET /api/beads/{id}/attempts - Attempt history for a beads issue")
 	fmt.Println("  GET /api/questions - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Servers status across projects")
 	fmt.Println("  GET /api/services  - Service health from overmind monitor")
