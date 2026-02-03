@@ -1,0 +1,285 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "🐝 Swarm" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: 🐝
+          - generic [ref=e9]: Swarm
+        - navigation [ref=e10]:
+          - link "Dashboard" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Work Graph" [ref=e12] [cursor=pointer]:
+            - /url: /work-graph
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]: 13%(3h 40m)
+          - generic [ref=e16]: "|"
+          - generic [ref=e17]: 45%(1d 22h)
+          - generic [ref=e18]: "@dylan.conlin"
+        - generic [ref=e20]: 🟢 $0.00
+        - generic [ref=e21]: connected
+        - button "Select theme" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - button "⚡ Ops" [ref=e29] [cursor=pointer]
+          - button "📦 History" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]:
+          - generic [ref=e32]: "Since:"
+          - combobox [ref=e33] [cursor=pointer]:
+            - option "12h" [selected]
+            - option "24h"
+            - option "48h"
+            - option "7d"
+            - option "All"
+        - button "👁️ Following" [ref=e34] [cursor=pointer]:
+          - generic [ref=e35]: 👁️
+          - generic [ref=e36]: Following
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: ❌
+            - generic [ref=e40]:
+              - generic [ref=e41]: "0"
+              - generic [ref=e42]: errors
+          - generic [ref=e43]:
+            - generic [ref=e44]: 🟢
+            - generic [ref=e45]:
+              - generic [ref=e46]: "1"
+              - generic [ref=e47]: active
+              - generic [ref=e48]: (+1 need attention)
+          - button "📋 66 ready (1 blocked)" [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: 📋
+            - generic [ref=e51]:
+              - generic [ref=e52]: "66"
+              - generic [ref=e53]: ready
+            - generic [ref=e54]: (1 blocked)
+          - button "🟢 1/3 slots" [ref=e55] [cursor=pointer]:
+            - generic [ref=e56]: 🟢
+            - generic [ref=e57]:
+              - generic [ref=e58]: 1/3
+              - generic [ref=e59]: slots
+        - generic [ref=e60]:
+          - button "Settings" [ref=e61] [cursor=pointer]:
+            - img [ref=e62]
+          - button "Disconnect" [ref=e65] [cursor=pointer]
+      - generic [ref=e68]:
+        - generic [ref=e69]: 🔴
+        - generic [ref=e70]: Orchestrator doing worker work
+        - generic [ref=e71]: "Last coaching: 2:13:55 PM"
+      - generic [ref=e72]:
+        - button "O Orchestrator Sessions 1" [expanded] [ref=e73] [cursor=pointer]:
+          - generic [ref=e74]:
+            - generic [ref=e75]: O
+            - generic [ref=e76]: Orchestrator Sessions
+            - generic [ref=e77]: "1"
+          - img [ref=e79]
+        - generic [ref=e83]:
+          - button "O" [ref=e85] [cursor=pointer]
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - generic [ref=e88]: 🎯
+              - generic [ref=e89]: active
+            - button "13h 6m" [ref=e91] [cursor=pointer]
+          - paragraph [ref=e93]: strategic guidance
+          - generic [ref=e94]:
+            - button "Strategic Guidance 02feb 830d" [ref=e95] [cursor=pointer]
+            - generic [ref=e96]: "|"
+            - generic [ref=e97]: orch-go
+          - button "↳ 4 active agents" [ref=e100] [cursor=pointer]:
+            - generic [ref=e101]:
+              - generic [ref=e102]: ↳
+              - text: 4 active agents
+      - generic [ref=e103]:
+        - button "🎯 Up Next 5 3 urgent" [expanded] [ref=e104] [cursor=pointer]:
+          - generic [ref=e105]:
+            - generic [ref=e106]: 🎯
+            - generic [ref=e107]: Up Next
+            - generic [ref=e108]: "5"
+            - generic [ref=e109]: 3 urgent
+          - img [ref=e111]
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - generic [ref=e115]:
+              - generic [ref=e116]: P1
+              - 'generic "Work Graph: expansion state resets on tree rebuild (poll/follow)" [ref=e117]'
+              - generic "Age" [ref=e118]: 13h
+              - generic [ref=e119]: orch-go-21194
+            - generic [ref=e120]:
+              - generic [ref=e121]: P1
+              - generic "Implement RECENTLY_CLOSED attention signal for Work Graph" [ref=e122]
+              - generic "Age" [ref=e123]: <1h
+              - generic [ref=e124]: orch-go-21197
+            - generic [ref=e125]:
+              - generic [ref=e126]: P1
+              - 'generic "Epic: Governance Infrastructure for Human-AI Systems" [ref=e127]'
+              - generic "Age" [ref=e128]: 11d
+              - generic [ref=e129]: orch-go-kz7zr
+            - generic [ref=e130]:
+              - generic [ref=e131]: P2
+              - 'generic "feature-impl: require integration test for behavioral acceptance criteria" [ref=e132]'
+              - generic "Age" [ref=e133]: 23h
+              - generic [ref=e134]: orch-go-21165
+            - generic [ref=e135]:
+              - generic [ref=e136]: P2
+              - generic "Add design-to-issues decomposition step after design sessions" [ref=e137]
+              - generic "Age" [ref=e138]: 23h
+              - generic [ref=e139]: orch-go-21167
+          - paragraph [ref=e140]: +62 more in queue
+      - generic [ref=e141]:
+        - button "? Questions 6 1 open" [expanded] [ref=e142] [cursor=pointer]:
+          - generic [ref=e143]:
+            - generic [ref=e144]: "?"
+            - generic [ref=e145]: Questions
+            - generic [ref=e146]: "6"
+            - generic [ref=e147]: 1 open
+          - img [ref=e149]
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - generic [ref=e153]:
+              - generic [ref=e154]: "? Open (needs answer)"
+              - generic [ref=e155]: "1"
+            - generic [ref=e157]:
+              - generic [ref=e158]: "?"
+              - generic "Reduce friction for Docker Claude ↔ macOS host operations" [ref=e159]
+              - generic [ref=e160]: 12d
+              - generic [ref=e161]: orch-go-m3f8b
+          - generic [ref=e162]:
+            - generic [ref=e163]:
+              - generic [ref=e164]: + Answered (last 7 days)
+              - generic [ref=e165]: "5"
+            - generic [ref=e166]:
+              - generic [ref=e167]:
+                - generic [ref=e168]: +
+                - generic "Blocking test question" [ref=e169]
+                - generic [ref=e170]: orch-go-21107
+              - generic [ref=e171]:
+                - generic [ref=e172]: +
+                - generic "Test question lifecycle" [ref=e173]
+                - generic [ref=e174]: orch-go-21106
+              - generic [ref=e175]:
+                - generic [ref=e176]: +
+                - generic "Test question creation" [ref=e177]
+                - generic [ref=e178]: orch-go-21105
+              - generic [ref=e179]:
+                - generic [ref=e180]: +
+                - generic "Should questions be added as first-class beads entities?" [ref=e181]
+                - generic [ref=e182]: orch-go-21081
+              - generic [ref=e183]:
+                - generic [ref=e184]: +
+                - generic "Should we adopt native Claude orchestration over orch-ecosystem?" [ref=e185]
+                - generic [ref=e186]: orch-go-20903
+      - generic [ref=e187]:
+        - generic [ref=e188]:
+          - generic [ref=e189]: 🟢
+          - generic [ref=e190]: Active Agents
+          - generic [ref=e191]: "1"
+        - 'button "active Implementation 🔥 3m 3s Work Graph Phase 2: Implement DeliverableChecklist component og-feat-work-graph-phase-03feb-d3ab [orch-go-21121.2] orch-go feature-impl sonnet-4.5 orch-go-21121.2 💬 Using tool 28s ago" [ref=e194] [cursor=pointer]':
+          - generic [ref=e196]:
+            - generic [ref=e197]:
+              - generic [ref=e198]: active
+              - generic [ref=e199]: Implementation
+            - generic [ref=e200]:
+              - button "🔥" [ref=e201]
+              - button
+              - button "3m 3s" [ref=e202]
+          - generic [ref=e203]: "Work Graph Phase 2: Implement DeliverableChecklist component"
+          - generic [ref=e204]: og-feat-work-graph-phase-03feb-d3ab [orch-go-21121.2]
+          - generic [ref=e205]:
+            - generic [ref=e206]: orch-go
+            - generic [ref=e207]: feature-impl
+            - button "sonnet-4.5" [ref=e208]:
+              - generic [ref=e209]: sonnet-4.5
+            - button "orch-go-21121.2" [ref=e210]:
+              - button "orch-go-21121.2" [ref=e211]
+          - generic [ref=e213]:
+            - generic [ref=e214]: 💬
+            - paragraph [ref=e215]: Using tool
+            - generic [ref=e216]: 28s ago
+      - generic [ref=e217]:
+        - button "🎯 Strategic Center 11" [expanded] [ref=e218] [cursor=pointer]:
+          - generic [ref=e219]:
+            - generic [ref=e220]: 🎯
+            - generic [ref=e221]: Strategic Center
+            - generic [ref=e222]: "11"
+          - img [ref=e224]
+        - generic [ref=e226]:
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - generic [ref=e229]: ❓
+              - generic [ref=e230]: Answer Questions
+              - generic [ref=e231]: "1"
+            - generic [ref=e236]: Reduce friction for Docker Claude ↔ macOS host operations
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - generic [ref=e239]: 🌱
+              - generic [ref=e240]: Tend Knowledge
+              - generic [ref=e241]: "10"
+            - generic [ref=e242]:
+              - generic [ref=e243]: Synthesis (5)
+              - generic [ref=e244]:
+                - generic [ref=e245]: feature
+                - generic [ref=e246]: 5 investigations
+              - generic [ref=e247]:
+                - generic [ref=e248]: quick
+                - generic [ref=e249]: 4 investigations
+              - generic [ref=e250]:
+                - generic [ref=e251]: reflection
+                - generic [ref=e252]: 4 investigations
+              - generic [ref=e253]:
+                - generic [ref=e254]: rebuild
+                - generic [ref=e255]: 4 investigations
+              - generic [ref=e256]:
+                - generic [ref=e257]: untracked
+                - generic [ref=e258]: 4 investigations
+              - generic [ref=e259]: Stale (5)
+              - generic [ref=e260]:
+                - generic [ref=e261]: models track architecture
+                - generic [ref=e262]: 19d without citations
+              - generic [ref=e263]:
+                - generic [ref=e264]: schema migration pattern
+                - generic [ref=e265]: 19d without citations
+              - generic [ref=e266]:
+                - generic [ref=e267]: separate observation from intervention
+                - generic [ref=e268]: 19d without citations
+              - generic [ref=e269]:
+                - generic [ref=e270]: trust calibration assert knowledge
+                - generic [ref=e271]: 19d without citations
+              - generic [ref=e272]:
+                - generic [ref=e273]: two tier cleanup pattern
+                - generic [ref=e274]: 19d without citations
+      - generic [ref=e275]:
+        - generic [ref=e276]:
+          - generic [ref=e277]: 🏆
+          - generic [ref=e278]: Recent Wins
+          - generic [ref=e279]: "3"
+          - generic [ref=e280]: last 24h
+        - generic [ref=e281]:
+          - generic [ref=e282]:
+            - generic [ref=e283]: ✅
+            - generic "Fix Work Graph orchestrator follow flip-flopping between ..." [ref=e284]
+            - generic [ref=e285]: orch-go
+            - generic [ref=e286]: 4m ago
+          - generic [ref=e287]:
+            - generic [ref=e288]: ✅
+            - generic "Fix Work Graph blue fade noise when following orchestrator" [ref=e289]
+            - generic [ref=e290]: orch-go
+            - generic [ref=e291]: 15m ago
+          - generic [ref=e292]:
+            - generic [ref=e293]: ✅
+            - generic "Attention API returns empty results - missing CLI fallback" [ref=e294]
+            - generic [ref=e295]: orch-go
+            - generic [ref=e296]: 1h ago
+      - 'button "📋 Ready Queue 67 — Work Graph: expansion state re..., Implement RECENTLY_CLOSED atte... +65" [ref=e298] [cursor=pointer]':
+        - generic [ref=e299]:
+          - generic [ref=e300]: 📋
+          - generic [ref=e301]: Ready Queue
+          - generic [ref=e302]: "67"
+          - generic [ref=e303]: "— Work Graph: expansion state re..., Implement RECENTLY_CLOSED atte... +65"
+        - img [ref=e305]
+```

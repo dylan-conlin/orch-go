@@ -1,0 +1,234 @@
+# Page snapshot
+
+```yaml
+- generic:
+  - generic:
+    - generic:
+      - banner:
+        - generic:
+          - generic:
+            - link "🐝 Swarm":
+              - /url: /
+              - generic: 🐝
+              - generic: Swarm
+            - navigation:
+              - link "Dashboard":
+                - /url: /
+              - link "Work Graph":
+                - /url: /work-graph
+          - generic:
+            - generic:
+              - generic: 13%(3h 40m)
+              - generic: "|"
+              - generic: 45%(1d 22h)
+              - generic: "@dylan.conlin"
+            - generic:
+              - generic: 🟢 $0.00
+            - generic: connected
+            - button "Select theme" [expanded]:
+              - img
+      - main:
+        - generic:
+          - generic:
+            - generic:
+              - button "⚡ Ops"
+              - button "📦 History"
+            - generic:
+              - generic: "Since:"
+              - combobox:
+                - option "12h" [selected]
+                - option "24h"
+                - option "48h"
+                - option "7d"
+                - option "All"
+            - button "👁️ Following":
+              - generic: 👁️
+              - generic: Following
+            - generic:
+              - generic:
+                - generic: ❌
+                - generic:
+                  - generic: "0"
+                  - generic: errors
+              - generic:
+                - generic: 🟢
+                - generic:
+                  - generic: "0"
+                  - generic: active
+            - generic:
+              - button "Settings":
+                - img
+              - button "Disconnect"
+          - generic:
+            - generic:
+              - generic:
+                - generic: 🔴
+                - generic: Orchestrator doing worker work
+                - generic: "Last coaching: 2:13:55 PM"
+          - generic:
+            - button "O Orchestrator Sessions 1" [expanded]:
+              - generic:
+                - generic: O
+                - generic: Orchestrator Sessions
+                - generic: "1"
+              - generic:
+                - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - button "O"
+                  - generic:
+                    - generic:
+                      - generic: 🎯
+                      - generic: active
+                    - generic:
+                      - button "13h 7m"
+                  - generic:
+                    - paragraph: strategic guidance
+                  - generic:
+                    - button "Strategic Guidance 02feb 830d"
+                    - generic: "|"
+                    - generic: orch-go
+                  - generic:
+                    - generic:
+                      - button "↳ 4 active agents":
+                        - generic:
+                          - generic: ↳
+                          - text: 4 active agents
+          - generic:
+            - button "🎯 Up Next 5 3 urgent" [expanded]:
+              - generic:
+                - generic: 🎯
+                - generic: Up Next
+                - generic: "5"
+                - generic: 3 urgent
+              - generic:
+                - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic: P1
+                  - 'generic "Work Graph: expansion state resets on tree rebuild (poll/follow)"'
+                  - generic "Age": 13h
+                  - generic: orch-go-21194
+                - generic:
+                  - generic: P1
+                  - generic "Implement RECENTLY_CLOSED attention signal for Work Graph"
+                  - generic "Age": <1h
+                  - generic: orch-go-21197
+                - generic:
+                  - generic: P1
+                  - 'generic "Epic: Governance Infrastructure for Human-AI Systems"'
+                  - generic "Age": 11d
+                  - generic: orch-go-kz7zr
+                - generic:
+                  - generic: P2
+                  - 'generic "feature-impl: require integration test for behavioral acceptance criteria"'
+                  - generic "Age": 23h
+                  - generic: orch-go-21165
+                - generic:
+                  - generic: P2
+                  - generic "Add design-to-issues decomposition step after design sessions"
+                  - generic "Age": 23h
+                  - generic: orch-go-21167
+              - paragraph: +62 more in queue
+          - generic:
+            - generic:
+              - generic: 🟢
+              - generic: Active Agents
+              - generic: "0"
+            - generic:
+              - generic:
+                - paragraph: No active agents
+                - paragraph:
+                  - text: Spawn with
+                  - code: orch spawn
+          - generic:
+            - 'button "📋 Ready Queue 67 — Work Graph: expansion state re..., Implement RECENTLY_CLOSED atte... +65"':
+              - generic:
+                - generic: 📋
+                - generic: Ready Queue
+                - generic: "67"
+                - generic: "— Work Graph: expansion state re..., Implement RECENTLY_CLOSED atte... +65"
+              - generic:
+                - img
+  - menu [active] [ref=e2]:
+    - group "Mode" [ref=e3]:
+      - group [ref=e4]: Mode
+    - group [ref=e5]:
+      - menuitemradio "Light" [ref=e6]:
+        - img [ref=e8]
+        - generic [ref=e9]: Light
+      - menuitemradio "Dark" [ref=e10]:
+        - img [ref=e12]
+        - generic [ref=e13]: Dark
+      - menuitemradio "System" [checked] [ref=e14]:
+        - img [ref=e16]
+        - img [ref=e17]
+        - generic [ref=e18]: System
+    - group [ref=e19]
+    - group "Theme" [ref=e20]:
+      - group [ref=e21]:
+        - generic [ref=e22]:
+          - img [ref=e23]
+          - generic [ref=e24]: Theme
+    - group [ref=e25]:
+      - menuitemradio "aura" [ref=e26]:
+        - generic [ref=e28]: aura
+      - menuitemradio "ayu" [ref=e29]:
+        - generic [ref=e31]: ayu
+      - menuitemradio "catppuccin" [ref=e32]:
+        - generic [ref=e34]: catppuccin
+      - menuitemradio "catppuccin macchiato" [ref=e35]:
+        - generic [ref=e37]: catppuccin macchiato
+      - menuitemradio "cobalt2" [ref=e38]:
+        - generic [ref=e40]: cobalt2
+      - menuitemradio "dracula" [ref=e41]:
+        - generic [ref=e43]: dracula
+      - menuitemradio "everforest" [ref=e44]:
+        - generic [ref=e46]: everforest
+      - menuitemradio "flexoki" [ref=e47]:
+        - generic [ref=e49]: flexoki
+      - menuitemradio "github" [ref=e50]:
+        - generic [ref=e52]: github
+      - menuitemradio "gruvbox" [ref=e53]:
+        - generic [ref=e55]: gruvbox
+      - menuitemradio "kanagawa" [ref=e56]:
+        - generic [ref=e58]: kanagawa
+      - menuitemradio "material" [ref=e59]:
+        - generic [ref=e61]: material
+      - menuitemradio "matrix" [ref=e62]:
+        - generic [ref=e64]: matrix
+      - menuitemradio "mercury" [ref=e65]:
+        - generic [ref=e67]: mercury
+      - menuitemradio "monokai" [ref=e68]:
+        - generic [ref=e70]: monokai
+      - menuitemradio "nightowl" [ref=e71]:
+        - generic [ref=e73]: nightowl
+      - menuitemradio "nord" [ref=e74]:
+        - generic [ref=e76]: nord
+      - menuitemradio "one dark" [ref=e77]:
+        - generic [ref=e79]: one dark
+      - menuitemradio "opencode" [checked] [ref=e80]:
+        - img [ref=e82]
+        - generic [ref=e83]: opencode
+      - menuitemradio "orng" [ref=e84]:
+        - generic [ref=e86]: orng
+      - menuitemradio "palenight" [ref=e87]:
+        - generic [ref=e89]: palenight
+      - menuitemradio "rosepine" [ref=e90]:
+        - generic [ref=e92]: rosepine
+      - menuitemradio "solarized" [ref=e93]:
+        - generic [ref=e95]: solarized
+      - menuitemradio "synthwave84" [ref=e96]:
+        - generic [ref=e98]: synthwave84
+      - menuitemradio "tokyonight" [ref=e99]:
+        - generic [ref=e101]: tokyonight
+      - menuitemradio "vercel" [ref=e102]:
+        - generic [ref=e104]: vercel
+      - menuitemradio "vesper" [ref=e105]:
+        - generic [ref=e107]: vesper
+      - menuitemradio "zenburn" [ref=e108]:
+        - generic [ref=e110]: zenburn
+```

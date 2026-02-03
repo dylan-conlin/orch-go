@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { shallowEqual } from '$lib/utils/shallow-equal';
 
 // API configuration - HTTPS for HTTP/2 multiplexing
 const API_BASE = 'https://localhost:3348';
@@ -64,6 +65,7 @@ function createWorkGraphStore() {
 	// Track in-flight requests to cancel stale ones
 	let currentAbortController: AbortController | null = null;
 	let fetchSequence = 0; // Sequence guard for additional safety
+	let currentData: WorkGraphResponse | null = null; // Track current data for shallow equality
 
 	return {
 		subscribe,
@@ -115,7 +117,11 @@ function createWorkGraphStore() {
 				
 				// Final sequence check before setting state
 				if (thisSequence === fetchSequence) {
-					set(data);
+					// Only update if data actually changed (reduces reactive cascades)
+					if (!shallowEqual(currentData, data)) {
+						currentData = data;
+						set(data);
+					}
 				}
 			} catch (error) {
 				// Ignore abort errors - they're intentional
@@ -126,13 +132,15 @@ function createWorkGraphStore() {
 				// Only set error if this is still the current request
 				if (thisSequence === fetchSequence) {
 					console.error('Failed to fetch work graph:', error);
-					set({
+					const errorData = {
 						nodes: [],
 						edges: [],
 						node_count: 0,
 						edge_count: 0,
 						error: String(error)
-					});
+					};
+					currentData = errorData;
+					set(errorData);
 				}
 			} finally {
 				// Clear controller if this was the current one

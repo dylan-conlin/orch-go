@@ -1,5 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { agents, type Agent } from './agents';
+import { shallowEqual } from '$lib/utils/shallow-equal';
 
 // API configuration - HTTPS for HTTP/2 multiplexing
 const API_BASE = 'https://localhost:3348';
@@ -55,7 +56,13 @@ function createWIPStore() {
 				const data = await response.json();
 				// Limit to top 5 for WIP display
 				const issues = (data.issues || []).slice(0, 5);
-				update(s => ({ ...s, queuedIssues: issues, loading: false }));
+				// Only update if issues actually changed (reduces reactive cascades)
+				update(s => {
+					if (!shallowEqual(s.queuedIssues, issues)) {
+						return { ...s, queuedIssues: issues, loading: false };
+					}
+					return { ...s, loading: false };
+				});
 			} catch (error) {
 				console.error('Failed to fetch queued issues:', error);
 				update(s => ({ 
@@ -71,7 +78,13 @@ function createWIPStore() {
 			const running = agentList.filter(a => 
 				a.status === 'active' || a.status === 'idle'
 			);
-			update(s => ({ ...s, runningAgents: running }));
+			// Only update if running agents actually changed (reduces reactive cascades)
+			update(s => {
+				if (!shallowEqual(s.runningAgents, running)) {
+					return { ...s, runningAgents: running };
+				}
+				return s;
+			});
 		},
 
 		// Clear all state

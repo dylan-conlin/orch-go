@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { shallowEqual } from '$lib/utils/shallow-equal';
 
 // API configuration
 const API_BASE = 'https://localhost:3348';
@@ -119,6 +120,7 @@ function createContextStore() {
 	const maxBackoff = 30000; // Cap at 30s
 	const baseBackoff = 1000; // Base backoff 1s
 	let isDisconnected = false; // Track connection state for backoff
+	let currentData: OrchestratorContext = {}; // Track current data for shallow equality
 	
 	async function fetchWithRetry(): Promise<void> {
 		try {
@@ -127,7 +129,12 @@ function createContextStore() {
 				throw new Error(`HTTP ${response.status}`);
 			}
 			const data = await response.json();
-			set(data);
+			
+			// Only update if data actually changed (reduces reactive cascades)
+			if (!shallowEqual(currentData, data)) {
+				currentData = data;
+				set(data);
+			}
 			
 			// Success - reset backoff and mark connected
 			currentBackoff = baseBackoff;
@@ -137,7 +144,9 @@ function createContextStore() {
 			// Connection failed - mark disconnected
 			isDisconnected = true;
 			connectionStatus.setDisconnected(String(error));
-			set({ error: String(error) });
+			const errorData = { error: String(error) };
+			currentData = errorData;
+			set(errorData);
 			
 			// Don't throw - let polling continue with backoff
 		}
