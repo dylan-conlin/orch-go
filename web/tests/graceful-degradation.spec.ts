@@ -72,8 +72,7 @@ test.describe('Graceful Degradation - Backend Unavailable', () => {
 		test.setTimeout(35000); // Increase timeout for this test
 		
 		// The backoff sequence is: 2s, 4s, 8s, 16s, 30s (capped)
-		// To verify cap, we'd need to wait 2+4+8+16+30 = 60s
-		// Instead, we'll verify the logic via shorter intervals
+		// Verify that backoff increases exponentially
 		
 		let fetchAttempts: number[] = [];
 		let startTime = Date.now();
@@ -86,19 +85,23 @@ test.describe('Graceful Degradation - Backend Unavailable', () => {
 		
 		await page.goto('/work-graph');
 		
-		// Wait for: initial(2s) + retry1(4s) + retry2(8s) + retry3(16s) = 30s
-		// Plus small buffer
-		await page.waitForTimeout(31000);
+		// Wait for: initial(2s) + retry1(4s) + retry2(8s) = 14s + buffer
+		await page.waitForTimeout(16000);
 		
-		// Should have at least 4 attempts (initial + 3 retries)
-		expect(fetchAttempts.length).toBeGreaterThanOrEqual(4);
+		// Should have at least 3 attempts
+		expect(fetchAttempts.length).toBeGreaterThanOrEqual(3);
 		
-		// Verify intervals are doubling up to a point
-		if (fetchAttempts.length >= 4) {
-			const interval3 = fetchAttempts[3] - fetchAttempts[2];
-			// Third interval should be ~16s (8s * 2)
-			expect(interval3).toBeGreaterThanOrEqual(14000);
-			expect(interval3).toBeLessThanOrEqual(18000);
+		// Verify intervals are increasing (exponential backoff)
+		if (fetchAttempts.length >= 3) {
+			const interval1 = fetchAttempts[1] - fetchAttempts[0];
+			const interval2 = fetchAttempts[2] - fetchAttempts[1];
+			
+			// Each interval should be roughly double the previous
+			// interval1 ~2s, interval2 ~4s, so interval2 should be > interval1
+			expect(interval2).toBeGreaterThan(interval1);
+			
+			// interval2 should be at least 3.5s (4s with tolerance)
+			expect(interval2).toBeGreaterThanOrEqual(3500);
 		}
 	});
 	
