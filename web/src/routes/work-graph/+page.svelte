@@ -113,12 +113,12 @@
 		// Track newly appeared issues for highlighting (using filtered nodes)
 		if (filteredNodes) {
 			const currentIssueIds = new Set(filteredNodes.map(n => n.id));
-			newIssueIds = new Set();
 			
 			// Find issues that are new (in current but not in previous)
 			for (const id of currentIssueIds) {
-				if (!previousIssueIds.has(id)) {
+				if (!previousIssueIds.has(id) && !newIssueIds.has(id)) {
 					newIssueIds.add(id);
+					newIssueIds = newIssueIds; // Trigger reactivity
 					// Remove highlight after 30 seconds
 					setTimeout(() => {
 						newIssueIds.delete(id);

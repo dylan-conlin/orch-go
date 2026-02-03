@@ -215,6 +215,48 @@ test.describe('Work Graph Polling and Refresh', () => {
 			});
 		});
 		
+		// Mock agents API
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify([])
+			});
+		});
+		
+		// Mock attention API
+		await page.route('**/api/attention**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					signals: [],
+					completedIssues: []
+				})
+			});
+		});
+		
+		// Mock WIP queued API (beads/ready endpoint)
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+		
+		// Mock daemon API
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					enabled: false,
+					running: false
+				})
+			});
+		});
+		
 		// Mock graph API to return different data
 		await page.route('**/api/beads/graph**', async (route) => {
 			const nodes = [
@@ -263,12 +305,14 @@ test.describe('Work Graph Polling and Refresh', () => {
 		// Trigger new issue to appear
 		returnNewIssue = true;
 		
-		// Wait for polling cycle (5 seconds)
-		await page.waitForTimeout(5500);
+		// Wait for polling cycle (5 seconds + buffer for React/processing)
+		await page.waitForTimeout(6000);
 		
 		// New issue should now be visible with highlight class
 		const newIssueRow = page.locator('[data-testid="issue-row-orch-go-2"]');
 		await expect(newIssueRow).toBeVisible();
+		// Wait a bit for React/Svelte to update the class
+		await page.waitForTimeout(500);
 		await expect(newIssueRow).toHaveClass(/new-issue-highlight/);
 		
 		// Verify highlight is still present after 15 seconds
