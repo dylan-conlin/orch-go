@@ -140,6 +140,19 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 		}
 	}
 
+	// Apply parent-child edges from API (set via 'bd update --parent')
+	// These override ID-pattern hierarchy when explicit parent-child edges exist
+	for (const edge of edges) {
+		if (edge.type === '' || edge.type === 'parent-child') {
+			const childNode = treeNodes.get(edge.from);
+			const parentNode = treeNodes.get(edge.to);
+			if (childNode && parentNode) {
+				// edge.from is child, edge.to is parent
+				childNode.parent_id = edge.to;
+			}
+		}
+	}
+
 	// Build parent-child hierarchy
 	const roots: TreeNode[] = [];
 	

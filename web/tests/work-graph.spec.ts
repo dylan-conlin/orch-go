@@ -35,8 +35,8 @@ test.describe('Work Graph Page', () => {
 					],
 					edges: [
 						{
-							from: 'orch-go-1',
-							to: 'orch-go-1.1',
+							from: 'orch-go-1.1',  // child
+							to: 'orch-go-1',      // parent
 							type: 'parent-child'
 						}
 					],
@@ -840,5 +840,262 @@ test.describe('WIP Section Integration', () => {
 		await expect(expandedDetails).toBeVisible();
 		await expect(expandedDetails.getByText(/Phase:/)).toBeVisible();
 		await expect(expandedDetails.getByText(/Skill:/)).toBeVisible();
+	});
+});
+
+// Parent-child edge support (orch-go-21194)
+test.describe('Parent-Child Edge Support', () => {
+	test('should nest children under parents using parent-child edges from API', async ({ page }) => {
+		// Mock all required APIs for work-graph page
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ agents: [], count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon/status**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ running: false, paused: false, queue_length: 0 })
+			});
+		});
+
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-21193',
+							title: 'Parent Epic',
+							type: 'epic',
+							status: 'in_progress',
+							priority: 1,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-21172',
+							title: 'Child Task',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [
+						{
+							from: 'orch-go-21172',  // child
+							to: 'orch-go-21193',    // parent
+							type: ''                 // empty type for parent-child
+						}
+					],
+					node_count: 2,
+					edge_count: 1
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for tree to render
+		await expect(page.getByText('Parent Epic')).toBeVisible();
+		
+		// Child should be visible initially (expanded by default)
+		await expect(page.locator('[data-testid="issue-row-orch-go-21172"]')).toBeVisible();
+		
+		// Child should be indented (depth > 0)
+		const childRow = page.locator('[data-testid="issue-row-orch-go-21172"]');
+		await expect(childRow).toHaveAttribute('data-depth', '1');
+		
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+		
+		// Collapse parent with h key
+		await page.keyboard.press('h');
+		
+		// Wait for DOM to update
+		await page.waitForTimeout(500);
+		
+		// Child should now be hidden
+		await expect(page.locator('[data-testid="issue-row-orch-go-21172"]')).not.toBeVisible();
+		
+		// Parent should still be visible
+		await expect(page.getByText('Parent Epic')).toBeVisible();
+		
+		// Expand parent with l key
+		await page.keyboard.press('l');
+		
+		// Child should be visible again
+		await expect(page.locator('[data-testid="issue-row-orch-go-21172"]')).toBeVisible();
+	});
+
+	test('should support explicit parent-child type edges', async ({ page }) => {
+		// Mock all required APIs
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ agents: [], count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon/status**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ running: false, paused: false, queue_length: 0 })
+			});
+		});
+
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-100',
+							title: 'Parent Issue',
+							type: 'feature',
+							status: 'open',
+							priority: 1,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-200',
+							title: 'Child Issue',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [
+						{
+							from: 'orch-go-200',     // child
+							to: 'orch-go-100',       // parent
+							type: 'parent-child'     // explicit type
+						}
+					],
+					node_count: 2,
+					edge_count: 1
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for tree to render
+		await expect(page.getByText('Parent Issue')).toBeVisible();
+		
+		// Child should be nested under parent
+		const childRow = page.locator('[data-testid="issue-row-orch-go-200"]');
+		await expect(childRow).toBeVisible();
+		await expect(childRow).toHaveAttribute('data-depth', '1');
+	});
+
+	test('should combine ID pattern hierarchy with edge-based hierarchy', async ({ page }) => {
+		// Mock all required APIs
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ agents: [], count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon/status**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ running: false, paused: false, queue_length: 0 })
+			});
+		});
+
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-1',
+							title: 'Root Epic',
+							type: 'epic',
+							status: 'open',
+							priority: 1,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-1.1',
+							title: 'ID Pattern Child',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-500',
+							title: 'Edge-based Child',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [
+						{
+							from: 'orch-go-500',  // edge-based child
+							to: 'orch-go-1',      // parent
+							type: ''
+						}
+					],
+					node_count: 3,
+					edge_count: 1
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for tree to render
+		await expect(page.getByText('Root Epic')).toBeVisible();
+		
+		// Both children should be visible and nested at depth 1
+		const idPatternChild = page.locator('[data-testid="issue-row-orch-go-1.1"]');
+		await expect(idPatternChild).toBeVisible();
+		await expect(idPatternChild).toHaveAttribute('data-depth', '1');
+		
+		const edgeBasedChild = page.locator('[data-testid="issue-row-orch-go-500"]');
+		await expect(edgeBasedChild).toBeVisible();
+		await expect(edgeBasedChild).toHaveAttribute('data-depth', '1');
 	});
 });
