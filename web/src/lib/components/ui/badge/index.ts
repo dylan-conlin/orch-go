@@ -19,6 +19,7 @@ export const badgeVariants = tv({
 			attention_decide: 'border-transparent bg-yellow-900/50 text-yellow-400 text-[10px] px-1.5 py-0',
 			attention_escalate: 'border-transparent bg-orange-900/50 text-orange-400 text-[10px] px-1.5 py-0',
 			attention_likely_done: 'border-transparent bg-green-900/50 text-green-400 text-[10px] px-1.5 py-0',
+			attention_recently_closed: 'border-transparent bg-blue-900/50 text-blue-400 text-[10px] px-1.5 py-0',
 			attention_unblocked: 'border-transparent bg-green-900/50 text-green-400 text-[10px] px-1.5 py-0',
 			attention_stuck: 'border-transparent bg-red-900/50 text-red-400 text-[10px] px-1.5 py-0',
 			attention_crashed: 'border-transparent bg-red-900/50 text-red-400 text-[10px] px-1.5 py-0',

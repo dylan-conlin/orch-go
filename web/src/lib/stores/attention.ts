@@ -1,5 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import type { GraphNode } from './work-graph';
+import type { Variant } from '$lib/components/ui/badge';
 
 // Attention badge types for active work
 export type AttentionBadgeType =
@@ -47,7 +48,7 @@ interface AttentionState {
 // Badge display configuration
 export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType | 'unverified' | 'needs_fix', {
 	label: string;
-	variant: string;
+	variant: Variant;
 }> = {
 	verify: { label: 'VERIFY', variant: 'attention_verify' },
 	decide: { label: 'DECIDE', variant: 'attention_decide' },

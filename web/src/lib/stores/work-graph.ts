@@ -36,13 +36,14 @@ export interface WorkGraphResponse {
 
 // Attention badge type (matches attention store)
 export type AttentionBadgeType =
-	| 'verify'      // Phase: Complete, needs orch complete
-	| 'decide'      // Investigation has recommendation needing decision
-	| 'escalate'    // Question needs human judgment
-	| 'likely_done' // Commits suggest completion
-	| 'unblocked'   // Blocker just closed, now actionable
-	| 'stuck'       // Agent stuck >2h
-	| 'crashed';    // Agent crashed without completing
+	| 'verify'           // Phase: Complete, needs orch complete
+	| 'decide'           // Investigation has recommendation needing decision
+	| 'escalate'         // Question needs human judgment
+	| 'likely_done'      // Commits suggest completion
+	| 'recently_closed'  // Recently closed, needs verification
+	| 'unblocked'        // Blocker just closed, now actionable
+	| 'stuck'            // Agent stuck >2h
+	| 'crashed';         // Agent crashed without completing
 
 // Tree node with hierarchy and expansion state
 export interface TreeNode extends GraphNode {
