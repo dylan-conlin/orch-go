@@ -3,13 +3,14 @@ import type { GraphNode } from './work-graph';
 
 // Attention badge types for active work
 export type AttentionBadgeType =
-	| 'verify'      // Phase: Complete, needs orch complete
-	| 'decide'      // Investigation has recommendation needing decision
-	| 'escalate'    // Question needs human judgment
-	| 'likely_done' // Commits suggest completion
-	| 'unblocked'   // Blocker just closed, now actionable
-	| 'stuck'       // Agent stuck >2h
-	| 'crashed';    // Agent crashed without completing
+	| 'verify'         // Phase: Complete, needs orch complete
+	| 'decide'         // Investigation has recommendation needing decision
+	| 'escalate'       // Question needs human judgment
+	| 'likely_done'    // Commits suggest completion
+	| 'recently_closed' // Recently closed, needs verification
+	| 'unblocked'      // Blocker just closed, now actionable
+	| 'stuck'          // Agent stuck >2h
+	| 'crashed';       // Agent crashed without completing
 
 // Verification status for completed issues
 export type VerificationStatus =
@@ -52,6 +53,7 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType | 'unverified' | 
 	decide: { label: 'DECIDE', variant: 'attention_decide' },
 	escalate: { label: 'ESCALATE', variant: 'attention_escalate' },
 	likely_done: { label: 'LIKELY DONE', variant: 'attention_likely_done' },
+	recently_closed: { label: 'RECENTLY CLOSED', variant: 'attention_recently_closed' },
 	unblocked: { label: 'UNBLOCKED', variant: 'attention_unblocked' },
 	stuck: { label: 'STUCK', variant: 'attention_stuck' },
 	crashed: { label: 'CRASHED', variant: 'attention_crashed' },
@@ -94,6 +96,8 @@ function mapSignalToBadge(signal: string): AttentionBadgeType | null {
 	switch (signal) {
 		case 'likely-done':
 			return 'likely_done';
+		case 'recently-closed':
+			return 'recently_closed';
 		case 'issue-ready':
 			// issue-ready doesn't have a direct badge mapping yet
 			// This is for actionable work, not attention needing human review
@@ -138,33 +142,51 @@ function createAttentionStore() {
 
 				const data: AttentionAPIResponse = await response.json();
 
-				// Map API response to store state
-				const signalsMap = new Map<string, AttentionSignal>();
-				
-				for (const item of data.items) {
-					// Map backend signal types to frontend badge types
-					const badge = mapSignalToBadge(item.signal);
-					if (!badge) {
-						// Skip signals that don't map to known badge types
-						continue;
-					}
-
-					const signal: AttentionSignal = {
-						issueId: item.subject,
-						badge: badge,
-						reason: item.metadata?.reason || item.summary,
-						source: item.source,
-						timestamp: item.collected_at,
-					};
-
-					signalsMap.set(signal.issueId, signal);
+			// Map API response to store state
+			const signalsMap = new Map<string, AttentionSignal>();
+			const completedIssuesList: CompletedIssue[] = [];
+			
+			for (const item of data.items) {
+				// Map backend signal types to frontend badge types
+				const badge = mapSignalToBadge(item.signal);
+				if (!badge) {
+					// Skip signals that don't map to known badge types
+					continue;
 				}
 
-				set({
-					signals: signalsMap,
-					completedIssues: [], // TODO: Map completed issues when backend provides them
-					loading: false,
-				});
+					// For recently-closed signals, create CompletedIssue entries
+				if (item.signal === 'recently-closed' && item.metadata) {
+					const completedIssue: CompletedIssue = {
+						id: item.subject,
+						title: item.summary.split(': ').slice(1).join(': '), // Remove "Closed Xh ago:" prefix
+						description: '',
+						status: item.metadata.status || 'closed',
+						priority: item.metadata.beads_priority || 0,
+						type: item.metadata.issue_type || 'task',
+						source: 'beads',
+						completedAt: item.metadata.closed_at || item.collected_at,
+						verificationStatus: 'unverified',
+						attentionBadge: 'unverified',
+					};
+					completedIssuesList.push(completedIssue);
+				}
+
+				const signal: AttentionSignal = {
+					issueId: item.subject,
+					badge: badge,
+					reason: item.metadata?.reason || item.summary,
+					source: item.source,
+					timestamp: item.collected_at,
+				};
+
+				signalsMap.set(signal.issueId, signal);
+			}
+
+			set({
+				signals: signalsMap,
+				completedIssues: completedIssuesList,
+				loading: false,
+			});
 			} catch (error) {
 				console.error('Error fetching attention signals:', error);
 				// Set empty state on error

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
@@ -102,6 +103,7 @@ type AttentionAPIResponse struct {
 // handleAttention returns unified attention signals from multiple collectors.
 // Query parameters:
 //   - role: Role for priority scoring (human, orchestrator, daemon) - default: human
+//   - recently_closed_hours: Hours to look back for closed issues - default: 24
 func handleAttention(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -122,6 +124,14 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	}
 	if !validRoles[role] {
 		role = "human" // Default to human for invalid roles
+	}
+
+	// Parse recently_closed_hours parameter
+	recentlyClosedHours := 24 // Default: 24 hours
+	if hoursStr := r.URL.Query().Get("recently_closed_hours"); hoursStr != "" {
+		if hours, err := strconv.Atoi(hoursStr); err == nil && hours > 0 {
+			recentlyClosedHours = hours
+		}
 	}
 
 	// Get project directory from query parameter (default to sourceDir)
@@ -159,6 +169,11 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		collectors = append(collectors, gitCollector)
 		sources = append(sources, "git")
 	}
+
+	// RecentlyClosedCollector - recently closed issues for verification
+	recentlyClosedCollector := attention.NewRecentlyClosedCollector(client, recentlyClosedHours)
+	collectors = append(collectors, recentlyClosedCollector)
+	sources = append(sources, "beads-recently-closed")
 
 	// Collect from all sources
 	allItems := []attention.AttentionItem{}

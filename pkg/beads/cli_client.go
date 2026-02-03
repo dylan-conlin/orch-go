@@ -135,6 +135,9 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		if args.Parent != "" {
 			cmdArgs = append(cmdArgs, "--parent", args.Parent)
 		}
+		if args.ClosedAfter != "" {
+			cmdArgs = append(cmdArgs, "--closed-after", args.ClosedAfter)
+		}
 		if args.Limit > 0 {
 			cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", args.Limit))
 		}

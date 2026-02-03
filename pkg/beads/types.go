@@ -105,6 +105,9 @@ type ListArgs struct {
 	// Parent filters by parent issue ID (shows children of specified issue).
 	// Used for listing children of an epic.
 	Parent string `json:"parent,omitempty"`
+	// ClosedAfter filters issues closed after the given date/time (RFC3339 or YYYY-MM-DD).
+	// Used for finding recently closed issues.
+	ClosedAfter string `json:"closed_after,omitempty"`
 }
 
 // ShowArgs represents arguments for showing an issue.
