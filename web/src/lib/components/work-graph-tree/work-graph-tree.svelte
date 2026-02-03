@@ -283,9 +283,12 @@
 	{#each flattenedNodes as item, index (getItemId(item))}
 		{@const itemId = getItemId(item)}
 		{@const isWIP = isWIPItem(item)}
+		{@const isCompleted = isCompletedIssue(item)}
+		{@const depth = (!isWIP && !isCompleted) ? (item as TreeNode).depth : undefined}
 		<div
 			data-testid="issue-row-{itemId}"
 			data-node-index={index}
+			data-depth={depth !== undefined ? String(depth) : null}
 			class="node-row cursor-pointer select-none focus:outline-none"
 			class:new-issue-highlight={!isWIP && newIssueIds.has(itemId)}
 			role="treeitem"
@@ -340,38 +343,47 @@
 				
 				<!-- L1: Expanded details for running agents -->
 				{#if expandedDetails.has(itemId)}
-					<div class="expanded-details ml-14 pb-2 px-3 flex items-center gap-4 text-xs text-muted-foreground bg-muted/30 rounded mt-1 mb-2 p-3">
-						<!-- Phase -->
-						{#if agent.phase}
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Phase:</span>
-								<span class="text-foreground">{agent.phase}</span>
-							</span>
-						{/if}
+					<div class="expanded-details ml-14 pb-2 px-3 text-xs text-muted-foreground bg-muted/30 rounded mt-1 mb-2 p-3 space-y-2">
+						<!-- Agent metadata row -->
+						<div class="flex items-center gap-4">
+							<!-- Phase -->
+							{#if agent.phase}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Phase:</span>
+									<span class="text-foreground">{agent.phase}</span>
+								</span>
+							{/if}
+							
+							<!-- Context % -->
+							{#if contextPct !== null}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Context:</span>
+									<span class="{getContextColor(contextPct)}">{contextPct}%</span>
+								</span>
+							{/if}
+							
+							<!-- Skill -->
+							{#if agent.skill}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Skill:</span>
+									<span>{agent.skill}</span>
+								</span>
+							{/if}
+							
+							<!-- Model (short form) -->
+							{#if agent.model}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Model:</span>
+									<span>{agent.model.split('/').pop()?.split('-').slice(0, 2).join('-') || agent.model}</span>
+								</span>
+							{/if}
+						</div>
 						
-						<!-- Context % -->
-						{#if contextPct !== null}
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Context:</span>
-								<span class="{getContextColor(contextPct)}">{contextPct}%</span>
-							</span>
-						{/if}
-						
-						<!-- Skill -->
-						{#if agent.skill}
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Skill:</span>
-								<span>{agent.skill}</span>
-							</span>
-						{/if}
-						
-						<!-- Model (short form) -->
-						{#if agent.model}
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Model:</span>
-								<span>{agent.model.split('/').pop()?.split('-').slice(0, 2).join('-') || agent.model}</span>
-							</span>
-						{/if}
+						<!-- Deliverables checklist (compact L1 view) -->
+						<DeliverableChecklist 
+							deliverables={getExpectedDeliverables('bug', agent.skill || 'feature-impl')} 
+							mode="compact" 
+						/>
 					</div>
 				{/if}
 			{:else}
