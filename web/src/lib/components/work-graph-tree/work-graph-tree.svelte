@@ -8,6 +8,7 @@
 	import { ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
+	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 
 	export let tree: TreeNode[] = [];
 	export let newIssueIds: Set<string> = new Set();
@@ -28,6 +29,9 @@
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
+	
+	// Track selected issue for side panel
+	let selectedIssueForPanel: TreeNode | null = null;
 
 	// Flatten tree respecting expansion state
 	function flattenTree(nodes: TreeNode[], result: TreeNode[] = []): TreeNode[] {
@@ -212,7 +216,10 @@
 
 		case 'Escape':
 			event.preventDefault();
-			if (expandedDetails.has(itemId)) {
+			// Close side panel first if it's open
+			if (selectedIssueForPanel) {
+				selectedIssueForPanel = null;
+			} else if (expandedDetails.has(itemId)) {
 				// Close L1 details
 				expandedDetails.delete(itemId);
 				expandedDetails = expandedDetails; // Trigger reactivity
@@ -225,6 +232,15 @@
 				}
 			}
 			break;
+
+			case 'i':
+			case 'o':
+				event.preventDefault();
+				// Open side panel for TreeNode (not for WIP items or completed issues)
+				if (!isWIP && !isCompletedIssue(current)) {
+					selectedIssueForPanel = current as TreeNode;
+				}
+				break;
 
 			case 'g':
 				event.preventDefault();
@@ -275,6 +291,16 @@
 	// Select node on click
 	function selectNode(index: number) {
 		selectedIndex = index;
+	}
+	
+	// Close side panel
+	function closeSidePanel() {
+		selectedIssueForPanel = null;
+	}
+	
+	// Open side panel for a node
+	function openSidePanel(node: TreeNode) {
+		selectedIssueForPanel = node;
 	}
 </script>
 
@@ -597,6 +623,11 @@
 		</div>
 	{/each}
 </div>
+
+<!-- Issue Side Panel -->
+{#if selectedIssueForPanel}
+	<IssueSidePanel issue={selectedIssueForPanel} on:close={closeSidePanel} />
+{/if}
 
 <style>
 	.work-graph-tree {
