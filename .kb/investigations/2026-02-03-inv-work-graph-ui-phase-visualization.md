@@ -148,15 +148,31 @@ Guidelines:
 
 **Key Insights:**
 
-1. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+1. **Layer calculation is solved, just not exposed** - The beads CLI already has production-quality topological sort for layer calculation (Finding 2). We don't need to design or implement the algorithm - we need to either port it to the API/UI or expose the existing calculation.
 
-2. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+2. **Current API is phase-blind** - The `/api/beads/graph` endpoint returns nodes and edges but no layer/phase information (Finding 3). The UI can see dependencies but doesn't know which phase each issue belongs to.
 
-3. **[Insight title]** - [Explanation of the insight, connecting multiple findings]
+3. **Frontend has no blocking-aware visualization** - The UI's `buildTree()` only handles parent-child hierarchy from ID patterns, not blocking dependencies (Finding 4). Even if we added layer data to the API, the UI would need new rendering logic for phase grouping.
+
+4. **User wants to SEE phased orchestration** - The context mentions validation that "phased plan orchestration works" with Phase 1 ready immediately and Phase 2 becoming ready when Phase 1 closes. The gap is visibility - orchestrator can see this via `bd graph`, but the web UI cannot.
 
 **Answer to Investigation Question:**
 
-[Clear, direct answer to the question posed at the top of this investigation. Reference specific findings that support this answer. Acknowledge any limitations or gaps.]
+**What exists:**
+- `bd graph` CLI command with layer calculation (topological sort algorithm)
+- `/api/beads/graph` endpoint returning nodes/edges without layer data
+- Work-graph UI with parent-child tree visualization
+
+**What's needed for phase visualization:**
+1. **Backend:** Add layer calculation to `/api/beads/graph` response (port computeLayout logic from beads or call `bd graph --all --json` and augment with layers)
+2. **Frontend:** Add phase grouping UI (similar to `bd graph` CLI output: "Phase 1 (ready)", "Phase 2 (blocked)", etc.)
+3. **Design decisions:** How to show phases - accordion sections? Swimlanes? Tree with layer badges?
+
+**What would be useful for phased work visibility** (from spawn context):
+- **Staging view:** What's blocked waiting for what? (show blocked_by relationships)
+- **Working view:** What's currently being executed? (filter by status=in_progress, show phase)  
+- **Finished view:** What completed and unblocked what? (recently closed with dependents)
+- **Progress indicators:** How far through a phase/plan? (count closed vs total per layer)
 
 ---
 
@@ -188,77 +204,89 @@ Guidelines:
 
 ### Recommendation Authority
 
-Classify each recommendation by authority level to route to the appropriate decision-maker:
-
 | Recommendation | Authority | Rationale |
 |----------------|-----------|-----------|
-| [Primary recommendation from investigation] | implementation / architectural / strategic | [Why this authority level - stays inside scope? reaches across boundaries? involves irreversible choice?] |
+| Add phase visualization to Work Graph UI | **architectural** | Cross-component decision (API + UI), multiple valid approaches (backend vs frontend calculation, different UI patterns), requires synthesis of trade-offs |
 
 **Authority Levels:**
 - **implementation**: Worker decides within scope (reversible, single-scope, clear criteria, no cross-boundary impact)
 - **architectural**: Orchestrator decides across boundaries (cross-component, multiple valid approaches, requires synthesis)
 - **strategic**: Dylan decides on direction (irreversible, resource commitment, value judgment, premise-level question)
 
-**Classification test:** "Does this decision stay inside my scoped context, or does it reach out?"
-- Stays inside → implementation
-- Reaches to other components/agents → architectural
-- Reaches to values/direction/irreversibility → strategic
-
 ### Recommended Approach ⭐
 
-**[Approach Name]** - [One sentence stating the recommended implementation]
+**Backend Layer Calculation with Frontend Phase Grouping** - Add layer field to `/api/beads/graph` response, then render phases as collapsible sections in the UI
 
 **Why this approach:**
-- [Key benefit 1 based on findings]
-- [Key benefit 2 based on findings]
-- [How this directly addresses investigation findings]
+- **Reuses proven algorithm** - Port `computeLayout()` from beads/cmd/bd/graph.go (lines 322-419), already battle-tested in CLI
+- **Single source of truth** - Backend calculates once, frontend displays consistently across all clients
+- **Progressive enhancement** - API change is additive (doesn't break existing consumers), UI can fall back to tree view if layers missing
+- **Enables future features** - Once backend has layer data, other UIs (CLI, mobile) can use it too
 
 **Trade-offs accepted:**
-- [What we're giving up or deferring]
-- [Why that's acceptable given findings]
+- **Backend complexity** - Adds ~100 lines of Go code to serve_beads.go (acceptable - it's a port, not new logic)
+- **Can't filter by layer client-side** - If user wants "show only Phase 2", frontend can't recalculate without all dependencies (acceptable - unlikely use case)
 
 **Implementation sequence:**
-1. [First step - why it's foundational]
-2. [Second step - why it comes next]
-3. [Third step - builds on previous]
+1. **Backend: Add layer calculation** - Port computeLayout() to serve_beads.go, add `layer: int` field to GraphNode, calculate during buildFocusGraph() and buildFullGraph()
+2. **Frontend: Add phase grouping component** - New `PhaseGroup` component that groups TreeNode[] by layer, renders as collapsible sections like "Phase 1 (ready)", "Phase 2 (blocked)"
+3. **Frontend: Wire up phase view toggle** - Add "Tree View" vs "Phase View" toggle in work-graph page header
 
 ### Alternative Approaches Considered
 
-**Option B: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option B: Frontend-only layer calculation**
+- **Pros:** No backend changes, all logic in TypeScript, easier to iterate on UI
+- **Cons:** 
+  - Duplicates algorithm (now in beads Go + work-graph.ts TypeScript)
+  - Potential for inconsistency (CLI shows Layer 2, UI shows Layer 3)
+  - Frontend must receive full dependency graph to calculate (can't work with filtered/paginated data)
+- **When to use instead:** If backend is frozen or API cannot change
 
-**Option C: [Alternative approach]**
-- **Pros:** [Benefits]
-- **Cons:** [Why not recommended - reference findings]
-- **When to use instead:** [Conditions where this might be better]
+**Option C: Call bd graph --all --json from backend**
+- **Pros:** Zero algorithm duplication, guaranteed consistency with CLI
+- **Cons:** 
+  - Spawns subprocess on every API call (performance hit)
+  - JSON parsing overhead
+  - bd command might not be available in all deployment environments
+  - Harder to debug (subprocess failures)
+- **When to use instead:** If backend team doesn't want to maintain Go port of algorithm
 
-**Rationale for recommendation:** [Brief synthesis of why Option A beats alternatives given investigation findings]
+**Option D: Add phase badges to existing tree view**
+- **Pros:** No new UI component, minimal change
+- **Cons:**
+  - Doesn't show "what can run in parallel" (key insight from phased plans)
+  - User has to mentally group items by phase number
+  - Doesn't show blocking relationships clearly
+- **When to use instead:** If phase grouping is deemed too complex for MVP
+
+**Rationale for recommendation:** Option A (backend calculation + frontend grouping) provides the best balance of code reuse (port proven algorithm), single source of truth (backend calculates), and UX clarity (phase grouping makes parallelism visible). The 100 lines of Go code is acceptable complexity for the value delivered.
 
 ---
 
 ### Implementation Details
 
 **What to implement first:**
-- [Highest priority change based on findings]
-- [Quick wins or foundational work]
-- [Dependencies that need to be addressed early]
+1. **Backend layer calculation (MVP)** - Port computeLayout() to serve_beads.go:handleBeadsGraph(), add `layer` field to GraphNode struct, return in JSON response
+2. **Verification** - Add test: create 3 issues with blocking deps (A blocks B, B blocks C), verify API returns layer:0 for A, layer:1 for B, layer:2 for C
+3. **Frontend display (optional but recommended)** - If backend works, add simple phase grouping UI
 
 **Things to watch out for:**
-- ⚠️ [Edge cases or gotchas discovered during investigation]
-- ⚠️ [Areas of uncertainty that need validation during implementation]
-- ⚠️ [Performance, security, or compatibility concerns to address]
+- ⚠️ **Cycles in dependency graph** - bd graph handles with fallback to layer 0 (line 389), API should do same
+- ⚠️ **Parent-child vs blocks dependencies** - Only `blocks` type should affect layers, parent-child is hierarchy not sequencing (beads/cmd/bd/graph.go:334 filters for `types.DepBlocks`)
+- ⚠️ **Empty type field means parent-child** - API edges with `type: ""` should be treated as parent-child, not blocks (Finding 5)
+- ⚠️ **Performance with large graphs** - computeLayout is O(n*m) where n=nodes, m=max_dependencies_per_node. Should be fine for <1000 nodes but consider caching for very large graphs
 
 **Areas needing further investigation:**
-- [Questions that arose but weren't in scope]
-- [Uncertainty areas that might affect implementation]
-- [Optional deep-dives that could improve the solution]
+- **UI design for phase grouping** - Should phases be collapsible sections? Swimlanes? Kanban columns? Needs design mockup
+- **Phase progress indicators** - How to show "Phase 1: 3/5 complete" - count per layer? Requires status awareness
+- **Filter interactions** - If user filters to only show P0 issues, how do phases display? Partial layers? Skip empty layers?
 
 **Success criteria:**
-- ✅ [How to know the implementation solved the investigated problem]
-- ✅ [What to test or validate]
-- ✅ [Metrics or observability to add]
+- ✅ API returns `layer` field for all nodes in `/api/beads/graph` response
+- ✅ Layer 0 contains only nodes with no blocking dependencies (can start immediately)
+- ✅ Layer N contains only nodes whose blockers are all in layers 0..N-1
+- ✅ UI displays phases in a way that makes "what can run in parallel" obvious (if UI implemented)
+- ✅ `bd graph` CLI and web UI show consistent layer numbers for the same issue
 
 ---
 
