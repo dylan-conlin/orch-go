@@ -174,7 +174,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="work-graph-container flex flex-col h-screen bg-background">
+<div class="work-graph-container flex flex-col h-[calc(100vh-4rem)] overflow-hidden bg-background">
 	<!-- Backend Error Banner -->
 	{#if $connectionStatus.status === 'disconnected'}
 		<div 
@@ -266,8 +266,4 @@
 	</div>
 </div>
 
-<style>
-	.work-graph-container {
-		max-height: 100vh;
-	}
-</style>
+
