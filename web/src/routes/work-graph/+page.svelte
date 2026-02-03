@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { workGraph, buildTree, type TreeNode, type AttentionBadgeType } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
@@ -11,6 +12,10 @@
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon } from '$lib/stores/daemon';
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
+	
+	// Derived store for project_dir to isolate reactivity
+	// Only triggers reactive blocks when project_dir changes, not other context fields
+	const projectDir = derived(orchestratorContext, $ctx => $ctx.project_dir);
 
 	// Per-project seen issues tracking to prevent false highlights on project switch
 	const SEEN_ISSUES_KEY = 'work-graph-seen-issues';
@@ -58,6 +63,9 @@
 	
 	// Track expansion state separately to preserve across tree rebuilds
 	let expansionState = new Map<string, boolean>();
+	
+	// Debounce timeout for tree rebuild to batch rapid store updates
+	let rebuildDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Fetch work graph and agents on mount, connect to SSE for real-time updates
 	onMount(async () => {
@@ -129,6 +137,10 @@
 			clearTimeout(projectChangeDebounceTimeout);
 			projectChangeDebounceTimeout = null;
 		}
+		if (rebuildDebounceTimeout) {
+			clearTimeout(rebuildDebounceTimeout);
+			rebuildDebounceTimeout = null;
+		}
 		// Cancel any pending workGraph fetches
 		workGraph.cancelPending();
 	});
@@ -139,98 +151,110 @@
 	}
 
 	// Rebuild tree whenever graph data OR wip data OR attention changes, filtering out queued issues
+	// Debounced to batch rapid updates and reduce CPU during polling
 	// Note: $wip dependency ensures filter re-runs when queued issues load
 	$: if ($workGraph && !$workGraph.error && $wip) {
-		// Build set of queued issue IDs for fast lookup
-		// Handle case where queuedIssues might not be loaded yet
-		const queuedIds = new Set(($wip.queuedIssues || []).map(issue => issue.id));
+		// Cancel any pending rebuild
+		if (rebuildDebounceTimeout) {
+			clearTimeout(rebuildDebounceTimeout);
+		}
+		
+		// Debounce rebuild to batch rapid updates (100ms is imperceptible to users)
+		rebuildDebounceTimeout = setTimeout(() => {
+			rebuildDebounceTimeout = null;
+			
+			// Build set of queued issue IDs for fast lookup
+			// Handle case where queuedIssues might not be loaded yet
+			const queuedIds = new Set(($wip.queuedIssues || []).map(issue => issue.id));
 
-		// Filter out queued issues from nodes before building tree
-		// Main tree shows 'everything NOT currently in the pipeline'
-		const filteredNodes = $workGraph.nodes.filter(node => !queuedIds.has(node.id));
+			// Filter out queued issues from nodes before building tree
+			// Main tree shows 'everything NOT currently in the pipeline'
+			const filteredNodes = $workGraph.nodes.filter(node => !queuedIds.has(node.id));
 
-		tree = buildTree(filteredNodes, $workGraph.edges);
+			tree = buildTree(filteredNodes, $workGraph.edges);
 
-		// Apply stored expansion state to preserve user's collapse/expand choices
-		const applyExpansionState = (nodes: TreeNode[]) => {
-			for (const node of nodes) {
-				// If we have stored expansion state for this node, apply it
-				// Otherwise keep the default from buildTree (which is expanded: true)
-				if (expansionState.has(node.id)) {
-					node.expanded = expansionState.get(node.id)!;
-				} else {
-					// First time seeing this node, store its default state
-					expansionState.set(node.id, node.expanded);
-				}
-				// Recursively apply to children
-				if (node.children.length > 0) {
-					applyExpansionState(node.children);
-				}
-			}
-		};
-		applyExpansionState(tree);
-
-		// Attach attention badges to tree nodes
-		if ($attention?.signals) {
-			const attachBadges = (nodes: TreeNode[]) => {
+			// Apply stored expansion state to preserve user's collapse/expand choices
+			const applyExpansionState = (nodes: TreeNode[]) => {
 				for (const node of nodes) {
-					const signal = $attention.signals.get(node.id);
-					if (signal) {
-						node.attentionBadge = signal.badge;
-						node.attentionReason = signal.reason;
+					// If we have stored expansion state for this node, apply it
+					// Otherwise keep the default from buildTree (which is expanded: true)
+					if (expansionState.has(node.id)) {
+						node.expanded = expansionState.get(node.id)!;
+					} else {
+						// First time seeing this node, store its default state
+						expansionState.set(node.id, node.expanded);
 					}
+					// Recursively apply to children
 					if (node.children.length > 0) {
-						attachBadges(node.children);
+						applyExpansionState(node.children);
 					}
 				}
 			};
-			attachBadges(tree);
-		}
+			applyExpansionState(tree);
 
-		error = null;
-		
-		// Track newly appeared issues for highlighting (use API nodes, not filtered nodes)
-		// This prevents highlighting children when expanding parents (they were always in the API data)
-		if ($workGraph.nodes) {
-			const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
-			const projectDir = $orchestratorContext?.project_dir;
+			// Attach attention badges to tree nodes
+			if ($attention?.signals) {
+				const attachBadges = (nodes: TreeNode[]) => {
+					for (const node of nodes) {
+						const signal = $attention.signals.get(node.id);
+						if (signal) {
+							node.attentionBadge = signal.badge;
+							node.attentionReason = signal.reason;
+						}
+						if (node.children.length > 0) {
+							attachBadges(node.children);
+						}
+					}
+				};
+				attachBadges(tree);
+			}
+
+			error = null;
 			
-			// Find issues that are new (in current but not in previous)
-			for (const id of currentIssueIds) {
-				if (!previousIssueIds.has(id) && !newIssueIds.has(id)) {
-					newIssueIds.add(id);
-					newIssueIds = newIssueIds; // Trigger reactivity
-					// Remove highlight after 30 seconds
-					setTimeout(() => {
-						newIssueIds.delete(id);
+			// Track newly appeared issues for highlighting (use API nodes, not filtered nodes)
+			// This prevents highlighting children when expanding parents (they were always in the API data)
+			if ($workGraph.nodes) {
+				const currentIssueIds = new Set($workGraph.nodes.map(n => n.id));
+				const projectDir = $orchestratorContext?.project_dir;
+				
+				// Find issues that are new (in current but not in previous)
+				for (const id of currentIssueIds) {
+					if (!previousIssueIds.has(id) && !newIssueIds.has(id)) {
+						newIssueIds.add(id);
 						newIssueIds = newIssueIds; // Trigger reactivity
-					}, 30000);
+						// Remove highlight after 30 seconds
+						setTimeout(() => {
+							newIssueIds.delete(id);
+							newIssueIds = newIssueIds; // Trigger reactivity
+						}, 30000);
+					}
+				}
+				
+				// Update previousIssueIds for next comparison
+				previousIssueIds = currentIssueIds;
+				
+				// Persist seen issues to localStorage for this project
+				if (projectDir) {
+					const existingFirstSeen = seenIssuesState.byProject[projectDir]?.firstSeenAt;
+					seenIssuesState.byProject[projectDir] = {
+						issueIds: Array.from(currentIssueIds),
+						firstSeenAt: existingFirstSeen || new Date().toISOString()
+					};
+					saveSeenIssues(seenIssuesState);
 				}
 			}
-			
-			// Update previousIssueIds for next comparison
-			previousIssueIds = currentIssueIds;
-			
-			// Persist seen issues to localStorage for this project
-			if (projectDir) {
-				const existingFirstSeen = seenIssuesState.byProject[projectDir]?.firstSeenAt;
-				seenIssuesState.byProject[projectDir] = {
-					issueIds: Array.from(currentIssueIds),
-					firstSeenAt: existingFirstSeen || new Date().toISOString()
-				};
-				saveSeenIssues(seenIssuesState);
-			}
-		}
+		}, 100); // 100ms debounce - imperceptible but batches rapid updates
 	} else if ($workGraph?.error) {
 		error = $workGraph.error;
 		tree = [];
 	}
 	
 	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
+	// Uses derived store to isolate reactivity (only fires when project_dir changes)
 	// Uses debounce + abort to prevent flip-flopping between old/new project data
 	$: {
-		if (typeof window !== 'undefined' && $orchestratorContext.project_dir) {
-			const newProjectDir = $orchestratorContext.project_dir;
+		if (typeof window !== 'undefined' && $projectDir) {
+			const newProjectDir = $projectDir;
 			
 			// Only react to actual project changes (not other context changes)
 			if (newProjectDir !== currentProjectDir) {
