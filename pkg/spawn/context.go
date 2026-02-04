@@ -1128,11 +1128,25 @@ func GenerateServerContext(projectDir string) string {
 	for _, line := range serverLines {
 		sb.WriteString(line + "\n")
 	}
-	sb.WriteString("\n**Quick commands:**\n")
-	sb.WriteString(fmt.Sprintf("- Start servers: `orch servers start %s`\n", projectName))
-	sb.WriteString(fmt.Sprintf("- Stop servers: `orch servers stop %s`\n", projectName))
-	sb.WriteString(fmt.Sprintf("- Open in browser: `orch servers open %s`\n", projectName))
-	sb.WriteString("\n")
+
+	// Special case: orch-go uses orch-dashboard (includes OpenCode server),
+	// not orch servers (which only manages project dev servers via tmuxinator).
+	// See .kb/guides/server-management.md for the boundary explanation.
+	if projectName == "orch-go" {
+		sb.WriteString("\n**Quick commands:**\n")
+		sb.WriteString("- Start servers: `orch-dashboard start` (from macOS terminal, not agent)\n")
+		sb.WriteString("- Stop servers: `orch-dashboard stop`\n")
+		sb.WriteString("- Restart servers: `orch-dashboard restart`\n")
+		sb.WriteString("\n⚠️ **Note:** orch-go uses `orch-dashboard`, not `orch servers`. ")
+		sb.WriteString("The dashboard script manages OpenCode + API + Web UI via overmind with orphan cleanup.\n")
+		sb.WriteString("Agents cannot start/stop services (runs on macOS host, agents run in Linux sandbox).\n\n")
+	} else {
+		sb.WriteString("\n**Quick commands:**\n")
+		sb.WriteString(fmt.Sprintf("- Start servers: `orch servers start %s`\n", projectName))
+		sb.WriteString(fmt.Sprintf("- Stop servers: `orch servers stop %s`\n", projectName))
+		sb.WriteString(fmt.Sprintf("- Open in browser: `orch servers open %s`\n", projectName))
+		sb.WriteString("\n")
+	}
 
 	return sb.String()
 }

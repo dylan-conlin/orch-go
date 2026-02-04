@@ -1011,6 +1011,42 @@ func TestGenerateServerContext(t *testing.T) {
 			t.Errorf("expected empty string when no servers, got: %s", context)
 		}
 	})
+
+	t.Run("orch-go project uses orch-dashboard", func(t *testing.T) {
+		// Create a temp dir but we'll use a subdirectory named "orch-go"
+		tempDir := t.TempDir()
+		orchGoDir := filepath.Join(tempDir, "orch-go")
+		orchDir := filepath.Join(orchGoDir, ".orch")
+		if err := os.MkdirAll(orchDir, 0755); err != nil {
+			t.Fatalf("failed to create .orch dir: %v", err)
+		}
+
+		// Write config with servers
+		configContent := `servers:
+  api: 3348
+  web: 5188
+`
+		configPath := filepath.Join(orchDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config: %v", err)
+		}
+
+		context := GenerateServerContext(orchGoDir)
+
+		// Check it contains orch-dashboard guidance instead of orch servers
+		if !strings.Contains(context, "## LOCAL SERVERS") {
+			t.Error("expected server context to contain header")
+		}
+		if !strings.Contains(context, "orch-dashboard start") {
+			t.Error("expected orch-go to recommend orch-dashboard, not orch servers")
+		}
+		if strings.Contains(context, "orch servers start orch-go") {
+			t.Error("orch-go should NOT recommend 'orch servers start', should use orch-dashboard")
+		}
+		if !strings.Contains(context, "OpenCode") {
+			t.Error("expected orch-go context to mention OpenCode")
+		}
+	})
 }
 
 func TestGenerateContext_WithServerContext(t *testing.T) {
