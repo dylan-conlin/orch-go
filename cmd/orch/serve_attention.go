@@ -200,6 +200,17 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	collectors = append(collectors, verifyFailedCollector)
 	sources = append(sources, "verify-failed")
 
+	// UnblockedCollector - issues that were blocked but blockers have resolved
+	unblockedCollector := attention.NewUnblockedCollector(client)
+	collectors = append(collectors, unblockedCollector)
+	sources = append(sources, "beads-unblocked")
+
+	// StuckCollector - agents running >2h without progress
+	// Reuse the same HTTP client as AgentCollector
+	stuckCollector := attention.NewStuckCollector(agentHTTPClient, agentAPIURL, 2.0) // 2 hour threshold
+	collectors = append(collectors, stuckCollector)
+	sources = append(sources, "agent-stuck")
+
 	// Collect from all sources
 	allItems := []attention.AttentionItem{}
 	for _, collector := range collectors {
