@@ -506,8 +506,15 @@
 					<span class="w-8"></span>
 					
 					<!-- ID (min-w-[120px] matches tree) -->
-					<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
-						{agent.beads_id || agent.id.slice(0, 15)}
+					<span 
+						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === (agent.beads_id || agent.id.slice(0, 15)) ? 'text-green-500' : 'text-muted-foreground'}"
+						onclick={(e) => { e.stopPropagation(); copyToClipboard(agent.beads_id || agent.id.slice(0, 15)); }}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(agent.beads_id || agent.id.slice(0, 15)); }}}
+						role="button"
+						tabindex="-1"
+						title="Click to copy"
+					>
+						{copiedId === (agent.beads_id || agent.id.slice(0, 15)) ? 'Copied!' : (agent.beads_id || agent.id.slice(0, 15))}
 					</span>
 					
 					<!-- Title (text-sm font-medium matches tree) -->
@@ -594,8 +601,15 @@
 					</Badge>
 					
 					<!-- ID -->
-					<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
-						{issue.id}
+					<span 
+						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === issue.id ? 'text-green-500' : 'text-muted-foreground'}"
+						onclick={(e) => { e.stopPropagation(); copyToClipboard(issue.id); }}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(issue.id); }}}
+						role="button"
+						tabindex="-1"
+						title="Click to copy"
+					>
+						{copiedId === issue.id ? 'Copied!' : issue.id}
 					</span>
 					
 					<!-- Title -->
@@ -653,8 +667,15 @@
 				</Badge>
 
 				<!-- ID -->
-				<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
-					{issue.id}
+				<span 
+					class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === issue.id ? 'text-green-500' : 'text-muted-foreground'}"
+					onclick={(e) => { e.stopPropagation(); copyToClipboard(issue.id); }}
+					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(issue.id); }}}
+					role="button"
+					tabindex="-1"
+					title="Click to copy"
+				>
+					{copiedId === issue.id ? 'Copied!' : issue.id}
 				</span>
 
 				<!-- Title -->
@@ -745,8 +766,15 @@
 					</Badge>
 
 					<!-- ID -->
-					<span class="text-xs font-mono text-muted-foreground min-w-[120px]">
-						{node.id}
+					<span 
+						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === node.id ? 'text-green-500' : 'text-muted-foreground'}"
+						onclick={(e) => { e.stopPropagation(); copyToClipboard(node.id); }}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(node.id); }}}
+						role="button"
+						tabindex="-1"
+						title="Click to copy"
+					>
+						{copiedId === node.id ? 'Copied!' : node.id}
 					</span>
 
 					<!-- Title -->

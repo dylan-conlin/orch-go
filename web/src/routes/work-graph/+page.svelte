@@ -590,6 +590,8 @@
 				<span class="mx-3">·</span>
 				<span class="text-zinc-400">x</span> close
 				<span class="mx-3">·</span>
+				<span class="text-zinc-400">c</span> copy ID
+				<span class="mx-3">·</span>
 				<span class="text-zinc-400">t/w</span> WIP↔tree
 			</span>
 		{:else}
