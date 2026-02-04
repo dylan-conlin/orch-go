@@ -59,6 +59,9 @@
 	let projectChangeDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 	let previousIssueIds = new Set<string>();
 	let newIssueIds = new Set<string>();
+	// Flag to prevent marking all issues as "new" on first load
+	// Set to true after onMount initializes previousIssueIds
+	let isNewIssueDetectionEnabled = false;
 	let completedIssues: CompletedIssue[] = [];
 	
 	// Track expansion state separately to preserve across tree rebuilds
@@ -107,6 +110,9 @@
 			}
 		}
 		
+		// Enable new issue detection now that previousIssueIds is initialized
+		isNewIssueDetectionEnabled = true;
+
 		// Connect to SSE for real-time agent updates (WIP section)
 		connectSSE();
 		
@@ -223,8 +229,10 @@
 				const projectDir = $orchestratorContext?.project_dir;
 				
 				// Find issues that are new (in current but not in previous)
+				// Only detect new issues after onMount has initialized previousIssueIds
+				// This prevents marking all issues as "new" on first load
 				for (const id of currentIssueIds) {
-					if (!previousIssueIds.has(id) && !newIssueIds.has(id)) {
+					if (isNewIssueDetectionEnabled && !previousIssueIds.has(id) && !newIssueIds.has(id)) {
 						newIssueIds.add(id);
 						newIssueIds = newIssueIds; // Trigger reactivity
 						// Remove highlight after 30 seconds
