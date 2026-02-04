@@ -315,6 +315,49 @@
 				selectedIndex = flattenedNodes.length - 1;
 				scrollToSelected();
 				break;
+
+			case 't':
+				event.preventDefault();
+				// Jump from WIP section item to its tree position
+				if (isWIP) {
+					const wipItem = current as WIPItem;
+					const beadsId = wipItem.type === 'running' 
+						? (wipItem.agent.beads_id || wipItem.agent.id) 
+						: wipItem.issue.id;
+					// Find matching tree node in flattenedNodes (tree nodes come after WIP and completed)
+					const treeIdx = flattenedNodes.findIndex((n) => 
+						!isWIPItem(n) && !isCompletedIssue(n) && (n as TreeNode).id === beadsId
+					);
+					if (treeIdx !== -1) {
+						selectedIndex = treeIdx;
+						scrollToSelected();
+					}
+				}
+				break;
+
+			case 'w':
+				event.preventDefault();
+				// Jump from tree item (if in WIP) to its WIP section position
+				if (!isWIP && !isCompletedIssue(current)) {
+					const nodeId = (current as TreeNode).id;
+					if (pinnedTreeIds.has(nodeId)) {
+						// Find matching WIP item in flattenedNodes
+						const wipIdx = flattenedNodes.findIndex(n => {
+							if (!isWIPItem(n)) return false;
+							const wipItem = n as WIPItem;
+							if (wipItem.type === 'running') {
+								return (wipItem.agent.beads_id || wipItem.agent.id) === nodeId;
+							} else {
+								return wipItem.issue.id === nodeId;
+							}
+						});
+						if (wipIdx !== -1) {
+							selectedIndex = wipIdx;
+							scrollToSelected();
+						}
+					}
+				}
+				break;
 		}
 	}
 

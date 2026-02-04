@@ -513,6 +513,8 @@
 				<span class="text-zinc-400">v</span> verify
 				<span class="mx-3">·</span>
 				<span class="text-zinc-400">x</span> close
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">t/w</span> WIP↔tree
 			</span>
 		{:else}
 			<span class="tracking-wide">
