@@ -178,9 +178,14 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	sources = append(sources, "beads-recently-closed")
 
 	// AgentCollector - awaiting-cleanup agents as verify signals
-	// Note: Uses HTTP to call own /api/agents endpoint (loose coupling)
-	agentHTTPClient := &http.Client{Timeout: 5 * time.Second}
-	agentAPIURL := fmt.Sprintf("http://localhost:%d", DefaultServePort)
+	// Note: Uses HTTPS to call own /api/agents endpoint (loose coupling)
+	agentHTTPClient := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfigSkipVerify(),
+		},
+	}
+	agentAPIURL := fmt.Sprintf("https://localhost:%d", DefaultServePort)
 	agentCollector := attention.NewAgentCollector(agentHTTPClient, agentAPIURL)
 	collectors = append(collectors, agentCollector)
 	sources = append(sources, "agent")
