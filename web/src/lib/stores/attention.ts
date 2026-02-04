@@ -100,6 +100,8 @@ function mapSignalToBadge(signal: string): AttentionBadgeType | null {
 	switch (signal) {
 		case 'likely-done':
 			return 'likely_done';
+		case 'verify':
+			return 'verify';
 		case 'recently-closed':
 			return 'recently_closed';
 		case 'issue-ready':
