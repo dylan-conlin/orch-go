@@ -435,6 +435,31 @@
 			{/if}
 		{/if}
 	</div>
+
+	<!-- Keyboard Shortcuts Footer -->
+	<div class="h-9 px-4 flex items-center justify-center border-t border-zinc-800 bg-zinc-950 text-zinc-500 text-[11px] font-mono">
+		{#if currentView === 'issues'}
+			<span class="tracking-wide">
+				<span class="text-zinc-400">j/k</span> navigate
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">h/l</span> collapse/expand
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">enter</span> details
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">i</span> side panel
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">v</span> verify
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">x</span> close
+			</span>
+		{:else}
+			<span class="tracking-wide">
+				<span class="text-zinc-400">j/k</span> navigate
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">enter</span> open
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">Tab</span> toggle view
+			</span>
+		{/if}
+	</div>
 </div>
-
-
