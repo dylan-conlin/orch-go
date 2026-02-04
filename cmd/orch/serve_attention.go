@@ -189,6 +189,26 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		allItems = append(allItems, items...)
 	}
 
+	// Load verifications and filter/annotate items
+	verifications := loadVerifications()
+	filteredItems := []attention.AttentionItem{}
+	for _, item := range allItems {
+		verification, exists := verifications[item.ID]
+		if exists && verification.Status == "verified" {
+			// Filter out verified issues from recently-closed
+			continue
+		}
+		if exists && verification.Status == "needs_fix" {
+			// Add verification_status to metadata for needs_fix items
+			if item.Metadata == nil {
+				item.Metadata = make(map[string]any)
+			}
+			item.Metadata["verification_status"] = "needs_fix"
+		}
+		filteredItems = append(filteredItems, item)
+	}
+	allItems = filteredItems
+
 	// Sort by priority (lower = higher priority)
 	sort.Slice(allItems, func(i, j int) bool {
 		return allItems[i].Priority < allItems[j].Priority
@@ -324,6 +344,36 @@ func handleAttentionVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+// loadVerifications reads the JSONL file and returns a map of issue_id -> VerificationEntry.
+// Returns an empty map if the file doesn't exist or is empty (graceful handling).
+func loadVerifications() map[string]VerificationEntry {
+	verifications := make(map[string]VerificationEntry)
+
+	data, err := os.ReadFile(verificationLogPath)
+	if err != nil {
+		// File doesn't exist or can't be read - return empty map (graceful handling)
+		return verifications
+	}
+
+	// Parse JSONL (newline-delimited JSON) using existing splitLines from guarded.go
+	for _, line := range splitLines(string(data)) {
+		if len(line) == 0 {
+			continue
+		}
+
+		var entry VerificationEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			// Skip malformed lines
+			continue
+		}
+
+		// Keep the latest entry for each issue (later entries override earlier ones)
+		verifications[entry.IssueID] = entry
+	}
+
+	return verifications
 }
 
 // persistVerification appends a verification entry to the JSONL file.

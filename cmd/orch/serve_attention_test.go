@@ -358,3 +358,96 @@ func TestHandleAttentionVerifyPersistsToJSONL(t *testing.T) {
 		t.Error("Expected timestamp to be set")
 	}
 }
+
+// Tests for loadVerifications()
+
+func TestLoadVerificationsEmptyFile(t *testing.T) {
+	// Test that empty/missing file returns empty map (graceful handling)
+	tmpDir := t.TempDir()
+	oldPath := verificationLogPath
+	verificationLogPath = tmpDir + "/nonexistent.jsonl"
+	defer func() { verificationLogPath = oldPath }()
+
+	result := loadVerifications()
+
+	if result == nil {
+		t.Error("Expected non-nil map")
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected empty map, got %d entries", len(result))
+	}
+}
+
+func TestLoadVerificationsReadsEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := verificationLogPath
+	verificationLogPath = tmpDir + "/verifications.jsonl"
+	defer func() { verificationLogPath = oldPath }()
+
+	// Write test entries
+	entries := `{"issue_id":"test-1","status":"verified","timestamp":1234567890}
+{"issue_id":"test-2","status":"needs_fix","timestamp":1234567891}
+`
+	if err := os.WriteFile(verificationLogPath, []byte(entries), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	result := loadVerifications()
+
+	if len(result) != 2 {
+		t.Errorf("Expected 2 entries, got %d", len(result))
+	}
+	if result["test-1"].Status != "verified" {
+		t.Errorf("Expected test-1 status verified, got %s", result["test-1"].Status)
+	}
+	if result["test-2"].Status != "needs_fix" {
+		t.Errorf("Expected test-2 status needs_fix, got %s", result["test-2"].Status)
+	}
+}
+
+func TestLoadVerificationsLatestEntryWins(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := verificationLogPath
+	verificationLogPath = tmpDir + "/verifications.jsonl"
+	defer func() { verificationLogPath = oldPath }()
+
+	// Write entries with same issue_id, later entry should win
+	entries := `{"issue_id":"test-1","status":"verified","timestamp":1000}
+{"issue_id":"test-1","status":"needs_fix","timestamp":2000}
+`
+	if err := os.WriteFile(verificationLogPath, []byte(entries), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	result := loadVerifications()
+
+	if len(result) != 1 {
+		t.Errorf("Expected 1 entry (duplicate merged), got %d", len(result))
+	}
+	if result["test-1"].Status != "needs_fix" {
+		t.Errorf("Expected later entry (needs_fix) to win, got %s", result["test-1"].Status)
+	}
+}
+
+func TestLoadVerificationsSkipsMalformedLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldPath := verificationLogPath
+	verificationLogPath = tmpDir + "/verifications.jsonl"
+	defer func() { verificationLogPath = oldPath }()
+
+	// Write entries with malformed line in the middle
+	entries := `{"issue_id":"test-1","status":"verified","timestamp":1234567890}
+not valid json
+{"issue_id":"test-2","status":"needs_fix","timestamp":1234567891}
+`
+	if err := os.WriteFile(verificationLogPath, []byte(entries), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	result := loadVerifications()
+
+	// Should have 2 valid entries, skipping the malformed line
+	if len(result) != 2 {
+		t.Errorf("Expected 2 entries (skipping malformed), got %d", len(result))
+	}
+}
