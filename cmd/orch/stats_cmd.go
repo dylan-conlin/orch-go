@@ -112,6 +112,7 @@ type StatsReport struct {
 	SessionStats      SessionStatsSummary `json:"session_stats,omitempty"`
 	EscapeHatchStats  EscapeHatchStats    `json:"escape_hatch_stats,omitempty"`
 	VerificationStats VerificationStats   `json:"verification_stats,omitempty"`
+	AttemptStats      AttemptStats        `json:"attempt_stats,omitempty"`
 }
 
 // StatsSummary contains core metrics
@@ -213,6 +214,18 @@ type AccountSpawnBreakdown struct {
 	TotalSpawns int    `json:"total_spawns"`
 	Last7Days   int    `json:"last_7d"`
 	Last30Days  int    `json:"last_30d"`
+}
+
+// AttemptStats tracks attempt-related metrics across all issues.
+// An "attempt" is a spawn for a beads issue. Multiple attempts occur when:
+// - An issue is reopened after being closed
+// - A worker fails/dies and the issue is retried
+type AttemptStats struct {
+	// ReopenedCount is the number of issues that were reopened in the analysis window.
+	// Each reopen triggers a new attempt at completing the issue.
+	ReopenedCount int `json:"reopened_count"`
+	// MultiAttemptIssues is the count of unique issues that had more than one attempt.
+	MultiAttemptIssues int `json:"multi_attempt_issues"`
 }
 
 func runStats() error {
@@ -762,6 +775,14 @@ func aggregateStats(events []StatsEvent, days int, includeUntracked bool) *Stats
 					// Attempts are counted via agent.completed events
 				}
 			}
+
+		case "issue.reopened":
+			// Skip events outside the --days window
+			if event.Timestamp < cutoffDays {
+				continue
+			}
+			// Count issue reopens for attempt tracking
+			report.AttemptStats.ReopenedCount++
 		}
 	}
 
@@ -1080,6 +1101,16 @@ func outputStatsText(report *StatsReport) error {
 					sv.PassRate,
 				)
 			}
+		}
+	}
+
+	// Attempt stats (if any reopens exist)
+	if report.AttemptStats.ReopenedCount > 0 {
+		fmt.Println()
+		fmt.Println("🔄 ATTEMPT TRACKING")
+		fmt.Printf("  Issues reopened:  %d\n", report.AttemptStats.ReopenedCount)
+		if report.AttemptStats.MultiAttemptIssues > 0 {
+			fmt.Printf("  Multi-attempt:    %d issues required >1 attempt\n", report.AttemptStats.MultiAttemptIssues)
 		}
 	}
 

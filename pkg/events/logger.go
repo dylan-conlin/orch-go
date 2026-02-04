@@ -48,6 +48,8 @@ const (
 	// EventTypeEpicOrphaned indicates an epic was force-closed with open children.
 	EventTypeEpicOrphaned = "epic.orphaned"
 	EventTypeSSEReconnectionSuccess = "sse.reconnection_success"
+	// EventTypeIssueReopened indicates an issue was reopened (closed → open) leading to a new attempt.
+	EventTypeIssueReopened = "issue.reopened"
 )
 
 // Event is a loggable event for events.jsonl.
@@ -518,5 +520,36 @@ func (l *Logger) LogEpicOrphaned(data EpicOrphanedData) error {
 			"orphaned_children": data.OrphanedChildren,
 			"reason":            data.Reason,
 		},
+	})
+}
+
+// IssueReopenedData contains data about an issue being reopened.
+type IssueReopenedData struct {
+	BeadsID         string `json:"beads_id"`
+	Title           string `json:"title,omitempty"`
+	PreviousStatus  string `json:"previous_status"`  // Status before reopen (e.g., "closed")
+	AttemptNumber   int    `json:"attempt_number"`   // Which attempt this reopen triggers (2, 3, etc.)
+	Reason          string `json:"reason,omitempty"` // Why it was reopened
+}
+
+// LogIssueReopened logs when an issue is reopened, indicating a new attempt.
+func (l *Logger) LogIssueReopened(data IssueReopenedData) error {
+	eventData := map[string]interface{}{
+		"beads_id":        data.BeadsID,
+		"previous_status": data.PreviousStatus,
+		"attempt_number":  data.AttemptNumber,
+	}
+	if data.Title != "" {
+		eventData["title"] = data.Title
+	}
+	if data.Reason != "" {
+		eventData["reason"] = data.Reason
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeIssueReopened,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
 	})
 }

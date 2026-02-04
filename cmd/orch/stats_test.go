@@ -975,3 +975,89 @@ func TestAggregateStatsVerificationBySkill(t *testing.T) {
 		t.Errorf("expected investigation pass rate 100%%, got %.1f%%", invStats.PassRate)
 	}
 }
+
+func TestAggregateStatsReopenedCount(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Initial spawns
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "session.spawned", SessionID: "ses_2", Timestamp: now - 6200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-2",
+		}},
+		// First completions
+		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "test-1"}},
+		{Type: "agent.completed", Timestamp: now - 4500, Data: map[string]interface{}{"beads_id": "test-2"}},
+		// Issue reopened events (issues were closed and reopened for another attempt)
+		{Type: "issue.reopened", Timestamp: now - 4000, Data: map[string]interface{}{
+			"beads_id":        "test-1",
+			"previous_status": "closed",
+			"attempt_number":  2,
+		}},
+		{Type: "issue.reopened", Timestamp: now - 3000, Data: map[string]interface{}{
+			"beads_id":        "test-1",
+			"previous_status": "closed",
+			"attempt_number":  3,
+		}},
+		{Type: "issue.reopened", Timestamp: now - 2000, Data: map[string]interface{}{
+			"beads_id":        "test-2",
+			"previous_status": "closed",
+			"attempt_number":  2,
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should have 3 reopened events
+	if report.AttemptStats.ReopenedCount != 3 {
+		t.Errorf("expected 3 reopened events, got %d", report.AttemptStats.ReopenedCount)
+	}
+}
+
+func TestAggregateStatsReopenedCountTimeFiltering(t *testing.T) {
+	now := time.Now().Unix()
+	oldTimestamp := now - (10 * 24 * 60 * 60) // 10 days ago (outside 7-day window)
+
+	events := []StatsEvent{
+		// Reopen within 7-day window
+		{Type: "issue.reopened", Timestamp: now - 3600, Data: map[string]interface{}{
+			"beads_id":        "test-1",
+			"previous_status": "closed",
+			"attempt_number":  2,
+		}},
+		// Reopen outside 7-day window (should not be counted)
+		{Type: "issue.reopened", Timestamp: oldTimestamp, Data: map[string]interface{}{
+			"beads_id":        "test-2",
+			"previous_status": "closed",
+			"attempt_number":  2,
+		}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should only count the reopen within the time window
+	if report.AttemptStats.ReopenedCount != 1 {
+		t.Errorf("expected 1 reopened event in 7-day window, got %d", report.AttemptStats.ReopenedCount)
+	}
+}
+
+func TestAggregateStatsReopenedCountEmpty(t *testing.T) {
+	now := time.Now().Unix()
+
+	events := []StatsEvent{
+		// Only spawns and completions, no reopens
+		{Type: "session.spawned", SessionID: "ses_1", Timestamp: now - 7200, Data: map[string]interface{}{
+			"skill": "feature-impl", "beads_id": "test-1",
+		}},
+		{Type: "agent.completed", Timestamp: now - 5000, Data: map[string]interface{}{"beads_id": "test-1"}},
+	}
+
+	report := aggregateStats(events, 7, true)
+
+	// Should have 0 reopened events
+	if report.AttemptStats.ReopenedCount != 0 {
+		t.Errorf("expected 0 reopened events, got %d", report.AttemptStats.ReopenedCount)
+	}
+}
