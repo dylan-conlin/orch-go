@@ -15,6 +15,7 @@ export interface GraphNode {
 	date?: string;    // for kb artifacts
 	created_at?: string; // creation timestamp
 	description?: string; // issue description
+	layer?: number;   // Execution phase (0 = ready, N = blocked by layers 0..N-1)
 }
 
 // Graph edge (dependency) from /api/beads/graph
@@ -315,4 +316,92 @@ export async function closeIssue(
 	} catch (error) {
 		return { success: false, error: String(error) };
 	}
+}
+// Phase group for phase view
+export interface PhaseGroup {
+	layer: number;
+	label: string;    // "Phase 1 (Ready)" or "Phase 2 (Blocked)"
+	nodes: TreeNode[];
+	doneCount: number;
+	totalCount: number;
+	expanded: boolean;
+}
+
+// Build phase groups from flat nodes
+// Groups nodes by their layer field, with progress tracking
+export function buildPhaseGroups(nodes: GraphNode[], edges: GraphEdge[]): PhaseGroup[] {
+	// First build tree nodes to get blocking relationships
+	const treeNodes: Map<string, TreeNode> = new Map();
+	
+	for (const node of nodes) {
+		const parentId = parseParentId(node.id);
+		treeNodes.set(node.id, {
+			...node,
+			children: [],
+			depth: 0,
+			expanded: true,
+			details_expanded: false,
+			blocked_by: [],
+			blocks: [],
+			parent_id: parentId
+		});
+	}
+
+	// Build blocking relationships
+	for (const edge of edges) {
+		if (edge.type === 'blocks') {
+			const fromNode = treeNodes.get(edge.from);
+			const toNode = treeNodes.get(edge.to);
+			if (fromNode && toNode) {
+				toNode.blocked_by.push(edge.from);
+				fromNode.blocks.push(edge.to);
+			}
+		}
+	}
+
+	// Group by layer
+	const layerMap = new Map<number, TreeNode[]>();
+	for (const node of treeNodes.values()) {
+		const layer = node.layer ?? 0;
+		if (!layerMap.has(layer)) {
+			layerMap.set(layer, []);
+		}
+		layerMap.get(layer)!.push(node);
+	}
+
+	// Convert to PhaseGroup array
+	const phases: PhaseGroup[] = [];
+	const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => a - b);
+	
+	for (const layer of sortedLayers) {
+		const layerNodes = layerMap.get(layer)!;
+		// Sort by priority, then ID
+		layerNodes.sort((a, b) => {
+			if (a.priority !== b.priority) return a.priority - b.priority;
+			return a.id.localeCompare(b.id);
+		});
+		
+		// Count done (closed/complete status)
+		const doneCount = layerNodes.filter(n => 
+			n.status.toLowerCase() === 'closed' || 
+			n.status.toLowerCase() === 'complete'
+		).length;
+		
+		// Check if any node in this layer is blocked (has unresolved blockers)
+		const hasBlockedNodes = layerNodes.some(n => n.blocked_by.length > 0);
+		const label = layer === 0 
+			? `Phase 1 (Ready)` 
+			: `Phase ${layer + 1} (${hasBlockedNodes ? 'Blocked' : 'Ready'})`;
+		
+		phases.push({
+			layer,
+			label,
+			nodes: layerNodes,
+			doneCount,
+			totalCount: layerNodes.length,
+			expanded: true // All phases expanded by default
+		});
+	}
+	
+	return phases;
 }

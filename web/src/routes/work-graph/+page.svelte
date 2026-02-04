@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
-	import { workGraph, buildTree, type TreeNode, type AttentionBadgeType } from '$lib/stores/work-graph';
+	import { workGraph, buildTree, buildPhaseGroups, type TreeNode, type PhaseGroup, type AttentionBadgeType } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
+	import { WorkGraphPhase } from '$lib/components/work-graph-phase';
 	import { WIPSection } from '$lib/components/wip-section';
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
@@ -50,9 +51,11 @@
 	}
 
 	let tree: TreeNode[] = [];
+	let phases: PhaseGroup[] = [];
 	let loading = true;
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' = 'issues';
+	let issueViewMode: 'tree' | 'phase' | 'status' = 'tree';
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
@@ -157,7 +160,7 @@
 		completedIssues = $attention.completedIssues;
 	}
 
-	// Rebuild tree whenever graph data OR attention changes
+	// Rebuild tree and phases whenever graph data OR attention changes
 	// Debounced to batch rapid updates and reduce CPU during polling
 	// Skip debounce until first tree render completes for immediate display
 	$: if ($workGraph && !$workGraph.error) {
@@ -170,8 +173,11 @@
 		const executeRebuild = () => {
 			rebuildDebounceTimeout = null;
 
-			// Build tree from full open set; queue/running status are rendered as overlays elsewhere.
+			// Build tree from full open set
 			tree = buildTree($workGraph.nodes, $workGraph.edges);
+			
+			// Build phase groups for phase view
+			phases = buildPhaseGroups($workGraph.nodes, $workGraph.edges);
 			
 			// Mark that we've completed first render (enable debouncing for subsequent updates)
 			hasRenderedTree = true;
@@ -210,6 +216,17 @@
 					}
 				};
 				attachBadges(tree);
+				
+				// Also attach attention badges to phase nodes
+				for (const phase of phases) {
+					for (const node of phase.nodes) {
+						const signal = $attention.signals.get(node.id);
+						if (signal) {
+							node.attentionBadge = signal.badge;
+							node.attentionReason = signal.reason;
+						}
+					}
+				}
 			}
 
 			error = null;
@@ -259,6 +276,7 @@
 	} else if ($workGraph?.error) {
 		error = $workGraph.error;
 		tree = [];
+		phases = [];
 	}
 	
 	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
@@ -316,6 +334,11 @@
 			await kbArtifacts.fetch(projectDir, '7d');
 		}
 	}
+
+	// Handle issue view mode change
+	function handleIssueViewModeChange(mode: 'tree' | 'phase' | 'status') {
+		issueViewMode = mode;
+	}
 	
 	// Manual retry handler
 	async function handleRetry() {
@@ -333,6 +356,23 @@
 			event.preventDefault();
 			currentView = currentView === 'issues' ? 'artifacts' : 'issues';
 			handleViewToggle(currentView);
+		}
+	}
+	
+	// Get help text based on current view mode
+	function getHelpText(): string {
+		if (currentView === 'artifacts') {
+			return 'Artifact view - Navigate with j/k, open with l/enter, Tab to toggle';
+		}
+		switch (issueViewMode) {
+			case 'tree':
+				return 'Tree view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x';
+			case 'phase':
+				return 'Phase view - Issues grouped by execution layer';
+			case 'status':
+				return 'Status view - Issues grouped by status';
+			default:
+				return 'Navigate with j/k';
 		}
 	}
 </script>
@@ -370,19 +410,23 @@
 				<div>
 					<h1 class="text-2xl font-semibold text-foreground">Work Graph</h1>
 					<p class="text-sm text-muted-foreground mt-1">
-						{#if currentView === 'issues'}
-							Structure view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x
-						{:else}
-							Artifact view - Navigate with j/k, open with l/enter, Tab to toggle
-						{/if}
+						{getHelpText()}
 					</p>
 				</div>
-				<ViewToggle {currentView} onToggle={handleViewToggle} />
+				<ViewToggle 
+					{currentView} 
+					{issueViewMode}
+					onToggle={handleViewToggle} 
+					onIssueViewModeChange={handleIssueViewModeChange}
+				/>
 			</div>
 			<div class="flex gap-4 text-sm text-muted-foreground">
 				{#if currentView === 'issues' && $workGraph}
 					<span>{$workGraph.node_count} issues</span>
 					<span>{$workGraph.edge_count} edges</span>
+					{#if issueViewMode === 'phase' && phases.length > 0}
+						<span>{phases.length} phases</span>
+					{/if}
 				{:else if currentView === 'artifacts' && $kbArtifacts}
 					<span>
 						{($kbArtifacts.needs_decision?.length ?? 0) + ($kbArtifacts.recent?.length ?? 0)} artifacts
@@ -408,18 +452,36 @@
 				<div class="flex items-center justify-center h-full">
 					<div class="text-red-500">Error: {error}</div>
 				</div>
-			{:else if tree.length === 0}
+			{:else if issueViewMode === 'tree'}
+				{#if tree.length === 0}
+					<div class="flex items-center justify-center h-full">
+						<div class="text-muted-foreground">No open issues found</div>
+					</div>
+				{:else}
+					<WorkGraphTree 
+						{tree} 
+						{newIssueIds} 
+						wipItems={$wipItems} 
+						{completedIssues}
+						onToggleExpansion={handleToggleExpansion}
+					/>
+				{/if}
+			{:else if issueViewMode === 'phase'}
+				{#if phases.length === 0}
+					<div class="flex items-center justify-center h-full">
+						<div class="text-muted-foreground">No open issues found</div>
+					</div>
+				{:else}
+					<WorkGraphPhase 
+						{phases}
+						{newIssueIds}
+					/>
+				{/if}
+			{:else if issueViewMode === 'status'}
+				<!-- Status view - coming soon -->
 				<div class="flex items-center justify-center h-full">
-					<div class="text-muted-foreground">No open issues found</div>
+					<div class="text-muted-foreground">Status view coming soon</div>
 				</div>
-			{:else}
-				<WorkGraphTree 
-					{tree} 
-					{newIssueIds} 
-					wipItems={$wipItems} 
-					{completedIssues}
-					onToggleExpansion={handleToggleExpansion}
-				/>
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}
