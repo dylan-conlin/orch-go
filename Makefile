@@ -68,6 +68,7 @@ cross-compile-linux-orch:
 clean:
 	@echo "Cleaning..."
 	rm -rf $(BUILD_DIR)
+	rm -f *.test
 	go clean
 
 # Format code
