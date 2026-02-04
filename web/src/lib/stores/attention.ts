@@ -54,7 +54,7 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType | 'unverified' | 
 	label: string;
 	variant: Variant;
 }> = {
-	verify: { label: 'VERIFY', variant: 'attention_verify' },
+	verify: { label: 'COMPLETE', variant: 'attention_verify' },
 	decide: { label: 'DECIDE', variant: 'attention_decide' },
 	escalate: { label: 'ESCALATE', variant: 'attention_escalate' },
 	likely_done: { label: 'LIKELY DONE', variant: 'attention_likely_done' },
@@ -62,7 +62,7 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType | 'unverified' | 
 	unblocked: { label: 'UNBLOCKED', variant: 'attention_unblocked' },
 	stuck: { label: 'STUCK', variant: 'attention_stuck' },
 	crashed: { label: 'CRASHED', variant: 'attention_crashed' },
-	unverified: { label: 'UNVERIFIED', variant: 'attention_unverified' },
+	unverified: { label: 'NEEDS REVIEW', variant: 'attention_unverified' },
 	needs_fix: { label: 'NEEDS FIX', variant: 'attention_needs_fix' },
 	verify_failed: { label: 'VERIFY FAILED', variant: 'attention_verify_failed' },
 };
