@@ -408,3 +408,107 @@ export function buildPhaseGroups(nodes: GraphNode[], edges: GraphEdge[]): PhaseG
 	
 	return phases;
 }
+
+// Status group for status view
+// Groups issues by workflow status (Ready, In Progress, Blocked, Done)
+export interface StatusGroup {
+	status: string;   // 'ready' | 'in_progress' | 'blocked' | 'done'
+	label: string;    // "Ready", "In Progress", "Blocked", "Done"
+	icon: string;     // Status icon
+	color: string;    // Color class for styling
+	nodes: TreeNode[];
+	count: number;
+	expanded: boolean;
+}
+
+// Status group definitions with display order
+const STATUS_GROUPS_CONFIG = [
+	{ status: 'ready', label: 'Ready', icon: '○', color: 'text-green-500' },
+	{ status: 'in_progress', label: 'In Progress', icon: '▶', color: 'text-blue-500' },
+	{ status: 'blocked', label: 'Blocked', icon: '🚫', color: 'text-red-500' },
+	{ status: 'done', label: 'Done', icon: '✓', color: 'text-muted-foreground' }
+];
+
+// Normalize status strings to canonical form
+function normalizeStatus(status: string): 'ready' | 'in_progress' | 'blocked' | 'done' {
+	const lower = status.toLowerCase();
+	if (lower === 'in_progress' || lower === 'in progress') return 'in_progress';
+	if (lower === 'blocked') return 'blocked';
+	if (lower === 'closed' || lower === 'complete' || lower === 'done') return 'done';
+	// Default: open status is "ready"
+	return 'ready';
+}
+
+// Build status groups from flat nodes
+// Groups nodes by their workflow status for quick scanning
+export function buildStatusGroups(nodes: GraphNode[], edges: GraphEdge[]): StatusGroup[] {
+	// First build tree nodes to get blocking relationships
+	const treeNodes: Map<string, TreeNode> = new Map();
+	
+	for (const node of nodes) {
+		const parentId = parseParentId(node.id);
+		treeNodes.set(node.id, {
+			...node,
+			children: [],
+			depth: 0,
+			expanded: true,
+			details_expanded: false,
+			blocked_by: [],
+			blocks: [],
+			parent_id: parentId
+		});
+	}
+
+	// Build blocking relationships
+	for (const edge of edges) {
+		if (edge.type === 'blocks') {
+			const fromNode = treeNodes.get(edge.from);
+			const toNode = treeNodes.get(edge.to);
+			if (fromNode && toNode) {
+				toNode.blocked_by.push(edge.from);
+				fromNode.blocks.push(edge.to);
+			}
+		}
+	}
+
+	// Group by normalized status
+	const statusMap = new Map<string, TreeNode[]>();
+	for (const node of treeNodes.values()) {
+		let normalizedStatus = normalizeStatus(node.status);
+		
+		// Override: if has blockers and not done, mark as blocked
+		if (normalizedStatus !== 'done' && node.blocked_by.length > 0) {
+			normalizedStatus = 'blocked';
+		}
+		
+		if (!statusMap.has(normalizedStatus)) {
+			statusMap.set(normalizedStatus, []);
+		}
+		statusMap.get(normalizedStatus)!.push(node);
+	}
+
+	// Convert to StatusGroup array in defined order
+	const groups: StatusGroup[] = [];
+	
+	for (const config of STATUS_GROUPS_CONFIG) {
+		const statusNodes = statusMap.get(config.status) || [];
+		
+		// Sort by priority, then ID
+		statusNodes.sort((a, b) => {
+			if (a.priority !== b.priority) return a.priority - b.priority;
+			return a.id.localeCompare(b.id);
+		});
+		
+		groups.push({
+			status: config.status,
+			label: config.label,
+			icon: config.icon,
+			color: config.color,
+			nodes: statusNodes,
+			count: statusNodes.length,
+			expanded: true // All groups expanded by default
+		});
+	}
+	
+	return groups;
+}

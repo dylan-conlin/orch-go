@@ -36,6 +36,30 @@
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
 	
+	// Track copied ID for visual feedback
+	let copiedId: string | null = null;
+	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	// Copy ID to clipboard with visual feedback
+	async function copyToClipboard(id: string) {
+		try {
+			await navigator.clipboard.writeText(id);
+			// Clear any existing timeout
+			if (copiedTimeout) {
+				clearTimeout(copiedTimeout);
+			}
+			// Show "Copied!" feedback
+			copiedId = id;
+			// Clear after 1.5 seconds
+			copiedTimeout = setTimeout(() => {
+				copiedId = null;
+				copiedTimeout = null;
+			}, 1500);
+		} catch (err) {
+			console.error('Failed to copy to clipboard:', err);
+		}
+	}
+	
 	// Track selected issue for side panel
 	let selectedIssueForPanel: TreeNode | null = null;
 	// Track issue for close modal
@@ -359,6 +383,13 @@
 					}
 				}
 				break;
+			
+				case 'c':
+					event.preventDefault();
+					// Copy selected item's ID to clipboard
+					const id = getItemId(current);
+					copyToClipboard(id);
+					break;
 		}
 	}
 
@@ -437,7 +468,7 @@
 	class="work-graph-tree h-full overflow-y-auto px-6 py-4 focus:outline-none"
 	role="tree"
 	tabindex="0"
-	on:keydown={handleKeyDown}
+	onkeydown={handleKeyDown}
 >
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
@@ -455,7 +486,7 @@
 			role="treeitem"
 			aria-selected={index === selectedIndex}
 			tabindex="-1"
-			on:click={() => selectNode(index)}
+			onclick={() => selectNode(index)}
 		>
 		{#if isWIP}
 			{#if item.type === 'running'}

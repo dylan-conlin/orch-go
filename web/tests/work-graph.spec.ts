@@ -1421,3 +1421,78 @@ test.describe('Verification Keyboard Shortcuts', () => {
 		expect(verifyApiCalled).toBe(false);
 	});
 });
+
+// Status View tests (orch-go-21209)
+test.describe('Status View', () => {
+	test('should switch to status view and display status groups', async ({ page }) => {
+		// Mock the graph API response (matching pattern from working tests)
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-1',
+							title: 'Ready Issue',
+							type: 'task',
+							status: 'open',
+							priority: 1,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-2',
+							title: 'In Progress Issue',
+							type: 'task',
+							status: 'in_progress',
+							priority: 2,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-3',
+							title: 'Blocked Issue',
+							type: 'task',
+							status: 'blocked',
+							priority: 1,
+							source: 'beads'
+						},
+						{
+							id: 'orch-go-4',
+							title: 'Done Issue',
+							type: 'task',
+							status: 'closed',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 4,
+					edge_count: 0
+				})
+			});
+		});
+
+		await page.goto('/work-graph');
+		
+		// Wait for tree view to load (default view shows issue titles)
+		await expect(page.getByText('Ready Issue')).toBeVisible();
+		
+		// Click on Status view button
+		await page.getByRole('button', { name: 'Status' }).click();
+		
+		// Wait for status view container to appear
+		await expect(page.locator('.work-graph-status')).toBeVisible();
+		
+		// Should show status group headers (use first() to handle multiple matches)
+		await expect(page.getByText('Ready', { exact: true }).first()).toBeVisible();
+		await expect(page.getByText('In Progress').first()).toBeVisible();
+		await expect(page.getByText('Blocked').first()).toBeVisible();
+		await expect(page.getByText('Done').first()).toBeVisible();
+		
+		// Verify issues are still visible under their groups
+		await expect(page.getByText('Ready Issue')).toBeVisible();
+		await expect(page.getByText('In Progress Issue')).toBeVisible();
+		await expect(page.getByText('Blocked Issue')).toBeVisible();
+		await expect(page.getByText('Done Issue')).toBeVisible();
+	});
+});

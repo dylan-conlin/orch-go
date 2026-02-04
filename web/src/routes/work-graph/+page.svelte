@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
-	import { workGraph, buildTree, buildPhaseGroups, type TreeNode, type PhaseGroup, type AttentionBadgeType } from '$lib/stores/work-graph';
+	import { workGraph, buildTree, buildPhaseGroups, buildStatusGroups, type TreeNode, type PhaseGroup, type StatusGroup, type AttentionBadgeType } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { WorkGraphPhase } from '$lib/components/work-graph-phase';
+	import { WorkGraphStatus } from '$lib/components/work-graph-status';
 	import { WIPSection } from '$lib/components/wip-section';
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
@@ -53,6 +54,7 @@
 
 	let tree: TreeNode[] = [];
 	let phases: PhaseGroup[] = [];
+	let statusGroups: StatusGroup[] = [];
 	let loading = true;
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' = 'issues';
@@ -192,6 +194,9 @@
 			
 			// Build phase groups for phase view
 			phases = buildPhaseGroups($workGraph.nodes, $workGraph.edges);
+			
+			// Build status groups for status view
+			statusGroups = buildStatusGroups($workGraph.nodes, $workGraph.edges);
 			
 			// Mark that we've completed first render (enable debouncing for subsequent updates)
 			hasRenderedTree = true;
@@ -543,10 +548,16 @@
 					/>
 				{/if}
 			{:else if issueViewMode === 'status'}
-				<!-- Status view - coming soon -->
-				<div class="flex items-center justify-center h-full">
-					<div class="text-muted-foreground">Status view coming soon</div>
-				</div>
+				{#if statusGroups.length === 0}
+					<div class="flex items-center justify-center h-full">
+						<div class="text-muted-foreground">No open issues found</div>
+					</div>
+				{:else}
+					<WorkGraphStatus 
+						groups={statusGroups}
+						{newIssueIds}
+					/>
+				{/if}
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}
