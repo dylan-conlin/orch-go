@@ -150,7 +150,7 @@ func RunGoBuild(projectDir string) (string, error) {
 }
 
 // RunGoTestCompile compiles all Go code including test files without running tests.
-// Uses 'go test -run=^$' which compiles test binaries but runs no tests
+// Uses 'go test -run=^$' which compiles all code (production and test) but runs no tests
 // (the pattern '^$' matches no test names).
 //
 // This is preferred over RunGoBuild because 'go build' only compiles production
@@ -187,9 +187,9 @@ func RunGoTestCompile(projectDir string) (string, error) {
 // 3. The skill is not an implementation-focused skill, OR
 // 4. The project compiles successfully (both production and test code)
 //
-// IMPORTANT: This uses 'go test -c' instead of 'go build' because 'go build'
+// IMPORTANT: This uses 'go test -run=^$' instead of 'go build' because 'go build'
 // does NOT compile test files (*_test.go). This means function signature changes
-// can break tests without being caught. Using 'go test -c' ensures both
+// can break tests without being caught. Using 'go test -run=^$' ensures both
 // production code AND test code compile correctly.
 func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 	result := BuildVerificationResult{Passed: true}
@@ -220,7 +220,7 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		return result
 	}
 
-	// Run go test -c to compile both production code and test files
+	// Run 'go test -run=^$' to compile both production code and test files
 	// This catches signature mismatches that 'go build' would miss
 	output, err := RunGoTestCompile(projectDir)
 	result.BuildOutput = truncateOutput(output, 500)
@@ -228,7 +228,7 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 	if err != nil {
 		result.Passed = false
 		result.Errors = append(result.Errors,
-			"'go test -c ./...' failed (compilation error in production or test code)",
+			"'go test -run=^$ ./...' failed (compilation error in production or test code)",
 			"Both production and test code must compile before completion",
 		)
 		if output != "" {
