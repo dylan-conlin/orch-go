@@ -25,7 +25,9 @@ export const badgeVariants = tv({
 			attention_crashed: 'border-transparent bg-red-900/50 text-red-400 text-[10px] px-1.5 py-0',
 			// Completed issue verification badges
 			attention_unverified: 'border-transparent bg-yellow-900/50 text-yellow-400 text-[10px] px-1.5 py-0',
-			attention_needs_fix: 'border-transparent bg-red-900/50 text-red-400 text-[10px] px-1.5 py-0'
+			attention_needs_fix: 'border-transparent bg-red-900/50 text-red-400 text-[10px] px-1.5 py-0',
+			// Verification failed during auto-completion
+			attention_verify_failed: 'border-transparent bg-red-900/50 text-red-400 text-[10px] px-1.5 py-0'
 		}
 	},
 	defaultVariants: {

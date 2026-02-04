@@ -622,7 +622,7 @@
 			{@const node = item as TreeNode}
 			<!-- Tree Node - L0: Row -->
 			<div
-				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}"
+				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''}"
 				style="padding-left: {node.depth * 24 + 12}px"
 			>
 					<!-- Expansion indicator -->
@@ -714,7 +714,14 @@
 							</div>
 						{/if}
 
-						{#if node.blocked_by.length === 0 && node.blocks.length === 0}
+						{#if node.absorbed_by}
+							<div class="mb-2">
+								<span class="text-xs font-semibold uppercase text-purple-500">Absorbed by:</span>
+								<span class="text-xs text-muted-foreground ml-1">⊃ {node.absorbed_by}</span>
+							</div>
+						{/if}
+
+						{#if node.blocked_by.length === 0 && node.blocks.length === 0 && !node.absorbed_by}
 							<div class="text-xs text-muted-foreground">No blocking relationships</div>
 						{/if}
 					</div>

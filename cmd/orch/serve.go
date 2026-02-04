@@ -385,6 +385,12 @@ func runServe(portNum int) error {
 	// POST /api/attention/verify - mark issue as verified or needs_fix
 	mux.HandleFunc("/api/attention/verify", corsHandler(handleAttentionVerify))
 
+	// POST /api/attention/verify-failed/clear - Clear a verification failure entry
+	mux.HandleFunc("/api/attention/verify-failed/clear", corsHandler(handleVerifyFailedClear))
+
+	// POST /api/attention/verify-failed/reset-status - Reset issue to open for re-spawn
+	mux.HandleFunc("/api/attention/verify-failed/reset-status", corsHandler(handleVerifyFailedResetStatus))
+
 	// GET /api/kb/artifact/content - returns full content of a specific artifact
 	mux.HandleFunc("/api/kb/artifact/content", corsHandler(handleKBArtifactContent))
 

@@ -195,6 +195,11 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	collectors = append(collectors, epicOrphanCollector)
 	sources = append(sources, "epic-orphan")
 
+	// VerifyFailedCollector - issues where auto-completion verification failed
+	verifyFailedCollector := attention.NewVerifyFailedCollector("", 72) // Default path, 72h lookback
+	collectors = append(collectors, verifyFailedCollector)
+	sources = append(sources, "verify-failed")
+
 	// Collect from all sources
 	allItems := []attention.AttentionItem{}
 	for _, collector := range collectors {
@@ -420,4 +425,135 @@ func persistVerification(entry VerificationEntry) error {
 	}
 
 	return nil
+}
+
+// ============================================================================
+// Verify-Failed Actions API - POST /api/attention/verify-failed/{action}
+// ============================================================================
+
+// VerifyFailedActionRequest is the request body for verify-failed action endpoints.
+type VerifyFailedActionRequest struct {
+	IssueID string `json:"issue_id"`
+	Reason  string `json:"reason,omitempty"` // For skip-gate and reset-status
+	Gate    string `json:"gate,omitempty"`   // For skip-gate: which gate to skip
+}
+
+// VerifyFailedActionResponse is the response for verify-failed action endpoints.
+type VerifyFailedActionResponse struct {
+	IssueID string `json:"issue_id"`
+	Action  string `json:"action"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleVerifyFailedClear handles POST /api/attention/verify-failed/clear requests.
+// It removes a verification failure entry, marking it as resolved.
+func handleVerifyFailedClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req VerifyFailedActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if req.IssueID == "" {
+		http.Error(w, "issue_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Clear the verification failure entry
+	if err := attention.ClearVerifyFailed(req.IssueID); err != nil {
+		resp := VerifyFailedActionResponse{
+			IssueID: req.IssueID,
+			Action:  "clear",
+			Success: false,
+			Error:   err.Error(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := VerifyFailedActionResponse{
+		IssueID: req.IssueID,
+		Action:  "clear",
+		Success: true,
+		Message: fmt.Sprintf("Cleared verification failure for %s", req.IssueID),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleVerifyFailedResetStatus handles POST /api/attention/verify-failed/reset-status requests.
+// It resets the issue status to 'open' for re-spawning with new instructions.
+func handleVerifyFailedResetStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req VerifyFailedActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if req.IssueID == "" {
+		http.Error(w, "issue_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get beads client
+	beadsClientMu.RLock()
+	rpcClient := beadsClient
+	beadsClientMu.RUnlock()
+
+	var client beads.BeadsClient
+	if rpcClient != nil {
+		client = rpcClient
+	} else {
+		client = beads.NewCLIClient()
+	}
+
+	// Reset status to 'open'
+	openStatus := "open"
+	_, err := client.Update(&beads.UpdateArgs{
+		ID:     req.IssueID,
+		Status: &openStatus,
+	})
+	if err != nil {
+		resp := VerifyFailedActionResponse{
+			IssueID: req.IssueID,
+			Action:  "reset-status",
+			Success: false,
+			Error:   err.Error(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Clear the verification failure entry
+	attention.ClearVerifyFailed(req.IssueID)
+
+	// Add a comment explaining the reset
+	reason := req.Reason
+	if reason == "" {
+		reason = "Verification failed, reset for re-spawn"
+	}
+	client.AddComment(req.IssueID, "system", fmt.Sprintf("Status reset to open: %s", reason))
+
+	resp := VerifyFailedActionResponse{
+		IssueID: req.IssueID,
+		Action:  "reset-status",
+		Success: true,
+		Message: fmt.Sprintf("Reset %s to open status", req.IssueID),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

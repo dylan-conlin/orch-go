@@ -43,7 +43,8 @@ export type AttentionBadgeType =
 	| 'recently_closed'  // Recently closed, needs verification
 	| 'unblocked'        // Blocker just closed, now actionable
 	| 'stuck'            // Agent stuck >2h
-	| 'crashed';         // Agent crashed without completing
+	| 'crashed'
+	| 'verify_failed'; // Verification failed during auto-completion
 
 // Tree node with hierarchy and expansion state
 export interface TreeNode extends GraphNode {
@@ -53,6 +54,7 @@ export interface TreeNode extends GraphNode {
 	details_expanded: boolean; // L1 details expanded
 	blocked_by: string[];
 	blocks: string[];
+	absorbed_by?: string;  // ID of the issue that absorbed this one (supersedes)
 	parent_id?: string;
 	// Attention signal (if any)
 	attentionBadge?: AttentionBadgeType;
@@ -197,6 +199,16 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 		}
 	}
 
+	// Build supersedes (absorbed-by) relationships from edges
+	for (const edge of edges) {
+		if (edge.type === 'supersedes') {
+			const absorbedNode = treeNodes.get(edge.from);
+			if (absorbedNode) {
+				// edge.from is absorbed by edge.to
+				absorbedNode.absorbed_by = edge.to;
+			}
+		}
+	}
 	// Apply parent-child edges from API (set via 'bd update --parent')
 	// These override ID-pattern hierarchy when explicit parent-child edges exist
 	for (const edge of edges) {

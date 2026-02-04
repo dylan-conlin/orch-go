@@ -14,7 +14,8 @@ export type AttentionBadgeType =
 	| 'recently_closed' // Recently closed, needs verification
 	| 'unblocked'      // Blocker just closed, now actionable
 	| 'stuck'          // Agent stuck >2h
-	| 'crashed';       // Agent crashed without completing
+	| 'crashed'
+	| 'verify_failed'; // Verification failed during auto-completion
 
 // Verification status for completed issues
 export type VerificationStatus =
@@ -63,6 +64,7 @@ export const ATTENTION_BADGE_CONFIG: Record<AttentionBadgeType | 'unverified' | 
 	crashed: { label: 'CRASHED', variant: 'attention_crashed' },
 	unverified: { label: 'UNVERIFIED', variant: 'attention_unverified' },
 	needs_fix: { label: 'NEEDS FIX', variant: 'attention_needs_fix' },
+	verify_failed: { label: 'VERIFY FAILED', variant: 'attention_verify_failed' },
 };
 
 // ============================================================================
@@ -104,6 +106,8 @@ function mapSignalToBadge(signal: string): AttentionBadgeType | null {
 			return 'verify';
 		case 'recently-closed':
 			return 'recently_closed';
+		case 'verify-failed':
+			return 'verify_failed';
 		case 'issue-ready':
 			// issue-ready doesn't have a direct badge mapping yet
 			// This is for actionable work, not attention needing human review
