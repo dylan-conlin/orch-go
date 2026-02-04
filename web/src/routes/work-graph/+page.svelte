@@ -371,7 +371,7 @@
 					<h1 class="text-2xl font-semibold text-foreground">Work Graph</h1>
 					<p class="text-sm text-muted-foreground mt-1">
 						{#if currentView === 'issues'}
-							Structure view - Navigate with j/k/l/h, expand with l/enter, collapse with h/esc
+							Structure view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x
 						{:else}
 							Artifact view - Navigate with j/k, open with l/enter, Tab to toggle
 						{/if}

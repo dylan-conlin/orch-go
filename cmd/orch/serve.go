@@ -174,6 +174,7 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/beads     - Beads stats")
 	fmt.Println("  GET /api/beads/ready - Ready issues list")
 	fmt.Println("  GET /api/beads/graph - Full dependency graph (nodes + edges)")
+	fmt.Println("  POST /api/beads/close - Close a beads issue")
 	fmt.Println("  GET /api/beads/{id}/attempts - Attempt history for a beads issue")
 	fmt.Println("  GET /api/questions   - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Project servers status")
@@ -319,7 +320,13 @@ func runServe(portNum int) error {
 	mux.HandleFunc("/api/beads/graph", corsHandler(handleBeadsGraph))
 
 	// GET /api/beads/{id}/attempts - returns attempt history for a specific beads issue
+	// POST /api/beads/close - closes a beads issue
 	mux.HandleFunc("/api/beads/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
+		// Route /api/beads/close to handleBeadsClose
+		if r.URL.Path == "/api/beads/close" && r.Method == http.MethodPost {
+			handleBeadsClose(w, r)
+			return
+		}
 		// Route /api/beads/{id}/attempts to handleBeadsAttempts
 		if strings.HasSuffix(r.URL.Path, "/attempts") {
 			handleBeadsAttempts(w, r)
@@ -469,6 +476,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/beads     - Beads stats (ready, blocked, open)")
 	fmt.Println("  GET /api/beads/ready - List of ready issues for queue visibility")
 	fmt.Println("  GET /api/beads/graph - Full dependency graph (nodes + edges)")
+	fmt.Println("  POST /api/beads/close - Close a beads issue")
 	fmt.Println("  GET /api/beads/{id}/attempts - Attempt history for a beads issue")
 	fmt.Println("  GET /api/questions - Questions grouped by status")
 	fmt.Println("  GET /api/servers   - Servers status across projects")

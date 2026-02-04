@@ -3,12 +3,15 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { cn } from '$lib/utils';
 	import type { TreeNode, AttentionBadgeType } from '$lib/stores/work-graph';
+	import { closeIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
 	import { attention, ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
+	import { CloseIssueModal } from '$lib/components/close-issue-modal';
+	import { orchestratorContext } from '$lib/stores/context';
 
 	export let tree: TreeNode[] = [];
 	export let newIssueIds: Set<string> = new Set();
@@ -32,6 +35,9 @@
 	
 	// Track selected issue for side panel
 	let selectedIssueForPanel: TreeNode | null = null;
+	// Track issue for close modal
+	let issueToClose: TreeNode | null = null;
+	let isClosing = false;
 
 	// Flatten tree respecting expansion state
 	function flattenTree(nodes: TreeNode[], result: TreeNode[] = []): TreeNode[] {
@@ -266,9 +272,13 @@
 
 			case 'x':
 				event.preventDefault();
-				// Mark completed issue as needs_fix (only for UNVERIFIED issues)
+				// For completed issues: mark as needs_fix
+				// For regular tree nodes: open close modal
 				if (isCompletedIssue(current) && current.verificationStatus === 'unverified') {
 					attention.markNeedsFix(current.id);
+				} else if (!isWIP && !isCompletedIssue(current)) {
+					// Open close modal for regular tree nodes
+					issueToClose = current as TreeNode;
 				}
 				break;
 
@@ -331,6 +341,28 @@
 	// Open side panel for a node
 	function openSidePanel(node: TreeNode) {
 		selectedIssueForPanel = node;
+	}
+
+	// Handle close modal cancel
+	function handleCloseModalCancel() {
+		issueToClose = null;
+	}
+
+	// Handle close modal confirm
+	async function handleCloseModalConfirm(event: CustomEvent<{ reason: string }>) {
+		if (!issueToClose || isClosing) return;
+
+		isClosing = true;
+		const projectDir = $orchestratorContext?.project_dir;
+		const result = await closeIssue(issueToClose.id, event.detail.reason, projectDir);
+
+		if (!result.success) {
+			console.error('Failed to close issue:', result.error);
+			// TODO: Show error toast
+		}
+
+		issueToClose = null;
+		isClosing = false;
 	}
 </script>
 
@@ -657,6 +689,16 @@
 <!-- Issue Side Panel -->
 {#if selectedIssueForPanel}
 	<IssueSidePanel issue={selectedIssueForPanel} on:close={closeSidePanel} />
+{/if}
+
+<!-- Close Issue Modal -->
+{#if issueToClose}
+	<CloseIssueModal
+		issueId={issueToClose.id}
+		issueTitle={issueToClose.title}
+		on:close={handleCloseModalCancel}
+		on:confirm={handleCloseModalConfirm}
+	/>
 {/if}
 
 <style>

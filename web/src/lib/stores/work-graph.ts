@@ -246,3 +246,61 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
 }
 
 export const workGraph = createWorkGraphStore();
+
+// Close issue request/response types
+interface CloseIssueRequest {
+	id: string;
+	reason?: string;
+	project_dir?: string;
+}
+
+interface CloseIssueResponse {
+	id: string;
+	success: boolean;
+	error?: string;
+}
+
+/**
+ * Close a beads issue via the API.
+ * @param id - The issue ID to close
+ * @param reason - Optional reason for closing
+ * @param projectDir - Optional project directory
+ * @returns Promise with the result
+ */
+export async function closeIssue(
+	id: string,
+	reason?: string,
+	projectDir?: string
+): Promise<{ success: boolean; error?: string }> {
+	try {
+		const request: CloseIssueRequest = {
+			id,
+			reason,
+			project_dir: projectDir,
+		};
+
+		const response = await fetch(`${API_BASE}/api/beads/close`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(request),
+		});
+
+		if (!response.ok) {
+			const text = await response.text();
+			return { success: false, error: `HTTP ${response.status}: ${text}` };
+		}
+
+		const data: CloseIssueResponse = await response.json();
+		
+		if (!data.success) {
+			return { success: false, error: data.error || 'Unknown error' };
+		}
+
+		// Trigger a refresh of the work graph
+		workGraph.fetch(projectDir, 'open').catch(console.error);
+
+		return { success: true };
+	} catch (error) {
+		return { success: false, error: String(error) };
+	}
+}

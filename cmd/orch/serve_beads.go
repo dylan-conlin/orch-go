@@ -1356,3 +1356,78 @@ func findPhaseForAttempt(attemptTimestamp string, comments []beads.Comment) stri
 
 	return latestPhase
 }
+
+// CloseIssueRequest is the JSON request body for POST /api/beads/close.
+type CloseIssueRequest struct {
+	ID        string `json:"id"`
+	Reason    string `json:"reason,omitempty"`
+	ProjectDir string `json:"project_dir,omitempty"`
+}
+
+// CloseIssueResponse is the JSON response for POST /api/beads/close.
+type CloseIssueResponse struct {
+	ID      string `json:"id"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleBeadsClose handles POST /api/beads/close - closes a beads issue.
+// This is used by the work graph to close issues via keyboard shortcut.
+func handleBeadsClose(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req CloseIssueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := CloseIssueResponse{Success: false, Error: fmt.Sprintf("Invalid request body: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Validate ID
+	if req.ID == "" {
+		resp := CloseIssueResponse{Success: false, Error: "Issue ID is required"}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Determine the directory to use
+	workDir := req.ProjectDir
+	if workDir == "" {
+		workDir = beads.DefaultDir
+	}
+
+	// Use CLI client to close the issue
+	cliClient := beads.NewCLIClient(beads.WithWorkDir(workDir))
+	if err := cliClient.CloseIssue(req.ID, req.Reason); err != nil {
+		resp := CloseIssueResponse{
+			ID:      req.ID,
+			Success: false,
+			Error:   fmt.Sprintf("Failed to close issue: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Invalidate cache to reflect the change
+	if globalBeadsStatsCache != nil {
+		globalBeadsStatsCache.invalidate(req.ProjectDir)
+	}
+
+	resp := CloseIssueResponse{
+		ID:      req.ID,
+		Success: true,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
