@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"time"
@@ -225,4 +227,129 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+// ============================================================================
+// Verification API - POST /api/attention/verify
+// ============================================================================
+
+// verificationLogPath is the path to the verification JSONL file.
+// Can be overridden in tests.
+var verificationLogPath = func() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".orch/verifications.jsonl"
+	}
+	return filepath.Join(home, ".orch", "verifications.jsonl")
+}()
+
+// VerificationRequest is the request body for POST /api/attention/verify.
+type VerificationRequest struct {
+	IssueID string `json:"issue_id"`
+	Status  string `json:"status"` // "verified" or "needs_fix"
+}
+
+// VerificationResponse is the response for POST /api/attention/verify.
+type VerificationResponse struct {
+	IssueID    string `json:"issue_id"`
+	Status     string `json:"status"`
+	VerifiedAt string `json:"verified_at"`
+}
+
+// VerificationEntry is the JSONL entry for persisted verifications.
+type VerificationEntry struct {
+	IssueID   string `json:"issue_id"`
+	Status    string `json:"status"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// handleAttentionVerify handles POST /api/attention/verify requests.
+// It marks an issue as verified or needs_fix and persists to JSONL.
+func handleAttentionVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse request body
+	var req VerificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if req.IssueID == "" {
+		http.Error(w, "issue_id is required", http.StatusBadRequest)
+		return
+	}
+	if req.Status == "" {
+		http.Error(w, "status is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate status value
+	validStatuses := map[string]bool{
+		"verified":  true,
+		"needs_fix": true,
+	}
+	if !validStatuses[req.Status] {
+		http.Error(w, "status must be 'verified' or 'needs_fix'", http.StatusBadRequest)
+		return
+	}
+
+	// Create verification entry
+	now := time.Now()
+	entry := VerificationEntry{
+		IssueID:   req.IssueID,
+		Status:    req.Status,
+		Timestamp: now.Unix(),
+	}
+
+	// Persist to JSONL file
+	if err := persistVerification(entry); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to persist verification: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return response
+	response := VerificationResponse{
+		IssueID:    req.IssueID,
+		Status:     req.Status,
+		VerifiedAt: now.Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// persistVerification appends a verification entry to the JSONL file.
+func persistVerification(entry VerificationEntry) error {
+	// Ensure directory exists
+	dir := filepath.Dir(verificationLogPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	// Open file for appending
+	f, err := os.OpenFile(verificationLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer f.Close()
+
+	// Encode and write
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal entry: %w", err)
+	}
+
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("failed to write entry: %w", err)
+	}
+
+	return nil
 }

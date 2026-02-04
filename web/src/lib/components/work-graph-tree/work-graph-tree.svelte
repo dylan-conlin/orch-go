@@ -5,7 +5,7 @@
 	import type { TreeNode, AttentionBadgeType } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
-	import { ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
+	import { attention, ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
@@ -253,6 +253,22 @@
 				// Open side panel for TreeNode (not for WIP items or completed issues)
 				if (!isWIP && !isCompletedIssue(current)) {
 					selectedIssueForPanel = current as TreeNode;
+				}
+				break;
+
+			case 'v':
+				event.preventDefault();
+				// Mark completed issue as verified (only for UNVERIFIED issues)
+				if (isCompletedIssue(current) && current.verificationStatus === 'unverified') {
+					attention.markVerified(current.id);
+				}
+				break;
+
+			case 'x':
+				event.preventDefault();
+				// Mark completed issue as needs_fix (only for UNVERIFIED issues)
+				if (isCompletedIssue(current) && current.verificationStatus === 'unverified') {
+					attention.markNeedsFix(current.id);
 				}
 				break;
 

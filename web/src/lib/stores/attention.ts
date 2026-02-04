@@ -211,28 +211,64 @@ function createAttentionStore() {
 			return signal;
 		},
 
-		// Mark a completed issue as verified
-		markVerified(issueId: string): void {
-			update(s => ({
-				...s,
-				completedIssues: s.completedIssues.map(issue =>
-					issue.id === issueId
-						? { ...issue, verificationStatus: 'verified' as const, attentionBadge: undefined }
-						: issue
-				),
-			}));
+		// Mark a completed issue as verified (calls API and updates local state)
+		async markVerified(issueId: string): Promise<boolean> {
+			try {
+				const response = await fetch(`${API_BASE}/api/attention/verify`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ issue_id: issueId, status: 'verified' }),
+				});
+
+				if (!response.ok) {
+					console.error('Failed to mark verified:', response.statusText);
+					return false;
+				}
+
+				// Update local state
+				update(s => ({
+					...s,
+					completedIssues: s.completedIssues.map(issue =>
+						issue.id === issueId
+							? { ...issue, verificationStatus: 'verified' as const, attentionBadge: undefined }
+							: issue
+					),
+				}));
+				return true;
+			} catch (error) {
+				console.error('Error marking verified:', error);
+				return false;
+			}
 		},
 
-		// Mark a completed issue as needing fix
-		markNeedsFix(issueId: string): void {
-			update(s => ({
-				...s,
-				completedIssues: s.completedIssues.map(issue =>
-					issue.id === issueId
-						? { ...issue, verificationStatus: 'needs_fix' as const, attentionBadge: 'needs_fix' as const }
-						: issue
-				),
-			}));
+		// Mark a completed issue as needing fix (calls API and updates local state)
+		async markNeedsFix(issueId: string): Promise<boolean> {
+			try {
+				const response = await fetch(`${API_BASE}/api/attention/verify`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ issue_id: issueId, status: 'needs_fix' }),
+				});
+
+				if (!response.ok) {
+					console.error('Failed to mark needs_fix:', response.statusText);
+					return false;
+				}
+
+				// Update local state
+				update(s => ({
+					...s,
+					completedIssues: s.completedIssues.map(issue =>
+						issue.id === issueId
+							? { ...issue, verificationStatus: 'needs_fix' as const, attentionBadge: 'needs_fix' as const }
+							: issue
+					),
+				}));
+				return true;
+			} catch (error) {
+				console.error('Error marking needs_fix:', error);
+				return false;
+			}
 		},
 
 		// Clear all state

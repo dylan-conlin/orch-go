@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -197,4 +199,162 @@ func containsMiddle(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// Tests for POST /api/attention/verify endpoint
+
+func TestHandleAttentionVerifyMethodNotAllowed(t *testing.T) {
+	// Test GET method is not allowed
+	req := httptest.NewRequest(http.MethodGet, "/api/attention/verify", nil)
+	w := httptest.NewRecorder()
+
+	handleAttentionVerify(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleAttentionVerifyRequiresIssueID(t *testing.T) {
+	body := `{"status":"verified"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/attention/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handleAttentionVerify(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleAttentionVerifyRequiresStatus(t *testing.T) {
+	body := `{"issue_id":"test-123"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/attention/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handleAttentionVerify(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleAttentionVerifyInvalidStatus(t *testing.T) {
+	body := `{"issue_id":"test-123","status":"invalid"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/attention/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handleAttentionVerify(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleAttentionVerifySuccess(t *testing.T) {
+	// Create a temp directory for the test
+	tmpDir := t.TempDir()
+
+	// Set the verification log path for the test
+	oldPath := verificationLogPath
+	verificationLogPath = tmpDir + "/verifications.jsonl"
+	defer func() { verificationLogPath = oldPath }()
+
+	tests := []struct {
+		name   string
+		status string
+	}{
+		{"verified status", "verified"},
+		{"needs_fix status", "needs_fix"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `{"issue_id":"test-123","status":"` + tt.status + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/api/attention/verify", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handleAttentionVerify(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", resp.StatusCode)
+			}
+
+			// Verify response is JSON
+			contentType := resp.Header.Get("Content-Type")
+			if contentType != "application/json" {
+				t.Errorf("Expected Content-Type application/json, got %s", contentType)
+			}
+
+			// Verify response body
+			var verifyResp VerificationResponse
+			if err := json.NewDecoder(resp.Body).Decode(&verifyResp); err != nil {
+				t.Fatalf("Failed to decode response: %v", err)
+			}
+
+			if verifyResp.IssueID != "test-123" {
+				t.Errorf("Expected issue_id test-123, got %s", verifyResp.IssueID)
+			}
+			if verifyResp.Status != tt.status {
+				t.Errorf("Expected status %s, got %s", tt.status, verifyResp.Status)
+			}
+			if verifyResp.VerifiedAt == "" {
+				t.Error("Expected verified_at to be set")
+			}
+		})
+	}
+}
+
+func TestHandleAttentionVerifyPersistsToJSONL(t *testing.T) {
+	// Create a temp directory for the test
+	tmpDir := t.TempDir()
+
+	// Set the verification log path for the test
+	oldPath := verificationLogPath
+	verificationLogPath = tmpDir + "/verifications.jsonl"
+	defer func() { verificationLogPath = oldPath }()
+
+	// Submit a verification
+	body := `{"issue_id":"test-persist-123","status":"verified"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/attention/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handleAttentionVerify(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Read the JSONL file
+	data, err := os.ReadFile(verificationLogPath)
+	if err != nil {
+		t.Fatalf("Failed to read verification log: %v", err)
+	}
+
+	// Parse the entry
+	var entry VerificationEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		t.Fatalf("Failed to parse verification entry: %v", err)
+	}
+
+	if entry.IssueID != "test-persist-123" {
+		t.Errorf("Expected issue_id test-persist-123, got %s", entry.IssueID)
+	}
+	if entry.Status != "verified" {
+		t.Errorf("Expected status verified, got %s", entry.Status)
+	}
+	if entry.Timestamp == 0 {
+		t.Error("Expected timestamp to be set")
+	}
 }

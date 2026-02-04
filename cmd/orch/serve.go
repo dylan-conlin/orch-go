@@ -82,6 +82,7 @@ Endpoints:
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
   GET /api/attention - Unified attention API (composes beads + git collectors, role-aware)
+  POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
   GET /api/frontier  - Decidability frontier (ready, blocked, active, stuck)
@@ -374,6 +375,9 @@ func runServe(portNum int) error {
 	// GET /api/attention/likely-done - returns issues with commits but no active workspace
 	mux.HandleFunc("/api/attention/likely-done", corsHandler(handleLikelyDone))
 
+	// POST /api/attention/verify - mark issue as verified or needs_fix
+	mux.HandleFunc("/api/attention/verify", corsHandler(handleAttentionVerify))
+
 	// GET /api/kb/artifact/content - returns full content of a specific artifact
 	mux.HandleFunc("/api/kb/artifact/content", corsHandler(handleKBArtifactContent))
 
@@ -473,6 +477,7 @@ func runServe(portNum int) error {
 	fmt.Println("  GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)")
 	fmt.Println("  GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)")
 	fmt.Println("  GET /api/attention - Unified attention API (beads + git collectors, role-aware)")
+	fmt.Println("  POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)")
 	fmt.Println("  GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)")
 	fmt.Println("  GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)")
 	fmt.Println("  GET /api/orchestrator-sessions - Active orchestrator sessions")

@@ -1099,3 +1099,314 @@ test.describe('Parent-Child Edge Support', () => {
 		await expect(edgeBasedChild).toHaveAttribute('data-depth', '1');
 	});
 });
+
+// Verification keyboard shortcuts (orch-go-21213)
+test.describe('Verification Keyboard Shortcuts', () => {
+	test('should mark unverified issue as verified with v key', async ({ page }) => {
+		// Track API calls
+		let verifyApiCalled = false;
+		let verifyRequestBody: any = null;
+
+		// Mock the verify API
+		await page.route('**/api/attention/verify', async (route) => {
+			verifyApiCalled = true;
+			verifyRequestBody = JSON.parse(route.request().postData() || '{}');
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					issue_id: verifyRequestBody.issue_id,
+					status: verifyRequestBody.status,
+					verified_at: new Date().toISOString()
+				})
+			});
+		});
+
+		// Mock the attention API with a recently-closed (unverified) issue
+		await page.route('**/api/attention**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					items: [
+						{
+							id: 'beads-recently-closed-orch-go-test-123',
+							source: 'beads-recently-closed',
+							concern: 'Verification',
+							signal: 'recently-closed',
+							subject: 'orch-go-test-123',
+							summary: 'Closed 2h ago: Test completed issue',
+							priority: 50,
+							role: 'human',
+							collected_at: new Date().toISOString(),
+							metadata: {
+								closed_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+								status: 'closed',
+								issue_type: 'task',
+								beads_priority: 2
+							}
+						}
+					],
+					total: 1,
+					sources: ['beads-recently-closed'],
+					role: 'human',
+					collected_at: new Date().toISOString()
+				})
+			});
+		});
+
+		// Mock other required endpoints
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ nodes: [], edges: [], node_count: 0, edge_count: 0 })
+			});
+		});
+
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ agents: [], count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ running: false, paused: false, queue_length: 0 })
+			});
+		});
+
+		await page.goto('/work-graph');
+
+		// Wait for the tree to render
+		await expect(page.locator('.work-graph-tree')).toBeVisible();
+		await page.waitForTimeout(500);
+
+		// Wait for the unverified issue to appear
+		await expect(page.locator('[data-testid="issue-row-orch-go-test-123"]')).toBeVisible({ timeout: 5000 });
+
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+
+		// Press v to verify the issue
+		await page.keyboard.press('v');
+
+		// Wait for API call
+		await page.waitForTimeout(200);
+
+		// Verify the API was called with correct parameters
+		expect(verifyApiCalled).toBe(true);
+		expect(verifyRequestBody.issue_id).toBe('orch-go-test-123');
+		expect(verifyRequestBody.status).toBe('verified');
+	});
+
+	test('should mark unverified issue as needs_fix with x key', async ({ page }) => {
+		// Track API calls
+		let verifyApiCalled = false;
+		let verifyRequestBody: any = null;
+
+		// Mock the verify API
+		await page.route('**/api/attention/verify', async (route) => {
+			verifyApiCalled = true;
+			verifyRequestBody = JSON.parse(route.request().postData() || '{}');
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					issue_id: verifyRequestBody.issue_id,
+					status: verifyRequestBody.status,
+					verified_at: new Date().toISOString()
+				})
+			});
+		});
+
+		// Mock the attention API with a recently-closed (unverified) issue
+		await page.route('**/api/attention**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					items: [
+						{
+							id: 'beads-recently-closed-orch-go-test-456',
+							source: 'beads-recently-closed',
+							concern: 'Verification',
+							signal: 'recently-closed',
+							subject: 'orch-go-test-456',
+							summary: 'Closed 1h ago: Another test issue',
+							priority: 50,
+							role: 'human',
+							collected_at: new Date().toISOString(),
+							metadata: {
+								closed_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+								status: 'closed',
+								issue_type: 'bug',
+								beads_priority: 1
+							}
+						}
+					],
+					total: 1,
+					sources: ['beads-recently-closed'],
+					role: 'human',
+					collected_at: new Date().toISOString()
+				})
+			});
+		});
+
+		// Mock other required endpoints
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ nodes: [], edges: [], node_count: 0, edge_count: 0 })
+			});
+		});
+
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ agents: [], count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ running: false, paused: false, queue_length: 0 })
+			});
+		});
+
+		await page.goto('/work-graph');
+
+		// Wait for the tree to render
+		await expect(page.locator('.work-graph-tree')).toBeVisible();
+		await page.waitForTimeout(500);
+
+		// Wait for the unverified issue to appear
+		await expect(page.locator('[data-testid="issue-row-orch-go-test-456"]')).toBeVisible({ timeout: 5000 });
+
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+
+		// Press x to mark as needs_fix
+		await page.keyboard.press('x');
+
+		// Wait for API call
+		await page.waitForTimeout(200);
+
+		// Verify the API was called with correct parameters
+		expect(verifyApiCalled).toBe(true);
+		expect(verifyRequestBody.issue_id).toBe('orch-go-test-456');
+		expect(verifyRequestBody.status).toBe('needs_fix');
+	});
+
+	test('should not trigger verification for non-completed issues', async ({ page }) => {
+		// Track API calls
+		let verifyApiCalled = false;
+
+		// Mock the verify API
+		await page.route('**/api/attention/verify', async (route) => {
+			verifyApiCalled = true;
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issue_id: 'test', status: 'verified', verified_at: new Date().toISOString() })
+			});
+		});
+
+		// Mock attention API with no completed issues
+		await page.route('**/api/attention**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ items: [], total: 0, sources: [], role: 'human', collected_at: new Date().toISOString() })
+			});
+		});
+
+		// Mock graph API with regular tree node
+		await page.route('**/api/beads/graph**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					nodes: [
+						{
+							id: 'orch-go-regular-1',
+							title: 'Regular Issue',
+							type: 'task',
+							status: 'open',
+							priority: 2,
+							source: 'beads'
+						}
+					],
+					edges: [],
+					node_count: 1,
+					edge_count: 0
+				})
+			});
+		});
+
+		// Mock other endpoints
+		await page.route('**/api/beads/ready**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ issues: [] })
+			});
+		});
+
+		await page.route('**/api/agents**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ agents: [], count: 0 })
+			});
+		});
+
+		await page.route('**/api/daemon**', async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ running: false, paused: false, queue_length: 0 })
+			});
+		});
+
+		await page.goto('/work-graph');
+
+		// Wait for the tree to render
+		await expect(page.locator('.work-graph-tree')).toBeVisible();
+		await expect(page.locator('[data-testid="issue-row-orch-go-regular-1"]')).toBeVisible({ timeout: 5000 });
+
+		// Ensure container has focus
+		await page.locator('.work-graph-tree').focus();
+
+		// Press v on a regular tree node (should not trigger verify)
+		await page.keyboard.press('v');
+		await page.waitForTimeout(200);
+
+		// Verify the API was NOT called
+		expect(verifyApiCalled).toBe(false);
+	});
+});
