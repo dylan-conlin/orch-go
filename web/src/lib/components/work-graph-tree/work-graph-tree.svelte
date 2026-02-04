@@ -11,6 +11,7 @@
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 	import { CloseIssueModal } from '$lib/components/close-issue-modal';
+	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
 	import { orchestratorContext } from '$lib/stores/context';
 
 	export let tree: TreeNode[] = [];
@@ -111,7 +112,7 @@
 		pinnedTreeIds = pinnedIds;
 
 		// Order: WIP items first, then pending verification, then main tree
-		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
+		flattenedNodes = [...wipItems, ...treeNodes];
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -418,7 +419,7 @@
 		onToggleExpansion(node.id, node.expanded);
 		// Manually rebuild flattened nodes (include WIP items)
 		const treeNodes = flattenTree(tree);
-		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
+		flattenedNodes = [...wipItems, ...treeNodes];
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -470,6 +471,14 @@
 	tabindex="0"
 	onkeydown={handleKeyDown}
 >
+	<!-- Recently Completed Section (collapsed by default) -->
+	<RecentlyCompletedSection
+		completedIssues={pendingVerification}
+		{selectedIndex}
+		onSelectItem={(idx) => { selectedIndex = idx; }}
+		startIndex={wipItems.length}
+	/>
+
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
 		{@const isWIP = isWIPItem(item)}
