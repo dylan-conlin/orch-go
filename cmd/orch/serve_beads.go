@@ -635,6 +635,7 @@ type GraphNode struct {
 	Priority int    `json:"priority"`       // 0-4 for beads, 0 for kb artifacts
 	Source   string `json:"source"`         // "beads" or "kb"
 	Date     string `json:"date,omitempty"` // for kb artifacts
+	Layer    int    `json:"layer"`          // execution layer from topological sort (0 = no blocking deps)
 }
 
 // GraphEdge represents an edge (dependency) in the graph.
@@ -652,6 +653,81 @@ type BeadsGraphAPIResponse struct {
 	EdgeCount  int         `json:"edge_count"`
 	ProjectDir string      `json:"project_dir,omitempty"`
 	Error      string      `json:"error,omitempty"`
+}
+
+// computeLayers assigns execution layers to nodes using topological sort.
+// Layer 0 contains nodes with no blocking dependencies.
+// Layer N contains nodes whose blockers are all in layers 0..N-1.
+// Only "blocks" type edges affect layers (not parent-child or references).
+// Cycles are assigned to layer 0 (matching CLI behavior).
+func computeLayers(nodes []GraphNode, edges []GraphEdge) []GraphNode {
+	if len(nodes) == 0 {
+		return nodes
+	}
+
+	// Build lookup map: id -> index in nodes slice
+	nodeIndex := make(map[string]int)
+	for i, node := range nodes {
+		nodeIndex[node.ID] = i
+		nodes[i].Layer = -1 // Mark as unassigned
+	}
+
+	// Build dependency map (only "blocks" dependencies)
+	// dependsOn[id] = list of IDs that this node depends on (is blocked by)
+	dependsOn := make(map[string][]string)
+	for _, edge := range edges {
+		if edge.Type == "blocks" {
+			// edge.From is blocked by edge.To
+			// So edge.From depends on edge.To completing first
+			dependsOn[edge.From] = append(dependsOn[edge.From], edge.To)
+		}
+	}
+
+	// Assign layers using longest path from sources
+	// Layer 0 = nodes with no dependencies
+	changed := true
+	for changed {
+		changed = false
+		for id, idx := range nodeIndex {
+			if nodes[idx].Layer >= 0 {
+				continue // Already assigned
+			}
+
+			deps := dependsOn[id]
+			if len(deps) == 0 {
+				// No dependencies - layer 0
+				nodes[idx].Layer = 0
+				changed = true
+			} else {
+				// Check if all dependencies have layers assigned
+				maxDepLayer := -1
+				allAssigned := true
+				for _, depID := range deps {
+					depIdx, exists := nodeIndex[depID]
+					if !exists || nodes[depIdx].Layer < 0 {
+						allAssigned = false
+						break
+					}
+					if nodes[depIdx].Layer > maxDepLayer {
+						maxDepLayer = nodes[depIdx].Layer
+					}
+				}
+				if allAssigned {
+					nodes[idx].Layer = maxDepLayer + 1
+					changed = true
+				}
+			}
+		}
+	}
+
+	// Handle any unassigned nodes (cycles or dependencies not in graph)
+	for i := range nodes {
+		if nodes[i].Layer < 0 {
+			nodes[i].Layer = 0
+		}
+	}
+
+	return nodes
 }
 
 // beadsIssue is the parsed structure from bd list --json
@@ -736,6 +812,9 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+
+	// Compute execution layers for all nodes
+	nodes = computeLayers(nodes, edges)
 	resp := BeadsGraphAPIResponse{
 		Nodes:      nodes,
 		Edges:      edges,
@@ -806,21 +885,33 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 		// Add blockers (dependencies) to focus set
 		for _, dep := range showIssue.Dependencies {
 			focusSet[dep.ID] = true
-			edges = append(edges, GraphEdge{
-				From: id,
-				To:   dep.ID,
-				Type: dep.DependencyType,
-			})
 		}
 
 		// Add immediate dependents (things waiting on this)
 		for _, dep := range showIssue.Dependents {
 			focusSet[dep.ID] = true
-			edges = append(edges, GraphEdge{
-				From: dep.ID,
-				To:   id,
-				Type: dep.DependencyType,
-			})
+		}
+
+		// Build edges with proper types from bd dep list
+		deps, depErr := listIssueDependencies(workDir, id)
+		if depErr == nil {
+			for _, dep := range deps {
+				edges = append(edges, GraphEdge{
+					From: id,
+					To:   dep.ID,
+					Type: dep.DependencyType,
+				})
+			}
+		}
+		dependents, depErr := listIssueDependents(workDir, id)
+		if depErr == nil {
+			for _, dep := range dependents {
+				edges = append(edges, GraphEdge{
+					From: dep.ID,
+					To:   id,
+					Type: dep.DependencyType,
+				})
+			}
 		}
 	}
 
@@ -916,14 +1007,14 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 		}
 	}
 
-	// Fetch dependencies
+	// Fetch dependencies with proper types
 	edges := make([]GraphEdge, 0)
 	for _, id := range idsWithDeps {
-		showIssue, err := showBeadsIssue(workDir, id)
+		deps, err := listIssueDependencies(workDir, id)
 		if err != nil {
 			continue
 		}
-		for _, dep := range showIssue.Dependencies {
+		for _, dep := range deps {
 			edges = append(edges, GraphEdge{
 				From: id,
 				To:   dep.ID,
@@ -991,6 +1082,61 @@ func getBdPath() string {
 		return beads.BdPath
 	}
 	return "bd"
+}
+
+// listIssueDependencies returns dependencies for an issue with proper types using bd dep list.
+// This is more reliable than extracting from bd show which may not populate dependency_type.
+func listIssueDependencies(workDir, id string) ([]struct {
+	ID             string `json:"id"`
+	DependencyType string `json:"dependency_type"`
+}, error) {
+	cmd := exec.Command(getBdPath(), "dep", "list", id, "--json")
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bd dep list %s failed: %w", id, err)
+	}
+
+	var deps []struct {
+		ID             string `json:"id"`
+		DependencyType string `json:"dependency_type"`
+	}
+	if err := json.Unmarshal(output, &deps); err != nil {
+		return nil, fmt.Errorf("parse dep list output: %w", err)
+	}
+
+	return deps, nil
+}
+
+// listIssueDependents returns dependents for an issue with proper types using bd dep list --direction up.
+func listIssueDependents(workDir, id string) ([]struct {
+	ID             string `json:"id"`
+	DependencyType string `json:"dependency_type"`
+}, error) {
+	cmd := exec.Command(getBdPath(), "dep", "list", id, "--direction", "up", "--json")
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bd dep list --direction up %s failed: %w", id, err)
+	}
+
+	var deps []struct {
+		ID             string `json:"id"`
+		DependencyType string `json:"dependency_type"`
+	}
+	if err := json.Unmarshal(output, &deps); err != nil {
+		return nil, fmt.Errorf("parse dep list dependents output: %w", err)
+	}
+
+	return deps, nil
 }
 
 // AttemptHistoryEntry represents a single attempt for an issue.
