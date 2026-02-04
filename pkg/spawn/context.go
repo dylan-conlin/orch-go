@@ -782,6 +782,19 @@ go test ./...
 
 ---
 
+## Issues Created
+
+**Discovered work tracked during this session:**
+
+- ` + "`orch-go-XXXXX`" + ` - Brief description of bug/task/feature/question
+- ` + "`orch-go-YYYYY`" + ` - Brief description
+
+*(If no discovered work: "No discovered work during this session")*
+
+**Note:** Every session should either create issues for discovered work OR explicitly note that none was found. Bugs, tech debt, enhancement ideas, and strategic questions should all be tracked.
+
+---
+
 ## Next (What Should Happen)
 
 **Recommendation:** {close | spawn-follow-up | escalate | resume}
