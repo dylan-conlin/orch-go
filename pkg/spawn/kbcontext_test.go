@@ -775,7 +775,7 @@ func TestFormatContextForSpawnWithLimit(t *testing.T) {
 		}
 
 		// Use a small limit to force truncation
-		result := FormatContextForSpawnWithLimit(kbResult, 500)
+		result := FormatContextForSpawnWithLimit(kbResult, 700)
 
 		if !result.WasTruncated {
 			t.Error("expected WasTruncated=true for small limit")

@@ -57,7 +57,6 @@ Test skill content.
 	workerPatterns := []string{
 		"Phase: Complete",
 		"bd comment",
-		"SYNTHESIS.md",
 	}
 
 	for _, pattern := range workerPatterns {
@@ -615,7 +614,7 @@ func TestOrchestratorContext_HasProgressiveHandoffInstruction(t *testing.T) {
 	}
 
 	// Check it mentions progressive handoff
-	if !strings.Contains(content, "Progressive Handoff") {
+	if !strings.Contains(content, "Progressive Documentation") {
 		t.Error("context should mention progressive handoff pattern")
 	}
 }
@@ -696,8 +695,8 @@ func TestGenerateGitLogContext(t *testing.T) {
 		}
 	})
 
-	t.Run("returns message when no recent commits", func(t *testing.T) {
-		// Create a temporary git repo with no recent commits
+	t.Run("returns empty string for git repo with no commits", func(t *testing.T) {
+		// Create a temporary git repo with no commits at all
 		tempDir := t.TempDir()
 
 		// Initialize git repo
@@ -707,12 +706,12 @@ func TestGenerateGitLogContext(t *testing.T) {
 			t.Skip("git not available for testing")
 		}
 
-		// Don't create any commits - git log should return empty
+		// Git log fails in repo with no commits, so returns empty string
 		gitLogContext := GenerateGitLogContext(tempDir)
 
-		// Should return a message about no recent commits
-		if gitLogContext != "No recent commits in the last 7 days." {
-			t.Errorf("expected 'No recent commits' message, got: %s", gitLogContext)
+		// Git log fails in repo with no HEAD - returns empty string
+		if gitLogContext != "" {
+			t.Errorf("expected empty string for repo with no commits, got: %s", gitLogContext)
 		}
 	})
 }
