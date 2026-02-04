@@ -87,7 +87,7 @@ function createWorkGraphStore() {
 		// Fetch work graph from orch-go API
 		// projectDir: Optional project directory to query (for following orchestrator context)
 		// scope: "focus" (default) or "open" (all open issues)
-		async fetch(projectDir?: string, scope: string = 'open'): Promise<void> {
+		async fetch(projectDir?: string, scope: string = 'open', parent?: string): Promise<void> {
 			// Cancel any pending request before starting new one
 			if (currentAbortController) {
 				currentAbortController.abort();
@@ -106,6 +106,9 @@ function createWorkGraphStore() {
 					params.set('project_dir', projectDir);
 				}
 				params.set('scope', scope);
+				if (parent) {
+					params.set('parent', parent);
+				}
 				const url = `${API_BASE}/api/beads/graph${params.toString() ? '?' + params.toString() : ''}`;
 				const response = await fetch(url, { signal: abortController.signal });
 				

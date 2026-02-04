@@ -13,6 +13,7 @@
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon } from '$lib/stores/daemon';
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
+	import { focus, type FocusInfo } from '$lib/stores/focus';
 	
 	// Derived store for project_dir to isolate reactivity
 	// Only triggers reactive blocks when project_dir changes, not other context fields
@@ -66,6 +67,7 @@
 	// Set to true after onMount initializes previousIssueIds
 	let isNewIssueDetectionEnabled = false;
 	let completedIssues: CompletedIssue[] = [];
+	let focusedBeadsId: string | undefined = undefined; // Current focus beads ID for auto-scoping
 	
 	// Track expansion state separately to preserve across tree rebuilds
 	let expansionState = new Map<string, boolean>();
@@ -85,8 +87,13 @@
 		const projectDir = $orchestratorContext?.project_dir;
 		currentProjectDir = projectDir;
 		
+		// Fetch focus first to get the beads_id for auto-scoping
+		await focus.fetch();
+		const focusBeadsId = $focus?.beads_id;
+		focusedBeadsId = focusBeadsId;
+		
 		await Promise.all([
-			workGraph.fetch(projectDir, 'open'),
+			workGraph.fetch(projectDir, 'open', focusBeadsId),
 			agents.fetch(),
 			attention.fetch() // Fetch attention signals and completed issues
 		]);
@@ -122,7 +129,7 @@
 		// Poll workGraph periodically (5 seconds for faster updates)
 		refreshInterval = setInterval(() => {
 			const projectDir = $orchestratorContext?.project_dir;
-			workGraph.fetch(projectDir, 'open').catch(console.error);
+			workGraph.fetch(projectDir, 'open', focusedBeadsId).catch(console.error);
 			wip.fetchQueued(projectDir).catch(console.error);
 			daemon.fetch().catch(console.error);
 			// Also poll kbArtifacts if in artifacts view
@@ -131,6 +138,13 @@
 			}
 		}, 5000);
 	});
+
+	// Subscribe to focus changes and update focusedBeadsId for auto-scoping
+	$: if ($focus?.beads_id) {
+		focusedBeadsId = $focus.beads_id;
+	} else {
+		focusedBeadsId = undefined;
+	}
 
 	// Sync running agents from agents store to WIP store
 	$: wip.setRunningAgents($agents);
@@ -314,7 +328,7 @@
 				// 300ms prevents rapid flip-flopping while still feeling responsive
 				projectChangeDebounceTimeout = setTimeout(() => {
 					projectChangeDebounceTimeout = null;
-					workGraph.fetch(newProjectDir, 'open').catch(console.error);
+					workGraph.fetch(newProjectDir, 'open', focusedBeadsId).catch(console.error);
 					// Also re-fetch kbArtifacts if we're in artifacts view
 					if (currentView === 'artifacts' && $kbArtifacts) {
 						kbArtifacts.fetch(newProjectDir, '7d').catch(console.error);
@@ -351,6 +365,32 @@
 	}
 
 	// Keyboard navigation for Tab to toggle views
+	// Handle clear focus button click
+	async function handleClearFocus() {
+		const result = await focus.clearFocus();
+		if (result.success) {
+			// Refresh the work graph without focus filter
+			focusedBeadsId = undefined;
+			const projectDir = $orchestratorContext?.project_dir;
+			workGraph.fetch(projectDir, 'open').catch(console.error);
+		} else {
+			console.error('Failed to clear focus:', result.error);
+		}
+	}
+
+	// Handle setting focus on an epic
+	async function handleSetFocus(beadsId: string, title: string) {
+		const result = await focus.setFocus(title, beadsId);
+		if (result.success) {
+			// Update local state and refresh graph with new focus
+			focusedBeadsId = beadsId;
+			const projectDir = $orchestratorContext?.project_dir;
+			workGraph.fetch(projectDir, 'open', beadsId).catch(console.error);
+		} else {
+			console.error('Failed to set focus:', result.error);
+		}
+	}
+
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Tab' && !event.shiftKey) {
 			event.preventDefault();
@@ -441,6 +481,30 @@
 		</div>
 	</div>
 
+	<!-- Focus Breadcrumb -->
+	{#if $focus?.has_focus && $focus?.beads_id}
+		<div class="bg-blue-500/10 border-b border-blue-500/20 px-4 py-2 flex items-center justify-between">
+			<div class="flex items-center gap-2">
+				<span class="text-blue-500">🎯</span>
+				<span class="text-sm text-blue-600 dark:text-blue-400 font-medium">
+					Focus: {$focus.beads_id}
+				</span>
+				{#if $focus.goal}
+					<span class="text-sm text-blue-500/80">
+						{$focus.goal}
+					</span>
+				{/if}
+			</div>
+			<button
+				type="button"
+				onclick={handleClearFocus}
+				class="text-xs text-blue-500 hover:text-blue-600 hover:underline"
+			>
+				Clear Focus
+			</button>
+		</div>
+	{/if}
+
 	<!-- Content -->
 	<div class="flex-1 overflow-hidden">
 		{#if currentView === 'issues'}
@@ -464,6 +528,7 @@
 						wipItems={$wipItems} 
 						{completedIssues}
 						onToggleExpansion={handleToggleExpansion}
+							onSetFocus={handleSetFocus}
 					/>
 				{/if}
 			{:else if issueViewMode === 'phase'}

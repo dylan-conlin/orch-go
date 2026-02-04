@@ -16,6 +16,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/account"
 	"github.com/dylan-conlin/orch-go/pkg/cost"
 	"github.com/dylan-conlin/orch-go/pkg/daemon"
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/focus"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/port"
@@ -146,13 +147,37 @@ type FocusAPIResponse struct {
 	HasFocus   bool   `json:"has_focus"`
 }
 
-// handleFocus returns current focus and drift status.
-func handleFocus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// SetFocusRequest is the JSON request body for POST /api/focus.
+type SetFocusRequest struct {
+	Goal    string `json:"goal"`
+	BeadsID string `json:"beads_id,omitempty"`
+}
 
+// SetFocusResponse is the JSON response for POST /api/focus.
+type SetFocusResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleFocus handles GET, POST, and DELETE for /api/focus.
+// GET: returns current focus and drift status
+// POST: sets a new focus
+// DELETE: clears the current focus
+func handleFocus(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handleFocusGet(w, r)
+	case http.MethodPost:
+		handleFocusSet(w, r)
+	case http.MethodDelete:
+		handleFocusClear(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleFocusGet returns current focus and drift status.
+func handleFocusGet(w http.ResponseWriter, r *http.Request) {
 	store, err := focus.New("")
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to load focus: %v", err), http.StatusInternalServerError)
@@ -188,6 +213,89 @@ func handleFocus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode focus: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// handleFocusSet sets a new focus.
+func handleFocusSet(w http.ResponseWriter, r *http.Request) {
+	var req SetFocusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Invalid request body: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Validate: either goal or beads_id must be provided
+	if req.Goal == "" && req.BeadsID == "" {
+		resp := SetFocusResponse{Success: false, Error: "Either goal or beads_id must be provided"}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	store, err := focus.New("")
+	if err != nil {
+		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Failed to load focus store: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// If only beads_id provided, try to get the title for the goal
+	goal := req.Goal
+	if goal == "" && req.BeadsID != "" {
+		// Fetch issue title from beads
+		cliClient := beads.NewCLIClient()
+		if issue, err := cliClient.Show(req.BeadsID); err == nil && issue != nil {
+			goal = issue.Title
+		} else {
+			goal = req.BeadsID // Fall back to using the ID as the goal
+		}
+	}
+
+	f := &focus.Focus{
+		Goal:    goal,
+		BeadsID: req.BeadsID,
+	}
+
+	if err := store.Set(f); err != nil {
+		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Failed to set focus: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := SetFocusResponse{Success: true}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleFocusClear clears the current focus.
+func handleFocusClear(w http.ResponseWriter, r *http.Request) {
+	store, err := focus.New("")
+	if err != nil {
+		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Failed to load focus store: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	if err := store.Clear(); err != nil {
+		resp := SetFocusResponse{Success: false, Error: fmt.Sprintf("Failed to clear focus: %v", err)}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := SetFocusResponse{Success: true}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // ServerPortInfo represents a port allocation for a server.

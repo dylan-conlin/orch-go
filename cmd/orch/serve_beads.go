@@ -778,6 +778,7 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	// Get query params
 	projectDir := r.URL.Query().Get("project_dir")
 	scope := r.URL.Query().Get("scope")
+	parentID := r.URL.Query().Get("parent")
 	if scope == "" {
 		scope = "focus" // Default to focus view - the useful working set
 	}
@@ -813,6 +814,11 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 
+	// Filter to parent and descendants if parent ID specified
+	if parentID != "" {
+		nodes, edges = filterToParentAndDescendants(nodes, edges, parentID)
+	}
+
 	// Compute execution layers for all nodes
 	nodes = computeLayers(nodes, edges)
 	resp := BeadsGraphAPIResponse{
@@ -828,6 +834,41 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode graph: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+
+// filterToParentAndDescendants filters nodes and edges to only include
+// the specified parent issue and all its descendants (children, grandchildren, etc.)
+// Uses the beads ID hierarchy pattern: orch-go-123 is parent of orch-go-123.1, etc.
+func filterToParentAndDescendants(nodes []GraphNode, edges []GraphEdge, parentID string) ([]GraphNode, []GraphEdge) {
+	// Build a set of IDs that match: the parent itself and any ID that starts with parent + "."
+	isDescendant := func(id string) bool {
+		if id == parentID {
+			return true
+		}
+		// Check if id is a child (starts with parentID + ".")
+		return strings.HasPrefix(id, parentID+".")
+	}
+
+	// Filter nodes
+	filteredNodes := make([]GraphNode, 0)
+	nodeIDs := make(map[string]bool)
+	for _, node := range nodes {
+		if isDescendant(node.ID) {
+			filteredNodes = append(filteredNodes, node)
+			nodeIDs[node.ID] = true
+		}
+	}
+
+	// Filter edges to only include those where both endpoints are in the filtered set
+	filteredEdges := make([]GraphEdge, 0)
+	for _, edge := range edges {
+		if nodeIDs[edge.From] && nodeIDs[edge.To] {
+			filteredEdges = append(filteredEdges, edge)
+		}
+	}
+
+	return filteredNodes, filteredEdges
 }
 
 // buildFocusGraph builds a focused graph showing the active working set:

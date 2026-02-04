@@ -18,6 +18,7 @@
 	export let wipItems: WIPItem[] = [];
 	export let completedIssues: CompletedIssue[] = [];
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
+	export let onSetFocus: (beadsId: string, title: string) => void = () => {};
 
 	// Get attention badge config for a badge type
 	function getAttentionBadge(badge: AttentionBadgeType | 'unverified' | 'needs_fix' | undefined) {
@@ -736,6 +737,18 @@
 					<Badge data-testid="type-badge" variant="outline" class="{getTypeBadge(node.type)} text-xs shrink-0">
 						{node.type}
 					</Badge>
+
+						<!-- Set as Focus button for epics -->
+						{#if node.type === 'epic'}
+							<button
+								type="button"
+								class="text-xs text-blue-500 hover:text-blue-600 hover:underline px-1"
+								onclick={() => onSetFocus(node.id, node.title)}
+								title="Set this epic as your current focus"
+							>
+								Set Focus
+							</button>
+						{/if}
 
 					<!-- Age (placeholder) -->
 					{#if getAge(node.id)}
