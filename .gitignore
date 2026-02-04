@@ -31,3 +31,7 @@ tmp/
 .dev-mode
 .orch/workspace/
 .orch/investigations/
+
+# Playwright outputs (generated)
+web/playwright-report/
+web/test-results/
