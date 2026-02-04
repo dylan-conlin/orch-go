@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"path/filepath"
 	"testing"
 )
@@ -398,4 +399,86 @@ This is a test decision.
 	}
 
 	t.Logf("Decision gate correctly blocked spawn when check failed: %v", err)
+}
+
+func TestCheckActiveAgentForBeadsID(t *testing.T) {
+	tests := []struct {
+		name     string
+		beadsID  string
+		wantNil  bool
+		wantErr  bool
+	}{
+		{
+			name:    "empty beads ID returns nil",
+			beadsID: "",
+			wantNil: true,
+			wantErr: false,
+		},
+		{
+			name:    "server not running returns nil (graceful failure)",
+			beadsID: "orch-go-fake-id",
+			wantNil: true, // Should return nil when server is not reachable
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent, err := checkActiveAgentForBeadsID(tt.beadsID)
+			
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if tt.wantNil && agent != nil {
+				t.Errorf("expected nil agent, got %+v", agent)
+			}
+		})
+	}
+}
+
+func TestFormatActiveAgentError(t *testing.T) {
+	tests := []struct {
+		name     string
+		beadsID  string
+		agent    *ActiveAgentInfo
+		contains []string
+	}{
+		{
+			name:    "active agent",
+			beadsID: "orch-go-123",
+			agent: &ActiveAgentInfo{
+				ID:        "og-feat-task-123",
+				SessionID: "session-abc",
+				Status:    "active",
+				Phase:     "Implementing",
+			},
+			contains: []string{"orch-go-123", "og-feat-task-123", "actively running", "Phase: Implementing", "--force"},
+		},
+		{
+			name:    "dead agent",
+			beadsID: "orch-go-456",
+			agent: &ActiveAgentInfo{
+				ID:        "og-debug-task-456",
+				SessionID: "session-def",
+				Status:    "dead",
+			},
+			contains: []string{"orch-go-456", "og-debug-task-456", "dead (needs attention"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := formatActiveAgentError(tt.beadsID, tt.agent)
+			errMsg := err.Error()
+			
+			for _, substr := range tt.contains {
+				if !strings.Contains(errMsg, substr) {
+					t.Errorf("error message should contain %q, got: %s", substr, errMsg)
+				}
+			}
+		})
+	}
 }

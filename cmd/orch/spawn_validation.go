@@ -2,7 +2,9 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
+	"net/http"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -674,4 +676,108 @@ func logDecisionOverride(task, decisionID, matchedOn, skillName, beadsID string)
 		fmt.Fprintf(os.Stderr, "Warning: failed to write decision override log: %v\n", err)
 		return
 	}
+}
+
+// ActiveAgentInfo contains information about an active agent for a beads issue.
+type ActiveAgentInfo struct {
+	ID        string // Agent/workspace name
+	SessionID string // OpenCode session ID if available
+	Status    string // Agent status (active, idle, dead, etc.)
+	Phase     string // Current phase (Planning, Implementing, etc.)
+	SpawnedAt string // ISO 8601 timestamp of when agent was spawned
+}
+
+// checkActiveAgentForBeadsID checks if there's already an active agent for the given beads ID.
+// This prevents duplicate spawns when manual spawn and daemon spawn race.
+//
+// Returns an ActiveAgentInfo if an active agent exists, nil otherwise.
+// An error is returned if the check itself fails (e.g., server not reachable).
+func checkActiveAgentForBeadsID(beadsID string) (*ActiveAgentInfo, error) {
+	if beadsID == "" {
+		return nil, nil
+	}
+
+	// Query the orch serve /api/agents endpoint
+	// Use the default orch serve port (3348)
+	orchServeURL := fmt.Sprintf("https://127.0.0.1:%d/api/agents?since=24h", DefaultServePort)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Get(orchServeURL)
+	if err != nil {
+		// Server not running - this is OK, just means no agents to check
+		// Return nil to allow spawn to proceed
+		return nil, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Server returned an error - this is unusual but not blocking
+		return nil, nil
+	}
+
+	// Parse the response
+	var agents []struct {
+		ID        string `json:"id"`
+		SessionID string `json:"session_id"`
+		BeadsID   string `json:"beads_id"`
+		Status    string `json:"status"`
+		Phase     string `json:"phase"`
+		SpawnedAt string `json:"spawned_at"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
+		// Failed to parse - not blocking
+		return nil, nil
+	}
+
+	// Look for an active agent with this beads ID
+	// "Active" means status is one of: active, idle, dead (needs attention)
+	// "Completed" or "awaiting-cleanup" means the agent is done
+	for _, agent := range agents {
+		if agent.BeadsID == beadsID {
+			// Skip completed agents - they're done and don't block new spawns
+			if agent.Status == "completed" || agent.Status == "awaiting-cleanup" {
+				continue
+			}
+
+			// Found an active/idle/dead agent - this blocks spawn
+			return &ActiveAgentInfo{
+				ID:        agent.ID,
+				SessionID: agent.SessionID,
+				Status:    agent.Status,
+				Phase:     agent.Phase,
+				SpawnedAt: agent.SpawnedAt,
+			}, nil
+		}
+	}
+
+	return nil, nil
+}
+
+// formatActiveAgentError formats an error message when an active agent already exists.
+func formatActiveAgentError(beadsID string, agent *ActiveAgentInfo) error {
+	var statusMsg string
+	switch agent.Status {
+	case "active":
+		statusMsg = "actively running"
+	case "idle":
+		statusMsg = "idle (may still be processing)"
+	case "dead":
+		statusMsg = "dead (needs attention - may have crashed)"
+	default:
+		statusMsg = agent.Status
+	}
+
+	phaseInfo := ""
+	if agent.Phase != "" {
+		phaseInfo = fmt.Sprintf(" (Phase: %s)", agent.Phase)
+	}
+
+	return fmt.Errorf("agent already exists for issue %s\n\n  Agent:   %s\n  Status:  %s%s\n  Session: %s\n\nTo force spawn anyway (not recommended - may cause duplicate work):\n  orch spawn --force [other flags] <skill> <task>\n\nTo interact with the existing agent:\n  orch send %s \"your message\"\n\nTo abandon the existing agent and restart:\n  orch abandon %s\n", beadsID, agent.ID, statusMsg, phaseInfo, agent.SessionID, agent.SessionID, beadsID)
 }

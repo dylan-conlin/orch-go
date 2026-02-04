@@ -465,6 +465,18 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		fmt.Println("Skipping beads tracking (--no-track)")
 	}
 
+
+	// DUPLICATE AGENT CHECK: Prevent race condition between manual and daemon spawns
+	// Query /api/agents to check if an agent already exists for this beads ID.
+	// This catches cases where the daemon has started spawning but the agent
+	// isn't yet registered in OpenCode sessions (race window of a few seconds).
+	// See: orch-go-21182 evidence of duplicate spawns for same issue.
+	if !spawnNoTrack && !skipBeadsForOrchestrator && beadsID != "" && !spawnForce {
+		if activeAgent, err := checkActiveAgentForBeadsID(beadsID); err == nil && activeAgent != nil {
+			return formatActiveAgentError(beadsID, activeAgent)
+		}
+	}
+
 	// Check for retry patterns on existing issues - surface to prevent blind respawning
 	// Skip for orchestrators since they don't use beads tracking
 	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {
