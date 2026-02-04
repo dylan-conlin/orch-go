@@ -39,8 +39,8 @@ async function setupAPIMocks(page: Page) {
 			status: 200,
 			contentType: 'application/json',
 			body: JSON.stringify({
-				signals: [],
-				completedIssues: []
+				items: [],
+				total: 0, sources: [], role: "human", collected_at: "2026-01-01T00:00:00Z"
 			})
 		});
 	});
@@ -48,7 +48,6 @@ async function setupAPIMocks(page: Page) {
 
 test.describe('Bug: Expansion state resets on tree rebuild (orch-go-21194)', () => {
 	test('should preserve expansion state across poll/rebuild', async ({ page }) => {
-		await setupAPIMocks(page);
 
 		// Initial graph with parent and children
 		const graphData = {
@@ -100,9 +99,13 @@ test.describe('Bug: Expansion state resets on tree rebuild (orch-go-21194)', () 
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).toBeVisible();
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).toBeVisible();
 
+		// Click on parent to select it
+		await page.locator('[data-testid="issue-row-orch-go-1"]').click();
+		await page.waitForTimeout(100);
+		
 		// Ensure container has focus
 		await page.locator('.work-graph-tree').focus();
-
+		
 		// Collapse the parent with h key
 		await page.keyboard.press('h');
 
@@ -127,7 +130,6 @@ test.describe('Bug: Expansion state resets on tree rebuild (orch-go-21194)', () 
 
 test.describe('Bug: Blue highlight on epic children when expanded (orch-go-21195)', () => {
 	test('should not highlight children when expanding parent (they are not new)', async ({ page }) => {
-		await setupAPIMocks(page);
 
 		// Initial graph with parent and children
 		const graphData = {
@@ -179,9 +181,13 @@ test.describe('Bug: Blue highlight on epic children when expanded (orch-go-21195
 		// For testing, we'll just wait a bit and check that no highlight appears when expanding
 		await page.waitForTimeout(1000);
 
+		// Click on parent to select it
+		await page.locator('[data-testid="issue-row-orch-go-1"]').click();
+		await page.waitForTimeout(100);
+		
 		// Ensure container has focus
 		await page.locator('.work-graph-tree').focus();
-
+		
 		// Collapse the parent with h key
 		await page.keyboard.press('h');
 		await page.waitForTimeout(300);
@@ -213,7 +219,6 @@ test.describe('Bug: Blue highlight on epic children when expanded (orch-go-21195
 	});
 
 	test('should highlight truly new issues from API, not children from expansion', async ({ page }) => {
-		await setupAPIMocks(page);
 
 		// Initial graph with one issue
 		let graphData = {

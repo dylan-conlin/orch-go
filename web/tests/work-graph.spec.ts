@@ -414,6 +414,10 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.1"]')).toBeVisible();
 		await expect(page.locator('[data-testid="issue-row-orch-go-1.2"]')).toBeVisible();
 		
+		// Click on parent epic to select it
+		await page.locator('[data-testid="issue-row-orch-go-1"]').click();
+		await page.waitForTimeout(100);
+		
 		// Ensure container has focus before pressing h
 		await page.locator('.work-graph-tree').focus();
 		
@@ -429,6 +433,10 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		
 		// Parent should still be visible
 		await expect(page.getByText('Parent Epic')).toBeVisible();
+		
+		// Click on parent to ensure it's selected
+		await page.locator('[data-testid="issue-row-orch-go-1"]').click();
+		await page.waitForTimeout(100);
 		
 		// Ensure focus is still on container
 		await page.locator('.work-graph-tree').focus();
