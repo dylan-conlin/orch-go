@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
 // TestFormatDuration tests the formatDuration function.
@@ -168,6 +169,107 @@ func TestGetAgentStatus(t *testing.T) {
 				t.Errorf("getAgentStatus() = %q, want %q", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestComputeIsPhantom(t *testing.T) {
+	tests := []struct {
+		name        string
+		agent       AgentInfo
+		issue       *verify.Issue
+		issueExists bool
+		expected    bool
+	}{
+		{
+			name:        "open issue and no runtime => phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-abcd"},
+			issue:       &verify.Issue{ID: "orch-go-abcd", Status: "open"},
+			issueExists: true,
+			expected:    true,
+		},
+		{
+			name:        "runtime session => not phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-abcd", SessionID: "ses_123"},
+			issue:       &verify.Issue{ID: "orch-go-abcd", Status: "open"},
+			issueExists: true,
+			expected:    false,
+		},
+		{
+			name:        "runtime tmux window => not phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-abcd", Window: "workers:1"},
+			issue:       &verify.Issue{ID: "orch-go-abcd", Status: "open"},
+			issueExists: true,
+			expected:    false,
+		},
+		{
+			name:        "closed issue => not phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-abcd"},
+			issue:       &verify.Issue{ID: "orch-go-abcd", Status: "closed"},
+			issueExists: true,
+			expected:    false,
+		},
+		{
+			name:        "missing issue => not phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-abcd"},
+			issue:       nil,
+			issueExists: false,
+			expected:    false,
+		},
+		{
+			name:        "no-track beads id => not phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-untracked-1768090360"},
+			issue:       nil,
+			issueExists: false,
+			expected:    false,
+		},
+		{
+			name:        "explicit IsUntracked => not phantom",
+			agent:       AgentInfo{BeadsID: "orch-go-abcd", IsUntracked: true},
+			issue:       &verify.Issue{ID: "orch-go-abcd", Status: "open"},
+			issueExists: true,
+			expected:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := computeIsPhantom(tt.agent, tt.issue, tt.issueExists)
+			if got != tt.expected {
+				t.Errorf("computeIsPhantom() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestComputeSwarmStatus(t *testing.T) {
+	agents := []AgentInfo{
+		{BeadsID: "orch-go-1", IsProcessing: true},
+		{BeadsID: "orch-go-2"},
+		{BeadsID: "orch-go-3", IsPhantom: true},
+		{BeadsID: "orch-go-4", IsCompleted: true, IsPhantom: true},
+		{SessionID: "ses_x", IsUntracked: true, IsProcessing: true},
+		{SessionID: "ses_y", IsUntracked: true},
+	}
+
+	swarm := computeSwarmStatus(agents)
+
+	if swarm.Active != 2 {
+		t.Fatalf("Active = %d, want %d", swarm.Active, 2)
+	}
+	if swarm.Processing != 2 {
+		t.Fatalf("Processing = %d, want %d", swarm.Processing, 2)
+	}
+	if swarm.Idle != 1 {
+		t.Fatalf("Idle = %d, want %d", swarm.Idle, 1)
+	}
+	if swarm.Phantom != 1 {
+		t.Fatalf("Phantom = %d, want %d", swarm.Phantom, 1)
+	}
+	if swarm.Completed != 1 {
+		t.Fatalf("Completed = %d, want %d", swarm.Completed, 1)
+	}
+	if swarm.Untracked != 2 {
+		t.Fatalf("Untracked = %d, want %d", swarm.Untracked, 2)
 	}
 }
 

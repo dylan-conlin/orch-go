@@ -76,7 +76,7 @@ type SwarmStatus struct {
 	Processing int `json:"processing,omitempty"` // Agents actively generating response
 	Idle       int `json:"idle,omitempty"`       // Agents with session but not processing
 	Phantom    int `json:"phantom,omitempty"`    // Agents with open beads issue but not running
-	Untracked  int `json:"untracked,omitempty"`  // Sessions not spawned via orch (no beads ID)
+	Untracked  int `json:"untracked,omitempty"`  // Sessions not tracked in beads (no beads ID, or spawned with --no-track)
 	Queued     int `json:"queued"`
 	Completed  int `json:"completed_today"`
 }
@@ -109,7 +109,7 @@ type AgentInfo struct {
 	IsPhantom       bool                          `json:"is_phantom,omitempty"`        // True if beads issue open but agent not running
 	IsProcessing    bool                          `json:"is_processing,omitempty"`     // True if session is actively generating a response
 	IsCompleted     bool                          `json:"is_completed,omitempty"`      // True if beads issue is closed
-	IsUntracked     bool                          `json:"is_untracked,omitempty"`      // True if session was not spawned via orch (no beads ID)
+	IsUntracked     bool                          `json:"is_untracked,omitempty"`      // True if session has no beads tracking (OpenCode-only, or spawned with --no-track)
 	Tokens          *opencode.TokenStats          `json:"tokens,omitempty"`            // Token usage for the session
 	ContextRisk     *verify.ContextExhaustionRisk `json:"context_risk,omitempty"`      // Context exhaustion risk assessment
 	PhaseReportedAt *time.Time                    `json:"phase_reported_at,omitempty"` // Timestamp when latest phase was reported
@@ -499,20 +499,22 @@ func runStatus(serverURL string) error {
 		}
 
 		// Get task and check closed status from pre-fetched issues
-		if issue, ok := allIssues[agent.BeadsID]; ok {
+		issue, issueExists := allIssues[agent.BeadsID]
+		if issueExists && issue != nil {
 			agent.Task = truncate(issue.Title, 40)
 			agent.IsCompleted = strings.EqualFold(issue.Status, "closed")
 		}
 
-		// Determine phantom status
-		// For now, if we have a session ID or a tmux window, it's not a phantom
-		if agent.SessionID != "" && agent.SessionID != "tmux-stalled" {
-			agent.IsPhantom = false
-		} else if agent.Window != "" {
-			agent.IsPhantom = false
-		} else {
-			agent.IsPhantom = true
+		// Treat --no-track spawns (project-untracked-*) as untracked for swarm accounting.
+		// These IDs intentionally do not exist in beads.
+		if agent.BeadsID != "" && isUntrackedBeadsID(agent.BeadsID) {
+			agent.IsUntracked = true
 		}
+
+		// Determine phantom status.
+		// Phantom means: beads issue exists AND is open AND there is no active runtime.
+		// Note: --no-track IDs are never phantom because they have no beads issue by design.
+		agent.IsPhantom = computeIsPhantom(*agent, issue, issueExists)
 
 		// Determine source indicator
 		agent.Source = determineAgentSource(*agent, projectDir)
@@ -607,46 +609,7 @@ func runStatus(serverURL string) error {
 	}
 
 	// Phase 5: Build swarm status (counts before filtering)
-	activeCount := 0
-	processingCount := 0
-	idleCount := 0
-	phantomCount := 0
-	completedCount := 0
-	untrackedCount := 0
-	for _, agent := range agents {
-		if agent.IsUntracked {
-			// Untracked sessions are counted separately
-			untrackedCount++
-			// But still count as active/processing for running status
-			if agent.IsProcessing {
-				processingCount++
-			}
-			continue
-		}
-		if agent.IsPhantom {
-			phantomCount++
-		} else if agent.IsCompleted {
-			// Completed agents (beads issue closed) don't count as active
-			completedCount++
-		} else {
-			activeCount++
-			if agent.IsProcessing {
-				processingCount++
-			} else {
-				idleCount++
-			}
-		}
-	}
-
-	swarm := SwarmStatus{
-		Active:     activeCount,
-		Processing: processingCount,
-		Idle:       idleCount,
-		Phantom:    phantomCount,
-		Untracked:  untrackedCount,
-		Queued:     0,              // TODO: implement queuing system
-		Completed:  completedCount, // Agents with closed beads issues
-	}
+	swarm := computeSwarmStatus(agents)
 
 	// Fetch account usage information
 	accounts := getAccountUsage()
@@ -1288,6 +1251,86 @@ func getAgentStatus(agent AgentInfo) string {
 		return "running"
 	}
 	return "idle"
+}
+
+// computeIsPhantom determines whether an agent should be classified as phantom.
+// Phantom means: there is a real, non-closed beads issue, but there is no active runtime
+// signal (no OpenCode session and no tmux window).
+//
+// IMPORTANT: --no-track spawns (project-untracked-*) intentionally have no beads issue,
+// so they are never phantom.
+func computeIsPhantom(agent AgentInfo, issue *verify.Issue, issueExists bool) bool {
+	// Untracked sessions (no beads tracking) are never phantom.
+	if agent.IsUntracked || (agent.BeadsID != "" && isUntrackedBeadsID(agent.BeadsID)) {
+		return false
+	}
+
+	// Any runtime signal means the agent isn't phantom.
+	if agent.SessionID != "" && agent.SessionID != "tmux-stalled" {
+		return false
+	}
+	if agent.Window != "" {
+		return false
+	}
+
+	// Must correspond to a real, open beads issue.
+	if !issueExists || issue == nil {
+		return false
+	}
+	if strings.EqualFold(issue.Status, "closed") {
+		return false
+	}
+
+	return true
+}
+
+// computeSwarmStatus builds swarm aggregate counts.
+// Counts are computed on the full discovered agent list (before display filtering).
+func computeSwarmStatus(agents []AgentInfo) SwarmStatus {
+	activeCount := 0
+	processingCount := 0
+	idleCount := 0
+	phantomCount := 0
+	completedCount := 0
+	untrackedCount := 0
+
+	for _, agent := range agents {
+		if agent.IsUntracked {
+			untrackedCount++
+			if agent.IsProcessing {
+				processingCount++
+			}
+			continue
+		}
+
+		// Closed beads issues are completed, even if other fields are inconsistent.
+		if agent.IsCompleted {
+			completedCount++
+			continue
+		}
+
+		if agent.IsPhantom {
+			phantomCount++
+			continue
+		}
+
+		activeCount++
+		if agent.IsProcessing {
+			processingCount++
+		} else {
+			idleCount++
+		}
+	}
+
+	return SwarmStatus{
+		Active:     activeCount,
+		Processing: processingCount,
+		Idle:       idleCount,
+		Phantom:    phantomCount,
+		Untracked:  untrackedCount,
+		Queued:     0,              // TODO: implement queuing system
+		Completed:  completedCount, // Agents with closed beads issues
+	}
 }
 
 // determineAgentSource returns the primary source indicator for an agent.
