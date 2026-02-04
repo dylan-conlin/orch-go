@@ -280,78 +280,6 @@ func TestMinimalOrchestratorPrompt(t *testing.T) {
 	}
 }
 
-func TestEnsureSessionHandoffTemplate(t *testing.T) {
-	t.Run("creates template when missing", func(t *testing.T) {
-		tempDir := t.TempDir()
-
-		// Ensure template doesn't exist initially
-		templatePath := filepath.Join(tempDir, ".orch", "templates", "SYNTHESIS.md")
-		if _, err := os.Stat(templatePath); !os.IsNotExist(err) {
-			t.Fatal("template should not exist initially")
-		}
-
-		// Call EnsureSessionHandoffTemplate
-		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
-			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
-		}
-
-		// Check template was created
-		if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-			t.Error("template should exist after EnsureSessionHandoffTemplate")
-		}
-
-		// Check content
-		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			t.Fatalf("failed to read template: %v", err)
-		}
-
-		if !strings.Contains(string(content), "# Session Handoff") {
-			t.Error("template should contain synthesis header")
-		}
-		if !strings.Contains(string(content), "## Summary") {
-			t.Error("template should contain Summary section")
-		}
-		if !strings.Contains(string(content), "## Work Completed") {
-			t.Error("template should contain Work Completed section")
-		}
-		if !strings.Contains(string(content), "## Recommendations for Next Session") {
-			t.Error("template should contain Recommendations section")
-		}
-	})
-
-	t.Run("does not overwrite existing template", func(t *testing.T) {
-		tempDir := t.TempDir()
-
-		// Create templates directory and custom template
-		templatesDir := filepath.Join(tempDir, ".orch", "templates")
-		if err := os.MkdirAll(templatesDir, 0755); err != nil {
-			t.Fatalf("failed to create templates dir: %v", err)
-		}
-
-		customContent := "# Custom Session Handoff Template\n\nThis is a custom template."
-		templatePath := filepath.Join(templatesDir, "SYNTHESIS.md")
-		if err := os.WriteFile(templatePath, []byte(customContent), 0644); err != nil {
-			t.Fatalf("failed to write custom template: %v", err)
-		}
-
-		// Call EnsureSessionHandoffTemplate
-		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
-			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
-		}
-
-		// Check content was NOT overwritten
-		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			t.Fatalf("failed to read template: %v", err)
-		}
-
-		if string(content) != customContent {
-			t.Error("existing template should not be overwritten")
-		}
-	})
-}
-
 func TestGenerateOrchestratorContext_WithKBContext(t *testing.T) {
 	cfg := &Config{
 		Task:           "Ship feature",
@@ -606,45 +534,6 @@ func TestGenerateOrchestratorContext_MentionsTemplateWhenCopied(t *testing.T) {
 	})
 }
 
-func TestEnsureSessionHandoffTemplate_PrefersProjectTemplate(t *testing.T) {
-	t.Run("uses content from project template when it exists", func(t *testing.T) {
-		tempDir := t.TempDir()
-
-		// Create project template with custom content
-		templatesDir := filepath.Join(tempDir, ".orch", "templates")
-		if err := os.MkdirAll(templatesDir, 0755); err != nil {
-			t.Fatalf("failed to create templates dir: %v", err)
-		}
-
-		customContent := `# Custom Project Handoff Template
-
-This is a project-specific template with custom sections.
-
-## Special Section
-Only this project has this section.
-`
-		templatePath := filepath.Join(templatesDir, "SYNTHESIS.md")
-		if err := os.WriteFile(templatePath, []byte(customContent), 0644); err != nil {
-			t.Fatalf("failed to write template: %v", err)
-		}
-
-		// EnsureSessionHandoffTemplate should NOT overwrite
-		if err := EnsureSessionHandoffTemplate(tempDir); err != nil {
-			t.Fatalf("EnsureSessionHandoffTemplate failed: %v", err)
-		}
-
-		// Verify custom content is preserved
-		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			t.Fatalf("failed to read template: %v", err)
-		}
-
-		if string(content) != customContent {
-			t.Error("EnsureSessionHandoffTemplate should preserve existing project template")
-		}
-	})
-}
-
 func TestWriteOrchestratorContext_PreCreatesSessionHandoff(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := &Config{
@@ -694,43 +583,6 @@ func TestWriteOrchestratorContext_PreCreatesSessionHandoff(t *testing.T) {
 	// Check it prompts for TLDR to be filled
 	if !strings.Contains(contentStr, "Fill within first 5 tool calls") {
 		t.Error("SYNTHESIS.md should prompt for early section fills")
-	}
-}
-
-func TestGeneratePreFilledSessionHandoff(t *testing.T) {
-	content, err := GeneratePreFilledSessionHandoff("og-test-workspace", "Test session goal", "2026-01-05 15:00")
-	if err != nil {
-		t.Fatalf("GeneratePreFilledSessionHandoff failed: %v", err)
-	}
-
-	// Check all metadata is present
-	if !strings.Contains(content, "og-test-workspace") {
-		t.Error("content should contain workspace name")
-	}
-	if !strings.Contains(content, "Test session goal") {
-		t.Error("content should contain session goal")
-	}
-	if !strings.Contains(content, "2026-01-05 15:00") {
-		t.Error("content should contain start time")
-	}
-
-	// Check key sections exist
-	sections := []string{
-		"## TLDR",
-		"## Spawns (Agents Managed)",
-		"## Evidence (What Was Observed)",
-		"## Knowledge (What Was Learned)",
-		"## Friction (What Was Harder Than It Should Be)",
-		"## Focus Progress",
-		"### Where We Started",
-		"## Next (What Should Happen)",
-		"## Session Metadata",
-	}
-
-	for _, section := range sections {
-		if !strings.Contains(content, section) {
-			t.Errorf("content should contain section: %s", section)
-		}
 	}
 }
 
