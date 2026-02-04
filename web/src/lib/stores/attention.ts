@@ -2,6 +2,9 @@ import { writable, derived } from 'svelte/store';
 import type { GraphNode } from './work-graph';
 import type { Variant } from '$lib/components/ui/badge';
 
+// API configuration - HTTPS for HTTP/2 multiplexing (same as work-graph.ts)
+const API_BASE = 'https://localhost:3348';
+
 // Attention badge types for active work
 export type AttentionBadgeType =
 	| 'verify'         // Phase: Complete, needs orch complete
@@ -127,8 +130,8 @@ function createAttentionStore() {
 			update(s => ({ ...s, loading: true }));
 
 			try {
-				// Call /api/attention endpoint
-				const response = await fetch('/api/attention?role=human');
+				// Call /api/attention endpoint on orch-go server
+				const response = await fetch(`${API_BASE}/api/attention?role=human`);
 				
 				if (!response.ok) {
 					console.error('Failed to fetch attention signals:', response.statusText);

@@ -63,8 +63,22 @@
 				// then by priority
 				return a.priority - b.priority;
 			});
+
+		// Build set of IDs already shown in WIP and completedIssues to prevent duplicates
+		// This fixes "Keyed each block has duplicate key" errors when same issue appears in multiple sources
+		const shownIds = new Set<string>();
+		for (const item of wipItems) {
+			shownIds.add(item.type === 'running' ? item.agent.id : item.issue.id);
+		}
+		for (const issue of pendingVerification) {
+			shownIds.add(issue.id);
+		}
+
+		// Filter tree nodes to exclude any IDs already shown
+		const dedupedTreeNodes = treeNodes.filter(node => !shownIds.has(node.id));
+
 		// Order: WIP items first, then pending verification, then main tree
-		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
+		flattenedNodes = [...wipItems, ...pendingVerification, ...dedupedTreeNodes];
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
