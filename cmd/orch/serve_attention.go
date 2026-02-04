@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
@@ -112,6 +114,13 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	debug := os.Getenv("ORCH_DEBUG") != ""
+	if dbg := r.URL.Query().Get("debug"); dbg != "" {
+		if dbg == "1" || strings.EqualFold(dbg, "true") {
+			debug = true
+		}
+	}
+
 	// Parse role parameter
 	role := r.URL.Query().Get("role")
 	if role == "" {
@@ -154,6 +163,14 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		client = rpcClient
 	} else {
 		client = beads.NewCLIClient(beads.WithWorkDir(projectDir))
+	}
+
+	countBySignal := func(items []attention.AttentionItem) map[string]int {
+		counts := make(map[string]int)
+		for _, it := range items {
+			counts[it.Signal]++
+		}
+		return counts
 	}
 
 	// Initialize collectors
@@ -211,28 +228,70 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	collectors = append(collectors, stuckCollector)
 	sources = append(sources, "agent-stuck")
 
+	if debug {
+		log.Printf(
+			"attention: request role=%s project=%s recently_closed_hours=%d collectors=%d",
+			role,
+			projectDir,
+			recentlyClosedHours,
+			len(collectors),
+		)
+	}
+
 	// Collect from all sources
 	allItems := []attention.AttentionItem{}
-	for _, collector := range collectors {
+	for i, collector := range collectors {
 		items, err := collector.Collect(role)
 		if err != nil {
 			// Log error but continue with other collectors
 			// This ensures partial results if one collector fails
+			if debug {
+				src := fmt.Sprintf("collector[%d]=%T", i, collector)
+				if i < len(sources) {
+					src = sources[i]
+				}
+				log.Printf("attention: collect error source=%s err=%v", src, err)
+			}
 			continue
 		}
+		if debug {
+			src := fmt.Sprintf("collector[%d]=%T", i, collector)
+			if i < len(sources) {
+				src = sources[i]
+			}
+			log.Printf("attention: collected source=%s count=%d by_signal=%v", src, len(items), countBySignal(items))
+		}
 		allItems = append(allItems, items...)
+	}
+	if debug {
+		log.Printf("attention: collected total=%d by_signal=%v", len(allItems), countBySignal(allItems))
 	}
 
 	// Load verifications and filter/annotate items
 	verifications := loadVerifications()
+	if debug {
+		log.Printf("attention: verifications loaded=%d", len(verifications))
+	}
 	// Only filter recently-closed items based on verification status.
 	// Other signal types (issue-ready, likely-done, verify, etc.) should pass through
 	// even if their subject has been verified, as they serve different purposes.
+	originalCount := len(allItems)
 	filteredItems := []attention.AttentionItem{}
+	filteredRecentlyClosedVerified := 0
+	annotatedNeedsFix := 0
 	for _, item := range allItems {
 		verification, exists := verifications[item.Subject]
 		if item.Signal == "recently-closed" && exists && verification.Status == "verified" {
 			// Filter out verified issues from recently-closed
+			filteredRecentlyClosedVerified++
+			if debug && filteredRecentlyClosedVerified <= 10 {
+				log.Printf(
+					"attention: filtered recently-closed subject=%s status=%s ts=%d",
+					item.Subject,
+					verification.Status,
+					verification.Timestamp,
+				)
+			}
 			continue
 		}
 		if exists && verification.Status == "needs_fix" {
@@ -241,10 +300,21 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 				item.Metadata = make(map[string]any)
 			}
 			item.Metadata["verification_status"] = "needs_fix"
+			annotatedNeedsFix++
 		}
 		filteredItems = append(filteredItems, item)
 	}
 	allItems = filteredItems
+	if debug {
+		log.Printf(
+			"attention: filter in=%d out=%d filtered_recently_closed_verified=%d annotated_needs_fix=%d by_signal=%v",
+			originalCount,
+			len(allItems),
+			filteredRecentlyClosedVerified,
+			annotatedNeedsFix,
+			countBySignal(allItems),
+		)
+	}
 
 	// Sort by priority (lower = higher priority)
 	sort.Slice(allItems, func(i, j int) bool {
@@ -267,6 +337,9 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 			CollectedAt: item.CollectedAt.Format(time.RFC3339),
 			Metadata:    item.Metadata,
 		})
+	}
+	if debug {
+		log.Printf("attention: response items=%d by_signal=%v", len(responseItems), countBySignal(allItems))
 	}
 
 	// Build response
