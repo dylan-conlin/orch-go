@@ -177,6 +177,14 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	collectors = append(collectors, recentlyClosedCollector)
 	sources = append(sources, "beads-recently-closed")
 
+	// AgentCollector - awaiting-cleanup agents as verify signals
+	// Note: Uses HTTP to call own /api/agents endpoint (loose coupling)
+	agentHTTPClient := &http.Client{Timeout: 5 * time.Second}
+	agentAPIURL := fmt.Sprintf("http://localhost:%d", DefaultServePort)
+	agentCollector := attention.NewAgentCollector(agentHTTPClient, agentAPIURL)
+	collectors = append(collectors, agentCollector)
+	sources = append(sources, "agent")
+
 	// Collect from all sources
 	allItems := []attention.AttentionItem{}
 	for _, collector := range collectors {
@@ -193,7 +201,7 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	verifications := loadVerifications()
 	filteredItems := []attention.AttentionItem{}
 	for _, item := range allItems {
-		verification, exists := verifications[item.ID]
+		verification, exists := verifications[item.Subject]
 		if exists && verification.Status == "verified" {
 			// Filter out verified issues from recently-closed
 			continue
