@@ -201,8 +201,8 @@
 		case 'l':
 		case 'ArrowRight':
 			event.preventDefault();
-			// Expand tree node if it has children (WIP items don't have tree expansion)
-			if (!isWIP && current.children.length > 0) {
+			// Expand tree node if it has children (WIP items and completed issues don't have tree expansion)
+			if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).children.length > 0) {
 				toggleExpansion(current as TreeNode);
 			}
 			break;
@@ -221,10 +221,10 @@
 		case 'h':
 		case 'ArrowLeft':
 			event.preventDefault();
-			// Collapse tree node if it has children and is expanded (WIP items don't have tree collapse)
-			if (!isWIP && current.children.length > 0 && current.expanded) {
+			// Collapse tree node if it has children and is expanded (WIP items and completed issues don't have tree collapse)
+			if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).children.length > 0 && (current as TreeNode).expanded) {
 				toggleExpansion(current as TreeNode);
-			} else if (!isWIP && current.parent_id) {
+			} else if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).parent_id) {
 				// Jump to parent if no children to collapse
 				const parentIdx = flattenedNodes.findIndex(n => !isWIPItem(n) && (n as TreeNode).id === current.parent_id);
 				if (parentIdx !== -1) {
@@ -243,7 +243,7 @@
 				// Close L1 details
 				expandedDetails.delete(itemId);
 				expandedDetails = expandedDetails; // Trigger reactivity
-			} else if (!isWIP && current.parent_id) {
+			} else if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).parent_id) {
 				// Jump to parent
 				const parentIdx = flattenedNodes.findIndex(n => !isWIPItem(n) && (n as TreeNode).id === current.parent_id);
 				if (parentIdx !== -1) {
@@ -580,6 +580,44 @@
 					{issue.type}
 				</Badge>
 			</div>
+
+			<!-- L1: Expanded details for completed issues -->
+			{#if expandedDetails.has(itemId)}
+				<div class="expanded-details ml-14 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm space-y-2">
+					<!-- Description -->
+					{#if issue.description}
+						<div>
+							<span class="text-xs font-semibold uppercase text-foreground">Description:</span>
+							<p class="mt-1 text-xs text-muted-foreground">{issue.description}</p>
+						</div>
+					{/if}
+
+					<!-- Completion info -->
+					<div class="flex items-center gap-4 text-xs">
+						{#if issue.completedAt}
+							<span class="flex items-center gap-1">
+								<span class="text-foreground/60">Completed:</span>
+								<span class="text-muted-foreground">{new Date(issue.completedAt).toLocaleString()}</span>
+							</span>
+						{/if}
+						<span class="flex items-center gap-1">
+							<span class="text-foreground/60">Status:</span>
+							<span class={issue.verificationStatus === 'needs_fix' ? 'text-red-500' : 'text-yellow-500'}>
+								{issue.verificationStatus}
+							</span>
+						</span>
+					</div>
+
+					<!-- Action hints -->
+					<div class="text-xs text-muted-foreground border-t border-border pt-2 mt-2">
+						{#if issue.verificationStatus === 'unverified'}
+							Press <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">v</kbd> to verify or <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">x</kbd> to mark needs fix
+						{:else if issue.verificationStatus === 'needs_fix'}
+							Marked as needing fix — reopen or reassign this issue
+						{/if}
+					</div>
+				</div>
+			{/if}
 		{:else}
 			{@const node = item as TreeNode}
 			<!-- Tree Node - L0: Row -->
