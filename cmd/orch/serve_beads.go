@@ -321,6 +321,28 @@ type BeadsReadyAPIResponse struct {
 	Error      string               `json:"error,omitempty"`
 }
 
+// hasLabel checks if a label slice contains a specific label (case-insensitive).
+func hasLabel(labels []string, label string) bool {
+	for _, l := range labels {
+		if strings.EqualFold(l, label) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterTriageReadyIssues returns only issues that have the triage:ready label.
+// This matches the daemon behavior which only spawns issues with this label.
+func filterTriageReadyIssues(issues []ReadyIssueResponse) []ReadyIssueResponse {
+	result := make([]ReadyIssueResponse, 0, len(issues))
+	for _, issue := range issues {
+		if hasLabel(issue.Labels, "triage:ready") {
+			result = append(result, issue)
+		}
+	}
+	return result
+}
+
 // handleBeadsReady returns list of ready issues for dashboard queue visibility.
 // The cache has a 15s TTL to balance freshness with performance.
 // Without caching, each request spawns a bd process (~80ms overhead).
@@ -349,9 +371,15 @@ func handleBeadsReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert beads.Issue to ReadyIssueResponse
+	// Filter to only include issues with triage:ready label.
+	// The daemon only spawns issues with this label, so showing all ready issues
+	// in the "queued" section is misleading - it makes issues appear "stuck"
+	// when they were never going to be spawned.
 	readyIssues := make([]ReadyIssueResponse, 0, len(issues))
 	for _, issue := range issues {
+		if !hasLabel(issue.Labels, "triage:ready") {
+			continue
+		}
 		readyIssues = append(readyIssues, ReadyIssueResponse{
 			ID:        issue.ID,
 			Title:     issue.Title,

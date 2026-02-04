@@ -149,3 +149,74 @@ func TestHandleBeadsReadyMethodNotAllowed(t *testing.T) {
 		t.Errorf("Expected status 405, got %d", resp.StatusCode)
 	}
 }
+
+// TestFilterTriageReadyIssues verifies that only issues with triage:ready label
+// are included in the ready queue (matching daemon spawn behavior).
+func TestFilterTriageReadyIssues(t *testing.T) {
+	tests := []struct {
+		name     string
+		issues   []ReadyIssueResponse
+		expected []string // expected IDs in result
+	}{
+		{
+			name:     "empty list",
+			issues:   []ReadyIssueResponse{},
+			expected: []string{},
+		},
+		{
+			name: "all have triage:ready",
+			issues: []ReadyIssueResponse{
+				{ID: "issue-1", Title: "Issue 1", Labels: []string{"triage:ready"}},
+				{ID: "issue-2", Title: "Issue 2", Labels: []string{"triage:ready", "other"}},
+			},
+			expected: []string{"issue-1", "issue-2"},
+		},
+		{
+			name: "none have triage:ready",
+			issues: []ReadyIssueResponse{
+				{ID: "issue-1", Title: "Issue 1", Labels: []string{"review"}},
+				{ID: "issue-2", Title: "Issue 2", Labels: []string{}},
+			},
+			expected: []string{},
+		},
+		{
+			name: "mixed - some have triage:ready",
+			issues: []ReadyIssueResponse{
+				{ID: "issue-1", Title: "Issue 1", Labels: []string{"triage:ready"}},
+				{ID: "issue-2", Title: "Issue 2", Labels: []string{"review"}},
+				{ID: "issue-3", Title: "Issue 3", Labels: []string{"triage:ready", "urgent"}},
+			},
+			expected: []string{"issue-1", "issue-3"},
+		},
+		{
+			name: "nil labels treated as empty",
+			issues: []ReadyIssueResponse{
+				{ID: "issue-1", Title: "Issue 1", Labels: nil},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterTriageReadyIssues(tt.issues)
+			
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected %d issues, got %d", len(tt.expected), len(result))
+				return
+			}
+
+			// Check that all expected IDs are present
+			resultIDs := make(map[string]bool)
+			for _, issue := range result {
+				resultIDs[issue.ID] = true
+			}
+
+			for _, expectedID := range tt.expected {
+				if !resultIDs[expectedID] {
+					t.Errorf("Expected issue %s to be in result", expectedID)
+				}
+			}
+		})
+	}
+}
