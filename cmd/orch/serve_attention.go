@@ -225,10 +225,13 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 
 	// Load verifications and filter/annotate items
 	verifications := loadVerifications()
+	// Only filter recently-closed items based on verification status.
+	// Other signal types (issue-ready, likely-done, verify, etc.) should pass through
+	// even if their subject has been verified, as they serve different purposes.
 	filteredItems := []attention.AttentionItem{}
 	for _, item := range allItems {
 		verification, exists := verifications[item.Subject]
-		if exists && verification.Status == "verified" {
+		if item.Signal == "recently-closed" && exists && verification.Status == "verified" {
 			// Filter out verified issues from recently-closed
 			continue
 		}

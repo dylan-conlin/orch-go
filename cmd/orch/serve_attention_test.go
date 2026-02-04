@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -449,5 +450,73 @@ not valid json
 	// Should have 2 valid entries, skipping the malformed line
 	if len(result) != 2 {
 		t.Errorf("Expected 2 entries (skipping malformed), got %d", len(result))
+	}
+}
+
+// TestVerificationFilteringOnlyAffectsRecentlyClosed verifies that the verification
+// filter only applies to recently-closed signals, not other signal types.
+func TestVerificationFilteringOnlyAffectsRecentlyClosed(t *testing.T) {
+	// Test the filtering logic directly
+	verifications := map[string]VerificationEntry{
+		"test-issue-1": {IssueID: "test-issue-1", Status: "verified"},
+		"test-issue-2": {IssueID: "test-issue-2", Status: "verified"},
+	}
+
+	allItems := []attention.AttentionItem{
+		{
+			ID:      "rc-1",
+			Signal:  "recently-closed",
+			Subject: "test-issue-1", // Verified - should be filtered
+		},
+		{
+			ID:      "ir-1",
+			Signal:  "issue-ready",
+			Subject: "test-issue-1", // Verified but different signal - should NOT be filtered
+		},
+		{
+			ID:      "ld-1",
+			Signal:  "likely-done",
+			Subject: "test-issue-2", // Verified but different signal - should NOT be filtered
+		},
+		{
+			ID:      "rc-2",
+			Signal:  "recently-closed",
+			Subject: "test-issue-3", // Not verified - should NOT be filtered
+		},
+	}
+
+	// Apply the filtering logic (same as in handleAttention)
+	filteredItems := []attention.AttentionItem{}
+	for _, item := range allItems {
+		verification, exists := verifications[item.Subject]
+		// Only filter recently-closed items based on verification status
+		if item.Signal == "recently-closed" && exists && verification.Status == "verified" {
+			continue
+		}
+		filteredItems = append(filteredItems, item)
+	}
+
+	// Expected: 3 items (rc-1 filtered, others pass through)
+	if len(filteredItems) != 3 {
+		t.Errorf("Expected 3 items after filtering, got %d", len(filteredItems))
+	}
+
+	// Verify the correct items passed through
+	itemIDs := make(map[string]bool)
+	for _, item := range filteredItems {
+		itemIDs[item.ID] = true
+	}
+
+	if itemIDs["rc-1"] {
+		t.Error("Expected recently-closed verified item (rc-1) to be filtered out")
+	}
+	if !itemIDs["ir-1"] {
+		t.Error("Expected issue-ready item (ir-1) to pass through even if subject is verified")
+	}
+	if !itemIDs["ld-1"] {
+		t.Error("Expected likely-done item (ld-1) to pass through even if subject is verified")
+	}
+	if !itemIDs["rc-2"] {
+		t.Error("Expected unverified recently-closed item (rc-2) to pass through")
 	}
 }
