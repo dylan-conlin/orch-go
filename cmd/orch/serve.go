@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // Enable pprof for CPU profiling
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
+	"github.com/dylan-conlin/orch-go/pkg/certs"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
@@ -451,9 +451,11 @@ func runServe(portNum int) error {
 	// Access at: https://localhost:3348/debug/pprof/
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
 
-	// TLS certificate paths (relative to source directory)
-	certFile := filepath.Join(sourceDir, "pkg", "certs", "cert.pem")
-	keyFile := filepath.Join(sourceDir, "pkg", "certs", "key.pem")
+	// Load TLS certificate from embedded bytes
+	cert, err := tls.X509KeyPair(certs.CertPEM, certs.KeyPEM)
+	if err != nil {
+		return fmt.Errorf("failed to load embedded TLS certificate: %w", err)
+	}
 
 	addr := fmt.Sprintf(":%d", portNum)
 	fmt.Printf("Starting orch-go API server on https://localhost%s (HTTP/2 with TLS)\n", addr)
@@ -493,7 +495,9 @@ func runServe(portNum int) error {
 	fmt.Println("\nPress Ctrl+C to stop")
 
 	// HTTP/2 is automatically enabled when using TLS with Go's http package
-	return http.ListenAndServeTLS(addr, certFile, keyFile, mux)
+	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
+	server := &http.Server{Addr: addr, Handler: mux, TLSConfig: tlsConfig}
+	return server.ListenAndServeTLS("", "")
 }
 
 // handleChangelog returns aggregated changelog data across ecosystem repos.
