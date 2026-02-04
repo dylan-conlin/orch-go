@@ -106,14 +106,26 @@ export const wip = createWIPStore();
 export const wipItems = derived(wip, ($wip): WIPItem[] => {
 	const items: WIPItem[] = [];
 	
+	// Build set of beads IDs that have running agents
+	// Used to filter out queued issues that already have an agent working on them
+	const runningBeadsIds = new Set<string>();
+	for (const agent of $wip.runningAgents) {
+		if (agent.beads_id) {
+			runningBeadsIds.add(agent.beads_id);
+		}
+	}
+	
 	// Running agents first
 	for (const agent of $wip.runningAgents) {
 		items.push({ type: 'running', agent });
 	}
 	
-	// Always include queued issues (they're now rendered in WorkGraphTree)
+	// Queued issues - filter out any with running agents
+	// This prevents the same issue from appearing in both "running" and "queued" sections
 	for (const issue of $wip.queuedIssues) {
-		items.push({ type: 'queued', issue });
+		if (!runningBeadsIds.has(issue.id)) {
+			items.push({ type: 'queued', issue });
+		}
 	}
 	
 	return items;

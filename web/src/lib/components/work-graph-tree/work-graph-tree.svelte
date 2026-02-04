@@ -68,7 +68,7 @@
 		// This fixes "Keyed each block has duplicate key" errors when same issue appears in multiple sources
 		const shownIds = new Set<string>();
 		for (const item of wipItems) {
-			shownIds.add(item.type === 'running' ? item.agent.id : item.issue.id);
+			shownIds.add(item.type === 'running' ? (item.agent.beads_id || item.agent.id) : item.issue.id);
 		}
 		for (const issue of pendingVerification) {
 			shownIds.add(issue.id);
