@@ -55,6 +55,54 @@ const SpawnContextTemplate = `TASK: {{.Task}}
 {{if .BloatWarnings}}
 {{.BloatWarnings}}
 {{end}}
+{{if .FailureContext}}
+{{if .FailureContext.IsRework}}
+## 🚨 REWORK SPAWN - PRIOR ATTEMPT FAILED
+
+⚠️ **This is a REWORK spawn.** A previous agent reported completion but the feature doesn't work.
+
+**Failure Type:** {{.FailureContext.FailureType}}
+**What Failed:** {{.FailureContext.Description}}
+{{if .FailureContext.PriorAttemptContext}}
+**Prior Attempt Context:**
+{{.FailureContext.PriorAttemptContext}}
+{{end}}
+
+**Suggested Skill:** {{.FailureContext.SuggestedSkill}}
+{{if ne .SkillName .FailureContext.SuggestedSkill}}
+⚠️ You were spawned with ` + "`" + `{{.SkillName}}` + "`" + ` but the suggested skill for this failure type is ` + "`" + `{{.FailureContext.SuggestedSkill}}` + "`" + `.
+Consider whether the current skill is appropriate or if re-spawning with the suggested skill would be more effective.
+{{end}}
+
+### What This Means
+
+1. **Do NOT trust the prior agent's completion claim** - they said it was done, but it wasn't
+2. **Verify the ORIGINAL requirement actually works** before claiming completion
+3. **Focus on the failure type:**
+   {{if eq .FailureContext.FailureType "verification"}}
+   - Prior agent didn't properly verify their work
+   - Ensure you have concrete evidence the feature works (not just tests passing)
+   {{else if eq .FailureContext.FailureType "implementation"}}
+   - The code has a bug - find and fix it
+   - Use systematic debugging to identify the root cause
+   {{else if eq .FailureContext.FailureType "spec"}}
+   - The spec was wrong or incomplete
+   - Investigate what the correct behavior should be first
+   {{else if eq .FailureContext.FailureType "integration"}}
+   - Feature works in isolation but fails in real context
+   - Test in the full integration environment
+   {{end}}
+
+### Verification Requirement
+
+Before reporting Phase: Complete, you MUST:
+1. Reproduce the failure described above
+2. Fix the root cause
+3. Verify the feature works end-to-end (not just unit tests)
+4. Document your verification evidence in the completion comment
+
+{{end}}
+{{end}}
 {{if .DesignWorkspace}}
 ## DESIGN REFERENCE
 
@@ -484,6 +532,7 @@ type contextData struct {
 	DesignNotes          string         // Notes from design session
 	IssueComments        []IssueComment // Orchestrator comments from beads issue
 	IsInvestigationSkill bool           // When true, mandate investigation file creation
+	FailureContext       *FailureContext // Post-completion failure context for rework spawns
 }
 
 // GenerateContext generates the SPAWN_CONTEXT.md content.
@@ -541,6 +590,7 @@ func GenerateContext(cfg *Config) (string, error) {
 		DesignNotes:          cfg.DesignNotes,
 		IssueComments:        cfg.IssueComments,
 		IsInvestigationSkill: IsInvestigationSkill(cfg.SkillName),
+		FailureContext:       cfg.FailureContext,
 	}
 
 	var buf bytes.Buffer

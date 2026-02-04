@@ -781,3 +781,90 @@ func formatActiveAgentError(beadsID string, agent *ActiveAgentInfo) error {
 
 	return fmt.Errorf("agent already exists for issue %s\n\n  Agent:   %s\n  Status:  %s%s\n  Session: %s\n\nTo force spawn anyway (not recommended - may cause duplicate work):\n  orch spawn --force [other flags] <skill> <task>\n\nTo interact with the existing agent:\n  orch send %s \"your message\"\n\nTo abandon the existing agent and restart:\n  orch abandon %s\n", beadsID, agent.ID, statusMsg, phaseInfo, agent.SessionID, agent.SessionID, beadsID)
 }
+
+// PostCompletionFailurePrefix is the marker for post-completion failure comments.
+// Format: POST-COMPLETION-FAILURE: [type] - [description]
+// Where type is one of: verification, implementation, spec, integration
+const PostCompletionFailurePrefix = "POST-COMPLETION-FAILURE:"
+
+// extractPostCompletionFailure looks for POST-COMPLETION-FAILURE comments in the issue comments
+// and extracts the failure context for rework spawns.
+// Returns nil if no failure comment is found.
+func extractPostCompletionFailure(beadsID string) *spawn.FailureContext {
+	client := beads.NewCLIClient()
+	comments, err := client.Comments(beadsID)
+	if err != nil {
+		return nil
+	}
+
+	// Look for POST-COMPLETION-FAILURE comments (most recent first)
+	// Multiple failures might exist if issue was reopened multiple times
+	for i := len(comments) - 1; i >= 0; i-- {
+		c := comments[i]
+		if strings.HasPrefix(c.Text, PostCompletionFailurePrefix) {
+			return parseFailureComment(c.Text)
+		}
+	}
+
+	return nil
+}
+
+// parseFailureComment parses a POST-COMPLETION-FAILURE comment into FailureContext.
+// Expected format: POST-COMPLETION-FAILURE: [type] - [description]
+// If no type is specified, defaults to "implementation" and uses the full text as description.
+func parseFailureComment(text string) *spawn.FailureContext {
+	// Remove prefix
+	content := strings.TrimPrefix(text, PostCompletionFailurePrefix)
+	content = strings.TrimSpace(content)
+
+	if content == "" {
+		return &spawn.FailureContext{
+			IsRework:       true,
+			FailureType:    spawn.FailureTypeImplementation,
+			Description:    "No failure details provided",
+			SuggestedSkill: spawn.SuggestSkillForFailure(spawn.FailureTypeImplementation),
+		}
+	}
+
+	// Try to parse "type - description" format
+	// Types: verification, implementation, spec, integration
+	var failureType, description string
+
+	// Check for explicit type prefix
+	lowerContent := strings.ToLower(content)
+	for _, ft := range []string{spawn.FailureTypeVerification, spawn.FailureTypeImplementation, spawn.FailureTypeSpec, spawn.FailureTypeIntegration} {
+		if strings.HasPrefix(lowerContent, ft) {
+			failureType = ft
+			// Remove type and optional separator
+			remainder := content[len(ft):]
+			remainder = strings.TrimPrefix(remainder, " - ")
+			remainder = strings.TrimPrefix(remainder, ": ")
+			remainder = strings.TrimPrefix(remainder, " ")
+			description = strings.TrimSpace(remainder)
+			break
+		}
+	}
+
+	// If no explicit type found, default to implementation and use full content as description
+	if failureType == "" {
+		failureType = spawn.FailureTypeImplementation
+		description = content
+	}
+
+	return &spawn.FailureContext{
+		IsRework:       true,
+		FailureType:    failureType,
+		Description:    description,
+		SuggestedSkill: spawn.SuggestSkillForFailure(failureType),
+	}
+}
+
+// fetchFailureContextForSpawn retrieves POST-COMPLETION-FAILURE context for a beads issue.
+// This is called during spawn to detect rework scenarios and inject failure context.
+// Returns nil if this is not a rework spawn (no POST-COMPLETION-FAILURE comment).
+func fetchFailureContextForSpawn(beadsID string) *spawn.FailureContext {
+	if beadsID == "" {
+		return nil
+	}
+	return extractPostCompletionFailure(beadsID)
+}

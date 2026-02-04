@@ -829,6 +829,8 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		DesignPromptPath:   designPromptPath,
 		DesignNotes:        designNotes,
 		DaemonDriven:       daemonDriven,
+		IssueComments:      fetchIssueCommentsForSpawn(beadsID),
+		FailureContext:     fetchFailureContextForSpawn(beadsID),
 	}
 
 	// Pre-spawn token estimation and validation

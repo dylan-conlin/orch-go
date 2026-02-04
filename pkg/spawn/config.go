@@ -265,6 +265,11 @@ type Config struct {
 	// When true, skip focus-stealing behaviors like tmux select-window
 	// to avoid interrupting the orchestrator's workflow.
 	DaemonDriven bool
+
+	// FailureContext contains post-completion failure information when this is a rework spawn.
+	// Populated from POST-COMPLETION-FAILURE comments on the beads issue.
+	// When IsRework is true, the failure context should be prominently displayed.
+	FailureContext *FailureContext
 }
 
 // IssueComment represents a comment on a beads issue.
@@ -291,6 +296,61 @@ type UsageInfo struct {
 	AutoSwitched bool
 	// SwitchReason explains why account was switched.
 	SwitchReason string
+}
+
+// FailureType constants define the types of post-completion failures.
+const (
+	// FailureTypeVerification indicates agent claimed success but didnt properly verify.
+	FailureTypeVerification = "verification"
+	// FailureTypeImplementation indicates the code has a bug.
+	FailureTypeImplementation = "implementation"
+	// FailureTypeSpec indicates the spec was wrong or incomplete.
+	FailureTypeSpec = "spec"
+	// FailureTypeIntegration indicates the feature works in isolation but fails in context.
+	FailureTypeIntegration = "integration"
+)
+
+// FailureContext contains information about a post-completion failure.
+// This is extracted from POST-COMPLETION-FAILURE comments on reopened issues.
+// When present, it indicates this is a rework attempt and provides context
+// about what went wrong in the previous attempt.
+type FailureContext struct {
+	// FailureType categorizes the failure (verification, implementation, spec, integration).
+	FailureType string
+	// Description is the human-readable description of what failed.
+	Description string
+	// PriorAttemptContext is any additional context from the prior attempt.
+	PriorAttemptContext string
+	// SuggestedSkill is the recommended skill based on failure type.
+	SuggestedSkill string
+	// IsRework indicates this is a rework spawn (has POST-COMPLETION-FAILURE comment).
+	IsRework bool
+}
+
+// SuggestSkillForFailure returns the recommended skill based on failure type.
+// This helps route rework to the appropriate skill based on what went wrong.
+func SuggestSkillForFailure(failureType string) string {
+	switch failureType {
+	case FailureTypeVerification:
+		// Verification failure = agent didnt properly verify
+		// Use reliability-testing to enforce proper verification
+		return "reliability-testing"
+	case FailureTypeImplementation:
+		// Implementation bug = code doesnt work
+		// Use systematic-debugging to find and fix the bug
+		return "systematic-debugging"
+	case FailureTypeSpec:
+		// Spec was wrong = need investigation first
+		// Use investigation to refine the spec
+		return "investigation"
+	case FailureTypeIntegration:
+		// Integration failure = works in isolation
+		// Use reliability-testing to test in full context
+		return "reliability-testing"
+	default:
+		// Unknown failure type = systematic debugging as safe default
+		return "systematic-debugging"
+	}
 }
 
 // WorkspaceNameOptions provides optional configuration for workspace name generation.
