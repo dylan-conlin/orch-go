@@ -157,11 +157,10 @@
 		completedIssues = $attention.completedIssues;
 	}
 
-	// Rebuild tree whenever graph data OR wip data OR attention changes, filtering out queued issues
+	// Rebuild tree whenever graph data OR attention changes
 	// Debounced to batch rapid updates and reduce CPU during polling
 	// Skip debounce until first tree render completes for immediate display
-	// Note: $wip dependency ensures filter re-runs when queued issues load
-	$: if ($workGraph && !$workGraph.error && $wip) {
+	$: if ($workGraph && !$workGraph.error) {
 		// Cancel any pending rebuild
 		if (rebuildDebounceTimeout) {
 			clearTimeout(rebuildDebounceTimeout);
@@ -170,16 +169,9 @@
 		// Debounce rebuild to batch rapid updates (50ms is fast but still batches)
 		const executeRebuild = () => {
 			rebuildDebounceTimeout = null;
-			
-			// Build set of queued issue IDs for fast lookup
-			// Handle case where queuedIssues might not be loaded yet
-			const queuedIds = new Set(($wip.queuedIssues || []).map(issue => issue.id));
 
-			// Filter out queued issues from nodes before building tree
-			// Main tree shows 'everything NOT currently in the pipeline'
-			const filteredNodes = $workGraph.nodes.filter(node => !queuedIds.has(node.id));
-
-			tree = buildTree(filteredNodes, $workGraph.edges);
+			// Build tree from full open set; queue/running status are rendered as overlays elsewhere.
+			tree = buildTree($workGraph.nodes, $workGraph.edges);
 			
 			// Mark that we've completed first render (enable debouncing for subsequent updates)
 			hasRenderedTree = true;

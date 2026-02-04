@@ -486,8 +486,8 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		await expect(rowContent).not.toHaveClass(/border-primary/);
 	});
 
-	// Bug 5: orch-go-21168 - Filter queued issues from main tree
-	test('should filter queued issues from main tree (they already appear in WIP)', async ({ page }) => {
+	// Bug 5: orch-go-21168 - Queued issues should appear in both WIP and tree (dual presence)
+	test('should show queued issues in both WIP and main tree', async ({ page }) => {
 		// Mock the beads/ready API (queued issues)
 		await page.route('**/api/beads/ready**', async (route) => {
 			await route.fulfill({
@@ -571,8 +571,11 @@ test.describe('Bug Fixes - Phase 1.1', () => {
 		// Regular issue should appear in the main tree
 		await expect(page.locator('[data-testid="issue-row-orch-go-100"]')).toBeVisible();
 
-		// Queued issue should NOT appear in the main tree (filtered out)
-		await expect(page.locator('[data-testid="issue-row-orch-go-21164"]')).not.toBeVisible();
+		// Queued issue should appear in WIP section
+		await expect(page.locator('[data-testid="wip-row-orch-go-21164"]')).toBeVisible();
+
+		// And also remain visible in the main tree (context preserved)
+		await expect(page.locator('[data-testid="issue-row-orch-go-21164"]')).toBeVisible();
 	});
 });
 

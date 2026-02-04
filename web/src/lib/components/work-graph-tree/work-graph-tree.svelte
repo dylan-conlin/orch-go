@@ -29,6 +29,8 @@
 	// Now includes completed-but-unverified issues as TreeNode-like objects
 	let flattenedNodes: (TreeNode | WIPItem | CompletedIssue)[] = [];
 	let selectedIndex = 0;
+	let pendingVerification: CompletedIssue[] = [];
+	let pinnedTreeIds = new Set<string>();
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
@@ -60,7 +62,7 @@
 		const treeNodes = flattenTree(tree);
 		// Filter completed issues: only show unverified or needs_fix (verified = truly done)
 		// Sort by urgency: needs_fix first (broken), then unverified (just needs review)
-		const pendingVerification = completedIssues
+		pendingVerification = completedIssues
 			.filter(issue => issue.verificationStatus !== 'verified')
 			.sort((a, b) => {
 				// needs_fix before unverified
@@ -70,21 +72,21 @@
 				return a.priority - b.priority;
 			});
 
-		// Build set of IDs already shown in WIP and completedIssues to prevent duplicates
-		// This fixes "Keyed each block has duplicate key" errors when same issue appears in multiple sources
-		const shownIds = new Set<string>();
+		// Track which tree nodes are also surfaced in WIP (for visual differentiation in the tree)
+		const pinnedIds = new Set<string>();
 		for (const item of wipItems) {
-			shownIds.add(item.type === 'running' ? (item.agent.beads_id || item.agent.id) : item.issue.id);
+			if (item.type === 'running') {
+				if (item.agent.beads_id) {
+					pinnedIds.add(item.agent.beads_id);
+				}
+			} else {
+				pinnedIds.add(item.issue.id);
+			}
 		}
-		for (const issue of pendingVerification) {
-			shownIds.add(issue.id);
-		}
-
-		// Filter tree nodes to exclude any IDs already shown
-		const dedupedTreeNodes = treeNodes.filter(node => !shownIds.has(node.id));
+		pinnedTreeIds = pinnedIds;
 
 		// Order: WIP items first, then pending verification, then main tree
-		flattenedNodes = [...wipItems, ...pendingVerification, ...dedupedTreeNodes];
+		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -102,6 +104,26 @@
 			return item.type === 'running' ? item.agent.id : item.issue.id;
 		}
 		return item.id;
+	}
+
+	// Get stable key for Svelte each blocks (avoids collisions when same issue appears in multiple views)
+	function getItemKey(item: TreeNode | WIPItem | CompletedIssue): string {
+		if (isWIPItem(item)) {
+			return item.type === 'running' ? `wip-running-${item.agent.id}` : `wip-queued-${item.issue.id}`;
+		}
+		if (isCompletedIssue(item)) return `completed-${item.id}`;
+		return `tree-${item.id}`;
+	}
+
+	// Get stable test ID per row type (avoids collisions when issue appears in both WIP + tree)
+	function getRowTestId(item: TreeNode | WIPItem | CompletedIssue): string {
+		if (isWIPItem(item)) {
+			return item.type === 'running'
+				? `wip-row-${item.agent.beads_id || item.agent.id}`
+				: `wip-row-${item.issue.id}`;
+		}
+		if (isCompletedIssue(item)) return `completed-row-${item.id}`;
+		return `issue-row-${item.id}`;
 	}
 
 	// Get status icon
@@ -321,7 +343,7 @@
 		onToggleExpansion(node.id, node.expanded);
 		// Manually rebuild flattened nodes (include WIP items)
 		const treeNodes = flattenTree(tree);
-		flattenedNodes = [...wipItems, ...treeNodes];
+		flattenedNodes = [...wipItems, ...pendingVerification, ...treeNodes];
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -373,16 +395,18 @@
 	tabindex="0"
 	on:keydown={handleKeyDown}
 >
-	{#each flattenedNodes as item, index (getItemId(item))}
+	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
 		{@const isWIP = isWIPItem(item)}
 		{@const isCompleted = isCompletedIssue(item)}
 		{@const depth = (!isWIP && !isCompleted) ? (item as TreeNode).depth : undefined}
 		<div
-			data-testid="issue-row-{itemId}"
+			data-testid={getRowTestId(item)}
 			data-node-index={index}
 			data-depth={depth !== undefined ? String(depth) : null}
 			class="node-row cursor-pointer select-none focus:outline-none"
+			class:selected={index === selectedIndex}
+			class:focused={index === selectedIndex}
 			class:new-issue-highlight={!isWIP && newIssueIds.has(itemId)}
 			role="treeitem"
 			aria-selected={index === selectedIndex}
@@ -620,9 +644,10 @@
 			{/if}
 		{:else}
 			{@const node = item as TreeNode}
+			{@const dimPinned = pinnedTreeIds.has(node.id) && index !== selectedIndex}
 			<!-- Tree Node - L0: Row -->
 			<div
-				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''}"
+				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''} {dimPinned ? 'opacity-60' : ''}"
 				style="padding-left: {node.depth * 24 + 12}px"
 			>
 					<!-- Expansion indicator -->
