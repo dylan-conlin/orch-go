@@ -553,3 +553,40 @@ func (l *Logger) LogIssueReopened(data IssueReopenedData) error {
 		Data:      eventData,
 	})
 }
+
+// EventTypeDeliverableOverride indicates a completion with missing deliverables was overridden.
+const EventTypeDeliverableOverride = "deliverable.override"
+
+// DeliverableOverrideData contains data for a deliverable override event.
+type DeliverableOverrideData struct {
+	BeadsID      string   `json:"beads_id"`
+	IssueType    string   `json:"issue_type"`
+	Skill        string   `json:"skill"`
+	Missing      []string `json:"missing"`        // List of missing deliverable types
+	Reasons      []string `json:"reasons"`        // Reasons provided for each missing deliverable
+	OverrideBy   string   `json:"override_by"`    // Who overrode (orchestrator, user)
+	TotalRequired int     `json:"total_required"` // Total number of required deliverables
+	TotalSatisfied int    `json:"total_satisfied"` // Number of satisfied deliverables
+}
+
+// LogDeliverableOverride logs when a completion proceeds despite missing deliverables.
+// This creates an audit trail for later analysis of override patterns.
+func (l *Logger) LogDeliverableOverride(data DeliverableOverrideData) error {
+	eventData := map[string]interface{}{
+		"beads_id":        data.BeadsID,
+		"issue_type":      data.IssueType,
+		"skill":           data.Skill,
+		"missing":         data.Missing,
+		"reasons":         data.Reasons,
+		"override_by":     data.OverrideBy,
+		"total_required":  data.TotalRequired,
+		"total_satisfied": data.TotalSatisfied,
+	}
+
+	return l.Log(Event{
+		Type:      EventTypeDeliverableOverride,
+		SessionID: data.BeadsID,
+		Timestamp: time.Now().Unix(),
+		Data:      eventData,
+	})
+}

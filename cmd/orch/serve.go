@@ -82,6 +82,8 @@ Endpoints:
   GET /api/reflect   - Reflect suggestions (synthesis, promote, stale)
   GET /api/kb-health - Knowledge hygiene signals (synthesis, promote, stale, investigation-promotion)
   GET /api/attention - Unified attention API (composes beads + git collectors, role-aware)
+  GET /api/deliverables/{id} - Deliverables status for an issue
+  POST /api/deliverables/override - Log override when closing with missing deliverables
   POST /api/attention/verify - Mark issue as verified or needs_fix (persisted to JSONL)
   GET /api/errors    - Error pattern analysis (recent errors, recurring patterns)
   GET /api/hotspot   - Hotspot analysis (fix density, investigation clusters)
@@ -187,6 +189,8 @@ func runServeStatus(portNum int) error {
 	fmt.Println("  GET /api/reflect   - Reflect suggestions")
 	fmt.Println("  GET /api/kb-health - Knowledge hygiene signals")
 	fmt.Println("  GET /api/attention - Unified attention API")
+	fmt.Println("  GET /api/deliverables/{id} - Deliverables status for an issue")
+	fmt.Println("  POST /api/deliverables/override - Log override for missing deliverables")
 	fmt.Println("  GET /api/errors    - Error pattern analysis")
 	fmt.Println("  GET /api/frontier  - Decidability frontier")
 	fmt.Println("  GET /api/decisions - Decision center items")
@@ -452,6 +456,19 @@ func runServe(portNum int) error {
 
 	// POST /api/approve - approve an agent's work (creates beads comment + updates workspace manifest)
 	mux.HandleFunc("/api/approve", corsHandler(handleApprove))
+
+	// GET /api/deliverables/{beads-id} - returns deliverables status for an issue
+	// POST /api/deliverables/override - logs an override when closing with missing deliverables
+	mux.HandleFunc("/api/deliverables/", corsHandler(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/deliverables/")
+		if path == "override" && r.Method == http.MethodPost {
+			handleDeliverablesOverride(w, r)
+		} else if path != "" && !strings.Contains(path, "/") {
+			handleDeliverablesStatus(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
