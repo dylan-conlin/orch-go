@@ -190,6 +190,11 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	collectors = append(collectors, agentCollector)
 	sources = append(sources, "agent")
 
+	// EpicOrphanCollector - epics force-closed with open children
+	epicOrphanCollector := attention.NewEpicOrphanCollector()
+	collectors = append(collectors, epicOrphanCollector)
+	sources = append(sources, "epic-orphan")
+
 	// Collect from all sources
 	allItems := []attention.AttentionItem{}
 	for _, collector := range collectors {

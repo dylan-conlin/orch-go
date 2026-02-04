@@ -649,3 +649,89 @@ func GetOpenEpicChildren(beadsID string) ([]EpicChildInfo, error) {
 
 	return openChildren, nil
 }
+
+// ExtractParentID extracts the parent issue ID from a child issue ID.
+// Child IDs follow the format: parentID.N (e.g., "orch-go-erdw.4" has parent "orch-go-erdw").
+// Returns empty string if the issue ID doesn't appear to be a child (no dot separator).
+func ExtractParentID(issueID string) string {
+	// Find the last dot in the ID
+	lastDotIdx := strings.LastIndex(issueID, ".")
+	if lastDotIdx == -1 {
+		return "" // No dot means not a child issue
+	}
+	
+	// Check if what follows the dot is numeric (child number)
+	suffix := issueID[lastDotIdx+1:]
+	for _, c := range suffix {
+		if c < '0' || c > '9' {
+			return "" // Not numeric, so not a child ID pattern
+		}
+	}
+	
+	return issueID[:lastDotIdx]
+}
+
+// GetParentEpicInfo retrieves information about a child issue's parent epic.
+// Returns nil if the issue has no parent or if the parent is not an epic.
+// Also returns remaining open children count for the parent epic.
+type ParentEpicInfo struct {
+	ID               string
+	Title            string
+	Status           string
+	IssueType        string
+	OpenChildrenLeft int // Number of open children EXCLUDING the current issue
+}
+
+// GetParentEpicInfo retrieves information about a child issue's parent epic.
+// The currentIssueID is used to exclude the current issue from the open children count.
+// Returns nil if the issue has no parent or if the parent is not an epic.
+func GetParentEpicInfo(currentIssueID string) (*ParentEpicInfo, error) {
+	parentID := ExtractParentID(currentIssueID)
+	if parentID == "" {
+		return nil, nil // Not a child issue
+	}
+	
+	// Get parent issue details
+	parentIssue, err := GetIssue(parentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parent issue: %w", err)
+	}
+	
+	// Only proceed if parent is an epic
+	if parentIssue.IssueType != "epic" {
+		return nil, nil
+	}
+	
+	// Count remaining open children (excluding current issue)
+	openChildren, err := GetOpenEpicChildren(parentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get epic children: %w", err)
+	}
+	
+	// Count children excluding the current one
+	openCount := 0
+	for _, child := range openChildren {
+		if child.ID != currentIssueID {
+			openCount++
+		}
+	}
+	
+	return &ParentEpicInfo{
+		ID:               parentID,
+		Title:            parentIssue.Title,
+		Status:           parentIssue.Status,
+		IssueType:        parentIssue.IssueType,
+		OpenChildrenLeft: openCount,
+	}, nil
+}
+
+// IsEpicClosed checks if an epic is closed (useful for pre-flight spawn checks).
+func IsEpicClosed(epicID string) (bool, error) {
+	issue, err := GetIssue(epicID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get epic: %w", err)
+	}
+	
+	status := strings.ToLower(issue.Status)
+	return status == "closed" || status == "deferred" || status == "tombstone", nil
+}

@@ -538,6 +538,25 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
+
+	// Pre-flight check: warn if spawning under a closed parent epic
+	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {
+		parentID := verify.ExtractParentID(beadsID)
+		if parentID != "" {
+			closed, err := verify.IsEpicClosed(parentID)
+			if err == nil && closed {
+				fmt.Fprintf(os.Stderr, "\033[1;33mWarning: Parent epic %s is already closed.\033[0m\n", parentID)
+				fmt.Fprintf(os.Stderr, "This child issue may be orphaned. Continue? [y/N]: ")
+				var response string
+				fmt.Scanln(&response)
+				if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
+					return fmt.Errorf("spawn cancelled: parent epic is closed")
+				}
+				fmt.Fprintf(os.Stderr, "Proceeding with spawn under closed epic...\n")
+			}
+		}
+	}
+
 	// Update beads issue status to in_progress (only if tracking a real issue)
 	// Skip for orchestrators since they don't use beads tracking
 	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {

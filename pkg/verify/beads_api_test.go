@@ -29,3 +29,61 @@ func TestEpicChildInfo(t *testing.T) {
 // as it relies on FallbackListByParent which makes CLI calls.
 // The filtering logic is straightforward - it filters out "closed", "deferred", and "tombstone" statuses.
 // Integration tests should be added when a mock beads client is available.
+
+func TestExtractParentID(t *testing.T) {
+	tests := []struct {
+		name     string
+		issueID  string
+		expected string
+	}{
+		{
+			name:     "simple child ID",
+			issueID:  "orch-go-erdw.4",
+			expected: "orch-go-erdw",
+		},
+		{
+			name:     "double digit child number",
+			issueID:  "proj-abc.12",
+			expected: "proj-abc",
+		},
+		{
+			name:     "triple digit child number",
+			issueID:  "proj-xyz.123",
+			expected: "proj-xyz",
+		},
+		{
+			name:     "not a child - no dot",
+			issueID:  "orch-go-21234",
+			expected: "",
+		},
+		{
+			name:     "not a child - non-numeric suffix",
+			issueID:  "orch-go-erdw.abc",
+			expected: "",
+		},
+		{
+			name:     "not a child - mixed suffix",
+			issueID:  "orch-go-erdw.4a",
+			expected: "",
+		},
+		{
+			name:     "grandchild ID",
+			issueID:  "proj-epic.1.2",
+			expected: "proj-epic.1",
+		},
+		{
+			name:     "empty string",
+			issueID:  "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ExtractParentID(tt.issueID)
+			if result != tt.expected {
+				t.Errorf("ExtractParentID(%q) = %q, want %q", tt.issueID, result, tt.expected)
+			}
+		})
+	}
+}

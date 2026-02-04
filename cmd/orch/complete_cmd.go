@@ -39,6 +39,7 @@ var (
 	completeSkipReproReason  string
 	completeNoArchive        bool
 	completeForceCloseEpic   bool // Force close epic even with open children
+	completeAutoCloseParent  bool // Auto-close parent epic when all children complete
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
@@ -151,6 +152,7 @@ func init() {
 	completeCmd.Flags().StringVar(&completeSkipReproReason, "skip-repro-reason", "", "Reason for skipping reproduction verification")
 	completeCmd.Flags().BoolVar(&completeNoArchive, "no-archive", false, "Skip automatic workspace archival after completion")
 	completeCmd.Flags().BoolVar(&completeForceCloseEpic, "force-close-epic", false, "Force close epic even if it has open children (use with caution)")
+	completeCmd.Flags().BoolVar(&completeAutoCloseParent, "auto-close-parent", false, "Automatically close parent epic when completing the last open child")
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
@@ -953,10 +955,70 @@ func runComplete(identifier, workdir string) error {
 			}
 		}
 
+
+		// Epic orphan logging: emit attention signal when force-closing epic with open children
+		if issue != nil && issue.IssueType == "epic" && completeForceCloseEpic {
+			openChildren, err := verify.GetOpenEpicChildren(beadsID)
+			if err == nil && len(openChildren) > 0 {
+				// Log orphaned children to events for attention system
+				orphanIDs := make([]string, len(openChildren))
+				for i, child := range openChildren {
+					orphanIDs[i] = child.ID
+				}
+				logger := events.NewLogger(events.DefaultLogPath())
+				if err := logger.LogEpicOrphaned(events.EpicOrphanedData{
+					EpicID:          beadsID,
+					EpicTitle:       issue.Title,
+					OrphanedChildren: orphanIDs,
+					Reason:          reason,
+				}); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to log epic orphan event: %v\n", err)
+				}
+				fmt.Fprintf(os.Stderr, "\033[1;33mWarning: Force-closing epic with %d open children (orphaned)\033[0m\n", len(openChildren))
+				for _, child := range openChildren {
+					fmt.Fprintf(os.Stderr, "  - %s (%s): %s\n", child.ID, child.Status, child.Title)
+				}
+			}
+		}
+
 		if err := verify.CloseIssue(beadsID, reason); err != nil {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
 		fmt.Printf("Closed beads issue: %s\n", beadsID)
+
+		// Epic auto-close: Check if this was the last open child of a parent epic
+		if !isOrchestratorSession {
+			parentInfo, err := verify.GetParentEpicInfo(beadsID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to check parent epic: %v\n", err)
+			} else if parentInfo != nil && parentInfo.Status != "closed" && parentInfo.OpenChildrenLeft == 0 {
+				// All siblings are complete - prompt to close parent epic
+				if completeAutoCloseParent {
+					// Auto-close mode: close without prompting
+					if err := verify.CloseIssue(parentInfo.ID, "All children completed"); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to auto-close parent epic %s: %v\n", parentInfo.ID, err)
+					} else {
+						fmt.Printf("Auto-closed parent epic: %s (%s)\n", parentInfo.ID, parentInfo.Title)
+					}
+				} else {
+					// Interactive mode: prompt user
+					fmt.Printf("\n\033[1;33mAll children of epic %s complete.\033[0m\n", parentInfo.ID)
+					fmt.Printf("  Epic: %s\n", parentInfo.Title)
+					fmt.Printf("\nClose parent epic? [y/N]: ")
+					var response string
+					fmt.Scanln(&response)
+					if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
+						if err := verify.CloseIssue(parentInfo.ID, "All children completed"); err != nil {
+							fmt.Fprintf(os.Stderr, "Failed to close parent epic: %v\n", err)
+						} else {
+							fmt.Printf("Closed parent epic: %s\n", parentInfo.ID)
+						}
+					} else {
+						fmt.Printf("Parent epic left open. Use \047orch complete %s\047 to close later.\n", parentInfo.ID)
+					}
+				}
+			}
+		}
 
 		// Remove triage:ready label on successful completion
 		// This ensures failed/abandoned agents leave issues in ready queue for daemon retry

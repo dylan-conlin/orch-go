@@ -45,6 +45,8 @@ const (
 	// EventTypeSSEReconnectionAttempt indicates an SSE reconnection is being attempted.
 	EventTypeSSEReconnectionAttempt = "sse.reconnection_attempt"
 	// EventTypeSSEReconnectionSuccess indicates an SSE reconnection succeeded.
+	// EventTypeEpicOrphaned indicates an epic was force-closed with open children.
+	EventTypeEpicOrphaned = "epic.orphaned"
 	EventTypeSSEReconnectionSuccess = "sse.reconnection_success"
 )
 
@@ -493,6 +495,28 @@ func (l *Logger) LogSSEReconnectionSuccess(attempts int) error {
 		Timestamp: time.Now().Unix(),
 		Data: map[string]interface{}{
 			"attempts": attempts,
+		},
+	})
+}
+
+// EpicOrphanedData contains data about an epic force-closed with open children.
+type EpicOrphanedData struct {
+	EpicID          string   `json:"epic_id"`
+	EpicTitle       string   `json:"epic_title"`
+	OrphanedChildren []string `json:"orphaned_children"` // IDs of orphaned children
+	Reason          string   `json:"reason,omitempty"`
+}
+
+// LogEpicOrphaned logs when an epic is force-closed with open children.
+func (l *Logger) LogEpicOrphaned(data EpicOrphanedData) error {
+	return l.Log(Event{
+		Type:      EventTypeEpicOrphaned,
+		Timestamp: time.Now().Unix(),
+		Data: map[string]interface{}{
+			"epic_id":           data.EpicID,
+			"epic_title":        data.EpicTitle,
+			"orphaned_children": data.OrphanedChildren,
+			"reason":            data.Reason,
 		},
 	})
 }
