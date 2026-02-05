@@ -96,6 +96,15 @@ type Config struct {
 	// Default is true to avoid disrupting orchestrator sessions.
 	CleanupPreserveOrchestrator bool
 
+	// CleanupRegistry if true, cleans stale registry entries.
+	// Default is true.
+	CleanupRegistry bool
+
+	// CleanupRegistryAgeDays is the age threshold in days for registry cleanup.
+	// Registry entries with spawn time older than this will be removed.
+	// Default is 7 days.
+	CleanupRegistryAgeDays int
+
 	// CleanupServerURL is the OpenCode server URL for cleanup operations.
 	// Defaults to http://127.0.0.1:4096.
 	CleanupServerURL string
@@ -185,6 +194,8 @@ func DefaultConfig() Config {
 		CleanupWorkspacesAgeDays:         7,             // 7 days threshold for workspaces
 		CleanupInvestigations:            true,          // Archive empty investigations by default
 		CleanupPreserveOrchestrator:      true,          // Preserve orchestrator sessions
+		CleanupRegistry:                  true,          // Clean stale registry entries
+		CleanupRegistryAgeDays:           7,             // 7 days threshold for registry entries
 		CleanupServerURL:                 "http://127.0.0.1:4096",
 		RecoveryEnabled:                  true,
 		RecoveryInterval:                 5 * time.Minute,  // Check every 5 minutes
@@ -1298,6 +1309,7 @@ type CleanupResult struct {
 	SessionsDeleted        int
 	WorkspacesArchived     int
 	InvestigationsArchived int
+	RegistryEntriesRemoved int
 	Error                  error
 	Message                string
 }
@@ -1361,6 +1373,24 @@ func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 		result.InvestigationsArchived = archived
 		if archived > 0 {
 			messages = append(messages, fmt.Sprintf("%d investigations", archived))
+		}
+	}
+
+	// Run registry cleanup if enabled
+	if d.Config.CleanupRegistry {
+		removed, err := runRegistryCleanup(d.Config.CleanupRegistryAgeDays)
+		if err != nil {
+			return &CleanupResult{
+				SessionsDeleted:        result.SessionsDeleted,
+				WorkspacesArchived:     result.WorkspacesArchived,
+				InvestigationsArchived: result.InvestigationsArchived,
+				Error:                  err,
+				Message:                fmt.Sprintf("Registry cleanup failed: %v", err),
+			}
+		}
+		result.RegistryEntriesRemoved = removed
+		if removed > 0 {
+			messages = append(messages, fmt.Sprintf("%d registry entries", removed))
 		}
 	}
 

@@ -383,27 +383,29 @@ func runDaemonLoop() error {
 					Type:      "daemon.cleanup",
 					Timestamp: time.Now().Unix(),
 					Data: map[string]interface{}{
-						"sessions_deleted":        result.SessionsDeleted,
-						"workspaces_archived":     result.WorkspacesArchived,
-						"investigations_archived": result.InvestigationsArchived,
-						"error":                   result.Error.Error(),
-						"message":                 result.Message,
+						"sessions_deleted":         result.SessionsDeleted,
+						"workspaces_archived":      result.WorkspacesArchived,
+						"investigations_archived":  result.InvestigationsArchived,
+						"registry_entries_removed": result.RegistryEntriesRemoved,
+						"error":                    result.Error.Error(),
+						"message":                  result.Message,
 					},
 				}
 				if err := logger.Log(event); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log cleanup error event: %v\n", err)
 				}
-			} else if result.SessionsDeleted > 0 || result.WorkspacesArchived > 0 || result.InvestigationsArchived > 0 {
+			} else if result.SessionsDeleted > 0 || result.WorkspacesArchived > 0 || result.InvestigationsArchived > 0 || result.RegistryEntriesRemoved > 0 {
 				fmt.Printf("[%s] Cleanup: %s\n", timestamp, result.Message)
 				// Log the successful cleanup
 				event := events.Event{
 					Type:      "daemon.cleanup",
 					Timestamp: time.Now().Unix(),
 					Data: map[string]interface{}{
-						"sessions_deleted":        result.SessionsDeleted,
-						"workspaces_archived":     result.WorkspacesArchived,
-						"investigations_archived": result.InvestigationsArchived,
-						"message":                 result.Message,
+						"sessions_deleted":         result.SessionsDeleted,
+						"workspaces_archived":      result.WorkspacesArchived,
+						"investigations_archived":  result.InvestigationsArchived,
+						"registry_entries_removed": result.RegistryEntriesRemoved,
+						"message":                  result.Message,
 					},
 				}
 				if err := logger.Log(event); err != nil {
