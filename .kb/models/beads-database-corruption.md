@@ -1,8 +1,8 @@
 # Model: Beads SQLite Database Corruption
 
 **Domain:** Beads / SQLite / Data Integrity
-**Last Updated:** 2026-01-22
-**Synthesized From:** 3 investigations (Jan 21-22), 3+ corruption incidents (Jan 21-22), daemon logs showing 57+ restart cycles
+**Last Updated:** 2026-02-05
+**Synthesized From:** 3 investigations (Jan 21-22), 3+ corruption incidents (Jan 21-22), daemon logs showing 57+ restart cycles, Feb 2026 architecture review
 
 ---
 
@@ -12,7 +12,63 @@ Beads SQLite corruption occurs when the daemon enters a **rapid restart loop** (
 
 ---
 
-## Core Mechanism
+## Current Architecture (Feb 2026)
+
+**Status: RESOLVED** - All recommended fixes have been implemented in Dylan's beads fork.
+
+### Fixes Applied
+
+| Commit | Fix | Effect |
+|--------|-----|--------|
+| `9953b9cb` | Prevent daemon auto-start in sandbox | No daemon attempts in Claude Code |
+| `4da15127` | Detect Claude Code and Docker environments | Early sandbox detection |
+| `98e5c750` | Use JSONL-only mode when sandbox detected | No SQLite WAL at all |
+| `2198ad78` | Prevent rapid restart loops | Backoff between daemon attempts |
+| `041af3fa` | Pre-flight fingerprint validation | Fail before DB open |
+| `629441ad` | Make JSONL-only the default storage mode | SQLite now opt-in |
+
+### Current Flow
+
+```
+Agent in sandbox → bd command → sandbox detected → JSONL-only mode
+                                                 → no daemon started
+                                                 → no SQLite WAL
+                                                 → no corruption risk
+
+Host CLI user → bd command → JSONL-only default → direct file ops
+                           → --sqlite flag → daemon available → RPC
+```
+
+### Daemon Relevance
+
+With JSONL-only as default, the daemon provides **minimal value**:
+
+| Feature | Value with JSONL-only |
+|---------|----------------------|
+| RPC performance (10x) | None - JSONL ops already fast |
+| Mutation events | None - no subscribers |
+| Auto-sync coordination | None - direct writes |
+| SQLite connection pooling | None - no SQLite |
+
+**Conclusion:** Daemon is effectively legacy for agent workflows. JSONL-only is simpler, safer, sufficient.
+
+### SQLite Still Required For
+
+- `bd compact --auto/--analyze/--apply` (semantic compression)
+- `bd wisp gc` (transient molecule cleanup)
+- `bd gate wait` (blocking dependency waits)
+- `bd mol burn` (molecule conversion)
+- `bd cook` (recipe execution)
+
+All daily operations work with JSONL-only.
+
+### Fork Strategy
+
+Dylan's fork stays diverged from upstream (steveyegge/beads). See `.kb/decisions/2026-02-05-beads-fork-stay-diverged.md`.
+
+---
+
+## Core Mechanism (Historical)
 
 ### The Corruption Cycle
 
