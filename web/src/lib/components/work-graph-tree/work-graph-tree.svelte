@@ -29,10 +29,10 @@
 
 	// Flatten tree for keyboard navigation
 	// Now includes completed-but-unverified issues as TreeNode-like objects
-	let flattenedNodes: (TreeNode | WIPItem | CompletedIssue)[] = [];
-	let selectedIndex = 0;
-	let pendingVerification: CompletedIssue[] = [];
-	let pinnedTreeIds = new Set<string>();
+		let flattenedNodes: (TreeNode | WIPItem | CompletedIssue)[] = [];
+		let selectedIndex = 0;
+		let recentlyCompleted: CompletedIssue[] = [];
+		let pinnedTreeIds = new Set<string>();
 
 	// Track expanded details separately (fixes reactivity issues)
 	let expandedDetails = new Set<string>();
@@ -84,19 +84,9 @@
 	}
 
 	// Rebuild flattened list when tree, wipItems, or completedIssues change
-	$: {
-		const treeNodes = flattenTree(tree);
-		// Filter completed issues: only show unverified or needs_fix (verified = truly done)
-		// Sort by urgency: needs_fix first (broken), then unverified (just needs review)
-		pendingVerification = completedIssues
-			.filter(issue => issue.verificationStatus !== 'verified')
-			.sort((a, b) => {
-				// needs_fix before unverified
-				if (a.verificationStatus === 'needs_fix' && b.verificationStatus !== 'needs_fix') return -1;
-				if (b.verificationStatus === 'needs_fix' && a.verificationStatus !== 'needs_fix') return 1;
-				// then by priority
-				return a.priority - b.priority;
-			});
+		$: {
+			const treeNodes = flattenTree(tree);
+			recentlyCompleted = [...completedIssues];
 
 		// Track which tree nodes are also surfaced in WIP (for visual differentiation in the tree)
 		const pinnedIds = new Set<string>();
@@ -444,6 +434,8 @@
 	// Handle close modal cancel
 	function handleCloseModalCancel() {
 		issueToClose = null;
+		// Restore focus to tree container for keyboard navigation
+		setTimeout(() => containerElement?.focus(), 0);
 	}
 
 	// Handle close modal confirm
@@ -461,6 +453,8 @@
 
 		issueToClose = null;
 		isClosing = false;
+		// Restore focus to tree container for keyboard navigation
+		setTimeout(() => containerElement?.focus(), 0);
 	}
 </script>
 
@@ -472,12 +466,12 @@
 	onkeydown={handleKeyDown}
 >
 	<!-- Recently Completed Section (collapsed by default) -->
-	<RecentlyCompletedSection
-		completedIssues={pendingVerification}
-		{selectedIndex}
-		onSelectItem={(idx) => { selectedIndex = idx; }}
-		startIndex={wipItems.length}
-	/>
+		<RecentlyCompletedSection
+			completedIssues={recentlyCompleted}
+			{selectedIndex}
+			onSelectItem={(idx) => { selectedIndex = idx; }}
+			startIndex={wipItems.length}
+		/>
 
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
