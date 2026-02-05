@@ -198,8 +198,9 @@ func (c *CLIClient) AddComment(id, _, text string) error {
 }
 
 // CloseIssue closes an issue with an optional reason.
+// Uses --force to bypass the 'Phase: Complete' requirement for UI-based closes.
 func (c *CLIClient) CloseIssue(id, reason string) error {
-	args := []string{"close", id}
+	args := []string{"close", id, "--force"}
 	if reason != "" {
 		args = append(args, "--reason", reason)
 	}
