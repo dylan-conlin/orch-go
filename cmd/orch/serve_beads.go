@@ -1592,7 +1592,13 @@ func handleBeadsClose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use CLI client to close the issue
-	cliClient := beads.NewCLIClient(beads.WithWorkDir(workDir))
+	// Set BEADS_NO_DAEMON=1 to use direct storage mode, matching the read operations
+	// (listBeadsIssues, showBeadsIssue). Without this, close goes through daemon while
+	// reads bypass it, causing sync issues where closed items reappear after refresh.
+	cliClient := beads.NewCLIClient(
+		beads.WithWorkDir(workDir),
+		beads.WithEnv(append(os.Environ(), "BEADS_NO_DAEMON=1")),
+	)
 	if err := cliClient.CloseIssue(req.ID, req.Reason); err != nil {
 		resp := CloseIssueResponse{
 			ID:      req.ID,
