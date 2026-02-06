@@ -4,6 +4,7 @@
 package verify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -84,7 +85,10 @@ func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 // Sets BEADS_NO_DAEMON=1 to skip daemon connection attempts, avoiding 5s timeout
 // in launchd/minimal environments.
 func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
-	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	ctx, cancel := context.WithTimeout(context.Background(), beads.DefaultCLITimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bd", "comments", beadsID, "--json")
 	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs (launchd)
 	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 	if projectDir != "" {
@@ -92,6 +96,9 @@ func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 	}
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("bd comments timed out after %v", beads.DefaultCLITimeout)
+		}
 		return nil, fmt.Errorf("bd comments failed: %w", err)
 	}
 

@@ -3,11 +3,18 @@ package verify
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// DefaultBuildTimeout is the maximum time to wait for build/compile commands.
+// 60 seconds is generous for incremental builds while preventing indefinite hangs.
+const DefaultBuildTimeout = 60 * time.Second
 
 // BuildVerificationResult represents the result of checking if the project builds.
 type BuildVerificationResult struct {
@@ -137,7 +144,10 @@ func hasGoChangesInFiles(gitOutput string) bool {
 // DEPRECATED: Use RunGoTestCompile instead - it also compiles test files
 // which catches signature mismatches between production code and tests.
 func RunGoBuild(projectDir string) (string, error) {
-	cmd := exec.Command("go", "build", "./...")
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultBuildTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "go", "build", "./...")
 	cmd.Dir = projectDir
 
 	var stdout, stderr bytes.Buffer
@@ -148,6 +158,10 @@ func RunGoBuild(projectDir string) (string, error) {
 
 	// Combine stdout and stderr
 	output := stdout.String() + stderr.String()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return output, fmt.Errorf("go build timed out after %v", DefaultBuildTimeout)
+	}
 
 	return output, err
 }
@@ -162,10 +176,13 @@ func RunGoBuild(projectDir string) (string, error) {
 //
 // Returns the output and any error that occurred.
 func RunGoTestCompile(projectDir string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultBuildTimeout)
+	defer cancel()
+
 	// Use 'go test -run=^$ ./...' to compile all packages including tests
 	// The -run=^$ flag matches no test names, so it compiles but runs nothing
 	// This catches compilation errors in both production and test code
-	cmd := exec.Command("go", "test", "-run=^$", "./...")
+	cmd := exec.CommandContext(ctx, "go", "test", "-run=^$", "./...")
 	cmd.Dir = projectDir
 
 	var stdout, stderr bytes.Buffer
@@ -176,6 +193,10 @@ func RunGoTestCompile(projectDir string) (string, error) {
 
 	// Combine stdout and stderr
 	output := stdout.String() + stderr.String()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return output, fmt.Errorf("go test compile timed out after %v", DefaultBuildTimeout)
+	}
 
 	return output, err
 }
