@@ -184,14 +184,17 @@ After your final commit, BEFORE typing anything else:
 2. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 {{else}}
-🚨 CRITICAL - FIRST 3 ACTIONS:
-You MUST do these within your first 3 tool calls:
+🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
+Suggested first actions for visibility:
 1. Report via ` + "`bd comment {{.BeadsID}} \"Phase: Planning - [brief description]\"`" + `
 2. Read relevant codebase context for your task
 3. Begin planning
 
-If Phase is not reported within first 3 actions, you will be flagged as unresponsive.
-Do NOT skip this - the orchestrator monitors via beads comments.
+**Note:** While advisory, reporting early helps orchestrator track progress. The **code-enforced gate** is reporting "Phase: Complete" before session end - that's when completion actually blocks.
+
+**Gates vs Advisory Checkpoints:**
+- **Gates** (blocking): Enforced by ` + "`orch complete`" + ` code - will BLOCK completion if not satisfied (e.g., Phase: Complete, test evidence, visual verification for UI changes)
+- **Advisory** (suggested): Best practices that help quality but aren't enforced - you can skip these without blocking completion
 
 🚨 SESSION COMPLETE PROTOCOL (READ NOW, DO AT END):
 After your final commit, BEFORE typing anything else:
@@ -522,16 +525,16 @@ type contextData struct {
 	KBContext            string
 	Tier                 string
 	ServerContext        string
-	BloatWarnings        string         // Bloat warnings for files mentioned in task exceeding 800 lines
-	NoTrack              bool           // When true, omit beads instructions from spawn context
-	IsBug                bool           // When true, this is a bug issue with reproduction info
-	ReproSteps           string         // Reproduction steps from bug issue
-	DesignWorkspace      string         // Design workspace name for ui-design-session handoff
-	DesignMockupPath     string         // Path to approved mockup
-	DesignPromptPath     string         // Path to design prompt
-	DesignNotes          string         // Notes from design session
-	IssueComments        []IssueComment // Orchestrator comments from beads issue
-	IsInvestigationSkill bool           // When true, mandate investigation file creation
+	BloatWarnings        string          // Bloat warnings for files mentioned in task exceeding 800 lines
+	NoTrack              bool            // When true, omit beads instructions from spawn context
+	IsBug                bool            // When true, this is a bug issue with reproduction info
+	ReproSteps           string          // Reproduction steps from bug issue
+	DesignWorkspace      string          // Design workspace name for ui-design-session handoff
+	DesignMockupPath     string          // Path to approved mockup
+	DesignPromptPath     string          // Path to design prompt
+	DesignNotes          string          // Notes from design session
+	IssueComments        []IssueComment  // Orchestrator comments from beads issue
+	IsInvestigationSkill bool            // When true, mandate investigation file creation
 	FailureContext       *FailureContext // Post-completion failure context for rework spawns
 }
 
