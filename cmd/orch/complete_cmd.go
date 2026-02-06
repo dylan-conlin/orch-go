@@ -43,18 +43,19 @@ var (
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
-	completeSkipTestEvidence   bool
-	completeSkipVisual         bool
-	completeSkipGitDiff        bool
-	completeSkipSynthesis      bool
-	completeSkipBuild          bool
-	completeSkipConstraint     bool
-	completeSkipPhaseGate      bool
-	completeSkipSkillOutput    bool
-	completeSkipDecisionPatch  bool
-	completeSkipPhaseComplete  bool
-	completeSkipHandoffContent bool
-	completeSkipReason         string // Required for all --skip-* flags (min 10 chars)
+	completeSkipTestEvidence    bool
+	completeSkipVisual          bool
+	completeSkipGitDiff         bool
+	completeSkipSynthesis       bool
+	completeSkipBuild           bool
+	completeSkipConstraint      bool
+	completeSkipPhaseGate       bool
+	completeSkipSkillOutput     bool
+	completeSkipDecisionPatch   bool
+	completeSkipPhaseComplete   bool
+	completeSkipHandoffContent  bool
+	completeSkipDashboardHealth bool
+	completeSkipReason          string // Required for all --skip-* flags (min 10 chars)
 )
 
 var completeCmd = &cobra.Command{
@@ -79,20 +80,22 @@ The following gates are checked before completion:
   - skill_output:         Required skill outputs exist
   - decision_patch_limit: Decision patch count not exceeded
   - handoff_content:      SYNTHESIS.md has actual content (orchestrator only)
+  - dashboard_health:     Dashboard API endpoints healthy for web/ or serve_*.go changes
 
 TARGETED SKIP FLAGS:
 Use --skip-{gate} with --skip-reason to bypass specific gates:
-  --skip-test-evidence    Skip test evidence gate
-  --skip-visual           Skip visual verification gate
-  --skip-git-diff         Skip git diff verification gate
-  --skip-synthesis        Skip SYNTHESIS.md gate
-  --skip-build            Skip build verification gate
-  --skip-constraint       Skip constraint verification gate
-  --skip-phase-gate       Skip phase gate verification
-  --skip-skill-output     Skip skill output verification gate
-  --skip-decision-patch   Skip decision patch count gate
-  --skip-phase-complete   Skip Phase: Complete gate
-  --skip-handoff-content  Skip handoff content validation (orchestrator only)
+  --skip-test-evidence     Skip test evidence gate
+  --skip-visual            Skip visual verification gate
+  --skip-git-diff          Skip git diff verification gate
+  --skip-synthesis         Skip SYNTHESIS.md gate
+  --skip-build             Skip build verification gate
+  --skip-constraint        Skip constraint verification gate
+  --skip-phase-gate        Skip phase gate verification
+  --skip-skill-output      Skip skill output verification gate
+  --skip-decision-patch    Skip decision patch count gate
+  --skip-phase-complete    Skip Phase: Complete gate
+  --skip-handoff-content   Skip handoff content validation (orchestrator only)
+  --skip-dashboard-health  Skip dashboard health check for web/ or serve_*.go changes
 
 Each --skip-* flag requires --skip-reason with a minimum of 10 characters
 explaining why the gate is being bypassed. Bypasses are logged for audit.
@@ -166,30 +169,32 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeSkipDecisionPatch, "skip-decision-patch", false, "Skip decision patch count verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipPhaseComplete, "skip-phase-complete", false, "Skip Phase: Complete verification gate (requires --skip-reason)")
 	completeCmd.Flags().BoolVar(&completeSkipHandoffContent, "skip-handoff-content", false, "Skip handoff content validation gate for orchestrators (requires --skip-reason)")
+	completeCmd.Flags().BoolVar(&completeSkipDashboardHealth, "skip-dashboard-health", false, "Skip dashboard health check gate for web/ or serve_*.go changes (requires --skip-reason)")
 	completeCmd.Flags().StringVar(&completeSkipReason, "skip-reason", "", "Reason for skip (required for all --skip-* flags, min 10 chars)")
 }
 
 // SkipConfig holds the configuration for which verification gates to skip.
 type SkipConfig struct {
-	TestEvidence   bool
-	Visual         bool
-	GitDiff        bool
-	Synthesis      bool
-	Build          bool
-	Constraint     bool
-	PhaseGate      bool
-	SkillOutput    bool
-	DecisionPatch  bool
-	PhaseComplete  bool
-	HandoffContent bool
-	Reason         string // Required reason for skips
+	TestEvidence    bool
+	Visual          bool
+	GitDiff         bool
+	Synthesis       bool
+	Build           bool
+	Constraint      bool
+	PhaseGate       bool
+	SkillOutput     bool
+	DecisionPatch   bool
+	PhaseComplete   bool
+	HandoffContent  bool
+	DashboardHealth bool
+	Reason          string // Required reason for skips
 }
 
 // hasAnySkip returns true if any skip flag is set.
 func (c SkipConfig) hasAnySkip() bool {
 	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
-		c.DecisionPatch || c.PhaseComplete || c.HandoffContent
+		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.DashboardHealth
 }
 
 // skippedGates returns a list of gate names that are being skipped.
@@ -228,6 +233,9 @@ func (c SkipConfig) skippedGates() []string {
 	if c.HandoffContent {
 		gates = append(gates, verify.GateHandoffContent)
 	}
+	if c.DashboardHealth {
+		gates = append(gates, verify.GateDashboardHealth)
+	}
 	return gates
 }
 
@@ -256,6 +264,8 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 		return c.PhaseComplete
 	case verify.GateHandoffContent:
 		return c.HandoffContent
+	case verify.GateDashboardHealth:
+		return c.DashboardHealth
 	default:
 		return false
 	}
@@ -264,18 +274,19 @@ func (c SkipConfig) shouldSkipGate(gate string) bool {
 // getSkipConfig builds the skip configuration from command-line flags.
 func getSkipConfig() SkipConfig {
 	return SkipConfig{
-		TestEvidence:   completeSkipTestEvidence,
-		Visual:         completeSkipVisual,
-		GitDiff:        completeSkipGitDiff,
-		Synthesis:      completeSkipSynthesis,
-		Build:          completeSkipBuild,
-		Constraint:     completeSkipConstraint,
-		PhaseGate:      completeSkipPhaseGate,
-		SkillOutput:    completeSkipSkillOutput,
-		DecisionPatch:  completeSkipDecisionPatch,
-		PhaseComplete:  completeSkipPhaseComplete,
-		HandoffContent: completeSkipHandoffContent,
-		Reason:         completeSkipReason,
+		TestEvidence:    completeSkipTestEvidence,
+		Visual:          completeSkipVisual,
+		GitDiff:         completeSkipGitDiff,
+		Synthesis:       completeSkipSynthesis,
+		Build:           completeSkipBuild,
+		Constraint:      completeSkipConstraint,
+		PhaseGate:       completeSkipPhaseGate,
+		SkillOutput:     completeSkipSkillOutput,
+		DecisionPatch:   completeSkipDecisionPatch,
+		PhaseComplete:   completeSkipPhaseComplete,
+		HandoffContent:  completeSkipHandoffContent,
+		DashboardHealth: completeSkipDashboardHealth,
+		Reason:          completeSkipReason,
 	}
 }
 
@@ -987,7 +998,9 @@ func runComplete(identifier, workdir string) error {
 			}
 		}
 
-		if err := verify.CloseIssue(beadsID, reason); err != nil {
+		// Pass force flag when --skip-phase-complete is set
+		// This bypasses bd close's independent Phase: Complete gate
+		if err := verify.CloseIssueForce(beadsID, reason, skipConfig.PhaseComplete); err != nil {
 			return fmt.Errorf("failed to close issue: %w", err)
 		}
 		fmt.Printf("Closed beads issue: %s\n", beadsID)

@@ -974,9 +974,22 @@ func FallbackComments(id string) ([]Comment, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackClose(id, reason string) error {
+	return FallbackCloseForce(id, reason, false)
+}
+
+// FallbackCloseForce closes an issue via bd CLI with optional --force flag.
+// When force is true, passes --force to bypass bd's "Phase: Complete" check.
+// This is needed when callers (orch complete, daemon) have already verified
+// Phase: Complete and the redundant bd gate would reject the close.
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackCloseForce(id, reason string, force bool) error {
 	args := []string{"close", id}
 	if reason != "" {
 		args = append(args, "--reason", reason)
+	}
+	if force {
+		args = append(args, "--force")
 	}
 
 	cmd := exec.Command(getBdPath(), args...)

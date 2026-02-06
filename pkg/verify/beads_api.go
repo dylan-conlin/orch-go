@@ -187,6 +187,14 @@ func IsPhaseComplete(beadsID string) (bool, error) {
 // It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
 // Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
 func CloseIssue(beadsID, reason string) error {
+	return CloseIssueForce(beadsID, reason, false)
+}
+
+// CloseIssueForce closes a beads issue with optional force flag.
+// When force=true, passes --force to bd close to bypass Phase: Complete checks.
+// It uses the beads RPC client with auto-reconnect when available, falling back to the bd CLI.
+// Uses beads.DefaultDir if set to ensure cross-project operations work correctly.
+func CloseIssueForce(beadsID, reason string, force bool) error {
 	// Try RPC client first with auto-reconnect
 	socketPath, err := beads.FindSocketPath("")
 	if err == nil {
@@ -195,14 +203,19 @@ func CloseIssue(beadsID, reason string) error {
 			opts = append(opts, beads.WithCwd(beads.DefaultDir))
 		}
 		client := beads.NewClient(socketPath, opts...)
-		if err := client.CloseIssue(beadsID, reason); err == nil {
-			return nil
+
+		// Note: RPC client's CloseIssue doesn't support force parameter yet
+		// For now, if force is requested, skip RPC and go straight to CLI
+		if !force {
+			if err := client.CloseIssue(beadsID, reason); err == nil {
+				return nil
+			}
 		}
-		// Fall through to CLI fallback on RPC error
+		// Fall through to CLI fallback on RPC error or if force requested
 	}
 
-	// Fallback to CLI
-	return beads.FallbackClose(beadsID, reason)
+	// Fallback to CLI (with force support)
+	return beads.FallbackCloseForce(beadsID, reason, force)
 }
 
 // UpdateIssueStatus updates the status of a beads issue.
@@ -659,7 +672,7 @@ func ExtractParentID(issueID string) string {
 	if lastDotIdx == -1 {
 		return "" // No dot means not a child issue
 	}
-	
+
 	// Check if what follows the dot is numeric (child number)
 	suffix := issueID[lastDotIdx+1:]
 	for _, c := range suffix {
@@ -667,7 +680,7 @@ func ExtractParentID(issueID string) string {
 			return "" // Not numeric, so not a child ID pattern
 		}
 	}
-	
+
 	return issueID[:lastDotIdx]
 }
 
@@ -690,24 +703,24 @@ func GetParentEpicInfo(currentIssueID string) (*ParentEpicInfo, error) {
 	if parentID == "" {
 		return nil, nil // Not a child issue
 	}
-	
+
 	// Get parent issue details
 	parentIssue, err := GetIssue(parentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get parent issue: %w", err)
 	}
-	
+
 	// Only proceed if parent is an epic
 	if parentIssue.IssueType != "epic" {
 		return nil, nil
 	}
-	
+
 	// Count remaining open children (excluding current issue)
 	openChildren, err := GetOpenEpicChildren(parentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get epic children: %w", err)
 	}
-	
+
 	// Count children excluding the current one
 	openCount := 0
 	for _, child := range openChildren {
@@ -715,7 +728,7 @@ func GetParentEpicInfo(currentIssueID string) (*ParentEpicInfo, error) {
 			openCount++
 		}
 	}
-	
+
 	return &ParentEpicInfo{
 		ID:               parentID,
 		Title:            parentIssue.Title,
@@ -731,7 +744,7 @@ func IsEpicClosed(epicID string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get epic: %w", err)
 	}
-	
+
 	status := strings.ToLower(issue.Status)
 	return status == "closed" || status == "deferred" || status == "tombstone", nil
 }
