@@ -628,14 +628,16 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 // GraphNode represents a node in the decidability graph.
 // Can be a beads issue or a kb artifact (investigation/decision).
 type GraphNode struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Type     string `json:"type"`           // beads: task, bug, feature, epic, question; kb: investigation, decision
-	Status   string `json:"status"`         // open, in_progress, closed, blocked, Complete, Accepted, etc.
-	Priority int    `json:"priority"`       // 0-4 for beads, 0 for kb artifacts
-	Source   string `json:"source"`         // "beads" or "kb"
-	Date     string `json:"date,omitempty"` // for kb artifacts
-	Layer    int    `json:"layer"`          // execution layer from topological sort (0 = no blocking deps)
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`                  // beads: task, bug, feature, epic, question; kb: investigation, decision
+	Status      string `json:"status"`                // open, in_progress, closed, blocked, Complete, Accepted, etc.
+	Priority    int    `json:"priority"`              // 0-4 for beads, 0 for kb artifacts
+	Source      string `json:"source"`                // "beads" or "kb"
+	Date        string `json:"date,omitempty"`        // for kb artifacts
+	CreatedAt   string `json:"created_at,omitempty"`  // creation timestamp
+	Description string `json:"description,omitempty"` // issue description
+	Layer       int    `json:"layer"`                 // execution layer from topological sort (0 = no blocking deps)
 }
 
 // GraphEdge represents an edge (dependency) in the graph.
@@ -737,6 +739,8 @@ type beadsIssue struct {
 	Status          string `json:"status"`
 	Priority        int    `json:"priority"`
 	IssueType       string `json:"issue_type"`
+	Description     string `json:"description,omitempty"`
+	CreatedAt       string `json:"created_at,omitempty"`
 	DependencyCount int    `json:"dependency_count"`
 	DependentCount  int    `json:"dependent_count"`
 	Parent          string `json:"parent,omitempty"`
@@ -746,9 +750,11 @@ type beadsIssue struct {
 type beadsShowIssue struct {
 	ID           string `json:"id"`
 	Title        string `json:"title"`
+	Description  string `json:"description,omitempty"`
 	Status       string `json:"status"`
 	Priority     int    `json:"priority"`
 	IssueType    string `json:"issue_type"`
+	CreatedAt    string `json:"created_at,omitempty"`
 	Dependencies []struct {
 		ID             string `json:"id"`
 		DependencyType string `json:"dependency_type"`
@@ -813,7 +819,6 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	// Filter to parent and descendants if parent ID specified
 	if parentID != "" {
 		nodes, edges = filterToParentAndDescendants(nodes, edges, parentID)
@@ -835,7 +840,6 @@ func handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-
 
 // filterToParentAndDescendants filters nodes and edges to only include
 // the specified parent issue and all its descendants (children, grandchildren, etc.)
@@ -961,24 +965,28 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 	for id := range focusSet {
 		if issue, ok := issueByID[id]; ok {
 			nodes = append(nodes, GraphNode{
-				ID:       issue.ID,
-				Title:    issue.Title,
-				Type:     issue.IssueType,
-				Status:   issue.Status,
-				Priority: issue.Priority,
-				Source:   "beads",
+				ID:          issue.ID,
+				Title:       issue.Title,
+				Type:        issue.IssueType,
+				Status:      issue.Status,
+				Priority:    issue.Priority,
+				Source:      "beads",
+				Description: issue.Description,
+				CreatedAt:   issue.CreatedAt,
 			})
 		} else {
 			// Issue might be closed but still a blocker - fetch it
 			showIssue, err := showBeadsIssue(workDir, id)
 			if err == nil {
 				nodes = append(nodes, GraphNode{
-					ID:       showIssue.ID,
-					Title:    showIssue.Title,
-					Type:     showIssue.IssueType,
-					Status:   showIssue.Status,
-					Priority: showIssue.Priority,
-					Source:   "beads",
+					ID:          showIssue.ID,
+					Title:       showIssue.Title,
+					Type:        showIssue.IssueType,
+					Status:      showIssue.Status,
+					Priority:    showIssue.Priority,
+					Source:      "beads",
+					Description: showIssue.Description,
+					CreatedAt:   showIssue.CreatedAt,
 				})
 			}
 		}
@@ -1031,12 +1039,14 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 	nodes := make([]GraphNode, 0, len(issues))
 	for _, issue := range issues {
 		nodes = append(nodes, GraphNode{
-			ID:       issue.ID,
-			Title:    issue.Title,
-			Type:     issue.IssueType,
-			Status:   issue.Status,
-			Priority: issue.Priority,
-			Source:   "beads",
+			ID:          issue.ID,
+			Title:       issue.Title,
+			Type:        issue.IssueType,
+			Status:      issue.Status,
+			Priority:    issue.Priority,
+			Source:      "beads",
+			Description: issue.Description,
+			CreatedAt:   issue.CreatedAt,
 		})
 	}
 
@@ -1073,7 +1083,9 @@ func listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
 	if includeAll {
 		args = append(args, "--all")
 	} else {
-		args = append(args, "--status", "open")
+		// Include both open and in_progress issues (active work)
+		// This ensures in_progress issues appear in the work graph
+		args = append(args, "--status", "open", "--status", "in_progress")
 	}
 
 	cmd := exec.Command(getBdPath(), args...)
@@ -1546,8 +1558,8 @@ func findPhaseForAttempt(attemptTimestamp string, comments []beads.Comment) stri
 
 // CloseIssueRequest is the JSON request body for POST /api/beads/close.
 type CloseIssueRequest struct {
-	ID        string `json:"id"`
-	Reason    string `json:"reason,omitempty"`
+	ID         string `json:"id"`
+	Reason     string `json:"reason,omitempty"`
 	ProjectDir string `json:"project_dir,omitempty"`
 }
 
