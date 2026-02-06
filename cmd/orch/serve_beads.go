@@ -628,16 +628,17 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 // GraphNode represents a node in the decidability graph.
 // Can be a beads issue or a kb artifact (investigation/decision).
 type GraphNode struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Type        string `json:"type"`                  // beads: task, bug, feature, epic, question; kb: investigation, decision
-	Status      string `json:"status"`                // open, in_progress, closed, blocked, Complete, Accepted, etc.
-	Priority    int    `json:"priority"`              // 0-4 for beads, 0 for kb artifacts
-	Source      string `json:"source"`                // "beads" or "kb"
-	Date        string `json:"date,omitempty"`        // for kb artifacts
-	CreatedAt   string `json:"created_at,omitempty"`  // creation timestamp
-	Description string `json:"description,omitempty"` // issue description
-	Layer       int    `json:"layer"`                 // execution layer from topological sort (0 = no blocking deps)
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Type        string   `json:"type"`                  // beads: task, bug, feature, epic, question; kb: investigation, decision
+	Status      string   `json:"status"`                // open, in_progress, closed, blocked, Complete, Accepted, etc.
+	Priority    int      `json:"priority"`              // 0-4 for beads, 0 for kb artifacts
+	Source      string   `json:"source"`                // "beads" or "kb"
+	Date        string   `json:"date,omitempty"`        // for kb artifacts
+	CreatedAt   string   `json:"created_at,omitempty"`  // creation timestamp
+	Description string   `json:"description,omitempty"` // issue description
+	Labels      []string `json:"labels,omitempty"`      // issue labels (area:*, effort:*, triage:*, etc.)
+	Layer       int      `json:"layer"`                 // execution layer from topological sort (0 = no blocking deps)
 }
 
 // GraphEdge represents an edge (dependency) in the graph.
@@ -734,16 +735,17 @@ func computeLayers(nodes []GraphNode, edges []GraphEdge) []GraphNode {
 
 // beadsIssue is the parsed structure from bd list --json
 type beadsIssue struct {
-	ID              string `json:"id"`
-	Title           string `json:"title"`
-	Status          string `json:"status"`
-	Priority        int    `json:"priority"`
-	IssueType       string `json:"issue_type"`
-	Description     string `json:"description,omitempty"`
-	CreatedAt       string `json:"created_at,omitempty"`
-	DependencyCount int    `json:"dependency_count"`
-	DependentCount  int    `json:"dependent_count"`
-	Parent          string `json:"parent,omitempty"`
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Status          string   `json:"status"`
+	Priority        int      `json:"priority"`
+	IssueType       string   `json:"issue_type"`
+	Description     string   `json:"description,omitempty"`
+	CreatedAt       string   `json:"created_at,omitempty"`
+	Labels          []string `json:"labels,omitempty"`
+	DependencyCount int      `json:"dependency_count"`
+	DependentCount  int      `json:"dependent_count"`
+	Parent          string   `json:"parent,omitempty"`
 }
 
 // beadsShowIssue is the parsed structure from bd show --json
@@ -973,6 +975,7 @@ func buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, error) {
 				Source:      "beads",
 				Description: issue.Description,
 				CreatedAt:   issue.CreatedAt,
+				Labels:      issue.Labels,
 			})
 		} else {
 			// Issue might be closed but still a blocker - fetch it
@@ -1047,6 +1050,7 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 			Source:      "beads",
 			Description: issue.Description,
 			CreatedAt:   issue.CreatedAt,
+			Labels:      issue.Labels,
 		})
 	}
 

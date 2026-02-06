@@ -1,15 +1,13 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
-	import { workGraph, buildTree, buildPhaseGroups, buildStatusGroups, type TreeNode, type PhaseGroup, type StatusGroup, type AttentionBadgeType } from '$lib/stores/work-graph';
+	import { workGraph, buildTree, filterTreeByLabel, type TreeNode } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
-	import { WorkGraphPhase } from '$lib/components/work-graph-phase';
-	import { WorkGraphStatus } from '$lib/components/work-graph-status';
-	import { WIPSection } from '$lib/components/wip-section';
 	import { ViewToggle } from '$lib/components/view-toggle';
+	import { LabelFilter } from '$lib/components/label-filter';
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon } from '$lib/stores/daemon';
@@ -53,12 +51,9 @@
 	}
 
 	let tree: TreeNode[] = [];
-	let phases: PhaseGroup[] = [];
-	let statusGroups: StatusGroup[] = [];
 	let loading = true;
 	let error: string | null = null;
 	let currentView: 'issues' | 'artifacts' = 'issues';
-	let issueViewMode: 'tree' | 'phase' | 'status' = 'tree';
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
@@ -70,6 +65,8 @@
 	let isNewIssueDetectionEnabled = false;
 	let completedIssues: CompletedIssue[] = [];
 	let focusedBeadsId: string | undefined = undefined; // Current focus beads ID for auto-scoping
+	let labelFilter: string = '';
+	let labelFilterComponent: { focus: () => void };
 	
 	// Track expansion state separately to preserve across tree rebuilds
 	let expansionState = new Map<string, boolean>();
@@ -97,7 +94,7 @@
 		await Promise.all([
 			workGraph.fetch(projectDir, 'open', focusBeadsId),
 			agents.fetch(),
-			attention.fetch() // Fetch attention signals and completed issues
+			attention.fetch(projectDir) // Fetch attention signals and completed issues (filtered by project)
 		]);
 
 		// Fetch WIP and daemon data (non-blocking)
@@ -134,6 +131,7 @@
 			workGraph.fetch(projectDir, 'open', focusedBeadsId).catch(console.error);
 			wip.fetchQueued(projectDir).catch(console.error);
 			daemon.fetch().catch(console.error);
+			attention.fetch(projectDir).catch(console.error); // Poll attention with project filter
 			// Also poll kbArtifacts if in artifacts view
 			if (currentView === 'artifacts' && $kbArtifacts) {
 				kbArtifacts.fetch(projectDir, '7d').catch(console.error);
@@ -192,12 +190,6 @@
 			// Build tree from full open set
 			tree = buildTree($workGraph.nodes, $workGraph.edges);
 			
-			// Build phase groups for phase view
-			phases = buildPhaseGroups($workGraph.nodes, $workGraph.edges);
-			
-			// Build status groups for status view
-			statusGroups = buildStatusGroups($workGraph.nodes, $workGraph.edges);
-			
 			// Mark that we've completed first render (enable debouncing for subsequent updates)
 			hasRenderedTree = true;
 
@@ -235,17 +227,6 @@
 					}
 				};
 				attachBadges(tree);
-				
-				// Also attach attention badges to phase nodes
-				for (const phase of phases) {
-					for (const node of phase.nodes) {
-						const signal = $attention.signals.get(node.id);
-						if (signal) {
-							node.attentionBadge = signal.badge;
-							node.attentionReason = signal.reason;
-						}
-					}
-				}
 			}
 
 			error = null;
@@ -295,7 +276,6 @@
 	} else if ($workGraph?.error) {
 		error = $workGraph.error;
 		tree = [];
-		phases = [];
 	}
 	
 	// Re-fetch workGraph and kbArtifacts when orchestrator project_dir changes
@@ -334,6 +314,7 @@
 				projectChangeDebounceTimeout = setTimeout(() => {
 					projectChangeDebounceTimeout = null;
 					workGraph.fetch(newProjectDir, 'open', focusedBeadsId).catch(console.error);
+					attention.fetch(newProjectDir).catch(console.error); // Re-fetch attention for new project
 					// Also re-fetch kbArtifacts if we're in artifacts view
 					if (currentView === 'artifacts' && $kbArtifacts) {
 						kbArtifacts.fetch(newProjectDir, '7d').catch(console.error);
@@ -354,11 +335,6 @@
 		}
 	}
 
-	// Handle issue view mode change
-	function handleIssueViewModeChange(mode: 'tree' | 'phase' | 'status') {
-		issueViewMode = mode;
-	}
-	
 	// Manual retry handler
 	async function handleRetry() {
 		await orchestratorContext.retry();
@@ -402,23 +378,29 @@
 			currentView = currentView === 'issues' ? 'artifacts' : 'issues';
 			handleViewToggle(currentView);
 		}
+		// '/' to focus label filter (like GitHub)
+		if (event.key === '/' && currentView === 'issues') {
+			const active = document.activeElement;
+			if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
+				event.preventDefault();
+				labelFilterComponent?.focus();
+			}
+		}
 	}
 	
 	// Get help text based on current view mode
+	// Compute filtered tree whenever tree or labelFilter changes
+	$: filteredTree = labelFilter ? filterTreeByLabel(tree, labelFilter) : tree;
+
+	function handleLabelFilterChange(value: string) {
+		labelFilter = value;
+	}
+
 	function getHelpText(): string {
 		if (currentView === 'artifacts') {
 			return 'Artifact view - Navigate with j/k, open with l/enter, Tab to toggle';
 		}
-		switch (issueViewMode) {
-			case 'tree':
-				return 'Tree view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x';
-			case 'phase':
-				return 'Phase view - Issues grouped by execution layer';
-			case 'status':
-				return 'Status view - Issues grouped by status';
-			default:
-				return 'Navigate with j/k';
-		}
+		return 'Tree view - Navigate with j/k, expand with l/enter, collapse with h/esc, close with x';
 	}
 </script>
 
@@ -460,18 +442,21 @@
 				</div>
 				<ViewToggle 
 					{currentView} 
-					{issueViewMode}
-					onToggle={handleViewToggle} 
-					onIssueViewModeChange={handleIssueViewModeChange}
+					onToggle={handleViewToggle}
 				/>
 			</div>
-			<div class="flex gap-4 text-sm text-muted-foreground">
+			<div class="flex items-center gap-4 text-sm text-muted-foreground">
+				{#if currentView === 'issues'}
+					<LabelFilter
+						bind:this={labelFilterComponent}
+						value={labelFilter}
+						onChange={handleLabelFilterChange}
+						placeholder="Filter by label..."
+					/>
+				{/if}
 				{#if currentView === 'issues' && $workGraph}
-					<span>{$workGraph.node_count} issues</span>
+					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
-					{#if issueViewMode === 'phase' && phases.length > 0}
-						<span>{phases.length} phases</span>
-					{/if}
 				{:else if currentView === 'artifacts' && $kbArtifacts}
 					<span>
 						{($kbArtifacts.needs_decision?.length ?? 0) + ($kbArtifacts.recent?.length ?? 0)} artifacts
@@ -521,43 +506,25 @@
 				<div class="flex items-center justify-center h-full">
 					<div class="text-red-500">Error: {error}</div>
 				</div>
-			{:else if issueViewMode === 'tree'}
-				{#if tree.length === 0}
-					<div class="flex items-center justify-center h-full">
-						<div class="text-muted-foreground">No open issues found</div>
+			{:else if filteredTree.length === 0}
+				<div class="flex items-center justify-center h-full">
+					<div class="text-muted-foreground">
+						{#if labelFilter}
+							No issues match label filter "{labelFilter}"
+						{:else}
+							No open issues found
+						{/if}
 					</div>
-				{:else}
-					<WorkGraphTree 
-						{tree} 
-						{newIssueIds} 
-						wipItems={$wipItems} 
-						{completedIssues}
-						onToggleExpansion={handleToggleExpansion}
-							onSetFocus={handleSetFocus}
-					/>
-				{/if}
-			{:else if issueViewMode === 'phase'}
-				{#if phases.length === 0}
-					<div class="flex items-center justify-center h-full">
-						<div class="text-muted-foreground">No open issues found</div>
-					</div>
-				{:else}
-					<WorkGraphPhase 
-						{phases}
-						{newIssueIds}
-					/>
-				{/if}
-			{:else if issueViewMode === 'status'}
-				{#if statusGroups.length === 0}
-					<div class="flex items-center justify-center h-full">
-						<div class="text-muted-foreground">No open issues found</div>
-					</div>
-				{:else}
-					<WorkGraphStatus 
-						groups={statusGroups}
-						{newIssueIds}
-					/>
-				{/if}
+				</div>
+			{:else}
+				<WorkGraphTree 
+					tree={filteredTree} 
+					{newIssueIds} 
+					wipItems={$wipItems} 
+					{completedIssues}
+					onToggleExpansion={handleToggleExpansion}
+					onSetFocus={handleSetFocus}
+				/>
 			{/if}
 		{:else}
 			{#if $kbArtifacts?.error}
@@ -593,6 +560,8 @@
 				<span class="text-zinc-400">c</span> copy ID
 				<span class="mx-3">·</span>
 				<span class="text-zinc-400">t/w</span> WIP↔tree
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">/</span> filter labels
 			</span>
 		{:else}
 			<span class="tracking-wide">
