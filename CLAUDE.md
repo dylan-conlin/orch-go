@@ -492,6 +492,8 @@ bd create "Add rate limiting" --type feature -l area:cli -l effort:medium -l tri
 bd list --label area:dashboard
 ```
 
+**Grouping vs Dependencies:** Use `area:` labels for grouping related work. Use `blocks`/`depends_on` edges for real dependencies. Do NOT create epics for grouping — epics conflate "these belong together" with "this blocks that." Existing epics were migrated to `area:` labels and closed (Feb 2026).
+
 **Reference:** `.kb/investigations/2026-02-05-inv-design-label-based-issue-grouping.md` for full taxonomy details.
 
 ## Related
