@@ -33,10 +33,15 @@ func TestResolve_Aliases(t *testing.T) {
 		{"pro", ModelSpec{Provider: "google", ModelID: "gemini-2.5-pro"}},
 
 		// OpenAI aliases
-		{"gpt", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
-		{"GPT", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
-		{"gpt5", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
-		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
+		{"gpt", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"GPT", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"gpt5", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"gpt-5", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"gpt-5.3", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"gpt-5.3-codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.3-codex"}},
+		{"gpt-5.2", ModelSpec{Provider: "openai", ModelID: "gpt-5.2"}},
+		{"gpt-5.2-codex", ModelSpec{Provider: "openai", ModelID: "gpt-5.2-codex"}},
 		{"gpt5-mini", ModelSpec{Provider: "openai", ModelID: "gpt-5-mini-20251130"}},
 		{"gpt4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
 		{"gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
@@ -127,5 +132,20 @@ func TestModelSpec_Format(t *testing.T) {
 	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}
 	if spec.Format() != "anthropic/claude-opus-4-6" {
 		t.Errorf("Format() = %q, want %q", spec.Format(), "anthropic/claude-opus-4-6")
+	}
+}
+
+func TestModelSpec_IsAnthropic(t *testing.T) {
+	if !Resolve("opus").IsAnthropic() {
+		t.Error("opus should be Anthropic")
+	}
+	if Resolve("gpt").IsAnthropic() {
+		t.Error("gpt should not be Anthropic")
+	}
+	if Resolve("codex").IsAnthropic() {
+		t.Error("codex should not be Anthropic")
+	}
+	if Resolve("deepseek").IsAnthropic() {
+		t.Error("deepseek should not be Anthropic")
 	}
 }

@@ -17,20 +17,20 @@ Restructure the completion pipeline around three changes: a **two-tier gate mode
 
 ### Analysis of Current 12 Gates
 
-| Gate                   |  Load-Bearing?  | Catches Real Problems?                                   | Evidence                                                 |
-| ---------------------- | :-------------: | -------------------------------------------------------- | -------------------------------------------------------- |
-| `phase_complete`       |     **Yes**     | Prevents closing work agent didn't finish                | Core lifecycle signal                                    |
+| Gate                   | Load-Bearing?   | Catches Real Problems?                                   | Evidence                                                 |
+|------------------------|:---------------:|----------------------------------------------------------|----------------------------------------------------------|
+| `phase_complete`       | **Yes**         | Prevents closing work agent didn't finish                | Core lifecycle signal                                    |
 | `build`                | **Conditional** | Only when THIS agent broke it; theater when pre-existing | 4 of 5 build failures in Feb 6 session were pre-existing |
-| `test_evidence`        |     **Yes**     | Catches "tests pass" claims without proof                | Designed after agents shipped broken code                |
-| `visual_verification`  |     **Yes**     | Catches broken UI that tests can't cover                 | Requires subjective human judgment                       |
+| `test_evidence`        | **Yes**         | Catches "tests pass" claims without proof                | Designed after agents shipped broken code                |
+| `visual_verification`  | **Yes**         | Catches broken UI that tests can't cover                 | Requires subjective human judgment                       |
 | `synthesis`            | **Conditional** | Valuable for full-tier; already skipped for light-tier   | Light tier spawns skip it correctly                      |
-| `constraint`           |     **Low**     | Catches missing artifacts, but rarely fires              | Most agents produce required artifacts                   |
-| `phase_gate`           |     **Low**     | Checks intermediate phases were reported                 | Process verification, not quality                        |
-| `skill_output`         |     **Low**     | Checks skill.yaml output patterns                        | Rarely configured, rarely fails                          |
-| `git_diff`             |     **Low**     | Catches false claims in SYNTHESIS.md delta               | Only matters for full-tier with SYNTHESIS.md             |
-| `decision_patch_limit` |     **Low**     | Prevents excessive patching of decisions                 | Niche guard, almost never triggers                       |
+| `constraint`           | **Low**         | Catches missing artifacts, but rarely fires              | Most agents produce required artifacts                   |
+| `phase_gate`           | **Low**         | Checks intermediate phases were reported                 | Process verification, not quality                        |
+| `skill_output`         | **Low**         | Checks skill.yaml output patterns                        | Rarely configured, rarely fails                          |
+| `git_diff`             | **Low**         | Catches false claims in SYNTHESIS.md delta               | Only matters for full-tier with SYNTHESIS.md             |
+| `decision_patch_limit` | **Low**         | Prevents excessive patching of decisions                 | Niche guard, almost never triggers                       |
 | `handoff_content`      | **Conditional** | Only for orchestrator sessions                           | Correct scope already                                    |
-| `dashboard_health`     |     **Low**     | HTTP health check for web/ changes                       | Frequently fails due to server state, not agent work     |
+| `dashboard_health`     | **Low**         | HTTP health check for web/ changes                       | Frequently fails due to server state, not agent work     |
 
 ### Two-Tier Gate Model
 
@@ -270,7 +270,7 @@ Replace the build-specific `build-skip.json` with a general `gate-skips.json`:
 ## Implementation Priority
 
 | Change                                         | Effort | Impact                                                    | Priority |
-| ---------------------------------------------- | ------ | --------------------------------------------------------- | -------- |
+|------------------------------------------------|--------|-----------------------------------------------------------|----------|
 | Build blame integration                        | Small  | High - eliminates most `--skip-build` usage               | P0       |
 | Generalized gate skip memory                   | Medium | High - eliminates repeated `--skip-reason` per completion | P0       |
 | `orch skip-set/list/clear` commands            | Small  | Medium - CLI ergonomics for session-level skips           | P1       |

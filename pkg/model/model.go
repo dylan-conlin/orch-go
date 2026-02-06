@@ -47,19 +47,24 @@ var Aliases = map[string]ModelSpec{
 	"pro-2.5":   {Provider: "google", ModelID: "gemini-2.5-pro"},
 
 	// OpenAI models (GPT) - IDs from models.dev
-	"gpt":         {Provider: "openai", ModelID: "gpt-5.2"}, // Short alias for latest GPT
-	"gpt5":        {Provider: "openai", ModelID: "gpt-5.2"}, // Updated to latest (5.2)
-	"gpt-5":       {Provider: "openai", ModelID: "gpt-5.2"}, // Updated to latest (5.2)
-	"gpt5-latest": {Provider: "openai", ModelID: "gpt-5.2"},
-	"gpt5-mini":   {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
-	"gpt-5-mini":  {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
-	"gpt4o":       {Provider: "openai", ModelID: "gpt-4o"},
-	"gpt-4o":      {Provider: "openai", ModelID: "gpt-4o"},
-	"gpt-mini":    {Provider: "openai", ModelID: "gpt-4o-mini"},
-	"gpt4o-mini":  {Provider: "openai", ModelID: "gpt-4o-mini"},
-	"gpt-4o-mini": {Provider: "openai", ModelID: "gpt-4o-mini"},
-	"o3":          {Provider: "openai", ModelID: "o3"},
-	"o3-mini":     {Provider: "openai", ModelID: "o3-mini"},
+	"gpt":           {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Short alias for latest GPT
+	"gpt5":          {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Updated to latest (5.3-codex)
+	"gpt-5":         {Provider: "openai", ModelID: "gpt-5.3-codex"}, // Updated to latest (5.3-codex)
+	"gpt5-latest":   {Provider: "openai", ModelID: "gpt-5.3-codex"},
+	"gpt-5.3":       {Provider: "openai", ModelID: "gpt-5.3-codex"},
+	"gpt-5.3-codex": {Provider: "openai", ModelID: "gpt-5.3-codex"},
+	"codex":         {Provider: "openai", ModelID: "gpt-5.3-codex"},
+	"gpt-5.2":       {Provider: "openai", ModelID: "gpt-5.2"}, // Previous latest
+	"gpt-5.2-codex": {Provider: "openai", ModelID: "gpt-5.2-codex"},
+	"gpt5-mini":     {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
+	"gpt-5-mini":    {Provider: "openai", ModelID: "gpt-5-mini-20251130"},
+	"gpt4o":         {Provider: "openai", ModelID: "gpt-4o"},
+	"gpt-4o":        {Provider: "openai", ModelID: "gpt-4o"},
+	"gpt-mini":      {Provider: "openai", ModelID: "gpt-4o-mini"},
+	"gpt4o-mini":    {Provider: "openai", ModelID: "gpt-4o-mini"},
+	"gpt-4o-mini":   {Provider: "openai", ModelID: "gpt-4o-mini"},
+	"o3":            {Provider: "openai", ModelID: "o3"},
+	"o3-mini":       {Provider: "openai", ModelID: "o3-mini"},
 
 	// DeepSeek models (IDs from models.dev: deepseek-chat, deepseek-reasoner)
 	"deepseek":      {Provider: "deepseek", ModelID: "deepseek-chat"},
@@ -124,12 +129,17 @@ func Resolve(spec string) ModelSpec {
 	return ModelSpec{Provider: "anthropic", ModelID: spec}
 }
 
+// IsAnthropic returns true if the model spec is an Anthropic model.
+func (m ModelSpec) IsAnthropic() bool {
+	return m.Provider == "anthropic"
+}
+
 // ListAliases returns a formatted list of available model aliases.
 func ListAliases() []string {
 	return []string{
 		"Anthropic: opus, sonnet, haiku (also -4.5 variants)",
 		"Google: flash, flash-2.5, flash3, flash-3, pro, pro-2.5",
-		"OpenAI: gpt (latest 5.2), gpt5, gpt-5, gpt-5-mini, gpt4o, gpt-4o, gpt-mini, gpt-4o-mini, o3, o3-mini",
+		"OpenAI: gpt/codex (latest 5.3-codex), gpt-5.2, gpt-5.2-codex, gpt-5-mini, gpt4o, gpt-4o, o3, o3-mini",
 		"DeepSeek: deepseek, deepseek-chat, deepseek-r1, reasoning (alias for reasoner)",
 		"Alibaba: qwen, qwen-max, qwen3, qwen3-max, qwen-thinking (thinking mode snapshot)",
 	}

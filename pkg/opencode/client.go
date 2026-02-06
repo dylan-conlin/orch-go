@@ -362,7 +362,50 @@ func parseModelSpec(model string) map[string]string {
 // ListSessions fetches all sessions from the OpenCode API.
 // If directory is provided, it passes it via x-opencode-directory header.
 func (c *Client) ListSessions(directory string) ([]Session, error) {
-	req, err := http.NewRequest("GET", c.ServerURL+"/session", nil)
+	return c.ListSessionsWithOpts(directory, nil)
+}
+
+// ListSessionsOpts configures optional server-side filtering for session listing.
+// These params are applied server-side by OpenCode, reducing the amount of data
+// transferred and the number of sequential Storage.read() calls the server makes.
+type ListSessionsOpts struct {
+	// Start filters to sessions updated on or after this timestamp (ms since epoch).
+	// This is the most impactful filter — with 89 sessions, using a 30-min window
+	// reduced ListSessions from 5.8s to <10ms.
+	Start int64
+	// Limit caps the number of sessions returned.
+	Limit int
+	// Search filters sessions by title (case-insensitive substring match).
+	Search string
+	// RootsOnly excludes child/forked sessions.
+	RootsOnly bool
+}
+
+// ListSessionsWithOpts fetches sessions with optional server-side filtering.
+func (c *Client) ListSessionsWithOpts(directory string, opts *ListSessionsOpts) ([]Session, error) {
+	u := c.ServerURL + "/session"
+
+	// Build query params for server-side filtering
+	params := make([]string, 0)
+	if opts != nil {
+		if opts.Start > 0 {
+			params = append(params, fmt.Sprintf("start=%d", opts.Start))
+		}
+		if opts.Limit > 0 {
+			params = append(params, fmt.Sprintf("limit=%d", opts.Limit))
+		}
+		if opts.Search != "" {
+			params = append(params, "search="+opts.Search)
+		}
+		if opts.RootsOnly {
+			params = append(params, "roots=true")
+		}
+	}
+	if len(params) > 0 {
+		u += "?" + strings.Join(params, "&")
+	}
+
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -718,6 +761,50 @@ func (c *Client) GetMessages(sessionID string) ([]Message, error) {
 	}
 
 	return messages, nil
+}
+
+// SessionEnrichment contains model, processing status, and token stats extracted from
+// a single GetMessages call. Replaces separate GetSessionModel + IsSessionProcessing +
+// GetSessionTokens calls, reducing 3 HTTP round-trips to 1 per session.
+type SessionEnrichment struct {
+	Model        string
+	IsProcessing bool
+	Tokens       *TokenStats
+}
+
+// GetSessionEnrichment fetches messages once and extracts model ID, processing status,
+// and token stats. Replaces separate GetSessionModel + IsSessionProcessing +
+// GetSessionTokens calls, reducing 3 HTTP round-trips to 1 per session.
+func (c *Client) GetSessionEnrichment(sessionID string) SessionEnrichment {
+	messages, err := c.GetMessages(sessionID)
+	if err != nil || len(messages) == 0 {
+		return SessionEnrichment{}
+	}
+
+	var result SessionEnrichment
+
+	// Extract model from most recent assistant message
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role == "assistant" && messages[i].Info.ModelID != "" {
+			result.Model = messages[i].Info.ModelID
+			break
+		}
+	}
+
+	// Check processing status from last message
+	lastMsg := messages[len(messages)-1]
+	if lastMsg.Info.Role == "assistant" {
+		result.IsProcessing = lastMsg.Info.Finish == "" && lastMsg.Info.Time.Completed == 0
+	} else if lastMsg.Info.Role == "user" {
+		createdAt := time.Unix(lastMsg.Info.Time.Created/1000, 0)
+		result.IsProcessing = time.Since(createdAt) < 30*time.Second
+	}
+
+	// Aggregate token stats from all messages
+	stats := AggregateTokens(messages)
+	result.Tokens = &stats
+
+	return result
 }
 
 // GetSessionModel extracts the model ID from a session's most recent assistant message.

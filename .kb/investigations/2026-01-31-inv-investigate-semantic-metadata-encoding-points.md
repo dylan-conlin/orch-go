@@ -44,11 +44,11 @@ Fill this at the END of your investigation, before marking Complete.
 
 The ecosystem encodes semantic metadata at three distinct boundaries:
 
-| Boundary | Timing | Enforcement | Examples |
-|----------|--------|-------------|----------|
-| **Creation Time** | When artifact is born | Structural (schema) | Beads issue type, kb quick entry type, spawn skill name |
-| **Completion Time** | When work ends | Structural (verification) | SYNTHESIS.md fields, Phase: Complete, recommendation |
-| **Post-Hoc Extraction** | Whenever parsed | Heuristic (regex) | Title from heading, date from filename, topic from text |
+| Boundary                | Timing                | Enforcement               | Examples                                                |
+|-------------------------|-----------------------|---------------------------|---------------------------------------------------------|
+| **Creation Time**       | When artifact is born | Structural (schema)       | Beads issue type, kb quick entry type, spawn skill name |
+| **Completion Time**     | When work ends        | Structural (verification) | SYNTHESIS.md fields, Phase: Complete, recommendation    |
+| **Post-Hoc Extraction** | Whenever parsed       | Heuristic (regex)         | Title from heading, date from filename, topic from text |
 
 The boundaries are not arbitrary—they correspond to points where an agent has different levels of understanding:
 - Creation: Knows intent but not outcome
@@ -211,16 +211,16 @@ func parseKBContextOutput(output string) []KBContextMatch {
 
 **Evidence:**
 
-| Metadata | Current Approach | Friction | Fidelity | Could Change? |
-|----------|------------------|----------|----------|---------------|
-| Issue type | Structural (required) | High | 100% | No—drives lifecycle |
-| Priority | Structural (required) | High | 100% | No—drives ordering |
-| Skill name | Structural (spawn param) | Low | 100% | No—drives context |
-| Topic | Heuristic (title parse) | Zero | ~80% | Yes—could require frontmatter |
-| Prior work | Heuristic (citation parse) | Zero | ~60% | Yes—now has Prior-Work table |
-| Status/Phase | Semi-structural (bd comment) | Low | ~95% | No—works well |
-| Dependencies | Structural (bd dep add) | Medium | 100% | No—drives DAG |
-| Recommendation | Semi-structural (SYNTHESIS) | Low | ~90% | No—parsed at completion |
+| Metadata       | Current Approach             | Friction | Fidelity | Could Change?                 |
+|----------------|------------------------------|----------|----------|-------------------------------|
+| Issue type     | Structural (required)        | High     | 100%     | No—drives lifecycle           |
+| Priority       | Structural (required)        | High     | 100%     | No—drives ordering            |
+| Skill name     | Structural (spawn param)     | Low      | 100%     | No—drives context             |
+| Topic          | Heuristic (title parse)      | Zero     | ~80%     | Yes—could require frontmatter |
+| Prior work     | Heuristic (citation parse)   | Zero     | ~60%     | Yes—now has Prior-Work table  |
+| Status/Phase   | Semi-structural (bd comment) | Low      | ~95%     | No—works well                 |
+| Dependencies   | Structural (bd dep add)      | Medium   | 100%     | No—drives DAG                 |
+| Recommendation | Semi-structural (SYNTHESIS)  | Low      | ~90%     | No—parsed at completion       |
 
 The pattern: **High-stakes metadata is structural. Discovery metadata is heuristic.**
 
@@ -339,11 +339,11 @@ Why not infer from imports/references?
 
 ### Recommendation Authority
 
-| Recommendation | Authority | Rationale |
-|----------------|-----------|-----------|
-| Create model file documenting encoding points | **architectural** | Cross-component framework that guides future design decisions |
-| Add `topic:` frontmatter to investigation template | **architectural** | Changes template used across ecosystem |
-| Keep current heuristic topic extraction | **implementation** | Status quo, no change |
+| Recommendation                                     | Authority          | Rationale                                                     |
+|----------------------------------------------------|--------------------|---------------------------------------------------------------|
+| Create model file documenting encoding points      | **architectural**  | Cross-component framework that guides future design decisions |
+| Add `topic:` frontmatter to investigation template | **architectural**  | Changes template used across ecosystem                        |
+| Keep current heuristic topic extraction            | **implementation** | Status quo, no change                                         |
 
 ### Recommended Approach ⭐
 

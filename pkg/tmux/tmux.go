@@ -307,8 +307,7 @@ func BuildStandaloneCommand(cfg *StandaloneConfig) string {
 type OpencodeAttachConfig struct {
 	ServerURL  string // http://127.0.0.1:4096
 	ProjectDir string
-	Model      string
-	SessionID  string // optional: continue existing session
+	SessionID  string // optional: attach to pre-created session (e.g., created via API with specific model)
 }
 
 // BuildOpencodeAttachCommand creates the opencode command string for tmux spawning.
@@ -324,14 +323,11 @@ func BuildOpencodeAttachCommand(cfg *OpencodeAttachConfig) string {
 
 	// Use attach mode with --dir to connect to shared server
 	// This makes sessions visible via API for session ID capture
+	// Note: opencode attach does NOT accept --model. To spawn with a specific model,
+	// create the session via API first (client.CreateSession), then attach with --session.
 	cmd := fmt.Sprintf("ORCH_WORKER=1 %s attach %q --dir %q", opencodeBin, cfg.ServerURL, cfg.ProjectDir)
 
-	// Add model if provided
-	if cfg.Model != "" {
-		cmd += fmt.Sprintf(" --model %q", cfg.Model)
-	}
-
-	// Continue existing session if provided
+	// Continue existing session if provided (used when session pre-created via API with model)
 	if cfg.SessionID != "" {
 		cmd += fmt.Sprintf(" --session %q", cfg.SessionID)
 	}

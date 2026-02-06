@@ -1,0 +1,11 @@
+{
+  "skips": [
+    {
+      "gate": "git_diff",
+      "reason": "Architect investigation - GPT-5.3-codex headless agent produced investigation file but did not git commit (expected for headless non-Claude backend)",
+      "set_at": "2026-02-06T13:45:47.694149-08:00",
+      "set_by": "orch-go-21372",
+      "expires_at": "2026-02-06T15:45:47.694149-08:00"
+    }
+  ]
+}
