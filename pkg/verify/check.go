@@ -27,14 +27,22 @@ const (
 	GateDashboardHealth    = "dashboard_health"     // Dashboard API health check failed
 )
 
+// GateResult represents the result of a single verification gate.
+type GateResult struct {
+	Gate   string // Gate constant name (e.g., GateBuild)
+	Passed bool
+	Error  string // Error message if failed (empty if passed)
+}
+
 // VerificationResult represents the result of a completion verification.
 type VerificationResult struct {
 	Passed      bool     // Whether all checks passed
 	Errors      []string // Errors that prevent completion
 	Warnings    []string // Warnings that don't block completion
 	Phase       PhaseStatus
-	GatesFailed []string // Names of gates that failed (for event tracking)
-	Skill       string   // Skill name extracted from workspace
+	GatesFailed []string     // Names of gates that failed (for event tracking)
+	GateResults []GateResult // Per-gate pass/fail results (ordered by check sequence)
+	Skill       string       // Skill name extracted from workspace
 }
 
 // Tier constants for orchestrator spawns.
@@ -312,6 +320,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.Passed = false
 				result.Errors = append(result.Errors, constraintResult.Errors...)
 				result.GatesFailed = append(result.GatesFailed, GateConstraint)
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateConstraint, Passed: false, Error: joinErrors(constraintResult.Errors)})
+			} else {
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateConstraint, Passed: true})
 			}
 			result.Warnings = append(result.Warnings, constraintResult.Warnings...)
 		}
@@ -328,6 +339,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 			result.Passed = false
 			result.Errors = append(result.Errors, phaseGateResult.Errors...)
 			result.GatesFailed = append(result.GatesFailed, GatePhaseGate)
+			result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseGate, Passed: false, Error: joinErrors(phaseGateResult.Errors)})
+		} else {
+			result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseGate, Passed: true})
 		}
 	}
 
@@ -342,6 +356,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 			result.Passed = false
 			result.Errors = append(result.Errors, skillOutputResult.Errors...)
 			result.GatesFailed = append(result.GatesFailed, GateSkillOutput)
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateSkillOutput, Passed: false, Error: joinErrors(skillOutputResult.Errors)})
+		} else {
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateSkillOutput, Passed: true})
 		}
 		result.Warnings = append(result.Warnings, skillOutputResult.Warnings...)
 	}
@@ -356,6 +373,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.Passed = false
 				result.Errors = append(result.Errors, visualResult.Errors...)
 				result.GatesFailed = append(result.GatesFailed, GateVisualVerify)
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateVisualVerify, Passed: false, Error: joinErrors(visualResult.Errors)})
+			} else {
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateVisualVerify, Passed: true})
 			}
 			result.Warnings = append(result.Warnings, visualResult.Warnings...)
 		}
@@ -371,6 +391,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.Passed = false
 				result.Errors = append(result.Errors, testEvidenceResult.Errors...)
 				result.GatesFailed = append(result.GatesFailed, GateTestEvidence)
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateTestEvidence, Passed: false, Error: joinErrors(testEvidenceResult.Errors)})
+			} else {
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateTestEvidence, Passed: true})
 			}
 			result.Warnings = append(result.Warnings, testEvidenceResult.Warnings...)
 		}
@@ -386,6 +409,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.Passed = false
 				result.Errors = append(result.Errors, gitDiffResult.Errors...)
 				result.GatesFailed = append(result.GatesFailed, GateGitDiff)
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateGitDiff, Passed: false, Error: joinErrors(gitDiffResult.Errors)})
+			} else {
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateGitDiff, Passed: true})
 			}
 			result.Warnings = append(result.Warnings, gitDiffResult.Warnings...)
 		}
@@ -400,6 +426,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 			result.Passed = false
 			result.Errors = append(result.Errors, buildResult.Errors...)
 			result.GatesFailed = append(result.GatesFailed, GateBuild)
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateBuild, Passed: false, Error: joinErrors(buildResult.Errors)})
+		} else {
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateBuild, Passed: true})
 		}
 		result.Warnings = append(result.Warnings, buildResult.Warnings...)
 	}
@@ -414,6 +443,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.Passed = false
 				result.Errors = append(result.Errors, dashboardResult.Errors...)
 				result.GatesFailed = append(result.GatesFailed, GateDashboardHealth)
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateDashboardHealth, Passed: false, Error: joinErrors(dashboardResult.Errors)})
+			} else {
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateDashboardHealth, Passed: true})
 			}
 			result.Warnings = append(result.Warnings, dashboardResult.Warnings...)
 		}
@@ -429,6 +461,9 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 				result.Passed = false
 				result.Errors = append(result.Errors, decisionPatchResult.Errors...)
 				result.GatesFailed = append(result.GatesFailed, GateDecisionPatchLimit)
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateDecisionPatchLimit, Passed: false, Error: joinErrors(decisionPatchResult.Errors)})
+			} else {
+				result.GateResults = append(result.GateResults, GateResult{Gate: GateDecisionPatchLimit, Passed: true})
 			}
 			result.Warnings = append(result.Warnings, decisionPatchResult.Warnings...)
 		}
@@ -515,19 +550,22 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 
 	if !phaseComplete {
 		if !status.Found {
+			errMsg := fmt.Sprintf("agent has not reported any Phase status for %s", beadsID)
 			result.Passed = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("agent has not reported any Phase status for %s", beadsID))
+			result.Errors = append(result.Errors, errMsg)
 			result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
+			result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: false, Error: errMsg})
 			return result, nil
 		}
 
+		errMsg := fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID)
 		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("agent phase is '%s', not 'Complete' (beads: %s)", status.Phase, beadsID))
+		result.Errors = append(result.Errors, errMsg)
 		result.GatesFailed = append(result.GatesFailed, GatePhaseComplete)
+		result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: false, Error: errMsg})
 		return result, nil
 	}
+	result.GateResults = append(result.GateResults, GateResult{Gate: GatePhaseComplete, Passed: true})
 
 	// Check for SYNTHESIS.md (only for full tier)
 	if workspacePath != "" && tier != "light" {
@@ -535,10 +573,13 @@ func VerifyCompletionWithTierAndComments(beadsID string, workspacePath string, t
 		if err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
 		} else if !ok {
+			errMsg := fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath)
 			result.Passed = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+			result.Errors = append(result.Errors, errMsg)
 			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateSynthesis, Passed: false, Error: errMsg})
+		} else {
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateSynthesis, Passed: true})
 		}
 	}
 
@@ -562,9 +603,11 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 	}
 
 	if workspacePath == "" {
+		errMsg := "workspace path is required for orchestrator verification"
 		result.Passed = false
-		result.Errors = append(result.Errors, "workspace path is required for orchestrator verification")
+		result.Errors = append(result.Errors, errMsg)
 		result.GatesFailed = append(result.GatesFailed, GateSynthesis)
+		result.GateResults = append(result.GateResults, GateResult{Gate: GateSynthesis, Passed: false, Error: errMsg})
 		return result
 	}
 
@@ -573,10 +616,11 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 	if err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify SYNTHESIS.md: %v", err))
 	} else if !ok {
+		errMsg := fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath)
 		result.Passed = false
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("SYNTHESIS.md is missing or empty in workspace: %s", workspacePath))
+		result.Errors = append(result.Errors, errMsg)
 		result.GatesFailed = append(result.GatesFailed, GateSynthesis)
+		result.GateResults = append(result.GateResults, GateResult{Gate: GateSynthesis, Passed: false, Error: errMsg})
 	}
 
 	// Verify session ended properly by checking for "Session Ended" marker in SYNTHESIS.md
@@ -586,10 +630,24 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to verify session end: %v", err))
 		} else if !sessionEnded {
 			result.Passed = false
-			result.Errors = append(result.Errors,
-				"SYNTHESIS.md exists but session end not properly recorded")
+			errMsg := "SYNTHESIS.md exists but session end not properly recorded"
+			result.Errors = append(result.Errors, errMsg)
 			result.GatesFailed = append(result.GatesFailed, GateSynthesis)
+			// Update the gate result if it was previously marked as passed
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateSynthesis, Passed: false, Error: errMsg})
 		}
+	}
+
+	// If synthesis checks passed and no synthesis gate result yet, mark it passed
+	synthesisFailed := false
+	for _, gr := range result.GateResults {
+		if gr.Gate == GateSynthesis && !gr.Passed {
+			synthesisFailed = true
+			break
+		}
+	}
+	if !synthesisFailed && ok {
+		result.GateResults = append(result.GateResults, GateResult{Gate: GateSynthesis, Passed: true})
 	}
 
 	// Validate handoff content (TLDR and Outcome must be filled, not placeholders)
@@ -604,6 +662,9 @@ func VerifyOrchestratorCompletion(workspacePath string) VerificationResult {
 				result.Errors = append(result.Errors, e)
 			}
 			result.GatesFailed = append(result.GatesFailed, GateHandoffContent)
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateHandoffContent, Passed: false, Error: joinErrors(contentValidation.Errors)})
+		} else {
+			result.GateResults = append(result.GateResults, GateResult{Gate: GateHandoffContent, Passed: true})
 		}
 	}
 
@@ -645,6 +706,48 @@ func verifySessionEndedProperly(workspacePath string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// joinErrors joins multiple error strings into a single semicolon-separated string.
+func joinErrors(errors []string) string {
+	return strings.Join(errors, "; ")
+}
+
+// GateSkipFlag returns the CLI --skip-* flag name for a given gate constant.
+func GateSkipFlag(gate string) string {
+	switch gate {
+	case GatePhaseComplete:
+		return "--skip-phase-complete"
+	case GateSynthesis:
+		return "--skip-synthesis"
+	case GateHandoffContent:
+		return "--skip-handoff-content"
+	case GateConstraint:
+		return "--skip-constraint"
+	case GatePhaseGate:
+		return "--skip-phase-gate"
+	case GateSkillOutput:
+		return "--skip-skill-output"
+	case GateVisualVerify:
+		return "--skip-visual"
+	case GateTestEvidence:
+		return "--skip-test-evidence"
+	case GateGitDiff:
+		return "--skip-git-diff"
+	case GateBuild:
+		return "--skip-build"
+	case GateDecisionPatchLimit:
+		return "--skip-decision-patch"
+	case GateDashboardHealth:
+		return "--skip-dashboard-health"
+	default:
+		return "--skip-" + strings.ReplaceAll(gate, "_", "-")
+	}
+}
+
+// GateDisplayName returns a human-readable uppercase name for a gate constant.
+func GateDisplayName(gate string) string {
+	return strings.ToUpper(gate)
 }
 
 // ReadTierFromWorkspace reads the spawn tier from the workspace's .tier file.

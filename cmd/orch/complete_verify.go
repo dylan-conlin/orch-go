@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -157,5 +158,54 @@ func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to log bypass event for %s: %v\n", gate, err)
 		}
+	}
+}
+
+// recordBuildSkipMemory persists a build gate skip decision for future completions.
+// When the orchestrator uses --skip-build, this records the reason so subsequent
+// completions auto-skip the build gate without requiring --skip-build again.
+func recordBuildSkipMemory(skipConfig SkipConfig, projectDir, identifier string) {
+	if !skipConfig.Build {
+		return
+	}
+	if err := verify.RecordBuildSkip(projectDir, skipConfig.Reason, identifier); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to persist build skip memory: %v\n", err)
+	} else {
+		fmt.Printf("Build skip memory saved (expires in %v)\n", verify.BuildSkipDuration)
+	}
+}
+
+// printGateResults prints a formatted summary of gate results showing which passed and failed,
+// with error details for failures, and the specific --skip flags needed to bypass them.
+func printGateResults(results []verify.GateResult, failed []string) {
+	// Build a set of failed gates for quick lookup
+	failedSet := make(map[string]bool, len(failed))
+	for _, g := range failed {
+		failedSet[g] = true
+	}
+
+	// Print per-gate results
+	for _, gr := range results {
+		name := verify.GateDisplayName(gr.Gate)
+		if gr.Passed {
+			fmt.Fprintf(os.Stderr, "  \033[32m✓\033[0m %s\n", name)
+		} else {
+			// Truncate long error messages to keep output readable
+			errMsg := gr.Error
+			if len(errMsg) > 120 {
+				errMsg = errMsg[:117] + "..."
+			}
+			fmt.Fprintf(os.Stderr, "  \033[31m✗\033[0m %s: %s\n", name, errMsg)
+		}
+	}
+
+	// Print skip flags for failing gates
+	if len(failed) > 0 {
+		var flags []string
+		for _, g := range failed {
+			flags = append(flags, verify.GateSkipFlag(g))
+		}
+		fmt.Fprintf(os.Stderr, "\nSkip failing gates with:\n")
+		fmt.Fprintf(os.Stderr, "  %s --skip-reason '<reason>'\n", strings.Join(flags, " "))
 	}
 }

@@ -423,6 +423,18 @@ func runComplete(identifier, workdir string) error {
 					logSkipEvents(skipConfig, "", agentName, skillName)
 				}
 
+				// Persist build skip memory when build gate is bypassed (orchestrator path)
+				for _, gate := range skippedGatesFound {
+					if gate == verify.GateBuild {
+						if err := verify.WriteBuildSkipMemory(beadsProjectDir, skipConfig.Reason, agentName); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: failed to persist build skip memory: %v\n", err)
+						} else {
+							fmt.Printf("Build skip memory saved (auto-skips build for subsequent completions, expires in %v)\n", verify.BuildSkipDuration)
+						}
+						break
+					}
+				}
+
 				// Update result with filtered data
 				result.GatesFailed = filteredGates
 				result.Errors = filteredErrors
@@ -444,14 +456,8 @@ func runComplete(identifier, workdir string) error {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
 
-				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - verification failed:\n")
-				for _, e := range result.Errors {
-					fmt.Fprintf(os.Stderr, "  - %s\n", e)
-				}
-				fmt.Fprintf(os.Stderr, "\nOrchestrator must fill SYNTHESIS.md with:\n")
-				fmt.Fprintf(os.Stderr, "  - TLDR section (actual content, not placeholder)\n")
-				fmt.Fprintf(os.Stderr, "  - Outcome field (success, partial, blocked, or failed)\n")
-				fmt.Fprintf(os.Stderr, "Or use --skip-handoff-content --skip-reason \"...\" to bypass\n")
+				fmt.Fprintf(os.Stderr, "Cannot complete orchestrator session - verification failed:\n\n")
+				printGateResults(result.GateResults, result.GatesFailed)
 				return fmt.Errorf("verification failed")
 			}
 			fmt.Println("Completion signal: SYNTHESIS.md verified (content validated)")
@@ -507,6 +513,23 @@ func runComplete(identifier, workdir string) error {
 					logSkipEvents(skipConfig, beadsID, agentName, skillName)
 				}
 
+				// Persist build skip memory when build gate is bypassed
+				// This auto-skips build for subsequent completions without --skip-build
+				for _, gate := range skippedGatesFound {
+					if gate == verify.GateBuild {
+						skippedByID := beadsID
+						if skippedByID == "" {
+							skippedByID = agentName
+						}
+						if err := verify.WriteBuildSkipMemory(beadsProjectDir, skipConfig.Reason, skippedByID); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: failed to persist build skip memory: %v\n", err)
+						} else {
+							fmt.Printf("Build skip memory saved (auto-skips build for subsequent completions, expires in %v)\n", verify.BuildSkipDuration)
+						}
+						break
+					}
+				}
+
 				// Update result with filtered data
 				result.GatesFailed = filteredGates
 				result.Errors = filteredErrors
@@ -529,12 +552,8 @@ func runComplete(identifier, workdir string) error {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log verification failure event: %v\n", err)
 				}
 
-				fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n")
-				for _, e := range result.Errors {
-					fmt.Fprintf(os.Stderr, "  - %s\n", e)
-				}
-				fmt.Fprintf(os.Stderr, "\nAgent must run: bd comment %s \"Phase: Complete - <summary>\"\n", beadsID)
-				fmt.Fprintf(os.Stderr, "Or use --skip-<gate> --skip-reason to bypass specific gates\n")
+				fmt.Fprintf(os.Stderr, "Cannot complete agent - verification failed:\n\n")
+				printGateResults(result.GateResults, result.GatesFailed)
 				return fmt.Errorf("verification failed")
 			}
 
