@@ -889,6 +889,15 @@ type ArchiveResult struct {
 	DestDir string   // Destination directory
 }
 
+// findKBDir finds the .kb directory in the project
+func findKBDir(projectDir string) (string, error) {
+	kbDir := filepath.Join(projectDir, ".kb")
+	if _, err := os.Stat(kbDir); os.IsNotExist(err) {
+		return "", fmt.Errorf("no .kb directory found in %s", projectDir)
+	}
+	return kbDir, nil
+}
+
 // runKBArchiveOld archives investigations older than the specified duration
 func runKBArchiveOld(olderThan string, dryRun bool) error {
 	projectDir, err := os.Getwd()
