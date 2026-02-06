@@ -19,16 +19,18 @@ func (m ModelSpec) Format() string {
 // Sonnet requires pay-per-token API which needs explicit opt-in.
 var DefaultModel = ModelSpec{
 	Provider: "anthropic",
-	ModelID:  "claude-opus-4-5-20251101",
+	ModelID:  "claude-opus-4-6",
 }
 
 // Aliases maps short names to full model specs.
 // Designed for quick switching between common models.
 var Aliases = map[string]ModelSpec{
 	// Anthropic models (Claude)
-	"opus":       {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
-	"opus-4.5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
-	"opus-4-5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
+	"opus":       {Provider: "anthropic", ModelID: "claude-opus-4-6"},
+	"opus-4.6":   {Provider: "anthropic", ModelID: "claude-opus-4-6"},
+	"opus-4-6":   {Provider: "anthropic", ModelID: "claude-opus-4-6"},
+	"opus-4.5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, // Legacy
+	"opus-4-5":   {Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}, // Legacy
 	"sonnet":     {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
 	"sonnet-4.5": {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},
 	"sonnet-4-5": {Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"},

@@ -15,12 +15,14 @@ func TestResolve_Aliases(t *testing.T) {
 		expected ModelSpec
 	}{
 		// Anthropic aliases
-		{"opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
-		{"Opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
-		{"OPUS", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
+		{"opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"Opus", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"OPUS", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
 		{"sonnet", ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}},
 		{"haiku", ModelSpec{Provider: "anthropic", ModelID: "claude-haiku-4-5-20251001"}},
-		{"opus-4.5", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
+		{"opus-4.6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"opus-4-6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"opus-4.5", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}}, // Legacy
 
 		// Google aliases
 		{"flash", ModelSpec{Provider: "google", ModelID: "gemini-3-flash-preview"}},
@@ -71,7 +73,8 @@ func TestResolve_ProviderModelFormat(t *testing.T) {
 		input    string
 		expected ModelSpec
 	}{
-		{"anthropic/claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
+		{"anthropic/claude-opus-4-6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"anthropic/claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}}, // Legacy
 		{"google/gemini-2.5-flash", ModelSpec{Provider: "google", ModelID: "gemini-2.5-flash"}},
 		{"openai/gpt-4o", ModelSpec{Provider: "openai", ModelID: "gpt-4o"}},
 	}
@@ -92,7 +95,8 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 		expected ModelSpec
 	}{
 		// Claude models default to anthropic
-		{"claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}},
+		{"claude-opus-4-6", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}},
+		{"claude-opus-4-5-20251101", ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}}, // Legacy
 		{"claude-sonnet-4-5-20250929", ModelSpec{Provider: "anthropic", ModelID: "claude-sonnet-4-5-20250929"}},
 
 		// Gemini models default to google
@@ -120,8 +124,8 @@ func TestResolve_ModelIDOnly(t *testing.T) {
 }
 
 func TestModelSpec_Format(t *testing.T) {
-	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"}
-	if spec.Format() != "anthropic/claude-opus-4-5-20251101" {
-		t.Errorf("Format() = %q, want %q", spec.Format(), "anthropic/claude-opus-4-5-20251101")
+	spec := ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"}
+	if spec.Format() != "anthropic/claude-opus-4-6" {
+		t.Errorf("Format() = %q, want %q", spec.Format(), "anthropic/claude-opus-4-6")
 	}
 }
