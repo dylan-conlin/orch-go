@@ -1401,7 +1401,7 @@ func truncateSessionIDForStatus(id string) string {
 }
 
 // formatModelForDisplay formats a model spec for compact display.
-// Shortens common model names (e.g., "gemini-3-flash-preview" -> "flash3", "claude-opus-4-5-20251101" -> "opus-4.5")
+// Shortens common model names (e.g., "gemini-3-flash-preview" -> "flash3", "claude-opus-4-6" -> "opus-4.6")
 func formatModelForDisplay(model string) string {
 	if model == "" {
 		return "-"
@@ -1413,10 +1413,12 @@ func formatModelForDisplay(model string) string {
 		"gemini-3-flash-preview":               "flash3",
 		"gemini-2.5-flash":                     "flash-2.5",
 		"gemini-2.5-pro":                       "pro-2.5",
-		"claude-opus-4-5-20251101":             "opus-4.5",
+		"claude-opus-4-6":                      "opus-4.6",
+		"anthropic/claude-opus-4-6":            "opus-4.6",
+		"claude-opus-4-5-20251101":             "opus-4.5", // Legacy
 		"claude-sonnet-4-5-20250929":           "sonnet-4.5",
 		"claude-haiku-4-5-20251001":            "haiku-4.5",
-		"anthropic/claude-opus-4-5-20251101":   "opus-4.5",
+		"anthropic/claude-opus-4-5-20251101":   "opus-4.5", // Legacy
 		"anthropic/claude-sonnet-4-5-20250929": "sonnet-4.5",
 		"anthropic/claude-haiku-4-5-20251001":  "haiku-4.5",
 		"gpt-5":                                "gpt5",

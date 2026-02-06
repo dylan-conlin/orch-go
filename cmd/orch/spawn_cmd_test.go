@@ -24,13 +24,13 @@ func TestValidateModeModelCombo(t *testing.T) {
 		{
 			name:          "valid: claude + opus",
 			backend:       "claude",
-			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
+			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"},
 			expectWarning: false,
 		},
 		{
 			name:          "invalid: opencode + opus",
 			backend:       "opencode",
-			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-5-20251101"},
+			modelSpec:     model.ModelSpec{Provider: "anthropic", ModelID: "claude-opus-4-6"},
 			expectWarning: true,
 			warningText:   "opencode backend with opus model may fail",
 		},
@@ -119,7 +119,13 @@ func TestModelAutoSelection(t *testing.T) {
 			expectedBackend: "claude",
 		},
 		{
-			name:            "opus-4.5 alias auto-selects claude",
+			name:            "opus alias auto-selects claude",
+			modelFlag:       "opus",
+			opusFlag:        false,
+			expectedBackend: "claude",
+		},
+		{
+			name:            "opus-4.5 legacy alias auto-selects claude",
 			modelFlag:       "opus-4.5",
 			opusFlag:        false,
 			expectedBackend: "claude",
