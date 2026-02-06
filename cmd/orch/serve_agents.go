@@ -39,6 +39,7 @@ type AgentAPIResponse struct {
 	IsProcessing         bool                 `json:"is_processing,omitempty"` // True if actively generating response
 	IsStale              bool                 `json:"is_stale,omitempty"`      // True if agent is older than beadsFetchThreshold (beads data not fetched)
 	IsStalled            bool                 `json:"is_stalled,omitempty"`    // True if active agent has same phase for 15+ minutes (advisory)
+	IsUntracked          bool                 `json:"is_untracked,omitempty"`  // True if agent was spawned with --no-track (synthetic beads ID)
 	SpawnedAt            string               `json:"spawned_at,omitempty"`    // ISO 8601 timestamp
 	UpdatedAt            string               `json:"updated_at,omitempty"`    // ISO 8601 timestamp
 	Synthesis            *SynthesisResponse   `json:"synthesis,omitempty"`
@@ -445,6 +446,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Mark untracked agents (--no-track spawns with synthetic beads IDs)
+		// These have no real beads issue, so phase/task/completion will always be empty.
+		if isUntrackedBeadsID(agent.BeadsID) {
+			agent.IsUntracked = true
+		}
+
 		// OPTIMIZATION: Mark sessions older than beadsFetchThreshold as stale.
 		// We still include them in the response (for dashboard visibility) but skip
 		// beads data fetch for performance. With 600+ sessions but only ~6-10 active,
@@ -474,11 +481,12 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Collect beads ID for batch fetch - only for NON-STALE agents with beads ID.
+		// Collect beads ID for batch fetch - only for NON-STALE, TRACKED agents with beads ID.
 		// Stale agents (older than beadsFetchThreshold) are included in response but
 		// skip beads fetch for performance optimization.
+		// Untracked agents have synthetic beads IDs not in the database - skip them too.
 		// See .kb/investigations/2026-01-04-design-dashboard-agent-status-model.md
-		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] && !isStale {
+		if agent.BeadsID != "" && !seenBeadsIDs[agent.BeadsID] && !isStale && !agent.IsUntracked {
 			beadsIDsToFetch = append(beadsIDsToFetch, agent.BeadsID)
 			seenBeadsIDs[agent.BeadsID] = true
 		}
@@ -524,12 +532,13 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 			if !alreadyIn {
 				agent := AgentAPIResponse{
-					ID:      win.Name,
-					BeadsID: beadsID,
-					Skill:   skill,
-					Project: project,
-					Status:  "active",
-					Window:  win.Target,
+					ID:          win.Name,
+					BeadsID:     beadsID,
+					Skill:       skill,
+					Project:     project,
+					Status:      "active",
+					Window:      win.Target,
+					IsUntracked: isUntrackedBeadsID(beadsID),
 				}
 
 				// Look up workspace path for spawn time and activity detection
