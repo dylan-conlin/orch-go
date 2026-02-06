@@ -1,10 +1,11 @@
 <script lang="ts">
-	export let currentView: 'issues' | 'artifacts' = 'issues';
+	export let currentView: 'issues' | 'artifacts' | 'completed' = 'issues';
 	export let issueViewMode: 'tree' | 'phase' | 'status' = 'tree';
-	export let onToggle: (view: 'issues' | 'artifacts') => void;
+	export let completedCount: number = 0;
+	export let onToggle: (view: 'issues' | 'artifacts' | 'completed') => void;
 	export let onIssueViewModeChange: (mode: 'tree' | 'phase' | 'status') => void = () => {};
 
-	function handleClick(view: 'issues' | 'artifacts') {
+	function handleClick(view: 'issues' | 'artifacts' | 'completed') {
 		currentView = view;
 		onToggle(view);
 	}
@@ -16,7 +17,7 @@
 </script>
 
 <div class="flex items-center gap-4">
-	<!-- Primary view toggle: Issues vs Artifacts -->
+	<!-- Primary view toggle: Issues / Completed / Artifacts -->
 	<div class="flex gap-2 border border-border rounded-md p-1">
 		<button
 			class="px-3 py-1 rounded text-sm font-medium transition-colors {currentView === 'issues'
@@ -25,6 +26,19 @@
 			on:click={() => handleClick('issues')}
 		>
 			Issues
+		</button>
+		<button
+			class="px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1.5 {currentView === 'completed'
+				? 'bg-accent text-accent-foreground'
+				: 'text-muted-foreground hover:text-foreground'}"
+			on:click={() => handleClick('completed')}
+		>
+			Completed
+			{#if completedCount > 0}
+				<span class="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs rounded-full {currentView === 'completed' ? 'bg-background/30 text-accent-foreground' : 'bg-yellow-500/20 text-yellow-500'}">
+					{completedCount}
+				</span>
+			{/if}
 		</button>
 		<button
 			class="px-3 py-1 rounded text-sm font-medium transition-colors {currentView === 'artifacts'

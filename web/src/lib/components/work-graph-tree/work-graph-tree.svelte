@@ -6,18 +6,16 @@
 	import { closeIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
-	import { attention, ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
+	import { ATTENTION_BADGE_CONFIG } from '$lib/stores/attention';
 	import { DeliverableChecklist } from '$lib/components/deliverable-checklist';
 	import { getExpectedDeliverables } from '$lib/stores/deliverables';
 	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 	import { CloseIssueModal } from '$lib/components/close-issue-modal';
-	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
 	import { orchestratorContext } from '$lib/stores/context';
 
 	export let tree: TreeNode[] = [];
 	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
-	export let completedIssues: CompletedIssue[] = [];
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
 	export let onSetFocus: (beadsId: string, title: string) => void = () => {};
 
@@ -28,10 +26,8 @@
 	}
 
 	// Flatten tree for keyboard navigation
-	// Now includes completed-but-unverified issues as TreeNode-like objects
-		let flattenedNodes: (TreeNode | WIPItem | CompletedIssue)[] = [];
+		let flattenedNodes: (TreeNode | WIPItem)[] = [];
 		let selectedIndex = 0;
-		let recentlyCompleted: CompletedIssue[] = [];
 		let pinnedTreeIds = new Set<string>();
 
 	// Track expanded details separately (fixes reactivity issues)
@@ -78,15 +74,9 @@
 		return result;
 	}
 
-	// Type guard to check if item is a CompletedIssue
-	function isCompletedIssue(item: TreeNode | WIPItem | CompletedIssue): item is CompletedIssue {
-		return 'verificationStatus' in item;
-	}
-
-	// Rebuild flattened list when tree, wipItems, or completedIssues change
+	// Rebuild flattened list when tree or wipItems change
 		$: {
 			const treeNodes = flattenTree(tree);
-			recentlyCompleted = [...completedIssues];
 
 		// Track which tree nodes are also surfaced in WIP (for visual differentiation in the tree)
 		const pinnedIds = new Set<string>();
@@ -110,12 +100,12 @@
 	}
 
 	// Type guard to check if item is a WIPItem
-	function isWIPItem(item: TreeNode | WIPItem | CompletedIssue): item is WIPItem {
+	function isWIPItem(item: TreeNode | WIPItem): item is WIPItem {
 		return 'type' in item && (item.type === 'running' || item.type === 'queued');
 	}
 
-	// Get ID from WIPItem, TreeNode, or CompletedIssue
-	function getItemId(item: TreeNode | WIPItem | CompletedIssue): string {
+	// Get ID from WIPItem or TreeNode
+	function getItemId(item: TreeNode | WIPItem): string {
 		if (isWIPItem(item)) {
 			return item.type === 'running' ? item.agent.id : item.issue.id;
 		}
@@ -123,22 +113,20 @@
 	}
 
 	// Get stable key for Svelte each blocks (avoids collisions when same issue appears in multiple views)
-	function getItemKey(item: TreeNode | WIPItem | CompletedIssue): string {
+	function getItemKey(item: TreeNode | WIPItem): string {
 		if (isWIPItem(item)) {
 			return item.type === 'running' ? `wip-running-${item.agent.id}` : `wip-queued-${item.issue.id}`;
 		}
-		if (isCompletedIssue(item)) return `completed-${item.id}`;
 		return `tree-${item.id}`;
 	}
 
 	// Get stable test ID per row type (avoids collisions when issue appears in both WIP + tree)
-	function getRowTestId(item: TreeNode | WIPItem | CompletedIssue): string {
+	function getRowTestId(item: TreeNode | WIPItem): string {
 		if (isWIPItem(item)) {
 			return item.type === 'running'
 				? `wip-row-${item.agent.beads_id || item.agent.id}`
 				: `wip-row-${item.issue.id}`;
 		}
-		if (isCompletedIssue(item)) return `completed-row-${item.id}`;
 		return `issue-row-${item.id}`;
 	}
 
@@ -239,8 +227,8 @@
 		case 'l':
 		case 'ArrowRight':
 			event.preventDefault();
-			// Expand tree node if it has children (WIP items and completed issues don't have tree expansion)
-			if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).children.length > 0) {
+			// Expand tree node if it has children (WIP items don't have tree expansion)
+			if (!isWIP && (current as TreeNode).children.length > 0) {
 				toggleExpansion(current as TreeNode);
 			}
 			break;
@@ -259,12 +247,12 @@
 		case 'h':
 		case 'ArrowLeft':
 			event.preventDefault();
-			// Collapse tree node if it has children and is expanded (WIP items and completed issues don't have tree collapse)
-			if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).children.length > 0 && (current as TreeNode).expanded) {
+			// Collapse tree node if it has children and is expanded
+			if (!isWIP && (current as TreeNode).children.length > 0 && (current as TreeNode).expanded) {
 				toggleExpansion(current as TreeNode);
-			} else if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).parent_id) {
+			} else if (!isWIP && (current as TreeNode).parent_id) {
 				// Jump to parent if no children to collapse
-				const parentIdx = flattenedNodes.findIndex(n => !isWIPItem(n) && (n as TreeNode).id === current.parent_id);
+				const parentIdx = flattenedNodes.findIndex(n => !isWIPItem(n) && (n as TreeNode).id === (current as TreeNode).parent_id);
 				if (parentIdx !== -1) {
 					selectedIndex = parentIdx;
 					scrollToSelected();
@@ -281,9 +269,9 @@
 				// Close L1 details
 				expandedDetails.delete(itemId);
 				expandedDetails = expandedDetails; // Trigger reactivity
-			} else if (!isWIP && !isCompletedIssue(current) && (current as TreeNode).parent_id) {
+			} else if (!isWIP && (current as TreeNode).parent_id) {
 				// Jump to parent
-				const parentIdx = flattenedNodes.findIndex(n => !isWIPItem(n) && (n as TreeNode).id === current.parent_id);
+				const parentIdx = flattenedNodes.findIndex(n => !isWIPItem(n) && (n as TreeNode).id === (current as TreeNode).parent_id);
 				if (parentIdx !== -1) {
 					selectedIndex = parentIdx;
 					scrollToSelected();
@@ -294,28 +282,16 @@
 			case 'i':
 			case 'o':
 				event.preventDefault();
-				// Open side panel for TreeNode (not for WIP items or completed issues)
-				if (!isWIP && !isCompletedIssue(current)) {
+				// Open side panel for TreeNode (not for WIP items)
+				if (!isWIP) {
 					selectedIssueForPanel = current as TreeNode;
-				}
-				break;
-
-			case 'v':
-				event.preventDefault();
-				// Mark completed issue as verified (only for UNVERIFIED issues)
-				if (isCompletedIssue(current) && current.verificationStatus === 'unverified') {
-					attention.markVerified(current.id);
 				}
 				break;
 
 			case 'x':
 				event.preventDefault();
-				// For completed issues: mark as needs_fix
-				// For regular tree nodes: open close modal
-				if (isCompletedIssue(current) && current.verificationStatus === 'unverified') {
-					attention.markNeedsFix(current.id);
-				} else if (!isWIP && !isCompletedIssue(current)) {
-					// Open close modal for regular tree nodes
+				// Open close modal for regular tree nodes
+				if (!isWIP) {
 					issueToClose = current as TreeNode;
 				}
 				break;
@@ -340,9 +316,9 @@
 					const beadsId = wipItem.type === 'running' 
 						? (wipItem.agent.beads_id || wipItem.agent.id) 
 						: wipItem.issue.id;
-					// Find matching tree node in flattenedNodes (tree nodes come after WIP and completed)
+					// Find matching tree node in flattenedNodes
 					const treeIdx = flattenedNodes.findIndex((n) => 
-						!isWIPItem(n) && !isCompletedIssue(n) && (n as TreeNode).id === beadsId
+						!isWIPItem(n) && (n as TreeNode).id === beadsId
 					);
 					if (treeIdx !== -1) {
 						selectedIndex = treeIdx;
@@ -354,7 +330,7 @@
 			case 'w':
 				event.preventDefault();
 				// Jump from tree item (if in WIP) to its WIP section position
-				if (!isWIP && !isCompletedIssue(current)) {
+				if (!isWIP) {
 					const nodeId = (current as TreeNode).id;
 					if (pinnedTreeIds.has(nodeId)) {
 						// Find matching WIP item in flattenedNodes
@@ -465,19 +441,10 @@
 	tabindex="0"
 	onkeydown={handleKeyDown}
 >
-	<!-- Recently Completed Section (collapsed by default) -->
-		<RecentlyCompletedSection
-			completedIssues={recentlyCompleted}
-			{selectedIndex}
-			onSelectItem={(idx) => { selectedIndex = idx; }}
-			startIndex={wipItems.length}
-		/>
-
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
 		{@const isWIP = isWIPItem(item)}
-		{@const isCompleted = isCompletedIssue(item)}
-		{@const depth = (!isWIP && !isCompleted) ? (item as TreeNode).depth : undefined}
+		{@const depth = !isWIP ? (item as TreeNode).depth : undefined}
 		<div
 			data-testid={getRowTestId(item)}
 			data-node-index={index}
@@ -636,107 +603,6 @@
 						</div>
 					</div>
 				{/if}
-			{/if}
-		{:else if isCompletedIssue(item)}
-			{@const issue = item}
-			{@const badgeConfig = getAttentionBadge(issue.attentionBadge)}
-			<!-- Completed Issue (pending verification) - inline in main list -->
-			<div
-				class={cn(
-				"flex items-center gap-3 py-2 px-1 rounded transition-colors",
-				index === selectedIndex ? 'bg-zinc-800' : '',
-				issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
-			)}
-			style="padding-left: 0"
-			>
-				<!-- Expansion indicator placeholder -->
-				<span class="w-4"></span>
-
-				<!-- Verification status icon -->
-				<span class="w-5 text-center">
-					{#if issue.verificationStatus === 'needs_fix'}
-						<span class="text-red-500">✗</span>
-					{:else}
-						<span class="text-yellow-500">○</span>
-					{/if}
-				</span>
-
-				<!-- Priority badge -->
-				<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
-					P{issue.priority}
-				</Badge>
-
-				<!-- ID -->
-				<span 
-					class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === issue.id ? 'text-green-500' : 'text-muted-foreground'}"
-					onclick={(e) => { e.stopPropagation(); copyToClipboard(issue.id); }}
-					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(issue.id); }}}
-					role="button"
-					tabindex="-1"
-					title="Click to copy"
-				>
-					{copiedId === issue.id ? 'Copied!' : issue.id}
-				</span>
-
-				<!-- Title -->
-				<span
-					class="flex-1 text-sm font-medium truncate"
-					class:line-through={issue.verificationStatus === 'needs_fix'}
-					class:text-muted-foreground={issue.verificationStatus === 'needs_fix'}
-					class:text-foreground={issue.verificationStatus !== 'needs_fix'}
-				>
-					{issue.title}
-				</span>
-
-				<!-- Attention badge (UNVERIFIED or NEEDS FIX) -->
-				{#if badgeConfig}
-					<Badge variant={badgeConfig.variant} class="shrink-0">
-						{badgeConfig.label}
-					</Badge>
-				{/if}
-
-				<!-- Type badge -->
-				<Badge variant="outline" class="{getTypeBadge(issue.type)} text-xs shrink-0">
-					{issue.type}
-				</Badge>
-			</div>
-
-			<!-- L1: Expanded details for completed issues -->
-			{#if expandedDetails.has(itemId)}
-				<div class="expanded-details ml-14 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm space-y-2">
-					<!-- Description -->
-					{#if issue.description}
-						<div>
-							<span class="text-xs font-semibold uppercase text-foreground">Description:</span>
-							<p class="mt-1 text-xs text-muted-foreground">{issue.description}</p>
-						</div>
-					{/if}
-
-					<!-- Completion info -->
-					<div class="flex items-center gap-4 text-xs">
-						{#if issue.completedAt}
-							<span class="flex items-center gap-1">
-								<span class="text-foreground/60">Completed:</span>
-								<span class="text-muted-foreground">{new Date(issue.completedAt).toLocaleString()}</span>
-							</span>
-						{/if}
-						<span class="flex items-center gap-1">
-							<span class="text-foreground/60">Status:</span>
-							<span class={issue.verificationStatus === 'needs_fix' ? 'text-red-500' : 'text-yellow-500'}>
-								{issue.verificationStatus}
-							</span>
-						</span>
-					</div>
-
-					<!-- Action hints -->
-					<div class="text-xs text-muted-foreground border-t border-border pt-2 mt-2">
-						{#if issue.verificationStatus === 'unverified'}
-							Press <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">v</kbd> to verify or <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">x</kbd> to mark needs fix
-						{:else if issue.verificationStatus === 'needs_fix'}
-							Marked as needing fix — reopen or reassign this issue
-						{/if}
-					</div>
-				</div>
 			{/if}
 		{:else}
 			{@const node = item as TreeNode}

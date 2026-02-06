@@ -1,35 +1,42 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
-	import { attention, ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
 	import { cn } from '$lib/utils';
+	import { attention, ATTENTION_BADGE_CONFIG, type CompletedIssue } from '$lib/stores/attention';
+	import { IssueSidePanel } from '$lib/components/issue-side-panel';
 
 	export let completedIssues: CompletedIssue[] = [];
-	export let onSelectItem: (index: number) => void = () => {};
-	export let selectedIndex: number = -1;
-	export let startIndex: number = 0; // Starting index in flattened list
 
-	let expanded = false;
+	let flattenedItems: CompletedIssue[] = [];
+	let selectedIndex = 0;
+	let expandedDetails = new Set<string>();
+	let selectedIssueForPanel: CompletedIssue | null = null;
+	let containerElement: HTMLDivElement;
+	let copiedId: string | null = null;
+	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	// Sort by urgency: needs_fix first, then by priority
-	$: sortedIssues = [...completedIssues]
-		.filter(issue => issue.verificationStatus !== 'verified')
-		.sort((a, b) => {
-			// needs_fix before unverified
-			if (a.verificationStatus === 'needs_fix' && b.verificationStatus !== 'needs_fix') return -1;
-			if (b.verificationStatus === 'needs_fix' && a.verificationStatus !== 'needs_fix') return 1;
-			// then by priority
-			return a.priority - b.priority;
-		});
+	// Sort: needs_fix first, then unverified, then by priority
+	$: {
+		flattenedItems = [...completedIssues]
+			.filter(issue => issue.verificationStatus !== 'verified')
+			.sort((a, b) => {
+				if (a.verificationStatus === 'needs_fix' && b.verificationStatus !== 'needs_fix') return -1;
+				if (b.verificationStatus === 'needs_fix' && a.verificationStatus !== 'needs_fix') return 1;
+				return a.priority - b.priority;
+			});
+		if (selectedIndex >= flattenedItems.length) {
+			selectedIndex = Math.max(0, flattenedItems.length - 1);
+		}
+	}
 
-	// Count by status for grouping display
 	$: statusCounts = {
-		needs_fix: sortedIssues.filter(i => i.verificationStatus === 'needs_fix').length,
-		unverified: sortedIssues.filter(i => i.verificationStatus === 'unverified').length
+		needs_fix: flattenedItems.filter(i => i.verificationStatus === 'needs_fix').length,
+		unverified: flattenedItems.filter(i => i.verificationStatus === 'unverified').length
 	};
 
-	function toggle() {
-		expanded = !expanded;
-	}
+	onMount(() => {
+		setTimeout(() => containerElement?.focus(), 100);
+	});
 
 	function getAttentionBadge(badge: 'unverified' | 'needs_fix' | undefined) {
 		if (!badge) return null;
@@ -53,118 +60,253 @@
 		}
 	}
 
-	// Handle keyboard shortcuts within section
-	function handleKeydown(event: KeyboardEvent, issue: CompletedIssue) {
-		if (event.key === 'v' && issue.verificationStatus === 'unverified') {
-			event.preventDefault();
-			attention.markVerified(issue.id);
-		} else if (event.key === 'x' && issue.verificationStatus === 'unverified') {
-			event.preventDefault();
-			attention.markNeedsFix(issue.id);
+	async function copyToClipboard(id: string) {
+		try {
+			await navigator.clipboard.writeText(id);
+			if (copiedTimeout) clearTimeout(copiedTimeout);
+			copiedId = id;
+			copiedTimeout = setTimeout(() => {
+				copiedId = null;
+				copiedTimeout = null;
+			}, 1500);
+		} catch (err) {
+			console.error('Failed to copy to clipboard:', err);
+		}
+	}
+
+	function scrollToSelected() {
+		const element = document.querySelector(`[data-completed-index="${selectedIndex}"]`);
+		if (element) {
+			element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+	}
+
+	function closeSidePanel() {
+		selectedIssueForPanel = null;
+		setTimeout(() => containerElement?.focus(), 0);
+	}
+
+	function handleKeyDown(event: KeyboardEvent) {
+		const current = flattenedItems[selectedIndex];
+		if (!current) return;
+
+		switch (event.key) {
+			case 'j':
+			case 'ArrowDown':
+				event.preventDefault();
+				selectedIndex = Math.min(selectedIndex + 1, flattenedItems.length - 1);
+				scrollToSelected();
+				break;
+
+			case 'k':
+			case 'ArrowUp':
+				event.preventDefault();
+				selectedIndex = Math.max(selectedIndex - 1, 0);
+				scrollToSelected();
+				break;
+
+			case 'Enter':
+				event.preventDefault();
+				if (expandedDetails.has(current.id)) {
+					expandedDetails.delete(current.id);
+				} else {
+					expandedDetails.add(current.id);
+				}
+				expandedDetails = expandedDetails;
+				break;
+
+			case 'Escape':
+				event.preventDefault();
+				if (selectedIssueForPanel) {
+					selectedIssueForPanel = null;
+					setTimeout(() => containerElement?.focus(), 0);
+				} else if (expandedDetails.has(current.id)) {
+					expandedDetails.delete(current.id);
+					expandedDetails = expandedDetails;
+				}
+				break;
+
+			case 'i':
+			case 'o':
+				event.preventDefault();
+				selectedIssueForPanel = current;
+				break;
+
+			case 'v':
+				event.preventDefault();
+				if (current.verificationStatus === 'unverified') {
+					attention.markVerified(current.id);
+				}
+				break;
+
+			case 'x':
+				event.preventDefault();
+				if (current.verificationStatus === 'unverified') {
+					attention.markNeedsFix(current.id);
+				}
+				break;
+
+			case 'g':
+				event.preventDefault();
+				selectedIndex = 0;
+				scrollToSelected();
+				break;
+
+			case 'G':
+				event.preventDefault();
+				selectedIndex = flattenedItems.length - 1;
+				scrollToSelected();
+				break;
+
+			case 'c':
+				event.preventDefault();
+				copyToClipboard(current.id);
+				break;
 		}
 	}
 </script>
 
-{#if sortedIssues.length > 0}
-	<div
-		class="recently-completed-section mb-4 rounded-lg border border-zinc-700 bg-zinc-900/50"
-		data-testid="recently-completed-section"
-	>
-		<!-- Section Header -->
-		<button
-			class="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-zinc-800/50 transition-colors rounded-t-lg"
-			onclick={toggle}
-			data-testid="recently-completed-toggle"
-		>
-			<div class="flex items-center gap-3">
-				<span class="text-sm">✓</span>
-				<span class="text-sm font-medium text-foreground">Recently Completed</span>
-				<Badge variant="secondary" class="h-5 px-2 text-xs">
-					{sortedIssues.length}
+<div
+	bind:this={containerElement}
+	class="completed-view h-full overflow-y-auto px-0 py-2 focus:outline-none"
+	role="tree"
+	tabindex="0"
+	onkeydown={handleKeyDown}
+	data-testid="completed-view"
+>
+	{#if flattenedItems.length === 0}
+		<div class="flex items-center justify-center h-full">
+			<div class="text-muted-foreground">No recently completed issues</div>
+		</div>
+	{:else}
+		<!-- Summary bar -->
+		<div class="flex items-center gap-3 px-4 py-2 mb-2 text-sm text-muted-foreground">
+			<span>{flattenedItems.length} completed</span>
+			{#if statusCounts.needs_fix > 0}
+				<Badge variant="destructive" class="h-5 px-2 text-xs">
+					{statusCounts.needs_fix} needs fix
 				</Badge>
-				{#if statusCounts.needs_fix > 0}
-					<Badge variant="destructive" class="h-5 px-2 text-xs">
-						{statusCounts.needs_fix} needs fix
-					</Badge>
-				{/if}
-				{#if !expanded && sortedIssues.length > 0}
-					<span class="text-xs text-muted-foreground truncate max-w-[200px]">
-						— {sortedIssues[0].title}
-						{#if sortedIssues.length > 1}
-							+{sortedIssues.length - 1}
+			{/if}
+			{#if statusCounts.unverified > 0}
+				<Badge variant="secondary" class="h-5 px-2 text-xs">
+					{statusCounts.unverified} unverified
+				</Badge>
+			{/if}
+		</div>
+
+		{#each flattenedItems as issue, index (issue.id)}
+			{@const badgeConfig = getAttentionBadge(issue.attentionBadge)}
+			<div
+				data-testid="completed-row-{issue.id}"
+				data-completed-index={index}
+				class="node-row cursor-pointer select-none focus:outline-none"
+				class:selected={index === selectedIndex}
+				class:focused={index === selectedIndex}
+				role="treeitem"
+				aria-selected={index === selectedIndex}
+				tabindex="-1"
+				onclick={() => { selectedIndex = index; }}
+			>
+				<div
+					class={cn(
+						"flex items-center gap-3 py-2 px-1 rounded transition-colors",
+						index === selectedIndex ? 'bg-zinc-800' : '',
+						issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
+					)}
+					style="padding-left: 0"
+				>
+					<!-- Expansion indicator placeholder -->
+					<span class="w-4"></span>
+
+					<!-- Verification status icon -->
+					<span class="w-5 text-center">
+						{#if issue.verificationStatus === 'needs_fix'}
+							<span class="text-red-500">✗</span>
+						{:else}
+							<span class="text-yellow-500">○</span>
 						{/if}
 					</span>
-				{/if}
-			</div>
-			<span class="text-muted-foreground transition-transform {expanded ? 'rotate-180' : ''}">
-				<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<polyline points="6 9 12 15 18 9"></polyline>
-				</svg>
-			</span>
-		</button>
 
-		<!-- Section Content -->
-		{#if expanded}
-			<div class="border-t border-zinc-700 py-2" data-testid="recently-completed-content">
-				{#each sortedIssues as issue, index (issue.id)}
-					{@const badgeConfig = getAttentionBadge(issue.attentionBadge)}
-					{@const itemIndex = startIndex + index}
-					<div
-						class={cn(
-							"flex items-center gap-3 py-2 px-4 cursor-pointer transition-colors",
-							selectedIndex === itemIndex && "bg-zinc-800",
-							issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
-						)}
-						data-testid="completed-row-{issue.id}"
-						data-node-index={itemIndex}
-						onclick={() => onSelectItem(itemIndex)}
-						onkeydown={(e) => handleKeydown(e, issue)}
-						role="treeitem"
+					<!-- Priority badge -->
+					<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
+						P{issue.priority}
+					</Badge>
+
+					<!-- ID -->
+					<span
+						class="text-xs font-mono min-w-[120px] cursor-pointer hover:text-foreground transition-colors {copiedId === issue.id ? 'text-green-500' : 'text-muted-foreground'}"
+						onclick={(e) => { e.stopPropagation(); copyToClipboard(issue.id); }}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); copyToClipboard(issue.id); }}}
+						role="button"
 						tabindex="-1"
+						title="Click to copy"
 					>
-						<!-- Verification status icon -->
-						<span class="w-5 text-center">
-							{#if issue.verificationStatus === 'needs_fix'}
-								<span class="text-red-500">✗</span>
-							{:else}
-								<span class="text-yellow-500">○</span>
-							{/if}
-						</span>
+						{copiedId === issue.id ? 'Copied!' : issue.id}
+					</span>
 
-						<!-- Priority badge -->
-						<Badge variant={getPriorityVariant(issue.priority)} class="w-8 justify-center text-xs">
-							P{issue.priority}
+					<!-- Title -->
+					<span
+						class="flex-1 text-sm font-medium truncate"
+						class:line-through={issue.verificationStatus === 'needs_fix'}
+						class:text-muted-foreground={issue.verificationStatus === 'needs_fix'}
+						class:text-foreground={issue.verificationStatus !== 'needs_fix'}
+					>
+						{issue.title}
+					</span>
+
+					<!-- Attention badge -->
+					{#if badgeConfig}
+						<Badge variant={badgeConfig.variant} class="shrink-0">
+							{badgeConfig.label}
 						</Badge>
+					{/if}
 
-						<!-- ID -->
-						<span class="text-xs font-mono min-w-[120px] text-muted-foreground">
-							{issue.id}
-						</span>
+					<!-- Type badge -->
+					<Badge variant="outline" class="{getTypeBadge(issue.type)} text-xs shrink-0">
+						{issue.type}
+					</Badge>
+				</div>
 
-						<!-- Title -->
-						<span
-							class="flex-1 text-sm font-medium truncate"
-							class:line-through={issue.verificationStatus === 'needs_fix'}
-							class:text-muted-foreground={issue.verificationStatus === 'needs_fix'}
-							class:text-foreground={issue.verificationStatus !== 'needs_fix'}
-						>
-							{issue.title}
-						</span>
-
-						<!-- Attention badge -->
-						{#if badgeConfig}
-							<Badge variant={badgeConfig.variant} class="shrink-0">
-								{badgeConfig.label}
-							</Badge>
+				<!-- L1: Expanded details -->
+				{#if expandedDetails.has(issue.id)}
+					<div class="expanded-details ml-14 mt-1 mb-2 p-3 bg-muted/30 rounded text-sm space-y-2">
+						{#if issue.description}
+							<div>
+								<span class="text-xs font-semibold uppercase text-foreground">Description:</span>
+								<p class="mt-1 text-xs text-muted-foreground">{issue.description}</p>
+							</div>
 						{/if}
 
-						<!-- Type badge -->
-						<Badge variant="outline" class="{getTypeBadge(issue.type)} text-xs shrink-0">
-							{issue.type}
-						</Badge>
+						<div class="flex items-center gap-4 text-xs">
+							{#if issue.completedAt}
+								<span class="flex items-center gap-1">
+									<span class="text-foreground/60">Completed:</span>
+									<span class="text-muted-foreground">{new Date(issue.completedAt).toLocaleString()}</span>
+								</span>
+							{/if}
+							<span class="flex items-center gap-1">
+								<span class="text-foreground/60">Status:</span>
+								<span class={issue.verificationStatus === 'needs_fix' ? 'text-red-500' : 'text-yellow-500'}>
+									{issue.verificationStatus}
+								</span>
+							</span>
+						</div>
+
+						<div class="text-xs text-muted-foreground border-t border-border pt-2 mt-2">
+							{#if issue.verificationStatus === 'unverified'}
+								Press <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">v</kbd> to verify or <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">x</kbd> to mark needs fix
+							{:else if issue.verificationStatus === 'needs_fix'}
+								Marked as needing fix — reopen or reassign this issue
+							{/if}
+						</div>
 					</div>
-				{/each}
+				{/if}
 			</div>
-		{/if}
-	</div>
+		{/each}
+	{/if}
+</div>
+
+<!-- Issue Side Panel -->
+{#if selectedIssueForPanel}
+	<IssueSidePanel issue={{ ...selectedIssueForPanel, depth: 0, expanded: false, children: [], parent_id: undefined, blocked_by: [], blocks: [] }} on:close={closeSidePanel} />
 {/if}

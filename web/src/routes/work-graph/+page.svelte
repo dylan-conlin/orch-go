@@ -9,6 +9,7 @@
 	import { ViewToggle } from '$lib/components/view-toggle';
 	import { LabelFilter } from '$lib/components/label-filter';
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
+	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
 	import { wip, wipItems } from '$lib/stores/wip';
 	import { daemon } from '$lib/stores/daemon';
 	import { attention, type CompletedIssue } from '$lib/stores/attention';
@@ -53,7 +54,7 @@
 	let tree: TreeNode[] = [];
 	let loading = true;
 	let error: string | null = null;
-	let currentView: 'issues' | 'artifacts' = 'issues';
+	let currentView: 'issues' | 'artifacts' | 'completed' = 'issues';
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 	let seenIssuesState: SeenIssuesState = { byProject: {} };
 	let currentProjectDir: string | undefined = undefined;
@@ -325,7 +326,7 @@
 	}
 
 	// Handle view toggle
-	async function handleViewToggle(view: 'issues' | 'artifacts') {
+	async function handleViewToggle(view: 'issues' | 'artifacts' | 'completed') {
 		currentView = view;
 		
 		// Fetch artifacts when switching to artifacts view
@@ -372,10 +373,14 @@
 		}
 	}
 
+	// Cycle views: issues -> completed -> artifacts -> issues
+	const viewOrder: ('issues' | 'completed' | 'artifacts')[] = ['issues', 'completed', 'artifacts'];
+
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Tab' && !event.shiftKey) {
 			event.preventDefault();
-			currentView = currentView === 'issues' ? 'artifacts' : 'issues';
+			const idx = viewOrder.indexOf(currentView);
+			currentView = viewOrder[(idx + 1) % viewOrder.length];
 			handleViewToggle(currentView);
 		}
 		// '/' to focus label filter (like GitHub)
@@ -397,6 +402,9 @@
 	}
 
 	function getHelpText(): string {
+		if (currentView === 'completed') {
+			return 'Completed view - Navigate with j/k, details with enter, verify with v, needs fix with x';
+		}
 		if (currentView === 'artifacts') {
 			return 'Artifact view - Navigate with j/k, open with l/enter, Tab to toggle';
 		}
@@ -435,6 +443,7 @@
 		<div class="flex items-center gap-6">
 			<ViewToggle 
 				{currentView} 
+				completedCount={completedIssues.filter(i => i.verificationStatus !== 'verified').length}
 				onToggle={handleViewToggle}
 			/>
 			{#if currentView === 'issues'}
@@ -449,6 +458,8 @@
 				{#if currentView === 'issues' && $workGraph}
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
+				{:else if currentView === 'completed'}
+					<span>{completedIssues.filter(i => i.verificationStatus !== 'verified').length} pending review</span>
 				{:else if currentView === 'artifacts' && $kbArtifacts}
 					<span>
 						{($kbArtifacts.needs_decision?.length ?? 0) + ($kbArtifacts.recent?.length ?? 0)} artifacts
@@ -513,11 +524,12 @@
 					tree={filteredTree} 
 					{newIssueIds} 
 					wipItems={$wipItems} 
-					{completedIssues}
 					onToggleExpansion={handleToggleExpansion}
 					onSetFocus={handleSetFocus}
 				/>
 			{/if}
+		{:else if currentView === 'completed'}
+			<RecentlyCompletedSection {completedIssues} />
 		{:else}
 			{#if $kbArtifacts?.error}
 				<div class="flex items-center justify-center h-full">
@@ -554,6 +566,22 @@
 				<span class="text-zinc-400">t/w</span> WIP↔tree
 				<span class="mx-3">·</span>
 				<span class="text-zinc-400">/</span> filter labels
+			</span>
+		{:else if currentView === 'completed'}
+			<span class="tracking-wide">
+				<span class="text-zinc-400">j/k</span> navigate
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">enter</span> details
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">i</span> side panel
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">v</span> verify
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">x</span> needs fix
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">c</span> copy ID
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">Tab</span> switch view
 			</span>
 		{:else}
 			<span class="tracking-wide">
