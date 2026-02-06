@@ -16,6 +16,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -414,6 +415,11 @@ func runAbandon(beadsID, reason, workdir string) error {
 				}
 			}
 		}
+	}
+
+	// Record abandonment in state database (non-fatal)
+	if err := statedb.RecordAbandon(agentName, beadsID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record abandonment in state db: %v\n", err)
 	}
 
 	logErr := logger.LogAgentAbandoned(abandonedData)

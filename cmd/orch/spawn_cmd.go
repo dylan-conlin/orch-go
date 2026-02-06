@@ -26,6 +26,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -869,6 +870,12 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Write SPAWN_CONTEXT.md
 	if err := spawn.WriteContext(cfg); err != nil {
 		return fmt.Errorf("failed to write spawn context: %w", err)
+	}
+
+	// Record agent in state database (non-fatal)
+	// This provides the single-source agent state for orch status.
+	if err := statedb.RecordSpawn(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record agent in state db: %v\n", err)
 	}
 
 	// Generate minimal prompt

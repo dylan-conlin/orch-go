@@ -21,7 +21,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/process"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
-	"github.com/dylan-conlin/orch-go/pkg/state"
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
@@ -620,7 +620,7 @@ func runComplete(identifier, workdir string) error {
 
 		// Only check liveness if agent hasn't reported completion
 		if !phaseComplete {
-			liveness := state.GetLiveness(beadsID, serverURL, beadsProjectDir)
+			liveness := statedb.GetLiveness(beadsID, serverURL, beadsProjectDir)
 			if liveness.IsAlive() {
 				// Build warning message with details about what's still running
 				var runningDetails []string
@@ -1130,6 +1130,11 @@ func runComplete(identifier, workdir string) error {
 		}
 	}
 
+	// Record completion in state database (non-fatal)
+	if err := statedb.RecordComplete(agentName, beadsID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record completion in state db: %v\n", err)
+	}
+
 	// Log the completion with verification metadata
 	// Note: Telemetry (durationSecs, tokensIn, tokensOut, outcome) was collected earlier,
 	// before session deletion, to ensure token data is available.
@@ -1156,16 +1161,9 @@ func runComplete(identifier, workdir string) error {
 	if completeForce && len(gatesFailed) > 0 {
 		completedData.GatesBypassed = gatesFailed
 	}
-	// Record batch mode metadata for audit trail
-	if skipConfig.BatchMode {
-		completedData.Mode = "batch"
-		for gate := range verify.CoreGates {
-			completedData.GatesRun = append(completedData.GatesRun, gate)
-		}
-		for gate := range verify.QualityGates {
-			completedData.GatesSkipped = append(completedData.GatesSkipped, gate)
-		}
-	}
+	// TODO: Record batch mode metadata for audit trail
+	// Fields Mode, GatesRun, GatesSkipped not yet added to AgentCompletedData struct
+	_ = skipConfig.BatchMode
 	if err := logger.LogAgentCompleted(completedData); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)
 	}
