@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -255,55 +256,55 @@ func runStatus(serverURL string) error {
 	accounts := <-accountsCh
 	timer("accounts received")
 
-	// Fetch token usage for agents that weren't enriched in the parallel batch.
+	// Parallel token fetch + risk assessment for agents not already enriched.
 	// Most agents already have tokens from GetSessionEnrichment; this only covers
 	// agents discovered via tmux (claude mode) that were matched to sessions later.
+	var tokenWg sync.WaitGroup
 	for i := range filteredAgents {
 		agent := &filteredAgents[i]
-		// Skip if already have tokens from parallel enrichment
-		if agent.Tokens != nil {
-			continue
-		}
-		// Skip if no valid session ID
-		if agent.SessionID == "" || agent.SessionID == "tmux-stalled" {
-			continue
-		}
-		// In compact mode, only fetch tokens for running agents (saves ~100ms per idle agent)
-		if !statusAll && !agent.IsProcessing {
-			continue
-		}
-		tokens, err := client.GetSessionTokens(agent.SessionID)
-		if err == nil && tokens != nil {
-			agent.Tokens = tokens
-		}
-	}
 
-	// Assess context exhaustion risk - in compact mode, only for running agents
-	for i := range filteredAgents {
-		agent := &filteredAgents[i]
-		// Skip phantom or completed agents
-		if agent.IsPhantom || agent.IsCompleted {
+		// Determine if this agent needs token fetch
+		needsTokenFetch := agent.Tokens == nil &&
+			agent.SessionID != "" && agent.SessionID != "tmux-stalled" &&
+			(statusAll || agent.IsProcessing)
+
+		// Determine if this agent needs risk assessment
+		needsRisk := !agent.IsPhantom && !agent.IsCompleted &&
+			(statusAll || agent.IsProcessing)
+
+		if !needsTokenFetch && !needsRisk {
 			continue
 		}
-		// In compact mode, only assess risk for running agents
-		if !statusAll && !agent.IsProcessing {
-			continue
-		}
-		// Get total tokens for risk assessment
-		totalTokens := 0
-		if agent.Tokens != nil {
-			totalTokens = agent.Tokens.TotalTokens
-			if totalTokens == 0 {
-				totalTokens = agent.Tokens.InputTokens + agent.Tokens.OutputTokens
+
+		tokenWg.Add(1)
+		go func(a *AgentInfo, fetchTokens, assessRisk bool) {
+			defer tokenWg.Done()
+
+			// Fetch tokens if needed
+			if fetchTokens {
+				tokens, err := client.GetSessionTokens(a.SessionID)
+				if err == nil && tokens != nil {
+					a.Tokens = tokens
+				}
 			}
-		}
-		// Assess risk (uses ProjectDir for git status check)
-		risk := verify.AssessContextRisk(totalTokens, agent.ProjectDir, agent.IsProcessing)
-		if risk.IsAtRisk() {
-			agent.ContextRisk = &risk
-		}
-	}
 
+			// Assess context exhaustion risk
+			if assessRisk {
+				totalTokens := 0
+				if a.Tokens != nil {
+					totalTokens = a.Tokens.TotalTokens
+					if totalTokens == 0 {
+						totalTokens = a.Tokens.InputTokens + a.Tokens.OutputTokens
+					}
+				}
+				risk := verify.AssessContextRisk(totalTokens, a.ProjectDir, a.IsProcessing)
+				if risk.IsAtRisk() {
+					a.ContextRisk = &risk
+				}
+			}
+		}(agent, needsTokenFetch, needsRisk)
+	}
+	tokenWg.Wait()
 	timer("token fetch + risk assessment")
 
 	// Fetch orchestrator sessions from session registry
