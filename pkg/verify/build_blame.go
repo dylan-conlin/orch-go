@@ -1,110 +1,29 @@
-// Package verify provides blame attribution and build skip memory for the build gate.
+// Package verify provides blame attribution for the build gate.
 //
 // When concurrent agents break the build (e.g., duplicate declarations), every
-// subsequent orch complete fails the build gate. This file provides:
+// subsequent orch complete fails the build gate. This file provides blame
+// attribution: Check if the build failure is caused by THIS agent's commits
+// vs pre-existing. Only gate if this agent broke it.
 //
-//  1. Blame attribution: Check if the build failure is caused by THIS agent's
-//     commits vs pre-existing. Only gate if this agent broke it.
-//
-//  2. Build skip memory: Once orchestrator skips build gate with a reason,
-//     remember that reason for subsequent completions in the same session.
+// Gate skip memory (for persisting skip decisions across completions) has been
+// generalized to gate_skip_memory.go which supports any gate, not just build.
 package verify
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
-// BuildSkipMemory represents a persisted build gate skip decision.
-// Stored at .orch/build-skip.json to remember across completions.
-type BuildSkipMemory struct {
-	Reason    string    `json:"reason"`     // Why the build gate was skipped
-	SkippedAt time.Time `json:"skipped_at"` // When it was skipped
-	SkippedBy string    `json:"skipped_by"` // Who skipped it (beads ID or workspace name)
-	ExpiresAt time.Time `json:"expires_at"` // When this skip expires (auto-cleanup)
-}
-
 // BuildBlameResult represents the result of blame attribution for a build failure.
 type BuildBlameResult struct {
 	AgentCausedFailure bool   // Whether this agent's commits caused the build failure
 	PreExisting        bool   // Whether the build was already broken before this agent
 	BlameDetail        string // Human-readable explanation
-}
-
-const (
-	// BuildSkipFilename is the name of the build skip memory file.
-	BuildSkipFilename = "build-skip.json"
-
-	// BuildSkipDuration is how long a build skip decision lasts.
-	// After this duration, the skip memory expires and build gates resume.
-	BuildSkipDuration = 2 * time.Hour
-)
-
-// buildSkipPath returns the path to the build skip memory file.
-func buildSkipPath(projectDir string) string {
-	return filepath.Join(projectDir, ".orch", BuildSkipFilename)
-}
-
-// ReadBuildSkipMemory reads the persisted build gate skip from disk.
-// Returns nil if no skip exists or if it has expired.
-func ReadBuildSkipMemory(projectDir string) *BuildSkipMemory {
-	path := buildSkipPath(projectDir)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-
-	var skip BuildSkipMemory
-	if err := json.Unmarshal(data, &skip); err != nil {
-		return nil
-	}
-
-	// Check expiry
-	if time.Now().After(skip.ExpiresAt) {
-		// Expired - clean up
-		os.Remove(path)
-		return nil
-	}
-
-	return &skip
-}
-
-// WriteBuildSkipMemory persists a build gate skip decision to disk.
-func WriteBuildSkipMemory(projectDir, reason, skippedBy string) error {
-	skip := BuildSkipMemory{
-		Reason:    reason,
-		SkippedAt: time.Now(),
-		SkippedBy: skippedBy,
-		ExpiresAt: time.Now().Add(BuildSkipDuration),
-	}
-
-	data, err := json.MarshalIndent(skip, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal build skip: %w", err)
-	}
-
-	path := buildSkipPath(projectDir)
-
-	// Ensure .orch directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create .orch directory: %w", err)
-	}
-
-	return os.WriteFile(path, data, 0644)
-}
-
-// ClearBuildSkipMemory removes the build skip memory file.
-// Called when the build starts passing again.
-func ClearBuildSkipMemory(projectDir string) {
-	os.Remove(buildSkipPath(projectDir))
 }
 
 // AttributeBuildFailure determines whether the build failure was caused by

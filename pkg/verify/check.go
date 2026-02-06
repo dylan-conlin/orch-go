@@ -29,9 +29,42 @@ const (
 
 // GateResult represents the result of a single verification gate.
 type GateResult struct {
-	Gate   string // Gate constant name (e.g., GateBuild)
-	Passed bool
-	Error  string // Error message if failed (empty if passed)
+	Gate    string // Gate constant name (e.g., GateBuild)
+	Passed  bool
+	Skipped bool   // Whether this gate was skipped (batch mode or skip memory)
+	Error   string // Error message if failed (empty if passed)
+}
+
+// Tier 1 (core) gates: always run, even in batch mode.
+// These catch real problems (unfinished work, broken builds, untested code, broken UI).
+var CoreGates = map[string]bool{
+	GatePhaseComplete: true,
+	GateBuild:         true,
+	GateTestEvidence:  true,
+	GateVisualVerify:  true,
+}
+
+// Tier 2 (quality) gates: skipped in batch mode, run in careful (default) mode.
+// These verify process compliance.
+var QualityGates = map[string]bool{
+	GateSynthesis:          true,
+	GateConstraint:         true,
+	GatePhaseGate:          true,
+	GateSkillOutput:        true,
+	GateGitDiff:            true,
+	GateDecisionPatchLimit: true,
+	GateDashboardHealth:    true,
+	GateHandoffContent:     true,
+}
+
+// IsCoreGate returns true if the gate is a Tier 1 core gate.
+func IsCoreGate(gate string) bool {
+	return CoreGates[gate]
+}
+
+// IsQualityGate returns true if the gate is a Tier 2 quality gate.
+func IsQualityGate(gate string) bool {
+	return QualityGates[gate]
 }
 
 // VerificationResult represents the result of a completion verification.

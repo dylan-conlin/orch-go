@@ -40,6 +40,7 @@ var (
 	completeNoArchive        bool
 	completeForceCloseEpic   bool // Force close epic even with open children
 	completeAutoCloseParent  bool // Auto-close parent epic when all children complete
+	completeBatch            bool // Batch mode: run only Tier 1 (core) gates
 
 	// Targeted skip flags (replace blanket --force)
 	// Each requires completeSkipReason to be set (min 10 chars)
@@ -156,6 +157,7 @@ func init() {
 	completeCmd.Flags().BoolVar(&completeNoArchive, "no-archive", false, "Skip automatic workspace archival after completion")
 	completeCmd.Flags().BoolVar(&completeForceCloseEpic, "force-close-epic", false, "Force close epic even if it has open children (use with caution)")
 	completeCmd.Flags().BoolVar(&completeAutoCloseParent, "auto-close-parent", false, "Automatically close parent epic when completing the last open child")
+	completeCmd.Flags().BoolVar(&completeBatch, "batch", false, "Batch mode: run only Tier 1 (core) gates, skip Tier 2 (quality) gates")
 
 	// Targeted skip flags - each bypasses a specific verification gate
 	completeCmd.Flags().BoolVar(&completeSkipTestEvidence, "skip-test-evidence", false, "Skip test execution evidence gate (requires --skip-reason)")
@@ -178,6 +180,11 @@ func runComplete(identifier, workdir string) error {
 	skipConfig := getSkipConfig()
 	if err := validateSkipFlags(skipConfig); err != nil {
 		return err
+	}
+
+	// Show batch mode notice
+	if skipConfig.BatchMode {
+		fmt.Println("Batch mode: running Tier 1 (core) gates only, skipping Tier 2 (quality) gates")
 	}
 
 	// Show deprecation warning for --force
@@ -423,15 +430,12 @@ func runComplete(identifier, workdir string) error {
 					logSkipEvents(skipConfig, "", agentName, skillName)
 				}
 
-				// Persist build skip memory when build gate is bypassed (orchestrator path)
+				// Persist gate skip memory for all bypassed gates (orchestrator path)
 				for _, gate := range skippedGatesFound {
-					if gate == verify.GateBuild {
-						if err := verify.WriteBuildSkipMemory(beadsProjectDir, skipConfig.Reason, agentName); err != nil {
-							fmt.Fprintf(os.Stderr, "Warning: failed to persist build skip memory: %v\n", err)
-						} else {
-							fmt.Printf("Build skip memory saved (auto-skips build for subsequent completions, expires in %v)\n", verify.BuildSkipDuration)
-						}
-						break
+					if err := verify.RecordGateSkip(beadsProjectDir, gate, skipConfig.Reason, agentName); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to persist gate skip memory for %s: %v\n", gate, err)
+					} else {
+						fmt.Printf("Gate skip memory saved for %s (auto-skips for subsequent completions, expires in %v)\n", gate, verify.GateSkipDuration)
 					}
 				}
 
@@ -513,20 +517,17 @@ func runComplete(identifier, workdir string) error {
 					logSkipEvents(skipConfig, beadsID, agentName, skillName)
 				}
 
-				// Persist build skip memory when build gate is bypassed
-				// This auto-skips build for subsequent completions without --skip-build
+				// Persist gate skip memory for all bypassed gates
+				// This auto-skips gates for subsequent completions without --skip-* flags
 				for _, gate := range skippedGatesFound {
-					if gate == verify.GateBuild {
-						skippedByID := beadsID
-						if skippedByID == "" {
-							skippedByID = agentName
-						}
-						if err := verify.WriteBuildSkipMemory(beadsProjectDir, skipConfig.Reason, skippedByID); err != nil {
-							fmt.Fprintf(os.Stderr, "Warning: failed to persist build skip memory: %v\n", err)
-						} else {
-							fmt.Printf("Build skip memory saved (auto-skips build for subsequent completions, expires in %v)\n", verify.BuildSkipDuration)
-						}
-						break
+					skippedByID := beadsID
+					if skippedByID == "" {
+						skippedByID = agentName
+					}
+					if err := verify.RecordGateSkip(beadsProjectDir, gate, skipConfig.Reason, skippedByID); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to persist gate skip memory for %s: %v\n", gate, err)
+					} else {
+						fmt.Printf("Gate skip memory saved for %s (auto-skips for subsequent completions, expires in %v)\n", gate, verify.GateSkipDuration)
 					}
 				}
 
@@ -1154,6 +1155,16 @@ func runComplete(identifier, workdir string) error {
 	// If completion was forced, record which gates were bypassed
 	if completeForce && len(gatesFailed) > 0 {
 		completedData.GatesBypassed = gatesFailed
+	}
+	// Record batch mode metadata for audit trail
+	if skipConfig.BatchMode {
+		completedData.Mode = "batch"
+		for gate := range verify.CoreGates {
+			completedData.GatesRun = append(completedData.GatesRun, gate)
+		}
+		for gate := range verify.QualityGates {
+			completedData.GatesSkipped = append(completedData.GatesSkipped, gate)
+		}
 	}
 	if err := logger.LogAgentCompleted(completedData); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log event: %v\n", err)

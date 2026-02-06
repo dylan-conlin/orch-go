@@ -26,11 +26,12 @@ type SkipConfig struct {
 	HandoffContent  bool
 	DashboardHealth bool
 	Reason          string // Required reason for skips
+	BatchMode       bool   // Batch mode: skip all Tier 2 (quality) gates
 }
 
-// hasAnySkip returns true if any skip flag is set.
+// hasAnySkip returns true if any skip flag is set (including batch mode).
 func (c SkipConfig) hasAnySkip() bool {
-	return c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
+	return c.BatchMode || c.TestEvidence || c.Visual || c.GitDiff || c.Synthesis ||
 		c.Build || c.Constraint || c.PhaseGate || c.SkillOutput ||
 		c.DecisionPatch || c.PhaseComplete || c.HandoffContent || c.DashboardHealth
 }
@@ -78,7 +79,11 @@ func (c SkipConfig) skippedGates() []string {
 }
 
 // shouldSkipGate returns true if the given gate should be skipped.
+// In batch mode, all Tier 2 (quality) gates are automatically skipped.
 func (c SkipConfig) shouldSkipGate(gate string) bool {
+	if c.BatchMode && verify.IsQualityGate(gate) {
+		return true
+	}
 	switch gate {
 	case verify.GateTestEvidence:
 		return c.TestEvidence
@@ -125,11 +130,25 @@ func getSkipConfig() SkipConfig {
 		HandoffContent:  completeSkipHandoffContent,
 		DashboardHealth: completeSkipDashboardHealth,
 		Reason:          completeSkipReason,
+		BatchMode:       completeBatch,
+	}
+}
+
+// buildBatchSkipConfig creates a SkipConfig for batch mode (used by batch-complete command).
+func buildBatchSkipConfig() SkipConfig {
+	return SkipConfig{
+		BatchMode: true,
+		Reason:    "batch mode - core gates only",
 	}
 }
 
 // validateSkipFlags validates that --skip-reason is provided when --skip-* flags are used.
+// Batch mode does not require --skip-reason (the reason is implicit).
 func validateSkipFlags(skipConfig SkipConfig) error {
+	if skipConfig.BatchMode {
+		return nil
+	}
+
 	if !skipConfig.hasAnySkip() {
 		return nil
 	}
@@ -161,17 +180,16 @@ func logSkipEvents(skipConfig SkipConfig, beadsID, workspace, skill string) {
 	}
 }
 
-// recordBuildSkipMemory persists a build gate skip decision for future completions.
-// When the orchestrator uses --skip-build, this records the reason so subsequent
-// completions auto-skip the build gate without requiring --skip-build again.
-func recordBuildSkipMemory(skipConfig SkipConfig, projectDir, identifier string) {
-	if !skipConfig.Build {
-		return
-	}
-	if err := verify.RecordBuildSkip(projectDir, skipConfig.Reason, identifier); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to persist build skip memory: %v\n", err)
-	} else {
-		fmt.Printf("Build skip memory saved (expires in %v)\n", verify.BuildSkipDuration)
+// recordGateSkipMemory persists gate skip decisions for future completions.
+// When the orchestrator uses --skip-* flags, this records each skip reason so
+// subsequent completions auto-skip those gates without requiring --skip-* again.
+func recordGateSkipMemory(skipConfig SkipConfig, projectDir, identifier string) {
+	for _, gate := range skipConfig.skippedGates() {
+		if err := verify.RecordGateSkip(projectDir, gate, skipConfig.Reason, identifier); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to persist gate skip memory for %s: %v\n", gate, err)
+		} else {
+			fmt.Printf("Gate skip memory saved for %s (expires in %v)\n", gate, verify.GateSkipDuration)
+		}
 	}
 }
 

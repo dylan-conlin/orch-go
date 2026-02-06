@@ -1,7 +1,6 @@
 package verify
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,145 +10,6 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
-
-func TestReadBuildSkipMemory_NoFile(t *testing.T) {
-	dir := t.TempDir()
-	result := ReadBuildSkipMemory(dir)
-	if result != nil {
-		t.Errorf("expected nil for missing file, got %+v", result)
-	}
-}
-
-func TestWriteAndReadBuildSkipMemory(t *testing.T) {
-	dir := t.TempDir()
-
-	// Create .orch directory
-	orchDir := filepath.Join(dir, ".orch")
-	if err := os.MkdirAll(orchDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	err := WriteBuildSkipMemory(dir, "concurrent agents broke the build", "orch-go-abc1")
-	if err != nil {
-		t.Fatalf("WriteBuildSkipMemory failed: %v", err)
-	}
-
-	// Verify file exists
-	path := filepath.Join(orchDir, BuildSkipFilename)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Fatal("build skip file was not created")
-	}
-
-	// Read it back
-	skip := ReadBuildSkipMemory(dir)
-	if skip == nil {
-		t.Fatal("ReadBuildSkipMemory returned nil")
-	}
-
-	if skip.Reason != "concurrent agents broke the build" {
-		t.Errorf("Reason = %q, want %q", skip.Reason, "concurrent agents broke the build")
-	}
-	if skip.SkippedBy != "orch-go-abc1" {
-		t.Errorf("SkippedBy = %q, want %q", skip.SkippedBy, "orch-go-abc1")
-	}
-	if skip.ExpiresAt.Before(time.Now()) {
-		t.Error("ExpiresAt should be in the future")
-	}
-}
-
-func TestReadBuildSkipMemory_Expired(t *testing.T) {
-	dir := t.TempDir()
-	orchDir := filepath.Join(dir, ".orch")
-	if err := os.MkdirAll(orchDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write an expired entry directly
-	expired := BuildSkipMemory{
-		Reason:    "old failure",
-		SkippedAt: time.Now().Add(-3 * time.Hour),
-		SkippedBy: "old-agent",
-		ExpiresAt: time.Now().Add(-1 * time.Hour), // Already expired
-	}
-	data, _ := json.MarshalIndent(expired, "", "  ")
-	path := filepath.Join(orchDir, BuildSkipFilename)
-	os.WriteFile(path, data, 0644)
-
-	// Should return nil for expired entries
-	result := ReadBuildSkipMemory(dir)
-	if result != nil {
-		t.Errorf("expected nil for expired entry, got %+v", result)
-	}
-
-	// File should be cleaned up
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Error("expired file should have been cleaned up")
-	}
-}
-
-func TestReadBuildSkipMemory_InvalidJSON(t *testing.T) {
-	dir := t.TempDir()
-	orchDir := filepath.Join(dir, ".orch")
-	if err := os.MkdirAll(orchDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(orchDir, BuildSkipFilename)
-	os.WriteFile(path, []byte("not json"), 0644)
-
-	result := ReadBuildSkipMemory(dir)
-	if result != nil {
-		t.Errorf("expected nil for invalid JSON, got %+v", result)
-	}
-}
-
-func TestClearBuildSkipMemory(t *testing.T) {
-	dir := t.TempDir()
-	orchDir := filepath.Join(dir, ".orch")
-	if err := os.MkdirAll(orchDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write a skip entry
-	err := WriteBuildSkipMemory(dir, "test", "agent")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify it exists
-	if skip := ReadBuildSkipMemory(dir); skip == nil {
-		t.Fatal("expected skip to exist")
-	}
-
-	// Clear it
-	ClearBuildSkipMemory(dir)
-
-	// Should be gone
-	if skip := ReadBuildSkipMemory(dir); skip != nil {
-		t.Errorf("expected nil after clear, got %+v", skip)
-	}
-}
-
-func TestWriteBuildSkipMemory_CreatesOrchDir(t *testing.T) {
-	dir := t.TempDir()
-	// Don't pre-create .orch - WriteBuildSkipMemory should create it
-
-	err := WriteBuildSkipMemory(dir, "test reason", "test-agent")
-	if err != nil {
-		t.Fatalf("WriteBuildSkipMemory failed: %v", err)
-	}
-
-	// Verify .orch directory was created
-	orchDir := filepath.Join(dir, ".orch")
-	if _, err := os.Stat(orchDir); os.IsNotExist(err) {
-		t.Error(".orch directory should have been created")
-	}
-
-	skip := ReadBuildSkipMemory(dir)
-	if skip == nil {
-		t.Fatal("ReadBuildSkipMemory returned nil after write")
-	}
-}
 
 func TestAttributeBuildFailure_NoSpawnTime(t *testing.T) {
 	// Create workspace without spawn time
@@ -234,14 +94,6 @@ func TestParentCommit(t *testing.T) {
 	}
 }
 
-func TestBuildSkipPath(t *testing.T) {
-	path := buildSkipPath("/projects/orch-go")
-	expected := filepath.Join("/projects/orch-go", ".orch", BuildSkipFilename)
-	if path != expected {
-		t.Errorf("buildSkipPath = %q, want %q", path, expected)
-	}
-}
-
 func TestAttributeBuildFailure_NoCommitsSinceSpawn(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init")
@@ -288,7 +140,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// Helper: get HEAD commit hash
+// getHeadCommit returns the HEAD commit hash.
 func getHeadCommit(t *testing.T, dir string) string {
 	t.Helper()
 	cmd := exec.Command("git", "rev-parse", "HEAD")

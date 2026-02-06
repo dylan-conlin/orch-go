@@ -225,12 +225,12 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		return result
 	}
 
-	// Check build skip memory - if orchestrator already skipped build gate recently,
+	// Check gate skip memory - if orchestrator already skipped build gate recently,
 	// auto-skip for subsequent completions with a warning
-	if skip := ReadBuildSkipMemory(projectDir); skip != nil {
+	if skip := ReadGateSkipMemory(projectDir, GateBuild); skip != nil {
 		result.SkipMemory = true
 		result.Warnings = append(result.Warnings,
-			"build gate auto-skipped (prior skip by "+skip.SkippedBy+": "+skip.Reason+")")
+			"build gate auto-skipped (prior skip by "+skip.SetBy+": "+skip.Reason+")")
 		result.Warnings = append(result.Warnings,
 			"build skip expires at "+skip.ExpiresAt.Format("15:04:05"))
 		return result
@@ -275,7 +275,7 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		}
 	} else {
 		// Build passed - clear any stale build skip memory
-		ClearBuildSkipMemory(projectDir)
+		ClearGateSkipMemory(projectDir, GateBuild)
 	}
 
 	return result
@@ -317,6 +317,15 @@ func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificati
 // RecordBuildSkip persists a build gate skip decision for future completions.
 // Called when the orchestrator uses --skip-build --skip-reason to bypass the build gate.
 // Subsequent completions will auto-skip the build gate until the skip expires.
+//
+// Deprecated: Use WriteGateSkipMemory(projectDir, GateBuild, reason, skippedBy) directly.
 func RecordBuildSkip(projectDir, reason, skippedBy string) error {
-	return WriteBuildSkipMemory(projectDir, reason, skippedBy)
+	return WriteGateSkipMemory(projectDir, GateBuild, reason, skippedBy)
+}
+
+// RecordGateSkip persists a gate skip decision for future completions.
+// Called when the orchestrator uses --skip-* --skip-reason to bypass a gate.
+// Subsequent completions will auto-skip the gate until the skip expires.
+func RecordGateSkip(projectDir, gate, reason, skippedBy string) error {
+	return WriteGateSkipMemory(projectDir, gate, reason, skippedBy)
 }
