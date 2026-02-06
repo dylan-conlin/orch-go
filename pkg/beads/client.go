@@ -1112,6 +1112,27 @@ func FallbackAddLabel(id, label string) error {
 	return nil
 }
 
+// FallbackReopen reopens an issue via bd CLI.
+// Uses bd reopen which emits a Reopened event (distinct from simply updating status to open).
+// Uses DefaultDir if set to ensure cross-project operations work correctly.
+// Uses getBdPath() to resolve the bd executable location.
+func FallbackReopen(id, reason string) error {
+	args := []string{"reopen", id}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+	cmd := exec.Command(getBdPath(), args...)
+	setupFallbackEnv(cmd)
+	if DefaultDir != "" {
+		cmd.Dir = DefaultDir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bd reopen failed: %w: %s", err, string(output))
+	}
+	return nil
+}
+
 // CheckBlockingDependencies checks if an issue has any blocking dependencies.
 // Returns a list of blocking dependencies if any exist, or nil if the issue can be worked on.
 // Uses RPC client if available, falls back to CLI otherwise.
