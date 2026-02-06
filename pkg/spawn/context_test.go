@@ -1707,9 +1707,9 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to contain ad-hoc spawn indicator")
 		}
 
-		// Should NOT contain beads tracking section
-		if strings.Contains(content, "## BEADS PROGRESS TRACKING") {
-			t.Error("expected content to NOT contain beads tracking section for --no-track spawn")
+		// Should NOT contain progress tracking section
+		if strings.Contains(content, "## PROGRESS TRACKING") {
+			t.Error("expected content to NOT contain progress tracking section for --no-track spawn")
 		}
 
 		// Should NOT contain bd comment instructions (backtick-quoted command examples)
@@ -1756,9 +1756,9 @@ func TestGenerateContext_NoTrack(t *testing.T) {
 			t.Error("expected content to NOT contain ad-hoc spawn indicator for tracked spawn")
 		}
 
-		// Should contain beads tracking section
-		if !strings.Contains(content, "## BEADS PROGRESS TRACKING") {
-			t.Error("expected content to contain beads tracking section for tracked spawn")
+		// Should contain progress tracking section
+		if !strings.Contains(content, "## PROGRESS TRACKING") {
+			t.Error("expected content to contain progress tracking section for tracked spawn")
 		}
 
 		// Should contain bd comment instructions with correct beads ID
