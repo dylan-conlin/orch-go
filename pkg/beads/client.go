@@ -746,9 +746,9 @@ func FallbackShow(id string) (*Issue, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			// Check if stderr contains "no issue found" message
+			// Check if stderr contains "no issue found" or "no .beads directory" message
 			stderr := string(exitErr.Stderr)
-			if strings.Contains(stderr, "no issue found") {
+			if strings.Contains(stderr, "no issue found") || strings.Contains(stderr, "no .beads directory") {
 				return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
 			}
 			return nil, fmt.Errorf("bd show failed: %w: %s", err, stderr)
@@ -791,9 +791,9 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			// Check if stderr contains "no issue found" message
+			// Check if stderr contains "no issue found" or "no .beads directory" message
 			stderr := string(exitErr.Stderr)
-			if strings.Contains(stderr, "no issue found") {
+			if strings.Contains(stderr, "no issue found") || strings.Contains(stderr, "no .beads directory") {
 				return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, id)
 			}
 			return nil, fmt.Errorf("bd show failed: %w: %s", err, stderr)

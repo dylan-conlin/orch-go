@@ -1598,5 +1598,6 @@ func TestFallbackShow_EmptyOutput(t *testing.T) {
 	t.Log("FallbackShow should return ErrIssueNotFound when:")
 	t.Log("  - bd show returns empty output (exit code 0)")
 	t.Log("  - bd show returns 'no issue found' in stderr")
+	t.Log("  - bd show returns 'no .beads directory found' in stderr")
 	t.Log("  - bd show returns empty JSON array")
 }
