@@ -134,6 +134,7 @@ var (
 	daemonSpawnFactualQuestions        bool   // Spawn investigations for factual questions (subtype:factual label)
 	daemonDeadSessionDetectionEnabled  bool   // Enable dead session detection
 	daemonDeadSessionDetectionInterval int    // Dead session detection interval in minutes (0 = disabled)
+	daemonMaxDeadSessionRetries        int    // Max dead session retries before escalation
 )
 
 func init() {
@@ -175,6 +176,7 @@ func init() {
 	// Dead session detection
 	daemonRunCmd.Flags().BoolVar(&daemonDeadSessionDetectionEnabled, "dead-session-detection", true, "Enable dead session detection (default: true)")
 	daemonRunCmd.Flags().IntVar(&daemonDeadSessionDetectionInterval, "dead-session-interval", 10, "Dead session detection interval in minutes (0 = disabled, default: 10)")
+	daemonRunCmd.Flags().IntVar(&daemonMaxDeadSessionRetries, "max-dead-session-retries", 2, "Max times a dead session is retried before escalating to needs:human (default: 2)")
 
 	// Add label filter to preview and once commands (share the same variable)
 	daemonPreviewCmd.Flags().StringVar(&daemonLabel, "label", "triage:ready", "Filter issues by label (empty = no filter)")
@@ -229,6 +231,9 @@ func runDaemonLoop() error {
 	config.SpawnFactualQuestions = daemonSpawnFactualQuestions
 	config.DeadSessionDetectionEnabled = daemonDeadSessionDetectionEnabled && daemonDeadSessionDetectionInterval > 0
 	config.DeadSessionDetectionInterval = time.Duration(daemonDeadSessionDetectionInterval) * time.Minute
+	if daemonMaxDeadSessionRetries > 0 {
+		config.MaxDeadSessionRetries = daemonMaxDeadSessionRetries
+	}
 
 	d := daemon.NewWithConfig(config)
 
@@ -523,17 +528,17 @@ func runDaemonLoop() error {
 				if err := logger.Log(event); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log dead session detection error event: %v\n", err)
 				}
-			} else if result.MarkedCount > 0 {
+			} else if result.MarkedCount > 0 || result.EscalatedCount > 0 {
 				fmt.Printf("[%s] Dead session detection: %s\n", timestamp, result.Message)
-				// Log the successful detection
 				event := events.Event{
 					Type:      "daemon.dead_session_detection",
 					Timestamp: time.Now().Unix(),
 					Data: map[string]interface{}{
-						"detected": result.DetectedCount,
-						"marked":   result.MarkedCount,
-						"skipped":  result.SkippedCount,
-						"message":  result.Message,
+						"detected":  result.DetectedCount,
+						"marked":    result.MarkedCount,
+						"escalated": result.EscalatedCount,
+						"skipped":   result.SkippedCount,
+						"message":   result.Message,
 					},
 				}
 				if err := logger.Log(event); err != nil {

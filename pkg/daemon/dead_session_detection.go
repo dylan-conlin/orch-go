@@ -10,17 +10,34 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 )
 
+// DefaultMaxDeadSessionRetries is the default number of times a dead session
+// can be reset to open before escalating to needs:human.
+const DefaultMaxDeadSessionRetries = 2
+
 // DeadSessionDetectionConfig holds configuration for dead session detection.
 type DeadSessionDetectionConfig struct {
 	// Verbose enables debug logging.
 	Verbose bool
+
+	// MaxRetries is the maximum number of times a dead session can be reset
+	// to open before escalating to needs:human. 0 means use DefaultMaxDeadSessionRetries.
+	MaxRetries int
 }
 
 // DefaultDeadSessionDetectionConfig returns default configuration.
 func DefaultDeadSessionDetectionConfig() DeadSessionDetectionConfig {
 	return DeadSessionDetectionConfig{
-		Verbose: false,
+		Verbose:    false,
+		MaxRetries: DefaultMaxDeadSessionRetries,
 	}
+}
+
+// maxRetries returns the effective max retries, using the default if not set.
+func (c DeadSessionDetectionConfig) maxRetries() int {
+	if c.MaxRetries <= 0 {
+		return DefaultMaxDeadSessionRetries
+	}
+	return c.MaxRetries
 }
 
 // DeadSession represents a detected dead session.
@@ -87,17 +104,112 @@ func FindDeadSessions(config DeadSessionDetectionConfig) ([]DeadSession, error) 
 	return deadSessions, nil
 }
 
-// MarkSessionAsDead adds a comment to the beads issue indicating the session died.
-// This updates the issue status back to "open" so it can be respawned.
-func MarkSessionAsDead(beadsID string, reason string) error {
-	// Add comment explaining what happened
-	comment := fmt.Sprintf("DEAD SESSION: %s\n\nThe spawned agent session died without completing. This can happen due to:\n- Agent crash or context exhaustion\n- OpenCode server restart\n- Manual session termination\n\nStatus reset to 'open' for respawning.", reason)
+// CountDeadSessionComments counts how many "DEAD SESSION:" comments exist on an issue.
+// The comments themselves are the source of truth for retry count - no external state needed.
+func CountDeadSessionComments(beadsID string) (int, error) {
+	comments, err := getIssueComments(beadsID)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, c := range comments {
+		if strings.HasPrefix(c.Text, "DEAD SESSION:") {
+			count++
+		}
+	}
+	return count, nil
+}
 
-	if err := AddCommentToIssue(beadsID, comment); err != nil {
+// GetLastPhaseComment extracts the last "Phase:" comment from an issue.
+// Returns empty string if no phase comment found.
+func GetLastPhaseComment(beadsID string) string {
+	comments, err := getIssueComments(beadsID)
+	if err != nil {
+		return ""
+	}
+	for i := len(comments) - 1; i >= 0; i-- {
+		text := comments[i].Text
+		if strings.Contains(text, "Phase:") && !strings.HasPrefix(text, "DEAD SESSION:") {
+			return text
+		}
+	}
+	return ""
+}
+
+// getIssueComments retrieves all comments for a beads issue.
+func getIssueComments(beadsID string) ([]beads.Comment, error) {
+	socketPath, err := beads.FindSocketPath("")
+	if err == nil {
+		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+		if err := client.Connect(); err == nil {
+			defer client.Close()
+			if comments, err := client.Comments(beadsID); err == nil {
+				return comments, nil
+			}
+		}
+	}
+	cmd := exec.Command("bd", "comments", beadsID, "--json")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w: %s", err, string(output))
+	}
+	var comments []beads.Comment
+	if err := json.Unmarshal(output, &comments); err != nil {
+		return nil, fmt.Errorf("failed to parse comments: %w", err)
+	}
+	return comments, nil
+}
+
+// MarkSessionAsDead adds a comment to the beads issue indicating the session died.
+// Includes the last phase comment from the dying agent for context preservation.
+func MarkSessionAsDead(beadsID string, reason string) error {
+	lastPhase := GetLastPhaseComment(beadsID)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("DEAD SESSION: %s\n\n", reason))
+	sb.WriteString("The spawned agent session died without completing. This can happen due to:\n")
+	sb.WriteString("- Agent crash or context exhaustion\n")
+	sb.WriteString("- OpenCode server restart\n")
+	sb.WriteString("- Manual session termination\n")
+	if lastPhase != "" {
+		sb.WriteString(fmt.Sprintf("\nLast agent progress:\n%s\n", lastPhase))
+	}
+	sb.WriteString("\nStatus reset to 'open' for respawning.")
+
+	if err := AddCommentToIssue(beadsID, sb.String()); err != nil {
 		return fmt.Errorf("failed to add comment: %w", err)
 	}
 
-	// Reset status to "open" so daemon can respawn
+	if err := UpdateIssueStatus(beadsID, "open"); err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
+
+	return nil
+}
+
+// EscalateDeadSession marks an issue as needing human intervention after
+// exceeding the retry threshold. Labels with needs:human to stop daemon respawning.
+func EscalateDeadSession(beadsID string, retryCount int, reason string) error {
+	lastPhase := GetLastPhaseComment(beadsID)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("DEAD SESSION ESCALATED: %s\n\n", reason))
+	sb.WriteString(fmt.Sprintf("This issue has died %d time(s) without completing.\n", retryCount))
+	sb.WriteString("Retry limit reached - escalating to human review.\n")
+	sb.WriteString("The daemon will NOT respawn this issue automatically.\n")
+	if lastPhase != "" {
+		sb.WriteString(fmt.Sprintf("\nLast agent progress:\n%s\n", lastPhase))
+	}
+	sb.WriteString("\nTo retry manually: bd update <id> --status=open && bd label <id> triage:ready")
+
+	if err := AddCommentToIssue(beadsID, sb.String()); err != nil {
+		return fmt.Errorf("failed to add escalation comment: %w", err)
+	}
+
+	if err := addNeedsHumanLabel(beadsID); err != nil {
+		return fmt.Errorf("failed to add needs:human label: %w", err)
+	}
+
 	if err := UpdateIssueStatus(beadsID, "open"); err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}

@@ -211,15 +211,16 @@ func DefaultConfig() Config {
 		RecoveryIdleThreshold:            10 * time.Minute, // Idle >10min triggers recovery
 		RecoveryRateLimit:                time.Hour,        // 1 resume per agent per hour
 		ServerRecoveryEnabled:            true,
-		ServerRecoveryStabilizationDelay: 30 * time.Second, // Wait 30s for server stability
-		ServerRecoveryResumeDelay:        10 * time.Second, // 10s between each resume
-		ServerRecoveryRateLimit:          time.Hour,        // 1 recovery per agent per hour
-		MaxResumeAttempts:                3,                // Escalate after 3 failed attempts
-		AutoAbandonAfterHours:            24,               // Auto-abandon after 24h dead
-		SpawnFactualQuestions:            false,            // Opt-in feature
-		DeadSessionDetectionEnabled:      true,             // Enabled by default
-		DeadSessionDetectionInterval:     10 * time.Minute, // Check every 10 minutes
-		GracePeriod:                      30 * time.Second, // 30s grace period for triage corrections
+		ServerRecoveryStabilizationDelay: 30 * time.Second,             // Wait 30s for server stability
+		ServerRecoveryResumeDelay:        10 * time.Second,             // 10s between each resume
+		ServerRecoveryRateLimit:          time.Hour,                    // 1 recovery per agent per hour
+		MaxResumeAttempts:                3,                            // Escalate after 3 failed attempts
+		AutoAbandonAfterHours:            24,                           // Auto-abandon after 24h dead
+		SpawnFactualQuestions:            false,                        // Opt-in feature
+		DeadSessionDetectionEnabled:      true,                         // Enabled by default
+		DeadSessionDetectionInterval:     10 * time.Minute,             // Check every 10 minutes
+		MaxDeadSessionRetries:            DefaultMaxDeadSessionRetries, // Escalate after N dead sessions
+		GracePeriod:                      30 * time.Second,             // 30s grace period for triage corrections
 	}
 }
 
@@ -1703,43 +1704,71 @@ func (d *Daemon) ShouldRunDeadSessionDetection() bool {
 
 // DeadSessionDetectionResult contains the result of a dead session detection operation.
 type DeadSessionDetectionResult struct {
-	DetectedCount int
-	MarkedCount   int
-	SkippedCount  int
-	Error         error
-	Message       string
+	DetectedCount  int
+	MarkedCount    int
+	SkippedCount   int
+	EscalatedCount int
+	Error          error
+	Message        string
 }
 
 // RunPeriodicDeadSessionDetection runs dead session detection if due.
-// Returns the result if detection was run, or nil if it wasn't due.
+// For each dead session, checks the retry count (number of prior DEAD SESSION comments).
+// If the retry count exceeds the threshold, escalates to needs:human instead of resetting.
 func (d *Daemon) RunPeriodicDeadSessionDetection() *DeadSessionDetectionResult {
 	if !d.ShouldRunDeadSessionDetection() {
 		return nil
 	}
 
-	// Configure detection
 	config := DeadSessionDetectionConfig{
-		Verbose: d.Config.Verbose,
+		Verbose:    d.Config.Verbose,
+		MaxRetries: d.Config.MaxDeadSessionRetries,
 	}
 
-	// Find dead sessions
 	deadSessions, err := FindDeadSessions(config)
 	if err != nil {
 		return &DeadSessionDetectionResult{
-			DetectedCount: 0,
-			MarkedCount:   0,
-			SkippedCount:  0,
-			Error:         err,
-			Message:       fmt.Sprintf("Dead session detection failed: %v", err),
+			Error:   err,
+			Message: fmt.Sprintf("Dead session detection failed: %v", err),
 		}
 	}
 
 	detected := len(deadSessions)
 	marked := 0
 	skipped := 0
+	escalated := 0
 
-	// Mark each dead session
 	for _, dead := range deadSessions {
+		retryCount, err := CountDeadSessionComments(dead.BeadsID)
+		if err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  Failed to count retries for %s: %v (treating as 0)\n", dead.BeadsID, err)
+			}
+			retryCount = 0
+		}
+
+		maxRetries := config.maxRetries()
+
+		if retryCount >= maxRetries {
+			if d.Config.Verbose {
+				fmt.Printf("  Escalating %s: %d dead sessions (threshold: %d)\n",
+					dead.BeadsID, retryCount, maxRetries)
+			}
+			if err := EscalateDeadSession(dead.BeadsID, retryCount, dead.Reason); err != nil {
+				if d.Config.Verbose {
+					fmt.Printf("  Failed to escalate %s: %v\n", dead.BeadsID, err)
+				}
+				skipped++
+				continue
+			}
+			escalated++
+			continue
+		}
+
+		if d.Config.Verbose {
+			fmt.Printf("  Marking %s as dead (attempt %d/%d)\n",
+				dead.BeadsID, retryCount+1, maxRetries)
+		}
 		if err := MarkSessionAsDead(dead.BeadsID, dead.Reason); err != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  Failed to mark %s as dead: %v\n", dead.BeadsID, err)
@@ -1748,21 +1777,18 @@ func (d *Daemon) RunPeriodicDeadSessionDetection() *DeadSessionDetectionResult {
 			continue
 		}
 		marked++
-		if d.Config.Verbose {
-			fmt.Printf("  Marked %s as dead: %s\n", dead.BeadsID, dead.Reason)
-		}
 	}
 
-	// Update last detection time on success
 	d.lastDeadSessionDetection = time.Now()
 
-	message := fmt.Sprintf("Dead session detection: %d detected, %d marked, %d skipped", detected, marked, skipped)
+	message := fmt.Sprintf("Dead session detection: %d detected, %d marked, %d escalated, %d skipped",
+		detected, marked, escalated, skipped)
 	return &DeadSessionDetectionResult{
-		DetectedCount: detected,
-		MarkedCount:   marked,
-		SkippedCount:  skipped,
-		Error:         nil,
-		Message:       message,
+		DetectedCount:  detected,
+		MarkedCount:    marked,
+		EscalatedCount: escalated,
+		SkippedCount:   skipped,
+		Message:        message,
 	}
 }
 
