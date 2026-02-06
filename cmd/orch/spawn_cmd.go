@@ -874,6 +874,24 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	// Generate minimal prompt
 	minimalPrompt := spawn.MinimalPrompt(cfg)
 
+	// Connect MCP servers if --mcp is specified (opencode backend only).
+	// MCP servers are instance-level in OpenCode, so we connect them before
+	// starting the session so tools are available from the first message.
+	// Supports comma-separated server names (e.g., --mcp "playwright,glass").
+	if cfg.MCP != "" && cfg.SpawnMode != "claude" && cfg.SpawnMode != "docker" {
+		client := opencode.NewClient(serverURL)
+		for _, name := range strings.Split(cfg.MCP, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			fmt.Printf("Connecting MCP server: %s\n", name)
+			if err := client.MCPConnect(name); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to connect MCP server %s: %v\n", name, err)
+			}
+		}
+	}
+
 	// Spawn mode priority:
 	// 1. Explicit backend config (claude, docker) - handles inline within backend
 	// 2. Generic inline mode (uses opencode)
