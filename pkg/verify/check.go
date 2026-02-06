@@ -404,6 +404,21 @@ func VerifyCompletionFullWithComments(beadsID, workspacePath, projectDir, tier, 
 		result.Warnings = append(result.Warnings, buildResult.Warnings...)
 	}
 
+	// Verify dashboard health for dashboard-touching changes
+	// This gates completion when web/ or serve_*.go files are modified
+	// Skip for orchestrator tier (they typically don't make dashboard changes)
+	if !isOrch {
+		dashboardResult := VerifyDashboardHealth(workspacePath, projectDir, serverURL)
+		if dashboardResult != nil {
+			if !dashboardResult.Passed {
+				result.Passed = false
+				result.Errors = append(result.Errors, dashboardResult.Errors...)
+				result.GatesFailed = append(result.GatesFailed, GateDashboardHealth)
+			}
+			result.Warnings = append(result.Warnings, dashboardResult.Warnings...)
+		}
+	}
+
 	// Verify decision patch count (prevent launchd-style patch accumulation)
 	// After N patches to same decision, require architect review before more patches
 	// Skip for orchestrator tier (they don't produce investigation patches)
