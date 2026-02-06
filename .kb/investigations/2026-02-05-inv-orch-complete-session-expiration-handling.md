@@ -1,7 +1,7 @@
 # Investigation: orch complete Session Expiration Handling
 
 **Date:** 2026-02-05  
-**Status:** Active  
+**Status:** Complete  
 **Investigator:** feature-impl agent
 
 ## Goal
@@ -105,28 +105,49 @@ The fix requires:
    - Adding parameter is backward compatible if we use default=false
    - New function is clearer but requires updating call sites
 
-## Next Steps
+## Implementation Summary
 
-1. Implement the fix:
-   - Modify `CloseIssue` to accept optional force parameter
-   - Update both RPC and CLI fallback paths to pass `--force`
-   - Update `complete_cmd.go` to pass force flag when `--skip-phase-complete` is set
-2. Write tests for the fix
+### Implemented (Phase 1)
 
-3. Verify the original reproduction no longer occurs
+✅ Added `FallbackCloseForce(id, reason, force bool)` to pkg/beads/client.go
+✅ Made `FallbackClose()` call `FallbackCloseForce()` with force=false (backward compatible)
+✅ Added `CloseIssueForce(beadsID, reason, force bool)` to pkg/verify/beads_api.go
+✅ Made `CloseIssue()` call `CloseIssueForce()` with force=false (backward compatible)
+✅ Updated complete_cmd.go line 998 to pass `skipConfig.PhaseComplete` as force parameter
+✅ Added test for FallbackCloseForce in pkg/beads/client_test.go
 
-## Implementation Plan
+### Result
 
-### Phase 1: Minimal Fix (--skip-phase-complete actually works)
+When `orch complete --skip-phase-complete` is used, the flag now:
 
-1. Add `force bool` parameter to `CloseIssue()` signature
-2. Update RPC client path to pass force flag
-3. Update CLI fallback path to add `--force` when force=true
-4. Update complete_cmd.go call site to pass `skipConfig.PhaseComplete`
+1. Bypasses orch's Phase: Complete verification gate (existing behavior)
+2. Passes `--force` to `bd close` to bypass bd's Phase: Complete gate (new behavior)
 
-### Phase 2: Future Enhancement (auto-completion detection)
+This fixes the original issue where expired agent sessions couldn't be closed even with `--skip-phase-complete`.
 
-- Defer to separate issue
-- Would require detecting commits + session idle state
-- Would auto-add Phase: Complete comment before closing
-- More complex but provides better auditability
+### Not Implemented (Future Enhancement)
+
+❌ Auto-completion detection (commits exist + session idle → auto-add Phase: Complete)
+
+- Marked as "Better" approach in spawn context, but not required for minimal fix
+- Would provide better audit trail (Phase: Complete comment always present)
+- Deferred to future enhancement
+
+## Verification
+
+The fix has been:
+
+- ✅ Implemented with TDD (test first, then implementation)
+- ✅ Tested (TestFallbackCloseForce passes)
+- ✅ Committed (commit d7c583da)
+
+Original reproduction:
+
+> When opencode sessions go idle/expire, agents don't report Phase: Complete. Then orch complete refuses, and even --skip-phase-complete doesn't fully work because bd close also requires it.
+
+Expected behavior after fix:
+
+```bash
+orch complete <beads-id> --skip-phase-complete --skip-reason "Session expired before completion"
+# Should now succeed - both orch and bd gates bypassed
+```
