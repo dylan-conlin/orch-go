@@ -335,12 +335,22 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		return err
 	}
 
+	// Resolve model early to check if Anthropic rate limit applies
+	resolvedModel := model.Resolve(spawnModel)
+
 	// Proactive rate limit monitoring: warn at 80%, block at 95%
-	// This replaces the old checkAndAutoSwitchAccount() with more aggressive monitoring
-	usageCheckResult, usageErr := checkUsageBeforeSpawn()
-	if usageErr != nil {
-		// usageErr contains formatted blocking message
-		return usageErr
+	// Only applies to Anthropic models — non-Anthropic providers have their own limits
+	var usageCheckResult *UsageCheckResult
+	if resolvedModel.IsAnthropic() {
+		var usageErr error
+		usageCheckResult, usageErr = checkUsageBeforeSpawn()
+		if usageErr != nil {
+			// usageErr contains formatted blocking message
+			return usageErr
+		}
+	} else {
+		usageCheckResult = &UsageCheckResult{}
+		fmt.Fprintf(os.Stderr, "ℹ️  Non-Anthropic model (%s) — skipping Anthropic rate limit check\n", resolvedModel.Format())
 	}
 
 	// Get project directory early for hotspot check
@@ -766,7 +776,7 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 	}
 
 	// Resolve model with config support (after backend determination)
-	resolvedModel := resolveModelWithConfig(spawnModel, spawnBackend, skillName, projCfg, globalCfg)
+	resolvedModel = resolveModelWithConfig(spawnModel, spawnBackend, skillName, projCfg, globalCfg)
 
 	// Validate flash model - TPM rate limits make it unusable
 	if resolvedModel.Provider == "google" && strings.Contains(strings.ToLower(resolvedModel.ModelID), "flash") {
@@ -813,6 +823,24 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		variant = ""
 	}
 
+	// Fetch issue metadata for state DB recording.
+	// This is a single fetch that populates IssueTitle, IssueType, IssuePriority
+	// on the spawn.Config so RecordSpawn can write them to the agents table.
+	var issueTitle, issueType string
+	var issuePriority int
+	if !spawnNoTrack && !skipBeadsForOrchestrator && beadsID != "" {
+		if issue, err := verify.GetIssue(beadsID); err == nil && issue != nil {
+			issueTitle = issue.Title
+			issueType = issue.IssueType
+		}
+		// Priority is not exposed by verify.Issue; for new issues it's always 2 (default).
+		// For existing issues fetched via --issue, we'd need a beads API call.
+		// Set default for now; can be enriched if beads exposes priority on verify.Issue.
+		if issuePriority == 0 {
+			issuePriority = 2 // Default P2
+		}
+	}
+
 	// Build spawn config
 	cfg := &spawn.Config{
 		Task:               task,
@@ -847,6 +875,9 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		DaemonDriven:       daemonDriven,
 		IssueComments:      fetchIssueCommentsForSpawn(beadsID),
 		FailureContext:     fetchFailureContextForSpawn(beadsID),
+		IssueTitle:         issueTitle,
+		IssueType:          issueType,
+		IssuePriority:      issuePriority,
 	}
 
 	// Pre-spawn token estimation and validation

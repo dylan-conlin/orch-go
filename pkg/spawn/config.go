@@ -256,6 +256,18 @@ type Config struct {
 	// DesignNotes are notes from the design session SYNTHESIS.md
 	DesignNotes string
 
+	// IssueTitle is the beads issue title (from existing issue or newly created).
+	// Populated during spawn for state DB recording.
+	IssueTitle string
+
+	// IssueType is the beads issue type (e.g., "task", "bug", "feature").
+	// Populated during spawn for state DB recording.
+	IssueType string
+
+	// IssuePriority is the beads issue priority (e.g., 1, 2, 3).
+	// Populated during spawn for state DB recording.
+	IssuePriority int
+
 	// IssueComments contains comments from the beads issue (if --issue was provided).
 	// These are orchestrator notes added after issue creation that provide additional
 	// context, clarifications, or guidance for the spawned agent.

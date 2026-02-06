@@ -31,6 +31,9 @@ func RecordSpawn(cfg *spawn.Config) error {
 		ProjectName:   cfg.Project,
 		SpawnTime:     time.Now().UnixMilli(),
 		GitBaseline:   "", // Will be set from workspace after spawn
+		IssueTitle:    cfg.IssueTitle,
+		IssueType:     cfg.IssueType,
+		IssuePriority: cfg.IssuePriority,
 	}
 
 	// Default mode to "opencode" if not set
@@ -64,6 +67,9 @@ func RecordSpawnWithManifest(cfg *spawn.Config, manifest *spawn.AgentManifest) e
 		ProjectName:   cfg.Project,
 		SpawnTime:     time.Now().UnixMilli(),
 		GitBaseline:   manifest.GitBaseline,
+		IssueTitle:    cfg.IssueTitle,
+		IssueType:     cfg.IssueType,
+		IssuePriority: cfg.IssuePriority,
 	}
 
 	if agent.Mode == "" {
