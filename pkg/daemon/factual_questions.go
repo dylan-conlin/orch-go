@@ -45,7 +45,7 @@ func listFactualQuestionsCLI() ([]Issue, error) {
 	// Use bd ready with type and label filters
 	cmd := exec.Command("bd", "ready", "--type", "question", "--label", "subtype:factual", "--json", "--limit", "0")
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	output, err := bdOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready for factual questions: %w", err)
 	}

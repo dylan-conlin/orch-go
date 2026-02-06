@@ -149,7 +149,7 @@ func getIssueComments(beadsID string) ([]beads.Comment, error) {
 		}
 	}
 	cmd := exec.Command("bd", "comments", beadsID, "--json")
-	output, err := cmd.CombinedOutput()
+	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w: %s", err, string(output))
 	}
@@ -237,7 +237,7 @@ func AddCommentToIssue(beadsID, comment string) error {
 
 	// Fallback to CLI if daemon unavailable
 	cmd := exec.Command("bd", "comments", "add", beadsID, comment)
-	output, err := cmd.CombinedOutput()
+	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to add comment: %w: %s", err, string(output))
 	}
@@ -267,7 +267,7 @@ func UpdateIssueStatus(beadsID, status string) error {
 
 	// Fallback to CLI if daemon unavailable
 	cmd := exec.Command("bd", "update", beadsID, "--status", status)
-	output, err := cmd.CombinedOutput()
+	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w: %s", err, string(output))
 	}
@@ -305,7 +305,7 @@ func listIssuesWithStatusCLI(status string) ([]Issue, error) {
 	// Note: bd list may not support --status filter in all versions
 	// Try filtered query first, fall back to manual filtering
 	cmd := exec.Command("bd", "list", "--status", status, "--json", "--limit", "0")
-	output, err := cmd.CombinedOutput()
+	output, err := bdCombinedOutput(cmd)
 
 	// If --status flag not supported, fall back to unfiltered list + manual filter
 	if err != nil && strings.Contains(string(output), "unknown flag") {
@@ -327,7 +327,7 @@ func listIssuesWithStatusCLI(status string) ([]Issue, error) {
 // listAndFilter gets all issues and filters by status manually.
 func listAndFilter(status string) ([]Issue, error) {
 	cmd := exec.Command("bd", "list", "--json", "--limit", "0")
-	output, err := cmd.CombinedOutput()
+	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w: %s", err, string(output))
 	}

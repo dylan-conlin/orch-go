@@ -79,7 +79,7 @@ func listReadyIssuesForProjectCLI(projectPath string) ([]Issue, error) {
 	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
 	cmd.Dir = projectPath
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	output, err := bdOutput(cmd)
 	if err != nil {
 		log.Printf("warning: failed to get ready issues for project %s: %v", projectPath, err)
 		return []Issue{}, nil // Return empty list, not error (per acceptance criteria)
@@ -99,7 +99,7 @@ func listReadyIssuesCLI() ([]Issue, error) {
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
 	cmd := exec.Command("bd", "ready", "--json", "--limit", "0")
 	cmd.Env = os.Environ() // Inherit env (including BEADS_NO_DAEMON)
-	output, err := cmd.Output()
+	output, err := bdOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready: %w", err)
 	}
@@ -170,7 +170,7 @@ func ListReadyIssuesWithLabel(label string) ([]Issue, error) {
 func listReadyIssuesWithLabelCLI(label string) ([]Issue, error) {
 	cmd := exec.Command("bd", "ready", "--json", "--limit", "0", "--label", label)
 	cmd.Env = os.Environ()
-	output, err := cmd.Output()
+	output, err := bdOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run bd ready: %w", err)
 	}
@@ -255,7 +255,7 @@ func hasPhaseCompleteCLI(beadsID, projectPath string) (bool, error) {
 		cmd.Dir = projectPath
 	}
 	cmd.Env = os.Environ()
-	output, err := cmd.Output()
+	output, err := bdOutput(cmd)
 	if err != nil {
 		// Fail-safe: on error, assume Phase: Complete exists to prevent duplicate spawns.
 		// Better to skip one spawn cycle than create a duplicate agent.
@@ -322,7 +322,7 @@ func SpawnWorkForProject(beadsID, projectPath string) error {
 	updateCmd := exec.Command("bd", "update", beadsID, "--status=in_progress")
 	updateCmd.Dir = projectPath
 	updateCmd.Env = os.Environ()
-	if output, err := updateCmd.CombinedOutput(); err != nil {
+	if output, err := bdCombinedOutput(updateCmd); err != nil {
 		return fmt.Errorf("[%s] failed to set status to in_progress: %w: %s", projectName, err, string(output))
 	}
 
@@ -333,7 +333,7 @@ func SpawnWorkForProject(beadsID, projectPath string) error {
 		rollbackCmd := exec.Command("bd", "update", beadsID, "--status=open")
 		rollbackCmd.Dir = projectPath
 		rollbackCmd.Env = os.Environ()
-		if rollbackOutput, rollbackErr := rollbackCmd.CombinedOutput(); rollbackErr != nil {
+		if rollbackOutput, rollbackErr := bdCombinedOutput(rollbackCmd); rollbackErr != nil {
 			log.Printf("[%s] WARNING: failed to rollback status to open for %s: %v: %s", projectName, beadsID, rollbackErr, string(rollbackOutput))
 		} else {
 			log.Printf("[%s] Rolled back status to open for %s after spawn failure", projectName, beadsID)
