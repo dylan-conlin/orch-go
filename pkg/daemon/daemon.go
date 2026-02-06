@@ -913,6 +913,11 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 		return fmt.Sprintf("blocked by dependencies: %s", strings.Join(blockerIDs, ", "))
 	}
 
+t// Grace period check: issue was recently added to the queue
+tif d.Config.GracePeriod > 0 && d.InGracePeriod(issue.ID) {
+ttremaining := d.Config.GracePeriod - time.Since(d.firstSeen[issue.ID])
+ttreturn fmt.Sprintf("in grace period (%s remaining)", remaining.Round(time.Second))
+t}
 	return "" // Spawnable
 }
 
