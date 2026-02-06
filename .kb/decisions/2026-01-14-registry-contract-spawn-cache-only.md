@@ -1,7 +1,7 @@
 # Decision: Registry Contract - Spawn-Cache Only
 
 **Date:** 2026-01-14
-**Status:** Accepted
+**Status:** Superseded (2026-02-06: pkg/registry removed entirely; SQLite state DB replaces agent registry)
 **Deciders:** Dylan
 
 ## Context

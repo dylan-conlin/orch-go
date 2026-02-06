@@ -176,7 +176,7 @@ tmux capture-pane -p -t workers-orch-go:inv-task-abc
 ### 2b. Registry Schema (orch-go-1rk4z)
 
 **Files to modify:**
-- `pkg/registry/registry.go` - Add mode tracking
+- `pkg/state/db.go` - Agent state tracking (replaced pkg/registry, removed 2026-02-06)
 
 **Schema changes:**
 ```go

@@ -261,6 +261,6 @@ Session remains in OpenCode
 
 **Primary Evidence (Verify These):**
 - `cmd/orch/serve_agents.go` - Status calculation implementation (~1400 lines)
-- `pkg/registry/registry.go` - Registry structure (metadata only)
+- `pkg/state/db.go` - SQLite state DB (replaced pkg/registry, removed 2026-02-06)
 - `pkg/verify/check.go` - Phase parsing from beads comments
 - `.beads/issues.jsonl` - Canonical completion source

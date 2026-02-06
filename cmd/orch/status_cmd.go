@@ -306,7 +306,7 @@ func runStatus(serverURL string) error {
 
 	timer("token fetch + risk assessment")
 
-	// Fetch orchestrator sessions from registry
+	// Fetch orchestrator sessions from session registry
 	orchestratorSessions := getOrchestratorSessions(statusProject)
 	// In compact mode, limit to recent sessions
 	if !statusAll && len(orchestratorSessions) > compactOrchestratorSessionsLimit {

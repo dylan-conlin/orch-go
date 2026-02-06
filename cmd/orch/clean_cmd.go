@@ -12,7 +12,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -30,7 +29,6 @@ var (
 	cleanStaleDays            int
 	cleanUntracked            bool
 	cleanUntrackedDays        int
-	cleanRegistry             bool
 	cleanSessions             bool
 	cleanSessionsDays         int
 	cleanPreserveOrchestrator bool
@@ -53,7 +51,7 @@ Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Comprehensive cleanup:
-  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, registry, sessions)
+  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions)
 
 Optional cleanup actions:
   --windows              Close tmux windows for completed agents
@@ -64,7 +62,6 @@ Optional cleanup actions:
   --stale-days N         Set age threshold for --stale (default: 7)
   --untracked            Archive old untracked workspaces (default: 7 days)
   --untracked-days N     Set age threshold for --untracked (default: 7)
-  --registry             Remove untracked agents from ~/.orch/agent-registry.json
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
   --sessions-days N      Set age threshold for --sessions (default: 7)
 
@@ -97,16 +94,15 @@ Examples:
 			cleanInvestigations = true
 			cleanStale = true
 			cleanUntracked = true
-			cleanRegistry = true
 			cleanSessions = true
 		}
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanRegistry, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
 	},
 }
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, registry, sessions)")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions)")
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
@@ -115,7 +111,6 @@ func init() {
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanUntracked, "untracked", false, "Archive untracked workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanUntrackedDays, "untracked-days", 7, "Age threshold in days for --untracked (default: 7)")
-	cleanCmd.Flags().BoolVar(&cleanRegistry, "registry", false, "Remove untracked agent entries from the agent registry (~/.orch/agent-registry.json)")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
@@ -300,7 +295,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, purgeRegistry bool, cleanSessions bool, sessionsDays int, preserveOrchestrator bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -397,15 +392,6 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
-	// Clean untracked entries from agent registry (optional)
-	var registryPurged int
-	if purgeRegistry {
-		registryPurged, err = removeUntrackedRegistryEntries(registry.DefaultPath(), dryRun)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clean registry: %v\n", err)
-		}
-	}
-
 	// Clean stale OpenCode sessions (optional)
 	var staleSessionsDeleted int
 	if cleanSessions {
@@ -422,7 +408,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || purgeRegistry || cleanSessions
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || cleanSessions
 
 	if dryRun {
 		if hasCleanupActions {
@@ -454,9 +440,6 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if archiveUntracked && untrackedArchived > 0 {
 				fmt.Printf(" Would archive %d untracked workspaces.", untrackedArchived)
 			}
-			if purgeRegistry && registryPurged > 0 {
-				fmt.Printf(" Would remove %d untracked registry entries.", registryPurged)
-			}
 			if cleanSessions && staleSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d stale OpenCode sessions.", staleSessionsDeleted)
 			}
@@ -466,7 +449,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || registryPurged > 0 || staleSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -480,7 +463,6 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"investigations_archived": investigationsArchived,
 				"workspaces_archived":     workspacesArchived,
 				"untracked_archived":      untrackedArchived,
-				"registry_purged":         registryPurged,
 				"project":                 projectName,
 				"verify_opencode":         verifyOpenCode,
 				"close_windows":           closeWindows,
@@ -490,7 +472,6 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"stale_days":              staleDays,
 				"archive_untracked":       archiveUntracked,
 				"untracked_days":          untrackedDays,
-				"purge_registry":          purgeRegistry,
 				"clean_sessions":          cleanSessions,
 				"sessions_days":           sessionsDays,
 				"stale_sessions_deleted":  staleSessionsDeleted,
@@ -502,7 +483,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || registryPurged > 0 || staleSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -521,9 +502,6 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if untrackedArchived > 0 {
 			fmt.Printf("Archived %d untracked workspaces\n", untrackedArchived)
-		}
-		if registryPurged > 0 {
-			fmt.Printf("Removed %d untracked registry entries\n", registryPurged)
 		}
 		if staleSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d stale OpenCode sessions\n", staleSessionsDeleted)
@@ -1235,41 +1213,3 @@ func archiveUntrackedWorkspaces(projectDir string, untrackedDays int, dryRun boo
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go
-
-// removeUntrackedRegistryEntries removes untracked agents from the registry.
-// An agent is considered "untracked" if:
-// 1. It has no beads_id (empty string)
-// 2. Its beads_id contains "untracked"
-// Uses Registry.Purge + SaveSkipMerge for proper file locking, preventing
-// race conditions with concurrent agent registrations from daemon spawns.
-// Returns the number of agents removed and any error encountered.
-func removeUntrackedRegistryEntries(registryPath string, dryRun bool) (int, error) {
-	reg, err := registry.New(registryPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open registry: %w", err)
-	}
-
-	// Count untracked agents first (for dry run)
-	removed := reg.Purge(func(agent *registry.Agent) bool {
-		return agent.BeadsID == "" || strings.Contains(agent.BeadsID, "untracked")
-	})
-
-	if removed == 0 {
-		return 0, nil
-	}
-
-	if dryRun {
-		// Don't save - just return the count
-		// Note: Purge already modified in-memory state, but since we don't save,
-		// this registry instance is discarded and the file remains unchanged.
-		return removed, nil
-	}
-
-	// Use SaveSkipMerge since Purge modifies in-memory state;
-	// regular Save would re-merge purged entries from disk.
-	if err := reg.SaveSkipMerge(); err != nil {
-		return 0, fmt.Errorf("failed to save cleaned registry: %w", err)
-	}
-
-	return removed, nil
-}

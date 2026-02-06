@@ -1,7 +1,7 @@
 # Decision: Registry is Spawn-Time Metadata Cache
 
 **Date:** 2026-01-12
-**Status:** Accepted
+**Status:** Superseded (2026-02-06: pkg/registry removed entirely; SQLite state DB replaces agent registry)
 **Deciders:** Dylan, Architect Agent (orch-go-6a0p1)
 
 ## Context

@@ -13,7 +13,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/process"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
@@ -122,34 +121,32 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	client := opencode.NewClient(serverURL)
 
-	// Try registry first (primary source of truth)
-	agentReg, _ := registry.New("")
-	var agent *registry.Agent
-	if agentReg != nil {
-		agent = agentReg.Find(beadsID)
-	}
-
+	// Try state DB first (primary source of truth)
 	var windowInfo *tmux.WindowInfo
 	var sessionID string
 	var workspacePath, agentName string
 
-	if agent != nil {
-		fmt.Printf("Found agent in registry: %s (mode: %s)\n", agent.ID, agent.Mode)
-		agentName = agent.ID
-		sessionID = agent.SessionID
-		if agent.Mode == registry.ModeTmux && agent.TmuxWindow != "" {
-			windowInfo = &tmux.WindowInfo{
-				Target: agent.TmuxWindow,
-				Name:   agent.TmuxWindow,
+	db, dbErr := statedb.OpenDefault()
+	if dbErr == nil && db != nil {
+		defer db.Close()
+		if dbAgent, err := db.GetAgentByBeadsID(beadsID); err == nil && dbAgent != nil {
+			fmt.Printf("Found agent in state DB: %s (mode: %s)\n", dbAgent.WorkspaceName, dbAgent.Mode)
+			agentName = dbAgent.WorkspaceName
+			sessionID = dbAgent.SessionID
+			if (dbAgent.Mode == "claude" || dbAgent.Mode == "docker") && dbAgent.TmuxWindow != "" {
+				windowInfo = &tmux.WindowInfo{
+					Target: dbAgent.TmuxWindow,
+					Name:   dbAgent.TmuxWindow,
+				}
 			}
-		}
-		// Resolve workspace path from project dir and agent ID
-		if agent.ProjectDir != "" {
-			workspacePath = filepath.Join(agent.ProjectDir, ".orch", "workspace", agent.ID)
+			// Resolve workspace path from project dir and agent ID
+			if dbAgent.ProjectDir != "" {
+				workspacePath = filepath.Join(dbAgent.ProjectDir, ".orch", "workspace", dbAgent.WorkspaceName)
+			}
 		}
 	}
 
-	// Discovery fallback if registry didn't give us everything
+	// Discovery fallback if state DB didn't give us everything
 	if windowInfo == nil {
 		// Try searching by beads ID first (for worker sessions)
 		sessions, _ := tmux.ListWorkersSessions()

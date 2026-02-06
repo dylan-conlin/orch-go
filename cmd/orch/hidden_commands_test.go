@@ -10,7 +10,6 @@ func TestHiddenCommands(t *testing.T) {
 	// List of commands that should be hidden (dead commands with low/no usage)
 	hiddenCommands := []string{
 		"claim",
-		"registry",
 		"retries",
 		"deploy",
 		"config",

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -184,89 +183,6 @@ func TestIsOrchestratorSessionTitle(t *testing.T) {
 				t.Errorf("cleanup.IsOrchestratorSessionTitle(%q) = %v, want %v", tt.title, result, tt.expected)
 			}
 		})
-	}
-}
-
-// TestCleanUntrackedRegistry tests cleaning untracked agents from the registry.
-func TestCleanUntrackedRegistry(t *testing.T) {
-	tmpDir := t.TempDir()
-	registryPath := filepath.Join(tmpDir, "agent-registry.json")
-
-	// Create a registry with various agents
-	testAgents := []map[string]interface{}{
-		{
-			"id":         "og-feat-tracked-01",
-			"beads_id":   "orch-go-12345",
-			"status":     "active",
-			"spawned_at": "2026-02-05T10:00:00Z",
-			"updated_at": "2026-02-05T10:00:00Z",
-		},
-		{
-			"id":         "og-feat-untracked-02",
-			"beads_id":   "orch-go-untracked-67890",
-			"status":     "active",
-			"spawned_at": "2026-02-05T10:00:00Z",
-			"updated_at": "2026-02-05T10:00:00Z",
-		},
-		{
-			"id":         "og-feat-notrack-03",
-			"beads_id":   "",
-			"status":     "active",
-			"spawned_at": "2026-02-05T10:00:00Z",
-			"updated_at": "2026-02-05T10:00:00Z",
-		},
-	}
-
-	registryData := map[string]interface{}{
-		"agents": testAgents,
-	}
-
-	// Write registry file
-	data, err := json.Marshal(registryData)
-	if err != nil {
-		t.Fatalf("Failed to marshal test registry: %v", err)
-	}
-	if err := os.WriteFile(registryPath, data, 0644); err != nil {
-		t.Fatalf("Failed to write test registry: %v", err)
-	}
-
-	// Call cleanup function (should remove untracked agents)
-	removed, err := removeUntrackedRegistryEntries(registryPath, false)
-	if err != nil {
-		t.Fatalf("removeUntrackedRegistryEntries failed: %v", err)
-	}
-
-	// Verify 2 untracked agents were removed (agents 2 and 3)
-	if removed != 2 {
-		t.Errorf("Expected 2 untracked agents removed, got %d", removed)
-	}
-
-	// Verify registry now only contains tracked agent
-	data, err = os.ReadFile(registryPath)
-	if err != nil {
-		t.Fatalf("Failed to read registry after cleanup: %v", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("Failed to unmarshal cleaned registry: %v", err)
-	}
-
-	agents, ok := result["agents"].([]interface{})
-	if !ok {
-		t.Fatal("Registry 'agents' field is not an array")
-	}
-
-	if len(agents) != 1 {
-		t.Errorf("Expected 1 agent remaining, got %d", len(agents))
-	}
-
-	// Verify the remaining agent is the tracked one
-	if len(agents) > 0 {
-		agent := agents[0].(map[string]interface{})
-		if agent["id"] != "og-feat-tracked-01" {
-			t.Errorf("Expected tracked agent to remain, got %s", agent["id"])
-		}
 	}
 }
 

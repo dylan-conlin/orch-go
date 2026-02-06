@@ -4,7 +4,7 @@
 //
 // state.db (~/.orch/state.db) is a spawn-time projection cache for fast reads.
 // It materializes data from authoritative sources into a single local store to
-// avoid the distributed JOIN across 6 systems (OpenCode, beads, tmux, registry,
+// avoid the distributed JOIN across multiple systems (OpenCode, beads, tmux,
 // workspace, Anthropic API) on every status query.
 //
 // Authoritative ownership:
@@ -23,9 +23,10 @@
 //   - Discrepancy SLO (measurable accuracy target over a defined window)
 //   - Explicit migration gates (not gradual assumption of authority)
 //
-// This contract exists to prevent repeating the registry drift pattern, where
-// a cache was gradually treated as authoritative without reconciliation
-// infrastructure. See: .kb/decisions/2026-01-12-registry-is-spawn-cache.md
+// This contract exists to prevent repeating the drift pattern seen with the
+// former agent registry (~/.orch/agents.json), where a cache was gradually
+// treated as authoritative without reconciliation infrastructure.
+// See: .kb/decisions/2026-01-12-registry-is-spawn-cache.md (superseded)
 //
 // Architecture evaluation: .kb/investigations/2026-02-06-inv-evaluate-single-source-agent-state.md
 //

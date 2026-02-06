@@ -1,6 +1,6 @@
 // Package main provides state DB integration for the status command.
 // Pre-fetches immutable agent metadata from SQLite to avoid the distributed JOIN
-// across 6 systems (OpenCode, beads, tmux, registry, workspace, Anthropic API).
+// across multiple systems (OpenCode, beads, tmux, workspace, Anthropic API).
 //
 // This is the Phase A projection-first optimization:
 //   - Reads immutable fields from state DB (session_id, beads_id, model, skill, etc.)
@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -47,7 +46,7 @@ type stateDBAgentResult struct {
 // fetchAgentsFromStateDB attempts to pre-populate agents from the state DB.
 // Returns nil if the state DB is unavailable or empty (graceful degradation).
 //
-// This replaces the expensive multi-source discovery (tmux + registry + OpenCode sessions
+// This replaces the expensive multi-source discovery (tmux + OpenCode sessions
 // + workspace manifest reads) for agents that were tracked at spawn time.
 func fetchAgentsFromStateDB(showAll bool) *stateDBAgentResult {
 	db, err := state.OpenDefault()
@@ -550,45 +549,7 @@ func runStatusFallbackPath(
 	debugTiming := os.Getenv("ORCH_STATUS_DEBUG") != ""
 
 	// Discover agents from all sources
-	agents, beadsIDsToFetch, beadsProjectDirs, seenBeadsIDs := fallbackDiscoverAgents(sessions, now, projectDir)
-
-	// Phase 1.5: Registry discovery (claude-mode agents not visible via tmux)
-	agentReg, _ := registry.New("")
-	if agentReg != nil {
-		existingWindows := tmux.ListAllWindowTargets()
-		for _, regAgent := range agentReg.ListActive() {
-			if regAgent.Mode != registry.ModeTmux && regAgent.Mode != registry.ModeDocker {
-				continue
-			}
-			beadsID := regAgent.BeadsID
-			if beadsID == "" || seenBeadsIDs[beadsID] {
-				continue
-			}
-
-			info := AgentInfo{
-				BeadsID:    beadsID,
-				Mode:       regAgent.Mode,
-				Skill:      regAgent.Skill,
-				Project:    extractProjectFromBeadsID(beadsID),
-				ProjectDir: regAgent.ProjectDir,
-				Title:      regAgent.ID,
-				Model:      regAgent.Model,
-			}
-
-			if regAgent.TmuxWindow != "" {
-				if existingWindows[regAgent.TmuxWindow] {
-					info.Window = regAgent.TmuxWindow
-				}
-			}
-			if info.ProjectDir != "" {
-				beadsProjectDirs[beadsID] = info.ProjectDir
-			}
-
-			agents = append(agents, info)
-			beadsIDsToFetch = append(beadsIDsToFetch, beadsID)
-			seenBeadsIDs[beadsID] = true
-		}
-	}
+	agents, beadsIDsToFetch, beadsProjectDirs, _ := fallbackDiscoverAgents(sessions, now, projectDir)
 
 	// Build session maps for enrichment
 	sessionMap := make(map[string]*opencode.Session)

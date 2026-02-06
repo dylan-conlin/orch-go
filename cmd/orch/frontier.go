@@ -120,7 +120,7 @@ func runFrontier() error {
 		return fmt.Errorf("failed to calculate frontier: %w", err)
 	}
 
-	// Get active agents from registry and split into active vs stuck
+	// Get active agents from live sources and split into active vs stuck
 	activeAgents, stuckAgents := getActiveAndStuckAgents()
 
 	// Filter out agents whose beads issues are closed
@@ -138,7 +138,7 @@ func runFrontier() error {
 
 // getActiveAndStuckAgents discovers agents from tmux windows and OpenCode sessions,
 // then splits them into active (< 2h) and stuck (>= 2h) categories.
-// This uses authoritative sources (live runtime state) instead of the registry.
+// This uses authoritative sources (live runtime state) for liveness detection.
 func getActiveAndStuckAgents() (active, stuck []ActiveOutput) {
 	// Initialize as empty slices (not nil) to ensure JSON encodes as [] not null
 	active = []ActiveOutput{}

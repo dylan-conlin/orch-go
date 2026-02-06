@@ -23,7 +23,6 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/skills"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	statedb "github.com/dylan-conlin/orch-go/pkg/state"
@@ -1022,9 +1021,6 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 	// Note: Inline mode is synchronous and blocks until completion,
 	// so process ID tracking is not needed (process exits before cleanup)
 
-	// Register agent in general registry
-	registerAgent(cfg, result.SessionID, "", registry.ModeHeadless, cfg.Model)
-
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, result.SessionID, task)
 
@@ -1118,9 +1114,6 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 
 	// Start background cleanup goroutine
 	result.StartBackgroundCleanup()
-
-	// Register agent in general registry
-	registerAgent(cfg, sessionID, "", registry.ModeHeadless, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -1283,12 +1276,27 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to create tmux window: %w", err)
 	}
 
+	// When a model is specified, create the session via API first (opencode attach
+	// doesn't accept --model). Then attach to that session by ID.
+	client := opencode.NewClient(serverURL)
+	var preCreatedSessionID string
+	if cfg.Model != "" {
+		resp, createErr := client.CreateSession(cfg.WorkspaceName, cfg.ProjectDir, cfg.Model, "", !cfg.IsOrchestrator && !cfg.IsMetaOrchestrator)
+		if createErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to pre-create session with model %s: %v (falling back to attach without model)\n", cfg.Model, createErr)
+		} else {
+			preCreatedSessionID = resp.ID
+		}
+	}
+
 	// Build opencode command using tmux package
-	opencodeCmd := tmux.BuildOpencodeAttachCommand(&tmux.OpencodeAttachConfig{
+	attachCfg := &tmux.OpencodeAttachConfig{
 		ServerURL:  serverURL,
 		ProjectDir: cfg.ProjectDir,
-		Model:      cfg.Model,
-	})
+		// Don't pass Model — opencode attach doesn't accept --model
+		SessionID: preCreatedSessionID,
+	}
+	opencodeCmd := tmux.BuildOpencodeAttachCommand(attachCfg)
 
 	// Send command and execute
 	if err := tmux.SendKeys(windowTarget, opencodeCmd); err != nil {
@@ -1304,12 +1312,13 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		return fmt.Errorf("failed to start opencode: %w", err)
 	}
 
-	// Capture session ID from API with retry (OpenCode may not have registered yet)
-	// Uses 3 attempts with 500ms initial delay, doubling each time (500ms, 1s, 2s)
-	// Matches by directory + creation time (within 30s), not by title
-	client := opencode.NewClient(serverURL)
-	sessionID, _ := client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
-	// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
+	// Use pre-created session ID if available, otherwise discover via API
+	sessionID := preCreatedSessionID
+	if sessionID == "" {
+		// Capture session ID from API with retry (OpenCode may not have registered yet)
+		sessionID, _ = client.FindRecentSessionWithRetry(cfg.ProjectDir, 3, 500*time.Millisecond)
+		// Note: We silently ignore errors here since window_id is sufficient for tmux monitoring
+	}
 
 	// Send prompt
 	sendCfg := tmux.DefaultSendPromptConfig()
@@ -1327,9 +1336,6 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 		}
 	}
-
-	// Register agent in general registry
-	registerAgent(cfg, sessionID, windowTarget, registry.ModeTmux, cfg.Model)
 
 	// Register orchestrator session in registry (workers use beads instead)
 	registerOrchestratorSession(cfg, sessionID, task)
@@ -1416,9 +1422,6 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	// Register orchestrator session in registry if needed
 	registerOrchestratorSession(cfg, "", task)
 
-	// Register agent in the agent registry (for orch status tracking)
-	registerAgent(cfg, "", result.Window, registry.ModeTmux, cfg.Model)
-
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
@@ -1479,10 +1482,6 @@ func runSpawnClaudeInline(serverURL string, cfg *spawn.Config, beadsID, skillNam
 	// Register orchestrator session in registry if needed (before spawn, in case it fails)
 	registerOrchestratorSession(cfg, "", task)
 
-	// Register agent in the agent registry (for orch status tracking)
-	// Note: No window target for inline mode
-	registerAgent(cfg, "", "", registry.ModeHeadless, cfg.Model)
-
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())
 	eventData := map[string]interface{}{
@@ -1532,9 +1531,6 @@ func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 
 	// Register orchestrator session in registry if needed
 	registerOrchestratorSession(cfg, "", task)
-
-	// Register agent in the agent registry (for orch status tracking)
-	registerAgent(cfg, "", result.Window, registry.ModeDocker, cfg.Model)
 
 	// Log the session creation
 	logger := events.NewLogger(events.DefaultLogPath())

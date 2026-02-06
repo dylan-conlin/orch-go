@@ -33,23 +33,22 @@ func TestFormatDurationForStatus(t *testing.T) {
 
 // TestStatusUsesMultipleSources verifies that status command uses all agent sources.
 // This is a design test - the actual implementation combines data from:
-// - OpenCode API (ListSessions) for opencode-mode agents
-// - Agent registry for claude-mode and docker-mode agents
+// - SQLite state DB for agent metadata (spawn-time projection cache)
+// - OpenCode API (ListSessions) for opencode-mode session liveness
 // - Tmux window discovery for running tmux-based agents
 func TestStatusUsesMultipleSources(t *testing.T) {
 	// The status command uses multiple sources for complete agent discovery:
 	//
 	// The runStatus function:
-	// 1. Creates an OpenCode client and fetches sessions (opencode-mode agents)
-	// 2. Scans tmux workers sessions for running windows (claude-mode with windows)
-	// 3. Checks agent registry for claude/docker-mode agents not visible via tmux
-	// 4. Enriches with beads comments and workspace metadata
-	// 5. Displays results
+	// 1. Queries SQLite state DB for all agents (primary path)
+	// 2. Falls back to OpenCode + tmux discovery if state DB is empty
+	// 3. Enriches with beads comments and workspace metadata
+	// 4. Displays results
 	//
 	// This ensures all agent types are visible:
-	// - opencode-mode: via OpenCode API
-	// - claude-mode: via tmux windows + registry fallback
-	// - docker-mode: via registry
+	// - opencode-mode: via state DB + OpenCode API for liveness
+	// - claude-mode: via state DB + tmux windows for liveness
+	// - docker-mode: via state DB
 	//
 	// Integration testing requires a running OpenCode server and tmux.
 }

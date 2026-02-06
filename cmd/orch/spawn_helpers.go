@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/session"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
@@ -143,36 +142,6 @@ func printSpawnSummaryWithGapWarning(gapAnalysis *spawn.GapAnalysis) {
 		fmt.Fprintf(os.Stderr, "│  Agent may compensate by guessing patterns/conventions.    │\n")
 		fmt.Fprintf(os.Stderr, "│  Consider: kn decide / kn constrain / kb create            │\n")
 		fmt.Fprintf(os.Stderr, "└─────────────────────────────────────────────────────────────┘\n")
-	}
-}
-
-// registerAgent registers an agent in the registry for tracking and monitoring.
-func registerAgent(cfg *spawn.Config, sessionID, tmuxWindow, mode, modelSpec string) {
-	agentReg, err := registry.New("")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to open agent registry: %v\n", err)
-		return
-	}
-
-	agent := &registry.Agent{
-		ID:         cfg.WorkspaceName,
-		BeadsID:    cfg.BeadsID,
-		Mode:       mode,
-		SessionID:  sessionID,
-		TmuxWindow: tmuxWindow,
-		Model:      modelSpec,
-		ProjectDir: cfg.ProjectDir,
-		Skill:      cfg.SkillName,
-		Status:     registry.StateActive,
-	}
-
-	if err := agentReg.Register(agent); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to register agent in registry: %v\n", err)
-		return
-	}
-
-	if err := agentReg.Save(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to save agent registry: %v\n", err)
 	}
 }
 

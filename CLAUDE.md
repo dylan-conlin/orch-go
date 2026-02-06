@@ -34,8 +34,6 @@ pkg/
 │   └── model.go        # opus→anthropic/claude-opus, flash→google/gemini-2.5-flash
 ├── account/             # Claude Max account management
 │   └── account.go      # Read/write ~/.orch/accounts.yaml, token refresh
-├── registry/            # Agent state management
-│   └── registry.go     # JSON registry with file locking, reconcile with tmux
 ├── tmux/                # Tmux window management
 │   └── tmux.go         # Create windows, send keys, capture output
 ├── spawn/               # Spawn context generation
@@ -75,7 +73,7 @@ pkg/
 **Why:** Orchestrators were using Task tool to spawn subagents instead of using `orch spawn`. This bypasses:
 
 - The spawn context system (skills, beads integration, workspace setup)
-- Agent registry tracking (dashboard visibility)
+- Agent state tracking in SQLite (dashboard visibility)
 - Completion verification workflow
 - Event tracking for stats
 
@@ -293,7 +291,7 @@ Architect decisions can block spawns via the decision gate. This gives decisions
 - `send <session-id> "message"` - Q&A on existing session
 - `complete <agent-id>` - Verify and close agent work
 - `abandon <agent-id>` - Mark stuck agent as abandoned
-- `clean` - Remove completed agents from registry
+- `clean` - Remove completed agent workspaces and stale state
 
 ### Monitoring
 
