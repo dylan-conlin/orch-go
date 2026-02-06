@@ -1083,32 +1083,56 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 
 // listBeadsIssues calls bd list and returns parsed issues
 func listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
-	args := []string{"list", "--json", "--limit", "0"}
 	if includeAll {
-		args = append(args, "--all")
-	} else {
-		// Include both open and in_progress issues (active work)
-		// This ensures in_progress issues appear in the work graph
-		args = append(args, "--status", "open", "--status", "in_progress")
+		args := []string{"list", "--json", "--limit", "0", "--all"}
+		cmd := exec.Command(getBdPath(), args...)
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+		output, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("bd list failed: %w", err)
+		}
+		var issues []beadsIssue
+		if err := json.Unmarshal(output, &issues); err != nil {
+			return nil, fmt.Errorf("parse issues: %w", err)
+		}
+		return issues, nil
 	}
 
-	cmd := exec.Command(getBdPath(), args...)
-	if workDir != "" {
-		cmd.Dir = workDir
+	// bd treats multiple --status flags as AND, not OR.
+	// We need both open and in_progress issues, so fetch separately and merge.
+	var allIssues []beadsIssue
+	for _, status := range []string{"open", "in_progress"} {
+		args := []string{"list", "--json", "--limit", "0", "--status", status}
+		cmd := exec.Command(getBdPath(), args...)
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+		output, err := cmd.Output()
+		if err != nil {
+			continue // Skip this status if it fails
+		}
+		var issues []beadsIssue
+		if err := json.Unmarshal(output, &issues); err != nil {
+			continue
+		}
+		allIssues = append(allIssues, issues...)
 	}
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
 
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("bd list failed: %w", err)
+	// Deduplicate by ID (in case an issue appears in both)
+	seen := make(map[string]bool)
+	unique := make([]beadsIssue, 0, len(allIssues))
+	for _, issue := range allIssues {
+		if !seen[issue.ID] {
+			seen[issue.ID] = true
+			unique = append(unique, issue)
+		}
 	}
 
-	var issues []beadsIssue
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("parse issues: %w", err)
-	}
-
-	return issues, nil
+	return unique, nil
 }
 
 // showBeadsIssue calls bd show and returns the parsed issue with dependencies
