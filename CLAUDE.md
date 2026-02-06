@@ -73,6 +73,7 @@ pkg/
 ```
 
 **Why:** Orchestrators were using Task tool to spawn subagents instead of using `orch spawn`. This bypasses:
+
 - The spawn context system (skills, beads integration, workspace setup)
 - Agent registry tracking (dashboard visibility)
 - Completion verification workflow
@@ -87,44 +88,55 @@ pkg/
 orch supports three spawn modes for redundancy:
 
 ### Primary Path (Daemon + OpenCode API)
+
 ```bash
 bd create "task" --type task -l triage:ready
 orch daemon run  # Auto-spawns via opencode API, headless
 ```
+
 **Use for:** Normal workflow, high concurrency, batch processing
 
 **Characteristics:**
+
 - Headless (no tmux window)
 - High concurrency (5+ agents)
 - Depends on OpenCode server (localhost:4096)
 - Daemon-managed lifecycle
 
 ### Escape Hatch (Manual + Claude CLI)
+
 ```bash
 orch spawn --bypass-triage --mode claude --model opus --tmux feature-impl "task" --issue ID
 ```
+
 **Use for:**
+
 - 🔥 Building infrastructure the primary path depends on
 - 🔧 Debugging when OpenCode server is unstable
 - 🎯 Critical work that can't afford to lose progress to crashes
 - 👁️ Work requiring visual monitoring
 
 **Characteristics:**
+
 - Tmux window (visible progress)
 - Independent of OpenCode server
 - Crash-resistant (agents survive service restarts)
 - Manual lifecycle management
 
 ### Double Escape Hatch (Docker + Claude CLI)
+
 ```bash
 orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
 ```
+
 **Use for:**
+
 - When using a second Max account (clean fingerprint isolation)
 - Request-rate throttling (per-device limits, NOT weekly usage quota)
 - Fresh "device" identity to Anthropic
 
 **Characteristics:**
+
 - Host tmux window running Docker container
 - Fresh Statsig fingerprint per spawn via `~/.claude-docker/`
 - Auto-mounts real configs (CLAUDE.md, settings.json, skills/, hooks/) read-only
@@ -140,6 +152,7 @@ orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
 **Pattern discovered Jan 10, 2026:** When building observability infrastructure, OpenCode server crashed repeatedly (3 times in 1 hour), killing all agents working on the fixes. Switched to `--mode claude --tmux` for critical agents (orch doctor, overmind supervision, dashboard integration), which survived crashes and completed the work.
 
 **General rule:** When infrastructure can fail, critical paths need independent secondary paths that:
+
 1. **Don't depend on what failed** (claude CLI ≠ opencode server)
 2. **Provide visibility** (tmux vs headless)
 3. **Can complete the work** (opus for quality)
@@ -147,6 +160,7 @@ orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
 ### Architectural Principle: Pain as Signal
 
 **Pattern discovered Jan 17, 2026:** Autonomous error correction requires agents to "feel" the friction of their own failure in real-time. Passive logs/metrics are insufficient for agent self-healing.
+
 1. **Infrastructure Injection:** System-level sensors (coaching plugins) inject detections (loops, thrashing) directly into the agent's sensory stream.
 2. **Pressure over Compensation:** Friction is injected as tool-layer messages, forcing the agent to confront its own degradation rather than relying on human babysitting.
 
@@ -156,14 +170,14 @@ orch spawn --bypass-triage --backend docker feature-impl "task" --issue ID
 
 **Before debugging, check the relevant guide in `.kb/guides/`:**
 
-| Topic | Guide | When to Read |
-|-------|-------|--------------|
-| Agent lifecycle | `agent-lifecycle.md` | Agents not completing, dashboard wrong |
-| Spawn | `spawn.md` | Spawn failures, wrong context, flags |
-| Status/Dashboard | `status-dashboard.md` | Wrong status, dashboard issues |
-| Beads integration | `beads-integration.md` | bd commands failing, issue tracking |
-| Skill system | `skill-system.md` | Skill not loading, wrong behavior |
-| Daemon | `daemon.md` | Auto-spawn issues, triage workflow |
+| Topic                    | Guide                                  | When to Read                                            |
+| ------------------------ | -------------------------------------- | ------------------------------------------------------- |
+| Agent lifecycle          | `agent-lifecycle.md`                   | Agents not completing, dashboard wrong                  |
+| Spawn                    | `spawn.md`                             | Spawn failures, wrong context, flags                    |
+| Status/Dashboard         | `status-dashboard.md`                  | Wrong status, dashboard issues                          |
+| Beads integration        | `beads-integration.md`                 | bd commands failing, issue tracking                     |
+| Skill system             | `skill-system.md`                      | Skill not loading, wrong behavior                       |
+| Daemon                   | `daemon.md`                            | Auto-spawn issues, triage workflow                      |
 | Resilient infrastructure | `resilient-infrastructure-patterns.md` | Building/fixing critical infrastructure, escape hatches |
 
 These guides synthesize 280+ investigations into authoritative references. Created Jan 4, 2026 after repeatedly re-investigating documented problems.
@@ -191,12 +205,14 @@ orch-dashboard logs     # View service logs (overmind echo)
 ## Key Packages
 
 ### cmd/orch/main.go (Entry Point)
+
 - Uses Cobra framework for CLI structure
 - All commands defined inline (spawn, status, complete, send, etc.)
 - Global `--server` flag for OpenCode URL
 - Subcommand groups: `account`, `daemon`
 
 ### pkg/opencode/ (OpenCode Client)
+
 - `Client` struct with HTTP methods for OpenCode REST API
 - `ListSessions()`, `GetSession()`, `CreateSession()`, `GetMessages()`
 - `SSEClient` for real-time event streaming
@@ -204,17 +220,20 @@ orch-dashboard logs     # View service logs (overmind echo)
 - `ExtractRecentText()` for extracting text from message history
 
 ### pkg/model/ (Model Resolution)
+
 - `Resolve(spec)` maps aliases to full provider/model format
 - Aliases: `opus`, `sonnet`, `haiku` (Anthropic), `flash`, `pro` (Gemini)
 - Default: `opus` (Claude Max subscription)
 
 ### pkg/account/ (Account Management)
+
 - `LoadConfig()` reads `~/.orch/accounts.yaml`
 - `Switch(name)` refreshes OAuth tokens and updates OpenCode auth
 - Token sources: OpenCode auth file, macOS Keychain
 - Same config format as Python orch-cli for interop
 
 ### pkg/spawn/ (Spawn Context)
+
 - `SpawnConfig` struct with all spawn parameters
 - `GenerateContext()` creates SPAWN_CONTEXT.md content
 - `docker.go` - Docker backend spawn implementation (fresh Statsig fingerprint)
@@ -223,11 +242,13 @@ orch-dashboard logs     # View service logs (overmind echo)
 - Conditionally includes server context for UI-focused skills (feature-impl, systematic-debugging, reliability-testing)
 
 ### pkg/config/ (Project Config)
+
 - `Load()` reads `.orch/config.yaml` from project directory
 - `Config.Servers` maps service names to ports (e.g., `web: 5173`)
 - Used by `orch servers` commands and spawn context generation
 
 ### pkg/verify/ (Completion Verification)
+
 - `Check()` validates agent work before closing
 - Verifies: Phase Complete, deliverables exist, commits present
 - `Update()` closes beads issue with completion reason
@@ -249,11 +270,12 @@ orch-dashboard logs     # View service logs (overmind echo)
 Architect decisions can block spawns via the decision gate. This gives decisions teeth - you can't accidentally spawn investigation #19 when a decision says "stop tactical fixes."
 
 **How it works:**
+
 1. Decisions declare blocked keywords in YAML frontmatter:
    ```yaml
    ---
    blocks:
-     - keywords: ["coaching plugin", "worker detection"]
+     - keywords: ['coaching plugin', 'worker detection']
    ---
    ```
 2. `orch spawn` checks if task matches any blocked keywords
@@ -265,6 +287,7 @@ Architect decisions can block spawns via the decision gate. This gives decisions
 ## Commands
 
 ### Agent Lifecycle
+
 - `spawn <skill> "task"` - Create agent with skill context
 - `status` - List active agents
 - `send <session-id> "message"` - Q&A on existing session
@@ -273,6 +296,7 @@ Architect decisions can block spawns via the decision gate. This gives decisions
 - `clean` - Remove completed agents from registry
 
 ### Monitoring
+
 - `monitor` - Real-time SSE event watching
 - `wait <agent-id>` - Block until phase reached
 - `tail <agent-id>` - Capture recent tmux output (requires `--tmux` spawn)
@@ -280,17 +304,20 @@ Architect decisions can block spawns via the decision gate. This gives decisions
 - `serve` - HTTP API server for web UI (port 3348)
 
 ### Account & Model
+
 - `account list` - Show saved Claude Max accounts
 - `account switch <name>` - Switch to different account
 - `account remove <name>` - Remove saved account
 - `usage` - Show Claude Max usage (delegates to Python)
 
 ### Automation
+
 - `work <issue-id>` - Spawn from beads issue with skill inference
 - `daemon run` - Run autonomous processing in foreground
 - `daemon preview` - Show what would be spawned
 
 ### Server Management
+
 - `servers list` - Show all projects with port allocations and running status
 - `servers start <project>` - Start servers via tmuxinator
 - `servers stop <project>` - Stop servers for a project
@@ -380,11 +407,11 @@ Agent lifecycle events are logged to `~/.orch/events.jsonl` for stats aggregatio
 
 ### Event Types
 
-| Event | Source | Purpose |
-|-------|--------|---------|
-| `session.spawned` | `orch spawn` | Agent created |
+| Event             | Source                             | Purpose             |
+| ----------------- | ---------------------------------- | ------------------- |
+| `session.spawned` | `orch spawn`                       | Agent created       |
 | `agent.completed` | `orch complete` or `bd close` hook | Agent finished work |
-| `agent.abandoned` | `orch abandon` | Agent abandoned |
+| `agent.abandoned` | `orch abandon`                     | Agent abandoned     |
 
 ### Beads Close Hook
 
@@ -393,12 +420,14 @@ When issues are closed directly via `bd close` (bypassing `orch complete`), the 
 **Hook location:** `.beads/hooks/on_close` (project-specific)
 
 **Manual event emission:**
+
 ```bash
 # Emit completion event directly (used by hooks)
 orch emit agent.completed --beads-id proj-123 --reason "Closed via bd close"
 ```
 
 **To enable in a project:**
+
 1. Create `.beads/hooks/on_close` (executable)
 2. Copy content from orch-go's hook as a template
 
@@ -410,11 +439,11 @@ Questions in beads can be tagged with subtypes to indicate their resolvability a
 
 Use labels with the format `subtype:{factual|judgment|framing}`:
 
-| Subtype | Meaning | Who Resolves | Example |
-|---------|---------|--------------|---------|
-| `subtype:factual` | "How does X work?" | Daemon (via investigation) | "How does the escalation model work?" |
-| `subtype:judgment` | "Should we use X or Y?" | Orchestrator | "Should we refactor auth before adding feature?" |
-| `subtype:framing` | "Is X even the right question?" | Dylan | "Is the current abstraction even correct?" |
+| Subtype            | Meaning                         | Who Resolves               | Example                                          |
+| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------ |
+| `subtype:factual`  | "How does X work?"              | Daemon (via investigation) | "How does the escalation model work?"            |
+| `subtype:judgment` | "Should we use X or Y?"         | Orchestrator               | "Should we refactor auth before adding feature?" |
+| `subtype:framing`  | "Is X even the right question?" | Dylan                      | "Is the current abstraction even correct?"       |
 
 ### Usage Examples
 
@@ -443,6 +472,27 @@ bd ready --type question --label subtype:judgment
 - **Convention over enforcement:** Matches beads design philosophy
 
 **Reference:** See `.kb/decisions/2026-01-28-question-subtype-encoding-labels.md` for full decision context and `.kb/models/decidability-graph.md` for the conceptual model.
+
+## Label Taxonomy
+
+Issues use a 3-prefix label taxonomy for dynamic grouping. Labels enable multi-dimensional views (edges handle dependencies).
+
+| Prefix    | Purpose         | Valid Values                                      |
+| --------- | --------------- | ------------------------------------------------- |
+| `area:`   | Work domain     | dashboard, spawn, beads, cli, skill, kb, opencode |
+| `effort:` | Size estimation | small, medium, large                              |
+| `status:` | Meta-status     | parked, blocked-external, needs-review            |
+
+**Existing labels** (unchanged): `triage:ready`, `triage:review`, `subtype:*`, `authority:*`
+
+**Usage:**
+
+```bash
+bd create "Add rate limiting" --type feature -l area:cli -l effort:medium -l triage:ready
+bd list --label area:dashboard
+```
+
+**Reference:** `.kb/investigations/2026-02-05-inv-design-label-based-issue-grouping.md` for full taxonomy details.
 
 ## Related
 
