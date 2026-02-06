@@ -47,6 +47,10 @@ type Config struct {
 	// and processes issues from each project. Global capacity pool is shared.
 	CrossProject bool
 
+	// GracePeriod is the delay before spawning a newly-seen triage:ready issue.
+	// Allows orchestrator time to adjust labels/model before daemon grabs the issue.
+	GracePeriod time.Duration
+
 	// Backend specifies the spawn backend: "opencode", "docker", or "claude".
 	// This affects how active agents are counted for concurrency control.
 	// "docker" counts running Docker containers, others query OpenCode API.
@@ -276,6 +280,9 @@ type Daemon struct {
 	// 2. Session dedup (checks OpenCode sessions)
 	// 3. Phase Complete check (checks beads comments)
 	ProcessedCache *ProcessedIssueCache
+
+	// firstSeen tracks when each issue was first observed for grace period support.
+	firstSeen map[string]time.Time
 
 	// SpawnedIssues is deprecated - use ProcessedCache instead.
 	// Kept for backward compatibility during migration.
