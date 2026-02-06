@@ -2,7 +2,7 @@
 
 **Purpose:** Guide for hierarchical orchestration using `orch spawn orchestrator` - when to delegate to autonomous orchestrator agents instead of managing work directly.
 
-**Scope:** This guide covers SPAWNED orchestrator agents (hierarchical delegation). For interactive orchestrator sessions (human continuity), see `session-resume-protocol.md`.
+**Scope:** This guide covers SPAWNED orchestrator agents (hierarchical delegation).
 
 **Created:** 2026-01-13
 **Based on:** `.kb/investigations/2026-01-13-inv-analyze-orchestrator-session-management-architecture.md`
@@ -18,14 +18,14 @@ orch spawn orchestrator "accomplish goal X" --issue epic-id
 # Check on spawned orchestrator progress
 orch status
 
-# Review handoff when orchestrator completes
-cat .orch/workspace/{name}/SESSION_HANDOFF.md
+# Review synthesis when orchestrator completes
+cat .orch/workspace/{name}/SYNTHESIS.md
 
 # Complete the orchestrator (meta-orchestrator only)
 orch complete {workspace-name}
 ```
 
-**Key distinction:** Spawned orchestrators wait for external completion via `orch complete`. They do NOT use `orch session end` (that's for interactive sessions).
+**Key distinction:** Spawned orchestrators wait for external completion via `orch complete`. They produce SYNTHESIS.md (same artifact as workers).
 
 ---
 
@@ -69,7 +69,7 @@ orch complete {workspace-name}
 │   Goal: Ship auth epic      │
 │   - Spawn workers           │
 │   - Tactical decisions      │
-│   - Produces handoff        │
+│   - Produces SYNTHESIS.md   │
 └──────────┬──────────────────┘
            │ spawns workers
            ▼
@@ -87,7 +87,7 @@ orch complete {workspace-name}
 │   Goal: Dashboard reliability│
 │   - Spawn workers           │
 │   - Tactical decisions      │
-│   - Produces handoff        │
+│   - Produces SYNTHESIS.md   │
 └──────────┬──────────────────┘
            │ spawns workers
            ▼
@@ -99,24 +99,11 @@ orch complete {workspace-name}
 └─────────────────────────────┘
 ```
 
-**Key insight:** Each orchestrator is autonomous. Meta-orchestrator spawns them with goals, they work toward those goals, they signal completion via SESSION_HANDOFF.md. Meta-orchestrator reviews handoffs and completes them.
+**Key insight:** Each orchestrator is autonomous. Meta-orchestrator spawns them with goals, they work toward those goals, they signal completion via SYNTHESIS.md. Meta-orchestrator reviews synthesis and completes them.
 
 ---
 
 ## How It Works
-
-### Lifecycle: Spawned vs Interactive
-
-| Aspect | Spawned Orchestrator | Interactive Orchestrator |
-|--------|---------------------|--------------------------|
-| **Spawned via** | `orch spawn orchestrator "goal"` | Dylan starts Claude directly |
-| **Context file** | ORCHESTRATOR_CONTEXT.md | SESSION_HANDOFF.md (auto-injected) |
-| **Workspace** | `.orch/workspace/{name}/` | `~/.orch/session/{date}/` |
-| **Completion artifact** | SESSION_HANDOFF.md (pre-filled) | SESSION_HANDOFF.md (created at end) |
-| **Completion signal** | Write handoff + WAIT | Run `orch session end` |
-| **Who completes** | Level above (meta-orchestrator) | Self (orchestrator runs end command) |
-| **Beads tracking** | No (session registry) | No (session registry) |
-| **Use case** | Autonomous delegation | Human continuity across breaks |
 
 ### Spawned Orchestrator Lifecycle
 
@@ -127,26 +114,25 @@ orch complete {workspace-name}
 2. System creates:
    - Workspace: .orch/workspace/og-orch-auth-13jan-a1b2/
    - ORCHESTRATOR_CONTEXT.md (skill context + goal)
-   - SESSION_HANDOFF.md (pre-filled template for progressive filling)
    - Registry entry: ~/.orch/sessions.json
 
 3. Orchestrator agent works:
    - Reads ORCHESTRATOR_CONTEXT.md
    - Spawns workers via orch spawn
    - Completes workers via orch complete
-   - Fills SESSION_HANDOFF.md progressively
+   - Fills SYNTHESIS.md progressively
 
 4. Orchestrator signals completion:
-   - Fills SESSION_HANDOFF.md completely
-   - WAITS (doesn't call /exit, doesn't run orch session end)
+   - Fills SYNTHESIS.md completely
+   - WAITS (doesn't call /exit)
 
 5. Meta-orchestrator reviews and completes:
-   - Reads SESSION_HANDOFF.md
+   - Reads SYNTHESIS.md
    - Reviews spawned work
    - Runs: orch complete og-orch-auth-13jan-a1b2
 ```
 
-**Critical distinction:** Spawned orchestrators WAIT for level above. They don't self-terminate. This reflects agent-based lifecycle (external completion) vs human-based lifecycle (self-directed completion).
+**Critical distinction:** Spawned orchestrators WAIT for level above. They don't self-terminate.
 
 ---
 
@@ -183,9 +169,8 @@ orch complete {workspace-name}
 ### Use interactive sessions when:
 
 1. **You ARE the orchestrator** - Not delegating, actively coordinating work yourself
-2. **Continuity across breaks** - Resume orchestrator context after interruptions
-3. **Real-time goal refinement** - Goals emerge through conversation, not defined upfront
-4. **Single-threaded focus** - One epic at a time, no concurrency needed
+2. **Real-time goal refinement** - Goals emerge through conversation, not defined upfront
+3. **Single-threaded focus** - One epic at a time, no concurrency needed
 
 **Decision tree:**
 
@@ -193,26 +178,15 @@ orch complete {workspace-name}
 Are you delegating orchestration to an agent?
 ├─ YES → Use orch spawn orchestrator
 │         (Hierarchical delegation)
-└─ NO → Are you the orchestrator taking a break?
-    ├─ YES → Use orch session start/end
-    │         (Human continuity)
-    └─ NO → You're a worker
-              (Use orch spawn <skill>)
+└─ NO → You're working interactively
+          (Start with bd ready, orch status)
 ```
 
 ---
 
-## SESSION_HANDOFF.md: Progressive vs Reflective
+## SYNTHESIS.md: Orchestrator Completion Artifact
 
-Both spawned and interactive orchestrators produce SESSION_HANDOFF.md, but with different purposes:
-
-### Spawned Orchestrator Handoff (Progressive)
-
-**Template location:** `pkg/spawn/orchestrator_context.go:358-522`
-
-**Purpose:** Signal completion to level above with synthesis of session's work
-
-**Usage:** Fill AS YOU WORK (progressive documentation)
+Spawned orchestrators produce SYNTHESIS.md (same artifact as workers), filled progressively during work.
 
 **Sections:**
 - **TLDR:** One-sentence summary of session accomplishments
@@ -224,27 +198,7 @@ Both spawned and interactive orchestrators produce SESSION_HANDOFF.md, but with 
 - **Next:** Recommended follow-up actions
 - **Unexplored Questions:** What wasn't addressed
 
-**Key behavior:** Pre-created at spawn time with metadata. Orchestrator fills progressively during work.
-
-### Interactive Orchestrator Handoff (Reflective)
-
-**Template location:** `cmd/orch/session.go:684-725`
-
-**Purpose:** Resume context for next interactive session
-
-**Usage:** Fill AT END (reflective documentation)
-
-**Sections:**
-- **Summary:** What happened this session
-- **What Was Accomplished:** Completed work
-- **Active Work:** In-flight items
-- **Pending Work:** Queued items
-- **Recommendations:** What to do next
-- **Context:** Additional notes for resume
-
-**Key behavior:** Created at session end via `orch session end`. Human reflects on completed session.
-
-**Why they differ:** Agent mindset (document as you go) vs human mindset (reflect at end). Same artifact name, different purposes.
+**Key behavior:** Fill AS YOU WORK (progressive documentation). Context decays — don't defer to end.
 
 ---
 
@@ -293,40 +247,30 @@ orch spawn orchestrator "clear all P1 bugs in backlog"
 
 # Next morning
 orch status  # Check progress
-cat .orch/workspace/{name}/SESSION_HANDOFF.md  # Review handoff
+cat .orch/workspace/{name}/SYNTHESIS.md  # Review synthesis
 orch complete {workspace-name}  # If complete
 ```
 
 ---
 
-## Completion Protocol: External vs Self-Directed
+## Completion Protocol
 
 ### Spawned Orchestrators (External Completion)
 
 **What orchestrator does:**
-1. Fill SESSION_HANDOFF.md completely
+1. Fill SYNTHESIS.md completely
 2. WAIT (stay in session, don't exit)
 3. Wait for `orch complete` from level above
 
 **What meta-orchestrator does:**
-1. Notice handoff is complete (via orch status or monitoring)
-2. Read SESSION_HANDOFF.md
+1. Notice synthesis is complete (via orch status or monitoring)
+2. Read SYNTHESIS.md
 3. Review spawned work quality
 4. Run `orch complete {workspace-name}`
 
-**⚠️ Orchestrator MUST NOT:**
-- Run `orch session end` (that's for interactive sessions)
+**Orchestrator MUST NOT:**
 - Call `/exit` (would close session before meta-orchestrator reviews)
 - Self-complete (violates hierarchical model)
-
-### Interactive Orchestrators (Self-Directed Completion)
-
-**What orchestrator does:**
-1. Run `orch session end` when done
-2. Fill SESSION_HANDOFF.md reflectively
-3. Session ends, handoff saved for next session
-
-**Key difference:** Interactive orchestrators have agency to end their own sessions. Spawned orchestrators wait for authority from above.
 
 ---
 
@@ -362,13 +306,11 @@ orch complete {workspace-name}  # If complete
 
 ## Common Problems
 
-### "Spawned orchestrator tried to run orch session end"
+### "Spawned orchestrator tried to self-terminate"
 
-**Cause:** Confusion between spawned and interactive lifecycle models
+**Cause:** Confusion about completion model
 
-**Fix:** Spawned orchestrators write SESSION_HANDOFF.md and WAIT. Only interactive orchestrators run `orch session end`.
-
-**Template fix:** ORCHESTRATOR_CONTEXT.md now explicitly states: "You are a SPAWNED orchestrator. When done, fill SESSION_HANDOFF.md and WAIT for level above to run orch complete."
+**Fix:** Spawned orchestrators write SYNTHESIS.md and WAIT. ORCHESTRATOR_CONTEXT.md explicitly states: "When done, fill SYNTHESIS.md and WAIT for level above to run orch complete."
 
 ### "Meta-orchestrator doing tactical work (level collapse)"
 
@@ -417,10 +359,10 @@ orch status  # Shows all active orchestrators
 cat ~/.orch/sessions.json  # Raw session registry
 ```
 
-**Check handoff progress:**
+**Check synthesis progress:**
 ```bash
-# See if orchestrator has filled handoff
-cat .orch/workspace/{name}/SESSION_HANDOFF.md
+# See if orchestrator has filled synthesis
+cat .orch/workspace/{name}/SYNTHESIS.md
 ```
 
 **Check spawned workers:**
@@ -441,8 +383,7 @@ orch abandon {workspace-name}
 
 These are settled. Don't re-investigate:
 
-- **Spawned and interactive orchestrators are complementary** - They solve different problems (hierarchical vs temporal orchestration). Keep both.
-- **SESSION_HANDOFF.md serves different purposes in each context** - Progressive (spawned) vs reflective (interactive) by design.
+- **Spawned orchestrators produce SYNTHESIS.md** - Same artifact as workers, unified completion verification.
 - **Spawned orchestrators wait for external completion** - Hierarchical model requires level above to complete. No self-termination.
 - **Beads tracking inappropriate for orchestrators** - Session registry replaces beads. Orchestrators manage sessions, not issues.
 - **Tmux default for orchestrator spawns** - Orchestrators need visibility; workers default to headless.
@@ -452,8 +393,7 @@ These are settled. Don't re-investigate:
 ## References
 
 - **Investigation:** `.kb/investigations/2026-01-13-inv-analyze-orchestrator-session-management-architecture.md` - Complementary mechanisms analysis
-- **Guide:** `.kb/guides/orchestrator-session-management.md` - Broad orchestrator architecture
-- **Guide:** `.kb/guides/session-resume-protocol.md` - Interactive session resume (NOT spawned orchestrators)
+- **Decision:** `.kb/decisions/2026-01-19-remove-session-handoff-machinery.md` - Session handoff removal rationale
 - **Source code:** `pkg/spawn/orchestrator_context.go` - ORCHESTRATOR_CONTEXT.md template
 - **Source code:** `pkg/session/registry.go` - Session registry
 - **Source code:** `cmd/orch/complete_cmd.go` - Completion flow
@@ -508,8 +448,8 @@ orch spawn orchestrator "clear all P1 bugs: auth, dashboard, API"
 orch status
 # og-orch-p1-bugs-10jan-a1b2: running, 6 workers spawned
 
-# Read handoff to see what's done
-cat .orch/workspace/og-orch-p1-bugs-10jan-a1b2/SESSION_HANDOFF.md
+# Read synthesis to see what's done
+cat .orch/workspace/og-orch-p1-bugs-10jan-a1b2/SYNTHESIS.md
 
 # Complete if done
 orch complete og-orch-p1-bugs-10jan-a1b2
@@ -519,4 +459,5 @@ orch complete og-orch-p1-bugs-10jan-a1b2
 
 ## History
 
+- **2026-02-06:** Updated for session handoff removal - SESSION_HANDOFF.md → SYNTHESIS.md, removed orch session start/end references
 - **2026-01-13:** Created from architect analysis (orch-go-lvrzc) - hierarchical orchestration pattern documented
