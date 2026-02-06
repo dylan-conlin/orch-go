@@ -20,8 +20,9 @@ var (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Config-as-code management commands",
+	Use:    "config",
+	Short:  "Config-as-code management commands",
+	Hidden: true,
 	Long: `Config-as-code management commands.
 
 Provides generation and drift detection for external configuration files

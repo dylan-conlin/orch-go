@@ -20,8 +20,9 @@ var (
 )
 
 var deployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Atomic deployment: rebuild binary, restart services, verify health",
+	Use:    "deploy",
+	Short:  "Atomic deployment: rebuild binary, restart services, verify health",
+	Hidden: true,
 	Long: `Deploy changes atomically with a single command.
 
 Steps performed:

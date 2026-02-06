@@ -22,8 +22,9 @@ var (
 )
 
 var emitCmd = &cobra.Command{
-	Use:   "emit [event-type]",
-	Short: "Emit an event to events.jsonl",
+	Use:    "emit [event-type]",
+	Short:  "Emit an event to events.jsonl",
+	Hidden: true,
 	Long: `Emit an event to the orchestration event log.
 
 This command is primarily used by beads hooks to emit agent.completed events

@@ -32,8 +32,9 @@ var (
 )
 
 var swarmCmd = &cobra.Command{
-	Use:   "swarm",
-	Short: "Batch spawn multiple agents with concurrency control",
+	Use:    "swarm",
+	Short:  "Batch spawn multiple agents with concurrency control",
+	Hidden: true,
 	Long: `Spawn multiple agents in parallel with WorkerPool-based concurrency control.
 
 The swarm command enables batch processing of multiple issues:

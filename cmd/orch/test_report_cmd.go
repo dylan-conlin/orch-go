@@ -22,8 +22,9 @@ var (
 )
 
 var testReportCmd = &cobra.Command{
-	Use:   "test-report <beads-id>",
-	Short: "Run tests and report results to beads in verification-gate-compatible format",
+	Use:    "test-report <beads-id>",
+	Short:  "Run tests and report results to beads in verification-gate-compatible format",
+	Hidden: true,
 	Long: `Run tests and automatically report results to beads comments.
 
 This command detects the project type, runs the appropriate test command,

@@ -15,8 +15,9 @@ import (
 )
 
 var claimCmd = &cobra.Command{
-	Use:   "claim <session-id> <beads-id>",
-	Short: "Claim an untracked OpenCode session and associate it with a beads issue",
+	Use:    "claim <session-id> <beads-id>",
+	Short:  "Claim an untracked OpenCode session and associate it with a beads issue",
+	Hidden: true,
 	Long: `Claim an untracked OpenCode session and associate it with a beads issue.
 
 This creates a workspace for the session, enabling full orch tooling support

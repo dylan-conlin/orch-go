@@ -21,8 +21,9 @@ var (
 )
 
 var modelCmd = &cobra.Command{
-	Use:   "model",
-	Short: "Model advisor with live pricing data",
+	Use:    "model",
+	Short:  "Model advisor with live pricing data",
+	Hidden: true,
 	Long: `Model advisor provides recommendations based on live API data.
 
 Examples:

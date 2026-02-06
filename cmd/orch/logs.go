@@ -19,8 +19,9 @@ var (
 )
 
 var logsCmd = &cobra.Command{
-	Use:   "logs",
-	Short: "Access server and system logs",
+	Use:    "logs",
+	Short:  "Access server and system logs",
+	Hidden: true,
 	Long: `Access logs from various orch-go services and systems.
 
 Commands:

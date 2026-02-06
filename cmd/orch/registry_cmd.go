@@ -11,8 +11,9 @@ import (
 )
 
 var registryCmd = &cobra.Command{
-	Use:   "registry",
-	Short: "Manage the agent registry",
+	Use:    "registry",
+	Short:  "Manage the agent registry",
+	Hidden: true,
 	Long: `Manage the agent registry for orch-go.
 
 The registry is a spawn-time metadata cache that stores agent information.
