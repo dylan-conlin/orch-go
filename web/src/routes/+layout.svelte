@@ -180,8 +180,8 @@
 			</div>
 		</header>
 
-		<!-- Main content with reduced padding -->
-		<main class="container py-3">
+		<!-- Main content -->
+		<main>
 			{@render children()}
 		</main>
 	</div>

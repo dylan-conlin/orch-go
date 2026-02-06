@@ -460,7 +460,7 @@
 
 <div
 	bind:this={containerElement}
-	class="work-graph-tree h-full overflow-y-auto px-6 py-4 focus:outline-none"
+	class="work-graph-tree h-full overflow-y-auto px-0 py-2 focus:outline-none"
 	role="tree"
 	tabindex="0"
 	onkeydown={handleKeyDown}
@@ -498,12 +498,9 @@
 				{@const health = computeAgentHealth(agent)}
 				{@const contextPct = getContextPercent(agent)}
 				<!-- Running Agent - WIP Item -->
-				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 12px">
-					<!-- Expansion indicator placeholder (matches tree nodes) -->
-					<span class="w-4"></span>
-					
-					<!-- Status icon with health indication -->
-					<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
+			<div class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
+				<!-- Status icon with health indication -->
+				<span class="{statusIcon.color} w-5 text-center">{statusIcon.icon}</span>
 					
 					<!-- Priority placeholder (w-8 matches tree badge width) -->
 					<span class="w-8"></span>
@@ -591,7 +588,7 @@
 			{:else}
 				{@const issue = item.issue}
 				<!-- Queued Issue - WIP Item (NO opacity-60) -->
-				<div class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 12px">
+				<div class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''}" style="padding-left: 0">
 					<!-- Expansion indicator placeholder (matches tree nodes) -->
 					<span class="w-4"></span>
 					
@@ -646,11 +643,11 @@
 			<!-- Completed Issue (pending verification) - inline in main list -->
 			<div
 				class={cn(
-					"flex items-center gap-3 py-2 px-3 rounded transition-colors",
-					index === selectedIndex ? 'bg-zinc-800' : '',
-					issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
-				)}
-				style="padding-left: 12px"
+				"flex items-center gap-3 py-2 px-1 rounded transition-colors",
+				index === selectedIndex ? 'bg-zinc-800' : '',
+				issue.verificationStatus === 'needs_fix' && "bg-red-950/20"
+			)}
+			style="padding-left: 0"
 			>
 				<!-- Expansion indicator placeholder -->
 				<span class="w-4"></span>
@@ -746,8 +743,8 @@
 			{@const dimPinned = pinnedTreeIds.has(node.id) && index !== selectedIndex}
 			<!-- Tree Node - L0: Row -->
 			<div
-				class="flex items-center gap-3 py-2 px-3 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''} {dimPinned ? 'opacity-60' : ''}"
-				style="padding-left: {node.depth * 24 + 12}px"
+			class="flex items-center gap-3 py-2 px-1 rounded transition-colors {index === selectedIndex ? 'bg-zinc-800' : ''} {node.absorbed_by ? 'opacity-50' : ''} {dimPinned ? 'opacity-60' : ''}"
+			style="padding-left: {node.depth * 24}px"
 			>
 					<!-- Expansion indicator -->
 					<span class="w-4 text-muted-foreground text-xs">

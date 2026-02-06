@@ -431,29 +431,21 @@
 	{/if}
 
 	<!-- Header -->
-	<div class="border-b border-border px-6 py-4">
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-4">
-				<div>
-					<h1 class="text-2xl font-semibold text-foreground">Work Graph</h1>
-					<p class="text-sm text-muted-foreground mt-1">
-						{getHelpText()}
-					</p>
-				</div>
-				<ViewToggle 
-					{currentView} 
-					onToggle={handleViewToggle}
+	<div class="border-b border-border px-2 py-2">
+		<div class="flex items-center gap-6">
+			<ViewToggle 
+				{currentView} 
+				onToggle={handleViewToggle}
+			/>
+			{#if currentView === 'issues'}
+				<LabelFilter
+					bind:this={labelFilterComponent}
+					value={labelFilter}
+					onChange={handleLabelFilterChange}
+					placeholder="Filter by label..."
 				/>
-			</div>
-			<div class="flex items-center gap-4 text-sm text-muted-foreground">
-				{#if currentView === 'issues'}
-					<LabelFilter
-						bind:this={labelFilterComponent}
-						value={labelFilter}
-						onChange={handleLabelFilterChange}
-						placeholder="Filter by label..."
-					/>
-				{/if}
+			{/if}
+			<div class="flex items-center gap-4 text-sm text-muted-foreground ml-auto">
 				{#if currentView === 'issues' && $workGraph}
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
@@ -542,7 +534,7 @@
 	</div>
 
 	<!-- Keyboard Shortcuts Footer -->
-	<div class="h-9 px-4 flex items-center justify-center border-t border-zinc-800 bg-zinc-950 text-zinc-500 text-[11px] font-mono">
+	<div class="h-9 px-2 flex items-center justify-center border-t border-zinc-800 bg-zinc-950 text-zinc-500 text-[11px] font-mono">
 		{#if currentView === 'issues'}
 			<span class="tracking-wide">
 				<span class="text-zinc-400">j/k</span> navigate
