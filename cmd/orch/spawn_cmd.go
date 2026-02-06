@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/config"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/model"
@@ -465,7 +466,6 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		fmt.Println("Skipping beads tracking (--no-track)")
 	}
 
-
 	// DUPLICATE AGENT CHECK: Prevent race condition between manual and daemon spawns
 	// Query /api/agents to check if an agent already exists for this beads ID.
 	// This catches cases where the daemon has started spawning but the agent
@@ -538,6 +538,21 @@ func runSpawnWithSkillInternal(serverURL, skillName, task string, inline bool, h
 		}
 	}
 
+	// Area label check: warn if issue is missing area: label for work grouping
+	// This enables label discipline without blocking rapid issue creation.
+	// See: .kb/investigations/2026-02-05-inv-design-label-based-issue-grouping.md
+	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {
+		if issue, err := verify.GetIssue(beadsID); err == nil {
+			if !beads.HasAreaLabel(issue.Labels) {
+				// Suggest an area based on title/description
+				suggested := beads.SuggestAreaLabel(issue.Title, issue.Description)
+				warning := beads.FormatAreaLabelWarning(issue.Labels, suggested)
+				if warning != "" {
+					fmt.Fprint(os.Stderr, warning)
+				}
+			}
+		}
+	}
 
 	// Pre-flight check: warn if spawning under a closed parent epic
 	if !spawnNoTrack && !skipBeadsForOrchestrator && spawnIssue != "" {

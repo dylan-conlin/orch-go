@@ -847,7 +847,14 @@ func runComplete(identifier, workdir string) error {
 							}
 						}
 
-						issue, err := beads.FallbackCreate(title, "", "task", 2, []string{"triage:review"})
+						// Build labels with triage:review and suggested area label
+						labels := []string{"triage:review"}
+						if suggestedArea := beads.SuggestAreaLabel(title, ""); suggestedArea != "" {
+							labels = append(labels, suggestedArea)
+							fmt.Printf("  Auto-applying area label: %s\n", suggestedArea)
+						}
+
+						issue, err := beads.FallbackCreate(title, "", "task", 2, labels)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "  Failed to create issue: %v\n", err)
 						} else {
@@ -955,7 +962,6 @@ func runComplete(identifier, workdir string) error {
 			}
 		}
 
-
 		// Epic orphan logging: emit attention signal when force-closing epic with open children
 		if issue != nil && issue.IssueType == "epic" && completeForceCloseEpic {
 			openChildren, err := verify.GetOpenEpicChildren(beadsID)
@@ -967,10 +973,10 @@ func runComplete(identifier, workdir string) error {
 				}
 				logger := events.NewLogger(events.DefaultLogPath())
 				if err := logger.LogEpicOrphaned(events.EpicOrphanedData{
-					EpicID:          beadsID,
-					EpicTitle:       issue.Title,
+					EpicID:           beadsID,
+					EpicTitle:        issue.Title,
 					OrphanedChildren: orphanIDs,
-					Reason:          reason,
+					Reason:           reason,
 				}); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to log epic orphan event: %v\n", err)
 				}

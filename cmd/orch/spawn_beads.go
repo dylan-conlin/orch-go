@@ -35,9 +35,20 @@ func determineBeadsID(projectName, skillName, task, spawnIssue, workdir string, 
 
 // createBeadsIssue creates a new beads issue for tracking the agent.
 // It uses the beads RPC client when available, falling back to the bd CLI.
+// Automatically suggests an area: label based on the task title.
 func createBeadsIssue(projectName, skillName, task string) (string, error) {
 	// Build issue title
 	title := fmt.Sprintf("[%s] %s: %s", projectName, skillName, truncate(task, 50))
+
+	// Suggest area label based on title/task
+	// This enables label discipline while keeping issue creation fast.
+	// See: .kb/investigations/2026-02-05-inv-design-label-based-issue-grouping.md
+	suggestedArea := beads.SuggestAreaLabel(title, task)
+	var labels []string
+	if suggestedArea != "" {
+		labels = append(labels, suggestedArea)
+		fmt.Printf("Auto-applying area label: %s\n", suggestedArea)
+	}
 
 	// Try RPC client first
 	socketPath, err := beads.FindSocketPath("")
@@ -50,6 +61,7 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 				Title:     title,
 				IssueType: "task",
 				Priority:  2, // Default P2
+				Labels:    labels,
 			})
 			if err == nil {
 				return issue.ID, nil
@@ -59,7 +71,7 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 	}
 
 	// Fallback to CLI
-	issue, err := beads.FallbackCreate(title, "", "task", 2, nil)
+	issue, err := beads.FallbackCreate(title, "", "task", 2, labels)
 	if err != nil {
 		return "", err
 	}

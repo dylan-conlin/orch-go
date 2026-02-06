@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -1114,6 +1115,7 @@ func countBulletPoints(content, sectionHeader string) int {
 
 // createFollowUpIssue creates a beads issue for a synthesis recommendation.
 // Uses bd create command to create the issue with appropriate labels.
+// Automatically suggests an area: label based on the title.
 func createFollowUpIssue(title string, sourceWorkspace string) error {
 	// Clean up the title - remove leading bullet markers
 	title = strings.TrimPrefix(title, "- ")
@@ -1129,8 +1131,19 @@ func createFollowUpIssue(title string, sourceWorkspace string) error {
 		return fmt.Errorf("bd command not found: %w", err)
 	}
 
-	// Run bd create with triage:review label (needs orchestrator review before spawning)
+	// Build args with triage:review label
 	args := []string{"create", title, "-d", description, "-l", "triage:review"}
+
+	// Suggest and add area label based on title/description
+	// This enables label discipline for follow-up issues.
+	// See: .kb/investigations/2026-02-05-inv-design-label-based-issue-grouping.md
+	suggestedArea := beads.SuggestAreaLabel(title, description)
+	if suggestedArea != "" {
+		args = append(args, "-l", suggestedArea)
+		fmt.Printf("Auto-applying area label: %s\n", suggestedArea)
+	}
+
+	// Run bd create
 	cmd := exec.Command(bdPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
