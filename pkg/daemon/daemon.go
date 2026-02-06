@@ -175,6 +175,11 @@ type Config struct {
 	// DeadSessionDetectionInterval is how often to check for dead sessions (0 = disabled).
 	// Default is 10 minutes.
 	DeadSessionDetectionInterval time.Duration
+
+	// MaxDeadSessionRetries is the maximum number of times a dead session can be
+	// reset to open before escalating to needs:human. Derived from DEAD SESSION comment count.
+	// Default is 2 (escalate after dying twice).
+	MaxDeadSessionRetries int
 }
 
 // DefaultConfig returns sensible defaults for daemon configuration.
@@ -214,6 +219,7 @@ func DefaultConfig() Config {
 		SpawnFactualQuestions:            false,            // Opt-in feature
 		DeadSessionDetectionEnabled:      true,             // Enabled by default
 		DeadSessionDetectionInterval:     10 * time.Minute, // Check every 10 minutes
+		GracePeriod:                      30 * time.Second, // 30s grace period for triage corrections
 	}
 }
 
@@ -541,6 +547,15 @@ func (d *Daemon) NextIssueExcluding(skip map[string]bool) (*Issue, error) {
 			}
 			continue
 		}
+		// Grace period check: skip issues recently seen for the first time.
+		if d.Config.GracePeriod > 0 && d.InGracePeriod(issue.ID) {
+			if d.Config.Verbose {
+				remaining := d.Config.GracePeriod - time.Since(d.firstSeen[issue.ID])
+				fmt.Printf("  DEBUG: Skipping %s (in grace period, %s remaining)\n", issue.ID, remaining.Round(time.Second))
+			}
+			continue
+		}
+
 		if d.Config.Verbose {
 			fmt.Printf("  DEBUG: Selected %s (type=%s, labels=%v)\n", issue.ID, issue.IssueType, issue.Labels)
 		}
@@ -913,11 +928,11 @@ func (d *Daemon) checkRejectionReasonWithEpicChildren(issue Issue, epicChildIDs 
 		return fmt.Sprintf("blocked by dependencies: %s", strings.Join(blockerIDs, ", "))
 	}
 
-t// Grace period check: issue was recently added to the queue
-tif d.Config.GracePeriod > 0 && d.InGracePeriod(issue.ID) {
-ttremaining := d.Config.GracePeriod - time.Since(d.firstSeen[issue.ID])
-ttreturn fmt.Sprintf("in grace period (%s remaining)", remaining.Round(time.Second))
-t}
+	// Grace period check: issue was recently added to the queue
+	if d.Config.GracePeriod > 0 && d.InGracePeriod(issue.ID) {
+		remaining := d.Config.GracePeriod - time.Since(d.firstSeen[issue.ID])
+		return fmt.Sprintf("in grace period (%s remaining)", remaining.Round(time.Second))
+	}
 	return "" // Spawnable
 }
 
