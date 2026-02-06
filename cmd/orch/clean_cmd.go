@@ -54,7 +54,7 @@ Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Comprehensive cleanup:
-  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, untracked-registry, sessions)
+  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, registry, sessions)
 
 Optional cleanup actions:
   --windows              Close tmux windows for completed agents
@@ -65,7 +65,7 @@ Optional cleanup actions:
   --stale-days N         Set age threshold for --stale (default: 7)
   --untracked            Archive old untracked workspaces (default: 7 days)
   --untracked-days N     Set age threshold for --untracked (default: 7)
-  --untracked-registry   Remove untracked agents from ~/.orch/agent-registry.json
+  --registry             Remove untracked agents from ~/.orch/agent-registry.json
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
   --sessions-days N      Set age threshold for --sessions (default: 7)
 
@@ -107,7 +107,7 @@ Examples:
 
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanDryRun, "dry-run", false, "Show what would be cleaned without making changes")
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions)")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, registry, sessions)")
 	cleanCmd.Flags().BoolVar(&cleanVerifyOpenCode, "verify-opencode", false, "Also verify OpenCode disk sessions (slower)")
 	cleanCmd.Flags().BoolVar(&cleanWindows, "windows", false, "Close tmux windows for completed agents")
 	cleanCmd.Flags().BoolVar(&cleanPhantoms, "phantoms", false, "Close all phantom tmux windows (stale agent windows)")
@@ -455,6 +455,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 			if archiveUntracked && untrackedArchived > 0 {
 				fmt.Printf(" Would archive %d untracked workspaces.", untrackedArchived)
 			}
+			if purgeRegistry && registryPurged > 0 {
+				fmt.Printf(" Would remove %d untracked registry entries.", registryPurged)
+			}
 			if cleanSessions && staleSessionsDeleted > 0 {
 				fmt.Printf(" Would delete %d stale OpenCode sessions.", staleSessionsDeleted)
 			}
@@ -464,7 +467,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Log if any cleanup actions were taken
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || registryPurged > 0 || staleSessionsDeleted > 0 {
 		projectName := filepath.Base(projectDir)
 		logger := events.NewLogger(events.DefaultLogPath())
 		event := events.Event{
@@ -478,6 +481,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"investigations_archived": investigationsArchived,
 				"workspaces_archived":     workspacesArchived,
 				"untracked_archived":      untrackedArchived,
+				"registry_purged":         registryPurged,
 				"project":                 projectName,
 				"verify_opencode":         verifyOpenCode,
 				"close_windows":           closeWindows,
@@ -487,6 +491,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 				"stale_days":              staleDays,
 				"archive_untracked":       archiveUntracked,
 				"untracked_days":          untrackedDays,
+				"purge_registry":          purgeRegistry,
 				"clean_sessions":          cleanSessions,
 				"sessions_days":           sessionsDays,
 				"stale_sessions_deleted":  staleSessionsDeleted,
@@ -498,7 +503,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Print summary of actions taken (not misleading "cleaned X workspaces")
-	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || staleSessionsDeleted > 0 {
+	if windowsClosed > 0 || phantomsClosed > 0 || diskSessionsDeleted > 0 || investigationsArchived > 0 || workspacesArchived > 0 || untrackedArchived > 0 || registryPurged > 0 || staleSessionsDeleted > 0 {
 		fmt.Println()
 		if windowsClosed > 0 {
 			fmt.Printf("Closed %d tmux windows\n", windowsClosed)
@@ -517,6 +522,9 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 		if untrackedArchived > 0 {
 			fmt.Printf("Archived %d untracked workspaces\n", untrackedArchived)
+		}
+		if registryPurged > 0 {
+			fmt.Printf("Removed %d untracked registry entries\n", registryPurged)
 		}
 		if staleSessionsDeleted > 0 {
 			fmt.Printf("Deleted %d stale OpenCode sessions\n", staleSessionsDeleted)
