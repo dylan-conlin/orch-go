@@ -15,13 +15,14 @@
 	let copiedId: string | null = null;
 	let copiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	// Sort: needs_fix first, then unverified, then by priority
+	// Sort: needs_fix first, then unverified, then verified, then by priority
 	$: {
+		const statusOrder: Record<string, number> = { needs_fix: 0, unverified: 1, verified: 2 };
 		flattenedItems = [...completedIssues]
-			.filter(issue => issue.verificationStatus !== 'verified')
 			.sort((a, b) => {
-				if (a.verificationStatus === 'needs_fix' && b.verificationStatus !== 'needs_fix') return -1;
-				if (b.verificationStatus === 'needs_fix' && a.verificationStatus !== 'needs_fix') return 1;
+				const sa = statusOrder[a.verificationStatus] ?? 1;
+				const sb = statusOrder[b.verificationStatus] ?? 1;
+				if (sa !== sb) return sa - sb;
 				return a.priority - b.priority;
 			});
 		if (selectedIndex >= flattenedItems.length) {
@@ -31,7 +32,8 @@
 
 	$: statusCounts = {
 		needs_fix: flattenedItems.filter(i => i.verificationStatus === 'needs_fix').length,
-		unverified: flattenedItems.filter(i => i.verificationStatus === 'unverified').length
+		unverified: flattenedItems.filter(i => i.verificationStatus === 'unverified').length,
+		verified: flattenedItems.filter(i => i.verificationStatus === 'verified').length
 	};
 
 	onMount(() => {
@@ -192,6 +194,11 @@
 					{statusCounts.unverified} unverified
 				</Badge>
 			{/if}
+			{#if statusCounts.verified > 0}
+				<Badge variant="outline" class="h-5 px-2 text-xs text-green-500 border-green-500/30">
+					{statusCounts.verified} verified
+				</Badge>
+			{/if}
 		</div>
 
 		{#each flattenedItems as issue, index (issue.id)}
@@ -222,6 +229,8 @@
 					<span class="w-5 text-center">
 						{#if issue.verificationStatus === 'needs_fix'}
 							<span class="text-red-500">✗</span>
+						{:else if issue.verificationStatus === 'verified'}
+							<span class="text-green-500">✓</span>
 						{:else}
 							<span class="text-yellow-500">○</span>
 						{/if}
@@ -248,8 +257,8 @@
 					<span
 						class="flex-1 text-sm font-medium truncate"
 						class:line-through={issue.verificationStatus === 'needs_fix'}
-						class:text-muted-foreground={issue.verificationStatus === 'needs_fix'}
-						class:text-foreground={issue.verificationStatus !== 'needs_fix'}
+						class:text-muted-foreground={issue.verificationStatus === 'needs_fix' || issue.verificationStatus === 'verified'}
+						class:text-foreground={issue.verificationStatus === 'unverified'}
 					>
 						{issue.title}
 					</span>
@@ -286,7 +295,7 @@
 							{/if}
 							<span class="flex items-center gap-1">
 								<span class="text-foreground/60">Status:</span>
-								<span class={issue.verificationStatus === 'needs_fix' ? 'text-red-500' : 'text-yellow-500'}>
+								<span class={issue.verificationStatus === 'needs_fix' ? 'text-red-500' : issue.verificationStatus === 'verified' ? 'text-green-500' : 'text-yellow-500'}>
 									{issue.verificationStatus}
 								</span>
 							</span>
@@ -297,6 +306,8 @@
 								Press <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">v</kbd> to verify or <kbd class="px-1 py-0.5 bg-muted rounded text-foreground">x</kbd> to mark needs fix
 							{:else if issue.verificationStatus === 'needs_fix'}
 								Marked as needing fix — reopen or reassign this issue
+							{:else if issue.verificationStatus === 'verified'}
+								Verified — this issue has been confirmed complete
 							{/if}
 						</div>
 					</div>

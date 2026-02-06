@@ -477,7 +477,7 @@
 		<div class="flex items-center gap-6">
 			<ViewToggle 
 				{currentView} 
-				completedCount={completedIssues.filter(i => i.verificationStatus !== 'verified').length}
+				completedCount={completedIssues.length}
 				onToggle={handleViewToggle}
 			/>
 			{#if currentView === 'issues'}
@@ -497,7 +497,7 @@
 					<span>{labelFilter ? filteredTree.length + ' matched' : $workGraph.node_count + ' issues'}</span>
 					<span>{$workGraph.edge_count} edges</span>
 				{:else if currentView === 'completed'}
-					<span>{completedIssues.filter(i => i.verificationStatus !== 'verified').length} pending review</span>
+					<span>{completedIssues.length} completed</span>
 				{:else if currentView === 'artifacts' && $kbArtifacts}
 					<span>
 						{($kbArtifacts.needs_decision?.length ?? 0) + ($kbArtifacts.recent?.length ?? 0)} artifacts
