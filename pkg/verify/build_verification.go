@@ -17,6 +17,9 @@ type BuildVerificationResult struct {
 	Errors      []string // Error messages (blocking)
 	Warnings    []string // Warning messages (non-blocking)
 	SkillName   string   // Skill that was used
+	PreExisting bool     // Whether the build failure was pre-existing (not caused by this agent)
+	SkipMemory  bool     // Whether the build gate was auto-skipped via build skip memory
+	BlameDetail string   // Human-readable blame attribution detail
 }
 
 // Skills that require build verification before completion.
@@ -185,7 +188,9 @@ func RunGoTestCompile(projectDir string) (string, error) {
 // 1. The project is not a Go project (no go.mod or .go files), OR
 // 2. No Go files were modified in recent commits, OR
 // 3. The skill is not an implementation-focused skill, OR
-// 4. The project compiles successfully (both production and test code)
+// 4. The project compiles successfully (both production and test code), OR
+// 5. Build failure is pre-existing (not caused by this agent - blame attribution), OR
+// 6. Build gate was previously skipped and skip memory is still valid
 //
 // IMPORTANT: This uses 'go test -run=^$' instead of 'go build' because 'go build'
 // does NOT compile test files (*_test.go). This means function signature changes
@@ -220,20 +225,57 @@ func VerifyBuild(workspacePath, projectDir string) BuildVerificationResult {
 		return result
 	}
 
+	// Check build skip memory - if orchestrator already skipped build gate recently,
+	// auto-skip for subsequent completions with a warning
+	if skip := ReadBuildSkipMemory(projectDir); skip != nil {
+		result.SkipMemory = true
+		result.Warnings = append(result.Warnings,
+			"build gate auto-skipped (prior skip by "+skip.SkippedBy+": "+skip.Reason+")")
+		result.Warnings = append(result.Warnings,
+			"build skip expires at "+skip.ExpiresAt.Format("15:04:05"))
+		return result
+	}
+
 	// Run 'go test -run=^$' to compile both production code and test files
 	// This catches signature mismatches that 'go build' would miss
 	output, err := RunGoTestCompile(projectDir)
 	result.BuildOutput = truncateOutput(output, 500)
 
 	if err != nil {
+		// Build failed - check blame attribution before blocking
+		blame := AttributeBuildFailure(workspacePath, projectDir)
+		result.BlameDetail = blame.BlameDetail
+
+		if blame.PreExisting {
+			// Build was already broken before this agent's commits
+			// Pass the gate with a warning instead of blocking
+			result.PreExisting = true
+			result.Warnings = append(result.Warnings,
+				"build failure is pre-existing (not caused by this agent)")
+			result.Warnings = append(result.Warnings,
+				"blame: "+blame.BlameDetail)
+			if output != "" {
+				result.Warnings = append(result.Warnings,
+					"build output (for reference): "+result.BuildOutput)
+			}
+			return result
+		}
+
+		// Agent caused the build failure - block completion
 		result.Passed = false
 		result.Errors = append(result.Errors,
 			"'go test -run=^$ ./...' failed (compilation error in production or test code)",
 			"Both production and test code must compile before completion",
 		)
+		if blame.BlameDetail != "" {
+			result.Errors = append(result.Errors, "blame: "+blame.BlameDetail)
+		}
 		if output != "" {
 			result.Errors = append(result.Errors, "Compilation output: "+result.BuildOutput)
 		}
+	} else {
+		// Build passed - clear any stale build skip memory
+		ClearBuildSkipMemory(projectDir)
 	}
 
 	return result
@@ -250,6 +292,7 @@ func truncateOutput(output string, maxLen int) string {
 // VerifyBuildForCompletion is a convenience function for use in VerifyCompletionFull.
 // Returns nil if no verification is needed (not a Go project, no Go changes, or non-implementation skill).
 // Returns EscalationBlock level result if build fails.
+// Returns a passing result (with warnings) if failure is pre-existing or skip memory is active.
 func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificationResult {
 	result := VerifyBuild(workspacePath, projectDir)
 
@@ -269,4 +312,11 @@ func VerifyBuildForCompletion(workspacePath, projectDir string) *BuildVerificati
 	}
 
 	return &result
+}
+
+// RecordBuildSkip persists a build gate skip decision for future completions.
+// Called when the orchestrator uses --skip-build --skip-reason to bypass the build gate.
+// Subsequent completions will auto-skip the build gate until the skip expires.
+func RecordBuildSkip(projectDir, reason, skippedBy string) error {
+	return WriteBuildSkipMemory(projectDir, reason, skippedBy)
 }
