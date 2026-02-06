@@ -1043,6 +1043,26 @@ func (d *Daemon) OnceExcluding(skip map[string]bool) (*OnceResult, error) {
 			continue
 		}
 
+		// Synthesis completion check: prevent spawning for synthesis topics
+		// that already have a guide/decision. Defense-in-depth against kb-cli
+		// dedup failure (JSON parse errors cause "no duplicate" to be returned).
+		// See: orch-go-qu8fj, orch-go-bn6io
+		if reason := CheckSynthesisCompletion(issue, getProjectDir()); reason != "" {
+			if d.Config.Verbose {
+				fmt.Printf("  DEBUG: Skipping %s (%s)\n", issue.ID, reason)
+			}
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    issue.ID,
+					"dedup_layer": "synthesis_completion",
+					"reason":      reason,
+				})
+			}
+			extendedSkip[issue.ID] = true
+			skippedReasons = append(skippedReasons, fmt.Sprintf("%s: %s", issue.ID, reason))
+			continue
+		}
+
 		// Found an issue that passes all checks
 		break
 	}
@@ -1525,6 +1545,12 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 					}
 				} else {
 					abandoned++
+					// Remove triage:ready label to prevent respawning (matches orch abandon behavior)
+					if err := verify.RemoveTriageReadyLabel(agent.BeadsID); err != nil {
+						if d.Config.Verbose {
+							fmt.Printf("  Note: could not remove triage:ready label from %s: %v\n", agent.BeadsID, err)
+						}
+					}
 					// Clear tracking for this agent
 					delete(d.resumeAttempts, agent.BeadsID)
 					delete(d.resumeAttemptCounts, agent.BeadsID)
@@ -2140,6 +2166,24 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 			}
 			skippedReasons = append(skippedReasons,
 				fmt.Sprintf("%s: already processed", candidate.Issue.ID))
+			continue
+		}
+
+		// Synthesis completion check (cross-project: use project path)
+		if reason := CheckSynthesisCompletion(&candidate.Issue, candidate.Project.Path); reason != "" {
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Skipping %s (%s)\n",
+					candidate.Project.Name, candidate.Issue.ID, reason)
+			}
+			if d.EventLogger != nil {
+				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+					"beads_id":    candidate.Issue.ID,
+					"dedup_layer": "synthesis_completion",
+					"reason":      reason,
+				})
+			}
+			skippedReasons = append(skippedReasons,
+				fmt.Sprintf("%s: %s", candidate.Issue.ID, reason))
 			continue
 		}
 
