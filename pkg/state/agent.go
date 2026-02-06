@@ -7,6 +7,14 @@ import (
 )
 
 // Agent represents a row in the agents table.
+//
+// All fields are projections from authoritative sources, cached here for
+// fast reads. Field ownership:
+//   - Core identity fields: set once at spawn time from orch spawn config (immutable)
+//   - is_completed/is_abandoned: projected from beads issue status (beads is authority)
+//   - is_processing/session_updated_at: projected from OpenCode SSE (OpenCode is authority)
+//   - phase fields: projected from bd comment / orch phase (beads is authority)
+//   - token fields: projected from OpenCode API polling (OpenCode is authority)
 type Agent struct {
 	// Core identity (set at spawn, immutable)
 	WorkspaceName string

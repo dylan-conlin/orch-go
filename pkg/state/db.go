@@ -1,12 +1,35 @@
 // Package state provides agent state persistence via SQLite.
 //
-// This is the single-source agent state database at ~/.orch/state.db.
-// It replaces the distributed JOIN across 6 systems (OpenCode, beads, tmux,
-// registry, workspace, Anthropic API) with fast local reads (~1ms).
+// # Cache Contract: Projection Cache, NOT Source of Truth
+//
+// state.db (~/.orch/state.db) is a spawn-time projection cache for fast reads.
+// It materializes data from authoritative sources into a single local store to
+// avoid the distributed JOIN across 6 systems (OpenCode, beads, tmux, registry,
+// workspace, Anthropic API) on every status query.
+//
+// Authoritative ownership:
+//   - Beads owns completion status (issue open/closed)
+//   - OpenCode owns session liveness (busy/idle/retry)
+//   - Tmux owns window presence (alive/dead)
+//   - state.db owns NOTHING authoritatively — it is a read optimization
+//
+// Degradation: If state.db is empty, missing, or corrupt, the system degrades
+// gracefully to the current multi-source reads (distributed JOIN path). All
+// writes to state.db are non-fatal — spawn/complete/abandon proceed even if
+// the database is unavailable.
+//
+// Promotion to authority requires:
+//   - Reconciliation loop (periodic cross-check against authoritative sources)
+//   - Discrepancy SLO (measurable accuracy target over a defined window)
+//   - Explicit migration gates (not gradual assumption of authority)
+//
+// This contract exists to prevent repeating the registry drift pattern, where
+// a cache was gradually treated as authoritative without reconciliation
+// infrastructure. See: .kb/decisions/2026-01-12-registry-is-spawn-cache.md
+//
+// Architecture evaluation: .kb/investigations/2026-02-06-inv-evaluate-single-source-agent-state.md
 //
 // Uses modernc.org/sqlite (pure Go, no CGO) with WAL mode for concurrent reads.
-//
-// See: .kb/investigations/2026-02-06-design-single-source-agent-state.md
 package state
 
 import (
@@ -30,6 +53,15 @@ func DefaultDBPath() string {
 }
 
 // DB wraps a SQLite database connection for agent state.
+//
+// DB is a projection cache — it mirrors data from authoritative sources
+// (beads, OpenCode, tmux) for fast local reads. It does not own any state
+// authoritatively. All writes are best-effort and non-fatal.
+//
+// If you are considering promoting any field in this database to authoritative
+// status (i.e., treating it as the source of truth rather than a cached copy),
+// you MUST first implement: a reconciliation loop, a discrepancy SLO, and
+// explicit migration gates. See package-level documentation for details.
 type DB struct {
 	db   *sql.DB
 	path string
