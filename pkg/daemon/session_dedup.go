@@ -3,6 +3,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -71,8 +72,10 @@ func (c *SessionDedupChecker) HasExistingSession(beadsID string) bool {
 
 	sessions, err := c.listSessions()
 	if err != nil {
-		// On error, allow spawn (fail-open to avoid blocking work)
-		return false
+		// Fail-safe: on error, assume session exists to prevent duplicate spawns.
+		// Better to skip one spawn cycle than create a duplicate agent.
+		fmt.Fprintf(os.Stderr, "warning: session dedup check failed for %s (assuming exists to prevent duplicate): %v\n", beadsID, err)
+		return true
 	}
 
 	now := time.Now()

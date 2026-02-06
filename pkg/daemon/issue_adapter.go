@@ -257,16 +257,17 @@ func hasPhaseCompleteCLI(beadsID, projectPath string) (bool, error) {
 	cmd.Env = os.Environ()
 	output, err := cmd.Output()
 	if err != nil {
-		// If the command fails (e.g., invalid beads ID), treat as not complete
-		// rather than failing the spawn flow entirely
-		log.Printf("warning: failed to check Phase: Complete for %s: %v", beadsID, err)
-		return false, nil
+		// Fail-safe: on error, assume Phase: Complete exists to prevent duplicate spawns.
+		// Better to skip one spawn cycle than create a duplicate agent.
+		log.Printf("warning: failed to check Phase: Complete for %s (assuming complete to prevent duplicate): %v", beadsID, err)
+		return true, fmt.Errorf("bd comments failed: %w", err)
 	}
 
 	var comments []beads.Comment
 	if err := json.Unmarshal(output, &comments); err != nil {
-		log.Printf("warning: failed to parse comments for %s: %v", beadsID, err)
-		return false, nil
+		// Fail-safe: on parse error, assume Phase: Complete exists to prevent duplicate spawns.
+		log.Printf("warning: failed to parse comments for %s (assuming complete to prevent duplicate): %v", beadsID, err)
+		return true, fmt.Errorf("json parse failed: %w", err)
 	}
 
 	return checkCommentsForPhaseComplete(comments), nil

@@ -88,7 +88,13 @@ func (c *ProcessedIssueCache) ShouldProcess(beadsID string) bool {
 	}
 
 	// Check 3: Phase Complete (checks beads comments)
-	if hasComplete, _ := c.phaseCompleteChecker(beadsID); hasComplete {
+	// Fail-safe: on error, assume complete (don't spawn) to prevent duplicates
+	hasComplete, err := c.phaseCompleteChecker(beadsID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: phase complete check failed for %s (assuming exists to prevent duplicate): %v\n", beadsID, err)
+		return false
+	}
+	if hasComplete {
 		return false
 	}
 

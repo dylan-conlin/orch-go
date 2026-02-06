@@ -177,17 +177,17 @@ func TestHasExistingSession_ServerError(t *testing.T) {
 	}
 	checker := NewSessionDedupChecker(config)
 
-	// Should return false (fail-open) on server error
+	// Should return true (fail-safe) on server error to prevent duplicate spawns
 	got := checker.HasExistingSession("orch-go-abc123")
-	if got != false {
-		t.Errorf("HasExistingSession() on server error = %v, want false (fail-open)", got)
+	if got != true {
+		t.Errorf("HasExistingSession() on server error = %v, want true (fail-safe to prevent duplicates)", got)
 	}
 }
 
 func TestExtractBeadsIDFromSessionTitle_Additional(t *testing.T) {
 	tests := []struct {
-		title   string
-		wantID  string
+		title  string
+		wantID string
 	}{
 		{
 			title:  "og-feat-test-15jan [orch-go-abc123]",

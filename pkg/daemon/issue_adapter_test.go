@@ -258,16 +258,17 @@ func TestHasPhaseCompleteForProject_EmptyBeadsID(t *testing.T) {
 }
 
 func TestHasPhaseComplete_InvalidBeadsID(t *testing.T) {
-	// Invalid beads ID should return false gracefully (not crash)
-	// The CLI will fail, but the function should handle it
+	// Invalid beads ID: CLI will fail, function should fail-safe (return true)
+	// to prevent duplicate spawns. The error is returned for logging.
 	hasComplete, err := HasPhaseComplete("invalid-nonexistent-id-12345")
+	// Fail-safe: on error, assume Phase: Complete exists to prevent duplicates
 	if err != nil {
-		t.Errorf("HasPhaseComplete(invalid) returned error: %v (should return false gracefully)", err)
+		// Error is expected - CLI can't find the issue
+		if !hasComplete {
+			t.Error("HasPhaseComplete(invalid) should return true (fail-safe) when CLI errors")
+		}
 	}
-	// Should return false when comments can't be fetched
-	if hasComplete {
-		t.Error("HasPhaseComplete(invalid) should return false for invalid ID")
-	}
+	// If no error (e.g., RPC found nothing), false is acceptable
 }
 
 func TestListReadyIssuesWithLabel_EmptyLabel(t *testing.T) {

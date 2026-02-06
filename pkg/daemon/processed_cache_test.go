@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,7 +9,6 @@ import (
 )
 
 func TestProcessedIssueCache_ShouldProcess_EmptyCache(t *testing.T) {
-	// Create temp cache file
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
@@ -17,7 +17,11 @@ func TestProcessedIssueCache_ShouldProcess_EmptyCache(t *testing.T) {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
 
-	// Empty cache should allow processing
+	// Inject no-op checkers to avoid real network/CLI calls
+	cache.sessionChecker = func(beadsID string) bool { return false }
+	cache.phaseCompleteChecker = func(beadsID string) (bool, error) { return false, nil }
+
+	// Empty cache with no session and no phase complete should allow processing
 	if !cache.ShouldProcess("test-issue-1") {
 		t.Error("Expected ShouldProcess to return true for new issue in empty cache")
 	}
@@ -49,7 +53,11 @@ func TestProcessedIssueCache_MarkProcessed_PersistsToFile(t *testing.T) {
 		t.Fatalf("Failed to load cache from file: %v", err)
 	}
 
-	// Should not allow processing (already processed)
+	// Inject no-op checkers to avoid real network/CLI calls
+	cache2.sessionChecker = func(beadsID string) bool { return false }
+	cache2.phaseCompleteChecker = func(beadsID string) (bool, error) { return false, nil }
+
+	// Should not allow processing (already in cache from previous session)
 	if cache2.ShouldProcess("test-issue-1") {
 		t.Error("Expected ShouldProcess to return false for previously processed issue")
 	}
@@ -85,6 +93,10 @@ func TestProcessedIssueCache_PruneOldEntries(t *testing.T) {
 		t.Fatalf("Failed to load cache: %v", err)
 	}
 
+	// Inject no-op checkers to avoid real network/CLI calls
+	cache2.sessionChecker = func(beadsID string) bool { return false }
+	cache2.phaseCompleteChecker = func(beadsID string) (bool, error) { return false, nil }
+
 	// Old entry should be pruned (should allow processing)
 	if !cache2.ShouldProcess("old-issue") {
 		t.Error("Expected old entry to be pruned and allow processing")
@@ -96,9 +108,7 @@ func TestProcessedIssueCache_PruneOldEntries(t *testing.T) {
 	}
 }
 
-func TestProcessedIssueCache_ShouldProcess_ChecksSessionDedup(t *testing.T) {
-	// This test verifies that ShouldProcess checks session dedup
-	// We'll mock the session checker by testing the integration
+func TestProcessedIssueCache_ShouldProcess_SessionDedupBlocks(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
@@ -107,13 +117,16 @@ func TestProcessedIssueCache_ShouldProcess_ChecksSessionDedup(t *testing.T) {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
 
-	// For now, we test that the method exists and can be called
-	// Full integration testing with mock sessions will be added later
-	_ = cache.ShouldProcess("test-issue-1")
+	// Inject session checker that reports session exists
+	cache.sessionChecker = func(beadsID string) bool { return true }
+	cache.phaseCompleteChecker = func(beadsID string) (bool, error) { return false, nil }
+
+	if cache.ShouldProcess("test-issue-1") {
+		t.Error("Expected ShouldProcess to return false when session exists")
+	}
 }
 
-func TestProcessedIssueCache_ShouldProcess_ChecksPhaseComplete(t *testing.T) {
-	// This test verifies that ShouldProcess checks HasPhaseComplete
+func TestProcessedIssueCache_ShouldProcess_PhaseCompleteBlocks(t *testing.T) {
 	tmpDir := t.TempDir()
 	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
 
@@ -122,7 +135,52 @@ func TestProcessedIssueCache_ShouldProcess_ChecksPhaseComplete(t *testing.T) {
 		t.Fatalf("NewProcessedIssueCache failed: %v", err)
 	}
 
-	// For now, we test that the method exists and can be called
-	// Full integration testing will be added later
-	_ = cache.ShouldProcess("test-issue-1")
+	// Inject checkers: no session, but phase complete
+	cache.sessionChecker = func(beadsID string) bool { return false }
+	cache.phaseCompleteChecker = func(beadsID string) (bool, error) { return true, nil }
+
+	if cache.ShouldProcess("test-issue-1") {
+		t.Error("Expected ShouldProcess to return false when Phase: Complete found")
+	}
+}
+
+func TestProcessedIssueCache_ShouldProcess_PhaseCompleteErrorFailsSafe(t *testing.T) {
+	// When phaseCompleteChecker returns an error, ShouldProcess should
+	// return false (don't spawn) to prevent duplicate agents.
+	// This is the fail-safe pattern: assume exists on error.
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
+
+	cache, err := NewProcessedIssueCache(cachePath)
+	if err != nil {
+		t.Fatalf("NewProcessedIssueCache failed: %v", err)
+	}
+
+	// Inject checkers: no session, phase complete check errors
+	cache.sessionChecker = func(beadsID string) bool { return false }
+	cache.phaseCompleteChecker = func(beadsID string) (bool, error) {
+		return false, fmt.Errorf("bd command failed")
+	}
+
+	if cache.ShouldProcess("test-issue-1") {
+		t.Error("Expected ShouldProcess to return false (fail-safe) when phase complete check errors")
+	}
+}
+
+func TestProcessedIssueCache_ShouldProcess_AllChecksPass(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "processed-issues.jsonl")
+
+	cache, err := NewProcessedIssueCache(cachePath)
+	if err != nil {
+		t.Fatalf("NewProcessedIssueCache failed: %v", err)
+	}
+
+	// Inject checkers: no session, no phase complete, no errors
+	cache.sessionChecker = func(beadsID string) bool { return false }
+	cache.phaseCompleteChecker = func(beadsID string) (bool, error) { return false, nil }
+
+	if !cache.ShouldProcess("test-issue-1") {
+		t.Error("Expected ShouldProcess to return true when all checks pass")
+	}
 }
