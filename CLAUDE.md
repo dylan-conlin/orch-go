@@ -328,18 +328,21 @@ Architect decisions can block spawns via the decision gate. This gives decisions
 ## Development
 
 ```bash
-# Build
+# Build (outputs to build/orch)
 make build
 
 # Test
 make test
 
-# Install to ~/bin/orch
+# Install to ~/bin/orch (REQUIRED for orch-dashboard to use fresh binary)
+# This creates a symlink ~/bin/orch -> build/orch
 make install
 
 # Verify version
 orch version
 ```
+
+**IMPORTANT:** Always use `make install` (not `go build ./cmd/orch`) to ensure the binary is built to the correct location. The `go build` command outputs to `./orch-go` by default, which won't be used by `orch-dashboard restart`.
 
 ### Adding New Commands
 

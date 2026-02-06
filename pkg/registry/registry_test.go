@@ -97,3 +97,157 @@ func TestRegistry_ModeFields(t *testing.T) {
 		t.Errorf("re-registered agent fields mismatch: beads=%s, window=%s", a1new.BeadsID, a1new.TmuxWindow)
 	}
 }
+
+func TestRegistry_ListAll(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "orch-registry-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	regPath := filepath.Join(tempDir, "agent-registry.json")
+	reg, err := New(regPath)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	// Register agents with different statuses
+	agents := []*Agent{
+		{ID: "active-1", BeadsID: "b1", Mode: "opencode"},
+		{ID: "active-2", BeadsID: "b2", Mode: "opencode"},
+	}
+	for _, a := range agents {
+		if err := reg.Register(a); err != nil {
+			t.Fatalf("Register() error: %v", err)
+		}
+	}
+
+	// Abandon one
+	reg.Abandon("active-1")
+
+	// ListAgents should only return active
+	active := reg.ListAgents()
+	if len(active) != 1 {
+		t.Errorf("ListAgents() = %d, want 1", len(active))
+	}
+
+	// ListAll should return all
+	all := reg.ListAll()
+	if len(all) != 2 {
+		t.Errorf("ListAll() = %d, want 2", len(all))
+	}
+}
+
+func TestRegistry_Purge(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "orch-registry-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	regPath := filepath.Join(tempDir, "agent-registry.json")
+	reg, err := New(regPath)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	agents := []*Agent{
+		{ID: "tracked-1", BeadsID: "orch-go-111", Mode: "opencode"},
+		{ID: "untracked-1", BeadsID: "orch-go-untracked-999", Mode: "opencode"},
+		{ID: "tracked-2", BeadsID: "orch-go-222", Mode: "opencode"},
+		{ID: "untracked-2", BeadsID: "orch-go-untracked-888", Mode: "opencode"},
+	}
+	for _, a := range agents {
+		if err := reg.Register(a); err != nil {
+			t.Fatalf("Register() error: %v", err)
+		}
+	}
+
+	// Purge untracked entries
+	removed := reg.Purge(func(a *Agent) bool {
+		return len(a.BeadsID) > 0 && a.BeadsID[len(a.BeadsID)-3:] != "111" && a.BeadsID[len(a.BeadsID)-3:] != "222"
+	})
+	if removed != 2 {
+		t.Errorf("Purge() removed %d, want 2", removed)
+	}
+
+	// Save and reload
+	if err := reg.SaveSkipMerge(); err != nil {
+		t.Fatalf("SaveSkipMerge() error: %v", err)
+	}
+
+	reg2, err := New(regPath)
+	if err != nil {
+		t.Fatalf("New() reload error: %v", err)
+	}
+
+	all := reg2.ListAll()
+	if len(all) != 2 {
+		t.Fatalf("After purge reload: ListAll() = %d, want 2", len(all))
+	}
+
+	// Verify correct entries survived
+	for _, a := range all {
+		if a.ID != "tracked-1" && a.ID != "tracked-2" {
+			t.Errorf("Unexpected agent survived: %s", a.ID)
+		}
+	}
+}
+
+func TestRegistry_PurgeAll(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "orch-registry-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	regPath := filepath.Join(tempDir, "agent-registry.json")
+	reg, err := New(regPath)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	if err := reg.Register(&Agent{ID: "a1", BeadsID: "b1", Mode: "opencode"}); err != nil {
+		t.Fatalf("Register() error: %v", err)
+	}
+
+	// Purge everything
+	removed := reg.Purge(func(a *Agent) bool { return true })
+	if removed != 1 {
+		t.Errorf("Purge(all) removed %d, want 1", removed)
+	}
+
+	all := reg.ListAll()
+	if len(all) != 0 {
+		t.Errorf("After purge all: ListAll() = %d, want 0", len(all))
+	}
+}
+
+func TestRegistry_PurgeNone(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "orch-registry-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	regPath := filepath.Join(tempDir, "agent-registry.json")
+	reg, err := New(regPath)
+	if err != nil {
+		t.Fatalf("failed to create registry: %v", err)
+	}
+
+	if err := reg.Register(&Agent{ID: "a1", BeadsID: "b1", Mode: "opencode"}); err != nil {
+		t.Fatalf("Register() error: %v", err)
+	}
+
+	// Purge nothing
+	removed := reg.Purge(func(a *Agent) bool { return false })
+	if removed != 0 {
+		t.Errorf("Purge(none) removed %d, want 0", removed)
+	}
+
+	all := reg.ListAll()
+	if len(all) != 1 {
+		t.Errorf("After purge none: ListAll() = %d, want 1", len(all))
+	}
+}

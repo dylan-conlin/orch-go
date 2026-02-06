@@ -24,6 +24,7 @@ const (
 	GateGitDiff            = "git_diff"             // Git diff doesn't match claims
 	GateBuild              = "build"                // Project build failed
 	GateDecisionPatchLimit = "decision_patch_limit" // Decision patch limit exceeded
+	GateDashboardHealth    = "dashboard_health"     // Dashboard API health check failed
 )
 
 // VerificationResult represents the result of a completion verification.

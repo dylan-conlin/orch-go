@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/cleanup"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/registry"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
@@ -29,6 +31,7 @@ var (
 	cleanStaleDays            int
 	cleanUntracked            bool
 	cleanUntrackedDays        int
+	cleanRegistry             bool
 	cleanSessions             bool
 	cleanSessionsDays         int
 	cleanPreserveOrchestrator bool
@@ -51,19 +54,20 @@ Protection options:
   --preserve-orchestrator  Skip orchestrator/meta-orchestrator workspaces and sessions
 
 Comprehensive cleanup:
-  --all               Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, sessions)
+  --all                  Enable all cleanup actions (windows, phantoms, verify-opencode, investigations, stale, untracked, untracked-registry, sessions)
 
 Optional cleanup actions:
-  --windows           Close tmux windows for completed agents
-  --phantoms          Close phantom tmux windows (beads ID but no active session)
-  --verify-opencode   Delete orphaned OpenCode disk sessions (not tracked in workspaces)
-  --investigations    Archive empty investigation files (agents died before filling template)
-  --stale             Archive old completed workspaces (default: 7 days)
-  --stale-days N      Set age threshold for --stale (default: 7)
-  --untracked         Archive old untracked workspaces (default: 7 days)
-  --untracked-days N  Set age threshold for --untracked (default: 7)
-  --sessions          Delete stale OpenCode sessions (default: older than 7 days)
-  --sessions-days N   Set age threshold for --sessions (default: 7)
+  --windows              Close tmux windows for completed agents
+  --phantoms             Close phantom tmux windows (beads ID but no active session)
+  --verify-opencode      Delete orphaned OpenCode disk sessions (not tracked in workspaces)
+  --investigations       Archive empty investigation files (agents died before filling template)
+  --stale                Archive old completed workspaces (default: 7 days)
+  --stale-days N         Set age threshold for --stale (default: 7)
+  --untracked            Archive old untracked workspaces (default: 7 days)
+  --untracked-days N     Set age threshold for --untracked (default: 7)
+  --untracked-registry   Remove untracked agents from ~/.orch/agent-registry.json
+  --sessions             Delete stale OpenCode sessions (default: older than 7 days)
+  --sessions-days N      Set age threshold for --sessions (default: 7)
 
 Note: This command never deletes workspace directories - they are kept for 
 investigation reference. Use 'rm -rf .orch/workspace/<name>' to manually delete.
@@ -94,9 +98,10 @@ Examples:
 			cleanInvestigations = true
 			cleanStale = true
 			cleanUntracked = true
+			cleanRegistry = true
 			cleanSessions = true
 		}
-		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
+		return runClean(cleanDryRun, cleanVerifyOpenCode, cleanWindows, cleanPhantoms, cleanInvestigations, cleanStale, cleanStaleDays, cleanUntracked, cleanUntrackedDays, cleanRegistry, cleanSessions, cleanSessionsDays, cleanPreserveOrchestrator)
 	},
 }
 
@@ -111,6 +116,7 @@ func init() {
 	cleanCmd.Flags().IntVar(&cleanStaleDays, "stale-days", 7, "Age threshold in days for --stale (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanUntracked, "untracked", false, "Archive untracked workspaces older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanUntrackedDays, "untracked-days", 7, "Age threshold in days for --untracked (default: 7)")
+	cleanCmd.Flags().BoolVar(&cleanRegistry, "registry", false, "Remove untracked agent entries from the agent registry (~/.orch/agent-registry.json)")
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
@@ -295,7 +301,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 	return cleanable
 }
 
-func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool) error {
+func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, purgeRegistry bool, cleanSessions bool, sessionsDays int, preserveOrchestrator bool) error {
 	projectDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -392,6 +398,15 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 		}
 	}
 
+	// Clean untracked entries from agent registry (optional)
+	var registryPurged int
+	if purgeRegistry {
+		registryPurged, err = removeUntrackedRegistryEntries(registry.DefaultPath(), dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clean registry: %v\n", err)
+		}
+	}
+
 	// Clean stale OpenCode sessions (optional)
 	var staleSessionsDeleted int
 	if cleanSessions {
@@ -408,7 +423,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 	}
 
 	// Check if any cleanup actions were taken or would be taken
-	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || cleanSessions
+	hasCleanupActions := closeWindows || cleanPhantoms || verifyOpenCode || cleanInvestigations || archiveStale || archiveUntracked || purgeRegistry || cleanSessions
 
 	if dryRun {
 		if hasCleanupActions {
@@ -1213,3 +1228,63 @@ func archiveUntrackedWorkspaces(projectDir string, untrackedDays int, dryRun boo
 }
 
 // NOTE: extractBeadsIDFromWorkspace is defined in review.go
+
+// removeUntrackedRegistryEntries removes untracked agents from the registry.
+// An agent is considered "untracked" if:
+// 1. It has no beads_id (empty string)
+// 2. Its beads_id contains "untracked"
+// Returns the number of agents removed and any error encountered.
+func removeUntrackedRegistryEntries(registryPath string, dryRun bool) (int, error) {
+	// Read registry file
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil // No registry file, nothing to clean
+		}
+		return 0, fmt.Errorf("failed to read registry: %w", err)
+	}
+
+	// Parse registry
+	type registryData struct {
+		Agents []map[string]interface{} `json:"agents"`
+	}
+	var rd registryData
+	if err := json.Unmarshal(data, &rd); err != nil {
+		return 0, fmt.Errorf("failed to parse registry: %w", err)
+	}
+
+	// Filter out untracked agents
+	var kept []map[string]interface{}
+	removed := 0
+	for _, agent := range rd.Agents {
+		beadsID, _ := agent["beads_id"].(string)
+		isUntracked := beadsID == "" || strings.Contains(beadsID, "untracked")
+
+		if isUntracked {
+			removed++
+		} else {
+			kept = append(kept, agent)
+		}
+	}
+
+	if removed == 0 {
+		return 0, nil // Nothing to remove
+	}
+
+	if dryRun {
+		return removed, nil // Don't actually modify the registry
+	}
+
+	// Write cleaned registry back
+	rd.Agents = kept
+	cleanedData, err := json.MarshalIndent(rd, "", "  ")
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal cleaned registry: %w", err)
+	}
+
+	if err := os.WriteFile(registryPath, cleanedData, 0644); err != nil {
+		return 0, fmt.Errorf("failed to write cleaned registry: %w", err)
+	}
+
+	return removed, nil
+}

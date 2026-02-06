@@ -441,6 +441,36 @@ func (r *Registry) ListCompleted() []*Agent {
 	return result
 }
 
+// ListAll returns all agents regardless of status.
+func (r *Registry) ListAll() []*Agent {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*Agent, len(r.agents))
+	copy(result, r.agents)
+	return result
+}
+
+// Purge physically removes agents matching the predicate from the registry.
+// Unlike Remove() which sets a tombstone, this deletes entries entirely.
+// Returns the number of agents removed.
+func (r *Registry) Purge(predicate func(*Agent) bool) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	kept := make([]*Agent, 0, len(r.agents))
+	removed := 0
+	for _, a := range r.agents {
+		if predicate(a) {
+			removed++
+		} else {
+			kept = append(kept, a)
+		}
+	}
+	r.agents = kept
+	return removed
+}
+
 // ListCleanable returns agents that can be cleaned (completed or abandoned).
 func (r *Registry) ListCleanable() []*Agent {
 	r.mu.RLock()
