@@ -228,6 +228,21 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	collectors = append(collectors, stuckCollector)
 	sources = append(sources, "agent-stuck")
 
+	// StaleIssueCollector - issues with no activity >30 days
+	staleCollector := attention.NewStaleIssueCollector(client, 30) // 30 day threshold
+	collectors = append(collectors, staleCollector)
+	sources = append(sources, "beads-stale")
+
+	// DuplicateCandidateCollector - issues with similar titles
+	duplicateCollector := attention.NewDuplicateCandidateCollector(client, 0.6) // 60% similarity threshold
+	collectors = append(collectors, duplicateCollector)
+	sources = append(sources, "beads-duplicate")
+
+	// CompetingCollector - issues in same area with similar scope
+	competingCollector := attention.NewCompetingCollector(client, 0.4) // 40% similarity + same area
+	collectors = append(collectors, competingCollector)
+	sources = append(sources, "beads-competing")
+
 	if debug {
 		log.Printf(
 			"attention: request role=%s project=%s recently_closed_hours=%d collectors=%d",
@@ -267,51 +282,46 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 		log.Printf("attention: collected total=%d by_signal=%v", len(allItems), countBySignal(allItems))
 	}
 
-	// Load verifications and filter/annotate items
+	// Load verifications and annotate items
 	verifications := loadVerifications()
 	if debug {
 		log.Printf("attention: verifications loaded=%d", len(verifications))
 	}
-	// Only filter recently-closed items based on verification status.
-	// Other signal types (issue-ready, likely-done, verify, etc.) should pass through
-	// even if their subject has been verified, as they serve different purposes.
+	// Recently-closed items are always returned; verification status is a visual indicator (not a filter).
 	originalCount := len(allItems)
-	filteredItems := []attention.AttentionItem{}
-	filteredRecentlyClosedVerified := 0
-	annotatedNeedsFix := 0
-	for _, item := range allItems {
+	annotatedVerificationStatus := 0
+	for i := range allItems {
+		item := allItems[i]
 		verification, exists := verifications[item.Subject]
-		if item.Signal == "recently-closed" && exists && verification.Status == "verified" {
-			// Filter out verified issues from recently-closed
-			filteredRecentlyClosedVerified++
-			if debug && filteredRecentlyClosedVerified <= 10 {
-				log.Printf(
-					"attention: filtered recently-closed subject=%s status=%s ts=%d",
-					item.Subject,
-					verification.Status,
-					verification.Timestamp,
-				)
-			}
-			continue
-		}
-		if exists && verification.Status == "needs_fix" {
-			// Add verification_status to metadata for needs_fix items
+
+		// Default recently-closed items to unverified unless we have a recorded verification.
+		if item.Signal == "recently-closed" {
 			if item.Metadata == nil {
 				item.Metadata = make(map[string]any)
 			}
-			item.Metadata["verification_status"] = "needs_fix"
-			annotatedNeedsFix++
+			item.Metadata["verification_status"] = "unverified"
 		}
-		filteredItems = append(filteredItems, item)
+
+		if exists {
+			// Only annotate verified status for recently-closed items; for other signals
+			// we preserve prior behavior of only annotating needs_fix.
+			if item.Signal == "recently-closed" || verification.Status == "needs_fix" {
+				if item.Metadata == nil {
+					item.Metadata = make(map[string]any)
+				}
+				item.Metadata["verification_status"] = verification.Status
+				annotatedVerificationStatus++
+			}
+		}
+
+		allItems[i] = item
 	}
-	allItems = filteredItems
 	if debug {
 		log.Printf(
-			"attention: filter in=%d out=%d filtered_recently_closed_verified=%d annotated_needs_fix=%d by_signal=%v",
+			"attention: annotate in=%d out=%d annotated_verification_status=%d by_signal=%v",
 			originalCount,
 			len(allItems),
-			filteredRecentlyClosedVerified,
-			annotatedNeedsFix,
+			annotatedVerificationStatus,
 			countBySignal(allItems),
 		)
 	}
