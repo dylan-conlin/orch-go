@@ -1394,6 +1394,18 @@ func (d *Daemon) RunPeriodicCleanup() *CleanupResult {
 		}
 	}
 
+	// Run untracked agent expiry (auto-remove idle untracked agents >1 hour)
+	if d.Config.CleanupRegistry {
+		removed, err := runUntrackedAgentExpiry(1) // 1 hour idle threshold
+		if err != nil {
+			// Silently ignore errors - this is best-effort cleanup
+			// Errors are typically benign (e.g., file not found, parse errors)
+		} else if removed > 0 {
+			result.RegistryEntriesRemoved += removed
+			messages = append(messages, fmt.Sprintf("%d idle untracked agents", removed))
+		}
+	}
+
 	// Update last cleanup time on success
 	d.lastCleanup = time.Now()
 
