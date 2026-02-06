@@ -3,7 +3,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1241,57 +1240,35 @@ func archiveUntrackedWorkspaces(projectDir string, untrackedDays int, dryRun boo
 // An agent is considered "untracked" if:
 // 1. It has no beads_id (empty string)
 // 2. Its beads_id contains "untracked"
+// Uses Registry.Purge + SaveSkipMerge for proper file locking, preventing
+// race conditions with concurrent agent registrations from daemon spawns.
 // Returns the number of agents removed and any error encountered.
 func removeUntrackedRegistryEntries(registryPath string, dryRun bool) (int, error) {
-	// Read registry file
-	data, err := os.ReadFile(registryPath)
+	reg, err := registry.New(registryPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil // No registry file, nothing to clean
-		}
-		return 0, fmt.Errorf("failed to read registry: %w", err)
+		return 0, fmt.Errorf("failed to open registry: %w", err)
 	}
 
-	// Parse registry
-	type registryData struct {
-		Agents []map[string]interface{} `json:"agents"`
-	}
-	var rd registryData
-	if err := json.Unmarshal(data, &rd); err != nil {
-		return 0, fmt.Errorf("failed to parse registry: %w", err)
-	}
-
-	// Filter out untracked agents
-	var kept []map[string]interface{}
-	removed := 0
-	for _, agent := range rd.Agents {
-		beadsID, _ := agent["beads_id"].(string)
-		isUntracked := beadsID == "" || strings.Contains(beadsID, "untracked")
-
-		if isUntracked {
-			removed++
-		} else {
-			kept = append(kept, agent)
-		}
-	}
+	// Count untracked agents first (for dry run)
+	removed := reg.Purge(func(agent *registry.Agent) bool {
+		return agent.BeadsID == "" || strings.Contains(agent.BeadsID, "untracked")
+	})
 
 	if removed == 0 {
-		return 0, nil // Nothing to remove
+		return 0, nil
 	}
 
 	if dryRun {
-		return removed, nil // Don't actually modify the registry
+		// Don't save - just return the count
+		// Note: Purge already modified in-memory state, but since we don't save,
+		// this registry instance is discarded and the file remains unchanged.
+		return removed, nil
 	}
 
-	// Write cleaned registry back
-	rd.Agents = kept
-	cleanedData, err := json.MarshalIndent(rd, "", "  ")
-	if err != nil {
-		return 0, fmt.Errorf("failed to marshal cleaned registry: %w", err)
-	}
-
-	if err := os.WriteFile(registryPath, cleanedData, 0644); err != nil {
-		return 0, fmt.Errorf("failed to write cleaned registry: %w", err)
+	// Use SaveSkipMerge since Purge modifies in-memory state;
+	// regular Save would re-merge purged entries from disk.
+	if err := reg.SaveSkipMerge(); err != nil {
+		return 0, fmt.Errorf("failed to save cleaned registry: %w", err)
 	}
 
 	return removed, nil
