@@ -1503,10 +1503,11 @@ func (d *Daemon) RunPeriodicRecovery() *RecoveryResult {
 					fmt.Printf("  Auto-abandoning %s (dead for %v, threshold: %v)\n",
 						agent.BeadsID, idleTime.Round(time.Minute), abandonThreshold)
 				}
-				// Close the issue with auto-abandon reason
+				// Close the issue with auto-abandon reason, using force to bypass
+				// bd's Phase: Complete gate since abandoned agents won't have one
 				reason := fmt.Sprintf("Auto-abandoned: No progress for %v (threshold: %v)",
 					idleTime.Round(time.Minute), abandonThreshold)
-				if err := verify.CloseIssue(agent.BeadsID, reason); err != nil {
+				if err := verify.CloseIssueForce(agent.BeadsID, reason, true); err != nil {
 					if d.Config.Verbose {
 						fmt.Printf("  Failed to auto-abandon %s: %v\n", agent.BeadsID, err)
 					}

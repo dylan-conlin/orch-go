@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/attention"
+	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 )
 
@@ -261,9 +261,10 @@ func (d *Daemon) ProcessCompletion(agent CompletedAgent, config CompletionConfig
 		closeReason = fmt.Sprintf("Phase: Complete - %s", agent.PhaseSummary)
 	}
 
-	// Close the issue (unless dry run)
+	// Close the issue (unless dry run), using force to bypass bd's redundant
+	// Phase: Complete gate since we already verified it via ListCompletedAgents
 	if !config.DryRun {
-		if err := verify.CloseIssue(agent.BeadsID, closeReason); err != nil {
+		if err := verify.CloseIssueForce(agent.BeadsID, closeReason, true); err != nil {
 			result.Error = fmt.Errorf("failed to close issue: %w", err)
 			return result
 		}

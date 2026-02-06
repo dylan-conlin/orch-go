@@ -925,8 +925,9 @@ func runReviewDone(project, workdir string) error {
 				reason = c.Summary
 			}
 
-			// Close the beads issue
-			if err := verify.CloseIssue(c.BeadsID, reason); err != nil {
+			// Close the beads issue with force to bypass bd's Phase: Complete
+			// gate since orch review has already verified completion
+			if err := verify.CloseIssueForce(c.BeadsID, reason, true); err != nil {
 				completionErrors = append(completionErrors, fmt.Sprintf("%s: failed to close: %v", c.BeadsID, err))
 				continue
 			}
