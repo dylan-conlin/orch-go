@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { cn } from '$lib/utils';
-	import type { TreeNode, AttentionBadgeType } from '$lib/stores/work-graph';
+	import type { TreeNode, AttentionBadgeType, GroupSection, GroupByMode } from '$lib/stores/work-graph';
 	import { closeIssue } from '$lib/stores/work-graph';
 	import type { WIPItem } from '$lib/stores/wip';
 	import { getExpressiveStatus, computeAgentHealth, getContextPercent, getContextColor } from '$lib/stores/wip';
@@ -14,10 +14,27 @@
 	import { orchestratorContext } from '$lib/stores/context';
 
 	export let tree: TreeNode[] = [];
+	export let groups: GroupSection[] = [];
+	export let groupMode: GroupByMode = 'priority';
 	export let newIssueIds: Set<string> = new Set();
 	export let wipItems: WIPItem[] = [];
 	export let onToggleExpansion: (nodeId: string, expanded: boolean) => void = () => {};
 	export let onSetFocus: (beadsId: string, title: string) => void = () => {};
+
+	// Track which group sections are collapsed
+	let collapsedGroups = new Set<string>();
+
+	function toggleGroup(key: string) {
+		if (collapsedGroups.has(key)) {
+			collapsedGroups.delete(key);
+		} else {
+			collapsedGroups.add(key);
+		}
+		collapsedGroups = collapsedGroups; // trigger reactivity
+	}
+
+	// Whether we're in grouped mode (non-priority has label sections)
+	$: isGrouped = groups.length > 0 && groupMode !== 'priority';
 
 	// Get attention badge config for a badge type
 	function getAttentionBadge(badge: AttentionBadgeType | 'unverified' | 'needs_fix' | undefined) {
@@ -25,8 +42,21 @@
 		return ATTENTION_BADGE_CONFIG[badge] || null;
 	}
 
+	// Group header sentinel for keyboard navigation
+	interface GroupHeader {
+		_groupHeader: true;
+		key: string;
+		label: string;
+		count: number;
+		unlabeled: boolean;
+	}
+
+	function isGroupHeader(item: any): item is GroupHeader {
+		return item && '_groupHeader' in item;
+	}
+
 	// Flatten tree for keyboard navigation
-		let flattenedNodes: (TreeNode | WIPItem)[] = [];
+		let flattenedNodes: (TreeNode | WIPItem | GroupHeader)[] = [];
 		let selectedIndex = 0;
 		let pinnedTreeIds = new Set<string>();
 
@@ -74,10 +104,8 @@
 		return result;
 	}
 
-	// Rebuild flattened list when tree or wipItems change
+	// Rebuild flattened list when tree, groups, or wipItems change
 		$: {
-			const treeNodes = flattenTree(tree);
-
 		// Track which tree nodes are also surfaced in WIP (for visual differentiation in the tree)
 		const pinnedIds = new Set<string>();
 		for (const item of wipItems) {
@@ -91,8 +119,27 @@
 		}
 		pinnedTreeIds = pinnedIds;
 
-		// Order: WIP items first, then pending verification, then main tree
-		flattenedNodes = [...wipItems, ...treeNodes];
+		// Build flat list based on whether we're in grouped mode
+		const items: (TreeNode | WIPItem | GroupHeader)[] = [...wipItems];
+
+		if (isGrouped && groups.length > 0) {
+			for (const group of groups) {
+				items.push({
+					_groupHeader: true,
+					key: group.key,
+					label: group.label,
+					count: group.nodes.length,
+					unlabeled: group.unlabeled,
+				});
+				if (!collapsedGroups.has(group.key)) {
+					items.push(...flattenTree(group.nodes));
+				}
+			}
+		} else {
+			items.push(...flattenTree(tree));
+		}
+
+		flattenedNodes = items;
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -100,12 +147,13 @@
 	}
 
 	// Type guard to check if item is a WIPItem
-	function isWIPItem(item: TreeNode | WIPItem): item is WIPItem {
+	function isWIPItem(item: TreeNode | WIPItem | GroupHeader): item is WIPItem {
 		return 'type' in item && (item.type === 'running' || item.type === 'queued');
 	}
 
-	// Get ID from WIPItem or TreeNode
-	function getItemId(item: TreeNode | WIPItem): string {
+	// Get ID from WIPItem, TreeNode, or GroupHeader
+	function getItemId(item: TreeNode | WIPItem | GroupHeader): string {
+		if (isGroupHeader(item)) return item.key;
 		if (isWIPItem(item)) {
 			return item.type === 'running' ? item.agent.id : item.issue.id;
 		}
@@ -113,7 +161,8 @@
 	}
 
 	// Get stable key for Svelte each blocks (avoids collisions when same issue appears in multiple views)
-	function getItemKey(item: TreeNode | WIPItem): string {
+	function getItemKey(item: TreeNode | WIPItem | GroupHeader): string {
+		if (isGroupHeader(item)) return `group-${item.key}`;
 		if (isWIPItem(item)) {
 			return item.type === 'running' ? `wip-running-${item.agent.id}` : `wip-queued-${item.issue.id}`;
 		}
@@ -121,7 +170,8 @@
 	}
 
 	// Get stable test ID per row type (avoids collisions when issue appears in both WIP + tree)
-	function getRowTestId(item: TreeNode | WIPItem): string {
+	function getRowTestId(item: TreeNode | WIPItem | GroupHeader): string {
+		if (isGroupHeader(item)) return `group-header-${item.key}`;
 		if (isWIPItem(item)) {
 			return item.type === 'running'
 				? `wip-row-${item.agent.beads_id || item.agent.id}`
@@ -205,6 +255,28 @@
 	function handleKeyDown(event: KeyboardEvent) {
 		const current = flattenedNodes[selectedIndex];
 		if (!current) return;
+
+		// Handle group header interactions
+		if (isGroupHeader(current)) {
+			if (event.key === 'Enter' || event.key === 'l' || event.key === 'h' || event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+				event.preventDefault();
+				toggleGroup(current.key);
+				return;
+			}
+			if (event.key === 'j' || event.key === 'ArrowDown') {
+				event.preventDefault();
+				selectedIndex = Math.min(selectedIndex + 1, flattenedNodes.length - 1);
+				scrollToSelected();
+				return;
+			}
+			if (event.key === 'k' || event.key === 'ArrowUp') {
+				event.preventDefault();
+				selectedIndex = Math.max(selectedIndex - 1, 0);
+				scrollToSelected();
+				return;
+			}
+			return;
+		}
 
 		const itemId = getItemId(current);
 		const isWIP = isWIPItem(current);
@@ -383,9 +455,25 @@
 		node.expanded = !node.expanded;
 		// Notify parent component to update expansion state
 		onToggleExpansion(node.id, node.expanded);
-		// Manually rebuild flattened nodes (include WIP items)
-		const treeNodes = flattenTree(tree);
-		flattenedNodes = [...wipItems, ...treeNodes];
+		// Manually rebuild flattened nodes (include WIP items + groups)
+		const items: (TreeNode | WIPItem | GroupHeader)[] = [...wipItems];
+		if (isGrouped && groups.length > 0) {
+			for (const group of groups) {
+				items.push({
+					_groupHeader: true,
+					key: group.key,
+					label: group.label,
+					count: group.nodes.length,
+					unlabeled: group.unlabeled,
+				});
+				if (!collapsedGroups.has(group.key)) {
+					items.push(...flattenTree(group.nodes));
+				}
+			}
+		} else {
+			items.push(...flattenTree(tree));
+		}
+		flattenedNodes = items;
 		// Clamp selected index to valid range
 		if (selectedIndex >= flattenedNodes.length) {
 			selectedIndex = Math.max(0, flattenedNodes.length - 1);
@@ -443,8 +531,37 @@
 >
 	{#each flattenedNodes as item, index (getItemKey(item))}
 		{@const itemId = getItemId(item)}
-		{@const isWIP = isWIPItem(item)}
-		{@const depth = !isWIP ? (item as TreeNode).depth : undefined}
+		{@const isWIP = !isGroupHeader(item) && isWIPItem(item)}
+		{@const depth = !isGroupHeader(item) && !isWIP ? (item as TreeNode).depth : undefined}
+		{#if isGroupHeader(item)}
+			<!-- Group Section Header -->
+			<div
+				data-testid={getRowTestId(item)}
+				data-node-index={index}
+				class="group-header cursor-pointer select-none focus:outline-none border-t border-border/40 mt-1 first:mt-0 first:border-t-0"
+				class:selected={index === selectedIndex}
+				class:focused={index === selectedIndex}
+				role="treeitem"
+				aria-selected={index === selectedIndex}
+				tabindex="-1"
+				onclick={() => { selectNode(index); toggleGroup(item.key); }}
+			>
+				<div class="flex items-center gap-2 py-2 px-2 {index === selectedIndex ? 'bg-zinc-800' : ''} {item.unlabeled ? 'bg-yellow-500/5' : ''}">
+					<span class="w-4 text-muted-foreground text-xs">
+						{collapsedGroups.has(item.key) ? '▶' : '▼'}
+					</span>
+					<span class="text-xs font-semibold uppercase tracking-wider {item.unlabeled ? 'text-yellow-500' : 'text-muted-foreground'}">
+						{item.label}
+					</span>
+					<span class="text-xs text-muted-foreground">
+						({item.count})
+					</span>
+					{#if item.unlabeled}
+						<span class="text-xs text-yellow-500/70 italic">needs labeling</span>
+					{/if}
+				</div>
+			</div>
+		{:else}
 		<div
 			data-testid={getRowTestId(item)}
 			data-node-index={index}
@@ -734,6 +851,7 @@
 				{/if}
 		{/if}
 		</div>
+		{/if}
 	{/each}
 </div>
 

@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
-	import { workGraph, buildTree, filterTreeByLabel, type TreeNode } from '$lib/stores/work-graph';
+	import { workGraph, buildTree, filterTreeByLabel, groupTreeNodes, type TreeNode, type GroupSection, type GroupByMode } from '$lib/stores/work-graph';
 	import { kbArtifacts } from '$lib/stores/kb-artifacts';
 	import { orchestratorContext, connectionStatus } from '$lib/stores/context';
 	import { agents, connectSSE, disconnectSSE } from '$lib/stores/agents';
 	import { WorkGraphTree } from '$lib/components/work-graph-tree';
 	import { ViewToggle } from '$lib/components/view-toggle';
+	import { GroupByDropdown } from '$lib/components/group-by-dropdown';
 	import { LabelFilter } from '$lib/components/label-filter';
 	import { ArtifactFeed } from '$lib/components/artifact-feed';
 	import { RecentlyCompletedSection } from '$lib/components/recently-completed-section';
@@ -68,6 +69,16 @@
 	let focusedBeadsId: string | undefined = undefined; // Current focus beads ID for auto-scoping
 	let labelFilter: string = '';
 	let labelFilterComponent: { focus: () => void };
+	let groupByMode: GroupByMode = 'priority';
+	
+	// Persist groupBy mode in localStorage
+	const GROUP_BY_KEY = 'work-graph-group-by';
+	if (typeof window !== 'undefined') {
+		const stored = localStorage.getItem(GROUP_BY_KEY);
+		if (stored === 'priority' || stored === 'area' || stored === 'effort') {
+			groupByMode = stored;
+		}
+	}
 	
 	// Track expansion state separately to preserve across tree rebuilds
 	let expansionState = new Map<string, boolean>();
@@ -391,15 +402,38 @@
 				labelFilterComponent?.focus();
 			}
 		}
+		// 'G' (shift+g) to cycle group mode when in issues view
+		if (event.key === 'G' && event.shiftKey && currentView === 'issues') {
+			const active = document.activeElement;
+			if (active?.tagName !== 'INPUT' && active?.tagName !== 'TEXTAREA') {
+				event.preventDefault();
+				event.stopPropagation();
+				const idx = groupOrder.indexOf(groupByMode);
+				handleGroupByChange(groupOrder[(idx + 1) % groupOrder.length]);
+			}
+		}
 	}
 	
 	// Get help text based on current view mode
 	// Compute filtered tree whenever tree or labelFilter changes
 	$: filteredTree = labelFilter ? filterTreeByLabel(tree, labelFilter) : tree;
 
+	// Compute group sections from filtered tree
+	$: groupSections = groupByMode !== 'priority' ? groupTreeNodes(filteredTree, groupByMode) : [] as GroupSection[];
+
 	function handleLabelFilterChange(value: string) {
 		labelFilter = value;
 	}
+
+	function handleGroupByChange(mode: GroupByMode) {
+		groupByMode = mode;
+		if (typeof window !== 'undefined') {
+			localStorage.setItem(GROUP_BY_KEY, mode);
+		}
+	}
+
+	// Cycle group mode order for 'g' shortcut
+	const groupOrder: GroupByMode[] = ['priority', 'area', 'effort'];
 
 	function getHelpText(): string {
 		if (currentView === 'completed') {
@@ -447,6 +481,10 @@
 				onToggle={handleViewToggle}
 			/>
 			{#if currentView === 'issues'}
+				<GroupByDropdown
+					mode={groupByMode}
+					onChange={handleGroupByChange}
+				/>
 				<LabelFilter
 					bind:this={labelFilterComponent}
 					value={labelFilter}
@@ -522,6 +560,8 @@
 			{:else}
 				<WorkGraphTree 
 					tree={filteredTree} 
+					groups={groupSections}
+					groupMode={groupByMode}
 					{newIssueIds} 
 					wipItems={$wipItems} 
 					onToggleExpansion={handleToggleExpansion}
@@ -566,6 +606,8 @@
 				<span class="text-zinc-400">t/w</span> WIP↔tree
 				<span class="mx-3">·</span>
 				<span class="text-zinc-400">/</span> filter labels
+				<span class="mx-3">·</span>
+				<span class="text-zinc-400">G</span> cycle groups
 			</span>
 		{:else if currentView === 'completed'}
 			<span class="tracking-wide">

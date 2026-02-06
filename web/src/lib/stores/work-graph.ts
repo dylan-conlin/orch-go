@@ -266,6 +266,77 @@ export function buildTree(nodes: GraphNode[], edges: GraphEdge[]): TreeNode[] {
   return roots
 }
 
+// Grouping mode for Work Graph
+export type GroupByMode = 'priority' | 'area' | 'effort'
+
+// A group section for rendering
+export interface GroupSection {
+  label: string // Display label (e.g., "area:dashboard", "P1", "unlabeled")
+  key: string // Unique key for the group
+  nodes: TreeNode[]
+  unlabeled: boolean // Whether this is the catch-all unlabeled group
+}
+
+// Group tree nodes by the selected mode
+// Priority groups by priority level (P0, P1, P2, P3, P4)
+// Area/Effort groups by matching label prefix, with unlabeled at bottom
+export function groupTreeNodes(nodes: TreeNode[], mode: GroupByMode): GroupSection[] {
+  if (mode === 'priority') {
+    const groups = new Map<number, TreeNode[]>()
+    for (const node of nodes) {
+      const p = node.priority
+      if (!groups.has(p)) groups.set(p, [])
+      groups.get(p)!.push(node)
+    }
+    // Sort by priority number
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([p, items]) => ({
+        label: `P${p}`,
+        key: `priority-${p}`,
+        nodes: items,
+        unlabeled: false,
+      }))
+  }
+
+  // Label-based grouping (area: or effort:)
+  const prefix = mode + ':'
+  const groups = new Map<string, TreeNode[]>()
+  const unlabeled: TreeNode[] = []
+
+  for (const node of nodes) {
+    const match = (node.labels ?? []).find((l) => l.startsWith(prefix))
+    if (match) {
+      if (!groups.has(match)) groups.set(match, [])
+      groups.get(match)!.push(node)
+    } else {
+      unlabeled.push(node)
+    }
+  }
+
+  // Sort groups alphabetically by label
+  const sections: GroupSection[] = Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, items]) => ({
+      label,
+      key: `label-${label}`,
+      nodes: items,
+      unlabeled: false,
+    }))
+
+  // Unlabeled section at bottom
+  if (unlabeled.length > 0) {
+    sections.push({
+      label: 'unlabeled',
+      key: 'unlabeled',
+      nodes: unlabeled,
+      unlabeled: true,
+    })
+  }
+
+  return sections
+}
+
 // Filter tree nodes by label text. Keeps nodes (and their ancestors) where any label
 // contains the filter text (case-insensitive). When a child matches, its parent is kept
 // to preserve tree structure.
