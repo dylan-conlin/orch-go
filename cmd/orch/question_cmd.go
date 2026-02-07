@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -34,7 +33,7 @@ Examples:
 }
 
 func runQuestion(client opencode.ClientInterface, beadsID string) error {
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//

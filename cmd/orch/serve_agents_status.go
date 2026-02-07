@@ -72,7 +72,7 @@ func determineDeathReason(sessionID string, sessionCreatedAt time.Time, client o
 // getProjectAPIPort returns the allocated API port for the current project.
 // Returns 0 if no allocation exists or on error.
 func getProjectAPIPort() int {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return 0
 	}

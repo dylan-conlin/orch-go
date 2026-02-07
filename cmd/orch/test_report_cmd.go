@@ -99,7 +99,7 @@ func runTestReport(beadsID string) error {
 	beadsID = resolvedID
 
 	// Get current directory as project dir
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}

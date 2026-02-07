@@ -49,7 +49,7 @@ type DecisionsAPIResponse struct {
 //
 // Query params:
 //   - project_dir: Optional project directory to query. If not provided, uses default.
-func handleDecisions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -58,7 +58,7 @@ func handleDecisions(w http.ResponseWriter, r *http.Request) {
 	// Get project_dir from query params (for following orchestrator context)
 	projectDir := r.URL.Query().Get("project_dir")
 	if projectDir == "" {
-		projectDir = sourceDir
+		projectDir, _ = currentProjectDir()
 	}
 
 	// Initialize response with empty slices

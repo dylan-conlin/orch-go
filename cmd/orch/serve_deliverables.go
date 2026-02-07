@@ -15,7 +15,7 @@ import (
 // DeliverableOverrideRequest is the request body for POST /api/deliverables/override.
 type DeliverableOverrideRequest struct {
 	BeadsID    string            `json:"beads_id"`
-	Reasons    map[string]string `json:"reasons"` // Map of deliverable type -> reason for override
+	Reasons    map[string]string `json:"reasons"`               // Map of deliverable type -> reason for override
 	OverrideBy string            `json:"override_by,omitempty"` // "orchestrator" or "user"
 }
 
@@ -28,7 +28,7 @@ type DeliverableOverrideResponse struct {
 
 // handleDeliverablesStatus handles GET /api/deliverables/{beads-id}
 // Returns the deliverables status for a specific issue.
-func handleDeliverablesStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeliverablesStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -51,10 +51,7 @@ func handleDeliverablesStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Find workspace for this issue
 	workspacePath := ""
-	projectDir := sourceDir // Use the global sourceDir
-	if projectDir == "" {
-		projectDir = "."
-	}
+	projectDir, _ := currentProjectDir()
 
 	// Try to find workspace
 	workspaces, err := findWorkspacesForBeadsID(beadsID)
@@ -90,7 +87,7 @@ func handleDeliverablesStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleDeliverablesOverride handles POST /api/deliverables/override
 // Logs an override when closing with missing deliverables.
-func handleDeliverablesOverride(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeliverablesOverride(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -121,10 +118,7 @@ func handleDeliverablesOverride(w http.ResponseWriter, r *http.Request) {
 
 	// Get deliverables status to capture current state
 	workspacePath := ""
-	projectDir := sourceDir
-	if projectDir == "" {
-		projectDir = "."
-	}
+	projectDir, _ := currentProjectDir()
 
 	workspaces, err := findWorkspacesForBeadsID(req.BeadsID)
 	if err == nil && len(workspaces) > 0 {

@@ -380,7 +380,7 @@ func runDaemonDryRun() error {
 	fmt.Println()
 
 	// Get current directory for context
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 	projectName := filepath.Base(projectDir)
 
 	if result.Issue != nil {
@@ -508,7 +508,7 @@ func runDaemonPreview() error {
 	}
 
 	// Get current directory for context
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 	projectName := filepath.Base(projectDir)
 
 	// Display spawnable issue if available

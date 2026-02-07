@@ -176,7 +176,7 @@ func runStatusWithClient(client opencode.ClientInterface, serverURL string) erro
 	}
 
 	now := time.Now()
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// === Start independent async operations early ===
 	// These run concurrently with agent discovery to hide their latency.

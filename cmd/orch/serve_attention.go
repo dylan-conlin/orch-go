@@ -19,7 +19,7 @@ import (
 // handleLikelyDone returns LIKELY_DONE attention signals for the dashboard.
 // These are issues with recent commits but no active workspace, suggesting
 // they may be complete but not yet closed.
-func handleLikelyDone(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -28,7 +28,7 @@ func handleLikelyDone(w http.ResponseWriter, r *http.Request) {
 	// Get project directory from query parameter (default to sourceDir)
 	projectDir := r.URL.Query().Get("project")
 	if projectDir == "" {
-		projectDir = sourceDir
+		projectDir, _ = currentProjectDir()
 	}
 
 	// Get beads client (RPC or CLI fallback)
@@ -108,7 +108,7 @@ type AttentionAPIResponse struct {
 // Query parameters:
 //   - role: Role for priority scoring (human, orchestrator, daemon) - default: human
 //   - recently_closed_hours: Hours to look back for closed issues - default: 24
-func handleAttention(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -148,7 +148,7 @@ func handleAttention(w http.ResponseWriter, r *http.Request) {
 	// Get project directory from query parameter (default to sourceDir)
 	projectDir := r.URL.Query().Get("project")
 	if projectDir == "" {
-		projectDir = sourceDir
+		projectDir, _ = currentProjectDir()
 	}
 
 	// Get beads client (RPC or CLI fallback)
@@ -405,7 +405,7 @@ type VerificationEntry struct {
 
 // handleAttentionVerify handles POST /api/attention/verify requests.
 // It marks an issue as verified or needs_fix and persists to JSONL.
-func handleAttentionVerify(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAttentionVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -546,7 +546,7 @@ type VerifyFailedActionResponse struct {
 
 // handleVerifyFailedClear handles POST /api/attention/verify-failed/clear requests.
 // It removes a verification failure entry, marking it as resolved.
-func handleVerifyFailedClear(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleVerifyFailedClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -588,7 +588,7 @@ func handleVerifyFailedClear(w http.ResponseWriter, r *http.Request) {
 
 // handleVerifyFailedResetStatus handles POST /api/attention/verify-failed/reset-status requests.
 // It resets the issue status to 'open' for re-spawning with new instructions.
-func handleVerifyFailedResetStatus(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleVerifyFailedResetStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

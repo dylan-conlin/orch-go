@@ -269,7 +269,7 @@ func gatherHandoffData() (*HandoffData, error) {
 	}
 
 	// Get current project directory
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 	projectName := filepath.Base(projectDir)
 
 	// Get focus info

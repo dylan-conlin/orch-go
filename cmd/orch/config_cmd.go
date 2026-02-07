@@ -100,7 +100,7 @@ Examples:
 		key := args[0]
 		value := args[1]
 
-		cwd, err := os.Getwd()
+		cwd, err := currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}
@@ -148,7 +148,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 
-		cwd, err := os.Getwd()
+		cwd, err := currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}

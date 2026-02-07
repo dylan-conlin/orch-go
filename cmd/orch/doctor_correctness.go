@@ -15,7 +15,7 @@ func checkBeadsIntegrity() ServiceStatus {
 		FixAction: "Run: sqlite3 .beads/beads.db \".recover\" > recovered.sql && mv .beads/beads.db .beads/beads.db.corrupted && sqlite3 .beads/beads.db < recovered.sql",
 	}
 
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		status.Running = true // Skip check if can't get pwd
 		status.Details = "Could not determine working directory"

@@ -17,6 +17,17 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 )
 
+// currentProjectDir returns the project directory for the current process.
+// It prefers sourceDir (embedded at build time via ldflags) over os.Getwd(),
+// since the serve command may run from a different directory than the project.
+// Returns the directory and any error from os.Getwd() if sourceDir is unavailable.
+func currentProjectDir() (string, error) {
+	if sourceDir != "" && sourceDir != "unknown" {
+		return sourceDir, nil
+	}
+	return os.Getwd()
+}
+
 // truncate truncates a string to maxLen characters.
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -228,7 +239,7 @@ func resolveSessionIDWithClient(client opencode.ClientInterface, identifier stri
 		return identifier, nil
 	}
 
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// Strategy 1: Use findWorkspaceByBeadsID which scans SPAWN_CONTEXT.md
 	// This is the authoritative way to find workspace by beads ID

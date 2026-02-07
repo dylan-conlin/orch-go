@@ -135,7 +135,7 @@ func (p *spawnPipeline) runPreFlightValidation() error {
 			preCheckDir = absPath
 		}
 	} else {
-		preCheckDir, _ = os.Getwd()
+		preCheckDir, _ = currentProjectDir()
 	}
 
 	// STRATEGIC-FIRST ORCHESTRATION: Check for hotspots in task target area
@@ -178,7 +178,7 @@ func (p *spawnPipeline) resolveProject() error {
 			return fmt.Errorf("workdir is not a directory: %s", p.projectDir)
 		}
 	} else {
-		p.projectDir, err = os.Getwd()
+		p.projectDir, err = currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}

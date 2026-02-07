@@ -200,7 +200,7 @@ func loadActivityFromWorkspace(workspacePath string) []MessagePartResponse {
 //
 // GET /api/session/:sessionID/messages
 // Response: Array of MessagePartResponse in SSE-compatible format
-func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -227,7 +227,7 @@ func handleSessionMessages(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// OpenCode API failed (session may be deleted/cleaned up).
 		// Fall back to ACTIVITY.json if available in the workspace.
-		projectDir, _ := os.Getwd()
+		projectDir, _ := currentProjectDir()
 		workspacePath := findWorkspaceBySessionID(projectDir, sessionID)
 		if workspacePath != "" {
 			if events := loadActivityFromWorkspace(workspacePath); events != nil {

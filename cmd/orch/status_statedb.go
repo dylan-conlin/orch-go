@@ -66,7 +66,7 @@ func fetchAgentsFromStateDB(showAll bool) *stateDBAgentResult {
 	}
 
 	now := time.Now()
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	result := &stateDBAgentResult{
 		agents:           make([]AgentInfo, 0, len(dbAgents)),

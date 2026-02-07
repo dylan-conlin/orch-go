@@ -37,7 +37,7 @@ func init() {
 // runAttach attaches to an OpenCode session via workspace name.
 func runAttach(workspaceName string) error {
 	// Get current directory to determine project
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}

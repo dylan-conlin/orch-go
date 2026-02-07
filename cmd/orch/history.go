@@ -99,7 +99,7 @@ func runHistory() error {
 	projectDir := historyProject
 	if projectDir == "" {
 		var err error
-		projectDir, err = os.Getwd()
+		projectDir, err = currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}

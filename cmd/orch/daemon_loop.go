@@ -83,7 +83,7 @@ func buildDaemonConfig() (daemon.Config, error) {
 // initDaemonRuntime creates and initializes the full daemon runtime:
 // daemon instance, processed-issue cache, event logger, and signal handler.
 func initDaemonRuntime(config daemon.Config) (*daemonRuntime, error) {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}

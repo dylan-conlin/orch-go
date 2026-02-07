@@ -89,7 +89,7 @@ func runRework(beadsID, failureType, description, workdir string, noSpawn bool) 
 		}
 		beads.DefaultDir = projectDir
 	} else {
-		projectDir, err = os.Getwd()
+		projectDir, err = currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}

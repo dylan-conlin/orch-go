@@ -151,7 +151,7 @@ type CompletionInfo struct {
 //
 // The workdir parameter allows cross-project review by specifying a different project directory.
 func getCompletionsForReview(workdir string) ([]CompletionInfo, error) {
-	currentDir, err := os.Getwd()
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}
@@ -458,7 +458,7 @@ func groupByProject(completions []CompletionInfo) map[string][]CompletionInfo {
 // runReviewSingle displays detailed review information for a single agent.
 func runReviewSingle(beadsID, workdir string) error {
 	// Try to find workspace from current directory
-	currentDir, err := os.Getwd()
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
@@ -742,7 +742,7 @@ func runReviewDone(project, workdir string) error {
 		return err
 	}
 
-	currentDir, err := os.Getwd()
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}

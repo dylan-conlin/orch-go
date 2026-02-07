@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -84,7 +83,7 @@ type SynthesisResponse struct {
 //   - project: Project filter (full path or project name). Default: none (all projects)
 //
 // Pipeline: collect (sessions, tmux, workspaces) -> enrich (beads, investigation, synthesis) -> filter -> format
-func handleAgents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -95,12 +94,9 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 	projectFilterParam := parseProjectFilter(r)
 
 	// Use sourceDir (set at build time) since serve may run from any working directory
-	projectDir := sourceDir
-	if projectDir == "" || projectDir == "unknown" {
-		projectDir, _ = os.Getwd()
-	}
+	projectDir, _ := currentProjectDir()
 
-	client := opencode.NewClient(serverURL) // entry-point: HTTP handler creates its own client
+	client := opencode.NewClient(s.ServerURL)
 
 	// Get active sessions from OpenCode (all projects, not filtered by directory)
 	sessions, err := client.ListSessions("")
@@ -116,7 +112,7 @@ func handleAgents(w http.ResponseWriter, r *http.Request) {
 
 	// Build multi-project workspace cache for cross-project agent visibility (30s TTL).
 	projectDirs := extractUniqueProjectDirs(sessions, projectDir)
-	wsCache := globalWorkspaceCacheInstance.getCachedWorkspace(projectDirs)
+	wsCache := s.WorkspaceCache.getCachedWorkspace(projectDirs)
 
 	// Create collection context with thresholds and dependencies
 	ctx := newAgentCollectionContext(client, wsCache, sinceDuration)
@@ -164,30 +160,30 @@ func filterSessionsByTime(sessions []opencode.Session, sinceDuration time.Durati
 // handleCacheInvalidate clears all dashboard caches to force fresh data on next request.
 // This is called by orch complete to ensure the dashboard shows updated agent status.
 // Without this, the TTL cache holds stale "active" status after agents complete.
-func handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCacheInvalidate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Invalidate beads cache (open issues, all issues, comments)
-	if globalBeadsCache != nil {
-		globalBeadsCache.invalidate()
+	if s.BeadsCache != nil {
+		s.BeadsCache.invalidate()
 	}
 
 	// Invalidate beads stats cache (stats, ready issues)
 	// Empty string clears all project caches
-	if globalBeadsStatsCache != nil {
-		globalBeadsStatsCache.invalidate("")
+	if s.BeadsStatsCache != nil {
+		s.BeadsStatsCache.invalidate("")
 	}
 
 	// Invalidate kb health cache (knowledge hygiene signals)
-	if globalKBHealthCache != nil {
-		globalKBHealthCache.invalidate()
+	if s.KBHealthCache != nil {
+		s.KBHealthCache.invalidate()
 	}
 
 	// Invalidate workspace cache (workspace metadata)
-	globalWorkspaceCacheInstance.invalidate()
+	s.WorkspaceCache.invalidate()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{

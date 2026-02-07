@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
@@ -91,7 +90,7 @@ func truncateSessionID(id string) string {
 }
 
 func runTail(client opencode.ClientInterface, beadsID string, lines int) error {
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// Strategy: Workspace file first (fast path), then derived lookups
 	//

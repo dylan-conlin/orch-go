@@ -28,7 +28,7 @@ type ApproveResponse struct {
 
 // handleApprove handles POST /api/approve to approve an agent's work.
 // Creates a beads comment with ✅ APPROVED format and updates workspace ReviewState.
-func handleApprove(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -121,7 +121,7 @@ func handleApprove(w http.ResponseWriter, r *http.Request) {
 // Returns (workspacePath, beadsID, error).
 func findWorkspaceAndBeadsID(agentID string) (string, string, error) {
 	// Get current working directory as project base
-	currentDir, err := os.Getwd()
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get working directory: %w", err)
 	}

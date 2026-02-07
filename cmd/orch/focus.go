@@ -264,7 +264,7 @@ func getActiveIssues() []string {
 
 func getActiveIssuesWithClient(client opencode.ClientInterface) []string {
 	// Get current directory for project context
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return nil
 	}

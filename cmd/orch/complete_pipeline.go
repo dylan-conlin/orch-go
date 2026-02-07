@@ -94,7 +94,7 @@ type CompletionTelemetry struct {
 // It handles orchestrator registry lookup, workspace name lookup, beads ID resolution,
 // and cross-project detection.
 func resolveTarget(identifier, workdir string) (*CompletionTarget, error) {
-	currentDir, err := os.Getwd()
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current directory: %w", err)
 	}

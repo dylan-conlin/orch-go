@@ -4,7 +4,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -96,7 +95,7 @@ type ActiveOutput struct {
 
 func runFrontier() error {
 	// Resolve project directory for beads operations
-	currentDir, err := os.Getwd()
+	currentDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}

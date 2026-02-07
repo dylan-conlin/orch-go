@@ -44,7 +44,7 @@ Examples:
 			return fmt.Errorf("provide beads IDs or use --all to discover completable agents")
 		}
 
-		currentDir, err := os.Getwd()
+		currentDir, err := currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}

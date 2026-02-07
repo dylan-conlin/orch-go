@@ -61,7 +61,7 @@ func runReflect() error {
 	projectDir := reflectProjectDir
 	if projectDir == "" {
 		var err error
-		projectDir, err = os.Getwd()
+		projectDir, err = currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}

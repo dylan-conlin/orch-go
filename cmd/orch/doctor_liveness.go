@@ -424,7 +424,7 @@ func checkStalledSessionsWithClient(client opencode.ClientInterface) ServiceStat
 	now := time.Now()
 
 	// Get current project directory for session queries
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// Fetch sessions
 	var sessions []opencode.Session

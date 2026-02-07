@@ -192,7 +192,7 @@ func fetchKBReflect(projectDir, reflectType string) ([]map[string]interface{}, e
 // handleKBHealth returns knowledge hygiene signals from kb reflect.
 // Used by Strategic Center dashboard to surface synthesis opportunities,
 // pending promotions, stale decisions, and investigation promotions.
-func handleKBHealth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleKBHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -201,7 +201,7 @@ func handleKBHealth(w http.ResponseWriter, r *http.Request) {
 	// Get project directory from query parameter (default to sourceDir)
 	projectDir := r.URL.Query().Get("project")
 	if projectDir == "" {
-		projectDir = sourceDir
+		projectDir, _ = currentProjectDir()
 	}
 
 	// Check if cache is initialized

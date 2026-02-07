@@ -99,7 +99,7 @@ type HotspotReport struct {
 }
 
 func runHotspot() error {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}

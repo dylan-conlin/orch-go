@@ -70,7 +70,7 @@ func init() {
 }
 
 func runReconcile() error {
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 	zombies, err := findZombieIssues(projectDir)
 	if err != nil {
 		return fmt.Errorf("failed to find zombie issues: %w", err)

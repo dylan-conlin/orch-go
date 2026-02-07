@@ -308,7 +308,7 @@ func findCleanableWorkspaces(projectDir string, beadsChecker *DefaultBeadsStatus
 }
 
 func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms bool, cleanInvestigations bool, archiveStale bool, staleDays int, archiveUntracked bool, untrackedDays int, cleanSessions bool, sessionsDays int, preserveOrchestrator bool, killProcesses bool) error {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
@@ -551,7 +551,7 @@ func cleanOrphanedDiskSessions(serverURL string, dryRun bool, preserveOrchestrat
 
 func cleanOrphanedDiskSessionsWithClient(client opencode.ClientInterface, dryRun bool, preserveOrchestrator bool) (int, error) {
 	// Get current project directory
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get current directory: %w", err)
 	}

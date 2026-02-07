@@ -184,7 +184,7 @@ func runBuildStep() error {
 	buildDir := sourceDir
 	if buildDir == "unknown" {
 		// Try current directory
-		cwd, err := os.Getwd()
+		cwd, err := currentProjectDir()
 		if err != nil {
 			return fmt.Errorf("cannot determine build directory: %w", err)
 		}
@@ -481,7 +481,7 @@ func findOrchProjectDir() string {
 	}
 
 	// Try current directory
-	cwd, err := os.Getwd()
+	cwd, err := currentProjectDir()
 	if err == nil {
 		if _, err := os.Stat(filepath.Join(cwd, "Procfile")); err == nil {
 			return cwd

@@ -49,7 +49,7 @@ type ArtifactFrontmatter struct {
 // Query params:
 //   - project_dir: Project directory to query (defaults to sourceDir)
 //   - since: Time filter for "recently updated" (e.g., "7d", "24h", "30d", "all")
-func handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -58,7 +58,7 @@ func handleKBArtifacts(w http.ResponseWriter, r *http.Request) {
 	// Get query params
 	projectDir := r.URL.Query().Get("project_dir")
 	if projectDir == "" {
-		projectDir = sourceDir
+		projectDir, _ = currentProjectDir()
 	}
 
 	sinceParam := r.URL.Query().Get("since")
@@ -592,7 +592,7 @@ type ArtifactContentResponse struct {
 // Query params:
 //   - path: Relative path to the artifact (e.g., ".kb/investigations/2026-01-31-design-example.md")
 //   - project_dir: Project directory (defaults to sourceDir)
-func handleKBArtifactContent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleKBArtifactContent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -612,7 +612,7 @@ func handleKBArtifactContent(w http.ResponseWriter, r *http.Request) {
 
 	projectDir := r.URL.Query().Get("project_dir")
 	if projectDir == "" {
-		projectDir = sourceDir
+		projectDir, _ = currentProjectDir()
 	}
 
 	// Construct full path and validate it's within project

@@ -515,7 +515,7 @@ func synthesizeAnswer(question, context string) (string, error) {
 
 	// Create a temporary session for synthesis
 	client := opencode.NewClient(serverURL) // entry-point: synthesizeAnswer is a self-contained operation
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// Create session with title indicating kb ask
 	title := fmt.Sprintf("kb-ask-%d", time.Now().Unix())
@@ -588,7 +588,7 @@ Provide your answer:`, question, context)
 
 // saveAsInvestigation saves the Q&A as an investigation artifact.
 func saveAsInvestigation(question, answer string, context *KBContextResult) (string, error) {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return "", err
 	}
@@ -723,7 +723,7 @@ func resolveArtifactPath(path string) (string, error) {
 		return path, nil
 	}
 
-	cwd, err := os.Getwd()
+	cwd, err := currentProjectDir()
 	if err != nil {
 		return "", err
 	}
@@ -900,7 +900,7 @@ func findKBDir(projectDir string) (string, error) {
 
 // runKBArchiveOld archives investigations older than the specified duration
 func runKBArchiveOld(olderThan string, dryRun bool) error {
-	projectDir, err := os.Getwd()
+	projectDir, err := currentProjectDir()
 	if err != nil {
 		return err
 	}

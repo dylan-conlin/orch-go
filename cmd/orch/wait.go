@@ -156,7 +156,7 @@ func resolveBeadsIDWithClient(client opencode.ClientInterface, identifier string
 		// Continue to other strategies - might be a workspace name
 	}
 
-	projectDir, _ := os.Getwd()
+	projectDir, _ := currentProjectDir()
 
 	// Strategy 2: If it's a session ID, find workspace and extract beads ID from SPAWN_CONTEXT.md
 	if strings.HasPrefix(identifier, "ses_") {
