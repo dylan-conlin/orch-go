@@ -73,6 +73,21 @@ func (c *CLIClient) bdCommand(args ...string) *exec.Cmd {
 	return cmd
 }
 
+func (c *CLIClient) commandEnv() []string {
+	if c.Env != nil {
+		return c.Env
+	}
+	return os.Environ()
+}
+
+func (c *CLIClient) output(args ...string) ([]byte, error) {
+	return runBDCommand(c.WorkDir, c.BdPath, c.commandEnv(), false, args...)
+}
+
+func (c *CLIClient) combinedOutput(args ...string) ([]byte, error) {
+	return runBDCommand(c.WorkDir, c.BdPath, c.commandEnv(), true, args...)
+}
+
 // Ready retrieves issues that are ready for work.
 func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 	cmdArgs := []string{"ready", "--json"}
@@ -87,8 +102,7 @@ func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 	}
 	cmdArgs = append(cmdArgs, "--limit", fmt.Sprintf("%d", limit))
 
-	cmd := c.bdCommand(cmdArgs...)
-	output, err := cmd.Output()
+	output, err := c.output(cmdArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("bd ready failed: %w", err)
 	}
@@ -103,8 +117,7 @@ func (c *CLIClient) Ready(args *ReadyArgs) ([]Issue, error) {
 
 // Show retrieves a single issue by ID.
 func (c *CLIClient) Show(id string) (*Issue, error) {
-	cmd := c.bdCommand("show", id, "--json")
-	output, err := cmd.Output()
+	output, err := c.output("show", id, "--json")
 	if err != nil {
 		return nil, fmt.Errorf("bd show failed: %w", err)
 	}
@@ -143,8 +156,7 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 		}
 	}
 
-	cmd := c.bdCommand(cmdArgs...)
-	output, err := cmd.Output()
+	output, err := c.output(cmdArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("bd list failed: %w", err)
 	}
@@ -159,8 +171,7 @@ func (c *CLIClient) List(args *ListArgs) ([]Issue, error) {
 
 // Stats retrieves beads statistics.
 func (c *CLIClient) Stats() (*Stats, error) {
-	cmd := c.bdCommand("stats", "--json")
-	output, err := cmd.Output()
+	output, err := c.output("stats", "--json")
 	if err != nil {
 		return nil, fmt.Errorf("bd stats failed: %w", err)
 	}
@@ -175,8 +186,7 @@ func (c *CLIClient) Stats() (*Stats, error) {
 
 // Comments retrieves comments for an issue.
 func (c *CLIClient) Comments(id string) ([]Comment, error) {
-	cmd := c.bdCommand("comments", id, "--json")
-	output, err := cmd.Output()
+	output, err := c.output("comments", id, "--json")
 	if err != nil {
 		return nil, fmt.Errorf("bd comments failed: %w", err)
 	}
@@ -193,8 +203,8 @@ func (c *CLIClient) Comments(id string) ([]Comment, error) {
 // Note: The CLI client ignores the author parameter as bd CLI uses
 // the current user/agent automatically.
 func (c *CLIClient) AddComment(id, _, text string) error {
-	cmd := c.bdCommand("comment", id, text)
-	return cmd.Run()
+	_, err := c.combinedOutput("comment", id, text)
+	return err
 }
 
 // CloseIssue closes an issue with an optional reason.
@@ -205,8 +215,8 @@ func (c *CLIClient) CloseIssue(id, reason string) error {
 		args = append(args, "--reason", reason)
 	}
 
-	cmd := c.bdCommand(args...)
-	return cmd.Run()
+	_, err := c.combinedOutput(args...)
+	return err
 }
 
 // Create creates a new issue.
@@ -232,8 +242,7 @@ func (c *CLIClient) Create(args *CreateArgs) (*Issue, error) {
 		cmdArgs = append(cmdArgs, "--parent", args.Parent)
 	}
 
-	cmd := c.bdCommand(cmdArgs...)
-	output, err := cmd.Output()
+	output, err := c.output(cmdArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("bd create failed: %w", err)
 	}
@@ -272,8 +281,7 @@ func (c *CLIClient) Update(args *UpdateArgs) (*Issue, error) {
 		cmdArgs = append(cmdArgs, "--remove-label", label)
 	}
 
-	cmd := c.bdCommand(cmdArgs...)
-	output, err := cmd.CombinedOutput()
+	output, err := c.combinedOutput(cmdArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("bd update failed: %w: %s", err, string(output))
 	}
@@ -284,14 +292,14 @@ func (c *CLIClient) Update(args *UpdateArgs) (*Issue, error) {
 
 // AddLabel adds a label to an issue.
 func (c *CLIClient) AddLabel(id, label string) error {
-	cmd := c.bdCommand("label", id, label)
-	return cmd.Run()
+	_, err := c.combinedOutput("label", id, label)
+	return err
 }
 
 // RemoveLabel removes a label from an issue.
 func (c *CLIClient) RemoveLabel(id, label string) error {
-	cmd := c.bdCommand("unlabel", id, label)
-	return cmd.Run()
+	_, err := c.combinedOutput("unlabel", id, label)
+	return err
 }
 
 // ResolveID resolves a partial issue ID to a full ID.

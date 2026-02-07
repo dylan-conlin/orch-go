@@ -1,9 +1,7 @@
 package attention
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -12,9 +10,13 @@ import (
 // for an extended period (>2h) without progress. These are Authority signals that
 // require human intervention.
 type StuckCollector struct {
-	client           *http.Client
-	apiURL           string
-	stuckThresholdH  float64 // Hours after which an agent is considered stuck (default: 2)
+	client          *http.Client
+	apiURL          string
+	stuckThresholdH float64 // Hours after which an agent is considered stuck (default: 2)
+
+	agentSnapshot []AgentAPIItem
+	snapshotErr   error
+	useSnapshot   bool
 }
 
 // NewStuckCollector creates a new StuckCollector with the given HTTP client and API URL.
@@ -31,51 +33,31 @@ func NewStuckCollector(client *http.Client, apiURL string, stuckThresholdH float
 	}
 }
 
-// StuckAgentItem represents an agent from the /api/agents response.
-// This is a subset of the full response - only fields needed for stuck detection.
-type StuckAgentItem struct {
-	ID             string `json:"id"`
-	BeadsID        string `json:"beads_id"`
-	BeadsTitle     string `json:"beads_title"`
-	Status         string `json:"status"` // active, idle, dead, completed, awaiting-cleanup
-	Phase          string `json:"phase"`
-	Task           string `json:"task"`
-	Project        string `json:"project"`
-	Skill          string `json:"skill"`
-	IsStalled      bool   `json:"is_stalled"`       // True if same phase for 15+ min
-	SpawnedAt      string `json:"spawned_at"`       // ISO 8601 timestamp
-	UpdatedAt      string `json:"updated_at"`       // ISO 8601 timestamp
-	LastActivityAt string `json:"last_activity_at"` // ISO 8601 timestamp
-	Runtime        string `json:"runtime"`
+// NewStuckCollectorWithSnapshot creates a collector that uses a pre-fetched shared snapshot.
+// If snapshotErr is non-nil, Collect returns that error without making API requests.
+func NewStuckCollectorWithSnapshot(agentSnapshot []AgentAPIItem, snapshotErr error, stuckThresholdH float64) *StuckCollector {
+	if stuckThresholdH <= 0 {
+		stuckThresholdH = 2.0
+	}
+
+	return &StuckCollector{
+		stuckThresholdH: stuckThresholdH,
+		agentSnapshot:   agentSnapshot,
+		snapshotErr:     snapshotErr,
+		useSnapshot:     true,
+	}
 }
+
+// StuckAgentItem represents an agent from the /api/agents response.
+// It aliases AgentAPIItem so stuck and verify collectors can share one snapshot.
+type StuckAgentItem = AgentAPIItem
 
 // Collect gathers attention items for agents that appear stuck (running >2h).
 // These are Authority signals requiring human intervention.
 func (c *StuckCollector) Collect(role string) ([]AttentionItem, error) {
-	// Query all agents (since=all to include historical)
-	url := fmt.Sprintf("%s/api/agents?since=all", c.apiURL)
-
-	resp, err := c.client.Get(url)
+	agents, err := c.resolveAgents()
 	if err != nil {
-		return nil, fmt.Errorf("failed to query agents API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("agents API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Read body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read agents response: %w", err)
-	}
-
-	// Parse response - agents API returns a raw array
-	var agents []StuckAgentItem
-	if err := json.Unmarshal(body, &agents); err != nil {
-		return nil, fmt.Errorf("failed to decode agents response: %w", err)
+		return nil, err
 	}
 
 	// Filter for stuck agents
@@ -142,7 +124,7 @@ func (c *StuckCollector) Collect(role string) ([]AttentionItem, error) {
 		item := AttentionItem{
 			ID:          fmt.Sprintf("stuck-%s", agent.BeadsID),
 			Source:      "agent",
-			Concern:     Authority, // Requires human intervention
+			Concern:     Authority,
 			Signal:      "stuck",
 			Subject:     agent.BeadsID,
 			Summary:     summary,
@@ -151,21 +133,32 @@ func (c *StuckCollector) Collect(role string) ([]AttentionItem, error) {
 			ActionHint:  fmt.Sprintf("tmux attach -t %s # Review and intervene", agent.ID),
 			CollectedAt: now,
 			Metadata: map[string]any{
-				"agent_id":            agent.ID,
-				"phase":               agent.Phase,
-				"project":             agent.Project,
-				"skill":               agent.Skill,
-				"spawned_at":          agent.SpawnedAt,
-				"last_activity_at":    agent.LastActivityAt,
-				"running_hours":       runningDuration.Hours(),
-				"inactivity_minutes":  inactivityDuration.Minutes(),
-				"is_stalled":          agent.IsStalled,
+				"agent_id":           agent.ID,
+				"phase":              agent.Phase,
+				"project":            agent.Project,
+				"skill":              agent.Skill,
+				"spawned_at":         agent.SpawnedAt,
+				"last_activity_at":   agent.LastActivityAt,
+				"running_hours":      runningDuration.Hours(),
+				"inactivity_minutes": inactivityDuration.Minutes(),
+				"is_stalled":         agent.IsStalled,
 			},
 		}
 		items = append(items, item)
 	}
 
 	return items, nil
+}
+
+func (c *StuckCollector) resolveAgents() ([]AgentAPIItem, error) {
+	if c.useSnapshot {
+		if c.snapshotErr != nil {
+			return nil, c.snapshotErr
+		}
+		return c.agentSnapshot, nil
+	}
+
+	return FetchAgentSnapshot(c.client, c.apiURL)
 }
 
 // calculateStuckPriority determines priority based on role and how long stuck.

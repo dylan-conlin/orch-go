@@ -30,6 +30,10 @@ var (
 
 // Compact mode thresholds
 const (
+	// HTTP timeout for status command API requests.
+	// Keep this short so monitoring stays responsive when OpenCode is degraded.
+	statusAPIRequestTimeout = 5 * time.Second
+
 	// Only show orchestrator sessions from the last N hours in compact mode
 	compactOrchestratorSessionsMaxAge = 6 * time.Hour
 	// Maximum orchestrator sessions to show in compact mode
@@ -163,7 +167,7 @@ type StatusOutput struct {
 }
 
 func runStatus(serverURL string) error {
-	return runStatusWithClient(opencode.NewClientWithTimeout(serverURL, 30*time.Second), serverURL)
+	return runStatusWithClient(opencode.NewClientWithTimeout(serverURL, statusAPIRequestTimeout), serverURL)
 }
 
 func runStatusWithClient(client opencode.ClientInterface, serverURL string) error {
@@ -208,10 +212,7 @@ func runStatusWithClient(client opencode.ClientInterface, serverURL string) erro
 			Start: now.Add(-1 * time.Hour).UnixMilli(),
 		}
 	}
-	sessions, err := client.ListSessionsWithOpts("", listOpts)
-	if err != nil {
-		return fmt.Errorf("failed to list sessions: %w", err)
-	}
+	sessions, opencodeSessionsAvailable := listSessionsForStatus(client, listOpts, debugTiming)
 	timer("ListSessions")
 
 	var agents []AgentInfo
@@ -223,7 +224,7 @@ func runStatusWithClient(client opencode.ClientInterface, serverURL string) erro
 		}
 
 		// Enrich state DB agents with live data (processing, tokens, phase, issues)
-		enrichStateDBAgentsLive(stateDBResult, client, sessions, now, statusAll, projectDir, timer)
+		enrichStateDBAgentsLive(stateDBResult, client, sessions, now, statusAll, projectDir, opencodeSessionsAvailable, timer)
 
 		// Discover any agents NOT in state DB (untracked sessions, legacy agents)
 		fallbackAgents, _, fallbackProjectDirs, _ := fallbackDiscoverAgents(sessions, now, projectDir)
@@ -268,7 +269,8 @@ func runStatusWithClient(client opencode.ClientInterface, serverURL string) erro
 		agent := &filteredAgents[i]
 
 		// Determine if this agent needs token fetch
-		needsTokenFetch := agent.Tokens == nil &&
+		needsTokenFetch := opencodeSessionsAvailable &&
+			agent.Tokens == nil &&
 			agent.SessionID != "" && agent.SessionID != "tmux-stalled" &&
 			(statusAll || agent.IsProcessing)
 

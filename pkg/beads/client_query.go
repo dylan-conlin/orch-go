@@ -1,7 +1,6 @@
 package beads
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -130,18 +129,10 @@ func (c *Client) ResolveID(partialID string) (string, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackReady() ([]Issue, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	// Use --limit 0 to get ALL ready issues (bd ready defaults to limit 10)
-	cmd := exec.CommandContext(ctx, getBdPath(), "ready", "--json", "--limit", "0")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, "ready", "--json", "--limit", "0")
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd ready timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -163,9 +154,6 @@ func FallbackReady() ([]Issue, error) {
 // Uses getBdPath() to resolve the bd executable location.
 // Uses --limit 0 to get ALL issues (bd list defaults to 50 most recent).
 func FallbackList(status string) ([]Issue, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	// Use --limit 0 to get ALL issues. Without this, bd list returns only
 	// the 50 most recent issues, which can miss in_progress issues when
 	// the repo has many recent closed issues (discovered in orch-go-20942).
@@ -174,14 +162,9 @@ func FallbackList(status string) ([]Issue, error) {
 		args = append(args, "--status", status)
 	}
 
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd list timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -207,20 +190,12 @@ func FallbackListByIDs(ids []string) ([]Issue, error) {
 		return []Issue{}, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	// Use --id with comma-separated IDs and --all to include closed issues
 	args := []string{"list", "--json", "--all", "--id", strings.Join(ids, ",")}
 
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd list --id timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -245,21 +220,13 @@ func FallbackListByParent(parentID string) ([]Issue, error) {
 		return []Issue{}, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	// Use --parent and --all to include closed children
 	// Use --limit 0 to get all children
 	args := []string{"list", "--json", "--limit", "0", "--parent", parentID}
 
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd list --parent timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -280,17 +247,9 @@ func FallbackListByParent(parentID string) ([]Issue, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackStats() (*Stats, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, getBdPath(), "stats", "--json")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, "stats", "--json")
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd stats timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {

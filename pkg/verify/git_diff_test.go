@@ -663,6 +663,28 @@ func TestIsExternalPath(t *testing.T) {
 	}
 }
 
+func TestIsWorkspaceArtifactPath(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{input: ".orch/workspace/og-arch-test/SYNTHESIS.md", expected: true},
+		{input: "./.orch/workspace/og-arch-test/render.yaml", expected: true},
+		{input: ".orch/workspace-archive/og-arch-test/SYNTHESIS.md", expected: true},
+		{input: ".orch/templates/SYNTHESIS.md", expected: false},
+		{input: "pkg/verify/git_diff.go", expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := IsWorkspaceArtifactPath(tt.input)
+			if got != tt.expected {
+				t.Errorf("IsWorkspaceArtifactPath(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestExpandPath(t *testing.T) {
 	// Test home directory expansion
 	path, err := ExpandPath("~/test.txt")
@@ -783,6 +805,48 @@ Modified external file
 	}
 	if len(result.InvalidExternalFiles) > 0 {
 		t.Errorf("Expected no invalid external files, got: %v", result.InvalidExternalFiles)
+	}
+}
+
+func TestVerifyGitDiff_WorkspaceArtifactsIgnored(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	workspaceName := "og-arch-design-state-07feb-abcd"
+	workspaceDir := filepath.Join(tmpDir, ".orch", "workspace", workspaceName)
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+
+	if err := spawn.WriteSpawnTime(workspaceDir, time.Now().Add(-30*time.Minute)); err != nil {
+		t.Fatalf("failed to write spawn time: %v", err)
+	}
+
+	synthesisContent := `# Session Synthesis
+
+## TLDR
+Design-only session
+
+## Delta (What Changed)
+
+### Files Created
+- ` + "`.orch/workspace/" + workspaceName + `/SYNTHESIS.md` + "`" + ` - Session synthesis artifact
+`
+	if err := os.WriteFile(filepath.Join(workspaceDir, "SYNTHESIS.md"), []byte(synthesisContent), 0644); err != nil {
+		t.Fatalf("failed to write SYNTHESIS.md: %v", err)
+	}
+
+	result := VerifyGitDiff(workspaceDir, tmpDir)
+	if !result.Passed {
+		t.Errorf("VerifyGitDiff() should pass when only workspace artifacts are claimed, errors: %v", result.Errors)
+	}
+	if len(result.IgnoredWorkspaceFiles) != 1 {
+		t.Errorf("expected 1 ignored workspace file, got: %v", result.IgnoredWorkspaceFiles)
+	}
+	if len(result.MissingFromDiff) != 0 {
+		t.Errorf("expected no missing files from diff, got: %v", result.MissingFromDiff)
+	}
+	if !strings.Contains(strings.Join(result.Warnings, "\n"), "workspace artifact file(s) skipped") {
+		t.Errorf("expected warning about skipped workspace artifacts, got: %v", result.Warnings)
 	}
 }
 

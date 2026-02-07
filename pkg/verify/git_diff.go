@@ -23,6 +23,8 @@ type GitDiffResult struct {
 	ActualFiles     []string // Files in actual git diff since spawn
 	MissingFromDiff []string // Files claimed but not in diff
 	ExtraInDiff     []string // Files in diff but not claimed (info only)
+	// Workspace artifact files claimed in SYNTHESIS that are intentionally not tracked by git.
+	IgnoredWorkspaceFiles []string
 
 	// Cross-repo file verification results
 	ExternalFiles        []string             // External files claimed (~/..., /..., ../)
@@ -258,6 +260,16 @@ func NormalizePath(path string) string {
 	return path
 }
 
+// IsWorkspaceArtifactPath checks if a file path points to generated workspace artifacts.
+//
+// Paths under .orch/workspace/ are intentionally gitignored in orch-go, so they
+// cannot appear in git diff. Agents may still legitimately claim them in SYNTHESIS.
+func IsWorkspaceArtifactPath(path string) bool {
+	normalized := NormalizePath(path)
+	return strings.HasPrefix(normalized, ".orch/workspace/") ||
+		strings.HasPrefix(normalized, ".orch/workspace-archive/")
+}
+
 // IsExternalPath checks if a file path refers to a location outside the current repo.
 // External paths include:
 // - Paths starting with ~/ (home directory)
@@ -409,6 +421,8 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 	for _, claimed := range allClaimedFiles {
 		if IsExternalPath(claimed) {
 			result.ExternalFiles = append(result.ExternalFiles, claimed)
+		} else if IsWorkspaceArtifactPath(claimed) {
+			result.IgnoredWorkspaceFiles = append(result.IgnoredWorkspaceFiles, claimed)
 		} else {
 			localFiles = append(localFiles, claimed)
 		}
@@ -503,6 +517,11 @@ func VerifyGitDiff(workspacePath, projectDir string) GitDiffResult {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("%d external file(s) verified via mtime check (cross-repo changes)", validCount))
 		}
+	}
+
+	if len(result.IgnoredWorkspaceFiles) > 0 {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("%d workspace artifact file(s) skipped from git diff verification", len(result.IgnoredWorkspaceFiles)))
 	}
 
 	return result

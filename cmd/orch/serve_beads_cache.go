@@ -18,11 +18,20 @@ type projectCacheEntry struct {
 
 	// Graph cache keyed by "scope:parent" (e.g., "focus:", "open:", "focus:orch-go-123")
 	graphCache map[string]*graphCacheEntry
+
+	// Dependency graph cache keyed by scope (e.g., "open", "all")
+	dependencyGraphCache map[string]*dependencyGraphCacheEntry
 }
 
 // graphCacheEntry holds a cached graph response.
 type graphCacheEntry struct {
 	response  *BeadsGraphAPIResponse
+	fetchedAt time.Time
+}
+
+// dependencyGraphCacheEntry holds cached dependency edges for a scope.
+type dependencyGraphCacheEntry struct {
+	edges     []GraphEdge
 	fetchedAt time.Time
 }
 
@@ -239,6 +248,38 @@ func (c *beadsStatsCache) getGraph(projectDir, cacheKey string, buildFn func() (
 	c.mu.Unlock()
 
 	return resp, nil
+}
+
+// getDependencyGraph returns cached dependency edges or fetches fresh if stale.
+func (c *beadsStatsCache) getDependencyGraph(projectDir, cacheKey string, buildFn func() ([]GraphEdge, error)) ([]GraphEdge, error) {
+	entry := c.getOrCreateEntry(projectDir)
+
+	c.mu.RLock()
+	if entry.dependencyGraphCache != nil {
+		if ge, ok := entry.dependencyGraphCache[cacheKey]; ok && time.Since(ge.fetchedAt) < c.graphTTL {
+			result := ge.edges
+			c.mu.RUnlock()
+			return result, nil
+		}
+	}
+	c.mu.RUnlock()
+
+	edges, err := buildFn()
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	if entry.dependencyGraphCache == nil {
+		entry.dependencyGraphCache = make(map[string]*dependencyGraphCacheEntry)
+	}
+	entry.dependencyGraphCache[cacheKey] = &dependencyGraphCacheEntry{
+		edges:     edges,
+		fetchedAt: time.Now(),
+	}
+	c.mu.Unlock()
+
+	return edges, nil
 }
 
 // invalidate clears cached data, forcing fresh fetches on next request.

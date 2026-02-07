@@ -53,8 +53,8 @@ type bdLimiter struct {
 const (
 	// maxBdConcurrent is the hard cap on concurrent bd subprocesses from serve.
 	// With 12+ agents and 5s polling, even cache misses should never exceed this.
-	// If all 5 slots are full, new requests wait (with timeout) rather than spawning more.
-	maxBdConcurrent = 5
+	// If all slots are full, new requests wait (with timeout) rather than spawning more.
+	maxBdConcurrent = 3
 
 	// bdAcquireTimeout is how long to wait for a semaphore slot before giving up.
 	// Dashboard can tolerate stale data — better to return cached/error than deadlock.
@@ -81,7 +81,20 @@ func (l *bdLimiter) acquire(ctx context.Context) (func(), error) {
 			<-l.sem
 			l.inflight.Add(-1)
 		}, nil
+	default:
+		log.Printf("event=bd_subprocess_cap_hit component=serve-bd-limiter inflight=%d cap=%d", l.inflight.Load(), l.maxConcurrent)
+	}
+
+	select {
+	case l.sem <- struct{}{}:
+		l.inflight.Add(1)
+		l.totalCalls.Add(1)
+		return func() {
+			<-l.sem
+			l.inflight.Add(-1)
+		}, nil
 	case <-ctx.Done():
+		log.Printf("event=bd_subprocess_acquire_timeout component=serve-bd-limiter inflight=%d cap=%d error=%q", l.inflight.Load(), l.maxConcurrent, ctx.Err())
 		return nil, fmt.Errorf("bd limiter: timeout waiting for slot (inflight=%d, max=%d)", l.inflight.Load(), l.maxConcurrent)
 	}
 }

@@ -1,7 +1,6 @@
 package beads
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -161,17 +160,9 @@ func FallbackShowWithDir(id, dir string) (*Issue, error) {
 }
 
 func fallbackShowWithDir(id, dir string) (*Issue, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, getBdPath(), "show", id, "--json")
-	setupFallbackEnv(cmd)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(dir, "show", id, "--json")
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd show timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -218,9 +209,6 @@ func FallbackClose(id, reason string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackCloseForce(id, reason string, force bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	args := []string{"close", id}
 	if reason != "" {
 		args = append(args, "--reason", reason)
@@ -229,14 +217,9 @@ func FallbackCloseForce(id, reason string, force bool) error {
 		args = append(args, "--force")
 	}
 
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
+	output, err := runBDCombinedOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return fmt.Errorf("bd close timed out after %v", DefaultCLITimeout)
 		}
 		return fmt.Errorf("bd close failed: %w: %s", err, string(output))
@@ -248,9 +231,6 @@ func FallbackCloseForce(id, reason string, force bool) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackCreate(title, description, issueType string, priority int, labels []string) (*Issue, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	args := []string{"create", title, "--json"}
 	if description != "" {
 		args = append(args, "--description", description)
@@ -265,14 +245,9 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 		args = append(args, "--label", label)
 	}
 
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd create timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -294,21 +269,13 @@ func FallbackCreate(title, description, issueType string, priority int, labels [
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackUpdate(id, status string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	args := []string{"update", id}
 	if status != "" {
 		args = append(args, "--status", status)
 	}
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
+	output, err := runBDCombinedOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return fmt.Errorf("bd update timed out after %v", DefaultCLITimeout)
 		}
 		return fmt.Errorf("bd update failed: %w: %s", err, string(output))
@@ -321,21 +288,13 @@ func FallbackUpdate(id, status string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackReopen(id, reason string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
 	args := []string{"reopen", id}
 	if reason != "" {
 		args = append(args, "--reason", reason)
 	}
-	cmd := exec.CommandContext(ctx, getBdPath(), args...)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
+	output, err := runBDCombinedOutput(DefaultDir, args...)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return fmt.Errorf("bd reopen timed out after %v", DefaultCLITimeout)
 		}
 		return fmt.Errorf("bd reopen failed: %w: %s", err, string(output))

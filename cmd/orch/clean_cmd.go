@@ -67,12 +67,12 @@ Optional cleanup actions:
   --untracked-days N     Set age threshold for --untracked (default: 7)
   --sessions             Delete stale OpenCode sessions (default: older than 7 days)
   --sessions-days N      Set age threshold for --sessions (default: 7)
-  --processes            Kill orphaned bun processes (agent processes without active sessions)
+  --processes            Kill orphaned bun processes (agent processes and untracked dashboard web bun)
 
 Process cleanup:
-  --processes uses OS-level process discovery (ps) to find bun agent processes
-  that have no matching active OpenCode session. This catches orphans that survived
-  session deletion, workspace archival, or bd close workarounds.
+  --processes uses OS-level process discovery (ps/lsof) to find bun processes that
+  have no active owner (agent sessions or tracked dashboard web PID). This catches
+  orphans that survived session deletion, workspace archival, or dashboard restarts.
   Recommended: use --all or --processes periodically to prevent memory accumulation.
 
 Note: This command never deletes workspace directories - they are kept for 
@@ -125,7 +125,7 @@ func init() {
 	cleanCmd.Flags().BoolVar(&cleanSessions, "sessions", false, "Delete stale OpenCode sessions older than N days (default: 7)")
 	cleanCmd.Flags().IntVar(&cleanSessionsDays, "sessions-days", 7, "Age threshold in days for --sessions (default: 7)")
 	cleanCmd.Flags().BoolVar(&cleanPreserveOrchestrator, "preserve-orchestrator", false, "Skip orchestrator/meta-orchestrator workspaces and sessions")
-	cleanCmd.Flags().BoolVar(&cleanProcesses, "processes", false, "Kill orphaned bun processes (agent processes without active sessions)")
+	cleanCmd.Flags().BoolVar(&cleanProcesses, "processes", false, "Kill orphaned bun processes (agent processes and untracked dashboard web bun)")
 }
 
 // runClean orchestrates all cleanup subcommands based on the provided flags.
@@ -230,7 +230,7 @@ func runClean(dryRun bool, verifyOpenCode bool, closeWindows bool, cleanPhantoms
 
 	var processesKilled int
 	if killProcesses {
-		processesKilled, err = cleanOrphanProcesses(serverURL, dryRun)
+		processesKilled, err = cleanOrphanProcesses(serverURL, projectDir, dryRun)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clean orphan processes: %v\n", err)
 		}

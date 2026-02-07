@@ -14,6 +14,7 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"golang.org/x/sync/errgroup"
 )
 
 // handleLikelyDone returns LIKELY_DONE attention signals for the dashboard.
@@ -173,26 +174,26 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 		return counts
 	}
 
-	// Initialize collectors
-	collectors := []attention.Collector{}
-	sources := []string{}
+	type collectorEntry struct {
+		source    string
+		collector attention.Collector
+	}
+
+	collectorEntries := []collectorEntry{}
 
 	// BeadsCollector - ready issues
 	beadsCollector := attention.NewBeadsCollector(client)
-	collectors = append(collectors, beadsCollector)
-	sources = append(sources, "beads")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "beads", collector: beadsCollector})
 
 	// GitCollector - likely-done signals
 	if projectDir != "" {
 		gitCollector := attention.NewGitCollector(projectDir, client)
-		collectors = append(collectors, gitCollector)
-		sources = append(sources, "git")
+		collectorEntries = append(collectorEntries, collectorEntry{source: "git", collector: gitCollector})
 	}
 
 	// RecentlyClosedCollector - recently closed issues for verification
 	recentlyClosedCollector := attention.NewRecentlyClosedCollector(client, recentlyClosedHours)
-	collectors = append(collectors, recentlyClosedCollector)
-	sources = append(sources, "beads-recently-closed")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "beads-recently-closed", collector: recentlyClosedCollector})
 
 	// AgentCollector - awaiting-cleanup agents as verify signals
 	// Note: Uses HTTPS to call own /api/agents endpoint (loose coupling)
@@ -203,45 +204,45 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	agentAPIURL := fmt.Sprintf("https://localhost:%d", DefaultServePort)
-	agentCollector := attention.NewAgentCollector(agentHTTPClient, agentAPIURL)
-	collectors = append(collectors, agentCollector)
-	sources = append(sources, "agent")
+	agentSnapshot, agentSnapshotErr := attention.FetchAgentSnapshot(agentHTTPClient, agentAPIURL)
+	if debug {
+		if agentSnapshotErr != nil {
+			log.Printf("attention: shared agent snapshot error err=%v", agentSnapshotErr)
+		} else {
+			log.Printf("attention: shared agent snapshot count=%d", len(agentSnapshot))
+		}
+	}
+
+	agentCollector := attention.NewAgentCollectorWithSnapshot(agentSnapshot, agentSnapshotErr)
+	collectorEntries = append(collectorEntries, collectorEntry{source: "agent", collector: agentCollector})
 
 	// EpicOrphanCollector - epics force-closed with open children
 	epicOrphanCollector := attention.NewEpicOrphanCollector()
-	collectors = append(collectors, epicOrphanCollector)
-	sources = append(sources, "epic-orphan")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "epic-orphan", collector: epicOrphanCollector})
 
 	// VerifyFailedCollector - issues where auto-completion verification failed
 	verifyFailedCollector := attention.NewVerifyFailedCollector("", 72) // Default path, 72h lookback
-	collectors = append(collectors, verifyFailedCollector)
-	sources = append(sources, "verify-failed")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "verify-failed", collector: verifyFailedCollector})
 
 	// UnblockedCollector - issues that were blocked but blockers have resolved
 	unblockedCollector := attention.NewUnblockedCollector(client)
-	collectors = append(collectors, unblockedCollector)
-	sources = append(sources, "beads-unblocked")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "beads-unblocked", collector: unblockedCollector})
 
 	// StuckCollector - agents running >2h without progress
-	// Reuse the same HTTP client as AgentCollector
-	stuckCollector := attention.NewStuckCollector(agentHTTPClient, agentAPIURL, 2.0) // 2 hour threshold
-	collectors = append(collectors, stuckCollector)
-	sources = append(sources, "agent-stuck")
+	stuckCollector := attention.NewStuckCollectorWithSnapshot(agentSnapshot, agentSnapshotErr, 2.0) // 2 hour threshold
+	collectorEntries = append(collectorEntries, collectorEntry{source: "agent-stuck", collector: stuckCollector})
 
 	// StaleIssueCollector - issues with no activity >30 days
 	staleCollector := attention.NewStaleIssueCollector(client, 30) // 30 day threshold
-	collectors = append(collectors, staleCollector)
-	sources = append(sources, "beads-stale")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "beads-stale", collector: staleCollector})
 
 	// DuplicateCandidateCollector - issues with similar titles
 	duplicateCollector := attention.NewDuplicateCandidateCollector(client, 0.6) // 60% similarity threshold
-	collectors = append(collectors, duplicateCollector)
-	sources = append(sources, "beads-duplicate")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "beads-duplicate", collector: duplicateCollector})
 
 	// CompetingCollector - issues in same area with similar scope
 	competingCollector := attention.NewCompetingCollector(client, 0.4) // 40% similarity + same area
-	collectors = append(collectors, competingCollector)
-	sources = append(sources, "beads-competing")
+	collectorEntries = append(collectorEntries, collectorEntry{source: "beads-competing", collector: competingCollector})
 
 	if debug {
 		log.Printf(
@@ -249,34 +250,67 @@ func (s *Server) handleAttention(w http.ResponseWriter, r *http.Request) {
 			role,
 			projectDir,
 			recentlyClosedHours,
-			len(collectors),
+			len(collectorEntries),
 		)
 	}
 
-	// Collect from all sources
+	type collectorResult struct {
+		items    []attention.AttentionItem
+		err      error
+		duration time.Duration
+	}
+
+	results := make([]collectorResult, len(collectorEntries))
+	var collectGroup errgroup.Group
+	for i, entry := range collectorEntries {
+		i := i
+		entry := entry
+		collectGroup.Go(func() error {
+			startedAt := time.Now()
+			items, err := entry.collector.Collect(role)
+			results[i] = collectorResult{
+				items:    items,
+				err:      err,
+				duration: time.Since(startedAt),
+			}
+			return nil
+		})
+	}
+	_ = collectGroup.Wait()
+
+	sources := make([]string, 0, len(collectorEntries))
 	allItems := []attention.AttentionItem{}
-	for i, collector := range collectors {
-		items, err := collector.Collect(role)
-		if err != nil {
+	for i, entry := range collectorEntries {
+		sources = append(sources, entry.source)
+		result := results[i]
+		if result.err != nil {
 			// Log error but continue with other collectors
 			// This ensures partial results if one collector fails
 			if debug {
-				src := fmt.Sprintf("collector[%d]=%T", i, collector)
-				if i < len(sources) {
-					src = sources[i]
-				}
-				log.Printf("attention: collect error source=%s err=%v", src, err)
+				log.Printf("attention: collect source=%s duration=%s err=%v", entry.source, result.duration, result.err)
 			}
 			continue
 		}
 		if debug {
-			src := fmt.Sprintf("collector[%d]=%T", i, collector)
-			if i < len(sources) {
-				src = sources[i]
-			}
-			log.Printf("attention: collected source=%s count=%d by_signal=%v", src, len(items), countBySignal(items))
+			log.Printf("attention: collect source=%s duration=%s count=%d by_signal=%v", entry.source, result.duration, len(result.items), countBySignal(result.items))
 		}
-		allItems = append(allItems, items...)
+		allItems = append(allItems, result.items...)
+	}
+	if debug {
+		type collectorTiming struct {
+			source   string
+			duration time.Duration
+		}
+		timings := make([]collectorTiming, 0, len(collectorEntries))
+		for i, entry := range collectorEntries {
+			timings = append(timings, collectorTiming{source: entry.source, duration: results[i].duration})
+		}
+		sort.Slice(timings, func(i, j int) bool {
+			return timings[i].duration > timings[j].duration
+		})
+		for _, timing := range timings {
+			log.Printf("attention: timing source=%s duration=%s", timing.source, timing.duration)
+		}
 	}
 	if debug {
 		log.Printf("attention: collected total=%d by_signal=%v", len(allItems), countBySignal(allItems))

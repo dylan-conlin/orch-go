@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
+	"golang.org/x/sync/singleflight"
 )
 
 // beadsCache provides TTL-based caching for beads data to prevent excessive
@@ -20,6 +22,8 @@ import (
 // Without caching, each request can spawn 20+ concurrent bd processes for 600+ workspaces.
 type beadsCache struct {
 	mu sync.RWMutex
+
+	commentsGroup singleflight.Group
 
 	// Cached data
 	openIssues map[string]*verify.Issue
@@ -220,16 +224,48 @@ func (c *beadsCache) getComments(beadsIDs []string, projectDirs map[string]strin
 	}
 	c.mu.RUnlock()
 
-	// Fetch fresh data
-	comments := verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
+	requestKey := commentsRequestKey(beadsIDs, projectDirs)
+	result, _, _ := c.commentsGroup.Do(requestKey, func() (interface{}, error) {
+		c.mu.RLock()
+		if time.Since(c.commentsFetchedAt) < c.commentsTTL && c.containsAllIDs(c.commentsFetchedFor, beadsIDs) {
+			fresh := c.comments
+			c.mu.RUnlock()
+			return fresh, nil
+		}
+		c.mu.RUnlock()
 
-	c.mu.Lock()
-	c.comments = comments
-	c.commentsFetchedAt = time.Now()
-	c.commentsFetchedFor = beadsIDs
-	c.mu.Unlock()
+		comments := verify.GetCommentsBatchWithProjectDirs(beadsIDs, projectDirs)
 
-	return comments
+		c.mu.Lock()
+		c.comments = comments
+		c.commentsFetchedAt = time.Now()
+		c.commentsFetchedFor = beadsIDs
+		c.mu.Unlock()
+
+		return comments, nil
+	})
+
+	if comments, ok := result.(map[string][]beads.Comment); ok {
+		return comments
+	}
+	return make(map[string][]beads.Comment)
+}
+
+func commentsRequestKey(beadsIDs []string, projectDirs map[string]string) string {
+	if len(beadsIDs) == 0 {
+		return "comments:none"
+	}
+
+	ids := make([]string, len(beadsIDs))
+	copy(ids, beadsIDs)
+	sort.Strings(ids)
+
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		parts = append(parts, id+"@"+projectDirs[id])
+	}
+
+	return "comments:" + strings.Join(parts, "|")
 }
 
 // containsAllIDs checks if cachedIDs contains all requestedIDs.

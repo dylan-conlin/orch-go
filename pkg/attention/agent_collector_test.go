@@ -2,6 +2,7 @@ package attention
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -48,28 +49,28 @@ func TestAgentCollector_Collect(t *testing.T) {
 			name: "filters out non-awaiting-cleanup agents",
 			agents: []AgentAPIItem{
 				{
-					ID:         "session-1",
-					BeadsID:    "orch-go-123",
-					Status:     "awaiting-cleanup",
-					Phase:      "Complete",
-					Task:       "Done task",
-					Project:    "orch-go",
+					ID:      "session-1",
+					BeadsID: "orch-go-123",
+					Status:  "awaiting-cleanup",
+					Phase:   "Complete",
+					Task:    "Done task",
+					Project: "orch-go",
 				},
 				{
-					ID:         "session-2",
-					BeadsID:    "orch-go-456",
-					Status:     "active",
-					Phase:      "Implementing",
-					Task:       "Active task",
-					Project:    "orch-go",
+					ID:      "session-2",
+					BeadsID: "orch-go-456",
+					Status:  "active",
+					Phase:   "Implementing",
+					Task:    "Active task",
+					Project: "orch-go",
 				},
 				{
-					ID:         "session-3",
-					BeadsID:    "orch-go-789",
-					Status:     "dead",
-					Phase:      "Planning",
-					Task:       "Dead task",
-					Project:    "orch-go",
+					ID:      "session-3",
+					BeadsID: "orch-go-789",
+					Status:  "dead",
+					Phase:   "Planning",
+					Task:    "Dead task",
+					Project: "orch-go",
 				},
 			},
 			role:        "orchestrator",
@@ -86,12 +87,12 @@ func TestAgentCollector_Collect(t *testing.T) {
 					Task:    "Orphan task",
 				},
 				{
-					ID:         "session-2",
-					BeadsID:    "orch-go-123",
-					Status:     "awaiting-cleanup",
-					Phase:      "Complete",
-					Task:       "Valid task",
-					Project:    "orch-go",
+					ID:      "session-2",
+					BeadsID: "orch-go-123",
+					Status:  "awaiting-cleanup",
+					Phase:   "Complete",
+					Task:    "Valid task",
+					Project: "orch-go",
 				},
 			},
 			role:        "human",
@@ -186,6 +187,46 @@ func TestAgentCollector_Collect_HTTPError(t *testing.T) {
 	}
 }
 
+func TestAgentCollector_Collect_UsesSharedSnapshot(t *testing.T) {
+	collector := NewAgentCollectorWithSnapshot([]AgentAPIItem{
+		{
+			ID:         "session-1",
+			BeadsID:    "orch-go-123",
+			BeadsTitle: "Snapshot task",
+			Status:     "awaiting-cleanup",
+			Phase:      "Complete",
+			Task:       "Complete from snapshot",
+			Project:    "orch-go",
+			Skill:      "feature-impl",
+			UpdatedAt:  "2026-02-03T10:00:00Z",
+		},
+	}, nil)
+
+	items, err := collector.Collect("human")
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("Collect() returned %d items, expected 1", len(items))
+	}
+	if items[0].Subject != "orch-go-123" {
+		t.Errorf("item.Subject = %q, expected %q", items[0].Subject, "orch-go-123")
+	}
+}
+
+func TestAgentCollector_Collect_SharedSnapshotError(t *testing.T) {
+	snapshotErr := errors.New("snapshot unavailable")
+	collector := NewAgentCollectorWithSnapshot(nil, snapshotErr)
+
+	items, err := collector.Collect("human")
+	if !errors.Is(err, snapshotErr) {
+		t.Fatalf("Collect() error = %v, expected snapshot error", err)
+	}
+	if items != nil {
+		t.Error("Collect() should return nil items on shared snapshot error")
+	}
+}
+
 func TestAgentCollector_Collect_InvalidJSON(t *testing.T) {
 	// Create test server that returns invalid JSON
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +253,7 @@ func TestCalculateAgentPriority(t *testing.T) {
 	}
 
 	tests := []struct {
-		role          string
+		role           string
 		expectPriority int
 	}{
 		{"human", 50},
@@ -241,7 +282,7 @@ func TestTruncate(t *testing.T) {
 		{"exactly10!", 10, "exactly10!"},
 		{"this is a long string", 10, "this is..."},
 		{"abc", 3, "abc"}, // string <= maxLen, no truncation
-		{"ab", 2, "ab"}, // string <= maxLen, no truncation
+		{"ab", 2, "ab"},   // string <= maxLen, no truncation
 	}
 
 	for _, tt := range tests {

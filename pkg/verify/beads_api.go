@@ -4,11 +4,8 @@
 package verify
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -80,26 +77,17 @@ func GetCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
 // Sets BEADS_NO_DAEMON=1 to skip daemon connection attempts, avoiding 5s timeout
 // in launchd/minimal environments.
 func FallbackCommentsWithDir(beadsID, projectDir string) ([]Comment, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), beads.DefaultCLITimeout)
-	defer cancel()
+	cliClient := beads.NewCLIClient(
+		beads.WithWorkDir(projectDir),
+		beads.WithEnv(append(os.Environ(), "BEADS_NO_DAEMON=1")),
+	)
 
-	cmd := exec.CommandContext(ctx, "bd", "comments", beadsID, "--json")
-	// Set BEADS_NO_DAEMON=1 to avoid daemon timeout in minimal envs (launchd)
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-	if projectDir != "" {
-		cmd.Dir = projectDir
-	}
-	output, err := cmd.Output()
+	comments, err := cliClient.Comments(beadsID)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if beads.IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd comments timed out after %v", beads.DefaultCLITimeout)
 		}
 		return nil, fmt.Errorf("bd comments failed: %w", err)
-	}
-
-	var comments []Comment
-	if err := json.Unmarshal(output, &comments); err != nil {
-		return nil, fmt.Errorf("failed to parse bd comments output: %w", err)
 	}
 
 	return comments, nil

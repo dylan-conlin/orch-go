@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/kb"
@@ -44,6 +49,13 @@ type BeadsGraphAPIResponse struct {
 	EdgeCount  int         `json:"edge_count"`
 	ProjectDir string      `json:"project_dir,omitempty"`
 	Error      string      `json:"error,omitempty"`
+}
+
+type graphBuildTimings struct {
+	List         time.Duration
+	Dependencies time.Duration
+	ParentFilter time.Duration
+	TreeBuild    time.Duration
 }
 
 // computeLayers assigns execution layers to nodes using topological sort.
@@ -166,15 +178,17 @@ func (s *Server) handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 	cacheKey := scope + ":" + parentID
 
 	resp, err := s.BeadsStatsCache.getGraph(projectDir, cacheKey, func() (*BeadsGraphAPIResponse, error) {
+		buildStart := time.Now()
 		var nodes []GraphNode
 		var edges []GraphEdge
 		var buildErr error
+		var stageTimings graphBuildTimings
 
 		if scope == "focus" {
 			nodes, edges, buildErr = s.buildFocusGraph(workDir)
 		} else {
 			includeAll := scope == "all"
-			nodes, edges, buildErr = s.buildFullGraph(workDir, includeAll)
+			nodes, edges, stageTimings, buildErr = s.buildFullGraph(workDir, includeAll, parentID, projectDir)
 		}
 
 		if buildErr != nil {
@@ -186,11 +200,35 @@ func (s *Server) handleBeadsGraph(w http.ResponseWriter, r *http.Request) {
 			}, nil
 		}
 
-		if parentID != "" {
+		focusParentFilterStart := time.Now()
+		if parentID != "" && scope == "focus" {
 			nodes, edges = filterToParentAndDescendants(nodes, edges, parentID)
+			stageTimings.ParentFilter = time.Since(focusParentFilterStart)
 		}
 
+		treeBuildStart := time.Now()
 		nodes = computeLayers(nodes, edges)
+		stageTimings.TreeBuild = time.Since(treeBuildStart)
+		totalDuration := time.Since(buildStart)
+
+		if scope != "focus" {
+			log.Printf("[beads-graph] stage=list scope=%s parent=%q duration=%s", scope, parentID, stageTimings.List)
+			log.Printf("[beads-graph] stage=dep-lookups scope=%s parent=%q duration=%s", scope, parentID, stageTimings.Dependencies)
+		}
+		log.Printf("[beads-graph] stage=tree-building scope=%s parent=%q duration=%s", scope, parentID, stageTimings.TreeBuild)
+
+		log.Printf("[beads-graph] scope=%s parent=%q nodes=%d edges=%d total=%s list=%s deps=%s parent_filter=%s tree_build=%s",
+			scope,
+			parentID,
+			len(nodes),
+			len(edges),
+			totalDuration,
+			stageTimings.List,
+			stageTimings.Dependencies,
+			stageTimings.ParentFilter,
+			stageTimings.TreeBuild,
+		)
+
 		return &BeadsGraphAPIResponse{
 			Nodes:      nodes,
 			Edges:      edges,
@@ -236,6 +274,25 @@ func filterToParentAndDescendants(nodes []GraphNode, edges []GraphEdge, parentID
 	}
 
 	return filteredNodes, filteredEdges
+}
+
+func filterIssuesToParentAndDescendants(issues []beadsIssue, parentID string) []beadsIssue {
+	if parentID == "" {
+		return issues
+	}
+
+	isDescendant := func(id string) bool {
+		return id == parentID || strings.HasPrefix(id, parentID+".")
+	}
+
+	filtered := make([]beadsIssue, 0)
+	for _, issue := range issues {
+		if isDescendant(issue.ID) {
+			filtered = append(filtered, issue)
+		}
+	}
+
+	return filtered
 }
 
 // buildFocusGraph builds a focused graph showing the active working set.
@@ -340,20 +397,72 @@ func (s *Server) buildFocusGraph(workDir string) ([]GraphNode, []GraphEdge, erro
 	return nodes, edges, nil
 }
 
-// buildFullGraph builds the full graph with optional status filtering.
-func (s *Server) buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, error) {
+// buildFullGraph builds the full graph with optional status/parent filtering.
+func (s *Server) buildFullGraph(workDir string, includeAll bool, parentID, cacheProjectDir string) ([]GraphNode, []GraphEdge, graphBuildTimings, error) {
+	var timings graphBuildTimings
+
+	listStart := time.Now()
 	issues, err := s.listBeadsIssues(workDir, includeAll)
+	timings.List = time.Since(listStart)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, timings, err
+	}
+
+	if parentID != "" {
+		parentFilterStart := time.Now()
+		issues = filterIssuesToParentAndDescendants(issues, parentID)
+		timings.ParentFilter = time.Since(parentFilterStart)
 	}
 
 	nodes := make([]GraphNode, 0, len(issues))
+	nodeIDs := make(map[string]bool, len(issues))
 	for _, issue := range issues {
+		nodeIDs[issue.ID] = true
 		nodes = append(nodes, GraphNode{
 			ID: issue.ID, Title: issue.Title, Type: issue.IssueType,
 			Status: issue.Status, Priority: issue.Priority, Source: "beads",
 			Description: issue.Description, CreatedAt: issue.CreatedAt, Labels: issue.Labels,
 		})
+	}
+
+	if len(issues) == 0 {
+		return nodes, []GraphEdge{}, timings, nil
+	}
+
+	depsStart := time.Now()
+	edges := make([]GraphEdge, 0)
+
+	dependencyCacheKey := "open"
+	if includeAll {
+		dependencyCacheKey = "all"
+	}
+
+	fetchDependencyGraph := func() ([]GraphEdge, error) {
+		return s.listGraphEdges(workDir)
+	}
+
+	var allEdges []GraphEdge
+	var graphErr error
+	if s.BeadsStatsCache != nil {
+		allEdges, graphErr = s.BeadsStatsCache.getDependencyGraph(cacheProjectDir, dependencyCacheKey, fetchDependencyGraph)
+	} else {
+		allEdges, graphErr = fetchDependencyGraph()
+	}
+
+	if graphErr == nil {
+		for _, edge := range allEdges {
+			if parentID == "" {
+				if nodeIDs[edge.From] {
+					edges = append(edges, edge)
+				}
+				continue
+			}
+			if nodeIDs[edge.From] && nodeIDs[edge.To] {
+				edges = append(edges, edge)
+			}
+		}
+		timings.Dependencies = time.Since(depsStart)
+		return nodes, edges, timings, nil
 	}
 
 	idsWithDeps := make([]string, 0)
@@ -363,18 +472,90 @@ func (s *Server) buildFullGraph(workDir string, includeAll bool) ([]GraphNode, [
 		}
 	}
 
-	edges := make([]GraphEdge, 0)
+	dependencyMap := s.fetchIssueDependencyMap(workDir, idsWithDeps)
 	for _, id := range idsWithDeps {
-		deps, err := s.listIssueDependencies(workDir, id)
-		if err != nil {
-			continue
-		}
-		for _, dep := range deps {
+		for _, dep := range dependencyMap[id] {
 			edges = append(edges, GraphEdge{From: id, To: dep.ID, Type: dep.DependencyType})
 		}
 	}
 
-	return nodes, edges, nil
+	if parentID != "" {
+		filteredEdges := make([]GraphEdge, 0, len(edges))
+		for _, edge := range edges {
+			if nodeIDs[edge.From] && nodeIDs[edge.To] {
+				filteredEdges = append(filteredEdges, edge)
+			}
+		}
+		edges = filteredEdges
+	}
+
+	timings.Dependencies = time.Since(depsStart)
+	return nodes, edges, timings, nil
+}
+
+func (s *Server) fetchIssueDependencyMap(workDir string, ids []string) map[string][]depEntry {
+	if len(ids) == 0 {
+		return map[string][]depEntry{}
+	}
+
+	results := make(map[string][]depEntry, len(ids))
+	var resultsMu sync.Mutex
+
+	workerLimit := maxBdConcurrent
+	if workerLimit < 1 {
+		workerLimit = 1
+	}
+	semaphore := make(chan struct{}, workerLimit)
+
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		id := id
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			semaphore <- struct{}{}
+			deps, depErr := s.listIssueDependencies(workDir, id)
+			<-semaphore
+			if depErr != nil {
+				return
+			}
+
+			resultsMu.Lock()
+			results[id] = deps
+			resultsMu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+	return results
+}
+
+// listGraphEdges returns full dependency edges from a single bd graph call.
+func (s *Server) listGraphEdges(workDir string) ([]GraphEdge, error) {
+	key := workDir + ":graph:all"
+
+	result, err, _ := s.bdLimitedList(key, func() (interface{}, error) {
+		output, cmdErr := runBdCommandOutput(workDir, "graph", "--all", "--json")
+		if cmdErr != nil {
+			return nil, fmt.Errorf("bd graph --all failed: %w", cmdErr)
+		}
+
+		var graph struct {
+			Edges []GraphEdge `json:"edges"`
+		}
+		if parseErr := json.Unmarshal(output, &graph); parseErr != nil {
+			return nil, fmt.Errorf("parse graph output: %w", parseErr)
+		}
+
+		return graph.Edges, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result.([]GraphEdge), nil
 }
 
 // listBeadsIssues calls bd list and returns parsed issues.
@@ -388,12 +569,7 @@ func (s *Server) listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue,
 	result, err, _ := s.bdLimitedList(key, func() (interface{}, error) {
 		if includeAll {
 			args := []string{"list", "--json", "--limit", "0", "--all"}
-			cmd := exec.Command(getBdPath(), args...)
-			if workDir != "" {
-				cmd.Dir = workDir
-			}
-			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-			output, cmdErr := cmd.Output()
+			output, cmdErr := runBdCommandOutput(workDir, args...)
 			if cmdErr != nil {
 				return nil, fmt.Errorf("bd list failed: %w", cmdErr)
 			}
@@ -407,12 +583,7 @@ func (s *Server) listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue,
 		var allIssues []beadsIssue
 		for _, status := range []string{"open", "in_progress"} {
 			args := []string{"list", "--json", "--limit", "0", "--status", status}
-			cmd := exec.Command(getBdPath(), args...)
-			if workDir != "" {
-				cmd.Dir = workDir
-			}
-			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-			output, cmdErr := cmd.Output()
+			output, cmdErr := runBdCommandOutput(workDir, args...)
 			if cmdErr != nil {
 				continue
 			}
@@ -446,13 +617,7 @@ func (s *Server) showBeadsIssue(workDir, id string) (*beadsShowIssue, error) {
 	key := workDir + ":" + id
 
 	result, err, _ := s.bdLimitedShow(key, func() (interface{}, error) {
-		cmd := exec.Command(getBdPath(), "show", id, "--json")
-		if workDir != "" {
-			cmd.Dir = workDir
-		}
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-
-		output, cmdErr := cmd.Output()
+		output, cmdErr := runBdCommandOutput(workDir, "show", id, "--json")
 		if cmdErr != nil {
 			return nil, fmt.Errorf("bd show %s failed: %w", id, cmdErr)
 		}
@@ -479,6 +644,24 @@ func getBdPath() string {
 	return "bd"
 }
 
+func runBdCommandOutput(workDir string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, getBdPath(), args...)
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+	output, err := cmd.Output()
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil, fmt.Errorf("bd command timed out after 10s")
+	}
+
+	return output, err
+}
+
 // depEntry represents a single dependency/dependent relationship.
 type depEntry struct {
 	ID             string `json:"id"`
@@ -490,12 +673,7 @@ func (s *Server) listIssueDependencies(workDir, id string) ([]depEntry, error) {
 	key := workDir + ":deps:" + id
 
 	result, err, _ := s.bdLimitedDep(key, func() (interface{}, error) {
-		cmd := exec.Command(getBdPath(), "dep", "list", id, "--json")
-		if workDir != "" {
-			cmd.Dir = workDir
-		}
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-		output, cmdErr := cmd.Output()
+		output, cmdErr := runBdCommandOutput(workDir, "dep", "list", id, "--json")
 		if cmdErr != nil {
 			return nil, fmt.Errorf("bd dep list %s failed: %w", id, cmdErr)
 		}
@@ -517,12 +695,7 @@ func (s *Server) listIssueDependents(workDir, id string) ([]depEntry, error) {
 	key := workDir + ":dependents:" + id
 
 	result, err, _ := s.bdLimitedDep(key, func() (interface{}, error) {
-		cmd := exec.Command(getBdPath(), "dep", "list", id, "--direction", "up", "--json")
-		if workDir != "" {
-			cmd.Dir = workDir
-		}
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-		output, cmdErr := cmd.Output()
+		output, cmdErr := runBdCommandOutput(workDir, "dep", "list", id, "--direction", "up", "--json")
 		if cmdErr != nil {
 			return nil, fmt.Errorf("bd dep list --direction up %s failed: %w", id, cmdErr)
 		}

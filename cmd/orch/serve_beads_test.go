@@ -217,6 +217,74 @@ func TestGraphCacheInvalidation(t *testing.T) {
 	}
 }
 
+func TestDependencyGraphCacheTTL(t *testing.T) {
+	cache := newBeadsStatsCache()
+	callCount := 0
+
+	buildFn := func() ([]GraphEdge, error) {
+		callCount++
+		return []GraphEdge{{From: "orch-go-1", To: "orch-go-2", Type: "blocks"}}, nil
+	}
+
+	edges1, err := cache.getDependencyGraph("", "open", buildFn)
+	if err != nil {
+		t.Fatalf("First getDependencyGraph failed: %v", err)
+	}
+	if len(edges1) != 1 {
+		t.Fatalf("Expected 1 edge, got %d", len(edges1))
+	}
+	if callCount != 1 {
+		t.Fatalf("Expected 1 build call, got %d", callCount)
+	}
+
+	edges2, err := cache.getDependencyGraph("", "open", buildFn)
+	if err != nil {
+		t.Fatalf("Second getDependencyGraph failed: %v", err)
+	}
+	if len(edges2) != 1 {
+		t.Fatalf("Expected 1 cached edge, got %d", len(edges2))
+	}
+	if callCount != 1 {
+		t.Fatalf("Expected cached call count to stay at 1, got %d", callCount)
+	}
+
+	_, err = cache.getDependencyGraph("", "all", buildFn)
+	if err != nil {
+		t.Fatalf("Third getDependencyGraph (different key) failed: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("Expected 2 build calls for different key, got %d", callCount)
+	}
+}
+
+func TestDependencyGraphCacheInvalidation(t *testing.T) {
+	cache := newBeadsStatsCache()
+	callCount := 0
+
+	buildFn := func() ([]GraphEdge, error) {
+		callCount++
+		return []GraphEdge{{From: "orch-go-1", To: "orch-go-2", Type: "blocks"}}, nil
+	}
+
+	_, err := cache.getDependencyGraph("proj1", "open", buildFn)
+	if err != nil {
+		t.Fatalf("First getDependencyGraph failed: %v", err)
+	}
+	if callCount != 1 {
+		t.Fatalf("Expected 1 build call, got %d", callCount)
+	}
+
+	cache.invalidate("proj1")
+
+	_, err = cache.getDependencyGraph("proj1", "open", buildFn)
+	if err != nil {
+		t.Fatalf("Second getDependencyGraph failed: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("Expected cache miss after invalidate, got %d calls", callCount)
+	}
+}
+
 func TestHandleBeadsReadyMethodNotAllowed(t *testing.T) {
 	srv := newTestServer()
 

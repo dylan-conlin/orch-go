@@ -1,9 +1,7 @@
 package beads
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
 )
 
 // AddLabel adds a label to an issue.
@@ -32,17 +30,9 @@ func (c *Client) RemoveLabel(id, label string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackRemoveLabel(id, label string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, getBdPath(), "update", id, "--remove-label", label)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
+	output, err := runBDCombinedOutput(DefaultDir, "update", id, "--remove-label", label)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return fmt.Errorf("bd remove-label timed out after %v", DefaultCLITimeout)
 		}
 		return fmt.Errorf("bd remove-label failed: %w: %s", err, string(output))
@@ -54,17 +44,9 @@ func FallbackRemoveLabel(id, label string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackAddLabel(id, label string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, getBdPath(), "update", id, "--add-label", label)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
+	output, err := runBDCombinedOutput(DefaultDir, "update", id, "--add-label", label)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return fmt.Errorf("bd add-label timed out after %v", DefaultCLITimeout)
 		}
 		return fmt.Errorf("bd add-label failed: %w: %s", err, string(output))

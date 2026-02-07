@@ -2,6 +2,7 @@ package attention
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -204,6 +205,45 @@ func TestStuckCollector_Collect_HTTPError(t *testing.T) {
 	}
 	if items != nil {
 		t.Error("Collect() should return nil items on error")
+	}
+}
+
+func TestStuckCollector_Collect_UsesSharedSnapshot(t *testing.T) {
+	now := time.Now()
+	collector := NewStuckCollectorWithSnapshot([]AgentAPIItem{
+		{
+			ID:             "session-1",
+			BeadsID:        "orch-go-123",
+			Status:         "active",
+			Task:           "Shared snapshot task",
+			SpawnedAt:      now.Add(-3 * time.Hour).Format(time.RFC3339),
+			LastActivityAt: now.Add(-1 * time.Hour).Format(time.RFC3339),
+			IsStalled:      true,
+		},
+	}, nil, 2.0)
+
+	items, err := collector.Collect("human")
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("Collect() returned %d items, expected 1", len(items))
+	}
+	if items[0].Signal != "stuck" {
+		t.Errorf("item.Signal = %q, expected %q", items[0].Signal, "stuck")
+	}
+}
+
+func TestStuckCollector_Collect_SharedSnapshotError(t *testing.T) {
+	snapshotErr := errors.New("snapshot unavailable")
+	collector := NewStuckCollectorWithSnapshot(nil, snapshotErr, 2.0)
+
+	items, err := collector.Collect("human")
+	if !errors.Is(err, snapshotErr) {
+		t.Fatalf("Collect() error = %v, expected snapshot error", err)
+	}
+	if items != nil {
+		t.Error("Collect() should return nil items on shared snapshot error")
 	}
 }
 

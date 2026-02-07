@@ -2,9 +2,11 @@ package beads
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -19,9 +21,83 @@ import (
 // DefaultCLITimeout is the maximum time to wait for a bd CLI fallback command
 // to complete. This prevents orch complete from hanging indefinitely when the
 // beads daemon is unresponsive or the bd CLI gets stuck.
-// 30 seconds is generous enough for any single bd operation while preventing
-// indefinite hangs that required manual intervention.
-const DefaultCLITimeout = 30 * time.Second
+// 10 seconds is long enough for normal calls while failing fast under contention.
+const DefaultCLITimeout = 10 * time.Second
+
+const maxBdSubprocesses = 3
+
+var bdSubprocessSem = make(chan struct{}, maxBdSubprocesses)
+
+// acquireBdSubprocessSlot enforces a hard cap across all bd CLI subprocesses.
+// Logs when the cap is reached so stampedes are visible in server logs.
+func acquireBdSubprocessSlot(ctx context.Context, operation string) (func(), error) {
+	select {
+	case bdSubprocessSem <- struct{}{}:
+		return func() { <-bdSubprocessSem }, nil
+	default:
+		log.Printf("event=bd_subprocess_cap_hit component=beads operation=%q inflight=%d cap=%d", operation, len(bdSubprocessSem), cap(bdSubprocessSem))
+	}
+
+	select {
+	case bdSubprocessSem <- struct{}{}:
+		return func() { <-bdSubprocessSem }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("bd subprocess slot acquire timeout: %w", ctx.Err())
+	}
+}
+
+func IsCLITimeout(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded)
+}
+
+func runBDCommand(workDir, bdPath string, env []string, combined bool, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
+	defer cancel()
+
+	operation := "bd"
+	if len(args) > 0 {
+		operation = "bd " + args[0]
+	}
+
+	release, err := acquireBdSubprocessSlot(ctx, operation)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	if bdPath == "" {
+		bdPath = getBdPath()
+	}
+
+	cmd := exec.CommandContext(ctx, bdPath, args...)
+	if env != nil {
+		cmd.Env = env
+	} else {
+		setupFallbackEnv(cmd)
+	}
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+
+	var output []byte
+	if combined {
+		output, err = cmd.CombinedOutput()
+	} else {
+		output, err = cmd.Output()
+	}
+	if err != nil && IsCLITimeout(err) {
+		log.Printf("event=bd_subprocess_timeout component=beads operation=%q timeout=%s", operation, DefaultCLITimeout)
+	}
+	return output, err
+}
+
+func runBDOutput(workDir string, args ...string) ([]byte, error) {
+	return runBDCommand(workDir, getBdPath(), nil, false, args...)
+}
+
+func runBDCombinedOutput(workDir string, args ...string) ([]byte, error) {
+	return runBDCommand(workDir, getBdPath(), nil, true, args...)
+}
 
 // ErrIssueNotFound is returned when a beads issue lookup fails because the issue doesn't exist.
 // This is distinct from RPC errors or other failures - it means the issue ID was not found

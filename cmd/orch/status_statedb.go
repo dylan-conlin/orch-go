@@ -158,6 +158,7 @@ func enrichStateDBAgentsLive(
 	now time.Time,
 	showAll bool,
 	projectDir string,
+	opencodeSessionsAvailable bool,
 	timer func(string),
 ) {
 	if result == nil || len(result.agents) == 0 {
@@ -225,20 +226,22 @@ func enrichStateDBAgentsLive(
 	var enrichMu sync.Mutex
 	var enrichWg sync.WaitGroup
 
-	for i := range result.agents {
-		agent := &result.agents[i]
-		if agent.SessionID == "" || agent.IsCompleted {
-			continue
-		}
+	if opencodeSessionsAvailable {
+		for i := range result.agents {
+			agent := &result.agents[i]
+			if agent.SessionID == "" || agent.IsCompleted {
+				continue
+			}
 
-		enrichWg.Add(1)
-		go func(idx int, sessionID string) {
-			defer enrichWg.Done()
-			e := client.GetSessionEnrichment(sessionID)
-			enrichMu.Lock()
-			enrichResults = append(enrichResults, enrichItem{idx: idx, enrichment: e})
-			enrichMu.Unlock()
-		}(i, agent.SessionID)
+			enrichWg.Add(1)
+			go func(idx int, sessionID string) {
+				defer enrichWg.Done()
+				e := client.GetSessionEnrichment(sessionID)
+				enrichMu.Lock()
+				enrichResults = append(enrichResults, enrichItem{idx: idx, enrichment: e})
+				enrichMu.Unlock()
+			}(i, agent.SessionID)
+		}
 	}
 
 	// Wait for enrichment in parallel with comments/issues

@@ -1,7 +1,6 @@
 package beads
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -40,17 +39,9 @@ func (c *Client) AddComment(id, author, text string) error {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackComments(id string) ([]Comment, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, getBdPath(), "comments", id, "--json")
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.Output()
+	output, err := runBDOutput(DefaultDir, "comments", id, "--json")
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return nil, fmt.Errorf("bd comments timed out after %v", DefaultCLITimeout)
 		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -71,17 +62,9 @@ func FallbackComments(id string) ([]Comment, error) {
 // Uses DefaultDir if set to ensure cross-project operations work correctly.
 // Uses getBdPath() to resolve the bd executable location.
 func FallbackAddComment(id, text string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, getBdPath(), "comments", "add", id, text)
-	setupFallbackEnv(cmd)
-	if DefaultDir != "" {
-		cmd.Dir = DefaultDir
-	}
-	output, err := cmd.CombinedOutput()
+	output, err := runBDCombinedOutput(DefaultDir, "comments", "add", id, text)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if IsCLITimeout(err) {
 			return fmt.Errorf("bd comments add timed out after %v", DefaultCLITimeout)
 		}
 		return fmt.Errorf("bd comments add failed: %w: %s", err, string(output))

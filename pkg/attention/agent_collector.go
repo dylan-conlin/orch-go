@@ -15,20 +15,28 @@ import (
 type AgentCollector struct {
 	client *http.Client
 	apiURL string
+
+	agentSnapshot []AgentAPIItem
+	snapshotErr   error
+	useSnapshot   bool
 }
 
 // AgentAPIItem represents an agent from the /api/agents response.
 // This is a subset of the full response - only fields needed for attention signals.
 type AgentAPIItem struct {
-	ID         string `json:"id"`
-	BeadsID    string `json:"beads_id"`
-	BeadsTitle string `json:"beads_title"`
-	Status     string `json:"status"`
-	Phase      string `json:"phase"`
-	Task       string `json:"task"`
-	Project    string `json:"project"`
-	Skill      string `json:"skill"`
-	UpdatedAt  string `json:"updated_at"`
+	ID             string `json:"id"`
+	BeadsID        string `json:"beads_id"`
+	BeadsTitle     string `json:"beads_title"`
+	Status         string `json:"status"`
+	Phase          string `json:"phase"`
+	Task           string `json:"task"`
+	Project        string `json:"project"`
+	Skill          string `json:"skill"`
+	IsStalled      bool   `json:"is_stalled"`
+	SpawnedAt      string `json:"spawned_at"`
+	UpdatedAt      string `json:"updated_at"`
+	LastActivityAt string `json:"last_activity_at"`
+	Runtime        string `json:"runtime"`
 }
 
 // AgentAPIListResponse is the response structure used for test mocks.
@@ -47,14 +55,28 @@ func NewAgentCollector(client *http.Client, apiURL string) *AgentCollector {
 	}
 }
 
-// Collect gathers attention items for awaiting-cleanup agents.
-// These are agents that have reported Phase: Complete but their session has died,
-// indicating they need 'orch complete' to close out the work.
-func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
-	// Query all agents (since=all to include historical)
-	url := fmt.Sprintf("%s/api/agents?since=all", c.apiURL)
+// NewAgentCollectorWithSnapshot creates a collector that uses a pre-fetched shared snapshot.
+// If snapshotErr is non-nil, Collect returns that error without making API requests.
+func NewAgentCollectorWithSnapshot(agentSnapshot []AgentAPIItem, snapshotErr error) *AgentCollector {
+	return &AgentCollector{
+		agentSnapshot: agentSnapshot,
+		snapshotErr:   snapshotErr,
+		useSnapshot:   true,
+	}
+}
 
-	resp, err := c.client.Get(url)
+// FetchAgentSnapshot fetches all agents once so multiple collectors can share results.
+func FetchAgentSnapshot(client *http.Client, apiURL string) ([]AgentAPIItem, error) {
+	if client == nil {
+		return nil, fmt.Errorf("agents API client is nil")
+	}
+	if apiURL == "" {
+		return nil, fmt.Errorf("agents API URL is empty")
+	}
+
+	url := fmt.Sprintf("%s/api/agents?since=all", apiURL)
+
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query agents API: %w", err)
 	}
@@ -65,16 +87,13 @@ func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
 		return nil, fmt.Errorf("agents API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Read body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read agents response: %w", err)
 	}
 
-	// Parse response - try raw array first (actual API format), then wrapped format (test mocks)
 	var agents []AgentAPIItem
 	if err := json.Unmarshal(body, &agents); err != nil {
-		// Try wrapped format for test compatibility
 		var wrapped AgentAPIListResponse
 		if err2 := json.Unmarshal(body, &wrapped); err2 != nil {
 			return nil, fmt.Errorf("failed to decode agents response: %w", err)
@@ -82,7 +101,33 @@ func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
 		agents = wrapped.Agents
 	}
 
-	// Filter for awaiting-cleanup agents and transform to attention items
+	return agents, nil
+}
+
+// Collect gathers attention items for awaiting-cleanup agents.
+// These are agents that have reported Phase: Complete but their session has died,
+// indicating they need 'orch complete' to close out the work.
+func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
+	agents, err := c.resolveAgents()
+	if err != nil {
+		return nil, err
+	}
+
+	return collectAgentAttentionItems(agents, role), nil
+}
+
+func (c *AgentCollector) resolveAgents() ([]AgentAPIItem, error) {
+	if c.useSnapshot {
+		if c.snapshotErr != nil {
+			return nil, c.snapshotErr
+		}
+		return c.agentSnapshot, nil
+	}
+
+	return FetchAgentSnapshot(c.client, c.apiURL)
+}
+
+func collectAgentAttentionItems(agents []AgentAPIItem, role string) []AttentionItem {
 	items := make([]AttentionItem, 0)
 	now := time.Now()
 
@@ -91,15 +136,12 @@ func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
 			continue
 		}
 
-		// Skip agents without beads ID (orphaned sessions)
 		if agent.BeadsID == "" {
 			continue
 		}
 
-		// Calculate priority based on role
 		priority := calculateAgentPriority(agent, role)
 
-		// Build summary
 		summary := fmt.Sprintf("Phase: Complete - %s", truncate(agent.Task, 60))
 		if agent.Task == "" && agent.BeadsTitle != "" {
 			summary = fmt.Sprintf("Phase: Complete - %s", truncate(agent.BeadsTitle, 60))
@@ -108,7 +150,7 @@ func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
 		item := AttentionItem{
 			ID:          fmt.Sprintf("agent-%s", agent.BeadsID),
 			Source:      "agent",
-			Concern:     Actionability, // Awaiting-cleanup is actionable
+			Concern:     Actionability,
 			Signal:      "verify",
 			Subject:     agent.BeadsID,
 			Summary:     summary,
@@ -127,7 +169,7 @@ func (c *AgentCollector) Collect(role string) ([]AttentionItem, error) {
 		items = append(items, item)
 	}
 
-	return items, nil
+	return items
 }
 
 // calculateAgentPriority determines priority based on role.
