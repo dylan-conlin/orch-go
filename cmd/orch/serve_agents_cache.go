@@ -107,13 +107,13 @@ func projectDirsMatch(a, b []string) bool {
 }
 
 // Default TTLs for cached data
-// These TTLs balance freshness with performance. With 600+ sessions, even cached
-// data fetches are expensive when TTL expires. Longer TTLs reduce fetch frequency.
+// These TTLs balance freshness with performance. With singleflight dedup protecting
+// cache misses, TTLs can be shorter without causing subprocess stampede.
 // Use /api/cache/invalidate to force refresh when needed (e.g., after orch complete).
 const (
-	defaultOpenIssuesTTL = 30 * time.Second // Open issues change infrequently
-	defaultAllIssuesTTL  = 60 * time.Second // Closed issues change even less
-	defaultCommentsTTL   = 15 * time.Second // Comments change more often (phase updates)
+	defaultOpenIssuesTTL = 10 * time.Second // Open issues — singleflight prevents stampede on cache miss
+	defaultAllIssuesTTL  = 30 * time.Second // Closed issues change even less
+	defaultCommentsTTL   = 10 * time.Second // Comments change more often (phase updates)
 )
 
 // invalidate clears all cached data, forcing fresh fetches on next request.

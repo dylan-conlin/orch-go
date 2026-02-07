@@ -48,8 +48,8 @@ var globalBeadsStatsCache *beadsStatsCache
 func newBeadsStatsCache() *beadsStatsCache {
 	return &beadsStatsCache{
 		projects: make(map[string]*projectCacheEntry),
-		statsTTL: 30 * time.Second, // Stats change infrequently
-		readyTTL: 15 * time.Second, // Ready queue changes more often
+		statsTTL: 5 * time.Second, // Dashboard can tolerate 5s stale data; singleflight prevents stampede on cache miss
+		readyTTL: 5 * time.Second, // Same TTL — singleflight dedup means cache misses are cheap (only 1 subprocess)
 	}
 }
 
@@ -89,60 +89,56 @@ func (c *beadsStatsCache) getStats(projectDir string) (*beads.Stats, error) {
 		workDir = beads.DefaultDir
 	}
 
-	// Fetch fresh stats
-	var stats *beads.Stats
-	var err error
-
-	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
-	// This happens when daemon crashes but server keeps stale connection reference.
-	socketPath, findErr := beads.FindSocketPath(workDir)
-	socketExists := findErr == nil && socketPath != ""
-	if socketExists {
-		if _, statErr := os.Stat(socketPath); statErr != nil {
-			socketExists = false
+	// Fetch fresh stats — wrapped in singleflight to deduplicate concurrent cache misses.
+	// Without this, multiple dashboard polls hitting expired cache simultaneously would
+	// each spawn a bd subprocess. With singleflight, only ONE subprocess runs.
+	result, err, _ := bdLimitedStats(workDir, func() (interface{}, error) {
+		// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
+		socketPath, findErr := beads.FindSocketPath(workDir)
+		socketExists := findErr == nil && socketPath != ""
+		if socketExists {
+			if _, statErr := os.Stat(socketPath); statErr != nil {
+				socketExists = false
+			}
 		}
-	}
 
-	// Thread-safe cleanup of stale beadsClient when socket disappears.
-	// This prevents holding broken connection state when daemon restarts.
-	beadsClientMu.Lock()
-	if !socketExists && beadsClient != nil {
-		beadsClient.Close()
-		beadsClient = nil
-	}
-
-	// Reinitialize beadsClient if socket reappears and client is nil.
-	// This handles daemon restarts gracefully without server restart.
-	if socketExists && beadsClient == nil && socketPath != "" {
-		beadsClient = beads.NewClient(socketPath,
-			beads.WithAutoReconnect(3),
-			beads.WithTimeout(5*time.Second),
-		)
-		// Don't block on connection - let execute() handle reconnect
-	}
-
-	// Capture client reference under lock for use after unlock
-	currentClient := beadsClient
-	beadsClientMu.Unlock()
-
-	// For non-default projects, always use CLI client with project dir
-	if projectDir != "" && projectDir != beads.DefaultDir {
-		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
-		stats, err = cliClient.Stats()
-	} else if currentClient != nil && socketExists {
-		stats, err = currentClient.Stats()
-		if err != nil {
-			// Fallback to CLI on RPC error
-			stats, err = beads.FallbackStats()
+		// Thread-safe cleanup of stale beadsClient when socket disappears.
+		beadsClientMu.Lock()
+		if !socketExists && beadsClient != nil {
+			beadsClient.Close()
+			beadsClient = nil
 		}
-	} else {
-		stats, err = beads.FallbackStats()
-	}
+		if socketExists && beadsClient == nil && socketPath != "" {
+			beadsClient = beads.NewClient(socketPath,
+				beads.WithAutoReconnect(3),
+				beads.WithTimeout(5*time.Second),
+			)
+		}
+		currentClient := beadsClient
+		beadsClientMu.Unlock()
+
+		var stats *beads.Stats
+		var fetchErr error
+
+		if projectDir != "" && projectDir != beads.DefaultDir {
+			cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+			stats, fetchErr = cliClient.Stats()
+		} else if currentClient != nil && socketExists {
+			stats, fetchErr = currentClient.Stats()
+			if fetchErr != nil {
+				stats, fetchErr = beads.FallbackStats()
+			}
+		} else {
+			stats, fetchErr = beads.FallbackStats()
+		}
+		return stats, fetchErr
+	})
 
 	if err != nil {
 		return nil, err
 	}
 
+	stats := result.(*beads.Stats)
 	c.mu.Lock()
 	entry.stats = stats
 	entry.statsFetchedAt = time.Now()
@@ -170,60 +166,52 @@ func (c *beadsStatsCache) getReadyIssues(projectDir string) ([]beads.Issue, erro
 		workDir = beads.DefaultDir
 	}
 
-	// Fetch fresh ready issues
-	var issues []beads.Issue
-	var err error
-
-	// Check if socket exists before attempting RPC to avoid slow timeout on dead daemon.
-	// This happens when daemon crashes but server keeps stale connection reference.
-	socketPath, findErr := beads.FindSocketPath(workDir)
-	socketExists := findErr == nil && socketPath != ""
-	if socketExists {
-		if _, statErr := os.Stat(socketPath); statErr != nil {
-			socketExists = false
+	// Fetch fresh ready issues — wrapped in singleflight to deduplicate concurrent cache misses.
+	result, err, _ := bdLimitedReady(workDir, func() (interface{}, error) {
+		socketPath, findErr := beads.FindSocketPath(workDir)
+		socketExists := findErr == nil && socketPath != ""
+		if socketExists {
+			if _, statErr := os.Stat(socketPath); statErr != nil {
+				socketExists = false
+			}
 		}
-	}
 
-	// Thread-safe cleanup of stale beadsClient when socket disappears.
-	// This prevents holding broken connection state when daemon restarts.
-	beadsClientMu.Lock()
-	if !socketExists && beadsClient != nil {
-		beadsClient.Close()
-		beadsClient = nil
-	}
-
-	// Reinitialize beadsClient if socket reappears and client is nil.
-	// This handles daemon restarts gracefully without server restart.
-	if socketExists && beadsClient == nil && socketPath != "" {
-		beadsClient = beads.NewClient(socketPath,
-			beads.WithAutoReconnect(3),
-			beads.WithTimeout(5*time.Second),
-		)
-		// Don't block on connection - let execute() handle reconnect
-	}
-
-	// Capture client reference under lock for use after unlock
-	currentClient := beadsClient
-	beadsClientMu.Unlock()
-
-	// For non-default projects, always use CLI client with project dir
-	if projectDir != "" && projectDir != beads.DefaultDir {
-		cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
-		issues, err = cliClient.Ready(nil)
-	} else if currentClient != nil && socketExists {
-		issues, err = currentClient.Ready(nil)
-		if err != nil {
-			// Fallback to CLI on RPC error
-			issues, err = beads.FallbackReady()
+		beadsClientMu.Lock()
+		if !socketExists && beadsClient != nil {
+			beadsClient.Close()
+			beadsClient = nil
 		}
-	} else {
-		issues, err = beads.FallbackReady()
-	}
+		if socketExists && beadsClient == nil && socketPath != "" {
+			beadsClient = beads.NewClient(socketPath,
+				beads.WithAutoReconnect(3),
+				beads.WithTimeout(5*time.Second),
+			)
+		}
+		currentClient := beadsClient
+		beadsClientMu.Unlock()
+
+		var issues []beads.Issue
+		var fetchErr error
+
+		if projectDir != "" && projectDir != beads.DefaultDir {
+			cliClient := beads.NewCLIClient(beads.WithWorkDir(projectDir))
+			issues, fetchErr = cliClient.Ready(nil)
+		} else if currentClient != nil && socketExists {
+			issues, fetchErr = currentClient.Ready(nil)
+			if fetchErr != nil {
+				issues, fetchErr = beads.FallbackReady()
+			}
+		} else {
+			issues, fetchErr = beads.FallbackReady()
+		}
+		return issues, fetchErr
+	})
 
 	if err != nil {
 		return nil, err
 	}
 
+	issues := result.([]beads.Issue)
 	c.mu.Lock()
 	entry.readyIssues = issues
 	entry.readyFetchedAt = time.Now()
@@ -448,29 +436,31 @@ func handleIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable
-	var issue *beads.Issue
-	var err error
+	// Use persistent RPC client (with auto-reconnect), fallback to CLI if unavailable.
+	// Creates use ONLY the concurrency limiter (not singleflight) because each create is unique.
+	createResult, err := bdLimitedCreate(func() (interface{}, error) {
+		beadsClientMu.RLock()
+		currentClient := beadsClient
+		beadsClientMu.RUnlock()
 
-	// Thread-safe access to beadsClient
-	beadsClientMu.RLock()
-	currentClient := beadsClient
-	beadsClientMu.RUnlock()
-
-	if currentClient != nil {
-		issue, err = currentClient.Create(&beads.CreateArgs{
-			Title:       req.Title,
-			Description: req.Description,
-			IssueType:   req.IssueType,
-			Priority:    req.Priority,
-			Labels:      req.Labels,
-		})
-		if err != nil {
-			// Fall through to CLI fallback on RPC error
-			issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+		if currentClient != nil {
+			issue, createErr := currentClient.Create(&beads.CreateArgs{
+				Title:       req.Title,
+				Description: req.Description,
+				IssueType:   req.IssueType,
+				Priority:    req.Priority,
+				Labels:      req.Labels,
+			})
+			if createErr != nil {
+				return beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+			}
+			return issue, nil
 		}
-	} else {
-		issue, err = beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+		return beads.FallbackCreate(req.Title, req.Description, req.IssueType, req.Priority, req.Labels)
+	})
+	var issue *beads.Issue
+	if err == nil {
+		issue = createResult.(*beads.Issue)
 	}
 
 	if err != nil {
@@ -505,6 +495,13 @@ type QuestionResponse struct {
 	Blocking    []string `json:"blocking,omitempty"` // IDs of issues this question blocks
 }
 
+// questionsResult is the internal result type for singleflight dedup of questions fetch.
+type questionsResult struct {
+	open          []QuestionResponse
+	investigating []QuestionResponse
+	answered      []QuestionResponse
+}
+
 // QuestionsAPIResponse is the JSON structure returned by /api/questions.
 type QuestionsAPIResponse struct {
 	Open          []QuestionResponse `json:"open"`
@@ -526,14 +523,68 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch questions using CLI client (type=question)
-	cliClient := beads.NewCLIClient()
+	// Fetch questions using singleflight to deduplicate concurrent dashboard polls.
+	// handleQuestions is expensive: it calls bd list + bd show for EACH question.
+	// Without singleflight, 10 concurrent polls = 10× the subprocess spawning.
+	result, err, _ := bdLimitedQuestions(func() (interface{}, error) {
+		cliClient := beads.NewCLIClient()
 
-	// Get all questions including closed (recent)
-	allQuestions, err := cliClient.List(&beads.ListArgs{
-		IssueType: "question",
-		Limit:     100, // Reasonable limit for dashboard
+		allQuestions, listErr := cliClient.List(&beads.ListArgs{
+			IssueType: "question",
+			Limit:     100,
+		})
+		if listErr != nil {
+			return nil, listErr
+		}
+
+		var open, investigating, answered []QuestionResponse
+		sevenDaysAgo := time.Now().AddDate(0, 0, -7)
+
+		for _, q := range allQuestions {
+			qr := QuestionResponse{
+				ID:          q.ID,
+				Title:       q.Title,
+				Status:      q.Status,
+				Priority:    q.Priority,
+				Labels:      q.Labels,
+				CreatedAt:   q.CreatedAt,
+				ClosedAt:    q.ClosedAt,
+				CloseReason: q.CloseReason,
+			}
+
+			// Get blocking info — each bd show call goes through the concurrency limiter
+			if fullIssue, showErr := cliClient.Show(q.ID); showErr == nil {
+				var dependents []struct {
+					ID string `json:"id"`
+				}
+				if fullIssue.Dependencies != nil {
+					json.Unmarshal(fullIssue.Dependencies, &dependents)
+					for _, dep := range dependents {
+						qr.Blocking = append(qr.Blocking, dep.ID)
+					}
+				}
+			}
+
+			switch q.Status {
+			case "open":
+				open = append(open, qr)
+			case "in_progress", "investigating":
+				investigating = append(investigating, qr)
+			case "closed", "answered":
+				if q.ClosedAt != "" {
+					closedTime, parseErr := time.Parse(time.RFC3339, q.ClosedAt)
+					if parseErr == nil && closedTime.After(sevenDaysAgo) {
+						answered = append(answered, qr)
+					}
+				} else {
+					answered = append(answered, qr)
+				}
+			}
+		}
+
+		return &questionsResult{open: open, investigating: investigating, answered: answered}, nil
 	})
+
 	if err != nil {
 		resp := QuestionsAPIResponse{
 			Open:          []QuestionResponse{},
@@ -546,59 +597,10 @@ func handleQuestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Group questions by status
-	var open, investigating, answered []QuestionResponse
-
-	// For calculating "recent" answered (last 7 days)
-	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
-
-	for _, q := range allQuestions {
-		qr := QuestionResponse{
-			ID:          q.ID,
-			Title:       q.Title,
-			Status:      q.Status,
-			Priority:    q.Priority,
-			Labels:      q.Labels,
-			CreatedAt:   q.CreatedAt,
-			ClosedAt:    q.ClosedAt,
-			CloseReason: q.CloseReason,
-		}
-
-		// Get blocking info (what issues this question blocks)
-		// Use bd show to get dependents
-		if fullIssue, err := cliClient.Show(q.ID); err == nil {
-			// Parse dependents from the raw dependencies field
-			// bd show returns dependents in the response
-			var dependents []struct {
-				ID string `json:"id"`
-			}
-			if fullIssue.Dependencies != nil {
-				// Note: bd show puts dependents in the dependencies field for questions
-				json.Unmarshal(fullIssue.Dependencies, &dependents)
-				for _, dep := range dependents {
-					qr.Blocking = append(qr.Blocking, dep.ID)
-				}
-			}
-		}
-
-		switch q.Status {
-		case "open":
-			open = append(open, qr)
-		case "in_progress", "investigating":
-			investigating = append(investigating, qr)
-		case "closed", "answered":
-			// Only include if closed within last 7 days
-			if q.ClosedAt != "" {
-				closedTime, err := time.Parse(time.RFC3339, q.ClosedAt)
-				if err == nil && closedTime.After(sevenDaysAgo) {
-					answered = append(answered, qr)
-				}
-			} else {
-				// No closed_at but status is closed - include anyway
-				answered = append(answered, qr)
-			}
-		}
-	}
+	qResult := result.(*questionsResult)
+	open := qResult.open
+	investigating := qResult.investigating
+	answered := qResult.answered
 
 	// Return empty slices instead of nil for cleaner JSON
 	if open == nil {
@@ -1081,80 +1083,101 @@ func buildFullGraph(workDir string, includeAll bool) ([]GraphNode, []GraphEdge, 
 	return nodes, edges, nil
 }
 
-// listBeadsIssues calls bd list and returns parsed issues
+// listBeadsIssues calls bd list and returns parsed issues.
+// Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
 func listBeadsIssues(workDir string, includeAll bool) ([]beadsIssue, error) {
+	scope := "open"
 	if includeAll {
-		args := []string{"list", "--json", "--limit", "0", "--all"}
-		cmd := exec.Command(getBdPath(), args...)
-		if workDir != "" {
-			cmd.Dir = workDir
-		}
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-		output, err := cmd.Output()
-		if err != nil {
-			return nil, fmt.Errorf("bd list failed: %w", err)
-		}
-		var issues []beadsIssue
-		if err := json.Unmarshal(output, &issues); err != nil {
-			return nil, fmt.Errorf("parse issues: %w", err)
-		}
-		return issues, nil
+		scope = "all"
 	}
+	key := workDir + ":" + scope
 
-	// bd treats multiple --status flags as AND, not OR.
-	// We need both open and in_progress issues, so fetch separately and merge.
-	var allIssues []beadsIssue
-	for _, status := range []string{"open", "in_progress"} {
-		args := []string{"list", "--json", "--limit", "0", "--status", status}
-		cmd := exec.Command(getBdPath(), args...)
-		if workDir != "" {
-			cmd.Dir = workDir
+	result, err, _ := bdLimitedList(key, func() (interface{}, error) {
+		if includeAll {
+			args := []string{"list", "--json", "--limit", "0", "--all"}
+			cmd := exec.Command(getBdPath(), args...)
+			if workDir != "" {
+				cmd.Dir = workDir
+			}
+			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+			output, cmdErr := cmd.Output()
+			if cmdErr != nil {
+				return nil, fmt.Errorf("bd list failed: %w", cmdErr)
+			}
+			var issues []beadsIssue
+			if parseErr := json.Unmarshal(output, &issues); parseErr != nil {
+				return nil, fmt.Errorf("parse issues: %w", parseErr)
+			}
+			return issues, nil
 		}
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-		output, err := cmd.Output()
-		if err != nil {
-			continue // Skip this status if it fails
+
+		// bd treats multiple --status flags as AND, not OR.
+		var allIssues []beadsIssue
+		for _, status := range []string{"open", "in_progress"} {
+			args := []string{"list", "--json", "--limit", "0", "--status", status}
+			cmd := exec.Command(getBdPath(), args...)
+			if workDir != "" {
+				cmd.Dir = workDir
+			}
+			cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+			output, cmdErr := cmd.Output()
+			if cmdErr != nil {
+				continue
+			}
+			var issues []beadsIssue
+			if parseErr := json.Unmarshal(output, &issues); parseErr != nil {
+				continue
+			}
+			allIssues = append(allIssues, issues...)
 		}
-		var issues []beadsIssue
-		if err := json.Unmarshal(output, &issues); err != nil {
-			continue
+
+		seen := make(map[string]bool)
+		unique := make([]beadsIssue, 0, len(allIssues))
+		for _, issue := range allIssues {
+			if !seen[issue.ID] {
+				seen[issue.ID] = true
+				unique = append(unique, issue)
+			}
 		}
-		allIssues = append(allIssues, issues...)
+
+		return unique, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
-
-	// Deduplicate by ID (in case an issue appears in both)
-	seen := make(map[string]bool)
-	unique := make([]beadsIssue, 0, len(allIssues))
-	for _, issue := range allIssues {
-		if !seen[issue.ID] {
-			seen[issue.ID] = true
-			unique = append(unique, issue)
-		}
-	}
-
-	return unique, nil
+	return result.([]beadsIssue), nil
 }
 
-// showBeadsIssue calls bd show and returns the parsed issue with dependencies
+// showBeadsIssue calls bd show and returns the parsed issue with dependencies.
+// Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
 func showBeadsIssue(workDir, id string) (*beadsShowIssue, error) {
-	cmd := exec.Command(getBdPath(), "show", id, "--json")
-	if workDir != "" {
-		cmd.Dir = workDir
-	}
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+	key := workDir + ":" + id
 
-	output, err := cmd.Output()
+	result, err, _ := bdLimitedShow(key, func() (interface{}, error) {
+		cmd := exec.Command(getBdPath(), "show", id, "--json")
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+		output, cmdErr := cmd.Output()
+		if cmdErr != nil {
+			return nil, fmt.Errorf("bd show %s failed: %w", id, cmdErr)
+		}
+
+		var issues []beadsShowIssue
+		if parseErr := json.Unmarshal(output, &issues); parseErr != nil || len(issues) == 0 {
+			return nil, fmt.Errorf("parse show output: %w", parseErr)
+		}
+
+		return &issues[0], nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("bd show %s failed: %w", id, err)
+		return nil, err
 	}
-
-	// bd show returns an array
-	var issues []beadsShowIssue
-	if err := json.Unmarshal(output, &issues); err != nil || len(issues) == 0 {
-		return nil, fmt.Errorf("parse show output: %w", err)
-	}
-
-	return &issues[0], nil
+	return result.(*beadsShowIssue), nil
 }
 
 // getBdPath returns the resolved bd path or falls back to "bd".
@@ -1165,59 +1188,72 @@ func getBdPath() string {
 	return "bd"
 }
 
-// listIssueDependencies returns dependencies for an issue with proper types using bd dep list.
-// This is more reliable than extracting from bd show which may not populate dependency_type.
-func listIssueDependencies(workDir, id string) ([]struct {
+// depEntry represents a single dependency/dependent relationship.
+type depEntry struct {
 	ID             string `json:"id"`
 	DependencyType string `json:"dependency_type"`
-}, error) {
-	cmd := exec.Command(getBdPath(), "dep", "list", id, "--json")
-	if workDir != "" {
-		cmd.Dir = workDir
-	}
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+}
 
-	output, err := cmd.Output()
+// listIssueDependencies returns dependencies for an issue with proper types using bd dep list.
+// Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
+func listIssueDependencies(workDir, id string) ([]depEntry, error) {
+	key := workDir + ":deps:" + id
+
+	result, err, _ := bdLimitedDep(key, func() (interface{}, error) {
+		cmd := exec.Command(getBdPath(), "dep", "list", id, "--json")
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+		output, cmdErr := cmd.Output()
+		if cmdErr != nil {
+			return nil, fmt.Errorf("bd dep list %s failed: %w", id, cmdErr)
+		}
+
+		var deps []depEntry
+		if parseErr := json.Unmarshal(output, &deps); parseErr != nil {
+			return nil, fmt.Errorf("parse dep list output: %w", parseErr)
+		}
+
+		return deps, nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("bd dep list %s failed: %w", id, err)
+		return nil, err
 	}
-
-	var deps []struct {
-		ID             string `json:"id"`
-		DependencyType string `json:"dependency_type"`
-	}
-	if err := json.Unmarshal(output, &deps); err != nil {
-		return nil, fmt.Errorf("parse dep list output: %w", err)
-	}
-
-	return deps, nil
+	return result.([]depEntry), nil
 }
 
 // listIssueDependents returns dependents for an issue with proper types using bd dep list --direction up.
-func listIssueDependents(workDir, id string) ([]struct {
-	ID             string `json:"id"`
-	DependencyType string `json:"dependency_type"`
-}, error) {
-	cmd := exec.Command(getBdPath(), "dep", "list", id, "--direction", "up", "--json")
-	if workDir != "" {
-		cmd.Dir = workDir
-	}
-	cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+// Wrapped in singleflight + concurrency limiter to prevent subprocess stampede.
+func listIssueDependents(workDir, id string) ([]depEntry, error) {
+	key := workDir + ":dependents:" + id
 
-	output, err := cmd.Output()
+	result, err, _ := bdLimitedDep(key, func() (interface{}, error) {
+		cmd := exec.Command(getBdPath(), "dep", "list", id, "--direction", "up", "--json")
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
+
+		output, cmdErr := cmd.Output()
+		if cmdErr != nil {
+			return nil, fmt.Errorf("bd dep list --direction up %s failed: %w", id, cmdErr)
+		}
+
+		var deps []depEntry
+		if parseErr := json.Unmarshal(output, &deps); parseErr != nil {
+			return nil, fmt.Errorf("parse dep list dependents output: %w", parseErr)
+		}
+
+		return deps, nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("bd dep list --direction up %s failed: %w", id, err)
+		return nil, err
 	}
-
-	var deps []struct {
-		ID             string `json:"id"`
-		DependencyType string `json:"dependency_type"`
-	}
-	if err := json.Unmarshal(output, &deps); err != nil {
-		return nil, fmt.Errorf("parse dep list dependents output: %w", err)
-	}
-
-	return deps, nil
+	return result.([]depEntry), nil
 }
 
 // AttemptHistoryEntry represents a single attempt for an issue.
@@ -1272,8 +1308,18 @@ func handleBeadsAttempts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Scan workspaces for this beads ID
-	attempts, err := collectAttemptHistory(beadsID)
+	// Scan workspaces for this beads ID — wrapped in singleflight to deduplicate.
+	// collectAttemptHistory spawns bd comments and other bd subprocesses.
+	attemptsResult, attemptsErr, _ := bdLimitedAttempts(beadsID, func() (interface{}, error) {
+		return collectAttemptHistory(beadsID)
+	})
+	var attempts []AttemptHistoryEntry
+	var err error
+	if attemptsErr != nil {
+		err = attemptsErr
+	} else {
+		attempts = attemptsResult.([]AttemptHistoryEntry)
+	}
 	if err != nil {
 		resp := AttemptHistoryAPIResponse{
 			BeadsID: beadsID,
@@ -1631,15 +1677,16 @@ func handleBeadsClose(w http.ResponseWriter, r *http.Request) {
 		workDir = beads.DefaultDir
 	}
 
-	// Use CLI client to close the issue
-	// Set BEADS_NO_DAEMON=1 to use direct storage mode, matching the read operations
-	// (listBeadsIssues, showBeadsIssue). Without this, close goes through daemon while
-	// reads bypass it, causing sync issues where closed items reappear after refresh.
-	cliClient := beads.NewCLIClient(
-		beads.WithWorkDir(workDir),
-		beads.WithEnv(append(os.Environ(), "BEADS_NO_DAEMON=1")),
-	)
-	if err := cliClient.CloseIssue(req.ID, req.Reason); err != nil {
+	// Use CLI client to close the issue — wrapped in concurrency limiter (no singleflight for mutations).
+	// Set BEADS_NO_DAEMON=1 to use direct storage mode, matching the read operations.
+	_, closeErr := bdLimitedCreate(func() (interface{}, error) {
+		cliClient := beads.NewCLIClient(
+			beads.WithWorkDir(workDir),
+			beads.WithEnv(append(os.Environ(), "BEADS_NO_DAEMON=1")),
+		)
+		return nil, cliClient.CloseIssue(req.ID, req.Reason)
+	})
+	if err := closeErr; err != nil {
 		resp := CloseIssueResponse{
 			ID:      req.ID,
 			Success: false,

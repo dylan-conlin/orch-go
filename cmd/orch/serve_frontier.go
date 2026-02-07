@@ -9,16 +9,16 @@ import (
 
 // FrontierAPIResponse is the JSON structure returned by /api/frontier.
 type FrontierAPIResponse struct {
-	Warnings     []string              `json:"warnings,omitempty"`
-	Ready        []FrontierIssue       `json:"ready"`
-	ReadyTotal   int                   `json:"ready_total"`
-	Blocked      []BlockedOutput       `json:"blocked"`
-	BlockedTotal int                   `json:"blocked_total"`
-	Active       []ActiveOutput        `json:"active"`
-	ActiveTotal  int                   `json:"active_total"`
-	Stuck        []ActiveOutput        `json:"stuck"`
-	StuckTotal   int                   `json:"stuck_total"`
-	Error        string                `json:"error,omitempty"`
+	Warnings     []string        `json:"warnings,omitempty"`
+	Ready        []FrontierIssue `json:"ready"`
+	ReadyTotal   int             `json:"ready_total"`
+	Blocked      []BlockedOutput `json:"blocked"`
+	BlockedTotal int             `json:"blocked_total"`
+	Active       []ActiveOutput  `json:"active"`
+	ActiveTotal  int             `json:"active_total"`
+	Stuck        []ActiveOutput  `json:"stuck"`
+	StuckTotal   int             `json:"stuck_total"`
+	Error        string          `json:"error,omitempty"`
 }
 
 // handleFrontier returns the decidability frontier state.
@@ -29,8 +29,12 @@ func handleFrontier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate frontier state from beads
-	state, err := frontier.CalculateFrontier()
+	// Calculate frontier state from beads — wrapped in singleflight to deduplicate.
+	// CalculateFrontier spawns multiple bd subprocesses (bd ready, bd list, bd dep).
+	// Without singleflight, concurrent dashboard polls multiply these subprocess calls.
+	result, err, _ := bdLimitedFrontier(func() (interface{}, error) {
+		return frontier.CalculateFrontier()
+	})
 	if err != nil {
 		resp := FrontierAPIResponse{
 			Ready:   []FrontierIssue{},
@@ -43,6 +47,7 @@ func handleFrontier(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
+	state := result.(*frontier.FrontierState)
 
 	// Get active agents from registry and split into active vs stuck
 	activeAgents, stuckAgents := getActiveAndStuckAgents()

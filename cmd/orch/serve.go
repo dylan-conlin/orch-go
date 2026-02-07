@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/attention"
-	"github.com/dylan-conlin/orch-go/pkg/certs"
 	"github.com/dylan-conlin/orch-go/pkg/beads"
+	"github.com/dylan-conlin/orch-go/pkg/certs"
 	"github.com/dylan-conlin/orch-go/pkg/events"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/service"
@@ -234,6 +234,17 @@ func runServe(portNum int) error {
 			beadsClient = nil
 		}
 	}
+
+	// Initialize bd subprocess limiter to prevent stampede under load.
+	// Two-layer protection: singleflight deduplication + hard concurrency cap (max 5).
+	// Without this, dashboard polling can spawn hundreds of concurrent bd subprocesses.
+	globalBdLimiter = newBdLimiter()
+	fmt.Printf("Initialized bd subprocess limiter (max %d concurrent)\n", maxBdConcurrent)
+
+	// Start limiter stats logging in background (every 60s)
+	limiterStop := make(chan struct{})
+	go logLimiterStats(globalBdLimiter, 60*time.Second, limiterStop)
+	defer close(limiterStop)
 
 	// Initialize beads cache to prevent CPU spikes from excessive bd spawning.
 	// Without caching, each /api/agents request spawns 20+ bd processes for 600+ workspaces.
@@ -470,11 +481,15 @@ func runServe(portNum int) error {
 		}
 	}))
 
-	// Health check
+	// Health check — includes bd limiter stats for observability
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		response := map[string]interface{}{"status": "ok"}
+		if limiterStats := getLimiterStats(); limiterStats != nil {
+			response["bd_limiter"] = limiterStats
+		}
+		json.NewEncoder(w).Encode(response)
 	})
 
 	// pprof handlers for CPU profiling (useful for debugging CPU runaway)
