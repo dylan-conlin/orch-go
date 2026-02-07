@@ -445,6 +445,77 @@ func checkRowsAffected(result sql.Result, identifier string) error {
 	return nil
 }
 
+// UpdateProcessingBySessionID updates the is_processing flag for an agent by session ID.
+// Called by SSE materializer when session.status events indicate busy/idle.
+// Does NOT error if no agent matches — SSE events may arrive for sessions not in state.db.
+func (d *DB) UpdateProcessingBySessionID(sessionID string, isProcessing bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := nowMs()
+	_, err := d.db.Exec(`
+		UPDATE agents
+		SET is_processing = ?, session_updated_at = ?, updated_at = ?
+		WHERE session_id = ? AND is_completed = 0 AND is_abandoned = 0`,
+		boolToInt(isProcessing), now, now, sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update processing for session %s: %w", sessionID, err)
+	}
+	// No checkRowsAffected — SSE events may arrive for sessions not tracked in state.db
+	return nil
+}
+
+// UpdateSessionActivity updates the session_updated_at timestamp for an agent by session ID.
+// Called by SSE materializer on message.part events to track last activity.
+// Does NOT error if no agent matches.
+func (d *DB) UpdateSessionActivity(sessionID string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := nowMs()
+	_, err := d.db.Exec(`
+		UPDATE agents
+		SET session_updated_at = ?, updated_at = ?
+		WHERE session_id = ? AND is_completed = 0 AND is_abandoned = 0`,
+		now, now, sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update session activity for session %s: %w", sessionID, err)
+	}
+	return nil
+}
+
+// UpdateTokensBySessionID updates token counts for an agent by session ID.
+// Called by SSE materializer when token usage information is available.
+// The total is computed as input + output + reasoning + cache_read.
+// Does NOT error if no agent matches.
+func (d *DB) UpdateTokensBySessionID(sessionID string, input, output, reasoning, cacheRead int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := nowMs()
+	total := input + output + reasoning + cacheRead
+	_, err := d.db.Exec(`
+		UPDATE agents
+		SET tokens_input = ?, tokens_output = ?, tokens_reasoning = ?,
+		    tokens_cache_read = ?, tokens_total = ?,
+		    session_updated_at = ?, updated_at = ?
+		WHERE session_id = ? AND is_completed = 0 AND is_abandoned = 0`,
+		input, output, reasoning, cacheRead, total, now, now, sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update tokens for session %s: %w", sessionID, err)
+	}
+	return nil
+}
+
+// GetAgentBySessionID returns an agent by session ID.
+func (d *DB) GetAgentBySessionID(sessionID string) (*Agent, error) {
+	row := d.db.QueryRow(`SELECT * FROM agents WHERE session_id = ?`, sessionID)
+	return scanAgent(row)
+}
+
 // OpenDefault opens the state database at the default path.
 // Returns nil, nil if the database path cannot be determined (graceful degradation).
 func OpenDefault() (*DB, error) {

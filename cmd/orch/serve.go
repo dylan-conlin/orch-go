@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/beads"
 	"github.com/dylan-conlin/orch-go/pkg/certs"
 	"github.com/dylan-conlin/orch-go/pkg/events"
+	"github.com/dylan-conlin/orch-go/pkg/materializer"
 	"github.com/dylan-conlin/orch-go/pkg/notify"
 	"github.com/dylan-conlin/orch-go/pkg/service"
 	"github.com/spf13/cobra"
@@ -54,6 +56,10 @@ var (
 	// likelyDoneCache caches LIKELY_DONE attention signals.
 	// Initialized at startup with 5-minute TTL to avoid slow git/workspace scans.
 	globalLikelyDoneCache *attention.LikelyDoneCache
+
+	// globalMaterializer is the SSE materializer that keeps state.db fresh
+	// from OpenCode session events in real-time.
+	globalMaterializer *materializer.Materializer
 )
 
 var serveCmd = &cobra.Command{
@@ -271,6 +277,21 @@ func runServe(portNum int) error {
 	serviceMonitor.Start()
 	fmt.Println("Started service monitor (polling every 10s, auto-restart enabled)")
 
+	// Start SSE materializer to keep state.db fresh from OpenCode events.
+	// Subscribes to SSE stream and writes is_processing, session_updated_at,
+	// and token counts to state.db in real-time (~2s freshness target).
+	globalMaterializer = materializer.New(materializer.Config{
+		ServerURL: serverURL,
+	})
+	ctx := context.Background()
+	if err := globalMaterializer.Start(ctx); err != nil {
+		fmt.Printf("Warning: failed to start SSE materializer: %v\n", err)
+		globalMaterializer = nil
+	} else {
+		fmt.Println("Started SSE materializer (state.db real-time sync)")
+		defer globalMaterializer.Stop()
+	}
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -481,13 +502,16 @@ func runServe(portNum int) error {
 		}
 	}))
 
-	// Health check — includes bd limiter stats for observability
+	// Health check — includes bd limiter stats and materializer status for observability
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		response := map[string]interface{}{"status": "ok"}
 		if limiterStats := getLimiterStats(); limiterStats != nil {
 			response["bd_limiter"] = limiterStats
+		}
+		if globalMaterializer != nil {
+			response["materializer"] = globalMaterializer.Status()
 		}
 		json.NewEncoder(w).Encode(response)
 	})

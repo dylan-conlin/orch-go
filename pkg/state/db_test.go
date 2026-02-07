@@ -613,3 +613,136 @@ func TestSchemaIdempotent(t *testing.T) {
 		t.Fatalf("InsertAgent after reopen failed: %v", err)
 	}
 }
+
+func TestUpdateProcessingBySessionID(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-proc-06feb-a1b2")
+	agent.SessionID = "session-proc-123"
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// Set processing to true
+	if err := db.UpdateProcessingBySessionID("session-proc-123", true); err != nil {
+		t.Fatalf("UpdateProcessingBySessionID(true) failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-proc-06feb-a1b2")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+	if !got.IsProcessing {
+		t.Error("IsProcessing should be true")
+	}
+	if got.SessionUpdatedAt == 0 {
+		t.Error("SessionUpdatedAt should be set")
+	}
+
+	// Set processing to false
+	if err := db.UpdateProcessingBySessionID("session-proc-123", false); err != nil {
+		t.Fatalf("UpdateProcessingBySessionID(false) failed: %v", err)
+	}
+
+	got2, err := db.GetAgent("og-feat-proc-06feb-a1b2")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+	if got2.IsProcessing {
+		t.Error("IsProcessing should be false")
+	}
+}
+
+func TestUpdateProcessingBySessionIDNotFound(t *testing.T) {
+	db := testDB(t)
+
+	// Should succeed even if no rows match (no agent with this session_id)
+	err := db.UpdateProcessingBySessionID("nonexistent-session", true)
+	if err != nil {
+		t.Errorf("UpdateProcessingBySessionID should not error for unknown session: %v", err)
+	}
+}
+
+func TestUpdateSessionActivity(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-activity-06feb-c3d4")
+	agent.SessionID = "session-activity-456"
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// Update activity
+	if err := db.UpdateSessionActivity("session-activity-456"); err != nil {
+		t.Fatalf("UpdateSessionActivity failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-activity-06feb-c3d4")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+	if got.SessionUpdatedAt == 0 {
+		t.Error("SessionUpdatedAt should be set after UpdateSessionActivity")
+	}
+	if got.UpdatedAt == 0 {
+		t.Error("UpdatedAt should be set after UpdateSessionActivity")
+	}
+}
+
+func TestUpdateTokensBySessionID(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-tokens-06feb-e5f6")
+	agent.SessionID = "session-tokens-789"
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// Update tokens
+	if err := db.UpdateTokensBySessionID("session-tokens-789", 1000, 500, 200, 300); err != nil {
+		t.Fatalf("UpdateTokensBySessionID failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-tokens-06feb-e5f6")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+	if got.TokensInput != 1000 {
+		t.Errorf("TokensInput = %d, want 1000", got.TokensInput)
+	}
+	if got.TokensOutput != 500 {
+		t.Errorf("TokensOutput = %d, want 500", got.TokensOutput)
+	}
+	if got.TokensReasoning != 200 {
+		t.Errorf("TokensReasoning = %d, want 200", got.TokensReasoning)
+	}
+	if got.TokensCacheRead != 300 {
+		t.Errorf("TokensCacheRead = %d, want 300", got.TokensCacheRead)
+	}
+	if got.TokensTotal != 2000 {
+		t.Errorf("TokensTotal = %d, want 2000 (sum)", got.TokensTotal)
+	}
+}
+
+func TestGetAgentBySessionID(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-getsess-06feb-g7h8")
+	agent.SessionID = "session-get-abc"
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	got, err := db.GetAgentBySessionID("session-get-abc")
+	if err != nil {
+		t.Fatalf("GetAgentBySessionID failed: %v", err)
+	}
+	if got.WorkspaceName != "og-feat-getsess-06feb-g7h8" {
+		t.Errorf("WorkspaceName = %q, want %q", got.WorkspaceName, "og-feat-getsess-06feb-g7h8")
+	}
+}
+
+func TestGetAgentBySessionIDNotFound(t *testing.T) {
+	db := testDB(t)
+
+	_, err := db.GetAgentBySessionID("nonexistent")
+	if err == nil {
+		t.Error("GetAgentBySessionID should return error for nonexistent session")
+	}
+}
