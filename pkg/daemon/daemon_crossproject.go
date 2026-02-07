@@ -105,104 +105,8 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 		}, nil
 	}
 
-	// Collect all issues across projects
-	var allIssues []CrossProjectIssue
-
-	for _, project := range projects {
-		issues, err := d.listIssuesForProjectFunc(project.Path)
-		if err != nil {
-			// Log error but continue to next project (per acceptance criteria)
-			if d.Config.Verbose {
-				fmt.Printf("  [%s] Failed to list issues: %v\n", project.Name, err)
-			}
-			continue
-		}
-
-		// Track skip reasons per project for summary logging (reduces log verbosity)
-		var skipCounts struct {
-			failedSpawn   int
-			recentSpawn   int
-			typeNotSpawn  int
-			statusBlocked int
-			missingLabel  int
-		}
-		spawnable := 0
-
-		for _, issue := range issues {
-			// Skip issues in the skip set
-			skipKey := fmt.Sprintf("%s:%s", project.Path, issue.ID)
-			if skip != nil && skip[skipKey] {
-				skipCounts.failedSpawn++
-				continue
-			}
-
-			// Skip issues that have been recently spawned
-			if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
-				skipCounts.recentSpawn++
-				// Emit telemetry event when SpawnedIssueTracker blocks spawn
-				if d.EventLogger != nil {
-					_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
-						"beads_id":    issue.ID,
-						"dedup_layer": "spawned_tracker",
-						"reason":      "Issue recently spawned, awaiting status update (6h TTL)",
-					})
-				}
-				continue
-			}
-
-			// Skip non-spawnable types
-			if !IsSpawnableType(issue.IssueType) {
-				skipCounts.typeNotSpawn++
-				continue
-			}
-
-			// Skip blocked or in_progress issues
-			if issue.Status == "blocked" || issue.Status == "in_progress" {
-				skipCounts.statusBlocked++
-				continue
-			}
-
-			// Skip issues without required label (if filter is set)
-			if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
-				skipCounts.missingLabel++
-				continue
-			}
-
-			spawnable++
-			allIssues = append(allIssues, CrossProjectIssue{
-				Issue:   issue,
-				Project: project,
-			})
-		}
-
-		// Log skip summary per project (much less verbose than per-issue)
-		if d.Config.Verbose {
-			totalSkipped := skipCounts.failedSpawn + skipCounts.recentSpawn +
-				skipCounts.typeNotSpawn + skipCounts.statusBlocked + skipCounts.missingLabel
-			if totalSkipped > 0 || spawnable > 0 {
-				var parts []string
-				if spawnable > 0 {
-					parts = append(parts, fmt.Sprintf("%d spawnable", spawnable))
-				}
-				if skipCounts.missingLabel > 0 {
-					parts = append(parts, fmt.Sprintf("%d missing label", skipCounts.missingLabel))
-				}
-				if skipCounts.statusBlocked > 0 {
-					parts = append(parts, fmt.Sprintf("%d blocked/in_progress", skipCounts.statusBlocked))
-				}
-				if skipCounts.typeNotSpawn > 0 {
-					parts = append(parts, fmt.Sprintf("%d non-spawnable type", skipCounts.typeNotSpawn))
-				}
-				if skipCounts.recentSpawn > 0 {
-					parts = append(parts, fmt.Sprintf("%d recently spawned", skipCounts.recentSpawn))
-				}
-				if skipCounts.failedSpawn > 0 {
-					parts = append(parts, fmt.Sprintf("%d failed this cycle", skipCounts.failedSpawn))
-				}
-				fmt.Printf("  [%s] %s\n", project.Name, strings.Join(parts, ", "))
-			}
-		}
-	}
+	// Collect spawnable issues across all projects
+	allIssues := d.collectSpawnableIssues(projects, skip)
 
 	if len(allIssues) == 0 {
 		return &CrossProjectOnceResult{
@@ -216,25 +120,160 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 		return allIssues[i].Issue.Priority < allIssues[j].Issue.Priority
 	})
 
-	// Try each issue in priority order until one passes session/completion checks.
-	// This fixes the bug where the daemon stops looking if the highest-priority
-	// issue has an existing session or Phase: Complete.
-	var selected *CrossProjectIssue
-	var skill string
-	var skippedReasons []string
+	// Select the best candidate that passes dedup and completion checks
+	selected, skill := d.selectCrossProjectCandidate(allIssues)
 
-	for i := range allIssues {
-		candidate := &allIssues[i]
+	if selected == nil {
+		return &CrossProjectOnceResult{
+			Processed: false,
+			Message:   "No spawnable issues (all skipped due to existing sessions or Phase: Complete)",
+		}, nil
+	}
+
+	// Execute spawn: acquire pool slot, mark processed, spawn, handle failures
+	return d.executeCrossProjectSpawn(selected, skill)
+}
+
+// projectSkipCounts tracks reasons issues were skipped during collection for a single project.
+// Used for summary logging to reduce verbosity compared to per-issue logging.
+type projectSkipCounts struct {
+	failedSpawn   int
+	recentSpawn   int
+	typeNotSpawn  int
+	statusBlocked int
+	missingLabel  int
+}
+
+// collectSpawnableIssues gathers issues from all projects, applying pre-spawn filters
+// (skip set, recently spawned, type checks, status checks, label checks).
+// Per-project skip summaries are logged in verbose mode.
+func (d *Daemon) collectSpawnableIssues(projects []Project, skip map[string]bool) []CrossProjectIssue {
+	var allIssues []CrossProjectIssue
+
+	for _, project := range projects {
+		issues, err := d.listIssuesForProjectFunc(project.Path)
+		if err != nil {
+			if d.Config.Verbose {
+				fmt.Printf("  [%s] Failed to list issues: %v\n", project.Name, err)
+			}
+			continue
+		}
+
+		var counts projectSkipCounts
+		spawnable := 0
+
+		for _, issue := range issues {
+			if d.shouldSkipIssue(issue, project.Path, skip, &counts) {
+				continue
+			}
+
+			spawnable++
+			allIssues = append(allIssues, CrossProjectIssue{
+				Issue:   issue,
+				Project: project,
+			})
+		}
+
+		d.logProjectSkipSummary(project.Name, spawnable, &counts)
+	}
+
+	return allIssues
+}
+
+// shouldSkipIssue checks whether an issue should be filtered out during collection.
+// It updates counts for each skip reason to enable summary logging.
+// Returns true if the issue should be skipped.
+func (d *Daemon) shouldSkipIssue(issue Issue, projectPath string, skip map[string]bool, counts *projectSkipCounts) bool {
+	// Skip issues in the skip set
+	skipKey := fmt.Sprintf("%s:%s", projectPath, issue.ID)
+	if skip != nil && skip[skipKey] {
+		counts.failedSpawn++
+		return true
+	}
+
+	// Skip issues that have been recently spawned
+	if d.SpawnedIssues != nil && d.SpawnedIssues.IsSpawned(issue.ID) {
+		counts.recentSpawn++
+		if d.EventLogger != nil {
+			_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
+				"beads_id":    issue.ID,
+				"dedup_layer": "spawned_tracker",
+				"reason":      "Issue recently spawned, awaiting status update (6h TTL)",
+			})
+		}
+		return true
+	}
+
+	// Skip non-spawnable types
+	if !IsSpawnableType(issue.IssueType) {
+		counts.typeNotSpawn++
+		return true
+	}
+
+	// Skip blocked or in_progress issues
+	if issue.Status == "blocked" || issue.Status == "in_progress" {
+		counts.statusBlocked++
+		return true
+	}
+
+	// Skip issues without required label (if filter is set)
+	if d.Config.Label != "" && !issue.HasLabel(d.Config.Label) {
+		counts.missingLabel++
+		return true
+	}
+
+	return false
+}
+
+// logProjectSkipSummary logs a summary of skip reasons for a project in verbose mode.
+// This is much less verbose than logging each skipped issue individually.
+func (d *Daemon) logProjectSkipSummary(projectName string, spawnable int, counts *projectSkipCounts) {
+	if !d.Config.Verbose {
+		return
+	}
+
+	totalSkipped := counts.failedSpawn + counts.recentSpawn +
+		counts.typeNotSpawn + counts.statusBlocked + counts.missingLabel
+	if totalSkipped == 0 && spawnable == 0 {
+		return
+	}
+
+	var parts []string
+	if spawnable > 0 {
+		parts = append(parts, fmt.Sprintf("%d spawnable", spawnable))
+	}
+	if counts.missingLabel > 0 {
+		parts = append(parts, fmt.Sprintf("%d missing label", counts.missingLabel))
+	}
+	if counts.statusBlocked > 0 {
+		parts = append(parts, fmt.Sprintf("%d blocked/in_progress", counts.statusBlocked))
+	}
+	if counts.typeNotSpawn > 0 {
+		parts = append(parts, fmt.Sprintf("%d non-spawnable type", counts.typeNotSpawn))
+	}
+	if counts.recentSpawn > 0 {
+		parts = append(parts, fmt.Sprintf("%d recently spawned", counts.recentSpawn))
+	}
+	if counts.failedSpawn > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed this cycle", counts.failedSpawn))
+	}
+	fmt.Printf("  [%s] %s\n", projectName, strings.Join(parts, ", "))
+}
+
+// selectCrossProjectCandidate iterates candidates in priority order, applying dedup checks
+// (ProcessedCache, synthesis completion) to find the first viable candidate.
+// Returns nil if no candidate passes all checks.
+func (d *Daemon) selectCrossProjectCandidate(candidates []CrossProjectIssue) (*CrossProjectIssue, string) {
+	for i := range candidates {
+		candidate := &candidates[i]
 
 		// Infer skill for this candidate
-		candidateSkill, err := InferSkillFromIssue(&candidate.Issue)
+		skill, err := InferSkillFromIssue(&candidate.Issue)
 		if err != nil {
 			if d.Config.Verbose {
 				fmt.Printf("  [%s] Skipping %s (failed to infer skill: %v)\n",
 					candidate.Project.Name, candidate.Issue.ID, err)
 			}
-			skippedReasons = append(skippedReasons,
-				fmt.Sprintf("%s: failed to infer skill", candidate.Issue.ID))
 			continue
 		}
 
@@ -244,7 +283,6 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 				fmt.Printf("  [%s] Skipping %s (blocked by ProcessedCache)\n",
 					candidate.Project.Name, candidate.Issue.ID)
 			}
-			// Emit telemetry event when cache blocks spawn
 			if d.EventLogger != nil {
 				_ = d.EventLogger.LogDedupBlocked(map[string]interface{}{
 					"beads_id":    candidate.Issue.ID,
@@ -252,8 +290,6 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 					"reason":      "Issue blocked by unified ProcessedCache",
 				})
 			}
-			skippedReasons = append(skippedReasons,
-				fmt.Sprintf("%s: already processed", candidate.Issue.ID))
 			continue
 		}
 
@@ -270,29 +306,18 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 					"reason":      reason,
 				})
 			}
-			skippedReasons = append(skippedReasons,
-				fmt.Sprintf("%s: %s", candidate.Issue.ID, reason))
 			continue
 		}
 
-		// This candidate passes all checks
-		selected = candidate
-		skill = candidateSkill
-		break
+		return candidate, skill
 	}
 
-	// If no issue passed the checks, report what was skipped
-	if selected == nil {
-		msg := "No spawnable issues (all skipped due to existing sessions or Phase: Complete)"
-		if len(skippedReasons) > 0 && d.Config.Verbose {
-			msg = fmt.Sprintf("Skipped %d issues: %v", len(skippedReasons), skippedReasons)
-		}
-		return &CrossProjectOnceResult{
-			Processed: false,
-			Message:   msg,
-		}, nil
-	}
+	return nil, ""
+}
 
+// executeCrossProjectSpawn handles pool slot acquisition, marking the issue as processed,
+// spawning the work, and cleanup on failure (unmarking, releasing slot).
+func (d *Daemon) executeCrossProjectSpawn(selected *CrossProjectIssue, skill string) (*CrossProjectOnceResult, error) {
 	// If pool is configured, acquire a slot first
 	var slot *Slot
 	if d.Pool != nil {
@@ -325,8 +350,8 @@ func (d *Daemon) CrossProjectOnceExcluding(skip map[string]bool) (*CrossProjectO
 	if err := d.spawnForProjectFunc(selected.Issue.ID, selected.Project.Path); err != nil {
 		// Unmark on spawn failure
 		if d.ProcessedCache != nil {
-			if err := d.ProcessedCache.Unmark(selected.Issue.ID); err != nil {
-				fmt.Printf("warning: failed to unmark issue: %v\n", err)
+			if unmErr := d.ProcessedCache.Unmark(selected.Issue.ID); unmErr != nil {
+				fmt.Printf("warning: failed to unmark issue: %v\n", unmErr)
 			}
 		}
 		if d.SpawnedIssues != nil {
