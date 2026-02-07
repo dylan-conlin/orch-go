@@ -484,15 +484,11 @@ func formatTestEvidence(result *TestResult) string {
 
 // submitTestEvidence submits the test evidence as a beads comment.
 func submitTestEvidence(beadsID, evidence string) error {
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
+	err := beads.Do("", func(client *beads.Client) error {
+		return client.AddComment(beadsID, "agent", evidence)
+	}, beads.WithAutoReconnect(3))
 	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		err := client.AddComment(beadsID, "agent", evidence)
-		if err == nil {
-			return nil
-		}
-		// Fall through to CLI fallback on RPC error
+		return nil
 	}
 
 	// Fallback to CLI

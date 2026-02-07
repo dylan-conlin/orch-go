@@ -403,22 +403,23 @@ func gatherActiveAgents(projectDir string) []ActiveAgent {
 func getInProgressBeadsIDs() map[string]bool {
 	result := make(map[string]bool)
 
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			issues, err := client.List(&beads.ListArgs{Status: "in_progress"})
-			if err == nil {
-				for _, issue := range issues {
-					result[issue.ID] = true
-				}
-				return result
-			}
-			// Fall through to CLI fallback on RPC error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		issues, rpcErr := client.List(&beads.ListArgs{Status: "in_progress"})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		for _, issue := range issues {
+			result[issue.ID] = true
+		}
+		return nil
+	})
+	if err == nil {
+		return result
 	}
 
 	// Fallback to CLI
@@ -437,27 +438,28 @@ func getInProgressBeadsIDs() map[string]bool {
 func gatherPendingIssues() []PendingIssue {
 	var issues []PendingIssue
 
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			readyIssues, err := client.Ready(nil)
-			if err == nil {
-				for _, issue := range readyIssues {
-					priority := fmt.Sprintf("P%d", issue.Priority)
-					issues = append(issues, PendingIssue{
-						ID:       issue.ID,
-						Title:    issue.Title,
-						Priority: priority,
-					})
-				}
-				return issues
-			}
-			// Fall through to CLI fallback on RPC error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		readyIssues, rpcErr := client.Ready(nil)
+		if rpcErr != nil {
+			return rpcErr
+		}
+		for _, issue := range readyIssues {
+			priority := fmt.Sprintf("P%d", issue.Priority)
+			issues = append(issues, PendingIssue{
+				ID:       issue.ID,
+				Title:    issue.Title,
+				Priority: priority,
+			})
+		}
+		return nil
+	})
+	if err == nil {
+		return issues
 	}
 
 	// Fallback to CLI
@@ -481,32 +483,33 @@ func gatherPendingIssues() []PendingIssue {
 func gatherRecentWork() []RecentWorkItem {
 	var work []RecentWorkItem
 
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			issues, err := client.List(&beads.ListArgs{Status: "closed"})
-			if err == nil {
-				// Limit to most recent 5
-				count := 0
-				for _, issue := range issues {
-					if count >= 5 {
-						break
-					}
-					description := fmt.Sprintf("[%s] %s", issue.ID, issue.Title)
-					work = append(work, RecentWorkItem{
-						Type:        "completed",
-						Description: description,
-					})
-					count++
-				}
-				return work
-			}
-			// Fall through to CLI fallback on RPC error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		issues, rpcErr := client.List(&beads.ListArgs{Status: "closed"})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		// Limit to most recent 5
+		count := 0
+		for _, issue := range issues {
+			if count >= 5 {
+				break
+			}
+			description := fmt.Sprintf("[%s] %s", issue.ID, issue.Title)
+			work = append(work, RecentWorkItem{
+				Type:        "completed",
+				Description: description,
+			})
+			count++
+		}
+		return nil
+	})
+	if err == nil {
+		return work
 	}
 
 	// Fallback to CLI

@@ -138,22 +138,27 @@ func GetLastPhaseComment(beadsID string) string {
 
 // getIssueComments retrieves all comments for a beads issue.
 func getIssueComments(beadsID string) ([]beads.Comment, error) {
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			if comments, err := client.Comments(beadsID); err == nil {
-				return comments, nil
-			}
+	var comments []beads.Comment
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		var rpcErr error
+		comments, rpcErr = client.Comments(beadsID)
+		return rpcErr
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return comments, nil
 	}
+
 	cmd := exec.Command("bd", "comments", beadsID, "--json")
 	output, err := bdCombinedOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get comments: %w: %s", err, string(output))
 	}
-	var comments []beads.Comment
+	comments = nil
 	if err := json.Unmarshal(output, &comments); err != nil {
 		return nil, fmt.Errorf("failed to parse comments: %w", err)
 	}
@@ -220,19 +225,17 @@ func EscalateDeadSession(beadsID string, retryCount int, reason string) error {
 // AddCommentToIssue adds a comment to a beads issue.
 // Uses the beads RPC client with auto-reconnect when available, falling back to CLI.
 func AddCommentToIssue(beadsID, comment string) error {
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// AddComment expects (id, author, text)
-			// Use "daemon" as the author for automated comments
-			if err := client.AddComment(beadsID, "daemon", comment); err == nil {
-				return nil
-			}
-			// Fall through to CLI fallback on error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+		// AddComment expects (id, author, text)
+		// Use "daemon" as the author for automated comments
+		return client.AddComment(beadsID, "daemon", comment)
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return nil
 	}
 
 	// Fallback to CLI if daemon unavailable
@@ -247,22 +250,22 @@ func AddCommentToIssue(beadsID, comment string) error {
 // UpdateIssueStatus updates the status of a beads issue.
 // Uses the beads RPC client with auto-reconnect when available, falling back to CLI.
 func UpdateIssueStatus(beadsID, status string) error {
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Update expects UpdateArgs with Status field as pointer
-			args := &beads.UpdateArgs{
-				ID:     beadsID,
-				Status: &status,
-			}
-			if _, err := client.Update(args); err == nil {
-				return nil
-			}
-			// Fall through to CLI fallback on error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		// Update expects UpdateArgs with Status field as pointer
+		args := &beads.UpdateArgs{
+			ID:     beadsID,
+			Status: &status,
+		}
+		_, rpcErr := client.Update(args)
+		return rpcErr
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return nil
 	}
 
 	// Fallback to CLI if daemon unavailable
@@ -277,22 +280,26 @@ func UpdateIssueStatus(beadsID, status string) error {
 // ListIssuesWithStatus returns all issues with the given status.
 // Uses beads RPC client with auto-reconnect when available, falling back to CLI.
 func ListIssuesWithStatus(status string) ([]Issue, error) {
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Use List with Status filter
-			beadsIssues, err := client.List(&beads.ListArgs{
-				Status: status,
-				Limit:  0, // Get all issues
-			})
-			if err == nil {
-				return convertBeadsIssues(beadsIssues), nil
-			}
-			// Fall through to CLI fallback on error
+	var issues []Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		// Use List with Status filter
+		beadsIssues, rpcErr := client.List(&beads.ListArgs{
+			Status: status,
+			Limit:  0, // Get all issues
+		})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		issues = convertBeadsIssues(beadsIssues)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return issues, nil
 	}
 
 	// Fallback to CLI if daemon unavailable

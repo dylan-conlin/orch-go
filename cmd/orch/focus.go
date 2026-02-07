@@ -378,22 +378,23 @@ func runNext() error {
 func getReadyIssues() []string {
 	var issues []string
 
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			readyIssues, err := client.Ready(nil)
-			if err == nil {
-				for _, issue := range readyIssues {
-					issues = append(issues, issue.ID)
-				}
-				return issues
-			}
-			// Fall through to CLI fallback on RPC error
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		readyIssues, rpcErr := client.Ready(nil)
+		if rpcErr != nil {
+			return rpcErr
+		}
+		for _, issue := range readyIssues {
+			issues = append(issues, issue.ID)
+		}
+		return nil
+	})
+	if err == nil {
+		return issues
 	}
 
 	// Fallback to CLI

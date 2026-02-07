@@ -231,32 +231,35 @@ func collectSwarmIssues() ([]daemon.Issue, error) {
 // getSwarmReadyIssues fetches issues from bd list with triage:ready label.
 // It uses the beads RPC client when available, falling back to the bd CLI.
 func getSwarmReadyIssues() ([]daemon.Issue, error) {
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			issues, err := client.List(&beads.ListArgs{
-				Status: "open",
-				Labels: []string{"triage:ready"},
-			})
-			if err == nil {
-				result := make([]daemon.Issue, len(issues))
-				for i, issue := range issues {
-					result[i] = daemon.Issue{
-						ID:        issue.ID,
-						Title:     issue.Title,
-						IssueType: issue.IssueType,
-						Priority:  issue.Priority,
-						Labels:    issue.Labels,
-					}
-				}
-				return result, nil
-			}
-			// Fall through to CLI fallback on RPC error
+	var rpcResult []daemon.Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		issues, rpcErr := client.List(&beads.ListArgs{
+			Status: "open",
+			Labels: []string{"triage:ready"},
+		})
+		if rpcErr != nil {
+			return rpcErr
+		}
+
+		rpcResult = make([]daemon.Issue, len(issues))
+		for i, issue := range issues {
+			rpcResult[i] = daemon.Issue{
+				ID:        issue.ID,
+				Title:     issue.Title,
+				IssueType: issue.IssueType,
+				Priority:  issue.Priority,
+				Labels:    issue.Labels,
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		return rpcResult, nil
 	}
 
 	// Fallback to CLI - need to fetch and filter

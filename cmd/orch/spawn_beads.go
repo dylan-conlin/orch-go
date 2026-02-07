@@ -51,23 +51,24 @@ func createBeadsIssue(projectName, skillName, task string) (string, error) {
 	}
 
 	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			issue, err := client.Create(&beads.CreateArgs{
-				Title:     title,
-				IssueType: "task",
-				Priority:  2, // Default P2
-				Labels:    labels,
-			})
-			if err == nil {
-				return issue.ID, nil
-			}
-			// Fall through to CLI fallback on RPC error
+	var rpcIssue *beads.Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		var rpcErr error
+		rpcIssue, rpcErr = client.Create(&beads.CreateArgs{
+			Title:     title,
+			IssueType: "task",
+			Priority:  2, // Default P2
+			Labels:    labels,
+		})
+		return rpcErr
+	})
+	if err == nil {
+		return rpcIssue.ID, nil
 	}
 
 	// Fallback to CLI

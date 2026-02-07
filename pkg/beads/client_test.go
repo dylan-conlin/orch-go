@@ -59,6 +59,93 @@ func TestFindSocketPath_NotFound(t *testing.T) {
 	}
 }
 
+func TestDo_UsesProvidedProjectDirAndOptions(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create beads dir: %v", err)
+	}
+
+	socketPath := filepath.Join(beadsDir, "bd.sock")
+	if err := os.WriteFile(socketPath, []byte{}, 0644); err != nil {
+		t.Fatalf("failed to create socket file: %v", err)
+	}
+
+	var got *Client
+	err := Do(tmpDir, func(c *Client) error {
+		got = c
+		return nil
+	}, WithAutoReconnect(3))
+	if err != nil {
+		t.Fatalf("Do failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("Do did not pass client to callback")
+	}
+	if got.socketPath != socketPath {
+		t.Errorf("socketPath = %q, want %q", got.socketPath, socketPath)
+	}
+	if got.cwd != tmpDir {
+		t.Errorf("cwd = %q, want %q", got.cwd, tmpDir)
+	}
+	if !got.autoReconnect || got.maxRetries != 3 {
+		t.Errorf("auto reconnect config = (%v, %d), want (true, 3)", got.autoReconnect, got.maxRetries)
+	}
+}
+
+func TestDo_UsesDefaultDirWhenProjectDirEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0755); err != nil {
+		t.Fatalf("failed to create beads dir: %v", err)
+	}
+
+	socketPath := filepath.Join(beadsDir, "bd.sock")
+	if err := os.WriteFile(socketPath, []byte{}, 0644); err != nil {
+		t.Fatalf("failed to create socket file: %v", err)
+	}
+
+	originalDefaultDir := DefaultDir
+	DefaultDir = tmpDir
+	t.Cleanup(func() {
+		DefaultDir = originalDefaultDir
+	})
+
+	var got *Client
+	err := Do("", func(c *Client) error {
+		got = c
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Do failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("Do did not pass client to callback")
+	}
+	if got.socketPath != socketPath {
+		t.Errorf("socketPath = %q, want %q", got.socketPath, socketPath)
+	}
+	if got.cwd != tmpDir {
+		t.Errorf("cwd = %q, want %q", got.cwd, tmpDir)
+	}
+}
+
+func TestDo_ReturnsLookupError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	called := false
+	err := Do(tmpDir, func(c *Client) error {
+		called = true
+		return nil
+	})
+	if err == nil {
+		t.Fatal("Do should fail when no socket exists")
+	}
+	if called {
+		t.Fatal("Do should not call callback on socket lookup error")
+	}
+}
+
 func TestNewClient(t *testing.T) {
 	c := NewClient("/path/to/bd.sock")
 	if c.socketPath != "/path/to/bd.sock" {
@@ -1611,13 +1698,13 @@ func TestFallbackCloseForce(t *testing.T) {
 	// Expected behavior:
 	// - FallbackCloseForce(id, reason, force=true) should pass --force to bd close
 	// - FallbackCloseForce(id, reason, force=false) should NOT pass --force
-	
+
 	// For now, just test that the function exists and has the right signature
 	// The actual CLI call testing requires integration tests with real beads
-	
+
 	// Test that function can be called with force parameter
 	err := FallbackCloseForce("test-123", "test reason", true)
-	
+
 	// We expect an error since we're not in a real beads environment
 	// But the test verifies the function exists and accepts the parameters
 	if err == nil {

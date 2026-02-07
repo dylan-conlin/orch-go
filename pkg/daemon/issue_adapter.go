@@ -17,21 +17,23 @@ import (
 // It uses the beads RPC daemon if available, falling back to the bd CLI if not.
 // Uses WithAutoReconnect for resilience against transient connection issues.
 func ListReadyIssues() ([]Issue, error) {
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		// Use WithAutoReconnect for resilience against daemon restarts/transient issues
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
-			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
-			if err == nil {
-				return convertBeadsIssues(beadsIssues), nil
-			}
-			// Fall through to CLI fallback on Ready() error
+	var ready []Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
-		// Fall through to CLI fallback on Connect() error
+		defer client.Close()
+
+		// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
+		beadsIssues, rpcErr := client.Ready(&beads.ReadyArgs{Limit: 0})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		ready = convertBeadsIssues(beadsIssues)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return ready, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
@@ -53,20 +55,23 @@ func ListReadyIssuesForProject(projectPath string) ([]Issue, error) {
 		return []Issue{}, nil
 	}
 
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath(projectPath)
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
-			beadsIssues, err := client.Ready(&beads.ReadyArgs{Limit: 0})
-			if err == nil {
-				return convertBeadsIssues(beadsIssues), nil
-			}
-			// Fall through to CLI fallback on Ready() error
+	var ready []Issue
+	err := beads.Do(projectPath, func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
-		// Fall through to CLI fallback on Connect() error
+		defer client.Close()
+
+		// Use Limit: 0 to get ALL ready issues (bd ready defaults to limit 10)
+		beadsIssues, rpcErr := client.Ready(&beads.ReadyArgs{Limit: 0})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		ready = convertBeadsIssues(beadsIssues)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return ready, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
@@ -143,23 +148,26 @@ func ListReadyIssuesWithLabel(label string) ([]Issue, error) {
 		return ListReadyIssues()
 	}
 
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Use Labels filter to only get issues with the specified label
-			beadsIssues, err := client.Ready(&beads.ReadyArgs{
-				Limit:  0,
-				Labels: []string{label},
-			})
-			if err == nil {
-				return convertBeadsIssues(beadsIssues), nil
-			}
-			// Fall through to CLI fallback on Ready() error
+	var ready []Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
-		// Fall through to CLI fallback on Connect() error
+		defer client.Close()
+
+		// Use Labels filter to only get issues with the specified label
+		beadsIssues, rpcErr := client.Ready(&beads.ReadyArgs{
+			Limit:  0,
+			Labels: []string{label},
+		})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		ready = convertBeadsIssues(beadsIssues)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return ready, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
@@ -190,19 +198,22 @@ func ListEpicChildren(epicID string) ([]Issue, error) {
 		return []Issue{}, nil
 	}
 
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			beadsIssues, err := client.List(&beads.ListArgs{Parent: epicID, Limit: 0})
-			if err == nil {
-				return convertBeadsIssues(beadsIssues), nil
-			}
-			// Fall through to CLI fallback on List() error
+	var children []Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
-		// Fall through to CLI fallback on Connect() error
+		defer client.Close()
+
+		beadsIssues, rpcErr := client.List(&beads.ListArgs{Parent: epicID, Limit: 0})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		children = convertBeadsIssues(beadsIssues)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return children, nil
 	}
 
 	// Fallback to CLI if daemon unavailable
@@ -229,19 +240,22 @@ func HasPhaseCompleteForProject(beadsID, projectPath string) (bool, error) {
 		return false, nil
 	}
 
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath(projectPath)
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			comments, err := client.Comments(beadsID)
-			if err == nil {
-				return checkCommentsForPhaseComplete(comments), nil
-			}
-			// Fall through to CLI fallback on Comments() error
+	var hasComplete bool
+	err := beads.Do(projectPath, func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
-		// Fall through to CLI fallback on Connect() error
+		defer client.Close()
+
+		comments, rpcErr := client.Comments(beadsID)
+		if rpcErr != nil {
+			return rpcErr
+		}
+		hasComplete = checkCommentsForPhaseComplete(comments)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return hasComplete, nil
 	}
 
 	// Fallback to CLI if daemon unavailable

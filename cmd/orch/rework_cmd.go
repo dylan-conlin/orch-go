@@ -209,16 +209,15 @@ func buildReworkSummary(beadsID, failureType, description string) string {
 // addFailureComment adds a POST-COMPLETION-FAILURE comment to the beads issue.
 // Uses the beads RPC client with fallback to CLI.
 func addFailureComment(beadsID, comment string) error {
-	// Try RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			if err := client.AddComment(beadsID, "orchestrator", comment); err == nil {
-				return nil
-			}
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+		return client.AddComment(beadsID, "orchestrator", comment)
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return nil
 	}
 
 	// Fallback to CLI

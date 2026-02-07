@@ -1772,22 +1772,15 @@ func (d *Daemon) NextDeadSessionDetectionTime() time.Time {
 // This label indicates that the agent requires human intervention.
 // Uses the beads RPC client with auto-reconnect when available, falling back to CLI.
 func addNeedsHumanLabel(beadsID string) error {
-	// Try RPC client first with auto-reconnect
-	socketPath, err := beads.FindSocketPath("")
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
+		}
+		defer client.Close()
+		return client.AddLabel(beadsID, "needs:human")
+	}, beads.WithAutoReconnect(3))
 	if err == nil {
-		opts := []beads.Option{beads.WithAutoReconnect(3)}
-		if beads.DefaultDir != "" {
-			opts = append(opts, beads.WithCwd(beads.DefaultDir))
-		}
-		client := beads.NewClient(socketPath, opts...)
-		if connErr := client.Connect(); connErr == nil {
-			defer client.Close()
-			err := client.AddLabel(beadsID, "needs:human")
-			if err == nil {
-				return nil
-			}
-		}
-		// Fall through to CLI fallback on RPC error
+		return nil
 	}
 
 	// Fallback to CLI

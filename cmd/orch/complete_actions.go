@@ -40,16 +40,12 @@ func invalidateServeCache() {
 // addApprovalComment adds an approval comment to a beads issue.
 // This is used by --approve flag to mark visual changes as human-reviewed.
 func addApprovalComment(beadsID, comment string) error {
-	// Try RPC client first with auto-reconnect
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
+	err := beads.Do("", func(client *beads.Client) error {
 		// Use "orchestrator" as the author for approval comments
-		err := client.AddComment(beadsID, "orchestrator", comment)
-		if err == nil {
-			return nil
-		}
-		// Fall through to CLI fallback on RPC error
+		return client.AddComment(beadsID, "orchestrator", comment)
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return nil
 	}
 
 	// Fallback to CLI

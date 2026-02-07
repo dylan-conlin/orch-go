@@ -1478,23 +1478,15 @@ func collectAttemptHistory(beadsID string) ([]AttemptHistoryEntry, error) {
 	if len(attempts) > 0 {
 		// Get comments for this issue
 		var comments []beads.Comment
-		socketPath, err := beads.FindSocketPath(sourceDir)
-		if err == nil {
-			client := beads.NewClient(socketPath,
-				beads.WithAutoReconnect(3),
-				beads.WithTimeout(5*time.Second),
-			)
-			comments, err = client.Comments(beadsID)
-			if err != nil {
-				// Fallback to CLI
-				cmd := exec.Command(getBdPath(), "comments", beadsID, "--json")
-				cmd.Dir = sourceDir
-				cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-				if output, cmdErr := cmd.Output(); cmdErr == nil {
-					json.Unmarshal(output, &comments)
-				}
-			}
-		} else {
+		err := beads.Do(sourceDir, func(client *beads.Client) error {
+			var rpcErr error
+			comments, rpcErr = client.Comments(beadsID)
+			return rpcErr
+		},
+			beads.WithAutoReconnect(3),
+			beads.WithTimeout(5*time.Second),
+		)
+		if err != nil {
 			// Use CLI directly
 			cmd := exec.Command(getBdPath(), "comments", beadsID, "--json")
 			cmd.Dir = sourceDir

@@ -225,39 +225,42 @@ func getClosedIssuesForProject(projectPath string, beadsIDs []string) map[string
 	}
 
 	// Try beads RPC client first
-	socketPath, err := beads.FindSocketPath(projectPath)
-	if err == nil {
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(2))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Check each issue status
-			for _, id := range beadsIDs {
-				issue, err := client.Show(id)
-				if err != nil {
-					// Treat lookup failures as "closed" to prevent capacity leaks.
-					// If we can't confirm a session is active (open beads issue),
-					// we shouldn't count it toward capacity. This is conservative:
-					// better to potentially spawn extra agents than get permanently
-					// stuck at capacity. Common failure cases:
-					// - Issue was deleted
-					// - RPC connection timeout
-					// - Wrong project directory
-					// - Beads daemon not running
-					//
-					// Only log warning for unexpected errors, not "issue not found"
-					// which is expected for cross-project sessions.
-					if !errors.Is(err, beads.ErrIssueNotFound) {
-						log.Printf("Warning: beads lookup failed for %s (via RPC): %v - treating as closed", id, err)
-					}
-					closed[id] = true
-					continue
-				}
-				if strings.EqualFold(issue.Status, "closed") {
-					closed[id] = true
-				}
-			}
-			return closed
+	err := beads.Do(projectPath, func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		// Check each issue status
+		for _, id := range beadsIDs {
+			issue, showErr := client.Show(id)
+			if showErr != nil {
+				// Treat lookup failures as "closed" to prevent capacity leaks.
+				// If we can't confirm a session is active (open beads issue),
+				// we shouldn't count it toward capacity. This is conservative:
+				// better to potentially spawn extra agents than get permanently
+				// stuck at capacity. Common failure cases:
+				// - Issue was deleted
+				// - RPC connection timeout
+				// - Wrong project directory
+				// - Beads daemon not running
+				//
+				// Only log warning for unexpected errors, not "issue not found"
+				// which is expected for cross-project sessions.
+				if !errors.Is(showErr, beads.ErrIssueNotFound) {
+					log.Printf("Warning: beads lookup failed for %s (via RPC): %v - treating as closed", id, showErr)
+				}
+				closed[id] = true
+				continue
+			}
+			if strings.EqualFold(issue.Status, "closed") {
+				closed[id] = true
+			}
+		}
+		return nil
+	}, beads.WithAutoReconnect(2))
+	if err == nil {
+		return closed
 	}
 
 	// Fallback to CLI for each issue, setting the working directory

@@ -459,18 +459,25 @@ func extractProjectDirFromWorkspace(workspacePath string) string {
 // project than the current working directory.
 func resolveShortBeadsIDWithDir(id, workdir string) (string, error) {
 	// Try RPC client first for ID resolution
-	socketPath, err := beads.FindSocketPath(workdir)
-	if err == nil {
-		client := beads.NewClient(socketPath)
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-
-			resolvedID, err := client.ResolveID(id)
-			if err == nil && resolvedID != "" {
-				return resolvedID, nil
-			}
-			// Fall through to CLI fallback on RPC error
+	var resolvedID string
+	err := beads.Do(workdir, func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
+		defer client.Close()
+
+		var rpcErr error
+		resolvedID, rpcErr = client.ResolveID(id)
+		if rpcErr != nil {
+			return rpcErr
+		}
+		if resolvedID == "" {
+			return fmt.Errorf("empty resolved id")
+		}
+		return nil
+	})
+	if err == nil {
+		return resolvedID, nil
 	}
 
 	// Fallback: Use bd show to resolve the ID

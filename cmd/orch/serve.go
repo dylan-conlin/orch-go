@@ -228,12 +228,14 @@ func runServe(portNum int) error {
 	// Initialize persistent beads client with auto-reconnect.
 	// This avoids per-request connection overhead and handles daemon restarts.
 	// Use 5s timeout (not 30s default) to fail fast when daemon dies.
-	socketPath, err := beads.FindSocketPath(sourceDir)
+	err := beads.Do(sourceDir, func(client *beads.Client) error {
+		beadsClient = client
+		return nil
+	},
+		beads.WithAutoReconnect(3),
+		beads.WithTimeout(5*time.Second),
+	)
 	if err == nil {
-		beadsClient = beads.NewClient(socketPath,
-			beads.WithAutoReconnect(3),
-			beads.WithTimeout(5*time.Second),
-		)
 		if connErr := beadsClient.Connect(); connErr != nil {
 			// Non-fatal: handlers will fallback to CLI if client is nil
 			fmt.Printf("Warning: beads daemon not available, using CLI fallback: %v\n", connErr)

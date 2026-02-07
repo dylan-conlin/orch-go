@@ -15,25 +15,27 @@ import (
 // Queries for type=question with subtype:factual label.
 // Uses the beads RPC daemon if available, falling back to the bd CLI if not.
 func ListFactualQuestions() ([]Issue, error) {
-	// Try to use the beads RPC client first
-	socketPath, err := beads.FindSocketPath("")
-	if err == nil {
-		// Use WithAutoReconnect for resilience against daemon restarts/transient issues
-		client := beads.NewClient(socketPath, beads.WithAutoReconnect(3))
-		if err := client.Connect(); err == nil {
-			defer client.Close()
-			// Query for type=question with subtype:factual label
-			beadsIssues, err := client.Ready(&beads.ReadyArgs{
-				Type:   "question",
-				Labels: []string{"subtype:factual"},
-				Limit:  0, // Get ALL factual questions
-			})
-			if err == nil {
-				return convertBeadsIssues(beadsIssues), nil
-			}
-			// Fall through to CLI fallback on Ready() error
+	var questions []Issue
+	err := beads.Do("", func(client *beads.Client) error {
+		if connErr := client.Connect(); connErr != nil {
+			return connErr
 		}
-		// Fall through to CLI fallback on Connect() error
+		defer client.Close()
+
+		// Query for type=question with subtype:factual label
+		beadsIssues, rpcErr := client.Ready(&beads.ReadyArgs{
+			Type:   "question",
+			Labels: []string{"subtype:factual"},
+			Limit:  0, // Get ALL factual questions
+		})
+		if rpcErr != nil {
+			return rpcErr
+		}
+		questions = convertBeadsIssues(beadsIssues)
+		return nil
+	}, beads.WithAutoReconnect(3))
+	if err == nil {
+		return questions, nil
 	}
 
 	// Fallback to CLI if daemon unavailable

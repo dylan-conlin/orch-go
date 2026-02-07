@@ -48,18 +48,20 @@ func runWork(serverURL, beadsID string, inline bool, workdir string) error {
 	// Use beads.Issue which has Labels for full skill/MCP inference
 	var skillName string
 	var mcpServer string
-	socketPath, connErr := beads.FindSocketPath(projectDir)
-	if connErr == nil {
-		beadsClient := beads.NewClient(socketPath)
-		if connErr := beadsClient.Connect(); connErr == nil {
-			defer beadsClient.Close()
-			beadsIssue, showErr := beadsClient.Show(beadsID)
-			if showErr == nil {
-				skillName = inferSkillFromBeadsIssue(beadsIssue)
-				mcpServer = inferMCPFromBeadsIssue(beadsIssue)
-			}
+	_ = beads.Do(projectDir, func(beadsClient *beads.Client) error {
+		if connErr := beadsClient.Connect(); connErr != nil {
+			return connErr
 		}
-	}
+		defer beadsClient.Close()
+
+		beadsIssue, showErr := beadsClient.Show(beadsID)
+		if showErr != nil {
+			return showErr
+		}
+		skillName = inferSkillFromBeadsIssue(beadsIssue)
+		mcpServer = inferMCPFromBeadsIssue(beadsIssue)
+		return nil
+	})
 	// Fall back to type-only inference if beads fails
 	if skillName == "" {
 		skillName, err = InferSkillFromIssueType(issue.IssueType)

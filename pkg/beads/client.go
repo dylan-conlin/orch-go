@@ -157,6 +157,30 @@ func FindSocketPath(dir string) (string, error) {
 	}
 }
 
+// Do initializes a client for projectDir and executes fn.
+// It centralizes socket lookup and client option setup used by RPC-first callsites.
+// If projectDir is empty, DefaultDir is used for WithCwd when set.
+func Do(projectDir string, fn func(*Client) error, opts ...Option) error {
+	effectiveDir := projectDir
+	if effectiveDir == "" {
+		effectiveDir = DefaultDir
+	}
+
+	socketPath, err := FindSocketPath(projectDir)
+	if err != nil {
+		return err
+	}
+
+	clientOpts := make([]Option, 0, len(opts)+1)
+	if effectiveDir != "" {
+		clientOpts = append(clientOpts, WithCwd(effectiveDir))
+	}
+	clientOpts = append(clientOpts, opts...)
+
+	client := NewClient(socketPath, clientOpts...)
+	return fn(client)
+}
+
 // Connect attempts to connect to the beads daemon.
 // Returns nil if daemon is not running or unhealthy.
 func (c *Client) Connect() error {
