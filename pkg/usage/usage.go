@@ -16,22 +16,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dylan-conlin/orch-go/pkg/anthropic"
 )
 
-// API configuration
+// API configuration - uses shared constants from pkg/anthropic.
+// Local aliases for backward compatibility with any external consumers.
 const (
-	UsageEndpoint   = "https://api.anthropic.com/api/oauth/usage"
-	ProfileEndpoint = "https://api.anthropic.com/api/oauth/profile"
-	UserAgent       = "claude-code/2.0.32"
+	UsageEndpoint   = anthropic.UsageEndpoint
+	ProfileEndpoint = anthropic.ProfileEndpoint
+	UserAgent       = anthropic.UserAgent
 )
-
-// AnthropicBetaHeaders are required for OAuth tokens to work with Claude Code credentials
-var AnthropicBetaHeaders = strings.Join([]string{
-	"oauth-2025-04-20",
-	"claude-code-20250219",
-	"interleaved-thinking-2025-05-14",
-	"fine-grained-tool-streaming-2025-05-14",
-}, ",")
 
 // usageCacheEntry represents a cached usage info with timestamp.
 type usageCacheEntry struct {
@@ -261,16 +256,10 @@ func parseLimit(resp *limitResponse) *UsageLimit {
 
 // fetchProfileEmail fetches the account email from the profile API.
 func fetchProfileEmail(token string, client *http.Client) string {
-	req, err := http.NewRequest("GET", ProfileEndpoint, nil)
+	req, err := anthropic.NewAPIRequest("GET", ProfileEndpoint, token)
 	if err != nil {
 		return ""
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -322,16 +311,10 @@ func fetchUsageFromAPI(token string) *UsageInfo {
 	email := fetchProfileEmail(token, client)
 
 	// Fetch usage data
-	req, err := http.NewRequest("GET", UsageEndpoint, nil)
+	req, err := anthropic.NewAPIRequest("GET", UsageEndpoint, token)
 	if err != nil {
 		return &UsageInfo{Error: fmt.Sprintf("Failed to create request: %v", err)}
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {

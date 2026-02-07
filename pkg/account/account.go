@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/dylan-conlin/orch-go/pkg/anthropic"
 	"github.com/dylan-conlin/orch-go/pkg/usage"
 	"gopkg.in/yaml.v3"
 )
@@ -418,15 +419,12 @@ func SwitchAccount(name string) (email string, err error) {
 // Capacity Tracking
 // ============================================================================
 
-// API configuration for capacity tracking
+// API configuration for capacity tracking - uses shared constants from pkg/anthropic.
 const (
-	UsageEndpoint   = "https://api.anthropic.com/api/oauth/usage"
-	ProfileEndpoint = "https://api.anthropic.com/api/oauth/profile"
-	UserAgent       = "claude-code/2.0.32"
+	UsageEndpoint   = anthropic.UsageEndpoint
+	ProfileEndpoint = anthropic.ProfileEndpoint
+	UserAgent       = anthropic.UserAgent
 )
-
-// AnthropicBetaHeaders are required for OAuth tokens to work with Claude Code credentials.
-var AnthropicBetaHeaders = "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
 
 // CapacityInfo represents usage capacity for an account.
 type CapacityInfo struct {
@@ -596,16 +594,10 @@ func fetchCapacityWithToken(accessToken string) (*CapacityInfo, error) {
 	email := fetchProfileEmail(accessToken, client)
 
 	// Fetch usage data
-	req, err := http.NewRequest("GET", UsageEndpoint, nil)
+	req, err := anthropic.NewAPIRequest("GET", UsageEndpoint, accessToken)
 	if err != nil {
 		return &CapacityInfo{Error: fmt.Sprintf("request creation failed: %v", err)}, &CapacityError{Message: fmt.Sprintf("failed to create request: %v", err)}
 	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -658,16 +650,10 @@ func fetchCapacityWithToken(accessToken string) (*CapacityInfo, error) {
 
 // fetchProfileEmail fetches the account email from the profile API.
 func fetchProfileEmail(token string, client *http.Client) string {
-	req, err := http.NewRequest("GET", ProfileEndpoint, nil)
+	req, err := anthropic.NewAPIRequest("GET", ProfileEndpoint, token)
 	if err != nil {
 		return ""
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("anthropic-beta", AnthropicBetaHeaders)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
