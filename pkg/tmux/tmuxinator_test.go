@@ -330,6 +330,56 @@ func TestParseProcfile_NotExists(t *testing.T) {
 	}
 }
 
+func TestOrchGoProcfile_HasDoctorDaemon(t *testing.T) {
+	// Test that the actual orch-go Procfile includes the doctor daemon entry
+	// Find orch-go project root (where Procfile is)
+	projectDir := findOrchGoRoot(t)
+
+	commands := parseProcfile(projectDir)
+	if commands == nil {
+		t.Fatal("parseProcfile() returned nil for orch-go Procfile")
+	}
+
+	// Verify doctor daemon entry exists
+	doctorCmd, ok := commands["doctor"]
+	if !ok {
+		t.Error("Procfile missing 'doctor' service entry")
+	}
+
+	want := "orch doctor --daemon"
+	if doctorCmd != want {
+		t.Errorf("doctor service = %q, want %q", doctorCmd, want)
+	}
+}
+
+// findOrchGoRoot finds the orch-go project root directory
+func findOrchGoRoot(t *testing.T) string {
+	t.Helper()
+
+	// Start from current file's directory and walk up
+	dir, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("Failed to get absolute path: %v", err)
+	}
+
+	for {
+		procfilePath := filepath.Join(dir, "Procfile")
+		if _, err := os.Stat(procfilePath); err == nil {
+			// Found Procfile - verify it's the orch-go one by checking for go.mod
+			goModPath := filepath.Join(dir, "go.mod")
+			if _, err := os.Stat(goModPath); err == nil {
+				return dir
+			}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("Could not find orch-go project root with Procfile")
+		}
+		dir = parent
+	}
+}
+
 func TestGenerateTmuxinatorConfig_WithProcfile(t *testing.T) {
 	// Create a temporary directory with port registry and Procfile
 	tmpDir := t.TempDir()
