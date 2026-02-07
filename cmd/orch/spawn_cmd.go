@@ -21,6 +21,7 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/model"
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
+	statedb "github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/tmux"
 	"github.com/dylan-conlin/orch-go/pkg/userconfig"
 	"github.com/spf13/cobra"
@@ -391,6 +392,10 @@ func runSpawnInline(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID,
 		if err := spawn.WriteSessionID(cfg.WorkspacePath(), result.SessionID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 		}
+		// Record session ID in state DB for coherent abandon/status resolution
+		if err := statedb.RecordSessionID(cfg.WorkspaceName, result.SessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
+		}
 	}
 
 	// Note: Inline mode is synchronous and blocks until completion,
@@ -477,6 +482,10 @@ func runSpawnHeadless(serverURL string, cfg *spawn.Config, minimalPrompt, beadsI
 	// Write session ID to workspace file for later lookups
 	if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
+	}
+	// Record session ID in state DB for coherent abandon/status resolution
+	if err := statedb.RecordSessionID(cfg.WorkspaceName, sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
 	}
 
 	// Write process ID to workspace file for explicit cleanup
@@ -710,6 +719,15 @@ func runSpawnTmux(serverURL string, cfg *spawn.Config, minimalPrompt, beadsID, s
 		if err := spawn.WriteSessionID(cfg.WorkspacePath(), sessionID); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to write session ID: %v\n", err)
 		}
+		// Record session ID in state DB for coherent abandon/status resolution
+		if err := statedb.RecordSessionID(cfg.WorkspaceName, sessionID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record session ID in state db: %v\n", err)
+		}
+	}
+
+	// Record tmux window in state DB for liveness tracking
+	if err := statedb.RecordTmuxWindow(cfg.WorkspaceName, windowTarget); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record tmux window in state db: %v\n", err)
 	}
 
 	// Register orchestrator session in registry (workers use beads instead)
@@ -792,6 +810,11 @@ func runSpawnClaude(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	result, err := spawn.SpawnClaude(cfg)
 	if err != nil {
 		return err
+	}
+
+	// Record tmux window in state DB for liveness tracking
+	if err := statedb.RecordTmuxWindow(cfg.WorkspaceName, result.Window); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record tmux window in state db: %v\n", err)
 	}
 
 	// Register orchestrator session in registry if needed
@@ -902,6 +925,11 @@ func runSpawnDocker(serverURL string, cfg *spawn.Config, beadsID, skillName, tas
 	result, err := spawn.SpawnDocker(cfg)
 	if err != nil {
 		return err
+	}
+
+	// Record tmux window in state DB for liveness tracking
+	if err := statedb.RecordTmuxWindow(cfg.WorkspaceName, result.Window); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record tmux window in state db: %v\n", err)
 	}
 
 	// Register orchestrator session in registry if needed

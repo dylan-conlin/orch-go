@@ -122,6 +122,77 @@ func (d *DB) InsertAgent(agent *Agent) error {
 	return nil
 }
 
+// UpsertAgent inserts a new agent row or replaces a stale one with the same beads_id.
+// This is respawn-safe: when a beads ID is reused across respawns, the old row
+// (which may be abandoned/completed) is replaced with the new spawn's data.
+//
+// This prevents the drift bug where a single `beads_id UNIQUE` row persists
+// across respawns, causing lookups (especially abandon) to resolve to stale
+// workspace/session pairs.
+func (d *DB) UpsertAgent(agent *Agent) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := nowMs()
+	if agent.CreatedAt == 0 {
+		agent.CreatedAt = now
+	}
+	if agent.UpdatedAt == 0 {
+		agent.UpdatedAt = now
+	}
+
+	// Delete any existing row with the same beads_id (stale from previous spawn).
+	// We use DELETE + INSERT rather than INSERT OR REPLACE because:
+	// 1. The primary key is workspace_name (different per spawn)
+	// 2. INSERT OR REPLACE keys on PK, not on UNIQUE(beads_id)
+	// 3. This is explicit and safe for the respawn case
+	if agent.BeadsID != "" {
+		_, err := d.db.Exec(`DELETE FROM agents WHERE beads_id = ?`, agent.BeadsID)
+		if err != nil {
+			return fmt.Errorf("failed to delete stale agent for beads_id %s: %w", agent.BeadsID, err)
+		}
+	}
+
+	_, err := d.db.Exec(`
+		INSERT INTO agents (
+			workspace_name, beads_id, session_id, tmux_window, mode, skill, model,
+			tier, project_dir, project_name, spawn_time, git_baseline,
+			issue_title, issue_type, issue_priority,
+			phase, phase_summary, phase_reported_at,
+			is_processing, session_updated_at,
+			is_completed, is_abandoned, completed_at, abandoned_at,
+			tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_total,
+			created_at, updated_at
+		) VALUES (
+			?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?,
+			?, ?, ?,
+			?, ?, ?,
+			?, ?,
+			?, ?, ?, ?,
+			?, ?, ?, ?, ?,
+			?, ?
+		)`,
+		agent.WorkspaceName, nullString(agent.BeadsID), nullString(agent.SessionID),
+		nullString(agent.TmuxWindow), agent.Mode, nullString(agent.Skill),
+		nullString(agent.Model),
+		nullString(agent.Tier), agent.ProjectDir, nullString(agent.ProjectName),
+		agent.SpawnTime, nullString(agent.GitBaseline),
+		nullString(agent.IssueTitle), nullString(agent.IssueType), agent.IssuePriority,
+		nullString(agent.Phase), nullString(agent.PhaseSummary), nullInt64(agent.PhaseReportedAt),
+		boolToInt(agent.IsProcessing), nullInt64(agent.SessionUpdatedAt),
+		boolToInt(agent.IsCompleted), boolToInt(agent.IsAbandoned),
+		nullInt64(agent.CompletedAt), nullInt64(agent.AbandonedAt),
+		agent.TokensInput, agent.TokensOutput, agent.TokensReasoning,
+		agent.TokensCacheRead, agent.TokensTotal,
+		agent.CreatedAt, agent.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upsert agent %s: %w", agent.WorkspaceName, err)
+	}
+	return nil
+}
+
 // UpdateCompleted marks an agent as completed. Called by orch complete.
 func (d *DB) UpdateCompleted(workspaceName string) error {
 	d.mu.Lock()
@@ -514,6 +585,59 @@ func (d *DB) UpdateTokensBySessionID(sessionID string, input, output, reasoning,
 func (d *DB) GetAgentBySessionID(sessionID string) (*Agent, error) {
 	row := d.db.QueryRow(`SELECT * FROM agents WHERE session_id = ?`, sessionID)
 	return scanAgent(row)
+}
+
+// DriftMetrics contains aggregate metrics about state DB health and drift indicators.
+type DriftMetrics struct {
+	// Total agents in state DB
+	TotalAgents int
+	// Active agents (not completed or abandoned)
+	ActiveAgents int
+	// Agents missing session_id (spawn wiring gap)
+	MissingSessionID int
+	// Agents missing tmux_window where mode requires it (claude/docker/tmux)
+	MissingTmuxWindow int
+	// Agents still marked active but likely stale (no update in >2h)
+	StaleActive int
+}
+
+// GetDriftMetrics queries the state database for drift health indicators.
+// These metrics surface data quality issues that can cause abandon/status bugs.
+func (d *DB) GetDriftMetrics() (*DriftMetrics, error) {
+	m := &DriftMetrics{}
+
+	// Total agents
+	row := d.db.QueryRow(`SELECT COUNT(*) FROM agents`)
+	if err := row.Scan(&m.TotalAgents); err != nil {
+		return nil, fmt.Errorf("failed to count agents: %w", err)
+	}
+
+	// Active agents
+	row = d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE is_completed = 0 AND is_abandoned = 0`)
+	if err := row.Scan(&m.ActiveAgents); err != nil {
+		return nil, fmt.Errorf("failed to count active agents: %w", err)
+	}
+
+	// Missing session_id on active agents
+	row = d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE is_completed = 0 AND is_abandoned = 0 AND (session_id IS NULL OR session_id = '')`)
+	if err := row.Scan(&m.MissingSessionID); err != nil {
+		return nil, fmt.Errorf("failed to count missing session_id: %w", err)
+	}
+
+	// Missing tmux_window on tmux-based active agents
+	row = d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE is_completed = 0 AND is_abandoned = 0 AND mode IN ('claude', 'docker', 'tmux') AND (tmux_window IS NULL OR tmux_window = '')`)
+	if err := row.Scan(&m.MissingTmuxWindow); err != nil {
+		return nil, fmt.Errorf("failed to count missing tmux_window: %w", err)
+	}
+
+	// Stale active agents (no update in >2 hours)
+	twoHoursAgo := nowMs() - (2 * 60 * 60 * 1000)
+	row = d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE is_completed = 0 AND is_abandoned = 0 AND updated_at < ?`, twoHoursAgo)
+	if err := row.Scan(&m.StaleActive); err != nil {
+		return nil, fmt.Errorf("failed to count stale agents: %w", err)
+	}
+
+	return m, nil
 }
 
 // OpenDefault opens the state database at the default path.

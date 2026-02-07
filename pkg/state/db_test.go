@@ -746,3 +746,243 @@ func TestGetAgentBySessionIDNotFound(t *testing.T) {
 		t.Error("GetAgentBySessionID should return error for nonexistent session")
 	}
 }
+
+// === UpsertAgent tests ===
+
+func TestUpsertAgent_NewInsert(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-upsert-new-06feb-x1y2")
+
+	if err := db.UpsertAgent(agent); err != nil {
+		t.Fatalf("UpsertAgent (new) failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-upsert-new-06feb-x1y2")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+
+	if got.WorkspaceName != agent.WorkspaceName {
+		t.Errorf("WorkspaceName = %q, want %q", got.WorkspaceName, agent.WorkspaceName)
+	}
+	if got.BeadsID != agent.BeadsID {
+		t.Errorf("BeadsID = %q, want %q", got.BeadsID, agent.BeadsID)
+	}
+}
+
+func TestUpsertAgent_ReplacesByBeadsID(t *testing.T) {
+	db := testDB(t)
+
+	// Insert first agent (simulates original spawn)
+	agent1 := &Agent{
+		WorkspaceName: "og-feat-old-workspace-06feb-a1b2",
+		BeadsID:       "orch-go-21398",
+		Mode:          "opencode",
+		Skill:         "feature-impl",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().Add(-1 * time.Hour).UnixMilli(),
+	}
+	if err := db.UpsertAgent(agent1); err != nil {
+		t.Fatalf("UpsertAgent (first) failed: %v", err)
+	}
+
+	// Mark it as abandoned (simulating the drift scenario)
+	if err := db.UpdateAbandoned(agent1.WorkspaceName); err != nil {
+		t.Fatalf("UpdateAbandoned failed: %v", err)
+	}
+
+	// Upsert with same beads ID but different workspace (respawn)
+	agent2 := &Agent{
+		WorkspaceName: "og-feat-new-workspace-06feb-c3d4",
+		BeadsID:       "orch-go-21398",
+		Mode:          "opencode",
+		Skill:         "feature-impl",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().UnixMilli(),
+		SessionID:     "ses_new_session_id",
+	}
+	if err := db.UpsertAgent(agent2); err != nil {
+		t.Fatalf("UpsertAgent (respawn) failed: %v", err)
+	}
+
+	// Old workspace should no longer exist
+	_, err := db.GetAgent("og-feat-old-workspace-06feb-a1b2")
+	if err == nil {
+		t.Error("Old workspace should have been deleted by upsert")
+	}
+
+	// New workspace should exist with fresh data
+	got, err := db.GetAgentByBeadsID("orch-go-21398")
+	if err != nil {
+		t.Fatalf("GetAgentByBeadsID after upsert failed: %v", err)
+	}
+
+	if got.WorkspaceName != "og-feat-new-workspace-06feb-c3d4" {
+		t.Errorf("WorkspaceName = %q, want %q", got.WorkspaceName, "og-feat-new-workspace-06feb-c3d4")
+	}
+	if got.SessionID != "ses_new_session_id" {
+		t.Errorf("SessionID = %q, want %q", got.SessionID, "ses_new_session_id")
+	}
+	if got.IsAbandoned {
+		t.Error("Respawned agent should NOT be abandoned")
+	}
+	if got.IsCompleted {
+		t.Error("Respawned agent should NOT be completed")
+	}
+}
+
+func TestUpsertAgent_NoBeadsID(t *testing.T) {
+	db := testDB(t)
+
+	// Upsert without beads ID should work (no deletion needed)
+	agent := &Agent{
+		WorkspaceName: "og-feat-no-beads-06feb-e5f6",
+		Mode:          "opencode",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().UnixMilli(),
+	}
+	if err := db.UpsertAgent(agent); err != nil {
+		t.Fatalf("UpsertAgent without beads ID failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-no-beads-06feb-e5f6")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+	if got.BeadsID != "" {
+		t.Errorf("BeadsID = %q, want empty", got.BeadsID)
+	}
+}
+
+// === DriftMetrics tests ===
+
+func TestGetDriftMetrics_Empty(t *testing.T) {
+	db := testDB(t)
+
+	metrics, err := db.GetDriftMetrics()
+	if err != nil {
+		t.Fatalf("GetDriftMetrics failed: %v", err)
+	}
+
+	if metrics.TotalAgents != 0 {
+		t.Errorf("TotalAgents = %d, want 0", metrics.TotalAgents)
+	}
+	if metrics.ActiveAgents != 0 {
+		t.Errorf("ActiveAgents = %d, want 0", metrics.ActiveAgents)
+	}
+}
+
+func TestGetDriftMetrics_MissingSessionID(t *testing.T) {
+	db := testDB(t)
+
+	// Insert an active agent without session_id
+	agent := &Agent{
+		WorkspaceName: "og-feat-drift-nosess-06feb-g7h8",
+		BeadsID:       "orch-go-drift-1",
+		Mode:          "opencode",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().UnixMilli(),
+	}
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	metrics, err := db.GetDriftMetrics()
+	if err != nil {
+		t.Fatalf("GetDriftMetrics failed: %v", err)
+	}
+
+	if metrics.TotalAgents != 1 {
+		t.Errorf("TotalAgents = %d, want 1", metrics.TotalAgents)
+	}
+	if metrics.ActiveAgents != 1 {
+		t.Errorf("ActiveAgents = %d, want 1", metrics.ActiveAgents)
+	}
+	if metrics.MissingSessionID != 1 {
+		t.Errorf("MissingSessionID = %d, want 1", metrics.MissingSessionID)
+	}
+}
+
+func TestGetDriftMetrics_MissingTmuxWindow(t *testing.T) {
+	db := testDB(t)
+
+	// Insert a claude-mode agent without tmux_window
+	agent := &Agent{
+		WorkspaceName: "og-feat-drift-notmux-06feb-i9j0",
+		BeadsID:       "orch-go-drift-2",
+		Mode:          "claude",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().UnixMilli(),
+	}
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	metrics, err := db.GetDriftMetrics()
+	if err != nil {
+		t.Fatalf("GetDriftMetrics failed: %v", err)
+	}
+
+	if metrics.MissingTmuxWindow != 1 {
+		t.Errorf("MissingTmuxWindow = %d, want 1", metrics.MissingTmuxWindow)
+	}
+}
+
+func TestGetDriftMetrics_StaleActive(t *testing.T) {
+	db := testDB(t)
+
+	// Insert an agent with old updated_at (simulating stale active)
+	agent := &Agent{
+		WorkspaceName: "og-feat-drift-stale-06feb-k1l2",
+		BeadsID:       "orch-go-drift-3",
+		Mode:          "opencode",
+		SessionID:     "ses_stale_test",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().Add(-3 * time.Hour).UnixMilli(),
+		CreatedAt:     time.Now().Add(-3 * time.Hour).UnixMilli(),
+		UpdatedAt:     time.Now().Add(-3 * time.Hour).UnixMilli(), // 3 hours ago > 2h threshold
+	}
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	metrics, err := db.GetDriftMetrics()
+	if err != nil {
+		t.Fatalf("GetDriftMetrics failed: %v", err)
+	}
+
+	if metrics.StaleActive != 1 {
+		t.Errorf("StaleActive = %d, want 1", metrics.StaleActive)
+	}
+}
+
+func TestGetDriftMetrics_CompletedExcluded(t *testing.T) {
+	db := testDB(t)
+
+	// Insert a completed agent without session_id — should NOT count as drift
+	agent := &Agent{
+		WorkspaceName: "og-feat-drift-done-06feb-m3n4",
+		BeadsID:       "orch-go-drift-4",
+		Mode:          "opencode",
+		ProjectDir:    "/Users/test/orch-go",
+		SpawnTime:     time.Now().UnixMilli(),
+	}
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+	if err := db.UpdateCompleted(agent.WorkspaceName); err != nil {
+		t.Fatalf("UpdateCompleted failed: %v", err)
+	}
+
+	metrics, err := db.GetDriftMetrics()
+	if err != nil {
+		t.Fatalf("GetDriftMetrics failed: %v", err)
+	}
+
+	if metrics.ActiveAgents != 0 {
+		t.Errorf("ActiveAgents = %d, want 0 (completed agents excluded)", metrics.ActiveAgents)
+	}
+	if metrics.MissingSessionID != 0 {
+		t.Errorf("MissingSessionID = %d, want 0 (completed agents excluded)", metrics.MissingSessionID)
+	}
+}

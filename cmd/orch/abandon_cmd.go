@@ -121,7 +121,11 @@ func runAbandon(beadsID, reason, workdir string) error {
 
 	client := opencode.NewClient(serverURL)
 
-	// Try state DB first (primary source of truth)
+	// Resolve agent identity with coherence checks.
+	//
+	// The state DB may have stale data from a previous spawn of the same beads ID.
+	// We only trust the state DB row if it represents an active (not abandoned/completed)
+	// agent. Stale rows are skipped in favor of live workspace/session discovery.
 	var windowInfo *tmux.WindowInfo
 	var sessionID string
 	var workspacePath, agentName string
@@ -130,23 +134,41 @@ func runAbandon(beadsID, reason, workdir string) error {
 	if dbErr == nil && db != nil {
 		defer db.Close()
 		if dbAgent, err := db.GetAgentByBeadsID(beadsID); err == nil && dbAgent != nil {
-			fmt.Printf("Found agent in state DB: %s (mode: %s)\n", dbAgent.WorkspaceName, dbAgent.Mode)
-			agentName = dbAgent.WorkspaceName
-			sessionID = dbAgent.SessionID
-			if (dbAgent.Mode == "claude" || dbAgent.Mode == "docker") && dbAgent.TmuxWindow != "" {
-				windowInfo = &tmux.WindowInfo{
-					Target: dbAgent.TmuxWindow,
-					Name:   dbAgent.TmuxWindow,
+			// Coherence check: reject stale state DB rows
+			if dbAgent.IsAbandoned || dbAgent.IsCompleted {
+				fmt.Printf("State DB has stale row for %s (abandoned=%v, completed=%v) — using live discovery\n",
+					beadsID, dbAgent.IsAbandoned, dbAgent.IsCompleted)
+			} else {
+				fmt.Printf("Found agent in state DB: %s (mode: %s)\n", dbAgent.WorkspaceName, dbAgent.Mode)
+				agentName = dbAgent.WorkspaceName
+				sessionID = dbAgent.SessionID
+				if (dbAgent.Mode == "claude" || dbAgent.Mode == "docker") && dbAgent.TmuxWindow != "" {
+					windowInfo = &tmux.WindowInfo{
+						Target: dbAgent.TmuxWindow,
+						Name:   dbAgent.TmuxWindow,
+					}
 				}
-			}
-			// Resolve workspace path from project dir and agent ID
-			if dbAgent.ProjectDir != "" {
-				workspacePath = filepath.Join(dbAgent.ProjectDir, ".orch", "workspace", dbAgent.WorkspaceName)
+				// Resolve workspace path from project dir and agent ID
+				if dbAgent.ProjectDir != "" {
+					workspacePath = filepath.Join(dbAgent.ProjectDir, ".orch", "workspace", dbAgent.WorkspaceName)
+				}
 			}
 		}
 	}
 
-	// Discovery fallback if state DB didn't give us everything
+	// Discovery fallback: find the most recent workspace for this beads ID.
+	// This handles both "state DB was stale" and "state DB had no row" cases.
+	if workspacePath == "" || agentName == "" {
+		wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
+		if workspacePath == "" {
+			workspacePath = wPath
+		}
+		if agentName == "" {
+			agentName = aName
+		}
+	}
+
+	// Tmux window discovery fallback
 	if windowInfo == nil {
 		// Try searching by beads ID first (for worker sessions)
 		sessions, _ := tmux.ListWorkersSessions()
@@ -169,6 +191,7 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
+	// Session discovery fallback
 	if sessionID == "" {
 		// Check for OpenCode session
 		allSessions, _ := client.ListSessions(projectDir)
@@ -180,14 +203,19 @@ func runAbandon(beadsID, reason, workdir string) error {
 		}
 	}
 
-	if workspacePath == "" || agentName == "" {
-		// Find workspace for logging
-		wPath, aName := findWorkspaceByBeadsID(projectDir, beadsID)
-		if workspacePath == "" {
-			workspacePath = wPath
-		}
-		if agentName == "" {
-			agentName = aName
+	// Coherence validation: if we have both workspace and session from different sources,
+	// verify they belong to the same agent by checking the workspace's .session_id file.
+	if sessionID != "" && workspacePath != "" {
+		wsSessionFile := filepath.Join(workspacePath, ".session_id")
+		if wsSessionBytes, err := os.ReadFile(wsSessionFile); err == nil {
+			wsSessionID := strings.TrimSpace(string(wsSessionBytes))
+			if wsSessionID != "" && wsSessionID != sessionID {
+				fmt.Fprintf(os.Stderr, "WARNING: Coherence mismatch detected!\n")
+				fmt.Fprintf(os.Stderr, "  Workspace %s has session_id=%s\n", filepath.Base(workspacePath), wsSessionID[:min(12, len(wsSessionID))])
+				fmt.Fprintf(os.Stderr, "  But discovered session %s from OpenCode\n", sessionID[:min(12, len(sessionID))])
+				fmt.Fprintf(os.Stderr, "  Using workspace's session_id (more authoritative for this workspace)\n")
+				sessionID = wsSessionID
+			}
 		}
 	}
 

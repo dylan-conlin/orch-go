@@ -83,6 +83,27 @@ func printSwarmStatusWithWidth(output StatusOutput, showAll bool, termWidth int)
 			fmt.Printf("  (compact mode: %d idle agents hidden, use --all for full list)\n", hiddenIdle)
 		}
 	}
+
+	// Print drift metrics if any issues detected
+	if output.DriftMetrics != nil {
+		driftIssues := output.DriftMetrics.MissingSessionID +
+			output.DriftMetrics.MissingTmuxWindow +
+			output.DriftMetrics.StaleActive
+		if driftIssues > 0 {
+			fmt.Printf("  DRIFT: ")
+			parts := make([]string, 0, 3)
+			if output.DriftMetrics.MissingSessionID > 0 {
+				parts = append(parts, fmt.Sprintf("%d missing session_id", output.DriftMetrics.MissingSessionID))
+			}
+			if output.DriftMetrics.MissingTmuxWindow > 0 {
+				parts = append(parts, fmt.Sprintf("%d missing tmux_window", output.DriftMetrics.MissingTmuxWindow))
+			}
+			if output.DriftMetrics.StaleActive > 0 {
+				parts = append(parts, fmt.Sprintf("%d stale active (>2h no update)", output.DriftMetrics.StaleActive))
+			}
+			fmt.Println(strings.Join(parts, ", "))
+		}
+	}
 	fmt.Println()
 
 	// Print account usage

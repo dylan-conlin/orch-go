@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dylan-conlin/orch-go/pkg/opencode"
+	"github.com/dylan-conlin/orch-go/pkg/state"
 	"github.com/dylan-conlin/orch-go/pkg/verify"
 	"github.com/spf13/cobra"
 )
@@ -158,6 +159,7 @@ type StatusOutput struct {
 	OrchestratorSessions   []OrchestratorSessionInfo      `json:"orchestrator_sessions,omitempty"`
 	Agents                 []AgentInfo                    `json:"agents"`
 	SynthesisOpportunities *verify.SynthesisOpportunities `json:"synthesis_opportunities,omitempty"`
+	DriftMetrics           *state.DriftMetrics            `json:"drift_metrics,omitempty"`
 }
 
 func runStatus(serverURL string) error {
@@ -324,6 +326,13 @@ func runStatus(serverURL string) error {
 		synthesisOpps, _ = verify.DetectSynthesisOpportunities(projectDir)
 	}
 
+	// Fetch drift metrics from state DB (fast, <1ms)
+	var driftMetrics *state.DriftMetrics
+	if driftDB, err := state.OpenDefault(); err == nil && driftDB != nil {
+		driftMetrics, _ = driftDB.GetDriftMetrics()
+		driftDB.Close()
+	}
+
 	// Build output (use filtered agents for display)
 	output := StatusOutput{
 		Infrastructure:         infraHealth,
@@ -332,6 +341,7 @@ func runStatus(serverURL string) error {
 		OrchestratorSessions:   orchestratorSessions,
 		Agents:                 filteredAgents,
 		SynthesisOpportunities: synthesisOpps,
+		DriftMetrics:           driftMetrics,
 	}
 
 	// Output as JSON if flag is set

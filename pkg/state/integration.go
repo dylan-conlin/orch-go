@@ -7,8 +7,10 @@ import (
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
 
-// RecordSpawn inserts a new agent row into the state database.
+// RecordSpawn inserts or replaces an agent row in the state database.
 // Called by orch spawn after workspace/beads setup but before session creation.
+// Uses UpsertAgent to handle respawns safely — if the same beads_id was used
+// by a previous spawn (abandoned/completed), the stale row is replaced.
 // Non-fatal: logs warning on failure but does not block spawn.
 func RecordSpawn(cfg *spawn.Config) error {
 	db, err := OpenDefault()
@@ -41,11 +43,12 @@ func RecordSpawn(cfg *spawn.Config) error {
 		agent.Mode = "opencode"
 	}
 
-	return db.InsertAgent(agent)
+	return db.UpsertAgent(agent)
 }
 
-// RecordSpawnWithManifest inserts a new agent row using manifest data for richer context.
+// RecordSpawnWithManifest inserts or replaces an agent row using manifest data for richer context.
 // Called by orch spawn after the AgentManifest is written.
+// Uses UpsertAgent for respawn safety.
 func RecordSpawnWithManifest(cfg *spawn.Config, manifest *spawn.AgentManifest) error {
 	db, err := OpenDefault()
 	if err != nil {
@@ -76,7 +79,7 @@ func RecordSpawnWithManifest(cfg *spawn.Config, manifest *spawn.AgentManifest) e
 		agent.Mode = "opencode"
 	}
 
-	return db.InsertAgent(agent)
+	return db.UpsertAgent(agent)
 }
 
 // RecordComplete marks an agent as completed in the state database.
