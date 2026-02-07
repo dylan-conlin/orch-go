@@ -10,6 +10,7 @@
 package verify
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,6 +19,11 @@ import (
 
 	"github.com/dylan-conlin/orch-go/pkg/spawn"
 )
+
+// BlameAttributionTimeout is the maximum time for blame attribution.
+// This covers git worktree creation + go build in the worktree.
+// Keep short to prevent orch complete from hanging on blame checks.
+const BlameAttributionTimeout = 15 * time.Second
 
 // BuildBlameResult represents the result of blame attribution for a build failure.
 type BuildBlameResult struct {
@@ -127,6 +133,10 @@ func parentCommit(projectDir, commit string) string {
 // introduced Go compilation errors by building at that revision using
 // a temporary worktree.
 func wasBuildBrokenAt(projectDir, commit string) bool {
+	// Use an overall timeout to prevent blame attribution from hanging
+	ctx, cancel := context.WithTimeout(context.Background(), BlameAttributionTimeout)
+	defer cancel()
+
 	// Create a temporary worktree to avoid disturbing the main working tree
 	tmpDir, err := os.MkdirTemp("", "orch-build-blame-*")
 	if err != nil {
@@ -135,19 +145,32 @@ func wasBuildBrokenAt(projectDir, commit string) bool {
 	defer os.RemoveAll(tmpDir)
 
 	// Use git worktree to check out the specific commit
-	cmd := exec.Command("git", "worktree", "add", "--detach", tmpDir, commit)
+	cmd := exec.CommandContext(ctx, "git", "worktree", "add", "--detach", tmpDir, commit)
 	cmd.Dir = projectDir
 	if err := cmd.Run(); err != nil {
 		return false // Can't create worktree, assume not broken
 	}
 	defer func() {
-		// Clean up worktree
+		// Clean up worktree (use background context - cleanup should always run)
 		rm := exec.Command("git", "worktree", "remove", "--force", tmpDir)
 		rm.Dir = projectDir
 		rm.Run()
 	}()
 
-	// Try building in the temporary worktree
-	_, buildErr := RunGoTestCompile(tmpDir)
-	return buildErr != nil
+	// Try building in the temporary worktree using 'go build' (faster than 'go test')
+	// Share GOMODCACHE to avoid re-downloading modules
+	buildCmd := exec.CommandContext(ctx, "go", "build", "./...")
+	buildCmd.Dir = tmpDir
+	// Inherit GOMODCACHE from parent so worktree shares module cache
+	goModCache := os.Getenv("GOMODCACHE")
+	if goModCache == "" {
+		// Default GOMODCACHE location
+		if home, err := os.UserHomeDir(); err == nil {
+			goModCache = home + "/go/pkg/mod"
+		}
+	}
+	if goModCache != "" {
+		buildCmd.Env = append(os.Environ(), "GOMODCACHE="+goModCache)
+	}
+	return buildCmd.Run() != nil
 }
