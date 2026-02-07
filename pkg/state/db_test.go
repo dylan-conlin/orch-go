@@ -986,3 +986,172 @@ func TestGetDriftMetrics_CompletedExcluded(t *testing.T) {
 		t.Errorf("MissingSessionID = %d, want 0 (completed agents excluded)", metrics.MissingSessionID)
 	}
 }
+
+// === Phase Source Tracking and Adoption Telemetry tests ===
+
+func TestUpdatePhaseWithSource(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-phase-src-07feb-a1b2")
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// Update phase with explicit source tracking
+	if err := db.UpdatePhaseWithSource("og-feat-phase-src-07feb-a1b2", "Implementing", "Building feature", PhaseSourceOrchPhase); err != nil {
+		t.Fatalf("UpdatePhaseWithSource failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-phase-src-07feb-a1b2")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+
+	if got.Phase != "Implementing" {
+		t.Errorf("Phase = %q, want %q", got.Phase, "Implementing")
+	}
+	if got.PhaseSource != PhaseSourceOrchPhase {
+		t.Errorf("PhaseSource = %q, want %q", got.PhaseSource, PhaseSourceOrchPhase)
+	}
+}
+
+func TestUpdatePhaseDefaultsToOrchPhaseSource(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-phase-default-07feb-c3d4")
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// UpdatePhase (no explicit source) should default to orch_phase
+	if err := db.UpdatePhase("og-feat-phase-default-07feb-c3d4", "Planning", "Analyzing"); err != nil {
+		t.Fatalf("UpdatePhase failed: %v", err)
+	}
+
+	got, err := db.GetAgent("og-feat-phase-default-07feb-c3d4")
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+
+	if got.PhaseSource != PhaseSourceOrchPhase {
+		t.Errorf("PhaseSource = %q, want %q (should default to orch_phase)", got.PhaseSource, PhaseSourceOrchPhase)
+	}
+}
+
+func TestUpdatePhaseByBeadsIDWithSource(t *testing.T) {
+	db := testDB(t)
+	agent := testAgent("og-feat-phase-bdsrc-07feb-e5f6")
+	if err := db.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// Simulate bd_comment source (from status enrichment or reconciliation)
+	if err := db.UpdatePhaseByBeadsIDWithSource("orch-go-og-feat-phase-bdsrc-07feb-e5f6", "Testing", "Running tests", PhaseSourceBdComment); err != nil {
+		t.Fatalf("UpdatePhaseByBeadsIDWithSource failed: %v", err)
+	}
+
+	got, err := db.GetAgentByBeadsID("orch-go-og-feat-phase-bdsrc-07feb-e5f6")
+	if err != nil {
+		t.Fatalf("GetAgentByBeadsID failed: %v", err)
+	}
+
+	if got.PhaseSource != PhaseSourceBdComment {
+		t.Errorf("PhaseSource = %q, want %q", got.PhaseSource, PhaseSourceBdComment)
+	}
+}
+
+func TestGetPhaseAdoptionMetrics_Empty(t *testing.T) {
+	db := testDB(t)
+
+	metrics, err := db.GetPhaseAdoptionMetrics()
+	if err != nil {
+		t.Fatalf("GetPhaseAdoptionMetrics failed: %v", err)
+	}
+
+	if metrics.TotalWithPhase != 0 {
+		t.Errorf("TotalWithPhase = %d, want 0", metrics.TotalWithPhase)
+	}
+}
+
+func TestGetPhaseAdoptionMetrics_Mixed(t *testing.T) {
+	db := testDB(t)
+
+	// Agent 1: uses orch phase (modern path)
+	a1 := testAgent("adoption-orch-phase")
+	if err := db.InsertAgent(a1); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+	if err := db.UpdatePhaseWithSource("adoption-orch-phase", "Implementing", "building", PhaseSourceOrchPhase); err != nil {
+		t.Fatalf("UpdatePhaseWithSource failed: %v", err)
+	}
+
+	// Agent 2: uses bd comment (legacy path)
+	a2 := testAgent("adoption-bd-comment")
+	if err := db.InsertAgent(a2); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+	if err := db.UpdatePhaseByBeadsIDWithSource("orch-go-adoption-bd-comment", "Planning", "analyzing", PhaseSourceBdComment); err != nil {
+		t.Fatalf("UpdatePhaseByBeadsIDWithSource failed: %v", err)
+	}
+
+	// Agent 3: has phase but no source tracked (pre-telemetry)
+	a3 := testAgent("adoption-unknown")
+	a3.Phase = "Testing"
+	if err := db.InsertAgent(a3); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	// Agent 4: no phase set at all (should not count)
+	a4 := testAgent("adoption-no-phase")
+	if err := db.InsertAgent(a4); err != nil {
+		t.Fatalf("InsertAgent failed: %v", err)
+	}
+
+	metrics, err := db.GetPhaseAdoptionMetrics()
+	if err != nil {
+		t.Fatalf("GetPhaseAdoptionMetrics failed: %v", err)
+	}
+
+	if metrics.TotalWithPhase != 3 {
+		t.Errorf("TotalWithPhase = %d, want 3", metrics.TotalWithPhase)
+	}
+	if metrics.ViaOrchPhase != 1 {
+		t.Errorf("ViaOrchPhase = %d, want 1", metrics.ViaOrchPhase)
+	}
+	if metrics.ViaBdComment != 1 {
+		t.Errorf("ViaBdComment = %d, want 1", metrics.ViaBdComment)
+	}
+	if metrics.ViaUnknown != 1 {
+		t.Errorf("ViaUnknown = %d, want 1", metrics.ViaUnknown)
+	}
+}
+
+func TestSchemaMigration_PhaseSource(t *testing.T) {
+	// Test that opening a DB twice (simulating migration) is safe.
+	// The ALTER TABLE ADD COLUMN should be idempotent.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "migration-test.db")
+
+	// Open first time — creates schema with phase_source
+	db1, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open (first) failed: %v", err)
+	}
+	db1.Close()
+
+	// Open second time — migration should be idempotent
+	db2, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open (second) failed: %v", err)
+	}
+	defer db2.Close()
+
+	// Should still work
+	agent := &Agent{
+		WorkspaceName: "migration-test-agent",
+		Mode:          "opencode",
+		ProjectDir:    "/tmp/test",
+		SpawnTime:     time.Now().UnixMilli(),
+	}
+	if err := db2.InsertAgent(agent); err != nil {
+		t.Fatalf("InsertAgent after migration failed: %v", err)
+	}
+}

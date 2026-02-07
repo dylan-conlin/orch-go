@@ -36,7 +36,8 @@ type Agent struct {
 	// Mutable lifecycle state
 	Phase            string
 	PhaseSummary     string
-	PhaseReportedAt  int64 // unix ms
+	PhaseReportedAt  int64  // unix ms
+	PhaseSource      string // "orch_phase" or "bd_comment" — tracks adoption telemetry
 	IsProcessing     bool
 	SessionUpdatedAt int64 // unix ms
 	IsCompleted      bool
@@ -55,6 +56,19 @@ type Agent struct {
 	CreatedAt int64 // unix ms
 	UpdatedAt int64 // unix ms
 }
+
+// agentColumns is the explicit column list for all agent queries.
+// Using explicit columns instead of SELECT * to avoid column ordering issues
+// when ALTER TABLE ADD COLUMN appends to the end (vs CREATE TABLE which preserves order).
+const agentColumns = `workspace_name, beads_id, session_id, tmux_window,
+	mode, skill, model, tier,
+	project_dir, project_name, spawn_time, git_baseline,
+	issue_title, issue_type, issue_priority,
+	phase, phase_summary, phase_reported_at, phase_source,
+	is_processing, session_updated_at,
+	is_completed, is_abandoned, completed_at, abandoned_at,
+	tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_total,
+	created_at, updated_at`
 
 // nowMs returns the current time in unix milliseconds.
 func nowMs() int64 {
@@ -87,7 +101,7 @@ func (d *DB) InsertAgent(agent *Agent) error {
 			workspace_name, beads_id, session_id, tmux_window, mode, skill, model,
 			tier, project_dir, project_name, spawn_time, git_baseline,
 			issue_title, issue_type, issue_priority,
-			phase, phase_summary, phase_reported_at,
+			phase, phase_summary, phase_reported_at, phase_source,
 			is_processing, session_updated_at,
 			is_completed, is_abandoned, completed_at, abandoned_at,
 			tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_total,
@@ -96,7 +110,7 @@ func (d *DB) InsertAgent(agent *Agent) error {
 			?, ?, ?, ?, ?, ?, ?,
 			?, ?, ?, ?, ?,
 			?, ?, ?,
-			?, ?, ?,
+			?, ?, ?, ?,
 			?, ?,
 			?, ?, ?, ?,
 			?, ?, ?, ?, ?,
@@ -109,6 +123,7 @@ func (d *DB) InsertAgent(agent *Agent) error {
 		agent.SpawnTime, nullString(agent.GitBaseline),
 		nullString(agent.IssueTitle), nullString(agent.IssueType), agent.IssuePriority,
 		nullString(agent.Phase), nullString(agent.PhaseSummary), nullInt64(agent.PhaseReportedAt),
+		nullString(agent.PhaseSource),
 		boolToInt(agent.IsProcessing), nullInt64(agent.SessionUpdatedAt),
 		boolToInt(agent.IsCompleted), boolToInt(agent.IsAbandoned),
 		nullInt64(agent.CompletedAt), nullInt64(agent.AbandonedAt),
@@ -158,7 +173,7 @@ func (d *DB) UpsertAgent(agent *Agent) error {
 			workspace_name, beads_id, session_id, tmux_window, mode, skill, model,
 			tier, project_dir, project_name, spawn_time, git_baseline,
 			issue_title, issue_type, issue_priority,
-			phase, phase_summary, phase_reported_at,
+			phase, phase_summary, phase_reported_at, phase_source,
 			is_processing, session_updated_at,
 			is_completed, is_abandoned, completed_at, abandoned_at,
 			tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_total,
@@ -167,7 +182,7 @@ func (d *DB) UpsertAgent(agent *Agent) error {
 			?, ?, ?, ?, ?, ?, ?,
 			?, ?, ?, ?, ?,
 			?, ?, ?,
-			?, ?, ?,
+			?, ?, ?, ?,
 			?, ?,
 			?, ?, ?, ?,
 			?, ?, ?, ?, ?,
@@ -180,6 +195,7 @@ func (d *DB) UpsertAgent(agent *Agent) error {
 		agent.SpawnTime, nullString(agent.GitBaseline),
 		nullString(agent.IssueTitle), nullString(agent.IssueType), agent.IssuePriority,
 		nullString(agent.Phase), nullString(agent.PhaseSummary), nullInt64(agent.PhaseReportedAt),
+		nullString(agent.PhaseSource),
 		boolToInt(agent.IsProcessing), nullInt64(agent.SessionUpdatedAt),
 		boolToInt(agent.IsCompleted), boolToInt(agent.IsAbandoned),
 		nullInt64(agent.CompletedAt), nullInt64(agent.AbandonedAt),
@@ -301,17 +317,30 @@ func (d *DB) UpdateTmuxWindow(workspaceName, tmuxWindow string) error {
 	return checkRowsAffected(result, workspaceName)
 }
 
+// PhaseSource constants for adoption telemetry.
+const (
+	// PhaseSourceOrchPhase indicates the phase was set via `orch phase` command.
+	PhaseSourceOrchPhase = "orch_phase"
+	// PhaseSourceBdComment indicates the phase was detected from bd comment parsing.
+	PhaseSourceBdComment = "bd_comment"
+)
+
 // UpdatePhase updates the phase for an agent. Called by orch phase command.
 func (d *DB) UpdatePhase(workspaceName, phase, summary string) error {
+	return d.UpdatePhaseWithSource(workspaceName, phase, summary, PhaseSourceOrchPhase)
+}
+
+// UpdatePhaseWithSource updates the phase for an agent with explicit source tracking.
+func (d *DB) UpdatePhaseWithSource(workspaceName, phase, summary, source string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	now := nowMs()
 	result, err := d.db.Exec(`
 		UPDATE agents
-		SET phase = ?, phase_summary = ?, phase_reported_at = ?, updated_at = ?
+		SET phase = ?, phase_summary = ?, phase_reported_at = ?, phase_source = ?, updated_at = ?
 		WHERE workspace_name = ?`,
-		phase, nullString(summary), now, now, workspaceName,
+		phase, nullString(summary), now, nullString(source), now, workspaceName,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update phase for %s: %w", workspaceName, err)
@@ -320,16 +349,22 @@ func (d *DB) UpdatePhase(workspaceName, phase, summary string) error {
 }
 
 // UpdatePhaseByBeadsID updates the phase for an agent by beads ID.
+// Defaults to PhaseSourceOrchPhase since this is called by the orch phase command.
 func (d *DB) UpdatePhaseByBeadsID(beadsID, phase, summary string) error {
+	return d.UpdatePhaseByBeadsIDWithSource(beadsID, phase, summary, PhaseSourceOrchPhase)
+}
+
+// UpdatePhaseByBeadsIDWithSource updates the phase for an agent by beads ID with source tracking.
+func (d *DB) UpdatePhaseByBeadsIDWithSource(beadsID, phase, summary, source string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	now := nowMs()
 	result, err := d.db.Exec(`
 		UPDATE agents
-		SET phase = ?, phase_summary = ?, phase_reported_at = ?, updated_at = ?
+		SET phase = ?, phase_summary = ?, phase_reported_at = ?, phase_source = ?, updated_at = ?
 		WHERE beads_id = ?`,
-		phase, nullString(summary), now, now, beadsID,
+		phase, nullString(summary), now, nullString(source), now, beadsID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update phase for beads_id %s: %w", beadsID, err)
@@ -339,20 +374,19 @@ func (d *DB) UpdatePhaseByBeadsID(beadsID, phase, summary string) error {
 
 // GetAgent returns an agent by workspace name.
 func (d *DB) GetAgent(workspaceName string) (*Agent, error) {
-	row := d.db.QueryRow(`SELECT * FROM agents WHERE workspace_name = ?`, workspaceName)
+	row := d.db.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE workspace_name = ?`, workspaceName)
 	return scanAgent(row)
 }
 
 // GetAgentByBeadsID returns an agent by beads ID.
 func (d *DB) GetAgentByBeadsID(beadsID string) (*Agent, error) {
-	row := d.db.QueryRow(`SELECT * FROM agents WHERE beads_id = ?`, beadsID)
+	row := d.db.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE beads_id = ?`, beadsID)
 	return scanAgent(row)
 }
 
 // ListActiveAgents returns all agents that are not completed or abandoned.
 func (d *DB) ListActiveAgents() ([]*Agent, error) {
-	rows, err := d.db.Query(`
-		SELECT * FROM agents
+	rows, err := d.db.Query(`SELECT ` + agentColumns + ` FROM agents
 		WHERE is_completed = 0 AND is_abandoned = 0
 		ORDER BY spawn_time DESC`)
 	if err != nil {
@@ -364,8 +398,7 @@ func (d *DB) ListActiveAgents() ([]*Agent, error) {
 
 // ListAgentsByProject returns all agents for a given project name.
 func (d *DB) ListAgentsByProject(projectName string) ([]*Agent, error) {
-	rows, err := d.db.Query(`
-		SELECT * FROM agents
+	rows, err := d.db.Query(`SELECT `+agentColumns+` FROM agents
 		WHERE project_name = ?
 		ORDER BY spawn_time DESC`, projectName)
 	if err != nil {
@@ -377,7 +410,7 @@ func (d *DB) ListAgentsByProject(projectName string) ([]*Agent, error) {
 
 // ListAllAgents returns all agents.
 func (d *DB) ListAllAgents() ([]*Agent, error) {
-	rows, err := d.db.Query(`SELECT * FROM agents ORDER BY spawn_time DESC`)
+	rows, err := d.db.Query(`SELECT ` + agentColumns + ` FROM agents ORDER BY spawn_time DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all agents: %w", err)
 	}
@@ -390,7 +423,7 @@ func scanAgent(row *sql.Row) (*Agent, error) {
 	a := &Agent{}
 	var beadsID, sessionID, tmuxWindow, skill, model, tier sql.NullString
 	var projectName, gitBaseline, issueTitle, issueType sql.NullString
-	var phase, phaseSummary sql.NullString
+	var phase, phaseSummary, phaseSource sql.NullString
 	var phaseReportedAt, sessionUpdatedAt, completedAt, abandonedAt sql.NullInt64
 	var isProcessing, isCompleted, isAbandoned int
 
@@ -399,7 +432,7 @@ func scanAgent(row *sql.Row) (*Agent, error) {
 		&a.Mode, &skill, &model, &tier,
 		&a.ProjectDir, &projectName, &a.SpawnTime, &gitBaseline,
 		&issueTitle, &issueType, &a.IssuePriority,
-		&phase, &phaseSummary, &phaseReportedAt,
+		&phase, &phaseSummary, &phaseReportedAt, &phaseSource,
 		&isProcessing, &sessionUpdatedAt,
 		&isCompleted, &isAbandoned, &completedAt, &abandonedAt,
 		&a.TokensInput, &a.TokensOutput, &a.TokensReasoning,
@@ -426,6 +459,7 @@ func scanAgent(row *sql.Row) (*Agent, error) {
 	a.Phase = phase.String
 	a.PhaseSummary = phaseSummary.String
 	a.PhaseReportedAt = phaseReportedAt.Int64
+	a.PhaseSource = phaseSource.String
 	a.IsProcessing = isProcessing != 0
 	a.SessionUpdatedAt = sessionUpdatedAt.Int64
 	a.IsCompleted = isCompleted != 0
@@ -443,7 +477,7 @@ func scanAgents(rows *sql.Rows) ([]*Agent, error) {
 		a := &Agent{}
 		var beadsID, sessionID, tmuxWindow, skill, model, tier sql.NullString
 		var projectName, gitBaseline, issueTitle, issueType sql.NullString
-		var phase, phaseSummary sql.NullString
+		var phase, phaseSummary, phaseSource sql.NullString
 		var phaseReportedAt, sessionUpdatedAt, completedAt, abandonedAt sql.NullInt64
 		var isProcessing, isCompleted, isAbandoned int
 
@@ -452,7 +486,7 @@ func scanAgents(rows *sql.Rows) ([]*Agent, error) {
 			&a.Mode, &skill, &model, &tier,
 			&a.ProjectDir, &projectName, &a.SpawnTime, &gitBaseline,
 			&issueTitle, &issueType, &a.IssuePriority,
-			&phase, &phaseSummary, &phaseReportedAt,
+			&phase, &phaseSummary, &phaseReportedAt, &phaseSource,
 			&isProcessing, &sessionUpdatedAt,
 			&isCompleted, &isAbandoned, &completedAt, &abandonedAt,
 			&a.TokensInput, &a.TokensOutput, &a.TokensReasoning,
@@ -476,6 +510,7 @@ func scanAgents(rows *sql.Rows) ([]*Agent, error) {
 		a.Phase = phase.String
 		a.PhaseSummary = phaseSummary.String
 		a.PhaseReportedAt = phaseReportedAt.Int64
+		a.PhaseSource = phaseSource.String
 		a.IsProcessing = isProcessing != 0
 		a.SessionUpdatedAt = sessionUpdatedAt.Int64
 		a.IsCompleted = isCompleted != 0
@@ -583,7 +618,7 @@ func (d *DB) UpdateTokensBySessionID(sessionID string, input, output, reasoning,
 
 // GetAgentBySessionID returns an agent by session ID.
 func (d *DB) GetAgentBySessionID(sessionID string) (*Agent, error) {
-	row := d.db.QueryRow(`SELECT * FROM agents WHERE session_id = ?`, sessionID)
+	row := d.db.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE session_id = ?`, sessionID)
 	return scanAgent(row)
 }
 
@@ -636,6 +671,47 @@ func (d *DB) GetDriftMetrics() (*DriftMetrics, error) {
 	if err := row.Scan(&m.StaleActive); err != nil {
 		return nil, fmt.Errorf("failed to count stale agents: %w", err)
 	}
+
+	return m, nil
+}
+
+// PhaseAdoptionMetrics contains adoption telemetry for orch phase vs bd comment.
+type PhaseAdoptionMetrics struct {
+	// Total agents that have reported at least one phase
+	TotalWithPhase int
+	// Agents whose last phase update came from orch phase command
+	ViaOrchPhase int
+	// Agents whose last phase update came from bd comment parsing
+	ViaBdComment int
+	// Agents with phase but no source tracked (pre-telemetry or unknown)
+	ViaUnknown int
+}
+
+// GetPhaseAdoptionMetrics queries the state database for phase reporting adoption stats.
+// This answers the question: "What % of agents use orch phase vs bd comment?"
+func (d *DB) GetPhaseAdoptionMetrics() (*PhaseAdoptionMetrics, error) {
+	m := &PhaseAdoptionMetrics{}
+
+	// Total agents with any phase set
+	row := d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE phase IS NOT NULL AND phase != ''`)
+	if err := row.Scan(&m.TotalWithPhase); err != nil {
+		return nil, fmt.Errorf("failed to count agents with phase: %w", err)
+	}
+
+	// Via orch phase
+	row = d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE phase IS NOT NULL AND phase != '' AND phase_source = ?`, PhaseSourceOrchPhase)
+	if err := row.Scan(&m.ViaOrchPhase); err != nil {
+		return nil, fmt.Errorf("failed to count orch_phase sources: %w", err)
+	}
+
+	// Via bd comment
+	row = d.db.QueryRow(`SELECT COUNT(*) FROM agents WHERE phase IS NOT NULL AND phase != '' AND phase_source = ?`, PhaseSourceBdComment)
+	if err := row.Scan(&m.ViaBdComment); err != nil {
+		return nil, fmt.Errorf("failed to count bd_comment sources: %w", err)
+	}
+
+	// Unknown source (pre-telemetry agents or null)
+	m.ViaUnknown = m.TotalWithPhase - m.ViaOrchPhase - m.ViaBdComment
 
 	return m, nil
 }

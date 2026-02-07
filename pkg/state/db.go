@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -158,6 +159,7 @@ func (d *DB) createSchema() error {
 		phase           TEXT,
 		phase_summary   TEXT,
 		phase_reported_at INTEGER,
+		phase_source    TEXT,
 		is_processing   INTEGER DEFAULT 0,
 		session_updated_at INTEGER,
 		is_completed    INTEGER DEFAULT 0,
@@ -185,6 +187,29 @@ func (d *DB) createSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_agents_phase ON agents(phase);
 	`
 
-	_, err := d.db.Exec(schema)
-	return err
+	if _, err := d.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Migrations for existing databases (additive columns only).
+	// ALTER TABLE ADD COLUMN fails silently if the column already exists (SQLite returns
+	// "duplicate column name" which we ignore). This is safe for incremental schema evolution.
+	migrations := []string{
+		`ALTER TABLE agents ADD COLUMN phase_source TEXT`,
+	}
+	for _, m := range migrations {
+		if _, err := d.db.Exec(m); err != nil {
+			// Ignore "duplicate column name" errors — means migration already applied
+			if !isDuplicateColumnError(err) {
+				return fmt.Errorf("migration failed: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isDuplicateColumnError checks if an error is a SQLite "duplicate column name" error.
+func isDuplicateColumnError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "duplicate column name")
 }

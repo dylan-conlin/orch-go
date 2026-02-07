@@ -39,8 +39,8 @@ func TestRunPhaseWithDB(t *testing.T) {
 	dbPath, db := setupPhaseTestDB(t, beadsID)
 	defer db.Close()
 
-	// Run phase update
-	err := runPhaseWithDB(beadsID, "Implementing", "Building feature", dbPath)
+	// Run phase update (no comment in tests)
+	err := runPhaseWithDB(beadsID, "Implementing", "Building feature", dbPath, false)
 	if err != nil {
 		t.Fatalf("runPhaseWithDB failed: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestRunPhaseWithDBNoSummary(t *testing.T) {
 	defer db.Close()
 
 	// Run phase update without summary
-	err := runPhaseWithDB(beadsID, "Planning", "", dbPath)
+	err := runPhaseWithDB(beadsID, "Planning", "", dbPath, false)
 	if err != nil {
 		t.Fatalf("runPhaseWithDB failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestRunPhaseWithDBMultipleUpdates(t *testing.T) {
 	}
 
 	for _, p := range phases {
-		err := runPhaseWithDB(beadsID, p.phase, p.summary, dbPath)
+		err := runPhaseWithDB(beadsID, p.phase, p.summary, dbPath, false)
 		if err != nil {
 			t.Fatalf("runPhaseWithDB(%q) failed: %v", p.phase, err)
 		}
@@ -133,7 +133,7 @@ func TestRunPhaseWithDBAgentNotFound(t *testing.T) {
 	defer db.Close()
 
 	// Try to update phase for non-existent agent
-	err = runPhaseWithDB("orch-go-nonexistent", "Planning", "test", dbPath)
+	err = runPhaseWithDB("orch-go-nonexistent", "Planning", "test", dbPath, false)
 	if err == nil {
 		t.Error("runPhaseWithDB should fail for non-existent agent")
 	}
@@ -144,7 +144,7 @@ func TestRunPhaseWithDBCompletePhase(t *testing.T) {
 	dbPath, db := setupPhaseTestDB(t, beadsID)
 	defer db.Close()
 
-	err := runPhaseWithDB(beadsID, "Complete", "All tests passing, ready for review", dbPath)
+	err := runPhaseWithDB(beadsID, "Complete", "All tests passing, ready for review", dbPath, false)
 	if err != nil {
 		t.Fatalf("runPhaseWithDB failed: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestRunPhaseWithDBBlockedPhase(t *testing.T) {
 	dbPath, db := setupPhaseTestDB(t, beadsID)
 	defer db.Close()
 
-	err := runPhaseWithDB(beadsID, "BLOCKED", "Need clarification on API contract", dbPath)
+	err := runPhaseWithDB(beadsID, "BLOCKED", "Need clarification on API contract", dbPath, false)
 	if err != nil {
 		t.Fatalf("runPhaseWithDB failed: %v", err)
 	}
@@ -179,6 +179,30 @@ func TestRunPhaseWithDBBlockedPhase(t *testing.T) {
 
 	if agent.Phase != "BLOCKED" {
 		t.Errorf("Phase = %q, want %q", agent.Phase, "BLOCKED")
+	}
+}
+
+func TestFormatPhaseComment(t *testing.T) {
+	tests := []struct {
+		phase   string
+		summary string
+		want    string
+	}{
+		{"Planning", "Analyzing codebase", "Phase: Planning - Analyzing codebase"},
+		{"Planning", "", "Phase: Planning"},
+		{"Implementing", "Building feature", "Phase: Implementing - Building feature"},
+		{"Complete", "All tests passing", "Phase: Complete - All tests passing"},
+		{"BLOCKED", "Need API access", "BLOCKED: Need API access"},
+		{"BLOCKED", "", "BLOCKED"},
+		{"QUESTION", "Use JWT or sessions?", "QUESTION: Use JWT or sessions?"},
+		{"QUESTION", "", "QUESTION"},
+	}
+
+	for _, tt := range tests {
+		got := formatPhaseComment(tt.phase, tt.summary)
+		if got != tt.want {
+			t.Errorf("formatPhaseComment(%q, %q) = %q, want %q", tt.phase, tt.summary, got, tt.want)
+		}
 	}
 }
 

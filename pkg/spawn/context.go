@@ -186,12 +186,11 @@ After your final commit, BEFORE typing anything else:
 {{else}}
 🚨 FIRST 3 ACTIONS (ADVISORY - STRONGLY RECOMMENDED):
 Suggested first actions for visibility:
-1. Report phase via ` + "`orch phase {{.BeadsID}} Planning \"[brief description]\"`" + `
-   - Also for audit trail: ` + "`bd comment {{.BeadsID}} \"Phase: Planning - [brief description]\"`" + `
+1. Report phase: ` + "`orch phase {{.BeadsID}} Planning \"[brief description]\"`" + `
 2. Read relevant codebase context for your task
 3. Begin planning
 
-**Note:** While advisory, reporting early helps orchestrator track progress. The **code-enforced gate** is reporting "Phase: Complete" before session end - that's when completion actually blocks.
+**Note:** ` + "`orch phase`" + ` writes to SQLite (~1ms) for instant dashboard visibility AND automatically adds a bd comment for audit trail. One command handles both.
 
 **Gates vs Advisory Checkpoints:**
 - **Gates** (blocking): Enforced by ` + "`orch complete`" + ` code - will BLOCK completion if not satisfied (e.g., Phase: Complete, test evidence, visual verification for UI changes)
@@ -207,15 +206,13 @@ After your final commit, BEFORE typing anything else:
 
 {{if eq .Tier "light"}}
 1. Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
-2. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + ` (audit trail)
-3. Run: ` + "`/exit`" + ` to close the agent session
+2. Run: ` + "`/exit`" + ` to close the agent session
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required for this spawn.
 {{else}}
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
 2. Run: ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary of deliverables]\"`" + `
-3. Run: ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary of deliverables]\"`" + ` (audit trail)
-4. Run: ` + "`/exit`" + ` to close the agent session
+3. Run: ` + "`/exit`" + ` to close the agent session
 {{end}}
 ⚠️ Work is NOT complete until Phase: Complete is reported.
 ⚠️ The orchestrator cannot close this issue until you report Phase: Complete.
@@ -313,28 +310,19 @@ Signal orchestrator when blocked:
 
 You were spawned from beads issue: **{{.BeadsID}}**
 
-**Phase reporting uses two channels (hybrid approach):**
-- ` + "`orch phase`" + ` — Fast SQLite write (~1ms) for runtime visibility in ` + "`orch status`" + ` and dashboard
-- ` + "`bd comment`" + ` — Permanent audit trail in beads for searchable history
+**Phase reporting:** Use ` + "`orch phase`" + ` — one command that writes to SQLite (~1ms) for instant dashboard visibility AND automatically adds a bd comment for permanent audit trail.
 
 ` + "```bash" + `
-# Report progress at phase transitions (BOTH commands for hybrid approach)
+# Report progress at phase transitions
 orch phase {{.BeadsID}} Planning "Analyzing codebase structure"
-bd comment {{.BeadsID}} "Phase: Planning - Analyzing codebase structure"
-
 orch phase {{.BeadsID}} Implementing "Adding authentication middleware"
-bd comment {{.BeadsID}} "Phase: Implementing - Adding authentication middleware"
-
 orch phase {{.BeadsID}} Complete "All tests passing, ready for review"
-bd comment {{.BeadsID}} "Phase: Complete - All tests passing, ready for review"
 
 # Report blockers immediately
 orch phase {{.BeadsID}} BLOCKED "Need clarification on API contract"
-bd comment {{.BeadsID}} "BLOCKED: Need clarification on API contract"
 
 # Report questions
 orch phase {{.BeadsID}} QUESTION "Should we use JWT or session-based auth?"
-bd comment {{.BeadsID}} "QUESTION: Should we use JWT or session-based auth?"
 ` + "```" + `
 
 **When to report:**
@@ -342,8 +330,6 @@ bd comment {{.BeadsID}} "QUESTION: Should we use JWT or session-based auth?"
 - Significant milestones or findings
 - Blockers or questions requiring orchestrator input
 - Completion summary with deliverables
-
-**Why both?** ` + "`orch phase`" + ` makes phase visible in orch status within milliseconds. ` + "`bd comment`" + ` creates permanent, searchable history linked to the issue via ` + "`bd show {{.BeadsID}}`" + `. If ` + "`orch phase`" + ` fails (e.g., agent not in state DB), ` + "`bd comment`" + ` ensures phase is still tracked.
 
 ⛔ **NEVER run ` + "`bd close`" + `** - Only the orchestrator closes issues via ` + "`orch complete`" + `.
    - Workers report ` + "`Phase: Complete`" + `, orchestrator verifies and closes
@@ -406,15 +392,13 @@ After your final commit, BEFORE doing anything else:
 {{else}}
 {{if eq .Tier "light"}}
 1. ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + `
-2. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-3. ` + "`/exit`" + `
+2. ` + "`/exit`" + `
 
 ⚡ LIGHT TIER: SYNTHESIS.md is NOT required.
 {{else}}
 1. Ensure SYNTHESIS.md is created and committed in your workspace.
 2. ` + "`orch phase {{.BeadsID}} Complete \"[1-2 sentence summary]\"`" + `
-3. ` + "`bd comment {{.BeadsID}} \"Phase: Complete - [1-2 sentence summary]\"`" + `
-4. ` + "`/exit`" + `
+3. ` + "`/exit`" + `
 {{end}}
 {{end}}
 ⚠️ Your work is NOT complete until you run these commands.
